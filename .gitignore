@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.swiftpm/
+work/cc-switch-balance-bar/build/
+work/cc-switch-balance-bar/swift-module-cache/
+work/cc-switch-balance-bar/*.app/
+outputs/*.app/
+outputs/*.dmg
+outputs/*.zip
+*.log
+
