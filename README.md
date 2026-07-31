@@ -1,6 +1,6 @@
 # BalanceBar
 
-BalanceBar is a macOS menu bar utility that mirrors CC Switch provider state and quota information. It supports provider synchronization, official OpenAI quota display, API balance display, a Summary page with one-minute balance history and CC Switch model/token/cost charts, quick provider switching, refresh controls, and Codex activity indication.
+BalanceBar is a macOS menu bar utility that mirrors CC Switch provider state and quota information. It supports provider synchronization, official OpenAI quota display, API balance display, quick provider switching, refresh controls, and Codex activity indication.
 
 ## Requirements
 
@@ -37,4 +37,4 @@ cp work/balance-bar/ClaudeThinking.svg \
 codesign --force --sign - work/balance-bar/build/BalanceBar.app
 ```
 
-The source reads the existing local CC Switch database and configuration. Credentials are not stored in this repository. BalanceBar stores deduplicated one-minute balance snapshots in `~/Library/Application Support/BalanceBar/analytics.sqlite`; CC Switch model, token, and cost statistics are read from its existing `proxy_request_logs` and `usage_daily_rollups` tables.
+The source reads the existing local CC Switch database and configuration. Credentials are not stored in this repository.
