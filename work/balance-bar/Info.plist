@@ -5,21 +5,23 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>CCSwitchBalanceBar</string>
+  <string>BalanceBar</string>
   <key>CFBundleIdentifier</key>
-  <string>local.ccswitch.balancebar</string>
+  <string>local.balancebar</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
   <string>BalanceBar</string>
   <key>CFBundleDisplayName</key>
   <string>BalanceBar</string>
+  <key>CFBundleIconFile</key>
+  <string>BalanceBar.icns</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+	<string>0.9.0</string>
   <key>CFBundleVersion</key>
-  <string>2</string>
+	<string>10</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSPrincipalClass</key>
