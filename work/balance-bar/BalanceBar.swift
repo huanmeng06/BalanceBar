@@ -7,6 +7,8 @@ import SwiftUI
 private let databasePath = NSString(string: "~/.cc-switch/cc-switch.db").expandingTildeInPath
 private let ccSwitchDirectory = NSString(string: "~/.cc-switch").expandingTildeInPath
 private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+private let analyticsDatabaseURL = FileManager.default.homeDirectoryForCurrentUser
+    .appendingPathComponent("Library/Application Support/BalanceBar/analytics.sqlite")
 
 private func fileIdentity(atPath path: String) -> (size: UInt64, modifiedAt: TimeInterval)? {
     var value = stat()
@@ -640,6 +642,939 @@ private final class QuotaProgressView: NSView {
     }
 }
 
+private enum AnalyticsRange: Int, CaseIterable {
+    case day = 1
+    case week = 7
+    case month = 30
+    case all = 0
+
+    var title: String {
+        switch self {
+        case .day: return tr("最近 24 小时", "Last 24 Hours")
+        case .week: return tr("最近 7 天", "Last 7 Days")
+        case .month: return tr("最近 30 天", "Last 30 Days")
+        case .all: return tr("全部历史", "All History")
+        }
+    }
+
+    var startDate: Date? {
+        switch self {
+        case .all: return nil
+        case .day, .week, .month:
+            return Date().addingTimeInterval(-Double(rawValue) * 86_400)
+        }
+    }
+}
+
+private struct AnalyticsChartPoint {
+    let date: Date
+    let value: Double
+}
+
+private struct AnalyticsChartSeries {
+    let id: String
+    let title: String
+    let unit: String
+    let points: [AnalyticsChartPoint]
+}
+
+private struct AnalyticsBarRow {
+    let title: String
+    let value: Double
+    let detail: String
+}
+
+private struct AnalyticsModelUsage {
+    let appType: String
+    let providerID: String
+    let providerName: String
+    let model: String
+    var requestCount: Int64
+    var inputTokens: Int64
+    var outputTokens: Int64
+    var cacheReadTokens: Int64
+    var cacheCreationTokens: Int64
+    var costUSD: Double
+    var lastUsed: Date?
+
+    var totalTokens: Int64 {
+        inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens
+    }
+
+    var displayModel: String {
+        AnalyticsModelNaming.displayName(model)
+    }
+}
+
+private struct AnalyticsDailyUsage {
+    let date: Date
+    let appType: String
+    var totalTokens: Int64
+    var costUSD: Double
+    var requestCount: Int64
+}
+
+private struct AnalyticsCurrentModel {
+    let appType: String
+    let model: String
+    let lastUsed: Date
+
+    var displayModel: String {
+        AnalyticsModelNaming.displayName(model)
+    }
+}
+
+private struct AnalyticsDashboardData {
+    let balanceSeries: [AnalyticsChartSeries]
+    let quotaSeries: [AnalyticsChartSeries]
+    let tokenSeries: [AnalyticsChartSeries]
+    let modelTokenRows: [AnalyticsBarRow]
+    let modelCostRows: [AnalyticsBarRow]
+    let modelUsage: [AnalyticsModelUsage]
+    let currentModels: [AnalyticsCurrentModel]
+    let totalTokens: Int64
+    let totalCostUSD: Double
+    let totalRequests: Int64
+    let balanceSampleCount: Int
+
+    static let empty = AnalyticsDashboardData(
+        balanceSeries: [],
+        quotaSeries: [],
+        tokenSeries: [],
+        modelTokenRows: [],
+        modelCostRows: [],
+        modelUsage: [],
+        currentModels: [],
+        totalTokens: 0,
+        totalCostUSD: 0,
+        totalRequests: 0,
+        balanceSampleCount: 0
+    )
+}
+
+private enum AnalyticsModelNaming {
+    static func displayName(_ model: String) -> String {
+        let value = model.lowercased()
+        if value.contains("gpt-5.6-sol") || value.contains("5.6-solar") {
+            return "5.6 Solar"
+        }
+        if value.contains("gpt-5.6-terra") || value.contains("5.6-terra") {
+            return "5.6 Terra"
+        }
+        if value.contains("gpt-5.6-luna") || value.contains("5.6-luna") {
+            return "5.6 Luna"
+        }
+        return model
+    }
+}
+
+private enum AnalyticsAppNaming {
+    static func shortName(_ appType: String) -> String {
+        switch appType {
+        case "codex": return "Codex"
+        case "claude": return "Claude"
+        case "claude-desktop": return "Claude Desktop"
+        case "gemini": return "Gemini"
+        default: return appType.capitalized
+        }
+    }
+}
+
+private final class AnalyticsMetricCard: NSView {
+    private let titleLabel: NSTextField
+    private let valueLabel: NSTextField
+    private let detailLabel: NSTextField
+
+    init(title: String) {
+        titleLabel = NSTextField(labelWithString: title)
+        valueLabel = NSTextField(labelWithString: "—")
+        detailLabel = NSTextField(labelWithString: "")
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.86),
+            dark: NSColor.white.withAlphaComponent(0.055)
+        ).cgColor
+        layer?.borderColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.92),
+            dark: NSColor.white.withAlphaComponent(0.08)
+        ).cgColor
+        layer?.borderWidth = 0.5
+
+        titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        titleLabel.textColor = .secondaryLabelColor
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 20, weight: .semibold)
+        valueLabel.lineBreakMode = .byTruncatingTail
+        detailLabel.font = .systemFont(ofSize: 10)
+        detailLabel.textColor = .tertiaryLabelColor
+        detailLabel.lineBreakMode = .byTruncatingTail
+        [titleLabel, valueLabel, detailLabel].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            addSubview($0)
+        }
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 11),
+            valueLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            valueLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            detailLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            detailLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            detailLabel.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 2),
+            detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -9)
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func update(value: String, detail: String) {
+        valueLabel.stringValue = value
+        detailLabel.stringValue = detail
+    }
+}
+
+private final class AnalyticsLineChartView: NSView {
+    var series: [AnalyticsChartSeries] = [] { didSet { needsDisplay = true } }
+    var fixedYRange: ClosedRange<Double>?
+    var emptyText = tr("等待余额样本", "Waiting for balance samples")
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let plot = bounds.insetBy(dx: 46, dy: 25)
+        guard plot.width > 80, plot.height > 50 else { return }
+        let nonEmptySeries = series.filter { !$0.points.isEmpty }
+        guard !nonEmptySeries.isEmpty else {
+            drawText(emptyText, in: bounds.insetBy(dx: 16, dy: 16), alignment: .center, color: .secondaryLabelColor)
+            return
+        }
+
+        let values = nonEmptySeries.flatMap { $0.points.map(\.value) }
+        var lower = fixedYRange?.lowerBound ?? (values.min() ?? 0)
+        var upper = fixedYRange?.upperBound ?? (values.max() ?? 1)
+        if fixedYRange == nil {
+            if abs(upper - lower) < 0.000001 {
+                let padding = max(abs(upper) * 0.08, 1)
+                lower -= padding
+                upper += padding
+            } else {
+                let padding = (upper - lower) * 0.08
+                lower -= padding
+                upper += padding
+            }
+        }
+        let valueSpan = max(0.000001, upper - lower)
+        let firstDate = nonEmptySeries.flatMap { $0.points }.map(\.date).min() ?? Date()
+        let lastDate = nonEmptySeries.flatMap { $0.points }.map(\.date).max() ?? firstDate
+        let dateSpan = max(0.001, lastDate.timeIntervalSince(firstDate))
+
+        for index in 0...4 {
+            let fraction = CGFloat(index) / 4
+            let y = plot.minY + plot.height * fraction
+            let grid = NSBezierPath()
+            grid.move(to: NSPoint(x: plot.minX, y: y))
+            grid.line(to: NSPoint(x: plot.maxX, y: y))
+            grid.lineWidth = 0.5
+            NSColor.separatorColor.withAlphaComponent(0.38).setStroke()
+            grid.stroke()
+            let value = upper - (upper - lower) * Double(fraction)
+            drawText(formatValue(value, unit: nonEmptySeries.first?.unit ?? ""), in: NSRect(x: 0, y: y - 7, width: plot.minX - 7, height: 14), alignment: .right, color: .tertiaryLabelColor, fontSize: 9)
+        }
+
+        for (index, currentSeries) in nonEmptySeries.enumerated() {
+            let path = NSBezierPath()
+            for (pointIndex, point) in currentSeries.points.enumerated() {
+                let x: CGFloat
+                if dateSpan <= 0.001 {
+                    x = plot.minX + plot.width * CGFloat(pointIndex) / CGFloat(max(1, currentSeries.points.count - 1))
+                } else {
+                    x = plot.minX + plot.width * CGFloat(point.date.timeIntervalSince(firstDate) / dateSpan)
+                }
+                let normalized = CGFloat((point.value - lower) / valueSpan)
+                let y = plot.maxY - plot.height * min(1, max(0, normalized))
+                if pointIndex == 0 { path.move(to: NSPoint(x: x, y: y)) }
+                else { path.line(to: NSPoint(x: x, y: y)) }
+            }
+            let color = chartColor(index)
+            color.setStroke()
+            path.lineWidth = 1.8
+            path.lineJoinStyle = .round
+            path.stroke()
+            if let point = currentSeries.points.last {
+                let x = dateSpan <= 0.001
+                    ? plot.maxX
+                    : plot.minX + plot.width * CGFloat(point.date.timeIntervalSince(firstDate) / dateSpan)
+                let normalized = CGFloat((point.value - lower) / valueSpan)
+                let y = plot.maxY - plot.height * min(1, max(0, normalized))
+                color.setFill()
+                NSBezierPath(ovalIn: NSRect(x: x - 3, y: y - 3, width: 6, height: 6)).fill()
+            }
+        }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = .current
+        dateFormatter.dateFormat = dateSpan <= 2 * 86_400 ? "HH:mm" : "MM/dd"
+        let dateLabels = [firstDate, firstDate.addingTimeInterval(dateSpan / 2), lastDate]
+        for (index, date) in dateLabels.enumerated() {
+            let x: CGFloat = index == 0 ? plot.minX : (index == 1 ? plot.midX : plot.maxX)
+            let width: CGFloat = index == 0 ? 48 : (index == 1 ? 64 : 48)
+            let originX = index == 0 ? x : (index == 1 ? x - width / 2 : x - width)
+            drawText(dateFormatter.string(from: date), in: NSRect(x: originX, y: plot.maxY + 7, width: width, height: 14), alignment: index == 0 ? .left : (index == 1 ? .center : .right), color: .tertiaryLabelColor, fontSize: 9)
+        }
+
+        var legendX = plot.minX
+        var legendY: CGFloat = 2
+        let legendFont = NSFont.systemFont(ofSize: 9, weight: .medium)
+        for (index, currentSeries) in nonEmptySeries.enumerated() {
+            let text = currentSeries.title
+            let textWidth = (text as NSString).size(withAttributes: [.font: legendFont]).width + 26
+            if legendX + textWidth > bounds.maxX - 6, legendX > plot.minX {
+                legendX = plot.minX
+                legendY += 15
+            }
+            chartColor(index).setFill()
+            NSBezierPath(ovalIn: NSRect(x: legendX, y: legendY + 3, width: 7, height: 7)).fill()
+            drawText(text, in: NSRect(x: legendX + 11, y: legendY, width: max(20, textWidth - 11), height: 14), alignment: .left, color: .secondaryLabelColor, fontSize: 9)
+            legendX += textWidth
+        }
+    }
+
+    private func chartColor(_ index: Int) -> NSColor {
+        let colors: [NSColor] = [.systemBlue, .systemTeal, .systemOrange, .systemPurple, .systemPink, .systemGreen]
+        return colors[index % colors.count]
+    }
+
+    private func formatValue(_ value: Double, unit: String) -> String {
+        let number = value.formatted(.number.precision(.fractionLength(value >= 100 ? 0 : 2)))
+        return unit.isEmpty ? number : "\(number)\(unit)"
+    }
+
+    private func drawText(_ text: String, in rect: NSRect, alignment: NSTextAlignment, color: NSColor, fontSize: CGFloat = 11) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+        (text as NSString).draw(
+            with: rect,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize),
+                .foregroundColor: color,
+                .paragraphStyle: paragraph
+            ],
+            context: nil
+        )
+    }
+}
+
+private final class AnalyticsBarChartView: NSView {
+    var rows: [AnalyticsBarRow] = [] { didSet { needsDisplay = true } }
+    var emptyText = tr("暂无用量数据", "No usage data")
+    var valueFormatter: (Double) -> String = { value in String(format: "%.2f", value) }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard !rows.isEmpty else {
+            let rect = bounds.insetBy(dx: 16, dy: 16)
+            drawText(
+                emptyText,
+                in: rect,
+                alignment: .center,
+                color: .secondaryLabelColor,
+                font: .systemFont(ofSize: 11)
+            )
+            return
+        }
+        let visibleRows = Array(rows.prefix(8))
+        let labelWidth: CGFloat = min(132, max(88, bounds.width * 0.29))
+        let valueWidth: CGFloat = 70
+        let barStart = labelWidth + 8
+        let barEnd = max(barStart + 34, bounds.width - valueWidth - 8)
+        let barWidth = barEnd - barStart
+        let maxValue = max(0.000001, visibleRows.map(\.value).max() ?? 1)
+        let rowHeight = max(22, min(30, (bounds.height - 8) / CGFloat(visibleRows.count)))
+        let font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        for (index, row) in visibleRows.enumerated() {
+            let y = 4 + CGFloat(index) * rowHeight
+            drawText(row.title, in: NSRect(x: 0, y: y + 2, width: labelWidth, height: 18), alignment: .left, color: .labelColor, font: font)
+            let track = NSRect(x: barStart, y: y + 5, width: barWidth, height: 10)
+            NSColor.quaternaryLabelColor.withAlphaComponent(0.55).setFill()
+            NSBezierPath(roundedRect: track, xRadius: 5, yRadius: 5).fill()
+            let fill = NSRect(x: barStart, y: y + 5, width: barWidth * CGFloat(max(0, row.value) / maxValue), height: 10)
+            if fill.width > 0 {
+                NSColor.systemBlue.setFill()
+                NSBezierPath(roundedRect: fill, xRadius: 5, yRadius: 5).fill()
+            }
+            drawText(valueFormatter(row.value), in: NSRect(x: barEnd + 8, y: y + 2, width: valueWidth, height: 18), alignment: .right, color: .secondaryLabelColor, font: font)
+        }
+    }
+
+    private func drawText(_ text: String, in rect: NSRect, alignment: NSTextAlignment, color: NSColor, font: NSFont) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+        (text as NSString).draw(
+            with: rect,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+            attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraph],
+            context: nil
+        )
+    }
+}
+
+private final class AnalyticsStore {
+    private struct SeriesKey: Hashable {
+        let appType: String
+        let providerID: String
+        let metric: String
+    }
+
+    private struct UsageKey: Hashable {
+        let appType: String
+        let providerID: String
+        let model: String
+    }
+
+    private struct DailyKey: Hashable {
+        let date: String
+        let appType: String
+    }
+
+    private struct UsageRow {
+        let appType: String
+        let providerID: String
+        let providerName: String
+        let model: String
+        let requestCount: Int64
+        let inputTokens: Int64
+        let outputTokens: Int64
+        let cacheReadTokens: Int64
+        let cacheCreationTokens: Int64
+        let costUSD: Double
+        let lastUsed: Date?
+    }
+
+    private struct DailyRow {
+        let date: String
+        let appType: String
+        let totalTokens: Int64
+        let costUSD: Double
+        let requestCount: Int64
+    }
+
+    private let queue = DispatchQueue(label: "local.balancebar.analytics-store", qos: .utility)
+    private let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    init() {
+        queue.sync {
+            prepareDatabase()
+        }
+    }
+
+    func recordBalance(
+        appType: String,
+        providerID: String,
+        providerName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+        date: Date = Date()
+    ) {
+        queue.async { [weak self] in
+            self?.insertBalance(
+                appType: appType,
+                providerID: providerID,
+                providerName: providerName,
+                metric: metric,
+                value: value,
+                unit: unit,
+                date: date
+            )
+        }
+    }
+
+    func load(range: AnalyticsRange, completion: @escaping (AnalyticsDashboardData) -> Void) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let data = self.buildDashboardData(range: range)
+            DispatchQueue.main.async {
+                completion(data)
+            }
+        }
+    }
+
+    private func prepareDatabase() {
+        do {
+            try FileManager.default.createDirectory(
+                at: analyticsDatabaseURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        } catch {
+            SwitchLog.write(
+                "analytics database directory creation failed; error=\(error.localizedDescription)",
+                level: .error,
+                category: "analytics"
+            )
+            return
+        }
+        guard let database = openAnalyticsDatabase(readOnly: false) else { return }
+        defer { sqlite3_close(database) }
+        let schema = """
+        CREATE TABLE IF NOT EXISTS balance_samples (
+            sampled_at INTEGER NOT NULL,
+            app_type TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            provider_name TEXT NOT NULL,
+            metric TEXT NOT NULL,
+            value REAL NOT NULL,
+            unit TEXT NOT NULL,
+            PRIMARY KEY (sampled_at, app_type, provider_id, metric)
+        );
+        CREATE INDEX IF NOT EXISTS idx_balance_samples_time ON balance_samples(sampled_at);
+        """
+        guard sqlite3_exec(database, schema, nil, nil, nil) == SQLITE_OK else {
+            SwitchLog.write(
+                "analytics database schema creation failed; error=\(String(cString: sqlite3_errmsg(database)))",
+                level: .error,
+                category: "analytics"
+            )
+            return
+        }
+        let cutoff = Int64(Date().addingTimeInterval(-366 * 86_400).timeIntervalSince1970)
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(database, "DELETE FROM balance_samples WHERE sampled_at < ?", -1, &statement, nil) == SQLITE_OK,
+           let statement {
+            sqlite3_bind_int64(statement, 1, cutoff)
+            _ = sqlite3_step(statement)
+            sqlite3_finalize(statement)
+        }
+    }
+
+    private func insertBalance(
+        appType: String,
+        providerID: String,
+        providerName: String,
+        metric: String,
+        value: Double,
+        unit: String,
+        date: Date
+    ) {
+        guard let database = openAnalyticsDatabase(readOnly: false) else { return }
+        defer { sqlite3_close(database) }
+        let minute = Int64(date.timeIntervalSince1970 / 60) * 60
+        let sql = """
+        INSERT OR REPLACE INTO balance_samples
+        (sampled_at, app_type, provider_id, provider_name, metric, value, unit)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, minute)
+        bindText(appType, to: statement, index: 2)
+        bindText(providerID, to: statement, index: 3)
+        bindText(providerName, to: statement, index: 4)
+        bindText(metric, to: statement, index: 5)
+        sqlite3_bind_double(statement, 6, value)
+        bindText(unit, to: statement, index: 7)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            SwitchLog.write(
+                "analytics balance sample write failed; provider_id=\(providerID); error=\(String(cString: sqlite3_errmsg(database)))",
+                level: .warning,
+                category: "analytics"
+            )
+            return
+        }
+    }
+
+    private func buildDashboardData(range: AnalyticsRange) -> AnalyticsDashboardData {
+        let balance = readBalanceSeries(startDate: range.startDate)
+        let usage = readUsage(startDate: range.startDate)
+        let tokenSeries = makeTokenSeries(from: usage.daily)
+        let modelRows = usage.models.sorted {
+            if $0.lastUsed != $1.lastUsed { return ($0.lastUsed ?? .distantPast) > ($1.lastUsed ?? .distantPast) }
+            return $0.totalTokens > $1.totalTokens
+        }
+        let tokenBars = modelRows
+            .sorted { $0.totalTokens > $1.totalTokens }
+            .prefix(8)
+            .map {
+                AnalyticsBarRow(
+                    title: $0.displayModel,
+                    value: Double($0.totalTokens) / 1_000_000,
+                    detail: "\($0.providerName) · \($0.totalTokens)"
+                )
+            }
+        let costBars = modelRows
+            .sorted { $0.costUSD > $1.costUSD }
+            .prefix(8)
+            .map {
+                AnalyticsBarRow(
+                    title: $0.displayModel,
+                    value: $0.costUSD,
+                    detail: "\($0.providerName) · $\(String(format: "%.2f", $0.costUSD))"
+                )
+            }
+        var currentByApp: [String: AnalyticsCurrentModel] = [:]
+        for row in modelRows {
+            guard let lastUsed = row.lastUsed else { continue }
+            if let current = currentByApp[row.appType], current.lastUsed >= lastUsed { continue }
+            currentByApp[row.appType] = AnalyticsCurrentModel(
+                appType: row.appType,
+                model: row.model,
+                lastUsed: lastUsed
+            )
+        }
+        return AnalyticsDashboardData(
+            balanceSeries: balance.balance,
+            quotaSeries: balance.quota,
+            tokenSeries: tokenSeries,
+            modelTokenRows: Array(tokenBars),
+            modelCostRows: Array(costBars),
+            modelUsage: Array(modelRows.prefix(16)),
+            currentModels: currentByApp.values.sorted { $0.appType < $1.appType },
+            totalTokens: usage.models.reduce(0) { $0 + $1.totalTokens },
+            totalCostUSD: usage.models.reduce(0) { $0 + $1.costUSD },
+            totalRequests: usage.models.reduce(0) { $0 + $1.requestCount },
+            balanceSampleCount: balance.sampleCount
+        )
+    }
+
+    private func readBalanceSeries(startDate: Date?) -> (balance: [AnalyticsChartSeries], quota: [AnalyticsChartSeries], sampleCount: Int) {
+        guard let database = openAnalyticsDatabase(readOnly: true) else { return ([], [], 0) }
+        defer { sqlite3_close(database) }
+        let sql = """
+        SELECT sampled_at, app_type, provider_id, provider_name, metric, value, unit
+        FROM balance_samples
+        WHERE (? = 0 OR sampled_at >= ?)
+        ORDER BY sampled_at ASC
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return ([], [], 0) }
+        defer { sqlite3_finalize(statement) }
+        let cutoff = Int64(startDate?.timeIntervalSince1970 ?? 0)
+        sqlite3_bind_int64(statement, 1, cutoff)
+        sqlite3_bind_int64(statement, 2, cutoff)
+        var pointGroups: [SeriesKey: [AnalyticsChartPoint]] = [:]
+        var metadata: [SeriesKey: (name: String, unit: String)] = [:]
+        var count = 0
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let appTypeText = sqlite3_column_text(statement, 1),
+                  let providerIDText = sqlite3_column_text(statement, 2),
+                  let providerNameText = sqlite3_column_text(statement, 3),
+                  let metricText = sqlite3_column_text(statement, 4),
+                  let unitText = sqlite3_column_text(statement, 6) else { continue }
+            let appType = String(cString: appTypeText)
+            let providerID = String(cString: providerIDText)
+            let providerName = String(cString: providerNameText)
+            let metric = String(cString: metricText)
+            let unit = String(cString: unitText)
+            let key = SeriesKey(appType: appType, providerID: providerID, metric: metric)
+            pointGroups[key, default: []].append(AnalyticsChartPoint(
+                date: Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 0))),
+                value: sqlite3_column_double(statement, 5)
+            ))
+            metadata[key] = (providerName, unit)
+            count += 1
+        }
+        let series = pointGroups.keys.compactMap { key -> AnalyticsChartSeries? in
+            guard let points = pointGroups[key], let info = metadata[key] else { return nil }
+            let appName = AnalyticsAppNaming.shortName(key.appType)
+            let unitTitle = info.unit.isEmpty ? "" : " · \(info.unit)"
+            return AnalyticsChartSeries(
+                id: "\(key.appType)-\(key.providerID)-\(key.metric)",
+                title: "\(info.name) · \(appName)\(unitTitle)",
+                unit: key.metric == "officialQuota" ? "%" : info.unit,
+                points: points
+            )
+        }.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        return (
+            series.filter { !$0.id.hasSuffix("-officialQuota") },
+            series.filter { $0.id.hasSuffix("-officialQuota") },
+            count
+        )
+    }
+
+    private func makeTokenSeries(from daily: [AnalyticsDailyUsage]) -> [AnalyticsChartSeries] {
+        let grouped = Dictionary(grouping: daily, by: { $0.appType })
+        return grouped.map { appType, rows in
+            AnalyticsChartSeries(
+                id: "tokens-\(appType)",
+                title: AnalyticsAppNaming.shortName(appType),
+                unit: "M",
+                points: rows.sorted { $0.date < $1.date }.map {
+                    AnalyticsChartPoint(date: $0.date, value: Double($0.totalTokens) / 1_000_000)
+                }
+            )
+        }.sorted { $0.title < $1.title }
+    }
+
+    private func readUsage(startDate: Date?) -> (models: [AnalyticsModelUsage], daily: [AnalyticsDailyUsage]) {
+        guard let database = openCCSwitchDatabase() else { return ([], []) }
+        defer { sqlite3_close(database) }
+        let cutoffEpoch = Int64(startDate?.timeIntervalSince1970 ?? 0)
+        let rawMinimum = minimumRawLogDate(database: database)
+        var modelRows: [UsageKey: AnalyticsModelUsage] = [:]
+        var dailyRows: [DailyKey: AnalyticsDailyUsage] = [:]
+
+        let rawModelSQL = """
+        SELECT l.app_type, l.provider_id,
+               COALESCE(NULLIF(p.name, ''),
+                        CASE WHEN l.provider_id LIKE '_codex%' THEN 'OpenAI Official'
+                             WHEN l.provider_id LIKE '_session%' THEN 'Claude Session'
+                             ELSE l.provider_id END) AS provider_name,
+               COALESCE(NULLIF(l.model, ''), NULLIF(l.request_model, ''), 'Unknown') AS model,
+               COUNT(*), SUM(l.input_tokens), SUM(l.output_tokens),
+               SUM(l.cache_read_tokens), SUM(l.cache_creation_tokens),
+               SUM(CAST(l.total_cost_usd AS REAL)), MAX(l.created_at)
+        FROM proxy_request_logs l
+        LEFT JOIN providers p ON p.id = l.provider_id AND p.app_type = l.app_type
+        WHERE l.created_at >= ?
+        GROUP BY l.app_type, l.provider_id, provider_name, model
+        """
+        readUsageRows(
+            database: database,
+            sql: rawModelSQL,
+            bind: { statement in sqlite3_bind_int64(statement, 1, cutoffEpoch) },
+            addModel: { row in merge(row, into: &modelRows) }
+        )
+
+        let rawDailySQL = """
+        SELECT date(datetime(created_at, 'unixepoch', 'localtime')), app_type,
+               SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens),
+               SUM(CAST(total_cost_usd AS REAL)), COUNT(*)
+        FROM proxy_request_logs
+        WHERE created_at >= ?
+        GROUP BY date(datetime(created_at, 'unixepoch', 'localtime')), app_type
+        """
+        readDailyRows(
+            database: database,
+            sql: rawDailySQL,
+            bind: { statement in sqlite3_bind_int64(statement, 1, cutoffEpoch) },
+            addDaily: { row in merge(row, into: &dailyRows) }
+        )
+
+        let rollupStart = startDate.map { dayFormatter.string(from: $0) } ?? ""
+        let rollupEnd = rawMinimum.map { dayFormatter.string(from: $0) } ?? ""
+        if rawMinimum == nil || rollupEnd > rollupStart || rollupStart.isEmpty {
+            let rollupModelSQL = """
+            SELECT r.app_type, r.provider_id,
+                   COALESCE(NULLIF(p.name, ''),
+                            CASE WHEN r.provider_id LIKE '_codex%' THEN 'OpenAI Official'
+                                 WHEN r.provider_id LIKE '_session%' THEN 'Claude Session'
+                                 ELSE r.provider_id END) AS provider_name,
+                   COALESCE(NULLIF(r.model, ''), NULLIF(r.request_model, ''), 'Unknown') AS model,
+                   SUM(r.request_count), SUM(r.input_tokens), SUM(r.output_tokens),
+                   SUM(r.cache_read_tokens), SUM(r.cache_creation_tokens),
+                   SUM(CAST(r.total_cost_usd AS REAL)), MAX(r.date)
+            FROM usage_daily_rollups r
+            LEFT JOIN providers p ON p.id = r.provider_id AND p.app_type = r.app_type
+            WHERE (? = '' OR r.date >= ?)
+              AND (? = '' OR r.date < ?)
+            GROUP BY r.app_type, r.provider_id, provider_name, model
+            """
+            readUsageRows(
+                database: database,
+                sql: rollupModelSQL,
+                bind: { statement in
+                    bindText(rollupStart, to: statement, index: 1)
+                    bindText(rollupStart, to: statement, index: 2)
+                    bindText(rollupEnd, to: statement, index: 3)
+                    bindText(rollupEnd, to: statement, index: 4)
+                },
+                addModel: { row in merge(row, into: &modelRows) }
+            )
+
+            let rollupDailySQL = """
+            SELECT r.date, r.app_type,
+                   SUM(r.input_tokens + r.output_tokens + r.cache_read_tokens + r.cache_creation_tokens),
+                   SUM(CAST(r.total_cost_usd AS REAL)), SUM(r.request_count)
+            FROM usage_daily_rollups r
+            WHERE (? = '' OR r.date >= ?)
+              AND (? = '' OR r.date < ?)
+            GROUP BY r.date, r.app_type
+            """
+            readDailyRows(
+                database: database,
+                sql: rollupDailySQL,
+                bind: { statement in
+                    bindText(rollupStart, to: statement, index: 1)
+                    bindText(rollupStart, to: statement, index: 2)
+                    bindText(rollupEnd, to: statement, index: 3)
+                    bindText(rollupEnd, to: statement, index: 4)
+                },
+                addDaily: { row in merge(row, into: &dailyRows) }
+            )
+        }
+        return (Array(modelRows.values), Array(dailyRows.values))
+    }
+
+    private func readUsageRows(
+        database: OpaquePointer,
+        sql: String,
+        bind: (OpaquePointer) -> Void,
+        addModel: (UsageRow) -> Void
+    ) {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return }
+        defer { sqlite3_finalize(statement) }
+        bind(statement)
+        while sqlite3_step(statement) == SQLITE_ROW {
+            addModel(UsageRow(
+                appType: textColumn(statement, 0),
+                providerID: textColumn(statement, 1),
+                providerName: textColumn(statement, 2),
+                model: textColumn(statement, 3),
+                requestCount: sqlite3_column_int64(statement, 4),
+                inputTokens: sqlite3_column_int64(statement, 5),
+                outputTokens: sqlite3_column_int64(statement, 6),
+                cacheReadTokens: sqlite3_column_int64(statement, 7),
+                cacheCreationTokens: sqlite3_column_int64(statement, 8),
+                costUSD: sqlite3_column_double(statement, 9),
+                lastUsed: dateColumn(statement, 10)
+            ))
+        }
+    }
+
+    private func readDailyRows(
+        database: OpaquePointer,
+        sql: String,
+        bind: (OpaquePointer) -> Void,
+        addDaily: (DailyRow) -> Void
+    ) {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return }
+        defer { sqlite3_finalize(statement) }
+        bind(statement)
+        while sqlite3_step(statement) == SQLITE_ROW {
+            addDaily(DailyRow(
+                date: textColumn(statement, 0),
+                appType: textColumn(statement, 1),
+                totalTokens: sqlite3_column_int64(statement, 2),
+                costUSD: sqlite3_column_double(statement, 3),
+                requestCount: sqlite3_column_int64(statement, 4)
+            ))
+        }
+    }
+
+    private func merge(_ row: UsageRow, into rows: inout [UsageKey: AnalyticsModelUsage]) {
+        let key = UsageKey(appType: row.appType, providerID: row.providerID, model: row.model)
+        if var existing = rows[key] {
+            existing.requestCount += row.requestCount
+            existing.inputTokens += row.inputTokens
+            existing.outputTokens += row.outputTokens
+            existing.cacheReadTokens += row.cacheReadTokens
+            existing.cacheCreationTokens += row.cacheCreationTokens
+            existing.costUSD += row.costUSD
+            if let lastUsed = row.lastUsed,
+               lastUsed > (existing.lastUsed ?? .distantPast) {
+                existing.lastUsed = lastUsed
+            }
+            rows[key] = existing
+        } else {
+            rows[key] = AnalyticsModelUsage(
+                appType: row.appType,
+                providerID: row.providerID,
+                providerName: row.providerName,
+                model: row.model,
+                requestCount: row.requestCount,
+                inputTokens: row.inputTokens,
+                outputTokens: row.outputTokens,
+                cacheReadTokens: row.cacheReadTokens,
+                cacheCreationTokens: row.cacheCreationTokens,
+                costUSD: row.costUSD,
+                lastUsed: row.lastUsed
+            )
+        }
+    }
+
+    private func merge(_ row: DailyRow, into rows: inout [DailyKey: AnalyticsDailyUsage]) {
+        let key = DailyKey(date: row.date, appType: row.appType)
+        let date = dayFormatter.date(from: row.date) ?? Date()
+        if var existing = rows[key] {
+            existing.totalTokens += row.totalTokens
+            existing.costUSD += row.costUSD
+            existing.requestCount += row.requestCount
+            rows[key] = existing
+        } else {
+            rows[key] = AnalyticsDailyUsage(
+                date: date,
+                appType: row.appType,
+                totalTokens: row.totalTokens,
+                costUSD: row.costUSD,
+                requestCount: row.requestCount
+            )
+        }
+    }
+
+    private func minimumRawLogDate(database: OpaquePointer) -> Date? {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "SELECT MIN(created_at) FROM proxy_request_logs", -1, &statement, nil) == SQLITE_OK,
+              let statement else { return nil }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              sqlite3_column_type(statement, 0) != SQLITE_NULL else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 0)))
+    }
+
+    private func openAnalyticsDatabase(readOnly: Bool) -> OpaquePointer? {
+        var database: OpaquePointer?
+        let flags = readOnly
+            ? SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
+            : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+        guard sqlite3_open_v2(analyticsDatabaseURL.path, &database, flags, nil) == SQLITE_OK,
+              let database else {
+            if let database { sqlite3_close(database) }
+            return nil
+        }
+        sqlite3_busy_timeout(database, 1_000)
+        return database
+    }
+
+    private func openCCSwitchDatabase() -> OpaquePointer? {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
+              let database else {
+            if let database { sqlite3_close(database) }
+            return nil
+        }
+        sqlite3_busy_timeout(database, 1_000)
+        return database
+    }
+
+    private func bindText(_ value: String, to statement: OpaquePointer, index: Int32) {
+        sqlite3_bind_text(statement, index, value, -1, sqliteTransient)
+    }
+
+    private func textColumn(_ statement: OpaquePointer, _ index: Int32) -> String {
+        guard let text = sqlite3_column_text(statement, index) else { return "" }
+        return String(cString: text)
+    }
+
+    private func dateColumn(_ statement: OpaquePointer, _ index: Int32) -> Date? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
+        let raw = sqlite3_column_double(statement, index)
+        if raw > 10_000_000_000 { return Date(timeIntervalSince1970: raw / 1_000) }
+        if raw > 1_000_000_000 { return Date(timeIntervalSince1970: raw) }
+        return dayFormatter.date(from: textColumn(statement, index))
+    }
+}
+
 private final class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     private var trackingAreaReference: NSTrackingArea?
@@ -719,6 +1654,7 @@ private final class HoverLinkTextField: NSTextField {
 }
 
 private enum DashboardSection: Int, CaseIterable {
+    case summary
     case general
     case menuBar
     case menu
@@ -727,6 +1663,7 @@ private enum DashboardSection: Int, CaseIterable {
 
     var title: String {
         switch self {
+        case .summary: return tr("摘要", "Summary")
         case .general: return tr("通用", "General")
         case .menuBar: return tr("菜单栏", "Menu Bar")
         case .menu: return tr("菜单", "Menu")
@@ -737,6 +1674,7 @@ private enum DashboardSection: Int, CaseIterable {
 
     var symbolName: String {
         switch self {
+        case .summary: return "chart.xyaxis.line"
         case .general: return "gearshape.fill"
         case .menuBar: return "menubar.rectangle"
         case .menu: return "filemenu.and.selection"
@@ -747,6 +1685,7 @@ private enum DashboardSection: Int, CaseIterable {
 
     var chipColor: NSColor {
         switch self {
+        case .summary: return .systemIndigo
         case .general: return .systemGray
         case .menuBar: return .systemBlue
         case .menu: return .systemTeal
@@ -1325,6 +2264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     )
     private let codexActivityMonitor = CodexActivityMonitor()
     private let claudeActivityMonitor = ClaudeCodeActivityMonitor()
+    private let analyticsStore = AnalyticsStore()
     private var codexIconImage: NSImage?
     private var claudeIconImage: NSImage?
     private var claudeThinkingAnimator: ClaudeThinkingAnimator?
@@ -1347,7 +2287,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastProviderID: String?
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
-    private var lastQuickSwitchFetch: Date?
+    private var lastQuickSwitchFetchByClient: [String: Date] = [:]
+    private var analyticsLoadInFlight = false
+    private var lastAnalyticsLoad: Date?
+    private var analyticsRange: AnalyticsRange = .week
     private let quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaries: [String: String] = [:]
     private let balanceRequestLock = NSLock()
@@ -1365,6 +2308,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastCodexUsageRefresh: Date?
     private var postCodexRefreshDeadline: Date?
     private var statusLayoutGeneration = 0
+    private weak var analyticsBalanceChart: AnalyticsLineChartView?
+    private weak var analyticsQuotaChart: AnalyticsLineChartView?
+    private weak var analyticsTokenChart: AnalyticsLineChartView?
+    private weak var analyticsCostChart: AnalyticsBarChartView?
+    private weak var analyticsModelCard: AnalyticsMetricCard?
+    private weak var analyticsTokenCard: AnalyticsMetricCard?
+    private weak var analyticsCostCard: AnalyticsMetricCard?
+    private weak var analyticsSampleCard: AnalyticsMetricCard?
+    private weak var analyticsStatusLabel: NSTextField?
+    private var analyticsModelRowsStack: NSStackView?
 
     private var showMenuBarReset: Bool {
         get { UserDefaults.standard.object(forKey: "showMenuBarReset") as? Bool ?? true }
@@ -2281,7 +3234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             backing: .buffered,
             defer: false
         )
-        window.title = DashboardSection.general.title
+        window.title = DashboardSection.summary.title
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -2300,7 +3253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         dashboard = window
         installDashboardMouseMonitor()
-        showDashboardSection(.general)
+        showDashboardSection(.summary)
         window.makeKeyAndOrderFront(nil)
         updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
         NSApp.activate(ignoringOtherApps: true)
@@ -2456,6 +3409,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardNavigationButtons.removeAll()
         dashboardNavigationRows.removeAll()
 
+        navigation.addArrangedSubview(makeDashboardNavigationRow(for: .summary))
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .general))
         navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
 
@@ -2604,6 +3558,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let page: NSView
         switch section {
+        case .summary: page = makeSummaryDashboardPage()
         case .general: page = makeGeneralDashboardPage()
         case .menuBar: page = makeMenuBarDashboardPage()
         case .menu: page = makeMenuDashboardPage()
@@ -2614,6 +3569,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             page.autoresizingMask = [.width, .height]
         dashboardContentHost.addSubview(page)
         updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
+        if section == .summary {
+            refreshAnalyticsDashboard(force: true)
+        }
 
         if let scrollPosition {
             // The new document view needs one layout pass before its maximum
@@ -3471,7 +4429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.9.1"
+        ) as? String ?? "1.9.1"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
@@ -3548,6 +4506,415 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         stack.alignment = .leading
         stack.spacing = 4
         return stack
+    }
+
+    private func makeSummaryDashboardPage() -> NSView {
+        let root = NSView()
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = false
+        scrollView.scrollerStyle = .overlay
+        scrollView.borderType = .noBorder
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        let documentView = NSView()
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = documentView
+
+        let header = makePageHeader(
+            tr("摘要", "Summary"),
+            subtitle: tr(
+                "余额、额度、模型与 Token 用量",
+                "Balances, quotas, models, and token usage"
+            )
+        )
+        let rangePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        rangePopup.controlSize = .small
+        rangePopup.target = self
+        rangePopup.action = #selector(dashboardAnalyticsRangeChanged(_:))
+        for range in AnalyticsRange.allCases {
+            rangePopup.addItem(withTitle: range.title)
+            rangePopup.item(at: rangePopup.numberOfItems - 1)?.representedObject = NSNumber(value: range.rawValue)
+            if range == analyticsRange { rangePopup.selectItem(at: rangePopup.numberOfItems - 1) }
+        }
+        rangePopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
+        let refreshButton = NSButton(
+            title: tr("刷新", "Refresh"),
+            target: self,
+            action: #selector(dashboardAnalyticsRefresh)
+        )
+        refreshButton.bezelStyle = .rounded
+        refreshButton.controlSize = .small
+        refreshButton.image = NSImage(
+            systemSymbolName: "arrow.clockwise",
+            accessibilityDescription: tr("刷新摘要", "Refresh Summary")
+        )
+        refreshButton.imagePosition = .imageLeading
+        let controls = NSStackView(views: [rangePopup, refreshButton])
+        controls.orientation = .horizontal
+        controls.alignment = .centerY
+        controls.spacing = 8
+        let headerSpacer = NSView()
+        let headerRow = NSStackView(views: [header, headerSpacer, controls])
+        headerRow.orientation = .horizontal
+        headerRow.alignment = .centerY
+        headerRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let modelCard = AnalyticsMetricCard(title: tr("当前模型", "Current Model"))
+        let tokenCard = AnalyticsMetricCard(title: tr("范围 Token", "Range Tokens"))
+        let costCard = AnalyticsMetricCard(title: tr("范围成本", "Range Cost"))
+        let sampleCard = AnalyticsMetricCard(title: tr("余额样本", "Balance Samples"))
+        analyticsModelCard = modelCard
+        analyticsTokenCard = tokenCard
+        analyticsCostCard = costCard
+        analyticsSampleCard = sampleCard
+        let metrics = NSStackView(views: [modelCard, tokenCard, costCard, sampleCard])
+        metrics.orientation = .horizontal
+        metrics.alignment = .centerY
+        metrics.distribution = .fillEqually
+        metrics.spacing = 10
+        metrics.translatesAutoresizingMaskIntoConstraints = false
+        metrics.heightAnchor.constraint(equalToConstant: 82).isActive = true
+        [modelCard, tokenCard, costCard, sampleCard].forEach {
+            $0.heightAnchor.constraint(equalTo: metrics.heightAnchor).isActive = true
+        }
+
+        let balanceChart = AnalyticsLineChartView()
+        balanceChart.emptyText = tr("等待余额样本", "Waiting for balance samples")
+        analyticsBalanceChart = balanceChart
+        let quotaChart = AnalyticsLineChartView()
+        quotaChart.fixedYRange = 0...100
+        quotaChart.emptyText = tr("等待官方额度样本", "Waiting for official quota samples")
+        analyticsQuotaChart = quotaChart
+        let balancePanel = makeAnalyticsChartPanel(
+            title: tr("Provider 余额趋势", "Provider Balance Trend"),
+            subtitle: tr("每分钟采样 · 金额来自 CC Switch", "One-minute samples · Amounts from CC Switch"),
+            chart: balanceChart
+        )
+        let quotaPanel = makeAnalyticsChartPanel(
+            title: tr("官方额度趋势", "Official Quota Trend"),
+            subtitle: tr("剩余百分比 · OpenAI 官方数据", "Remaining percentage · Official OpenAI data"),
+            chart: quotaChart
+        )
+        let balanceRow = NSStackView(views: [balancePanel, quotaPanel])
+        balanceRow.orientation = .horizontal
+        balanceRow.alignment = .top
+        balanceRow.distribution = .fillEqually
+        balanceRow.spacing = 12
+        balanceRow.translatesAutoresizingMaskIntoConstraints = false
+        balanceRow.heightAnchor.constraint(equalToConstant: 236).isActive = true
+
+        let tokenChart = AnalyticsLineChartView()
+        tokenChart.emptyText = tr("暂无 Token 用量", "No token usage")
+        analyticsTokenChart = tokenChart
+        let costChart = AnalyticsBarChartView()
+        costChart.emptyText = tr("暂无成本数据", "No cost data")
+        costChart.valueFormatter = { value in String(format: "$%.2f", value) }
+        analyticsCostChart = costChart
+        let tokenPanel = makeAnalyticsChartPanel(
+            title: tr("每日 Token 用量", "Daily Token Usage"),
+            subtitle: tr("按应用统计，单位：百万 Token", "By app, in millions of tokens"),
+            chart: tokenChart
+        )
+        let costPanel = makeAnalyticsChartPanel(
+            title: tr("模型成本分布", "Model Cost Distribution"),
+            subtitle: tr("CC Switch 已记录的模型成本", "Model cost recorded by CC Switch"),
+            chart: costChart
+        )
+        let usageRow = NSStackView(views: [tokenPanel, costPanel])
+        usageRow.orientation = .horizontal
+        usageRow.alignment = .top
+        usageRow.distribution = .fillEqually
+        usageRow.spacing = 12
+        usageRow.translatesAutoresizingMaskIntoConstraints = false
+        usageRow.heightAnchor.constraint(equalToConstant: 236).isActive = true
+
+        let modelPanel = makeAnalyticsModelPanel()
+        let status = NSTextField(labelWithString: tr("正在读取 CC Switch 统计…", "Reading CC Switch statistics…"))
+        status.font = .systemFont(ofSize: 11)
+        status.textColor = .tertiaryLabelColor
+        analyticsStatusLabel = status
+
+        let stack = NSStackView(views: [headerRow, metrics, balanceRow, usageRow, modelPanel, status])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 16
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        documentView.addSubview(stack)
+        root.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: root.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 30),
+            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 32),
+            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -32),
+            stack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -28),
+            headerRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            metrics.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            balanceRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            usageRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            modelPanel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            status.widthAnchor.constraint(equalTo: stack.widthAnchor)
+        ])
+        return root
+    }
+
+    private func makeAnalyticsChartPanel(title: String, subtitle: String, chart: NSView) -> NSView {
+        let panel = NSView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.wantsLayer = true
+        panel.layer?.cornerRadius = 12
+        panel.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.86),
+            dark: NSColor.white.withAlphaComponent(0.055)
+        ).cgColor
+        panel.layer?.borderColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.92),
+            dark: NSColor.white.withAlphaComponent(0.08)
+        ).cgColor
+        panel.layer?.borderWidth = 0.5
+
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        let subtitleLabel = NSTextField(labelWithString: subtitle)
+        subtitleLabel.font = .systemFont(ofSize: 10)
+        subtitleLabel.textColor = .tertiaryLabelColor
+        chart.translatesAutoresizingMaskIntoConstraints = false
+        panel.addSubview(titleLabel)
+        panel.addSubview(subtitleLabel)
+        panel.addSubview(chart)
+        [titleLabel, subtitleLabel].forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14),
+            titleLabel.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
+            titleLabel.topAnchor.constraint(equalTo: panel.topAnchor, constant: 12),
+            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            subtitleLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
+            chart.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 10),
+            chart.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
+            chart.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 4),
+            chart.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -10)
+        ])
+        return panel
+    }
+
+    private func makeAnalyticsModelPanel() -> NSView {
+        let panel = NSView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.heightAnchor.constraint(equalToConstant: 352).isActive = true
+        panel.wantsLayer = true
+        panel.layer?.cornerRadius = 12
+        panel.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.86),
+            dark: NSColor.white.withAlphaComponent(0.055)
+        ).cgColor
+        panel.layer?.borderColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.92),
+            dark: NSColor.white.withAlphaComponent(0.08)
+        ).cgColor
+        panel.layer?.borderWidth = 0.5
+
+        let title = NSTextField(labelWithString: tr("模型明细", "Model Details"))
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        let subtitle = NSTextField(labelWithString: tr("当前使用的模型、Token 与 CC Switch 成本", "Models used, tokens, and CC Switch cost"))
+        subtitle.font = .systemFont(ofSize: 10)
+        subtitle.textColor = .tertiaryLabelColor
+        let rows = NSStackView()
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 0
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        analyticsModelRowsStack = rows
+        panel.addSubview(title)
+        panel.addSubview(subtitle)
+        panel.addSubview(rows)
+        [title, subtitle].forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14),
+            title.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
+            title.topAnchor.constraint(equalTo: panel.topAnchor, constant: 12),
+            subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            subtitle.trailingAnchor.constraint(equalTo: title.trailingAnchor),
+            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
+            rows.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14),
+            rows.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
+            rows.topAnchor.constraint(equalTo: subtitle.bottomAnchor, constant: 11),
+            rows.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -10)
+        ])
+        return panel
+    }
+
+    @objc private func dashboardAnalyticsRangeChanged(_ sender: NSPopUpButton) {
+        guard let value = sender.selectedItem?.representedObject as? NSNumber,
+              let range = AnalyticsRange(rawValue: value.intValue) else { return }
+        analyticsRange = range
+        lastAnalyticsLoad = nil
+        refreshAnalyticsDashboard(force: true)
+    }
+
+    @objc private func dashboardAnalyticsRefresh() {
+        lastAnalyticsLoad = nil
+        refreshAnalyticsDashboard(force: true)
+    }
+
+    private func refreshAnalyticsDashboard(force: Bool) {
+        guard dashboard != nil, dashboardSection == .summary else { return }
+        if analyticsLoadInFlight { return }
+        if !force,
+           let lastAnalyticsLoad,
+           Date().timeIntervalSince(lastAnalyticsLoad) < 15 {
+            return
+        }
+        analyticsLoadInFlight = true
+        let requestedRange = analyticsRange
+        analyticsStatusLabel?.stringValue = tr(
+            "正在读取 CC Switch 统计…",
+            "Reading CC Switch statistics…"
+        )
+        analyticsStore.load(range: requestedRange) { [weak self] data in
+            guard let self else { return }
+            guard self.analyticsRange == requestedRange else {
+                self.analyticsLoadInFlight = false
+                self.refreshAnalyticsDashboard(force: true)
+                return
+            }
+            self.analyticsLoadInFlight = false
+            self.lastAnalyticsLoad = Date()
+            self.updateAnalyticsDashboard(data, range: requestedRange)
+        }
+    }
+
+    private func updateAnalyticsDashboard(_ data: AnalyticsDashboardData, range: AnalyticsRange) {
+        analyticsBalanceChart?.series = data.balanceSeries
+        analyticsQuotaChart?.series = data.quotaSeries
+        analyticsTokenChart?.series = data.tokenSeries
+        analyticsCostChart?.rows = data.modelCostRows
+
+        let modelText = data.currentModels.isEmpty
+            ? "—"
+            : data.currentModels.map { "\($0.displayModel)" }.joined(separator: " · ")
+        analyticsModelCard?.update(
+            value: modelText,
+            detail: data.currentModels.isEmpty
+                ? tr("尚无模型记录", "No model records")
+                : data.currentModels.map { AnalyticsAppNaming.shortName($0.appType) }.joined(separator: " · ")
+        )
+        analyticsTokenCard?.update(
+            value: formatAnalyticsTokens(data.totalTokens),
+            detail: tr("输入、输出与缓存合计", "Input, output, and cache")
+        )
+        analyticsCostCard?.update(
+            value: String(format: "$%.2f", data.totalCostUSD),
+            detail: tr("金额来自 CC Switch", "Amount from CC Switch")
+        )
+        analyticsSampleCard?.update(
+            value: "\(data.balanceSampleCount)",
+            detail: tr("每分钟去重快照", "Deduplicated minute samples")
+        )
+        analyticsStatusLabel?.stringValue = tr(
+            "\(range.title) · \(data.totalRequests) 次请求 · 成本来自 CC Switch",
+            "\(range.title) · \(data.totalRequests) requests · Cost from CC Switch"
+        )
+        refreshAnalyticsModelRows(data.modelUsage)
+    }
+
+    private func refreshAnalyticsModelRows(_ models: [AnalyticsModelUsage]) {
+        guard let rows = analyticsModelRowsStack else { return }
+        rows.arrangedSubviews.forEach {
+            rows.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        if models.isEmpty {
+            let empty = NSTextField(labelWithString: tr("当前范围没有 CC Switch 用量记录", "No CC Switch usage in this range"))
+            empty.textColor = .secondaryLabelColor
+            empty.alignment = .center
+            empty.translatesAutoresizingMaskIntoConstraints = false
+            empty.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            rows.addArrangedSubview(empty)
+            empty.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+            return
+        }
+
+        let heading = analyticsModelTableRow(
+            model: tr("模型", "Model"),
+            provider: tr("Provider", "Provider"),
+            tokens: tr("Token", "Tokens"),
+            cost: tr("成本", "Cost"),
+            isHeader: true
+        )
+        rows.addArrangedSubview(heading)
+        heading.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+        for (index, model) in models.prefix(7).enumerated() {
+            let row = analyticsModelTableRow(
+                model: model.displayModel,
+                provider: model.providerName,
+                tokens: formatAnalyticsTokens(model.totalTokens),
+                cost: String(format: "$%.2f", model.costUSD),
+                isHeader: false
+            )
+            row.toolTip = "\(model.model) · \(tr("输入", "Input")) \(model.inputTokens) · \(tr("输出", "Output")) \(model.outputTokens)"
+            rows.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+            if index < min(6, models.count - 1) {
+                let separator = NSBox()
+                separator.boxType = .separator
+                separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                rows.addArrangedSubview(separator)
+                separator.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+            }
+        }
+    }
+
+    private func analyticsModelTableRow(
+        model: String,
+        provider: String,
+        tokens: String,
+        cost: String,
+        isHeader: Bool
+    ) -> NSStackView {
+        let modelLabel = NSTextField(labelWithString: model)
+        let providerLabel = NSTextField(labelWithString: provider)
+        let tokenLabel = NSTextField(labelWithString: tokens)
+        let costLabel = NSTextField(labelWithString: cost)
+        let labels = [modelLabel, providerLabel, tokenLabel, costLabel]
+        labels.forEach {
+            $0.lineBreakMode = .byTruncatingTail
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            $0.font = .systemFont(ofSize: isHeader ? 10 : 11, weight: isHeader ? .medium : .regular)
+            $0.textColor = isHeader ? .tertiaryLabelColor : .labelColor
+        }
+        tokenLabel.alignment = .right
+        costLabel.alignment = .right
+        let spacer = NSView()
+        let row = NSStackView(views: [modelLabel, providerLabel, spacer, tokenLabel, costLabel])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.heightAnchor.constraint(equalToConstant: isHeader ? 22 : 34).isActive = true
+        modelLabel.widthAnchor.constraint(equalToConstant: 134).isActive = true
+        providerLabel.widthAnchor.constraint(equalToConstant: 112).isActive = true
+        tokenLabel.widthAnchor.constraint(equalToConstant: 76).isActive = true
+        costLabel.widthAnchor.constraint(equalToConstant: 66).isActive = true
+        return row
+    }
+
+    private func formatAnalyticsTokens(_ value: Int64) -> String {
+        let amount = Double(value)
+        if amount >= 1_000_000_000 { return String(format: "%.2fB", amount / 1_000_000_000) }
+        if amount >= 1_000_000 { return String(format: "%.2fM", amount / 1_000_000) }
+        if amount >= 1_000 { return String(format: "%.1fK", amount / 1_000) }
+        return value.formatted(.number)
     }
 
     private func makeOverviewDashboardPage() -> NSView {
@@ -3978,7 +5345,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
             self?.refresh(forceBalance: false)
-            self?.refreshQuickSwitchSummaries(force: false)
+            self?.refreshQuickSwitchSummaries(force: false, for: .codex)
+            self?.refreshQuickSwitchSummaries(force: false, for: .claude)
+            self?.refreshAnalyticsDashboard(force: false)
         }
         timer = providerTimer
         RunLoop.main.add(providerTimer, forMode: .common)
@@ -4142,7 +5511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         lastProviderID = nil
         lastBalanceFetch = nil
         lastOfficialFetch = nil
-        lastQuickSwitchFetch = nil
+        lastQuickSwitchFetchByClient[client.appType] = nil
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         updateActivityIcon()
@@ -4315,6 +5684,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         rebuildDashboardProviderList()
         refreshDashboardMenuBarPage()
+        if dashboardSection == .summary {
+            refreshAnalyticsDashboard(force: false)
+        }
     }
 
     private func updateDashboardCurrentProvider(_ name: String) {
@@ -4540,7 +5912,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // switch or a credential/configuration update. Bypass the normal
             // provider interval so the menu follows it immediately.
             self?.refresh(forceBalance: true)
-            self?.refreshQuickSwitchSummaries(force: true)
+            self?.refreshQuickSwitchSummaries(force: true, for: .codex)
+            self?.refreshQuickSwitchSummaries(force: true, for: .claude)
         }
         syncWorkItem = workItem
         // CC Switch commits several SQLite/WAL writes per action. Coalesce
@@ -4555,9 +5928,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let client = requestedClient ?? activeClient
         monitorQueue.async { [weak self] in
             guard let self else { return }
-            let due = self.lastQuickSwitchFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
+            let lastFetch = self.lastQuickSwitchFetchByClient[client.appType]
+            let due = lastFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
             guard force || due else { return }
-            self.lastQuickSwitchFetch = Date()
+            self.lastQuickSwitchFetchByClient[client.appType] = Date()
 
             for source in Provider.loadSummarySources(appType: client.appType) {
                 if source.isOfficial {
@@ -4580,6 +5954,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         self.updateQuickSwitchSummary(
                             providerID: source.id,
                             text: "\(Int(quota.remaining))% / \(quota.daysText)"
+                        )
+                        self.recordAnalyticsBalanceSample(
+                            appType: client.appType,
+                            providerID: source.id,
+                            providerName: source.name,
+                            metric: "officialQuota",
+                            value: quota.remaining,
+                            unit: "%"
                         )
                     }.resume()
                     continue
@@ -4606,6 +5988,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.updateQuickSwitchSummary(
                         providerID: source.id,
                         text: Self.formatBalanceSummary(result.amount, unit: result.unit)
+                    )
+                    self.recordAnalyticsBalanceSample(
+                        appType: client.appType,
+                        providerID: source.id,
+                        providerName: source.name,
+                        metric: "balance",
+                        value: result.amount,
+                        unit: result.unit
                     )
                 }.resume()
             }
@@ -4643,6 +6033,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.rebuildDashboardProviderList()
             self.updateDashboard(for: self.snapshot, refreshDate: self.lastSuccessfulRefresh ?? self.snapshot.date)
         }
+    }
+
+    private func recordAnalyticsBalanceSample(
+        appType: String,
+        providerID: String,
+        providerName: String,
+        metric: String,
+        value: Double,
+        unit: String
+    ) {
+        analyticsStore.recordBalance(
+            appType: appType,
+            providerID: providerID,
+            providerName: providerName,
+            metric: metric,
+            value: value,
+            unit: unit
+        )
     }
 
     private func quickSwitchTitle(providerID: String, providerName: String) -> String {
@@ -4775,6 +6183,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     providerID: providerID,
                     text: Self.formatBalanceSummary(result.amount, unit: result.unit)
                 )
+                self.recordAnalyticsBalanceSample(
+                    appType: client.appType,
+                    providerID: providerID,
+                    providerName: providerName,
+                    metric: "balance",
+                    value: result.amount,
+                    unit: result.unit
+                )
                 self.renderForCurrentProvider(
                     .balance(
                         providerName,
@@ -4881,6 +6297,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 minimumInterval: 10
             )
             self.updateQuickSwitchSummary(providerID: providerID, text: "\(Int(quota.remaining))% / \(quota.daysText)")
+            self.recordAnalyticsBalanceSample(
+                appType: client.appType,
+                providerID: providerID,
+                providerName: providerName,
+                metric: "officialQuota",
+                value: quota.remaining,
+                unit: "%"
+            )
             self.renderForCurrentProvider(
                 .official(providerName, quota.remaining, quota.label, quota.reset, Date()),
                 providerID: providerID,
@@ -5564,6 +6988,7 @@ private struct ProviderChoice {
 
 private struct ProviderSummarySource {
     let id: String
+    let name: String
     let isOfficial: Bool
     let query: BalanceQuery?
     let officialAccessToken: String?
@@ -5633,7 +7058,7 @@ private struct Provider {
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 3_000)
 
-        let sql = "SELECT id, settings_config, meta, category, website_url FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
+        let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else { return [] }
@@ -5644,10 +7069,11 @@ private struct Provider {
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let idText = sqlite3_column_text(statement, 0) else { continue }
             let id = String(cString: idText)
-            let settingsText = sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? "{}"
-            let metaText = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? "{}"
-            let category = sqlite3_column_text(statement, 3).map { String(cString: $0) }
-            let websiteText = sqlite3_column_text(statement, 4).map { String(cString: $0) }
+            let name = sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? id
+            let settingsText = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? "{}"
+            let metaText = sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? "{}"
+            let category = sqlite3_column_text(statement, 4).map { String(cString: $0) }
+            let websiteText = sqlite3_column_text(statement, 5).map { String(cString: $0) }
 
             if category == "official" {
                 let stored = settingsText.data(using: .utf8)
@@ -5657,6 +7083,7 @@ private struct Provider {
                 let accessToken = tokens?["access_token"] as? String
                 result.append(ProviderSummarySource(
                     id: id,
+                    name: name,
                     isOfficial: true,
                     query: nil,
                     officialAccessToken: accessToken
@@ -5664,6 +7091,7 @@ private struct Provider {
             } else {
                 result.append(ProviderSummarySource(
                     id: id,
+                    name: name,
                     isOfficial: false,
                     query: BalanceQuery.make(
                         settingsText: settingsText,
