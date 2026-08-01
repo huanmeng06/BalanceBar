@@ -902,6 +902,55 @@ private enum SwitchLog {
     }
 }
 
+private let legacyBundleIdentifier = "local.balancebar"
+private let preferencesMigrationMarker = "didMigrateLegacyPreferences.v1"
+private let migratedPreferenceKeys = [
+    "appLanguage",
+    "showMenuBarReset",
+    "showMenuBarIcon",
+    "showMenuBarAmount",
+    "animateCodexActivity",
+    "activityPollInterval",
+    "codexUsageRefreshInterval",
+    "postCodexRefreshDuration",
+    "showQuickSwitchMenu",
+    "showOpenCCSwitchMenu",
+    "showStatusMenu",
+    "statusLinks",
+    "keepMenuOpenAfterRefresh",
+    "sortProvidersAlphabetically",
+    "menuBarHorizontalPadding"
+]
+
+private func migrateLegacyPreferencesIfNeeded() {
+    let defaults = UserDefaults.standard
+    guard defaults.object(forKey: preferencesMigrationMarker) == nil else { return }
+
+    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? "unknown"
+    let legacyDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
+    let currentDomain = defaults.persistentDomain(forName: currentBundleIdentifier) ?? [:]
+    var migratedKeys: [String] = []
+    var skippedKeys: [String] = []
+
+    for key in migratedPreferenceKeys {
+        guard let value = legacyDomain[key] else { continue }
+        guard currentDomain[key] == nil else {
+            skippedKeys.append(key)
+            continue
+        }
+        defaults.set(value, forKey: key)
+        migratedKeys.append(key)
+    }
+
+    defaults.set(true, forKey: preferencesMigrationMarker)
+    let migratedSummary = migratedKeys.isEmpty ? "<none>" : migratedKeys.joined(separator: "|")
+    let skippedSummary = skippedKeys.isEmpty ? "<none>" : skippedKeys.joined(separator: "|")
+    SwitchLog.write(
+        "preferences migration; source=\(legacyBundleIdentifier); target=\(currentBundleIdentifier); source_key_count=\(legacyDomain.count); migrated=\(migratedSummary); skipped_existing=\(skippedSummary)",
+        category: "configuration"
+    )
+}
+
 private final class CodexActivityMonitor {
     private static let activityWindow = 10 * 60
     private static let terminalTypes: Set<String> = [
@@ -1285,15 +1334,34 @@ private final class ClaudeCodeActivityMonitor {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
-    private lazy var statusItem = NSStatusBar.system.statusItem(
-        withLength: NSStatusItem.variableLength
+    private static let menuBarPrimaryFont = NSFont.monospacedDigitSystemFont(
+        ofSize: 13,
+        weight: .semibold
     )
+    private static let menuBarSecondaryFont = NSFont.monospacedDigitSystemFont(
+        ofSize: 10,
+        weight: .medium
+    )
+    private static let menuBarIconSlotWidth: CGFloat = 18
+    private static let menuBarIconTextSpacing: CGFloat = 6
+    private static let menuBarTextRowSpacing: CGFloat = -2
+    private static let menuBarTextWidthSlack: CGFloat = 5
+    private static let menuBarBalanceOpticalYOffset: CGFloat = 0.25
+    private static let menuBarBalanceIconOpticalYOffset: CGFloat = 0.33
+    private var statusItem: NSStatusItem!
     private let statusMenu = NSMenu()
+    private var statusItemAttachmentCheckScheduled = false
+    private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
     private let menuBarIconView = RotatingTemplateImageView()
+    private let menuBarIconSlot = PassthroughView()
+    private let menuBarTextStack = NSStackView()
+    private let menuBarContentStack = NSStackView()
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
+    private var menuBarTextWidthConstraint: NSLayoutConstraint?
+    private var isMenuBarContentStackConfigured = false
     private let dashboardProviderLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…"))
     private let dashboardAmountLabel = NSTextField(labelWithString: "—")
     private let dashboardQuotaLabel = NSTextField(labelWithString: tr("等待额度信息", "Waiting for quota data"))
@@ -1482,7 +1550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var menuBarHorizontalPadding: CGFloat {
         get {
             let value = UserDefaults.standard.double(forKey: "menuBarHorizontalPadding")
-            return value > 0 ? CGFloat(value) : 12
+            return value > 0 ? CGFloat(value) : 10
         }
         set { UserDefaults.standard.set(Double(newValue), forKey: "menuBarHorizontalPadding") }
     }
@@ -1495,11 +1563,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         configureApplicationMenu()
         NSApp.appearance = nil
         startAppearanceObserver()
-        NSApp.setActivationPolicy(.accessory)
-        statusMenu.delegate = self
-        statusItem.menu = statusMenu
-        configureStatusItem()
+        let regularPolicyApplied = NSApp.setActivationPolicy(.regular)
         showDashboard()
+        statusMenu.delegate = self
+        installStatusItem()
         startDatabaseWatchers()
         startWorkspaceActivationObserver()
         let version = Bundle.main.object(
@@ -1508,6 +1575,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         SwitchLog.write(
             "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString); database=\(databasePath)",
             category: "lifecycle"
+        )
+        SwitchLog.write(
+            "status chain startup; activation_policy=\(String(describing: NSApp.activationPolicy())); regular_applied=\(regularPolicyApplied); status_visible=\(statusItem.isVisible); menu_bound=\(statusItem.menu === statusMenu); menu_items=\(statusMenu.items.count)",
+            category: "ui.status-item"
         )
         SwitchLog.write(
             "preferences; language=\(AppLanguage.selected.rawValue); provider_poll=\(providerPollInterval)s; activity_poll=\(activityPollInterval)s; active_refresh=\(codexUsageRefreshInterval)s; trailing_refresh=\(postCodexRefreshDuration)s",
@@ -1556,6 +1627,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        DispatchQueue.main.async {
+            NSApp.setActivationPolicy(.accessory)
+            SwitchLog.write(
+                "dashboard closed; activation_policy=\(String(describing: NSApp.activationPolicy())); status_visible=\(self.statusItem.isVisible)",
+                category: "ui.status-item"
+            )
+        }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -2227,6 +2305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func openDashboard() {
+        NSApp.setActivationPolicy(.regular)
         if let dashboard {
             dashboard.makeKeyAndOrderFront(nil)
             updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
@@ -3464,7 +3543,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.9.6"
+        ) as? String ?? "0.10.0"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
@@ -3648,18 +3727,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         preview.widthAnchor.constraint(equalToConstant: 190).isActive = true
         dashboardMenuPreviewIcon.imageScaling = .scaleProportionallyDown
         dashboardMenuPreviewIcon.translatesAutoresizingMaskIntoConstraints = false
-        dashboardMenuPreviewIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
-        dashboardMenuPreviewIcon.heightAnchor.constraint(equalToConstant: 18).isActive = true
-        dashboardMenuPreviewPrimary.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        dashboardMenuPreviewIcon.wantsLayer = true
+        dashboardMenuPreviewIcon.widthAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
+        dashboardMenuPreviewIcon.heightAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
+        dashboardMenuPreviewPrimary.font = Self.menuBarPrimaryFont
         dashboardMenuPreviewPrimary.textColor = .labelColor
-        dashboardMenuPreviewSecondary.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
-        dashboardMenuPreviewSecondary.textColor = .secondaryLabelColor
+        dashboardMenuPreviewSecondary.font = Self.menuBarSecondaryFont
+        dashboardMenuPreviewSecondary.textColor = .labelColor
         let previewText = dashboardMenuPreviewText
         previewText.addArrangedSubview(dashboardMenuPreviewPrimary)
         previewText.addArrangedSubview(dashboardMenuPreviewSecondary)
         previewText.orientation = .vertical
         previewText.alignment = .leading
-        previewText.spacing = 0
+        previewText.spacing = Self.menuBarTextRowSpacing
         previewText.wantsLayer = true
         previewText.layer?.setAffineTransform(.identity)
         let previewTextWidth = previewText.widthAnchor.constraint(equalToConstant: 32)
@@ -3668,8 +3748,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewTextWidthConstraint = previewTextWidth
         let previewIconSlot = dashboardMenuPreviewIconSlot
         previewIconSlot.translatesAutoresizingMaskIntoConstraints = false
-        previewIconSlot.widthAnchor.constraint(equalToConstant: 18).isActive = true
-        previewIconSlot.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        previewIconSlot.widthAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
+        previewIconSlot.heightAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
         previewIconSlot.addSubview(dashboardMenuPreviewIcon)
         NSLayoutConstraint.activate([
             dashboardMenuPreviewIcon.centerXAnchor.constraint(equalTo: previewIconSlot.centerXAnchor),
@@ -3678,7 +3758,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let previewRow = NSStackView(views: [previewIconSlot, previewText])
         previewRow.orientation = .horizontal
         previewRow.alignment = .centerY
-        previewRow.spacing = 6
+        previewRow.spacing = Self.menuBarIconTextSpacing
         previewRow.translatesAutoresizingMaskIntoConstraints = false
         dashboardMenuPreviewCapsule.wantsLayer = true
         dashboardMenuPreviewCapsule.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -3771,11 +3851,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewSecondary.stringValue = snapshot.kind == .official
             ? snapshot.menuBarSecondary
             : ""
-        let previewGlyphSlack: CGFloat = 5
         dashboardMenuPreviewTextWidthConstraint?.constant = ceil(max(
             dashboardMenuPreviewPrimary.intrinsicContentSize.width,
             dashboardMenuPreviewSecondary.intrinsicContentSize.width
-        )) + previewGlyphSlack
+        )) + Self.menuBarTextWidthSlack
         dashboardMenuPreviewCapsuleLeadingConstraint?.constant = -(
             menuBarHorizontalPadding + dashboardMenuPreviewChromeInset
         )
@@ -3783,6 +3862,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             menuBarHorizontalPadding + dashboardMenuPreviewChromeInset
         dashboardMenuPreviewIcon.image = menuBarIconView.image
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
+        dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
+        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+            dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
+                translationX: 0,
+                y: -Self.menuBarBalanceIconOpticalYOffset
+            ))
+        }
     }
 
     private func makeRefreshDashboardPage() -> NSView {
@@ -3915,11 +4001,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        statusItem.autosaveName = "local.balancebar.statusItem"
         statusItem.isVisible = true
         statusItem.length = 56
-        button.imagePosition = .imageLeading
-        button.imageScaling = .scaleProportionallyDown
+        button.title = ""
+        button.attributedTitle = NSAttributedString(string: "")
+        button.image = nil
         button.toolTip = "BalanceBar"
 
         if let iconURL = Bundle.main.url(forResource: "CodexIcon", withExtension: "svg"),
@@ -3947,7 +4033,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         menuBarIconView.onImageChanged = { [weak self] image in
             guard let self else { return }
-            self.statusItem.button?.image = self.showMenuBarIcon ? image : nil
+            self.menuBarIconView.image = image
+            self.layoutStatusItem(for: self.snapshot)
             if self.dashboard?.isVisible == true, self.dashboardSection == .menuBar {
                 self.dashboardMenuPreviewIcon.image = image
                 self.dashboardMenuPreviewIcon.contentTintColor = .labelColor
@@ -3955,22 +4042,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         dashboardMenuPreviewIcon.image = menuBarIconView.image
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
-        menuBarPrimaryLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        menuBarIconView.imageScaling = .scaleProportionallyDown
+        menuBarIconView.contentTintColor = .labelColor
+        menuBarPrimaryLabel.font = Self.menuBarPrimaryFont
         menuBarPrimaryLabel.textColor = .labelColor
         menuBarPrimaryLabel.lineBreakMode = .byClipping
-        menuBarSecondaryLabel.font = .monospacedDigitSystemFont(ofSize: 9, weight: .medium)
-        // A menu-bar button is frequently drawn over a translucent or
-        // highlighted background. Keep the reset label high-contrast too.
+        menuBarSecondaryLabel.font = Self.menuBarSecondaryFont
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
-        updateNativeStatusButton(for: snapshot)
-        DispatchQueue.main.async {
-            // Reinsert the item after AppKit has created the menu bar window.
-            // Tahoe can leave an item with a visible button but a zero-height
-            // status window when it is first registered during app launch.
-            self.statusItem.isVisible = false
-            self.statusItem.isVisible = true
-        }
+        configureMenuBarContentStackIfNeeded()
+        button.addSubview(menuBarContentStack)
+        layoutStatusItem(for: snapshot)
         SwitchLog.write(
             "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
             category: "ui.status-item"
@@ -3979,11 +4061,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard let self, let button = self.statusItem.button else { return }
             let statusWindow = button.window
             let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
+            let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
             SwitchLog.write(
-                "status item presentation; visible=\(self.statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame)",
+                "status item presentation; visible=\(self.statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); title=\(button.title); attributed_title=\(button.attributedTitle.string); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
                 category: "ui.status-item"
             )
         }
+        scheduleStatusItemAttachmentCheck(reason: "initial registration")
+    }
+
+    private func installStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(
+            withLength: NSStatusItem.variableLength
+        )
+        statusItem.menu = statusMenu
+        configureStatusItem()
+    }
+
+    private func scheduleStatusItemAttachmentCheck(reason: String) {
+        guard !statusItemAttachmentCheckScheduled else { return }
+        statusItemAttachmentCheckScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self else { return }
+            self.statusItemAttachmentCheckScheduled = false
+            self.verifyStatusItemAttachment(reason: reason)
+        }
+    }
+
+    private func verifyStatusItemAttachment(reason: String) {
+        guard let item = statusItem, let button = item.button else {
+            SwitchLog.write(
+                "status item attachment failed; reason=missing item or button",
+                level: .error,
+                category: "ui.status-item"
+            )
+            return
+        }
+
+        let window = button.window
+        let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let screen = window?.screen
+        let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let attached = window.map { window in
+            guard let screen else { return false }
+            let frame = window.frame
+            let screenFrame = screen.frame
+            return window.isVisible
+                && frame.minX >= screenFrame.minX
+                && frame.maxX <= screenFrame.maxX
+                && frame.maxY >= screenFrame.maxY - 4
+                && frame.minY >= screenFrame.maxY - 48
+        } ?? false
+
+        SwitchLog.write(
+            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
+            level: attached ? .debug : .warning,
+            category: "ui.status-item",
+            throttleKey: "status-item-attachment-\(reason)",
+            minimumInterval: 0.5
+        )
+
+        guard !attached else {
+            statusItemReanchorAttempts = 0
+            return
+        }
+        guard statusItemReanchorAttempts < 3 else {
+            SwitchLog.write(
+                "status item attachment unresolved after retries; reason=\(reason); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+                level: .error,
+                category: "ui.status-item"
+            )
+            return
+        }
+
+        statusItemReanchorAttempts += 1
+        let desiredLength = max(CGFloat(30), item.length)
+        NSStatusBar.system.removeStatusItem(item)
+        statusItem = NSStatusBar.system.statusItem(withLength: desiredLength)
+        statusItem.menu = statusMenu
+        configureStatusItem()
+        scheduleStatusItemAttachmentCheck(reason: "re-registered-\(statusItemReanchorAttempts)-\(reason)")
     }
 
     private func configureRefreshTimers() {
@@ -4228,71 +4385,123 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .contains(where: { name.contains($0) })
     }
 
-    private func nativeStatusButtonTitle(for snapshot: Snapshot) -> NSAttributedString {
-        let title = NSMutableAttributedString(string: "")
-        guard showMenuBarAmount else { return title }
+    private func configureMenuBarContentStackIfNeeded() {
+        guard !isMenuBarContentStackConfigured else { return }
+        isMenuBarContentStackConfigured = true
 
-        title.append(NSAttributedString(
-            string: snapshot.menuBarPrimary,
-            attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: NSColor.labelColor
-            ]
-        ))
-        if showMenuBarReset,
-           snapshot.kind == .official,
-           !snapshot.menuBarSecondary.isEmpty {
-            title.append(NSAttributedString(
-                string: "  \(snapshot.menuBarSecondary)",
-                attributes: [
-                    .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
-                    .foregroundColor: NSColor.labelColor
-                ]
-            ))
-        }
-        return title
+        menuBarIconView.translatesAutoresizingMaskIntoConstraints = false
+        menuBarIconView.widthAnchor.constraint(
+            equalToConstant: Self.menuBarIconSlotWidth
+        ).isActive = true
+        menuBarIconView.heightAnchor.constraint(
+            equalToConstant: Self.menuBarIconSlotWidth
+        ).isActive = true
+
+        menuBarIconSlot.translatesAutoresizingMaskIntoConstraints = false
+        menuBarIconSlot.widthAnchor.constraint(
+            equalToConstant: Self.menuBarIconSlotWidth
+        ).isActive = true
+        menuBarIconSlot.heightAnchor.constraint(
+            equalToConstant: Self.menuBarIconSlotWidth
+        ).isActive = true
+        menuBarIconSlot.addSubview(menuBarIconView)
+        NSLayoutConstraint.activate([
+            menuBarIconView.centerXAnchor.constraint(equalTo: menuBarIconSlot.centerXAnchor),
+            menuBarIconView.centerYAnchor.constraint(equalTo: menuBarIconSlot.centerYAnchor)
+        ])
+
+        menuBarTextStack.addArrangedSubview(menuBarPrimaryLabel)
+        menuBarTextStack.addArrangedSubview(menuBarSecondaryLabel)
+        menuBarTextStack.orientation = .vertical
+        menuBarTextStack.alignment = .leading
+        menuBarTextStack.spacing = Self.menuBarTextRowSpacing
+        menuBarTextStack.wantsLayer = true
+        menuBarTextStack.layer?.setAffineTransform(.identity)
+        let textWidth = menuBarTextStack.widthAnchor.constraint(equalToConstant: 32)
+        textWidth.priority = .defaultHigh
+        textWidth.isActive = true
+        menuBarTextWidthConstraint = textWidth
+
+        menuBarContentStack.addArrangedSubview(menuBarIconSlot)
+        menuBarContentStack.addArrangedSubview(menuBarTextStack)
+        menuBarContentStack.orientation = .horizontal
+        menuBarContentStack.alignment = .centerY
+        menuBarContentStack.spacing = Self.menuBarIconTextSpacing
+        menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
     }
 
-    private func updateNativeStatusButton(for snapshot: Snapshot) {
+    private func layoutStatusItem(for snapshot: Snapshot) {
         guard let button = statusItem.button else { return }
-        let title = nativeStatusButtonTitle(for: snapshot)
-        button.image = showMenuBarIcon ? menuBarIconView.image : nil
-        button.imagePosition = .imageLeading
-        button.attributedTitle = title
-        button.title = title.string
+        let reservedSecondary = showMenuBarAmount && snapshot.kind == .official
+            ? snapshot.menuBarSecondary
+            : ""
+        let hasSecondary = showMenuBarReset && !reservedSecondary.isEmpty
+
+        menuBarPrimaryLabel.stringValue = showMenuBarAmount ? snapshot.menuBarPrimary : ""
+        menuBarSecondaryLabel.stringValue = reservedSecondary
+        menuBarIconSlot.isHidden = !showMenuBarIcon
+        menuBarTextStack.isHidden = !showMenuBarAmount
+        menuBarPrimaryLabel.isHidden = !showMenuBarAmount
+        menuBarSecondaryLabel.isHidden = !hasSecondary
+        // NSStackView owns the arranged-subview frame. Reset the optical
+        // transform before layout, then apply it after layout so AppKit
+        // cannot discard the single-line balance adjustment.
+        menuBarTextStack.layer?.setAffineTransform(.identity)
+        menuBarIconView.layer?.setAffineTransform(.identity)
+
+        // Match the preview's stable centering: a hidden reset row still
+        // reserves its intrinsic width so the icon never jumps sideways.
+        let iconSlotWidth = showMenuBarIcon ? Self.menuBarIconSlotWidth : 0
+        let gap = showMenuBarIcon && showMenuBarAmount ? Self.menuBarIconTextSpacing : 0
+        let textWidth = showMenuBarAmount
+            ? ceil(max(
+                menuBarPrimaryLabel.intrinsicContentSize.width,
+                menuBarSecondaryLabel.intrinsicContentSize.width
+            )) + Self.menuBarTextWidthSlack
+            : 0
+        menuBarTextWidthConstraint?.constant = textWidth
+        let contentWidth = iconSlotWidth + gap + textWidth
+        statusItem.length = max(
+            30,
+            ceil(contentWidth + (menuBarHorizontalPadding * 2))
+        )
+        button.layoutSubtreeIfNeeded()
+
+        let buttonWidth = button.bounds.width
+        let buttonHeight = button.bounds.height
+        let contentHeight = ceil(menuBarContentStack.fittingSize.height)
+        menuBarContentStack.frame = NSRect(
+            x: floor(max(0, (buttonWidth - contentWidth) / 2)),
+            y: floor((buttonHeight - contentHeight) / 2),
+            width: contentWidth,
+            height: contentHeight
+        )
+        menuBarContentStack.layoutSubtreeIfNeeded()
+        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+            menuBarIconView.layer?.setAffineTransform(CGAffineTransform(
+                translationX: 0,
+                y: -Self.menuBarBalanceIconOpticalYOffset
+            ))
+            menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
+                translationX: 0,
+                y: -Self.menuBarBalanceOpticalYOffset
+            ))
+        }
         button.toolTip = snapshot.menuBarToolTip
         button.isHidden = false
         button.isEnabled = true
         statusItem.isVisible = true
-
-        let iconWidth: CGFloat = showMenuBarIcon ? 16 : 0
-        let imageTitleGap: CGFloat = showMenuBarIcon && !title.string.isEmpty ? 4 : 0
-        let titleWidth = ceil(title.size().width)
-        statusItem.length = max(
-            30,
-            ceil(iconWidth + imageTitleGap + titleWidth + (menuBarHorizontalPadding * 2))
-        )
-        button.layoutSubtreeIfNeeded()
     }
 
     private func updateStatusItem(for snapshot: Snapshot) {
         statusLayoutGeneration += 1
         let layoutGeneration = statusLayoutGeneration
-        let reservedSecondary = showMenuBarAmount && snapshot.kind == .official
-            ? snapshot.menuBarSecondary
-            : ""
-        let secondary = showMenuBarReset ? reservedSecondary : ""
-        menuBarPrimaryLabel.stringValue = snapshot.menuBarPrimary
-        // Keep the official reset text available for measurement even when its
-        // row is hidden. Otherwise toggling that row changes the status item's
-        // total width and macOS shifts the whole menu extra horizontally.
-        menuBarSecondaryLabel.stringValue = reservedSecondary
-        menuBarSecondaryLabel.isHidden = secondary.isEmpty
-        updateNativeStatusButton(for: snapshot)
+        layoutStatusItem(for: snapshot)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.statusLayoutGeneration == layoutGeneration else { return }
-            self.updateNativeStatusButton(for: snapshot)
+            self.layoutStatusItem(for: snapshot)
         }
+        scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
         refreshDashboardMenuBarPage()
     }
 
@@ -5224,6 +5433,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             action: #selector(quit),
             keyEquivalent: "q"
         ).target = self
+        let menuTitles = statusMenu.items.map { item in
+            item.title.isEmpty ? "<custom>" : item.title
+        }.joined(separator: "|")
+        let statusWindow = statusItem.button?.window
+        let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let buttonTitle = statusItem.button?.title ?? ""
+        SwitchLog.write(
+            "status menu rendered; item_count=\(statusMenu.items.count); items=\(menuTitles); status_visible=\(statusItem.isVisible); button_window=\(statusWindow != nil); window_visible=\(statusWindow?.isVisible ?? false); image=\(statusItem.button?.image != nil); title=\(buttonTitle); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+            level: .debug,
+            category: "ui.status-menu",
+            throttleKey: "status-menu-render",
+            minimumInterval: 1
+        )
     }
 
     private func makeStatusLinksMenuItem() -> NSMenuItem {
@@ -5262,6 +5485,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let submenu = NSMenu(title: tr("快速切换", "Quick Switch"))
         submenu.minimumWidth = 210
         let choices = Provider.loadChoices(appType: activeClient.appType)
+        let choiceSummary = choices.map {
+            "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
+        }.joined(separator: "|")
         if choices.isEmpty {
             let empty = NSMenuItem(title: tr("未找到 Codex 供应商", "No Codex Provider Found"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -5280,6 +5506,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 submenu.addItem(item)
             }
         }
+        SwitchLog.write(
+            "quick-switch menu built; app_type=\(activeClient.appType); choice_count=\(choices.count); submenu_item_count=\(submenu.items.count); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary); empty_state=\(choices.isEmpty)",
+            level: .debug,
+            category: "provider.menu",
+            throttleKey: "quick-switch-menu-\(activeClient.appType)",
+            minimumInterval: 1
+        )
         parent.submenu = submenu
         return parent
     }
@@ -5384,6 +5617,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 @main
 enum BalanceBarMain {
     static func main() {
+        migrateLegacyPreferencesIfNeeded()
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar"
+        let duplicate = NSRunningApplication.runningApplications(
+            withBundleIdentifier: bundleIdentifier
+        ).contains { $0.processIdentifier != currentPID }
+        if duplicate {
+            NSLog("BalanceBar: refusing duplicate instance; pid=%d", currentPID)
+            return
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -5612,26 +5855,85 @@ private struct Provider {
     }
 
     static func loadChoices(appType: String) -> [ProviderChoice] {
+        let fileManager = FileManager.default
+        let databaseExists = fileManager.fileExists(atPath: databasePath)
+        let databaseReadable = fileManager.isReadableFile(atPath: databasePath)
+        let attributes = try? fileManager.attributesOfItem(atPath: databasePath)
+        let databaseSize = (attributes?[.size] as? NSNumber)?.int64Value ?? -1
+        SwitchLog.write(
+            "provider choices read started; app_type=\(appType); database_path=\(databasePath); exists=\(databaseExists); readable=\(databaseReadable); size=\(databaseSize)",
+            level: .debug,
+            category: "provider.read",
+            throttleKey: "provider-read-start-\(appType)",
+            minimumInterval: 1
+        )
+
         var database: OpaquePointer?
-        guard sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let database else { return [] }
+        let openCode = sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY, nil)
+        guard openCode == SQLITE_OK, let database else {
+            let error = database.map { String(cString: sqlite3_errmsg($0)) } ?? "no sqlite handle"
+            if let database { sqlite3_close(database) }
+            SwitchLog.write(
+                "provider choices read failed; app_type=\(appType); stage=open; sqlite_code=\(openCode); error=\(error)",
+                level: .error,
+                category: "provider.read"
+            )
+            return []
+        }
         defer { sqlite3_close(database) }
         let sql = "SELECT id, name, is_current FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
         var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return [] }
+        let prepareCode = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
+        guard prepareCode == SQLITE_OK, let statement else {
+            SwitchLog.write(
+                "provider choices read failed; app_type=\(appType); stage=prepare; sqlite_code=\(prepareCode); error=\(String(cString: sqlite3_errmsg(database)))",
+                level: .error,
+                category: "provider.read"
+            )
+            return []
+        }
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_text(statement, 1, appType, -1, sqliteTransient)
         var result: [ProviderChoice] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var rowCount = 0
+        var skippedRowCount = 0
+        while true {
+            let stepCode = sqlite3_step(statement)
+            if stepCode == SQLITE_DONE { break }
+            guard stepCode == SQLITE_ROW else {
+                SwitchLog.write(
+                    "provider choices read failed; app_type=\(appType); stage=step; sqlite_code=\(stepCode); error=\(String(cString: sqlite3_errmsg(database)))",
+                    level: .error,
+                    category: "provider.read"
+                )
+                break
+            }
+            rowCount += 1
             guard let idText = sqlite3_column_text(statement, 0),
-                  let nameText = sqlite3_column_text(statement, 1) else { continue }
+                  let nameText = sqlite3_column_text(statement, 1) else {
+                skippedRowCount += 1
+                SwitchLog.write(
+                    "provider row skipped; app_type=\(appType); row=\(rowCount); reason=missing id or name",
+                    level: .warning,
+                    category: "provider.read"
+                )
+                continue
+            }
             result.append(ProviderChoice(
                 id: String(cString: idText),
                 name: String(cString: nameText),
                 isCurrent: sqlite3_column_int(statement, 2) != 0
             ))
         }
+        let choiceSummary = result.map {
+            "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
+        }.joined(separator: "|")
+        SwitchLog.write(
+            "provider choices read completed; app_type=\(appType); row_count=\(rowCount); result_count=\(result.count); skipped_rows=\(skippedRowCount); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary)",
+            category: "provider.read",
+            throttleKey: "provider-read-complete-\(appType)",
+            minimumInterval: 1
+        )
         return result
     }
 
