@@ -96,6 +96,58 @@ private final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+private final class MenuBarContentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+private final class MenuBarTextView: NSView {
+    override var isFlipped: Bool { true }
+
+    var layoutSize: NSSize = NSSize(width: 32, height: 18) {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
+    override var intrinsicContentSize: NSSize { layoutSize }
+}
+
+private struct MenuBarGeometry {
+    let iconWidth: CGFloat
+    let gap: CGFloat
+    let textWidth: CGFloat
+    let primaryHeight: CGFloat
+    let secondaryHeight: CGFloat
+    let textHeight: CGFloat
+    let contentWidth: CGFloat
+    let contentHeight: CGFloat
+
+    init(
+        primarySize: NSSize,
+        secondarySize: NSSize,
+        showIcon: Bool,
+        showAmount: Bool,
+        hasSecondary: Bool,
+        isBalance: Bool,
+        iconSlotWidth: CGFloat,
+        iconTextSpacing: CGFloat,
+        textRowSpacing: CGFloat,
+        textWidthSlack: CGFloat,
+        singleLineHeight: CGFloat
+    ) {
+        iconWidth = showIcon ? iconSlotWidth : 0
+        gap = showIcon && showAmount ? iconTextSpacing : 0
+        textWidth = showAmount
+            ? ceil(max(primarySize.width, secondarySize.width)) + textWidthSlack
+            : 0
+        primaryHeight = showAmount ? ceil(primarySize.height) : 0
+        secondaryHeight = hasSecondary ? ceil(secondarySize.height) : 0
+        textHeight = primaryHeight + (hasSecondary ? textRowSpacing + secondaryHeight : 0)
+        contentWidth = iconWidth + gap + textWidth
+        contentHeight = isBalance && showAmount
+            ? singleLineHeight
+            : ceil(max(iconWidth, textHeight))
+    }
+}
+
 private enum StatusLinkField {
     case title
     case url
@@ -1368,8 +1420,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // Fixed API single-line baseline. Keep these independent from the
     // official two-line layout so provider switches cannot alter the result.
     private static let menuBarSingleLineHeight: CGFloat = 18
-    private static let menuBarSingleLineTextYOffset: CGFloat = 0.5
-    private static let menuBarSingleLineIconYOffset: CGFloat = 0.75
+    private static let menuBarSingleLineTextYOffset: CGFloat = 0.25
+    private static let menuBarSingleLineIconYOffset: CGFloat = 0.25
     private var statusItem: NSStatusItem!
     private let statusMenu = NSMenu()
     private var statusItemAttachmentCheckScheduled = false
@@ -1378,11 +1430,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var statusMenuNeedsRebuild = false
     private let menuBarIconView = RotatingTemplateImageView()
     private let menuBarIconSlot = PassthroughView()
-    private let menuBarTextStack = NSStackView()
-    private let menuBarContentStack = NSStackView()
+    private let menuBarTextStack = MenuBarTextView()
+    private let menuBarContentStack = MenuBarContentView()
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
-    private var menuBarTextWidthConstraint: NSLayoutConstraint?
     private var isMenuBarContentStackConfigured = false
     private let dashboardProviderLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…"))
     private let dashboardAmountLabel = NSTextField(labelWithString: "—")
@@ -1397,7 +1448,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dashboardLogView = NSTextView()
     private let dashboardMenuPreviewIcon = PassthroughImageView()
     private let dashboardMenuPreviewIconSlot = NSView()
-    private let dashboardMenuPreviewText = NSStackView()
+    private let dashboardMenuPreviewText = MenuBarTextView()
     private let dashboardMenuPreviewPrimary = NSTextField(labelWithString: "…")
     private let dashboardMenuPreviewSecondary = NSTextField(labelWithString: "")
     private let dashboardMenuPreviewCapsule = NSView()
@@ -1456,7 +1507,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var isActivityCheckInFlight = false
     private var lastCodexUsageRefresh: Date?
     private var postCodexRefreshDeadline: Date?
-    private var statusLayoutGeneration = 0
 
     private var showMenuBarReset: Bool {
         get { UserDefaults.standard.object(forKey: "showMenuBarReset") as? Bool ?? true }
@@ -3711,7 +3761,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.10.2"
+        ) as? String ?? "0.10.3"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
@@ -3903,11 +3953,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewSecondary.font = Self.menuBarSecondaryFont
         dashboardMenuPreviewSecondary.textColor = .labelColor
         let previewText = dashboardMenuPreviewText
-        previewText.addArrangedSubview(dashboardMenuPreviewPrimary)
-        previewText.addArrangedSubview(dashboardMenuPreviewSecondary)
-        previewText.orientation = .vertical
-        previewText.alignment = .leading
-        previewText.spacing = Self.menuBarTextRowSpacing
+        previewText.addSubview(dashboardMenuPreviewPrimary)
+        previewText.addSubview(dashboardMenuPreviewSecondary)
         previewText.wantsLayer = true
         previewText.layer?.setAffineTransform(.identity)
         let previewTextWidth = previewText.widthAnchor.constraint(equalToConstant: 32)
@@ -4010,19 +4057,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // which can otherwise leave overlapping on/off layers on vibrancy.
         dashboardMenuBarIconSwitch?.isEnabled = showMenuBarAmount
         dashboardMenuBarAmountSwitch?.isEnabled = showMenuBarIcon
-        dashboardMenuPreviewPrimary.isHidden = !showMenuBarAmount
-        dashboardMenuPreviewSecondary.isHidden = !showMenuBarReset || !showMenuBarAmount || snapshot.kind != .official
         dashboardMenuPreviewPrimary.stringValue = showMenuBarAmount ? snapshot.menuBarPrimary : ""
-        // Keep the second row's intrinsic width reserved even while the row is
-        // hidden. Otherwise the centered icon/text group becomes narrower and
-        // the icon visibly jumps to the right when reset countdown is disabled.
         dashboardMenuPreviewSecondary.stringValue = snapshot.kind == .official
             ? snapshot.menuBarSecondary
             : ""
-        dashboardMenuPreviewTextWidthConstraint?.constant = ceil(max(
-            dashboardMenuPreviewPrimary.intrinsicContentSize.width,
-            dashboardMenuPreviewSecondary.intrinsicContentSize.width
-        )) + Self.menuBarTextWidthSlack
+        let hasSecondary = showMenuBarAmount
+            && showMenuBarReset
+            && snapshot.kind == .official
+            && !dashboardMenuPreviewSecondary.stringValue.isEmpty
+        let geometry = MenuBarGeometry(
+            primarySize: dashboardMenuPreviewPrimary.intrinsicContentSize,
+            secondarySize: dashboardMenuPreviewSecondary.intrinsicContentSize,
+            showIcon: showMenuBarIcon,
+            showAmount: showMenuBarAmount,
+            hasSecondary: hasSecondary,
+            isBalance: snapshot.kind == .balance,
+            iconSlotWidth: Self.menuBarIconSlotWidth,
+            iconTextSpacing: Self.menuBarIconTextSpacing,
+            textRowSpacing: Self.menuBarTextRowSpacing,
+            textWidthSlack: Self.menuBarTextWidthSlack,
+            singleLineHeight: Self.menuBarSingleLineHeight
+        )
+        applyMenuBarTextLayout(
+            container: dashboardMenuPreviewText,
+            primary: dashboardMenuPreviewPrimary,
+            secondary: dashboardMenuPreviewSecondary,
+            geometry: geometry,
+            showAmount: showMenuBarAmount,
+            hasSecondary: hasSecondary
+        )
+        dashboardMenuPreviewTextWidthConstraint?.constant = geometry.textWidth
         dashboardMenuPreviewCapsuleLeadingConstraint?.constant = -(
             menuBarHorizontalPadding + dashboardMenuPreviewChromeInset
         )
@@ -4558,48 +4622,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .contains(where: { name.contains($0) })
     }
 
+    private func applyMenuBarTextLayout(
+        container: MenuBarTextView,
+        primary: NSTextField,
+        secondary: NSTextField,
+        geometry: MenuBarGeometry,
+        showAmount: Bool,
+        hasSecondary: Bool
+    ) {
+        container.layoutSize = NSSize(
+            width: geometry.textWidth,
+            height: geometry.textHeight
+        )
+        primary.isHidden = !showAmount
+        primary.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: geometry.textWidth,
+            height: geometry.primaryHeight
+        )
+        secondary.isHidden = !hasSecondary
+        secondary.frame = hasSecondary
+            ? NSRect(
+                x: 0,
+                y: geometry.primaryHeight + Self.menuBarTextRowSpacing,
+                width: geometry.textWidth,
+                height: geometry.secondaryHeight
+            )
+            : .zero
+    }
+
     private func configureMenuBarContentStackIfNeeded() {
         guard !isMenuBarContentStackConfigured else { return }
         isMenuBarContentStackConfigured = true
 
-        menuBarIconView.translatesAutoresizingMaskIntoConstraints = false
-        menuBarIconView.widthAnchor.constraint(
-            equalToConstant: Self.menuBarIconSlotWidth
-        ).isActive = true
-        menuBarIconView.heightAnchor.constraint(
-            equalToConstant: Self.menuBarIconSlotWidth
-        ).isActive = true
+        menuBarIconView.translatesAutoresizingMaskIntoConstraints = true
 
-        menuBarIconSlot.translatesAutoresizingMaskIntoConstraints = false
-        menuBarIconSlot.widthAnchor.constraint(
-            equalToConstant: Self.menuBarIconSlotWidth
-        ).isActive = true
-        menuBarIconSlot.heightAnchor.constraint(
-            equalToConstant: Self.menuBarIconSlotWidth
-        ).isActive = true
+        menuBarIconSlot.translatesAutoresizingMaskIntoConstraints = true
         menuBarIconSlot.addSubview(menuBarIconView)
-        NSLayoutConstraint.activate([
-            menuBarIconView.centerXAnchor.constraint(equalTo: menuBarIconSlot.centerXAnchor),
-            menuBarIconView.centerYAnchor.constraint(equalTo: menuBarIconSlot.centerYAnchor)
-        ])
-
-        menuBarTextStack.addArrangedSubview(menuBarPrimaryLabel)
-        menuBarTextStack.addArrangedSubview(menuBarSecondaryLabel)
-        menuBarTextStack.orientation = .vertical
-        menuBarTextStack.alignment = .leading
-        menuBarTextStack.spacing = Self.menuBarTextRowSpacing
+        menuBarTextStack.addSubview(menuBarPrimaryLabel)
+        menuBarTextStack.addSubview(menuBarSecondaryLabel)
         menuBarTextStack.wantsLayer = true
         menuBarTextStack.layer?.setAffineTransform(.identity)
-        let textWidth = menuBarTextStack.widthAnchor.constraint(equalToConstant: 32)
-        textWidth.priority = .defaultHigh
-        textWidth.isActive = true
-        menuBarTextWidthConstraint = textWidth
-
-        menuBarContentStack.addArrangedSubview(menuBarIconSlot)
-        menuBarContentStack.addArrangedSubview(menuBarTextStack)
-        menuBarContentStack.orientation = .horizontal
-        menuBarContentStack.alignment = .centerY
-        menuBarContentStack.spacing = Self.menuBarIconTextSpacing
+        menuBarContentStack.addSubview(menuBarIconSlot)
+        menuBarContentStack.addSubview(menuBarTextStack)
         menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
     }
 
@@ -4608,81 +4674,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let reservedSecondary = showMenuBarAmount && snapshot.kind == .official
             ? snapshot.menuBarSecondary
             : ""
-        let hasSecondary = showMenuBarReset && !reservedSecondary.isEmpty
+        let hasSecondary = showMenuBarAmount
+            && showMenuBarReset
+            && !reservedSecondary.isEmpty
 
         menuBarPrimaryLabel.stringValue = showMenuBarAmount ? snapshot.menuBarPrimary : ""
         menuBarSecondaryLabel.stringValue = reservedSecondary
         menuBarIconSlot.isHidden = !showMenuBarIcon
         menuBarTextStack.isHidden = !showMenuBarAmount
-        menuBarPrimaryLabel.isHidden = !showMenuBarAmount
-        // A hidden arranged subview can keep its previous fitting height for one
-        // layout pass. That made an official two-line snapshot shift the API
-        // amount after switching back. Remove the reset row from the stack in
-        // single-line mode so both fresh launches and provider transitions use
-        // exactly the same geometry.
-        if hasSecondary {
-            if !menuBarTextStack.arrangedSubviews.contains(menuBarSecondaryLabel) {
-                menuBarTextStack.addArrangedSubview(menuBarSecondaryLabel)
-            }
-            menuBarSecondaryLabel.isHidden = false
-        } else if menuBarTextStack.arrangedSubviews.contains(menuBarSecondaryLabel) {
-            menuBarTextStack.removeArrangedSubview(menuBarSecondaryLabel)
-            menuBarSecondaryLabel.removeFromSuperview()
-        }
-        // NSStackView owns the arranged-subview frame. Reset the optical
-        // transform before layout, then apply it after layout so AppKit
-        // cannot discard the single-line balance adjustment.
-        menuBarTextStack.layer?.setAffineTransform(.identity)
-        menuBarIconView.layer?.setAffineTransform(.identity)
+        let geometry = MenuBarGeometry(
+            primarySize: menuBarPrimaryLabel.intrinsicContentSize,
+            secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
+            showIcon: showMenuBarIcon,
+            showAmount: showMenuBarAmount,
+            hasSecondary: hasSecondary,
+            isBalance: snapshot.kind == .balance,
+            iconSlotWidth: Self.menuBarIconSlotWidth,
+            iconTextSpacing: Self.menuBarIconTextSpacing,
+            textRowSpacing: Self.menuBarTextRowSpacing,
+            textWidthSlack: Self.menuBarTextWidthSlack,
+            singleLineHeight: Self.menuBarSingleLineHeight
+        )
+        applyMenuBarTextLayout(
+            container: menuBarTextStack,
+            primary: menuBarPrimaryLabel,
+            secondary: menuBarSecondaryLabel,
+            geometry: geometry,
+            showAmount: showMenuBarAmount,
+            hasSecondary: hasSecondary
+        )
 
-        // Match the preview's stable centering: a hidden reset row still
-        // reserves its intrinsic width so the icon never jumps sideways.
-        let iconSlotWidth = showMenuBarIcon ? Self.menuBarIconSlotWidth : 0
-        let gap = showMenuBarIcon && showMenuBarAmount ? Self.menuBarIconTextSpacing : 0
-        let textWidth = showMenuBarAmount
-            ? ceil(max(
-                menuBarPrimaryLabel.intrinsicContentSize.width,
-                menuBarSecondaryLabel.intrinsicContentSize.width
-            )) + Self.menuBarTextWidthSlack
-            : 0
-        menuBarTextWidthConstraint?.constant = textWidth
-        let contentWidth = iconSlotWidth + gap + textWidth
         statusItem.length = max(
             30,
-            ceil(contentWidth + (menuBarHorizontalPadding * 2))
+            ceil(geometry.contentWidth + (menuBarHorizontalPadding * 2))
         )
         button.layoutSubtreeIfNeeded()
 
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
-        let textHeight: CGFloat
-        if showMenuBarAmount {
-            textHeight = ceil(menuBarPrimaryLabel.intrinsicContentSize.height)
-                + (hasSecondary
-                    ? Self.menuBarTextRowSpacing
-                        + ceil(menuBarSecondaryLabel.intrinsicContentSize.height)
-                    : 0)
-        } else {
-            textHeight = 0
-        }
-        let contentHeight = snapshot.kind == .balance && showMenuBarAmount
-            ? Self.menuBarSingleLineHeight
-            : ceil(max(
-                showMenuBarIcon ? Self.menuBarIconSlotWidth : 0,
-                textHeight
-            ))
         menuBarContentStack.frame = NSRect(
-            x: floor(max(0, (buttonWidth - contentWidth) / 2)),
-            y: floor((buttonHeight - contentHeight) / 2),
-            width: contentWidth,
-            height: contentHeight
+            x: floor(max(0, (buttonWidth - geometry.contentWidth) / 2)),
+            y: floor((buttonHeight - geometry.contentHeight) / 2),
+            width: geometry.contentWidth,
+            height: geometry.contentHeight
         )
-        menuBarContentStack.layoutSubtreeIfNeeded()
+
+        menuBarIconSlot.frame = NSRect(
+            x: 0,
+            y: floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2)),
+            width: geometry.iconWidth,
+            height: geometry.iconWidth
+        )
+        let iconYOffset = snapshot.kind == .balance && showMenuBarIcon && showMenuBarAmount
+            ? Self.menuBarSingleLineIconYOffset
+            : 0
+        menuBarIconView.frame = NSRect(
+            x: 0,
+            y: iconYOffset,
+            width: menuBarIconSlot.bounds.width,
+            height: menuBarIconSlot.bounds.height
+        )
+        menuBarTextStack.frame = NSRect(
+            x: geometry.iconWidth + geometry.gap,
+            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2)),
+            width: geometry.textWidth,
+            height: geometry.textHeight
+        )
+
+        // The optical adjustment is always applied from a clean transform
+        // after the current snapshot's frames have been assigned.
+        menuBarTextStack.layer?.setAffineTransform(.identity)
         if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
-            menuBarIconView.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -Self.menuBarSingleLineIconYOffset
-            ))
             menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
                 y: -Self.menuBarSingleLineTextYOffset
@@ -4695,13 +4757,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func updateStatusItem(for snapshot: Snapshot) {
-        statusLayoutGeneration += 1
-        let layoutGeneration = statusLayoutGeneration
         layoutStatusItem(for: snapshot)
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.statusLayoutGeneration == layoutGeneration else { return }
-            self.layoutStatusItem(for: snapshot)
-        }
         scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
         refreshDashboardMenuBarPage()
     }
