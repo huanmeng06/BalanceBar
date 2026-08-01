@@ -219,6 +219,10 @@ private struct StatusLinksEditorSwiftUI: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        // NSHostingView fills the animated AppKit height. Keep the SwiftUI
+        // content pinned to the top of that host so its title row does not
+        // recenter for a frame while the row count changes.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -277,16 +281,28 @@ private final class StatusLinksHostingView: NSView {
     func updateLinks(
         _ newLinks: [StatusLink],
         animated: Bool,
+        revealAddedRowsAtCompletion: Bool = false,
         completion: (() -> Void)? = nil
     ) {
+        let deferAddedRows = revealAddedRowsAtCompletion && newLinks.count > links.count
         links = newLinks
-        model.links = newLinks
+        // Deletion already has the desired motion: the removed row vanishes
+        // first and the card then collapses. For an addition, play that same
+        // geometry in reverse by expanding an empty 35pt slot first and only
+        // revealing the new SwiftUI row once the expansion has settled.
+        if !deferAddedRows {
+            model.links = newLinks
+        }
         let targetHeight = layoutHeight
         let applyHeight = {
             self.heightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
             self.needsLayout = true
             self.superview?.needsLayout = true
+            if deferAddedRows {
+                self.superview?.layoutSubtreeIfNeeded()
+                self.model.links = newLinks
+            }
             completion?()
         }
         if animated {
@@ -767,6 +783,8 @@ private struct DashboardScrollPosition {
     let contentOriginY: CGFloat
     let distanceFromBottom: CGFloat
     let previousMaximumOffset: CGFloat
+    let bottomAnchorView: NSView?
+    let bottomAnchorViewportY: CGFloat?
 }
 
 private enum DashboardLogging {
@@ -914,6 +932,7 @@ private let migratedPreferenceKeys = [
     "codexUsageRefreshInterval",
     "postCodexRefreshDuration",
     "showQuickSwitchMenu",
+    "showOpenChatGPTMenu",
     "showOpenCCSwitchMenu",
     "showStatusMenu",
     "statusLinks",
@@ -1346,8 +1365,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private static let menuBarIconTextSpacing: CGFloat = 6
     private static let menuBarTextRowSpacing: CGFloat = -2
     private static let menuBarTextWidthSlack: CGFloat = 5
-    private static let menuBarBalanceOpticalYOffset: CGFloat = 0.25
-    private static let menuBarBalanceIconOpticalYOffset: CGFloat = 0.33
+    // Fixed API single-line baseline. Keep these independent from the
+    // official two-line layout so provider switches cannot alter the result.
+    private static let menuBarSingleLineHeight: CGFloat = 18
+    private static let menuBarSingleLineTextYOffset: CGFloat = 0.5
+    private static let menuBarSingleLineIconYOffset: CGFloat = 0.75
     private var statusItem: NSStatusItem!
     private let statusMenu = NSMenu()
     private var statusItemAttachmentCheckScheduled = false
@@ -1492,6 +1514,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var showOpenCCSwitchMenu: Bool {
         get { UserDefaults.standard.object(forKey: "showOpenCCSwitchMenu") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "showOpenCCSwitchMenu") }
+    }
+
+    private var showOpenChatGPTMenu: Bool {
+        get { UserDefaults.standard.object(forKey: "showOpenChatGPTMenu") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "showOpenChatGPTMenu") }
     }
 
     private var showStatusMenu: Bool {
@@ -1893,6 +1920,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in }
     }
 
+    @objc private func openChatGPT() {
+        let applicationURLs: [URL] = [
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex"),
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.chat"),
+            URL(fileURLWithPath: "/Applications/ChatGPT.app"),
+            URL(fileURLWithPath: "/Applications/ChatGPT Classic.app")
+        ].compactMap { $0 }
+        guard let url = applicationURLs.first(where: {
+            FileManager.default.fileExists(atPath: $0.path)
+        }) else {
+            SwitchLog.write(
+                "open ChatGPT failed; reason=application-not-found",
+                level: .warning,
+                category: "ui.menu"
+            )
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
+            if let error {
+                SwitchLog.write(
+                    "open ChatGPT failed; path=\(url.path); error=\(error.localizedDescription)",
+                    level: .warning,
+                    category: "ui.menu"
+                )
+            } else {
+                SwitchLog.write(
+                    "ChatGPT opened; path=\(url.path)",
+                    category: "ui.menu"
+                )
+            }
+        }
+    }
+
     @objc private func openProviderWebsite() {
         guard let activeProviderWebsite else { return }
         NSWorkspace.shared.open(activeProviderWebsite)
@@ -1946,6 +2008,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             render(snapshot)
         case "showOpenCCSwitchMenu":
             showOpenCCSwitchMenu = sender.state == .on
+            render(snapshot)
+        case "showOpenChatGPTMenu":
+            showOpenChatGPTMenu = sender.state == .on
             render(snapshot)
         case "showStatusMenu":
             showStatusMenu = sender.state == .on
@@ -2711,6 +2776,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return nil
     }
 
+    private func statusLinksBottomAnchor(
+        in page: NSView,
+        scrollView: NSScrollView
+    ) -> (view: NSView, viewportY: CGFloat)? {
+        guard let editor = firstStatusLinksEditor(in: page),
+              let rowsStack = editor.superview as? NSStackView,
+              let card = rowsStack.superview else {
+            return nil
+        }
+        let edgeY = card.isFlipped ? card.bounds.maxY : card.bounds.minY
+        let point = card.convert(
+            NSPoint(x: card.bounds.midX, y: edgeY),
+            to: scrollView.contentView
+        )
+        return (card, point.y)
+    }
+
+    private func statusLinksBottomAnchorPoint(in view: NSView) -> NSPoint {
+        let edgeY = view.isFlipped ? view.bounds.maxY : view.bounds.minY
+        return NSPoint(x: view.bounds.midX, y: edgeY)
+    }
+
     private func refreshStatusLinksEditorInPlace(
         scrollPosition: DashboardScrollPosition?,
         operation: String
@@ -2734,7 +2821,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         } else {
             stopDashboardScrollAnchorMaintenance()
         }
-        editor.updateLinks(statusLinks, animated: true) { [weak self, weak page, weak editor] in
+        editor.updateLinks(
+            statusLinks,
+            animated: true,
+            revealAddedRowsAtCompletion: operation == "add"
+        ) { [weak self, weak page, weak editor] in
             guard let self, let page, let editor else { return }
             self.stopDashboardScrollAnchorMaintenance()
             page.layoutSubtreeIfNeeded()
@@ -2758,6 +2849,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self?.logDashboardScrollState(label: "after \(operation) settled")
                 editor.logGeometry(label: "after \(operation) settled")
             }
+        }
+        // The height constraint starts animating synchronously above. Correct
+        // the clip view once more before returning to the run loop so the
+        // first layout pass cannot expose a one-frame jump before the timer
+        // gets its first tick.
+        if let scrollPosition {
+            maintainDashboardScrollAnchor(scrollPosition)
         }
         // Capture one state during the transition so the log distinguishes a
         // smooth layout animation from a late, discrete jump.
@@ -2804,26 +2902,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         scrollView.layoutSubtreeIfNeeded()
 
         let contentView = scrollView.contentView
+        // A removal shrinks the document from the bottom. Restore the clip
+        // view in document coordinates so AppKit never receives a positive
+        // unflipped bounds origin (which is interpreted as an overscroll and
+        // snaps the page to the top).
+        if position.operation != "add" {
+            let targetContentOriginY = dashboardScrollContentOrigin(
+                scrollView: scrollView,
+                documentView: documentView,
+                distanceFromBottom: position.distanceFromBottom
+            )
+            var bounds = contentView.bounds
+            guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
+            bounds.origin.y = targetContentOriginY
+            contentView.bounds = bounds
+            scrollView.reflectScrolledClipView(contentView)
+            return
+        }
+
+        if let anchorView = position.bottomAnchorView,
+           let targetViewportY = position.bottomAnchorViewportY,
+           anchorView === page || anchorView.isDescendant(of: page) {
+            let currentViewportY = anchorView.convert(
+                statusLinksBottomAnchorPoint(in: anchorView),
+                to: contentView
+            ).y
+            let correction = currentViewportY - targetViewportY
+            guard abs(correction) > 0.01 else { return }
+            var bounds = contentView.bounds
+            // Changing the clip-view bounds origin translates the document in
+            // the viewport. Correct by the exact amount the red card edge
+            // moved, so the edge stays visually fixed throughout the height
+            // animation instead of letting the blue top edge win by default.
+            bounds.origin.y += correction
+            contentView.bounds = bounds
+            scrollView.reflectScrolledClipView(contentView)
+            return
+        }
+
+        var bounds = contentView.bounds
+        guard abs(bounds.origin.y - position.contentOriginY) > 0.01 else { return }
+        bounds.origin.y = position.contentOriginY
+        contentView.bounds = bounds
+        scrollView.reflectScrolledClipView(contentView)
+    }
+
+    private func dashboardScrollContentOrigin(
+        scrollView: NSScrollView,
+        documentView: NSView,
+        distanceFromBottom: CGFloat
+    ) -> CGFloat {
         let maximumOffset = dashboardMaximumOffset(
             documentView: documentView,
-            viewportHeight: contentView.bounds.height
+            viewportHeight: scrollView.contentView.bounds.height
         )
         let targetDocumentOriginY = min(
             maximumOffset,
-            max(0, maximumOffset - position.distanceFromBottom)
+            max(0, maximumOffset - distanceFromBottom)
         )
-        var bounds = contentView.bounds
-        let targetContentPoint = documentView.convert(
+        return documentView.convert(
             NSPoint(
                 x: documentView.bounds.minX,
                 y: documentView.bounds.minY + targetDocumentOriginY
             ),
-            to: contentView
-        )
-        guard abs(bounds.origin.y - targetContentPoint.y) > 0.01 else { return }
-        bounds.origin.y = targetContentPoint.y
-        contentView.bounds = bounds
-        scrollView.reflectScrolledClipView(contentView)
+            to: scrollView.contentView
+        ).y
     }
 
     private func dashboardScrollPosition(
@@ -2855,15 +2998,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             maximumOffset,
             max(0, visibleDocumentRect.origin.y)
         )
+        let bottomAnchor = statusLinksBottomAnchor(
+            in: page,
+            scrollView: scrollView
+        )
+        let bottomAnchorIsVisible = bottomAnchor.map { anchor in
+            let bounds = scrollView.contentView.bounds
+            return anchor.viewportY >= bounds.minY - 1
+                && anchor.viewportY <= bounds.maxY + 1
+        } ?? false
+        let activeBottomAnchor = bottomAnchorIsVisible ? bottomAnchor : nil
         let position = DashboardScrollPosition(
             operation: operation,
             visibleDocumentOriginY: originY,
             contentOriginY: scrollView.contentView.bounds.origin.y,
             distanceFromBottom: max(0, maximumOffset - originY),
-            previousMaximumOffset: maximumOffset
+            previousMaximumOffset: maximumOffset,
+            bottomAnchorView: activeBottomAnchor?.view,
+            bottomAnchorViewportY: activeBottomAnchor?.viewportY
         )
         SwitchLog.write(
-            "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOriginY=\(DashboardLogging.number(originY)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(maximumOffset))",
+            "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOriginY=\(DashboardLogging.number(originY)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
             category: "ui.scroll"
         )
         return position
@@ -2903,53 +3058,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardContentHost.layoutSubtreeIfNeeded()
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
-        let maximumOffset = dashboardMaximumOffset(
-            documentView: documentView,
-            viewportHeight: scrollView.contentView.bounds.height
-        )
-        SwitchLog.write(
-            "scroll restore after layout; action=\(position.operation); attempt=\(attempt); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); computed_maximumOffset=\(DashboardLogging.number(maximumOffset))",
-            category: "ui.scroll"
-        )
-        // If the old page was scrollable but the new document has not been
-        // laid out yet, wait for another pass instead of applying y = 0.
-        if position.previousMaximumOffset > 0,
-           maximumOffset <= 0,
-           attempt < 6 {
+        if position.operation != "add" {
+            let targetContentOriginY = dashboardScrollContentOrigin(
+                scrollView: scrollView,
+                documentView: documentView,
+                distanceFromBottom: position.distanceFromBottom
+            )
+            var bounds = scrollView.contentView.bounds
+            let correction = targetContentOriginY - bounds.origin.y
+            bounds.origin.y = targetContentOriginY
+            scrollView.contentView.bounds = bounds
+            scrollView.reflectScrolledClipView(scrollView.contentView)
             SwitchLog.write(
-                "scroll restore deferred; action=\(position.operation); attempt=\(attempt); reason=document-not-scrollable-yet",
-                level: .warning,
+                "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=document-distance; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
                 category: "ui.scroll"
             )
-            restoreDashboardScrollPosition(position, attempt: attempt + 1)
+            if attempt < 2 {
+                restoreDashboardScrollPosition(position, attempt: attempt + 1)
+            }
             return
         }
-        // Keep the same distance from the document's bottom edge that was
-        // captured before the row changed. This is the important part of the
-        // bottom anchor: the card grows upward in the viewport instead of
-        // leaving the clip view at the old origin and jumping at completion.
-        // The settings document is an unflipped NSView. Its clip-view bounds
-        // origin is negative (for example -127) while the visible document
-        // coordinate is 0. Never write the document coordinate directly into
-        // contentView.bounds; convert the desired document point back into
-        // the clip-view coordinate system first.
-        let targetDocumentOriginY = min(
-            maximumOffset,
-            max(0, maximumOffset - position.distanceFromBottom)
-        )
+
+        if let anchorView = position.bottomAnchorView,
+           let targetViewportY = position.bottomAnchorViewportY,
+           anchorView === page || anchorView.isDescendant(of: page) {
+            let currentViewportY = anchorView.convert(
+                statusLinksBottomAnchorPoint(in: anchorView),
+                to: scrollView.contentView
+            ).y
+            let correction = currentViewportY - targetViewportY
+            if abs(correction) > 0.01 {
+                var bounds = scrollView.contentView.bounds
+                bounds.origin.y += correction
+                scrollView.contentView.bounds = bounds
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
+            SwitchLog.write(
+                "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=card-bottom; target_viewportY=\(DashboardLogging.number(targetViewportY)); actual_viewportY=\(DashboardLogging.number(currentViewportY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+                category: "ui.scroll"
+            )
+            if attempt < 2 {
+                restoreDashboardScrollPosition(position, attempt: attempt + 1)
+            }
+            return
+        }
+
         var bounds = scrollView.contentView.bounds
-        let targetContentPoint = documentView.convert(
-            NSPoint(
-                x: documentView.bounds.minX,
-                y: documentView.bounds.minY + targetDocumentOriginY
-            ),
-            to: scrollView.contentView
-        )
-        bounds.origin.y = targetContentPoint.y
+        let correction = position.contentOriginY - bounds.origin.y
+        bounds.origin.y = position.contentOriginY
         scrollView.contentView.bounds = bounds
         scrollView.reflectScrolledClipView(scrollView.contentView)
         SwitchLog.write(
-            "scroll restore applied; action=\(position.operation); attempt=\(attempt); target_documentOriginY=\(DashboardLogging.number(targetDocumentOriginY)); target_distanceFromBottom=\(DashboardLogging.number(maximumOffset - targetDocumentOriginY)); target_contentOriginY=\(DashboardLogging.number(targetContentPoint.y)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+            "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=content-origin; target_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
             category: "ui.scroll"
         )
 
@@ -3420,6 +3580,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 control: openMainWindow
             ),
             makeSettingsRow(
+                tr("打开 ChatGPT", "Open ChatGPT"),
+                subtitle: tr("显示 ChatGPT 启动项", "Show the ChatGPT launch item"),
+                control: makeDashboardSwitch(
+                    identifier: "showOpenChatGPTMenu",
+                    isOn: showOpenChatGPTMenu
+                )
+            ),
+            makeSettingsRow(
                 tr("打开 CC Switch", "Open CC Switch"),
                 subtitle: tr("显示 CC Switch 启动项", "Show the CC Switch launch item"),
                 control: openCC
@@ -3543,7 +3711,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.10.0"
+        ) as? String ?? "0.10.2"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
@@ -3863,10 +4031,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewIcon.image = menuBarIconView.image
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
         dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
+        dashboardMenuPreviewText.layer?.setAffineTransform(.identity)
         if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
             dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
-                y: -Self.menuBarBalanceIconOpticalYOffset
+                y: -Self.menuBarSingleLineIconYOffset
+            ))
+            dashboardMenuPreviewText.layer?.setAffineTransform(CGAffineTransform(
+                translationX: 0,
+                y: -Self.menuBarSingleLineTextYOffset
             ))
         }
     }
@@ -4442,7 +4615,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menuBarIconSlot.isHidden = !showMenuBarIcon
         menuBarTextStack.isHidden = !showMenuBarAmount
         menuBarPrimaryLabel.isHidden = !showMenuBarAmount
-        menuBarSecondaryLabel.isHidden = !hasSecondary
+        // A hidden arranged subview can keep its previous fitting height for one
+        // layout pass. That made an official two-line snapshot shift the API
+        // amount after switching back. Remove the reset row from the stack in
+        // single-line mode so both fresh launches and provider transitions use
+        // exactly the same geometry.
+        if hasSecondary {
+            if !menuBarTextStack.arrangedSubviews.contains(menuBarSecondaryLabel) {
+                menuBarTextStack.addArrangedSubview(menuBarSecondaryLabel)
+            }
+            menuBarSecondaryLabel.isHidden = false
+        } else if menuBarTextStack.arrangedSubviews.contains(menuBarSecondaryLabel) {
+            menuBarTextStack.removeArrangedSubview(menuBarSecondaryLabel)
+            menuBarSecondaryLabel.removeFromSuperview()
+        }
         // NSStackView owns the arranged-subview frame. Reset the optical
         // transform before layout, then apply it after layout so AppKit
         // cannot discard the single-line balance adjustment.
@@ -4469,7 +4655,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
-        let contentHeight = ceil(menuBarContentStack.fittingSize.height)
+        let textHeight: CGFloat
+        if showMenuBarAmount {
+            textHeight = ceil(menuBarPrimaryLabel.intrinsicContentSize.height)
+                + (hasSecondary
+                    ? Self.menuBarTextRowSpacing
+                        + ceil(menuBarSecondaryLabel.intrinsicContentSize.height)
+                    : 0)
+        } else {
+            textHeight = 0
+        }
+        let contentHeight = snapshot.kind == .balance && showMenuBarAmount
+            ? Self.menuBarSingleLineHeight
+            : ceil(max(
+                showMenuBarIcon ? Self.menuBarIconSlotWidth : 0,
+                textHeight
+            ))
         menuBarContentStack.frame = NSRect(
             x: floor(max(0, (buttonWidth - contentWidth) / 2)),
             y: floor((buttonHeight - contentHeight) / 2),
@@ -4480,11 +4681,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
             menuBarIconView.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
-                y: -Self.menuBarBalanceIconOpticalYOffset
+                y: -Self.menuBarSingleLineIconYOffset
             ))
             menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
-                y: -Self.menuBarBalanceOpticalYOffset
+                y: -Self.menuBarSingleLineTextYOffset
             ))
         }
         button.toolTip = snapshot.menuBarToolTip
@@ -5417,6 +5618,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             action: #selector(openDashboard),
             keyEquivalent: ""
         ).target = self
+        if showOpenChatGPTMenu {
+            statusMenu.addItem(
+                withTitle: tr("打开 ChatGPT", "Open ChatGPT"),
+                action: #selector(openChatGPT),
+                keyEquivalent: ""
+            ).target = self
+        }
         if showOpenCCSwitchMenu {
             statusMenu.addItem(
                 withTitle: tr("打开 CC Switch", "Open CC Switch"),
