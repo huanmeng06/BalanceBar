@@ -1285,7 +1285,9 @@ private final class ClaudeCodeActivityMonitor {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private lazy var statusItem = NSStatusBar.system.statusItem(
+        withLength: NSStatusItem.variableLength
+    )
     private let statusMenu = NSMenu()
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
@@ -1486,8 +1488,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // A normal window is intentional for the first prototype: macOS Tahoe may
-        // hide new menu extras, and this gives the user an always-visible fallback.
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -1495,7 +1495,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         configureApplicationMenu()
         NSApp.appearance = nil
         startAppearanceObserver()
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
         statusMenu.delegate = self
         statusItem.menu = statusMenu
         configureStatusItem()
@@ -1556,11 +1556,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === dashboard else { return }
-        // Keep the menu-bar service alive, but remove its Dock presence once
-        // the optional configuration window is closed.
-        DispatchQueue.main.async {
-            NSApp.setActivationPolicy(.accessory)
-        }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -2232,7 +2227,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func openDashboard() {
-        NSApp.setActivationPolicy(.regular)
         if let dashboard {
             dashboard.makeKeyAndOrderFront(nil)
             updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
@@ -3470,7 +3464,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.9.2"
+        ) as? String ?? "0.9.6"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
@@ -3970,10 +3964,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
         updateNativeStatusButton(for: snapshot)
+        DispatchQueue.main.async {
+            // Reinsert the item after AppKit has created the menu bar window.
+            // Tahoe can leave an item with a visible button but a zero-height
+            // status window when it is first registered during app launch.
+            self.statusItem.isVisible = false
+            self.statusItem.isVisible = true
+        }
         SwitchLog.write(
             "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
             category: "ui.status-item"
         )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, let button = self.statusItem.button else { return }
+            let statusWindow = button.window
+            let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
+            SwitchLog.write(
+                "status item presentation; visible=\(self.statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame)",
+                category: "ui.status-item"
+            )
+        }
     }
 
     private func configureRefreshTimers() {
@@ -4249,7 +4259,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         button.image = showMenuBarIcon ? menuBarIconView.image : nil
         button.imagePosition = .imageLeading
         button.attributedTitle = title
+        button.title = title.string
         button.toolTip = snapshot.menuBarToolTip
+        button.isHidden = false
+        button.isEnabled = true
         statusItem.isVisible = true
 
         let iconWidth: CGFloat = showMenuBarIcon ? 16 : 0
