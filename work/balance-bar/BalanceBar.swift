@@ -1496,11 +1496,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.appearance = nil
         startAppearanceObserver()
         NSApp.setActivationPolicy(.regular)
-        showDashboard()
         statusMenu.delegate = self
         statusItem.menu = statusMenu
         configureStatusItem()
-        statusItem.button?.title = ""
+        showDashboard()
         startDatabaseWatchers()
         startWorkspaceActivationObserver()
         let version = Bundle.main.object(
@@ -3471,7 +3470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.9.1"
+        ) as? String ?? "0.9.2"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
@@ -3922,9 +3921,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
+        statusItem.autosaveName = "local.balancebar.statusItem"
+        statusItem.isVisible = true
         statusItem.length = 56
-        button.title = ""
-        button.image = nil
+        button.imagePosition = .imageLeading
+        button.imageScaling = .scaleProportionallyDown
         button.toolTip = "BalanceBar"
 
         if let iconURL = Bundle.main.url(forResource: "CodexIcon", withExtension: "svg"),
@@ -3951,15 +3952,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
         menuBarIconView.onImageChanged = { [weak self] image in
-            guard let self,
-                  self.dashboard?.isVisible == true,
-                  self.dashboardSection == .menuBar else { return }
-            self.dashboardMenuPreviewIcon.image = image
-            self.dashboardMenuPreviewIcon.contentTintColor = .labelColor
+            guard let self else { return }
+            self.statusItem.button?.image = self.showMenuBarIcon ? image : nil
+            if self.dashboard?.isVisible == true, self.dashboardSection == .menuBar {
+                self.dashboardMenuPreviewIcon.image = image
+                self.dashboardMenuPreviewIcon.contentTintColor = .labelColor
+            }
         }
         dashboardMenuPreviewIcon.image = menuBarIconView.image
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
-        menuBarIconView.imageScaling = .scaleProportionallyDown
         menuBarPrimaryLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         menuBarPrimaryLabel.textColor = .labelColor
         menuBarPrimaryLabel.lineBreakMode = .byClipping
@@ -3968,8 +3969,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // highlighted background. Keep the reset label high-contrast too.
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
-        [menuBarIconView, menuBarPrimaryLabel, menuBarSecondaryLabel].forEach { button.addSubview($0) }
-        layoutStatusItem(hasSecondary: false, isBalance: false)
+        updateNativeStatusButton(for: snapshot)
+        SwitchLog.write(
+            "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
+            category: "ui.status-item"
+        )
     }
 
     private func configureRefreshTimers() {
@@ -4214,43 +4218,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .contains(where: { name.contains($0) })
     }
 
-    private func layoutStatusItem(hasSecondary: Bool, isBalance: Bool) {
-        guard let button = statusItem.button else { return }
-        let width = button.bounds.width
-        let height = button.bounds.height
-        let iconWidth: CGFloat = showMenuBarIcon ? 16 : 0
-        let glyphSlack: CGFloat = 3
-        let secondaryWidth = hasSecondary ? menuBarSecondaryLabel.intrinsicContentSize.width : 0
-        let textWidth = showMenuBarAmount
-            ? ceil(max(menuBarPrimaryLabel.intrinsicContentSize.width, secondaryWidth)) + glyphSlack
-            : 0
-        let gap: CGFloat = showMenuBarIcon && showMenuBarAmount ? 3 : 0
-        let groupWidth = iconWidth + gap + textWidth
-        // The status item grows toward the left when reset text becomes wider.
-        // Anchor content to the configured leading inset instead of centering
-        // with floor(), whose odd-width rounding shifts the icon by one pixel.
-        let groupX = min(
-            max(1, floor(menuBarHorizontalPadding)),
-            max(1, width - groupWidth - 1)
-        )
-        let iconY = floor((height - 16) / 2)
-        menuBarIconView.frame = NSRect(x: groupX, y: iconY, width: 16, height: 16)
-        menuBarIconView.isHidden = !showMenuBarIcon
-        let textX = groupX + iconWidth + gap
-        let actualTextWidth = max(0, width - textX - max(1, groupX))
-        menuBarPrimaryLabel.isHidden = !showMenuBarAmount
-        if hasSecondary && showMenuBarAmount {
-            // The two text rows deliberately use a 2:1 height split.
-            // NSStatusBarButton is flipped: y = 0 is the visual top.
-            menuBarPrimaryLabel.frame = NSRect(x: textX, y: -2, width: actualTextWidth, height: 15)
-            menuBarSecondaryLabel.frame = NSRect(x: textX, y: 11, width: actualTextWidth, height: 11)
-        } else {
-            // A lone percentage sits best on the status item's geometric
-            // centerline; ±1 pt is visibly too high or too low.
-            let singleLineYOffset: CGFloat = isBalance ? 1 : 0
-            menuBarPrimaryLabel.frame = NSRect(x: textX, y: floor((height - 15) / 2) + singleLineYOffset, width: actualTextWidth, height: 15)
-            menuBarSecondaryLabel.frame = .zero
+    private func nativeStatusButtonTitle(for snapshot: Snapshot) -> NSAttributedString {
+        let title = NSMutableAttributedString(string: "")
+        guard showMenuBarAmount else { return title }
+
+        title.append(NSAttributedString(
+            string: snapshot.menuBarPrimary,
+            attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                .foregroundColor: NSColor.labelColor
+            ]
+        ))
+        if showMenuBarReset,
+           snapshot.kind == .official,
+           !snapshot.menuBarSecondary.isEmpty {
+            title.append(NSAttributedString(
+                string: "  \(snapshot.menuBarSecondary)",
+                attributes: [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
+                    .foregroundColor: NSColor.labelColor
+                ]
+            ))
         }
+        return title
+    }
+
+    private func updateNativeStatusButton(for snapshot: Snapshot) {
+        guard let button = statusItem.button else { return }
+        let title = nativeStatusButtonTitle(for: snapshot)
+        button.image = showMenuBarIcon ? menuBarIconView.image : nil
+        button.imagePosition = .imageLeading
+        button.attributedTitle = title
+        button.toolTip = snapshot.menuBarToolTip
+        statusItem.isVisible = true
+
+        let iconWidth: CGFloat = showMenuBarIcon ? 16 : 0
+        let imageTitleGap: CGFloat = showMenuBarIcon && !title.string.isEmpty ? 4 : 0
+        let titleWidth = ceil(title.size().width)
+        statusItem.length = max(
+            30,
+            ceil(iconWidth + imageTitleGap + titleWidth + (menuBarHorizontalPadding * 2))
+        )
+        button.layoutSubtreeIfNeeded()
     }
 
     private func updateStatusItem(for snapshot: Snapshot) {
@@ -4266,23 +4275,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // total width and macOS shifts the whole menu extra horizontally.
         menuBarSecondaryLabel.stringValue = reservedSecondary
         menuBarSecondaryLabel.isHidden = secondary.isEmpty
-        let glyphSlack: CGFloat = 3
-        let textWidth = showMenuBarAmount
-            ? ceil(max(menuBarPrimaryLabel.intrinsicContentSize.width, menuBarSecondaryLabel.intrinsicContentSize.width)) + glyphSlack
-            : 0
-        let groupWidth = (showMenuBarIcon ? 16 : 0) + (showMenuBarIcon && showMenuBarAmount ? 3 : 0) + textWidth
-        // NSStatusBarButton draws its selected capsule across the status-item
-        // width. Reserve explicit symmetric padding so long and negative
-        // balances never touch or disappear beneath the capsule edge.
-        statusItem.length = max(30, ceil(groupWidth + (menuBarHorizontalPadding * 2)))
-        statusItem.button?.layoutSubtreeIfNeeded()
-        layoutStatusItem(hasSecondary: !secondary.isEmpty, isBalance: snapshot.kind == .balance)
+        updateNativeStatusButton(for: snapshot)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.statusLayoutGeneration == layoutGeneration else { return }
-            self.statusItem.button?.layoutSubtreeIfNeeded()
-            self.layoutStatusItem(hasSecondary: !secondary.isEmpty, isBalance: snapshot.kind == .balance)
+            self.updateNativeStatusButton(for: snapshot)
         }
-        statusItem.button?.toolTip = snapshot.menuBarToolTip
         refreshDashboardMenuBarPage()
     }
 
@@ -5168,7 +5165,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         DispatchQueue.main.async {
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
-            self.statusItem.button?.title = ""
             self.updateStatusItem(for: next)
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
             let refreshDate = self.lastSuccessfulRefresh ?? next.date
