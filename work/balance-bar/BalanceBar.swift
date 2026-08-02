@@ -1425,6 +1425,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private static let menuBarSingleLineHeight: CGFloat = 18
     private static let menuBarSingleLineTextYOffset: CGFloat = 0.25
     private static let menuBarSingleLineIconYOffset: CGFloat = 0.25
+    // The official two-line row still renders the glyph about 0.75pt high
+    // after sharing the API height; keep this optical correction official-only.
+    private static let menuBarOfficialIconDownshift: CGFloat = 0.75
     private var statusItem: NSStatusItem!
     private let statusMenu = NSMenu()
     private var statusItemAttachmentCheckScheduled = false
@@ -4701,11 +4704,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
-        let iconYOffset = (snapshot.kind == .balance || snapshot.kind == .official)
-            && showMenuBarIcon
-            && showMenuBarAmount
-            ? Self.menuBarSingleLineIconYOffset
-            : 0
+        let iconYOffset: CGFloat
+        if snapshot.kind == .official, showMenuBarIcon, showMenuBarAmount {
+            iconYOffset = Self.menuBarSingleLineIconYOffset
+                - Self.menuBarOfficialIconDownshift
+        } else if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+            iconYOffset = Self.menuBarSingleLineIconYOffset
+        } else {
+            iconYOffset = 0
+        }
         menuBarIconView.frame = NSRect(
             x: 0,
             y: iconYOffset,
