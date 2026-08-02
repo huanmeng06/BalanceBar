@@ -96,108 +96,16 @@ private final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-private final class DashboardTrafficLightsSymbolOverlay: NSView {
-    var showsSymbols = false {
-        didSet {
-            guard showsSymbols != oldValue else { return }
-            needsDisplay = true
-        }
-    }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard showsSymbols,
-              let trafficLights = superview as? DashboardTrafficLightsView
-        else { return }
-
-        let color = NSColor.labelColor.withAlphaComponent(0.75)
-        color.setStroke()
-        let buttons = trafficLights.buttons
-        for (index, button) in buttons.enumerated() {
-            let buttonRect = convert(button.bounds, from: button)
-            let center = NSPoint(x: buttonRect.midX, y: buttonRect.midY)
-            let path = NSBezierPath()
-            path.lineWidth = 1.2
-            path.lineCapStyle = .round
-
-            switch index {
-            case 0:
-                path.move(to: NSPoint(x: center.x - 2.6, y: center.y - 2.6))
-                path.line(to: NSPoint(x: center.x + 2.6, y: center.y + 2.6))
-                path.move(to: NSPoint(x: center.x - 2.6, y: center.y + 2.6))
-                path.line(to: NSPoint(x: center.x + 2.6, y: center.y - 2.6))
-            case 1:
-                path.move(to: NSPoint(x: center.x - 3.0, y: center.y))
-                path.line(to: NSPoint(x: center.x + 3.0, y: center.y))
-            default:
-                drawZoomGlyph(in: path, centeredAt: center)
-            }
-            path.stroke()
-        }
-    }
-
-    private func drawZoomGlyph(in path: NSBezierPath, centeredAt center: NSPoint) {
-        let edge: CGFloat = 3.1
-        let shoulder: CGFloat = 1.1
-
-        path.move(to: NSPoint(x: center.x - shoulder, y: center.y - shoulder))
-        path.line(to: NSPoint(x: center.x - edge, y: center.y - edge))
-        path.line(to: NSPoint(x: center.x - edge, y: center.y - shoulder))
-        path.move(to: NSPoint(x: center.x - edge, y: center.y - edge))
-        path.line(to: NSPoint(x: center.x - shoulder, y: center.y - edge))
-
-        path.move(to: NSPoint(x: center.x + shoulder, y: center.y + shoulder))
-        path.line(to: NSPoint(x: center.x + edge, y: center.y + edge))
-        path.line(to: NSPoint(x: center.x + edge, y: center.y + shoulder))
-        path.move(to: NSPoint(x: center.x + edge, y: center.y + edge))
-        path.line(to: NSPoint(x: center.x + shoulder, y: center.y + edge))
-    }
-}
-
 private final class DashboardTrafficLightsView: NSView {
     private let buttonStack: NSStackView
-    private let symbolOverlay = DashboardTrafficLightsSymbolOverlay()
+    private let buttons: [NSButton]
     private var groupTrackingArea: NSTrackingArea?
     private var isGroupHovered = false
 
-    fileprivate var buttons: [NSButton] {
-        buttonStack.arrangedSubviews.compactMap { $0 as? NSButton }
-    }
-
-    override var intrinsicContentSize: NSSize {
-        buttonStack.fittingSize
-    }
-
-    override init(frame frameRect: NSRect) {
+    init(buttons: [NSButton]) {
+        self.buttons = buttons
         buttonStack = NSStackView()
-        super.init(frame: frameRect)
-        configureButtonStack()
-        configureSymbolOverlay()
-    }
-
-    convenience init(buttons: [NSButton]) {
-        self.init(frame: .zero)
-        buttons.forEach { buttonStack.addArrangedSubview($0) }
-        invalidateIntrinsicContentSize()
-    }
-
-    required init?(coder: NSCoder) {
-        buttonStack = NSStackView()
-        super.init(coder: coder)
-        configureButtonStack()
-        configureSymbolOverlay()
-    }
-
-    private func configureButtonStack() {
+        super.init(frame: .zero)
         buttonStack.orientation = .horizontal
         buttonStack.alignment = .centerY
         buttonStack.spacing = 9
@@ -209,19 +117,14 @@ private final class DashboardTrafficLightsView: NSView {
             buttonStack.topAnchor.constraint(equalTo: topAnchor),
             buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+        buttons.forEach { button in
+            button.isHidden = false
+            buttonStack.addArrangedSubview(button)
+        }
     }
 
-    private func configureSymbolOverlay() {
-        symbolOverlay.wantsLayer = true
-        symbolOverlay.layer?.zPosition = 1
-        symbolOverlay.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(symbolOverlay, positioned: .above, relativeTo: buttonStack)
-        NSLayoutConstraint.activate([
-            symbolOverlay.leadingAnchor.constraint(equalTo: leadingAnchor),
-            symbolOverlay.trailingAnchor.constraint(equalTo: trailingAnchor),
-            symbolOverlay.topAnchor.constraint(equalTo: topAnchor),
-            symbolOverlay.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
+    override var intrinsicContentSize: NSSize {
+        buttonStack.fittingSize
     }
 
     override func updateTrackingAreas() {
@@ -242,11 +145,11 @@ private final class DashboardTrafficLightsView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        setGroupHovered(true)
+        setGroupHovered(true, event: event)
     }
 
     override func mouseExited(with event: NSEvent) {
-        setGroupHovered(false)
+        setGroupHovered(false, event: event)
     }
 
     override func viewDidMoveToWindow() {
@@ -256,26 +159,40 @@ private final class DashboardTrafficLightsView: NSView {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil {
-            setGroupHovered(false)
+            setGroupHovered(false, event: nil)
         }
         super.viewWillMove(toWindow: newWindow)
     }
 
     private func synchronizeHoverState() {
         guard let window else {
-            setGroupHovered(false)
+            setGroupHovered(false, event: nil)
             return
         }
 
         let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
         let pointInView = convert(pointInWindow, from: nil)
-        setGroupHovered(bounds.contains(pointInView))
+        setGroupHovered(bounds.contains(pointInView), event: nil)
     }
 
-    private func setGroupHovered(_ hovered: Bool) {
+    private func setGroupHovered(_ hovered: Bool, event: NSEvent?) {
         guard isGroupHovered != hovered else { return }
         isGroupHovered = hovered
-        symbolOverlay.showsSymbols = hovered
+        guard let event else { return }
+        buttons.forEach { button in
+            guard let cell = button.cell as? NSButtonCell else { return }
+            if hovered {
+                cell.mouseEntered(with: event)
+            } else {
+                cell.mouseExited(with: event)
+            }
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        buttons = []
+        buttonStack = NSStackView()
+        super.init(coder: coder)
     }
 
     deinit {
@@ -2671,9 +2588,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.delegate = self
 
         installDashboardLayout(in: window)
-        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].forEach {
-            window.standardWindowButton($0)?.isHidden = true
-        }
         dashboard = window
         installDashboardMouseMonitor()
         showDashboardSection(.general)
@@ -2727,7 +2641,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         dashboardContentHost.removeFromSuperview()
         dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-        let sidebar = makeDashboardSidebar()
+        let trafficLightButtons = [
+            NSWindow.ButtonType.closeButton,
+            .miniaturizeButton,
+            .zoomButton
+        ].compactMap { window.standardWindowButton($0) }
+        trafficLightButtons.forEach {
+            $0.isHidden = true
+            $0.removeFromSuperview()
+        }
+        let sidebar = makeDashboardSidebar(trafficLightButtons: trafficLightButtons)
         let contentSurface = NSView()
         contentSurface.wantsLayer = true
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -2772,7 +2695,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func makeDashboardSidebar() -> NSView {
+    private func makeDashboardSidebar(trafficLightButtons: [NSButton]) -> NSView {
         let sidebar = NSView()
 
         let panelShadow = NSView()
@@ -2846,7 +2769,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .advanced))
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
 
-        let trafficLights = makeDashboardTrafficLights()
+        let trafficLights = DashboardTrafficLightsView(buttons: trafficLightButtons)
         navigation.translatesAutoresizingMaskIntoConstraints = false
         trafficLights.translatesAutoresizingMaskIntoConstraints = false
         panelContent.addSubview(trafficLights)
@@ -2867,31 +2790,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             navigation.trailingAnchor.constraint(equalTo: panelContent.trailingAnchor, constant: -14)
         ])
         return sidebar
-    }
-
-    private func makeDashboardTrafficLights() -> DashboardTrafficLightsView {
-        let close = NSWindow.standardWindowButton(.closeButton, for: .titled)!
-        close.target = self
-        close.action = #selector(closeDashboardWindow)
-        let minimize = NSWindow.standardWindowButton(.miniaturizeButton, for: .titled)!
-        minimize.target = self
-        minimize.action = #selector(minimizeDashboardWindow)
-        let zoom = NSWindow.standardWindowButton(.zoomButton, for: .titled)!
-        zoom.target = self
-        zoom.action = #selector(zoomDashboardWindow)
-        return DashboardTrafficLightsView(buttons: [close, minimize, zoom])
-    }
-
-    @objc private func closeDashboardWindow() {
-        dashboard?.performClose(nil)
-    }
-
-    @objc private func minimizeDashboardWindow() {
-        dashboard?.miniaturize(nil)
-    }
-
-    @objc private func zoomDashboardWindow() {
-        dashboard?.zoom(nil)
     }
 
     private func makeDashboardSidebarGroupTitle(_ title: String) -> NSTextField {
