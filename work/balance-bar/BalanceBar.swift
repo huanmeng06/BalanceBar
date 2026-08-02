@@ -4701,9 +4701,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
-        let iconYOffset = (snapshot.kind == .balance || snapshot.kind == .official)
-            && showMenuBarIcon
-            && showMenuBarAmount
+        let iconYOffset = snapshot.kind == .balance && showMenuBarIcon && showMenuBarAmount
             ? Self.menuBarSingleLineIconYOffset
             : 0
         menuBarIconView.frame = NSRect(
