@@ -96,6 +96,93 @@ private final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+private final class DashboardTrafficLightsView: NSView {
+    private let buttonStack: NSStackView
+    private let buttons: [NSButton]
+    private var groupTrackingArea: NSTrackingArea?
+
+    init(buttons: [NSButton]) {
+        self.buttons = buttons
+        buttonStack = NSStackView()
+        super.init(frame: .zero)
+        buttonStack.orientation = .horizontal
+        buttonStack.alignment = .centerY
+        buttonStack.spacing = 9
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(buttonStack)
+        NSLayoutConstraint.activate([
+            buttonStack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            buttonStack.topAnchor.constraint(equalTo: topAnchor),
+            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+        buttons.forEach { buttonStack.addArrangedSubview($0) }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        buttonStack.fittingSize
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let groupTrackingArea {
+            removeTrackingArea(groupTrackingArea)
+        }
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        groupTrackingArea = trackingArea
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea === groupTrackingArea else { return }
+        setGroupHovered(true, event: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard event.trackingArea === groupTrackingArea else { return }
+        setGroupHovered(true, event: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea === groupTrackingArea else { return }
+        setGroupHovered(false, event: event)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.acceptsMouseMovedEvents = true
+    }
+
+    private func setGroupHovered(_ hovered: Bool, event: NSEvent) {
+        buttons.forEach { button in
+            guard let cell = button.cell as? NSButtonCell else { return }
+            if hovered {
+                cell.mouseEntered(with: event)
+            } else {
+                cell.mouseExited(with: event)
+            }
+            button.needsDisplay = true
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        buttons = []
+        buttonStack = NSStackView()
+        super.init(coder: coder)
+    }
+
+    deinit {
+        if let groupTrackingArea {
+            removeTrackingArea(groupTrackingArea)
+        }
+    }
+}
+
 private final class MenuBarContentView: NSView {
     override var isFlipped: Bool { true }
 }
@@ -2482,7 +2569,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.delegate = self
 
         installDashboardLayout(in: window)
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].forEach {
+            window.standardWindowButton($0)?.isHidden = true
+        }
         dashboard = window
         installDashboardMouseMonitor()
         showDashboardSection(.general)
@@ -2655,7 +2744,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .advanced))
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
 
+        let trafficLights = makeDashboardTrafficLights()
         navigation.translatesAutoresizingMaskIntoConstraints = false
+        trafficLights.translatesAutoresizingMaskIntoConstraints = false
+        panelContent.addSubview(trafficLights)
         panelContent.addSubview(navigation)
         NSLayoutConstraint.activate([
             panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 14),
@@ -2666,11 +2758,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
+            trafficLights.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 11),
+            trafficLights.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 11),
             navigation.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 58),
             navigation.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
             navigation.trailingAnchor.constraint(equalTo: panelContent.trailingAnchor, constant: -14)
         ])
         return sidebar
+    }
+
+    private func makeDashboardTrafficLights() -> DashboardTrafficLightsView {
+        let close = NSWindow.standardWindowButton(.closeButton, for: .titled)!
+        close.target = self
+        close.action = #selector(closeDashboardWindow)
+
+        let minimize = NSWindow.standardWindowButton(.miniaturizeButton, for: .titled)!
+        minimize.target = self
+        minimize.action = #selector(minimizeDashboardWindow)
+
+        let zoom = NSWindow.standardWindowButton(.zoomButton, for: .titled)!
+        zoom.target = self
+        zoom.action = #selector(zoomDashboardWindow)
+        zoom.isEnabled = false
+
+        return DashboardTrafficLightsView(buttons: [close, minimize, zoom])
+    }
+
+    @objc private func closeDashboardWindow() {
+        dashboard?.performClose(nil)
+    }
+
+    @objc private func minimizeDashboardWindow() {
+        dashboard?.miniaturize(nil)
+    }
+
+    @objc private func zoomDashboardWindow() {
+        dashboard?.zoom(nil)
     }
 
     private func makeDashboardSidebarGroupTitle(_ title: String) -> NSTextField {
