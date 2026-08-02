@@ -131,7 +131,8 @@ private struct MenuBarGeometry {
         iconTextSpacing: CGFloat,
         textRowSpacing: CGFloat,
         textWidthSlack: CGFloat,
-        singleLineHeight: CGFloat
+        singleLineHeight: CGFloat,
+        useSingleLineHeight: Bool = false
     ) {
         iconWidth = showIcon ? iconSlotWidth : 0
         gap = showIcon && showAmount ? iconTextSpacing : 0
@@ -142,18 +143,9 @@ private struct MenuBarGeometry {
         secondaryHeight = hasSecondary ? ceil(secondarySize.height) : 0
         textHeight = primaryHeight + (hasSecondary ? textRowSpacing + secondaryHeight : 0)
         contentWidth = iconWidth + gap + textWidth
-        contentHeight = isBalance && showAmount
+        contentHeight = (isBalance || useSingleLineHeight) && showAmount
             ? singleLineHeight
             : ceil(max(iconWidth, textHeight))
-    }
-
-    func iconOriginY(buttonHeight: CGFloat, iconViewYOffset: CGFloat) -> CGFloat {
-        let contentY = floor((buttonHeight - contentHeight) / 2)
-        let iconSlotY = floor(max(0, (contentHeight - iconWidth) / 2))
-        // The content stack is flipped, but menuBarIconSlot is a default
-        // non-flipped NSView. Positive Y in the icon view therefore moves its
-        // visual origin upward inside the slot.
-        return contentY + iconSlotY - iconViewYOffset
     }
 }
 
@@ -1426,8 +1418,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private static let menuBarIconTextSpacing: CGFloat = 6
     private static let menuBarTextRowSpacing: CGFloat = -2
     private static let menuBarTextWidthSlack: CGFloat = 5
-    // Fixed API single-line baseline. Keep these independent from the
-    // official two-line layout so provider switches cannot alter the result.
+    // Shared single-line content height used by the API and the official
+    // real-menu icon baseline.
     private static let menuBarSingleLineHeight: CGFloat = 18
     private static let menuBarSingleLineTextYOffset: CGFloat = 0.25
     private static let menuBarSingleLineIconYOffset: CGFloat = 0.25
@@ -4666,7 +4658,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
             textWidthSlack: Self.menuBarTextWidthSlack,
-            singleLineHeight: Self.menuBarSingleLineHeight
+            singleLineHeight: Self.menuBarSingleLineHeight,
+            useSingleLineHeight: snapshot.kind == .official
         )
         applyMenuBarTextLayout(
             container: menuBarTextStack,
@@ -4686,7 +4679,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
         let contentY = floor((buttonHeight - geometry.contentHeight) / 2)
-        let centeredIconSlotY = floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2))
+        let iconSlotY = floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2))
         menuBarContentStack.frame = NSRect(
             x: floor(max(0, (buttonWidth - geometry.contentWidth) / 2)),
             y: contentY,
@@ -4694,47 +4687,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             height: geometry.contentHeight
         )
 
-        let apiIconViewYOffset = showMenuBarIcon && showMenuBarAmount
-            ? Self.menuBarSingleLineIconYOffset
-            : 0
-        let iconSlotY: CGFloat
-        let iconYOffset: CGFloat
-        if snapshot.kind == .official, showMenuBarIcon {
-            // The official reset row changes the outer stack Y and its natural
-            // centered slot Y. Recompute the accepted API visual frame, then
-            // place only the official slot at that visual Y inside this
-            // flipped content stack. The API slot and icon frame stay intact.
-            let apiGeometry = MenuBarGeometry(
-                primarySize: menuBarPrimaryLabel.intrinsicContentSize,
-                secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
-                showIcon: showMenuBarIcon,
-                showAmount: showMenuBarAmount,
-                hasSecondary: false,
-                isBalance: true,
-                iconSlotWidth: Self.menuBarIconSlotWidth,
-                iconTextSpacing: Self.menuBarIconTextSpacing,
-                textRowSpacing: Self.menuBarTextRowSpacing,
-                textWidthSlack: Self.menuBarTextWidthSlack,
-                singleLineHeight: Self.menuBarSingleLineHeight
-            )
-            let apiIconOriginY = apiGeometry.iconOriginY(
-                buttonHeight: buttonHeight,
-                iconViewYOffset: apiIconViewYOffset
-            )
-            // menuBarIconSlot is a child of the flipped content stack, so its
-            // slot origin increases downward in the visual coordinate system.
-            iconSlotY = apiIconOriginY - contentY
-            iconYOffset = 0
-        } else {
-            iconSlotY = centeredIconSlotY
-            iconYOffset = snapshot.kind == .balance ? apiIconViewYOffset : 0
-        }
         menuBarIconSlot.frame = NSRect(
             x: 0,
             y: iconSlotY,
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
+        let iconYOffset = snapshot.kind == .balance && showMenuBarIcon && showMenuBarAmount
+            ? Self.menuBarSingleLineIconYOffset
+            : 0
         menuBarIconView.frame = NSRect(
             x: 0,
             y: iconYOffset,
