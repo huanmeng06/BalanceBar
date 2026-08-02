@@ -96,181 +96,6 @@ private final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-private final class DashboardTrafficLightsView: NSView {
-    private let buttonStack: NSStackView
-    private let buttons: [NSButton]
-    private var groupTrackingArea: NSTrackingArea?
-    private var buttonTrackingAreas: [(button: NSButton, area: NSTrackingArea)] = []
-    private var isGroupHovered = false
-
-    init(buttons: [NSButton]) {
-        self.buttons = buttons
-        buttonStack = NSStackView()
-        super.init(frame: .zero)
-        buttonStack.orientation = .horizontal
-        buttonStack.alignment = .centerY
-        buttonStack.spacing = 9
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(buttonStack)
-        NSLayoutConstraint.activate([
-            buttonStack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            buttonStack.topAnchor.constraint(equalTo: topAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        buttons.forEach { button in
-            button.isHidden = false
-            button.translatesAutoresizingMaskIntoConstraints = false
-            buttonStack.addArrangedSubview(button)
-        }
-    }
-
-    override var intrinsicContentSize: NSSize {
-        buttonStack.fittingSize
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let groupTrackingArea {
-            removeTrackingArea(groupTrackingArea)
-        }
-        buttonTrackingAreas.forEach { tracking in
-            tracking.button.removeTrackingArea(tracking.area)
-        }
-        buttonTrackingAreas.removeAll()
-
-        let trackingArea = NSTrackingArea(
-            rect: hoverRect,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(trackingArea)
-        groupTrackingArea = trackingArea
-        buttons.forEach { button in
-            let trackingArea = NSTrackingArea(
-                rect: button.bounds,
-                options: [.mouseEnteredAndExited, .activeAlways],
-                owner: button,
-                userInfo: nil
-            )
-            button.addTrackingArea(trackingArea)
-            buttonTrackingAreas.append((button: button, area: trackingArea))
-        }
-        synchronizeHoverState()
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        guard event.trackingArea === groupTrackingArea else { return }
-        setGroupHovered(true, event: event)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        if event.trackingArea === groupTrackingArea {
-            setGroupHovered(false, event: event)
-        }
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        guard event.trackingArea === groupTrackingArea else { return }
-        setGroupHovered(true, event: event)
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        window?.acceptsMouseMovedEvents = true
-        buttons.forEach { $0.updateTrackingAreas() }
-        synchronizeHoverState()
-    }
-
-    override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil {
-            setGroupHovered(false, event: nil)
-        }
-        super.viewWillMove(toWindow: newWindow)
-    }
-
-    fileprivate func restoreButtonLayout() {
-        let arrangedButtons = buttonStack.arrangedSubviews
-        let needsReattach = buttons.contains { button in
-            button.superview !== buttonStack || !arrangedButtons.contains(where: { $0 === button })
-        }
-        if needsReattach {
-            buttonStack.edgeInsets = NSEdgeInsets(top: 14, left: 11, bottom: 0, right: 0)
-            buttons.forEach { button in
-                if buttonStack.arrangedSubviews.contains(where: { $0 === button }) {
-                    buttonStack.removeArrangedSubview(button)
-                }
-                button.removeFromSuperview()
-            }
-            buttons.forEach { button in
-                button.isHidden = false
-                button.translatesAutoresizingMaskIntoConstraints = false
-                buttonStack.addArrangedSubview(button)
-            }
-            invalidateIntrinsicContentSize()
-        }
-        buttonStack.layoutSubtreeIfNeeded()
-        buttons.forEach { $0.updateTrackingAreas() }
-        needsLayout = true
-        updateTrackingAreas()
-        synchronizeHoverState()
-    }
-
-    private func synchronizeHoverState() {
-        guard let window else {
-            setGroupHovered(false, event: nil)
-            return
-        }
-
-        let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
-        let pointInView = convert(pointInWindow, from: nil)
-        setGroupHovered(hoverRect.contains(pointInView), event: nil)
-    }
-
-    private var hoverRect: NSRect {
-        let buttonRects = buttons.compactMap { button -> NSRect? in
-            guard button.superview === buttonStack else { return nil }
-            return convert(button.bounds, from: button)
-        }
-        guard let first = buttonRects.first else {
-            return bounds.insetBy(dx: -6, dy: -6)
-        }
-        let groupRect = buttonRects.dropFirst().reduce(first) { $0.union($1) }
-        return groupRect.insetBy(dx: -6, dy: -6)
-    }
-
-    private func setGroupHovered(_ hovered: Bool, event: NSEvent?) {
-        if let event {
-            buttons.forEach { button in
-                guard let cell = button.cell as? NSButtonCell else { return }
-                if hovered {
-                    cell.mouseEntered(with: event)
-                } else {
-                    cell.mouseExited(with: event)
-                }
-                button.needsDisplay = true
-            }
-        }
-        isGroupHovered = hovered
-    }
-
-    required init?(coder: NSCoder) {
-        buttons = []
-        buttonStack = NSStackView()
-        super.init(coder: coder)
-    }
-
-    deinit {
-        if let groupTrackingArea {
-            removeTrackingArea(groupTrackingArea)
-        }
-        buttonTrackingAreas.forEach { tracking in
-            tracking.button.removeTrackingArea(tracking.area)
-        }
-    }
-}
-
 private final class MenuBarContentView: NSView {
     override var isFlipped: Bool { true }
 }
@@ -1647,7 +1472,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var claudeIconImage: NSImage?
     private var claudeThinkingAnimator: ClaudeThinkingAnimator?
     private var dashboard: NSWindow?
-    private weak var dashboardTrafficLightsView: DashboardTrafficLightsView?
     private var dashboardMouseMonitor: Any?
     private var dashboardNavigationButtons: [DashboardSection: NSButton] = [:]
     private var dashboardNavigationRows: [DashboardSection: DashboardNavigationRowView] = [:]
@@ -1887,50 +1711,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 category: "ui.status-item"
             )
         }
-    }
-
-    func windowDidResize(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === dashboard else { return }
-        removeDashboardTitlebarTrafficLightTracking(in: window)
-        disableDashboardZoomButton(in: window)
-        dashboardTrafficLightsView?.restoreButtonLayout()
-    }
-
-    func windowDidEndLiveResize(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === dashboard else { return }
-        removeDashboardTitlebarTrafficLightTracking(in: window)
-        disableDashboardZoomButton(in: window)
-        dashboardTrafficLightsView?.restoreButtonLayout()
-    }
-
-    private func removeDashboardTitlebarTrafficLightTracking(in window: NSWindow) {
-        let buttons = [
-            NSWindow.ButtonType.closeButton,
-            .miniaturizeButton,
-            .zoomButton
-        ].compactMap { window.standardWindowButton($0) }
-        buttons.forEach { button in
-            button.trackingAreas.forEach { button.removeTrackingArea($0) }
-        }
-
-        guard let frameView = window.contentView?.superview else { return }
-        frameView.trackingAreas
-            .filter { area in
-                let isCompactTitlebarArea = area.options.contains(.mouseEnteredAndExited) &&
-                    area.rect.width <= 180 && area.rect.height <= 100
-                let isWindowWideMouseMovedArea = area.options.contains(.mouseMoved) &&
-                    area.rect.width >= frameView.bounds.width - 8 &&
-                    area.rect.height >= frameView.bounds.height - 8
-                return isCompactTitlebarArea || isWindowWideMouseMovedArea
-            }
-            .forEach { frameView.removeTrackingArea($0) }
-    }
-
-    private func disableDashboardZoomButton(in window: NSWindow) {
-        guard let zoomButton = window.standardWindowButton(.zoomButton) else { return }
-        zoomButton.isEnabled = false
-        zoomButton.isHidden = true
-        zoomButton.removeFromSuperview()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -2702,6 +2482,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.delegate = self
 
         installDashboardLayout(in: window)
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
         dashboard = window
         installDashboardMouseMonitor()
         showDashboardSection(.general)
@@ -2755,18 +2536,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         dashboardContentHost.removeFromSuperview()
         dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-        let trafficLightButtons = [
-            NSWindow.ButtonType.closeButton,
-            .miniaturizeButton,
-            .zoomButton
-        ].compactMap { window.standardWindowButton($0) }
-        removeDashboardTitlebarTrafficLightTracking(in: window)
-        disableDashboardZoomButton(in: window)
-        trafficLightButtons.forEach {
-            $0.isHidden = true
-            $0.removeFromSuperview()
-        }
-        let sidebar = makeDashboardSidebar(trafficLightButtons: trafficLightButtons)
+        let sidebar = makeDashboardSidebar()
         let contentSurface = NSView()
         contentSurface.wantsLayer = true
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -2811,7 +2581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func makeDashboardSidebar(trafficLightButtons: [NSButton]) -> NSView {
+    private func makeDashboardSidebar() -> NSView {
         let sidebar = NSView()
 
         let panelShadow = NSView()
@@ -2885,11 +2655,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .advanced))
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
 
-        let trafficLights = DashboardTrafficLightsView(buttons: trafficLightButtons)
-        dashboardTrafficLightsView = trafficLights
         navigation.translatesAutoresizingMaskIntoConstraints = false
-        trafficLights.translatesAutoresizingMaskIntoConstraints = false
-        panelContent.addSubview(trafficLights)
         panelContent.addSubview(navigation)
         NSLayoutConstraint.activate([
             panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 14),
@@ -2900,8 +2666,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            trafficLights.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 14),
-            trafficLights.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
             navigation.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 58),
             navigation.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
             navigation.trailingAnchor.constraint(equalTo: panelContent.trailingAnchor, constant: -14)
