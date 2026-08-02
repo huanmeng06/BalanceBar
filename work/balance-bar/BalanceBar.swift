@@ -141,7 +141,7 @@ private final class DashboardTrafficLightsView: NSView {
 
         let trackingArea = NSTrackingArea(
             rect: hoverRect,
-            options: [.mouseEnteredAndExited, .activeAlways],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
             owner: self,
             userInfo: nil
         )
@@ -169,6 +169,11 @@ private final class DashboardTrafficLightsView: NSView {
         if event.trackingArea === groupTrackingArea {
             setGroupHovered(false, event: event)
         }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard event.trackingArea === groupTrackingArea else { return }
+        setGroupHovered(true, event: event)
     }
 
     override func viewDidMoveToWindow() {
