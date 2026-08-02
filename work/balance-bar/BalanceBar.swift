@@ -2658,7 +2658,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.translatesAutoresizingMaskIntoConstraints = false
         panelContent.addSubview(navigation)
         NSLayoutConstraint.activate([
-            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor),
+            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 8),
             panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 12),
             panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -8),
             panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -14),
