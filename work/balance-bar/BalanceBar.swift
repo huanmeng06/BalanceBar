@@ -100,6 +100,7 @@ private final class DashboardTrafficLightsView: NSView {
     private let buttonStack: NSStackView
     private let buttons: [NSButton]
     private var groupTrackingArea: NSTrackingArea?
+    private var buttonTrackingAreas: [(button: NSButton, area: NSTrackingArea)] = []
     private var isGroupHovered = false
 
     init(buttons: [NSButton]) {
@@ -133,6 +134,10 @@ private final class DashboardTrafficLightsView: NSView {
         if let groupTrackingArea {
             removeTrackingArea(groupTrackingArea)
         }
+        buttonTrackingAreas.forEach { tracking in
+            tracking.button.removeTrackingArea(tracking.area)
+        }
+        buttonTrackingAreas.removeAll()
 
         let trackingArea = NSTrackingArea(
             rect: hoverRect,
@@ -142,15 +147,30 @@ private final class DashboardTrafficLightsView: NSView {
         )
         addTrackingArea(trackingArea)
         groupTrackingArea = trackingArea
+        buttons.forEach { button in
+            let trackingArea = NSTrackingArea(
+                rect: button.bounds,
+                options: [.mouseEnteredAndExited, .activeAlways],
+                owner: self,
+                userInfo: nil
+            )
+            button.addTrackingArea(trackingArea)
+            buttonTrackingAreas.append((button: button, area: trackingArea))
+        }
         synchronizeHoverState()
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea === groupTrackingArea || isButtonTrackingArea(event.trackingArea) else { return }
         setGroupHovered(true, event: event)
     }
 
     override func mouseExited(with event: NSEvent) {
-        setGroupHovered(false, event: event)
+        if event.trackingArea === groupTrackingArea {
+            setGroupHovered(false, event: event)
+        } else if isButtonTrackingArea(event.trackingArea) {
+            synchronizeHoverState()
+        }
     }
 
     override func viewDidMoveToWindow() {
@@ -205,6 +225,11 @@ private final class DashboardTrafficLightsView: NSView {
         bounds.insetBy(dx: -6, dy: -6)
     }
 
+    private func isButtonTrackingArea(_ trackingArea: NSTrackingArea?) -> Bool {
+        guard let trackingArea else { return false }
+        return buttonTrackingAreas.contains { $0.area === trackingArea }
+    }
+
     private func setGroupHovered(_ hovered: Bool, event: NSEvent?) {
         if let event {
             buttons.forEach { button in
@@ -214,6 +239,7 @@ private final class DashboardTrafficLightsView: NSView {
                 } else {
                     cell.mouseExited(with: event)
                 }
+                button.needsDisplay = true
             }
         }
         isGroupHovered = hovered
@@ -228,6 +254,9 @@ private final class DashboardTrafficLightsView: NSView {
     deinit {
         if let groupTrackingArea {
             removeTrackingArea(groupTrackingArea)
+        }
+        buttonTrackingAreas.forEach { tracking in
+            tracking.button.removeTrackingArea(tracking.area)
         }
     }
 }
@@ -1852,12 +1881,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func windowDidResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        hideDashboardZoomButton(in: window)
         dashboardTrafficLightsView?.restoreButtonLayout()
     }
 
     func windowDidEndLiveResize(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        hideDashboardZoomButton(in: window)
         dashboardTrafficLightsView?.restoreButtonLayout()
+    }
+
+    private func hideDashboardZoomButton(in window: NSWindow) {
+        guard let zoomButton = window.standardWindowButton(.zoomButton) else { return }
+        zoomButton.isHidden = true
+        zoomButton.removeFromSuperview()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -2682,10 +2719,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         dashboardContentHost.removeFromSuperview()
         dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
+        hideDashboardZoomButton(in: window)
         let trafficLightButtons = [
             NSWindow.ButtonType.closeButton,
-            .miniaturizeButton,
-            .zoomButton
+            .miniaturizeButton
         ].compactMap { window.standardWindowButton($0) }
         trafficLightButtons.forEach {
             $0.isHidden = true
