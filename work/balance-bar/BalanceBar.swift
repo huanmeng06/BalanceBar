@@ -146,12 +146,6 @@ private struct MenuBarGeometry {
             ? singleLineHeight
             : ceil(max(iconWidth, textHeight))
     }
-
-    func iconOriginY(buttonHeight: CGFloat, iconViewYOffset: CGFloat) -> CGFloat {
-        let contentY = floor((buttonHeight - contentHeight) / 2)
-        let iconSlotY = floor(max(0, (contentHeight - iconWidth) / 2))
-        return contentY + iconSlotY + iconViewYOffset
-    }
 }
 
 private enum StatusLinkField {
@@ -4682,58 +4676,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
-        let contentY = floor((buttonHeight - geometry.contentHeight) / 2)
-        let iconSlotY = floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2))
         menuBarContentStack.frame = NSRect(
             x: floor(max(0, (buttonWidth - geometry.contentWidth) / 2)),
-            y: contentY,
+            y: floor((buttonHeight - geometry.contentHeight) / 2),
             width: geometry.contentWidth,
             height: geometry.contentHeight
         )
 
         menuBarIconSlot.frame = NSRect(
             x: 0,
-            y: iconSlotY,
+            y: floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2)),
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
-        let apiIconViewYOffset = showMenuBarIcon && showMenuBarAmount
+        let iconYOffset = snapshot.kind == .balance && showMenuBarIcon && showMenuBarAmount
             ? Self.menuBarSingleLineIconYOffset
             : 0
-        let iconYOffset: CGFloat
-        if snapshot.kind == .official, showMenuBarIcon {
-            // The official reset row changes both the outer stack Y and the
-            // icon-slot Y. Recompute the accepted API frame through those same
-            // rounded coordinates, then apply only the resulting delta to the
-            // official icon view. Positive Y moves down in this flipped view;
-            // the API's existing optical offset remains the baseline.
-            let apiGeometry = MenuBarGeometry(
-                primarySize: menuBarPrimaryLabel.intrinsicContentSize,
-                secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
-                showIcon: showMenuBarIcon,
-                showAmount: showMenuBarAmount,
-                hasSecondary: false,
-                isBalance: true,
-                iconSlotWidth: Self.menuBarIconSlotWidth,
-                iconTextSpacing: Self.menuBarIconTextSpacing,
-                textRowSpacing: Self.menuBarTextRowSpacing,
-                textWidthSlack: Self.menuBarTextWidthSlack,
-                singleLineHeight: Self.menuBarSingleLineHeight
-            )
-            let apiIconOriginY = apiGeometry.iconOriginY(
-                buttonHeight: buttonHeight,
-                iconViewYOffset: apiIconViewYOffset
-            )
-            let officialIconOriginY = geometry.iconOriginY(
-                buttonHeight: buttonHeight,
-                iconViewYOffset: 0
-            )
-            iconYOffset = apiIconOriginY - officialIconOriginY
-        } else if snapshot.kind == .balance {
-            iconYOffset = apiIconViewYOffset
-        } else {
-            iconYOffset = 0
-        }
         menuBarIconView.frame = NSRect(
             x: 0,
             y: iconYOffset,
