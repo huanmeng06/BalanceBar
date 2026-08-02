@@ -119,6 +119,7 @@ private final class DashboardTrafficLightsView: NSView {
         ])
         buttons.forEach { button in
             button.isHidden = false
+            button.translatesAutoresizingMaskIntoConstraints = false
             buttonStack.addArrangedSubview(button)
         }
     }
@@ -134,8 +135,8 @@ private final class DashboardTrafficLightsView: NSView {
         }
 
         let trackingArea = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            rect: hoverRect,
+            options: [.mouseEnteredAndExited, .activeAlways],
             owner: self,
             userInfo: nil
         )
@@ -164,6 +165,31 @@ private final class DashboardTrafficLightsView: NSView {
         super.viewWillMove(toWindow: newWindow)
     }
 
+    fileprivate func restoreButtonLayout() {
+        let arrangedButtons = buttonStack.arrangedSubviews
+        let needsReattach = buttons.contains { button in
+            button.superview !== buttonStack || !arrangedButtons.contains(where: { $0 === button })
+        }
+        if needsReattach {
+            buttons.forEach { button in
+                if buttonStack.arrangedSubviews.contains(where: { $0 === button }) {
+                    buttonStack.removeArrangedSubview(button)
+                }
+                button.removeFromSuperview()
+            }
+            buttons.forEach { button in
+                button.isHidden = false
+                button.translatesAutoresizingMaskIntoConstraints = false
+                buttonStack.addArrangedSubview(button)
+            }
+            invalidateIntrinsicContentSize()
+        }
+        buttonStack.layoutSubtreeIfNeeded()
+        needsLayout = true
+        updateTrackingAreas()
+        synchronizeHoverState()
+    }
+
     private func synchronizeHoverState() {
         guard let window else {
             setGroupHovered(false, event: nil)
@@ -172,21 +198,25 @@ private final class DashboardTrafficLightsView: NSView {
 
         let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
         let pointInView = convert(pointInWindow, from: nil)
-        setGroupHovered(bounds.contains(pointInView), event: nil)
+        setGroupHovered(hoverRect.contains(pointInView), event: nil)
+    }
+
+    private var hoverRect: NSRect {
+        bounds.insetBy(dx: -6, dy: -6)
     }
 
     private func setGroupHovered(_ hovered: Bool, event: NSEvent?) {
-        guard isGroupHovered != hovered else { return }
-        isGroupHovered = hovered
-        guard let event else { return }
-        buttons.forEach { button in
-            guard let cell = button.cell as? NSButtonCell else { return }
-            if hovered {
-                cell.mouseEntered(with: event)
-            } else {
-                cell.mouseExited(with: event)
+        if let event {
+            buttons.forEach { button in
+                guard let cell = button.cell as? NSButtonCell else { return }
+                if hovered {
+                    cell.mouseEntered(with: event)
+                } else {
+                    cell.mouseExited(with: event)
+                }
             }
         }
+        isGroupHovered = hovered
     }
 
     required init?(coder: NSCoder) {
@@ -1578,6 +1608,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var claudeIconImage: NSImage?
     private var claudeThinkingAnimator: ClaudeThinkingAnimator?
     private var dashboard: NSWindow?
+    private weak var dashboardTrafficLightsView: DashboardTrafficLightsView?
     private var dashboardMouseMonitor: Any?
     private var dashboardNavigationButtons: [DashboardSection: NSButton] = [:]
     private var dashboardNavigationRows: [DashboardSection: DashboardNavigationRowView] = [:]
@@ -1817,6 +1848,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 category: "ui.status-item"
             )
         }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        dashboardTrafficLightsView?.restoreButtonLayout()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        dashboardTrafficLightsView?.restoreButtonLayout()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -2770,6 +2811,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
 
         let trafficLights = DashboardTrafficLightsView(buttons: trafficLightButtons)
+        dashboardTrafficLightsView = trafficLights
         navigation.translatesAutoresizingMaskIntoConstraints = false
         trafficLights.translatesAutoresizingMaskIntoConstraints = false
         panelContent.addSubview(trafficLights)
