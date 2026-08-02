@@ -190,6 +190,7 @@ private final class DashboardTrafficLightsView: NSView {
             button.superview !== buttonStack || !arrangedButtons.contains(where: { $0 === button })
         }
         if needsReattach {
+            buttonStack.edgeInsets = NSEdgeInsets(top: 9, left: 9, bottom: 0, right: 0)
             buttons.forEach { button in
                 if buttonStack.arrangedSubviews.contains(where: { $0 === button }) {
                     buttonStack.removeArrangedSubview(button)
