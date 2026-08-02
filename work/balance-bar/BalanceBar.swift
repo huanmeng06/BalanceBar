@@ -4686,7 +4686,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
         let contentY = floor((buttonHeight - geometry.contentHeight) / 2)
-        let centeredIconSlotY = floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2))
+        let iconSlotY = floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2))
         menuBarContentStack.frame = NSRect(
             x: floor(max(0, (buttonWidth - geometry.contentWidth) / 2)),
             y: contentY,
@@ -4694,16 +4694,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             height: geometry.contentHeight
         )
 
+        menuBarIconSlot.frame = NSRect(
+            x: 0,
+            y: iconSlotY,
+            width: geometry.iconWidth,
+            height: geometry.iconWidth
+        )
         let apiIconViewYOffset = showMenuBarIcon && showMenuBarAmount
             ? Self.menuBarSingleLineIconYOffset
             : 0
-        let iconSlotY: CGFloat
         let iconYOffset: CGFloat
         if snapshot.kind == .official, showMenuBarIcon {
-            // The official reset row changes the outer stack Y and its natural
-            // centered slot Y. Recompute the accepted API visual frame, then
-            // place only the official slot at that visual Y inside this
-            // flipped content stack. The API slot and icon frame stay intact.
+            // The official reset row changes both the outer stack Y and the
+            // icon-slot Y. Recompute the accepted API visual frame through
+            // those same rounded coordinates, then apply only the resulting
+            // local delta to the official icon view. Its non-flipped slot uses
+            // negative Y to move the icon down; the API's existing optical
+            // offset remains the baseline.
             let apiGeometry = MenuBarGeometry(
                 primarySize: menuBarPrimaryLabel.intrinsicContentSize,
                 secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
@@ -4721,20 +4728,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 buttonHeight: buttonHeight,
                 iconViewYOffset: apiIconViewYOffset
             )
-            // menuBarIconSlot is a child of the flipped content stack, so its
-            // slot origin increases downward in the visual coordinate system.
-            iconSlotY = apiIconOriginY - contentY
-            iconYOffset = 0
+            let officialIconOriginY = geometry.iconOriginY(
+                buttonHeight: buttonHeight,
+                iconViewYOffset: 0
+            )
+            iconYOffset = officialIconOriginY - apiIconOriginY
+        } else if snapshot.kind == .balance {
+            iconYOffset = apiIconViewYOffset
         } else {
-            iconSlotY = centeredIconSlotY
-            iconYOffset = snapshot.kind == .balance ? apiIconViewYOffset : 0
+            iconYOffset = 0
         }
-        menuBarIconSlot.frame = NSRect(
-            x: 0,
-            y: iconSlotY,
-            width: geometry.iconWidth,
-            height: geometry.iconWidth
-        )
         menuBarIconView.frame = NSRect(
             x: 0,
             y: iconYOffset,
