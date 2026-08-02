@@ -232,12 +232,13 @@ private final class DashboardTrafficLightsView: NSView {
 
         let trackingArea = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
         addTrackingArea(trackingArea)
         groupTrackingArea = trackingArea
+        synchronizeHoverState()
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -246,6 +247,29 @@ private final class DashboardTrafficLightsView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         setGroupHovered(false)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        synchronizeHoverState()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            setGroupHovered(false)
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    private func synchronizeHoverState() {
+        guard let window else {
+            setGroupHovered(false)
+            return
+        }
+
+        let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let pointInView = convert(pointInWindow, from: nil)
+        setGroupHovered(bounds.contains(pointInView))
     }
 
     private func setGroupHovered(_ hovered: Bool) {
