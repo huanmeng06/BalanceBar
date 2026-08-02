@@ -178,6 +178,7 @@ private final class DashboardTrafficLightsView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        window?.acceptsMouseMovedEvents = true
         buttons.forEach { $0.updateTrackingAreas() }
         synchronizeHoverState()
     }
@@ -2899,8 +2900,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            trafficLights.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 11),
-            trafficLights.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 11),
+            trafficLights.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 14),
+            trafficLights.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
             navigation.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 58),
             navigation.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
             navigation.trailingAnchor.constraint(equalTo: panelContent.trailingAnchor, constant: -14)
