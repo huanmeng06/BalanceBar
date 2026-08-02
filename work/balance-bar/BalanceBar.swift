@@ -2481,10 +2481,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.isReleasedWhenClosed = false
         window.delegate = self
 
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
         installDashboardLayout(in: window)
-        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].forEach {
-            window.standardWindowButton($0)?.isHidden = true
-        }
         dashboard = window
         installDashboardMouseMonitor()
         showDashboardSection(.general)
@@ -2657,13 +2655,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .advanced))
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
 
-        let trafficLights = makeDashboardTrafficLights()
         navigation.translatesAutoresizingMaskIntoConstraints = false
-        trafficLights.translatesAutoresizingMaskIntoConstraints = false
-        panelContent.addSubview(trafficLights)
         panelContent.addSubview(navigation)
         NSLayoutConstraint.activate([
-            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 14),
+            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 8),
             panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 12),
             panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -8),
             panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -14),
@@ -2671,42 +2666,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            trafficLights.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 11),
-            trafficLights.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 11),
             navigation.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 58),
             navigation.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
             navigation.trailingAnchor.constraint(equalTo: panelContent.trailingAnchor, constant: -14)
         ])
         return sidebar
-    }
-
-    private func makeDashboardTrafficLights() -> NSStackView {
-        let close = NSWindow.standardWindowButton(.closeButton, for: .titled)!
-        close.target = self
-        close.action = #selector(closeDashboardWindow)
-        let minimize = NSWindow.standardWindowButton(.miniaturizeButton, for: .titled)!
-        minimize.target = self
-        minimize.action = #selector(minimizeDashboardWindow)
-        let zoom = NSWindow.standardWindowButton(.zoomButton, for: .titled)!
-        zoom.target = self
-        zoom.action = #selector(zoomDashboardWindow)
-        let stack = NSStackView(views: [close, minimize, zoom])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 9
-        return stack
-    }
-
-    @objc private func closeDashboardWindow() {
-        dashboard?.performClose(nil)
-    }
-
-    @objc private func minimizeDashboardWindow() {
-        dashboard?.miniaturize(nil)
-    }
-
-    @objc private func zoomDashboardWindow() {
-        dashboard?.zoom(nil)
     }
 
     private func makeDashboardSidebarGroupTitle(_ title: String) -> NSTextField {
@@ -3761,7 +3725,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.10.3"
+        ) as? String ?? "0.10.4"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
