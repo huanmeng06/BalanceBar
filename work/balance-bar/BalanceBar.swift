@@ -1909,21 +1909,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .miniaturizeButton,
             .zoomButton
         ].compactMap { window.standardWindowButton($0) }
-        var ancestor = buttons.compactMap(\.superview).first
-        while let view = ancestor {
-            let buttonRects = buttons.compactMap { button -> NSRect? in
-                guard button.isDescendant(of: view) else { return nil }
-                return view.convert(button.bounds, from: button)
-            }
-            let expandedButtonRects = buttonRects.map { $0.insetBy(dx: -12, dy: -12) }
-            view.trackingAreas
-                .filter { area in
-                    area.rect.width <= 180 && area.rect.height <= 100 &&
-                        expandedButtonRects.contains { $0.intersects(area.rect) }
-                }
-                .forEach { view.removeTrackingArea($0) }
-            ancestor = view.superview
+        buttons.forEach { button in
+            button.trackingAreas.forEach { button.removeTrackingArea($0) }
         }
+
+        guard let frameView = window.contentView?.superview else { return }
+        frameView.trackingAreas
+            .filter { area in
+                let isCompactTitlebarArea = area.options.contains(.mouseEnteredAndExited) &&
+                    area.rect.width <= 180 && area.rect.height <= 100
+                let isWindowWideMouseMovedArea = area.options.contains(.mouseMoved) &&
+                    area.rect.width >= frameView.bounds.width - 8 &&
+                    area.rect.height >= frameView.bounds.height - 8
+                return isCompactTitlebarArea || isWindowWideMouseMovedArea
+            }
+            .forEach { frameView.removeTrackingArea($0) }
     }
 
     private func disableDashboardZoomButton(in window: NSWindow) {
