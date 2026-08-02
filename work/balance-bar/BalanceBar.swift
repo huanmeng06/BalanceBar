@@ -150,7 +150,10 @@ private struct MenuBarGeometry {
     func iconOriginY(buttonHeight: CGFloat, iconViewYOffset: CGFloat) -> CGFloat {
         let contentY = floor((buttonHeight - contentHeight) / 2)
         let iconSlotY = floor(max(0, (contentHeight - iconWidth) / 2))
-        return contentY + iconSlotY + iconViewYOffset
+        // The content stack is flipped, but menuBarIconSlot is a default
+        // non-flipped NSView. Positive Y in the icon view therefore moves its
+        // visual origin upward inside the slot.
+        return contentY + iconSlotY - iconViewYOffset
     }
 }
 
@@ -4703,10 +4706,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let iconYOffset: CGFloat
         if snapshot.kind == .official, showMenuBarIcon {
             // The official reset row changes both the outer stack Y and the
-            // icon-slot Y. Recompute the accepted API frame through those same
-            // rounded coordinates, then apply only the resulting delta to the
-            // official icon view. Positive Y moves down in this flipped view;
-            // the API's existing optical offset remains the baseline.
+            // icon-slot Y. Recompute the accepted API visual frame through
+            // those same rounded coordinates, then apply only the resulting
+            // local delta to the official icon view. Its non-flipped slot uses
+            // negative Y to move the icon down; the API's existing optical
+            // offset remains the baseline.
             let apiGeometry = MenuBarGeometry(
                 primarySize: menuBarPrimaryLabel.intrinsicContentSize,
                 secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
@@ -4728,7 +4732,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 buttonHeight: buttonHeight,
                 iconViewYOffset: 0
             )
-            iconYOffset = apiIconOriginY - officialIconOriginY
+            iconYOffset = officialIconOriginY - apiIconOriginY
         } else if snapshot.kind == .balance {
             iconYOffset = apiIconViewYOffset
         } else {
