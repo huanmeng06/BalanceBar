@@ -117,7 +117,6 @@ private struct MenuBarGeometry {
     let primaryHeight: CGFloat
     let secondaryHeight: CGFloat
     let textHeight: CGFloat
-    let naturalContentHeight: CGFloat
     let contentWidth: CGFloat
     let contentHeight: CGFloat
 
@@ -143,11 +142,10 @@ private struct MenuBarGeometry {
         primaryHeight = showAmount ? ceil(primarySize.height) : 0
         secondaryHeight = hasSecondary ? ceil(secondarySize.height) : 0
         textHeight = primaryHeight + (hasSecondary ? textRowSpacing + secondaryHeight : 0)
-        naturalContentHeight = ceil(max(iconWidth, textHeight))
         contentWidth = iconWidth + gap + textWidth
         contentHeight = (isBalance || useSingleLineHeight) && showAmount
             ? singleLineHeight
-            : naturalContentHeight
+            : ceil(max(iconWidth, textHeight))
     }
 }
 
@@ -4681,12 +4679,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
         let contentY = floor((buttonHeight - geometry.contentHeight) / 2)
-        // The official icon uses the API single-line height, while the
-        // existing two-line text keeps its natural absolute Y position.
-        let textContentY = floor((buttonHeight - geometry.naturalContentHeight) / 2)
-        let textY = textContentY
-            + floor(max(0, (geometry.naturalContentHeight - geometry.textHeight) / 2))
-            - contentY
         let iconSlotY = floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2))
         menuBarContentStack.frame = NSRect(
             x: floor(max(0, (buttonWidth - geometry.contentWidth) / 2)),
@@ -4712,7 +4704,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         menuBarTextStack.frame = NSRect(
             x: geometry.iconWidth + geometry.gap,
-            y: textY,
+            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2)),
             width: geometry.textWidth,
             height: geometry.textHeight
         )
