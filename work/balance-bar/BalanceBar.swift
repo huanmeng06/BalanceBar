@@ -96,25 +96,128 @@ private final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+private final class DashboardTrafficLightsGlyphOverlay: NSView {
+    private weak var buttonStack: NSStackView?
+    private let buttons: [NSButton]
+
+    var isVisible = false {
+        didSet {
+            guard oldValue != isVisible else { return }
+            needsDisplay = true
+        }
+    }
+
+    init(buttonStack: NSStackView, buttons: [NSButton]) {
+        self.buttonStack = buttonStack
+        self.buttons = buttons
+        super.init(frame: .zero)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard isVisible, buttons.count >= 2, let buttonStack else { return }
+
+        buttonStack.layoutSubtreeIfNeeded()
+        let closeRect = buttonStack.convert(buttons[0].bounds, to: self)
+        let minimizeRect = buttonStack.convert(buttons[1].bounds, to: self)
+        let scale = window?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor
+            ?? 1.0
+
+        let context = NSGraphicsContext.current?.cgContext
+        context?.saveGState()
+        defer { context?.restoreGState() }
+        context?.setShouldAntialias(true)
+        NSColor.controlTextColor.withAlphaComponent(0.82).setStroke()
+        drawCross(in: closeRect, scale: scale)
+        drawMinus(in: minimizeRect, scale: scale)
+    }
+
+    private func drawCross(in rect: NSRect, scale: CGFloat) {
+        let diameter = min(rect.width, rect.height)
+        let center = NSPoint(
+            x: pixelAligned(rect.midX, scale: scale),
+            y: pixelAligned(rect.midY, scale: scale)
+        )
+        let halfLength = diameter * 0.19
+        let path = NSBezierPath()
+        path.lineWidth = glyphLineWidth(for: diameter, scale: scale)
+        path.lineCapStyle = .round
+        path.move(to: NSPoint(x: center.x - halfLength, y: center.y - halfLength))
+        path.line(to: NSPoint(x: center.x + halfLength, y: center.y + halfLength))
+        path.move(to: NSPoint(x: center.x - halfLength, y: center.y + halfLength))
+        path.line(to: NSPoint(x: center.x + halfLength, y: center.y - halfLength))
+        path.stroke()
+    }
+
+    private func drawMinus(in rect: NSRect, scale: CGFloat) {
+        let diameter = min(rect.width, rect.height)
+        let center = NSPoint(
+            x: pixelAligned(rect.midX, scale: scale),
+            y: pixelAligned(rect.midY, scale: scale)
+        )
+        let halfLength = diameter * 0.22
+        let path = NSBezierPath()
+        path.lineWidth = glyphLineWidth(for: diameter, scale: scale)
+        path.lineCapStyle = .round
+        path.move(to: NSPoint(x: center.x - halfLength, y: center.y))
+        path.line(to: NSPoint(x: center.x + halfLength, y: center.y))
+        path.stroke()
+    }
+
+    private func glyphLineWidth(for diameter: CGFloat, scale: CGFloat) -> CGFloat {
+        let preferredWidth = min(max(diameter * 0.105, 1.0 / scale), 1.75)
+        return pixelAligned(preferredWidth, scale: scale)
+    }
+
+    private func pixelAligned(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+        round(value * scale) / scale
+    }
+
+    required init?(coder: NSCoder) {
+        buttons = []
+        super.init(coder: coder)
+    }
+}
+
 private final class DashboardTrafficLightsView: NSView {
     private let buttonStack: NSStackView
     private let buttons: [NSButton]
+    private let glyphOverlay: DashboardTrafficLightsGlyphOverlay
     private var groupTrackingArea: NSTrackingArea?
+    private var isGroupHovered = false {
+        didSet {
+            glyphOverlay.isVisible = isGroupHovered
+        }
+    }
 
     init(buttons: [NSButton]) {
         self.buttons = buttons
-        buttonStack = NSStackView()
+        let stack = NSStackView()
+        self.buttonStack = stack
+        self.glyphOverlay = DashboardTrafficLightsGlyphOverlay(
+            buttonStack: stack,
+            buttons: buttons
+        )
         super.init(frame: .zero)
         buttonStack.orientation = .horizontal
         buttonStack.alignment = .centerY
         buttonStack.spacing = 9
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        glyphOverlay.translatesAutoresizingMaskIntoConstraints = false
         addSubview(buttonStack)
+        addSubview(glyphOverlay)
         NSLayoutConstraint.activate([
             buttonStack.leadingAnchor.constraint(equalTo: leadingAnchor),
             buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor),
             buttonStack.topAnchor.constraint(equalTo: topAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor)
+            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            glyphOverlay.leadingAnchor.constraint(equalTo: leadingAnchor),
+            glyphOverlay.trailingAnchor.constraint(equalTo: trailingAnchor),
+            glyphOverlay.topAnchor.constraint(equalTo: topAnchor),
+            glyphOverlay.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         buttons.forEach { buttonStack.addArrangedSubview($0) }
     }
@@ -130,49 +233,64 @@ private final class DashboardTrafficLightsView: NSView {
         }
         let trackingArea = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
         addTrackingArea(trackingArea)
         groupTrackingArea = trackingArea
+        synchronizeHoverState()
     }
 
     override func mouseEntered(with event: NSEvent) {
         guard event.trackingArea === groupTrackingArea else { return }
-        setGroupHovered(true, event: event)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        guard event.trackingArea === groupTrackingArea else { return }
-        setGroupHovered(true, event: event)
+        setGroupHovered(true)
     }
 
     override func mouseExited(with event: NSEvent) {
         guard event.trackingArea === groupTrackingArea else { return }
-        setGroupHovered(false, event: event)
+        setGroupHovered(false)
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            setGroupHovered(false)
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        window?.acceptsMouseMovedEvents = true
+        synchronizeHoverState()
     }
 
-    private func setGroupHovered(_ hovered: Bool, event: NSEvent) {
-        buttons.forEach { button in
-            guard let cell = button.cell as? NSButtonCell else { return }
-            if hovered {
-                cell.mouseEntered(with: event)
-            } else {
-                cell.mouseExited(with: event)
-            }
-            button.needsDisplay = true
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        glyphOverlay.needsDisplay = true
+    }
+
+    private func setGroupHovered(_ hovered: Bool) {
+        guard isGroupHovered != hovered else { return }
+        isGroupHovered = hovered
+    }
+
+    private func synchronizeHoverState() {
+        guard let window, !isHidden, !bounds.isEmpty else {
+            setGroupHovered(false)
+            return
         }
+        let pointInWindow = window.mouseLocationOutsideOfEventStream
+        let pointInView = convert(pointInWindow, from: nil)
+        setGroupHovered(bounds.contains(pointInView))
     }
 
     required init?(coder: NSCoder) {
         buttons = []
         buttonStack = NSStackView()
+        glyphOverlay = DashboardTrafficLightsGlyphOverlay(
+            buttonStack: buttonStack,
+            buttons: []
+        )
         super.init(coder: coder)
     }
 
