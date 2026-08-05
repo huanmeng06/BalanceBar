@@ -858,176 +858,6 @@ private enum DashboardLogging {
     }
 }
 
-struct StatusItemLengthPolicy {
-    static let minimumLength: CGFloat = 30
-
-    // The observed startup transition was 61pt -> 82pt. Reserve the final
-    // width before NSStatusBar allocates the slot so AppKit never has to
-    // reposition an already-registered item for that first snapshot.
-    static let startupReservationLength: CGFloat = 82
-
-    static func startupLength(for naturalLength: CGFloat) -> CGFloat {
-        max(minimumLength, ceil(max(startupReservationLength, naturalLength)))
-    }
-
-    static func settledLength(for naturalLength: CGFloat) -> CGFloat {
-        max(minimumLength, ceil(naturalLength))
-    }
-}
-
-struct StatusItemAutosaveIdentity {
-    // This is an identity migration for the status item, not an app version
-    // change. Keep it stable after this release and do not reuse the failed
-    // default Item-0 or the previous explicit identity.
-    static let current = "com.huanmeng06.BalanceBar.status-item.v20260805"
-}
-
-struct StatusItemAttachmentGeometry {
-    // This is deliberately a readiness check, not a screen-edge test. The
-    // status-bar host window and its slot are owned by AppKit; a converted
-    // frame outside a display boundary does not prove the item is hidden.
-    static func isAppKitReady(
-        buttonFrame: CGRect,
-        windowVisible: Bool,
-        statusItemVisible: Bool,
-        buttonHidden: Bool,
-        screenAvailable: Bool
-    ) -> Bool {
-        guard screenAvailable,
-              windowVisible,
-              statusItemVisible,
-              !buttonHidden,
-              buttonFrame.size.width > 0,
-              buttonFrame.size.height > 0 else {
-            return false
-        }
-        return true
-    }
-}
-
-struct StatusItemAttachmentPolicy {
-    enum Observation: Equatable {
-        case appKitReady
-        case waitingForItem
-        case waitingForButton
-        case waitingForWindow
-        case waitingForScreen
-        case waitingForVisibility
-        case waitingForFrame
-
-        var logName: String {
-            switch self {
-            case .appKitReady: return "appkit-ready"
-            case .waitingForItem: return "waiting-for-item"
-            case .waitingForButton: return "waiting-for-button"
-            case .waitingForWindow: return "waiting-for-window"
-            case .waitingForScreen: return "waiting-for-screen"
-            case .waitingForVisibility: return "waiting-for-visibility"
-            case .waitingForFrame: return "waiting-for-frame"
-            }
-        }
-    }
-
-    enum Decision: Equatable {
-        case stable
-        case waitForAppKitLayout(confirmation: Int, delay: TimeInterval)
-        case recover(attempt: Int, delay: TimeInterval)
-        case alreadyScheduled
-        case alreadyFinalUnresolved
-        case finalUnresolved
-    }
-
-    static let requiredConsecutiveFailures = 3
-    static let maxRecoveryAttempts = 1
-    static let initialAttachmentCheckDelay: TimeInterval = 0.20
-    static let confirmationDelays: [TimeInterval] = [0.25, 0.35]
-    static let recoveryDelay: TimeInterval = 0.40
-    static let postRecoveryCheckDelay: TimeInterval = 0.50
-
-    static var normalPathUpperBound: TimeInterval {
-        initialAttachmentCheckDelay
-            + confirmationDelays.reduce(0, +)
-            + recoveryDelay
-            + postRecoveryCheckDelay
-    }
-
-    private(set) var consecutiveFailures = 0
-    private(set) var recoveryAttempts = 0
-    private(set) var recoveryPerformed = false
-    private(set) var finalUnresolvedReported = false
-    private var recoveryScheduled = false
-
-    var hasPendingFailure: Bool {
-        consecutiveFailures > 0
-    }
-
-    var hasRecoveryScheduled: Bool {
-        recoveryScheduled
-    }
-
-    var hasPerformedRecovery: Bool {
-        recoveryPerformed
-    }
-
-    var hasFinalUnresolvedReported: Bool {
-        finalUnresolvedReported
-    }
-
-    mutating func resetForLayoutChange() {
-        consecutiveFailures = 0
-        recoveryAttempts = 0
-        recoveryPerformed = false
-        finalUnresolvedReported = false
-        recoveryScheduled = false
-    }
-
-    mutating func observe(_ observation: Observation) -> Decision {
-        switch observation {
-        case .appKitReady:
-            consecutiveFailures = 0
-            recoveryAttempts = 0
-            recoveryPerformed = false
-            finalUnresolvedReported = false
-            recoveryScheduled = false
-            return .stable
-        case .waitingForItem,
-             .waitingForButton,
-             .waitingForWindow,
-             .waitingForScreen,
-             .waitingForVisibility,
-             .waitingForFrame:
-            if recoveryScheduled { return .alreadyScheduled }
-            if recoveryPerformed {
-                guard !finalUnresolvedReported else { return .alreadyFinalUnresolved }
-                finalUnresolvedReported = true
-                return .finalUnresolved
-            }
-            consecutiveFailures += 1
-            guard consecutiveFailures < Self.requiredConsecutiveFailures else {
-                recoveryScheduled = true
-                return .recover(
-                    attempt: recoveryAttempts + 1,
-                    delay: Self.recoveryDelay
-                )
-            }
-
-            return .waitForAppKitLayout(
-                confirmation: consecutiveFailures,
-                delay: Self.confirmationDelays[consecutiveFailures - 1]
-            )
-        }
-    }
-
-    mutating func markRecoveryPerformed() {
-        guard !recoveryPerformed,
-              recoveryAttempts < Self.maxRecoveryAttempts else { return }
-        recoveryScheduled = false
-        recoveryPerformed = true
-        recoveryAttempts += 1
-        consecutiveFailures = 0
-    }
-}
-
 private enum SwitchLog {
     enum Level: String {
         case debug = "DEBUG"
@@ -1142,52 +972,92 @@ private enum SwitchLog {
     }
 }
 
+private let productionBundleIdentifier = "com.huanmeng06.BalanceBar.app"
+private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
-private let preferencesMigrationMarker = "didMigrateLegacyPreferences.v1"
-private let migratedPreferenceKeys = [
-    "appLanguage",
-    "showMenuBarReset",
-    "showMenuBarIcon",
-    "showMenuBarAmount",
-    "animateCodexActivity",
-    "activityPollInterval",
-    "codexUsageRefreshInterval",
-    "postCodexRefreshDuration",
-    "showQuickSwitchMenu",
-    "showOpenChatGPTMenu",
-    "showOpenCCSwitchMenu",
-    "showStatusMenu",
-    "statusLinks",
-    "keepMenuOpenAfterRefresh",
-    "sortProvidersAlphabetically",
-    "menuBarHorizontalPadding"
-]
+private let preferencesMigrationMarker = "didMigrateToBalanceBarApp.v1"
+
+struct PreferencesMigrationPlan {
+    static let keys = [
+        "appLanguage",
+        "showMenuBarReset",
+        "showMenuBarIcon",
+        "showMenuBarAmount",
+        "animateCodexActivity",
+        "activityPollInterval",
+        "codexUsageRefreshInterval",
+        "postCodexRefreshDuration",
+        "showQuickSwitchMenu",
+        "showOpenChatGPTMenu",
+        "showOpenCCSwitchMenu",
+        "showStatusMenu",
+        "statusLinks",
+        "keepMenuOpenAfterRefresh",
+        "sortProvidersAlphabetically",
+        "menuBarHorizontalPadding"
+    ]
+
+    static func selectedValues(
+        target: [String: Any],
+        production: [String: Any],
+        local: [String: Any]
+    ) -> [String: Any] {
+        var selected: [String: Any] = [:]
+        for key in keys where target[key] == nil {
+            if let value = production[key] {
+                selected[key] = value
+            } else if let value = local[key] {
+                selected[key] = value
+            }
+        }
+        return selected
+    }
+}
 
 private func migrateLegacyPreferencesIfNeeded() {
     let defaults = UserDefaults.standard
-    guard defaults.object(forKey: preferencesMigrationMarker) == nil else { return }
-
-    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? "unknown"
-    let legacyDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
+    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
     let currentDomain = defaults.persistentDomain(forName: currentBundleIdentifier) ?? [:]
-    var migratedKeys: [String] = []
-    var skippedKeys: [String] = []
+    guard currentDomain[preferencesMigrationMarker] == nil else { return }
 
-    for key in migratedPreferenceKeys {
-        guard let value = legacyDomain[key] else { continue }
-        guard currentDomain[key] == nil else {
-            skippedKeys.append(key)
+    let productionDomain = defaults.persistentDomain(
+        forName: legacyProductionBundleIdentifier
+    ) ?? [:]
+    let localDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
+    let selectedValues = PreferencesMigrationPlan.selectedValues(
+        target: currentDomain,
+        production: productionDomain,
+        local: localDomain
+    )
+    var migratedFromProduction: [String] = []
+    var migratedFromLocal: [String] = []
+    var skippedExisting: [String] = []
+
+    for key in PreferencesMigrationPlan.keys {
+        guard let value = selectedValues[key] else {
+            if currentDomain[key] != nil { skippedExisting.append(key) }
             continue
         }
         defaults.set(value, forKey: key)
-        migratedKeys.append(key)
+        if productionDomain[key] != nil {
+            migratedFromProduction.append(key)
+        } else {
+            migratedFromLocal.append(key)
+        }
     }
 
     defaults.set(true, forKey: preferencesMigrationMarker)
-    let migratedSummary = migratedKeys.isEmpty ? "<none>" : migratedKeys.joined(separator: "|")
-    let skippedSummary = skippedKeys.isEmpty ? "<none>" : skippedKeys.joined(separator: "|")
+    let productionSummary = migratedFromProduction.isEmpty
+        ? "<none>"
+        : migratedFromProduction.joined(separator: "|")
+    let localSummary = migratedFromLocal.isEmpty
+        ? "<none>"
+        : migratedFromLocal.joined(separator: "|")
+    let skippedSummary = skippedExisting.isEmpty
+        ? "<none>"
+        : skippedExisting.joined(separator: "|")
     SwitchLog.write(
-        "preferences migration; source=\(legacyBundleIdentifier); target=\(currentBundleIdentifier); source_key_count=\(legacyDomain.count); migrated=\(migratedSummary); skipped_existing=\(skippedSummary)",
+        "preferences migration; source_priority=\(legacyProductionBundleIdentifier),\(legacyBundleIdentifier); target=\(currentBundleIdentifier); production_key_count=\(productionDomain.count); local_key_count=\(localDomain.count); migrated_from_production=\(productionSummary); migrated_from_local=\(localSummary); skipped_existing=\(skippedSummary)",
         category: "configuration"
     )
 }
@@ -1575,7 +1445,6 @@ private final class ClaudeCodeActivityMonitor {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
-    private static let statusItemAutosaveName = StatusItemAutosaveIdentity.current
     private static let menuBarPrimaryFont = NSFont.monospacedDigitSystemFont(
         ofSize: 13,
         weight: .semibold
@@ -1596,8 +1465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var statusItem: NSStatusItem!
     private let statusMenu = NSMenu()
     private var statusItemAttachmentCheckScheduled = false
-    private var statusItemAttachmentPolicy = StatusItemAttachmentPolicy()
-    private var statusItemStartupReservationActive = true
+    private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
     private let menuBarIconView = RotatingTemplateImageView()
@@ -4376,10 +4244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
         statusItem.isVisible = true
-        // Register the item at the observed final startup width. The first
-        // placeholder must not register at 61pt and then grow to 82pt after
-        // AppKit has already allocated its menu-bar slot.
-        statusItem.length = StatusItemLengthPolicy.startupReservationLength
+        statusItem.length = 56
         button.title = ""
         button.attributedTitle = NSAttributedString(string: "")
         button.image = nil
@@ -4431,7 +4296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         button.addSubview(menuBarContentStack)
         layoutStatusItem(for: snapshot)
         SwitchLog.write(
-            "status item configured; autosave_name=\(statusItem.autosaveName ?? "none"); visible=\(statusItem.isVisible); length=\(statusItem.length)",
+            "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
             category: "ui.status-item"
         )
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -4447,241 +4312,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         scheduleStatusItemAttachmentCheck(reason: "initial registration")
     }
 
-    private func makeStatusItem(withLength length: CGFloat) -> NSStatusItem {
-        // Create without a length first so the new identity is installed
-        // before any explicit length, menu, visibility, or view layout change.
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.autosaveName = Self.statusItemAutosaveName
-        item.length = length
-        item.menu = statusMenu
-        SwitchLog.write(
-            "status item registered; autosave_name=\(item.autosaveName ?? "none"); reserved_length=\(length); actual_length=\(item.length)",
-            level: .debug,
-            category: "ui.status-item"
-        )
-        return item
-    }
-
     private func installStatusItem() {
-        statusItem = makeStatusItem(
-            withLength: StatusItemLengthPolicy.startupReservationLength
+        statusItem = NSStatusBar.system.statusItem(
+            withLength: NSStatusItem.variableLength
         )
+        statusItem.menu = statusMenu
         configureStatusItem()
     }
 
-    private func scheduleStatusItemAttachmentCheck(
-        reason: String,
-        delay: TimeInterval? = nil
-    ) {
-        guard !statusItemAttachmentCheckScheduled,
-              !statusItemAttachmentPolicy.hasFinalUnresolvedReported else { return }
+    private func scheduleStatusItemAttachmentCheck(reason: String) {
+        guard !statusItemAttachmentCheckScheduled else { return }
         statusItemAttachmentCheckScheduled = true
-        let checkDelay = delay ?? StatusItemAttachmentPolicy.initialAttachmentCheckDelay
-        DispatchQueue.main.asyncAfter(deadline: .now() + checkDelay) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self else { return }
             self.statusItemAttachmentCheckScheduled = false
             self.verifyStatusItemAttachment(reason: reason)
         }
     }
 
-    private func scheduleStatusItemRecovery(
-        reason: String,
-        attempt: Int,
-        delay: TimeInterval
-    ) {
-        guard !statusItemAttachmentCheckScheduled else { return }
-        statusItemAttachmentCheckScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            self.statusItemAttachmentCheckScheduled = false
-            self.performStatusItemRecovery(reason: reason, attempt: attempt)
-        }
-    }
-
-    private func statusItemButtonScreenFrame(_ item: NSStatusItem) -> NSRect? {
-        // AppKit may expose a full-width status-bar host window here. The
-        // button's converted screen frame is the actual status-item geometry.
-        guard let button = item.button, let window = button.window, window.screen != nil else {
-            return nil
-        }
-        let buttonFrameInWindow = button.convert(button.bounds, to: nil)
-        return window.convertToScreen(buttonFrameInWindow)
-    }
-
-    private func statusItemIsAppKitReady(_ item: NSStatusItem) -> Bool {
-        guard let window = item.button?.window,
-              let buttonScreenFrame = statusItemButtonScreenFrame(item) else {
-            return false
-        }
-        return StatusItemAttachmentGeometry.isAppKitReady(
-            buttonFrame: buttonScreenFrame,
-            windowVisible: window.isVisible,
-            statusItemVisible: item.isVisible,
-            buttonHidden: item.button?.isHidden ?? true,
-            screenAvailable: window.screen != nil
-        )
-    }
-
-    private func statusItemGeometryDescription(_ item: NSStatusItem?) -> String {
-        guard let item else { return "item=none" }
-        let button = item.button
-        let window = button?.window
-        let screen = window?.screen
-        let buttonFrame = button.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let buttonScreenFrame = statusItemButtonScreenFrame(item)
-            .map { DashboardLogging.rect($0) } ?? "none"
-        let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let windowClass = window.map { String(describing: type(of: $0)) } ?? "none"
-        return "item_identity=\(ObjectIdentifier(item)); autosave_name=\(item.autosaveName ?? "none"); visible=\(item.isVisible); length=\(item.length); button_window=\(window != nil); window_visible=\(window?.isVisible ?? false); window_class=\(windowClass); button_hidden=\(button?.isHidden ?? false); button_frame=\(buttonFrame); button_screen_frame=\(buttonScreenFrame); window_frame=\(windowFrame); screen_frame=\(screenFrame)"
-    }
-
-    private func performStatusItemRecovery(reason: String, attempt: Int) {
-        let item = statusItem
-        if let item, statusItemIsAppKitReady(item) {
-            let hadRecoveryState = statusItemAttachmentPolicy.hasPendingFailure
-                || statusItemAttachmentPolicy.hasRecoveryScheduled
-            _ = statusItemAttachmentPolicy.observe(.appKitReady)
-            SwitchLog.write(
-                "status item same-item recovery skipped because AppKit readiness stabilized; reason=\(reason); attempt=\(attempt); had_recovery_state=\(hadRecoveryState); \(statusItemGeometryDescription(item))",
-                level: .info,
-                category: "ui.status-item"
-            )
-            return
-        }
-
-        guard let item else {
-            statusItemAttachmentPolicy.markRecoveryPerformed()
-            SwitchLog.write(
-                "status item same-item recovery could not run because the unique item is missing; reason=\(reason); attempt=\(attempt)",
-                level: .error,
-                category: "ui.status-item"
-            )
-            scheduleStatusItemAttachmentCheck(
-                reason: "missing-item probe",
-                delay: StatusItemAttachmentPolicy.postRecoveryCheckDelay
-            )
-            return
-        }
-
-        let geometryBefore = statusItemGeometryDescription(item)
-        let desiredLength = item.length
-        statusItemAttachmentPolicy.markRecoveryPerformed()
-        SwitchLog.write(
-            "status item same-item recovery executing; reason=\(reason); attempt=\(attempt); geometry_before=\(geometryBefore)",
-            level: .warning,
-            category: "ui.status-item"
-        )
-        item.isVisible = false
-        item.length = desiredLength
-        item.button?.needsLayout = true
-        item.button?.layoutSubtreeIfNeeded()
-        item.isVisible = true
-        layoutStatusItem(for: snapshot)
-        item.length = desiredLength
-        item.button?.needsLayout = true
-        item.button?.layoutSubtreeIfNeeded()
-        SwitchLog.write(
-            "status item same-item recovery requested; reason=\(reason); attempt=\(attempt); geometry_after=\(statusItemGeometryDescription(item))",
-            level: .info,
-            category: "ui.status-item"
-        )
-        scheduleStatusItemAttachmentCheck(
-            reason: "post-recovery",
-            delay: StatusItemAttachmentPolicy.postRecoveryCheckDelay
-        )
-    }
-
     private func verifyStatusItemAttachment(reason: String) {
-        let item = statusItem
-        let button = item?.button
-        let window = button?.window
-        let screen = window?.screen
-        let buttonScreenFrame = item.flatMap(statusItemButtonScreenFrame)
-        let appKitReady = item.map(statusItemIsAppKitReady) ?? false
-        let observation: StatusItemAttachmentPolicy.Observation
-        if appKitReady {
-            observation = .appKitReady
-        } else if item == nil {
-            observation = .waitingForItem
-        } else if button == nil {
-            observation = .waitingForButton
-        } else if window == nil {
-            observation = .waitingForWindow
-        } else if screen == nil {
-            observation = .waitingForScreen
-        } else if window?.isVisible != true
-                    || item?.isVisible != true
-                    || button?.isHidden == true {
-            observation = .waitingForVisibility
-        } else {
-            observation = .waitingForFrame
-        }
-
-        SwitchLog.write(
-            "status item readiness checked; reason=\(reason); observation=\(observation.logName); appkit_ready=\(appKitReady); button_screen_frame=\(buttonScreenFrame.map { DashboardLogging.rect($0) } ?? "none"); \(statusItemGeometryDescription(item))",
-            level: appKitReady ? .debug : .warning,
-            category: "ui.status-item",
-            throttleKey: "status-item-readiness-\(appKitReady ? "ready" : "pending")",
-            minimumInterval: appKitReady ? 2 : 1
-        )
-
-        let hadRecoveryState = statusItemAttachmentPolicy.hasPendingFailure
-            || statusItemAttachmentPolicy.hasRecoveryScheduled
-            || statusItemAttachmentPolicy.hasPerformedRecovery
-        switch statusItemAttachmentPolicy.observe(observation) {
-        case .stable:
+        guard let item = statusItem, let button = item.button else {
             SwitchLog.write(
-                hadRecoveryState
-                    ? "status item recovery succeeded; reason=\(reason); \(statusItemGeometryDescription(item))"
-                    : "status item attachment stable; reason=\(reason); \(statusItemGeometryDescription(item))",
-                level: hadRecoveryState ? .info : .debug,
-                category: "ui.status-item",
-                throttleKey: hadRecoveryState ? nil : "status-item-attachment-stable",
-                minimumInterval: hadRecoveryState ? 0 : 2
-            )
-        case let .waitForAppKitLayout(confirmation, delay):
-            SwitchLog.write(
-                "status item attachment waiting for AppKit layout; reason=\(reason); observation=\(observation.logName); consecutive_failures=\(confirmation); next_check_after=\(delay)s",
-                level: .debug,
-                category: "ui.status-item",
-                throttleKey: "status-item-layout-wait",
-                minimumInterval: 0.5
-            )
-            scheduleStatusItemAttachmentCheck(
-                reason: reason,
-                delay: delay
-            )
-        case let .recover(attempt, delay):
-            SwitchLog.write(
-                "status item readiness continuously unresolved; same-item recovery scheduled; reason=\(reason); observation=\(observation.logName); confirmations=\(StatusItemAttachmentPolicy.requiredConsecutiveFailures); recovery_attempt=\(attempt); recovery_after=\(delay)s; deadline=\(StatusItemAttachmentPolicy.normalPathUpperBound)s; \(statusItemGeometryDescription(item))",
-                level: .warning,
+                "status item attachment failed; reason=missing item or button",
+                level: .error,
                 category: "ui.status-item"
             )
-            scheduleStatusItemRecovery(
-                reason: reason,
-                attempt: attempt,
-                delay: delay
-            )
-        case .alreadyScheduled:
-            SwitchLog.write(
-                "status item attachment check coalesced; reason=\(reason); action already scheduled; \(statusItemGeometryDescription(item))",
-                level: .debug,
-                category: "ui.status-item",
-                throttleKey: "status-item-attachment-coalesced",
-                minimumInterval: 1
-            )
-        case .alreadyFinalUnresolved:
-            break
-        case .finalUnresolved:
-            SwitchLog.write(
-                "status item readiness unresolved by deadline; unique item geometry recorded; no new status item will be created; reason=\(reason); observation=\(observation.logName); deadline=\(StatusItemAttachmentPolicy.normalPathUpperBound)s; \(statusItemGeometryDescription(item))",
-                level: .error,
-                category: "ui.status-item",
-                throttleKey: "status-item-attachment-deadline",
-                minimumInterval: 1
-            )
+            return
         }
+
+        let window = button.window
+        let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let screen = window?.screen
+        let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let attached = window.map { window in
+            guard let screen else { return false }
+            let frame = window.frame
+            let screenFrame = screen.frame
+            return window.isVisible
+                && frame.minX >= screenFrame.minX
+                && frame.maxX <= screenFrame.maxX
+                && frame.maxY >= screenFrame.maxY - 4
+                && frame.minY >= screenFrame.maxY - 48
+        } ?? false
+
+        SwitchLog.write(
+            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
+            level: attached ? .debug : .warning,
+            category: "ui.status-item",
+            throttleKey: "status-item-attachment-\(reason)",
+            minimumInterval: 0.5
+        )
+
+        guard !attached else {
+            statusItemReanchorAttempts = 0
+            return
+        }
+        guard statusItemReanchorAttempts < 3 else {
+            SwitchLog.write(
+                "status item attachment unresolved after retries; reason=\(reason); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+                level: .error,
+                category: "ui.status-item"
+            )
+            return
+        }
+
+        statusItemReanchorAttempts += 1
+        let desiredLength = max(CGFloat(30), item.length)
+        NSStatusBar.system.removeStatusItem(item)
+        statusItem = NSStatusBar.system.statusItem(withLength: desiredLength)
+        statusItem.menu = statusMenu
+        configureStatusItem()
+        scheduleStatusItemAttachmentCheck(reason: "re-registered-\(statusItemReanchorAttempts)-\(reason)")
     }
 
     private func configureRefreshTimers() {
@@ -5008,10 +4709,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             hasSecondary: hasSecondary
         )
 
-        let naturalLength = geometry.contentWidth + (menuBarHorizontalPadding * 2)
-        statusItem.length = statusItemStartupReservationActive
-            ? StatusItemLengthPolicy.startupLength(for: naturalLength)
-            : StatusItemLengthPolicy.settledLength(for: naturalLength)
+        statusItem.length = max(
+            30,
+            ceil(geometry.contentWidth + (menuBarHorizontalPadding * 2))
+        )
         button.layoutSubtreeIfNeeded()
 
         let buttonWidth = button.bounds.width
@@ -5061,14 +4762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func updateStatusItem(for snapshot: Snapshot) {
-        let previousLength = statusItem.length
-        if snapshot.kind != .placeholder {
-            statusItemStartupReservationActive = false
-        }
         layoutStatusItem(for: snapshot)
-        if abs(statusItem.length - previousLength) > 0.5 {
-            statusItemAttachmentPolicy.resetForLayoutChange()
-        }
         scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
         refreshDashboardMenuBarPage()
     }
@@ -6194,7 +5888,7 @@ enum BalanceBarMain {
     static func main() {
         migrateLegacyPreferencesIfNeeded()
         let currentPID = ProcessInfo.processInfo.processIdentifier
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar"
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
         let duplicate = NSRunningApplication.runningApplications(
             withBundleIdentifier: bundleIdentifier
         ).contains { $0.processIdentifier != currentPID }

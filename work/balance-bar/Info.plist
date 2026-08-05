@@ -7,7 +7,7 @@
   <key>CFBundleExecutable</key>
   <string>BalanceBar</string>
   <key>CFBundleIdentifier</key>
-  <string>com.huanmeng06.BalanceBar</string>
+  <string>com.huanmeng06.BalanceBar.app</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
