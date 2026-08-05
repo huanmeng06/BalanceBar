@@ -20,6 +20,20 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
     precondition(condition(), message)
 }
 
+require(
+    StatusItemAutosaveIdentity.current
+        == "com.huanmeng06.BalanceBar.status-item.v20260805",
+    "the versioned production autosave identity is stable"
+)
+require(
+    StatusItemAutosaveIdentity.current != "com.huanmeng06.BalanceBar.status-item",
+    "the failed previous explicit identity is not reused"
+)
+require(
+    !StatusItemAutosaveIdentity.current.contains("Item-0"),
+    "the default Item-0 identity is not reused"
+)
+
 // The real failed launch changed the natural status-item length from 61pt to
 // 82pt. The slot must be registered at 82pt before the first AppKit layout.
 let placeholderNaturalLength: CGFloat = 61
@@ -124,7 +138,7 @@ require(
     "layout change permits one new bounded attempt"
 )
 
-print("status-item registration probe: PASS; startup=82pt; natural=61pt->82pt without first jump; AppKit-managed readiness; recovery=1.7s; coalesced; quiescent")
+print("status-item registration probe: PASS; autosave=v20260805; startup=82pt; natural=61pt->82pt without first jump; AppKit-managed readiness; recovery=1.7s; coalesced; quiescent")
 SWIFT
 } | swiftc -framework Foundation -framework CoreGraphics -o "$probe_binary" -
 

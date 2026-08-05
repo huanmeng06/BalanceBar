@@ -875,6 +875,13 @@ struct StatusItemLengthPolicy {
     }
 }
 
+struct StatusItemAutosaveIdentity {
+    // This is an identity migration for the status item, not an app version
+    // change. Keep it stable after this release and do not reuse the failed
+    // default Item-0 or the previous explicit identity.
+    static let current = "com.huanmeng06.BalanceBar.status-item.v20260805"
+}
+
 struct StatusItemAttachmentGeometry {
     // This is deliberately a readiness check, not a screen-edge test. The
     // status-bar host window and its slot are owned by AppKit; a converted
@@ -1568,6 +1575,7 @@ private final class ClaudeCodeActivityMonitor {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
+    private static let statusItemAutosaveName = StatusItemAutosaveIdentity.current
     private static let menuBarPrimaryFont = NSFont.monospacedDigitSystemFont(
         ofSize: 13,
         weight: .semibold
@@ -4423,7 +4431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         button.addSubview(menuBarContentStack)
         layoutStatusItem(for: snapshot)
         SwitchLog.write(
-            "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
+            "status item configured; autosave_name=\(statusItem.autosaveName ?? "none"); visible=\(statusItem.isVisible); length=\(statusItem.length)",
             category: "ui.status-item"
         )
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -4440,14 +4448,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func makeStatusItem(withLength length: CGFloat) -> NSStatusItem {
-        let item = NSStatusBar.system.statusItem(withLength: length)
-        // A/B testing showed that the new explicit autosave identity could
-        // restore an invisible slot while the older AppKit-managed item was
-        // visible. Do not restore an unverified position; let AppKit allocate
-        // and maintain this process's slot instead.
+        // Create without a length first so the new identity is installed
+        // before any explicit length, menu, visibility, or view layout change.
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = Self.statusItemAutosaveName
+        item.length = length
         item.menu = statusMenu
         SwitchLog.write(
-            "status item registered; length=\(length); autosave_configuration=appkit-managed",
+            "status item registered; autosave_name=\(item.autosaveName ?? "none"); reserved_length=\(length); actual_length=\(item.length)",
             level: .debug,
             category: "ui.status-item"
         )
@@ -4525,7 +4533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
         let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
         let windowClass = window.map { String(describing: type(of: $0)) } ?? "none"
-        return "item_identity=\(ObjectIdentifier(item)); autosave_configuration=appkit-managed; autosave_name=\(item.autosaveName ?? "none"); visible=\(item.isVisible); length=\(item.length); button_window=\(window != nil); window_visible=\(window?.isVisible ?? false); window_class=\(windowClass); button_hidden=\(button?.isHidden ?? false); button_frame=\(buttonFrame); button_screen_frame=\(buttonScreenFrame); window_frame=\(windowFrame); screen_frame=\(screenFrame)"
+        return "item_identity=\(ObjectIdentifier(item)); autosave_name=\(item.autosaveName ?? "none"); visible=\(item.isVisible); length=\(item.length); button_window=\(window != nil); window_visible=\(window?.isVisible ?? false); window_class=\(windowClass); button_hidden=\(button?.isHidden ?? false); button_frame=\(buttonFrame); button_screen_frame=\(buttonScreenFrame); window_frame=\(windowFrame); screen_frame=\(screenFrame)"
     }
 
     private func performStatusItemRecovery(reason: String, attempt: Int) {
