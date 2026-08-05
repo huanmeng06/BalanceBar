@@ -973,6 +973,7 @@ private enum SwitchLog {
 }
 
 private let productionBundleIdentifier = "com.huanmeng06.BalanceBar.app"
+private let devBundleIdentifier = "com.huanmeng06.BalanceBar.dev"
 private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 private let preferencesMigrationMarker = "didMigrateToBalanceBarApp.v1"
@@ -3767,10 +3768,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "0.10.5"
+        let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
-        ))
+        ) + (isDevBuild ? " · Dev" : ""))
         version.textColor = .secondaryLabelColor
         let detail = NSTextField(labelWithString: tr(
             "基于 CC Switch 的菜单栏余量查看工具",
