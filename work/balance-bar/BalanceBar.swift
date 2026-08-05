@@ -858,6 +858,95 @@ private enum DashboardLogging {
     }
 }
 
+struct StatusItemAttachmentPolicy {
+    enum Observation: Equatable {
+        case attached
+        case waitingForItem
+        case waitingForButton
+        case waitingForWindow
+        case waitingForScreen
+        case waitingForVisibility
+        case waitingForFrame
+
+        var logName: String {
+            switch self {
+            case .attached: return "attached"
+            case .waitingForItem: return "waiting-for-item"
+            case .waitingForButton: return "waiting-for-button"
+            case .waitingForWindow: return "waiting-for-window"
+            case .waitingForScreen: return "waiting-for-screen"
+            case .waitingForVisibility: return "waiting-for-visibility"
+            case .waitingForFrame: return "waiting-for-frame"
+            }
+        }
+    }
+
+    enum Decision: Equatable {
+        case stable
+        case waitForAppKitLayout(confirmation: Int, delay: TimeInterval)
+        case recover(attempt: Int, delay: TimeInterval)
+        case abandon
+    }
+
+    static let requiredConsecutiveFailures = 3
+    static let maxRecoveryAttempts = 2
+    static let confirmationDelays: [TimeInterval] = [1, 2]
+    static let recoveryDelays: [TimeInterval] = [3, 6]
+
+    private(set) var consecutiveFailures = 0
+    private(set) var recoveryAttempts = 0
+
+    var hasExhaustedRecovery: Bool {
+        recoveryAttempts >= Self.maxRecoveryAttempts
+    }
+
+    var hasPendingFailure: Bool {
+        consecutiveFailures > 0
+    }
+
+    mutating func observe(_ observation: Observation) -> Decision {
+        switch observation {
+        case .attached:
+            consecutiveFailures = 0
+            recoveryAttempts = 0
+            return .stable
+        case .waitingForItem,
+             .waitingForButton,
+             .waitingForWindow,
+             .waitingForScreen,
+             .waitingForVisibility,
+             .waitingForFrame:
+            guard !hasExhaustedRecovery else { return .abandon }
+            consecutiveFailures += 1
+            guard consecutiveFailures >= Self.requiredConsecutiveFailures else {
+                let delayIndex = min(
+                    consecutiveFailures - 1,
+                    Self.confirmationDelays.count - 1
+                )
+                return .waitForAppKitLayout(
+                    confirmation: consecutiveFailures,
+                    delay: Self.confirmationDelays[delayIndex]
+                )
+            }
+
+            let delayIndex = min(
+                recoveryAttempts,
+                Self.recoveryDelays.count - 1
+            )
+            return .recover(
+                attempt: recoveryAttempts + 1,
+                delay: Self.recoveryDelays[delayIndex]
+            )
+        }
+    }
+
+    mutating func markRecoveryPerformed() {
+        guard !hasExhaustedRecovery else { return }
+        recoveryAttempts += 1
+        consecutiveFailures = 0
+    }
+}
+
 private enum SwitchLog {
     enum Level: String {
         case debug = "DEBUG"
@@ -1405,6 +1494,9 @@ private final class ClaudeCodeActivityMonitor {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
+    private static let statusItemAutosaveName = "com.huanmeng06.BalanceBar.status-item"
+    private static let statusItemInitialAttachmentCheckDelay: TimeInterval = 0.75
+    private static let statusItemPostRecoveryProbeDelay: TimeInterval = 30
     private static let menuBarPrimaryFont = NSFont.monospacedDigitSystemFont(
         ofSize: 13,
         weight: .semibold
@@ -1425,7 +1517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var statusItem: NSStatusItem!
     private let statusMenu = NSMenu()
     private var statusItemAttachmentCheckScheduled = false
-    private var statusItemReanchorAttempts = 0
+    private var statusItemAttachmentPolicy = StatusItemAttachmentPolicy()
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
     private let menuBarIconView = RotatingTemplateImageView()
@@ -4272,77 +4364,177 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         scheduleStatusItemAttachmentCheck(reason: "initial registration")
     }
 
+    private func makeStatusItem(withLength length: CGFloat) -> NSStatusItem {
+        let item = NSStatusBar.system.statusItem(withLength: length)
+        // Set one explicit identity before menu, visibility, length, or view
+        // layout can cause AppKit to restore the status item's position.
+        item.autosaveName = Self.statusItemAutosaveName
+        item.menu = statusMenu
+        return item
+    }
+
     private func installStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(
-            withLength: NSStatusItem.variableLength
-        )
-        statusItem.menu = statusMenu
+        statusItem = makeStatusItem(withLength: NSStatusItem.variableLength)
         configureStatusItem()
     }
 
-    private func scheduleStatusItemAttachmentCheck(reason: String) {
+    private func scheduleStatusItemAttachmentCheck(
+        reason: String,
+        delay: TimeInterval? = nil
+    ) {
         guard !statusItemAttachmentCheckScheduled else { return }
         statusItemAttachmentCheckScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        let checkDelay = delay ?? (
+            statusItemAttachmentPolicy.hasExhaustedRecovery
+                ? Self.statusItemPostRecoveryProbeDelay
+                : Self.statusItemInitialAttachmentCheckDelay
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + checkDelay) { [weak self] in
             guard let self else { return }
             self.statusItemAttachmentCheckScheduled = false
             self.verifyStatusItemAttachment(reason: reason)
         }
     }
 
-    private func verifyStatusItemAttachment(reason: String) {
-        guard let item = statusItem, let button = item.button else {
+    private func scheduleStatusItemRecovery(
+        reason: String,
+        attempt: Int,
+        delay: TimeInterval
+    ) {
+        guard !statusItemAttachmentCheckScheduled else { return }
+        statusItemAttachmentCheckScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            self.statusItemAttachmentCheckScheduled = false
+            self.performStatusItemRecovery(reason: reason, attempt: attempt)
+        }
+    }
+
+    private func statusItemIsAttached(_ item: NSStatusItem) -> Bool {
+        guard let window = item.button?.window, let screen = window.screen else {
+            return false
+        }
+        let frame = window.frame
+        let screenFrame = screen.frame
+        return window.isVisible
+            && frame.size.width > 0
+            && frame.size.height > 0
+            && frame.minX >= screenFrame.minX
+            && frame.maxX <= screenFrame.maxX
+            && frame.maxY >= screenFrame.maxY - 4
+            && frame.minY >= screenFrame.maxY - 48
+    }
+
+    private func performStatusItemRecovery(reason: String, attempt: Int) {
+        let item = statusItem
+        if let item, statusItemIsAttached(item) {
+            let hadRecoveryState = statusItemAttachmentPolicy.hasPendingFailure
+                || statusItemAttachmentPolicy.recoveryAttempts > 0
+            _ = statusItemAttachmentPolicy.observe(.attached)
             SwitchLog.write(
-                "status item attachment failed; reason=missing item or button",
-                level: .error,
+                "status item recovery succeeded; reason=\(reason); attempt=\(attempt); had_recovery_state=\(hadRecoveryState)",
+                level: .info,
                 category: "ui.status-item"
             )
             return
         }
 
-        let window = button.window
-        let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let desiredLength = max(CGFloat(30), item?.length ?? 30)
+        statusItemAttachmentPolicy.markRecoveryPerformed()
+        SwitchLog.write(
+            "status item recovery executing; reason=\(reason); attempt=\(attempt); window_frame=\(item?.button?.window.map { DashboardLogging.rect($0.frame) } ?? "none"); screen_frame=\(item?.button?.window?.screen.map { DashboardLogging.rect($0.frame) } ?? "none")",
+            level: .warning,
+            category: "ui.status-item"
+        )
+        if let item {
+            NSStatusBar.system.removeStatusItem(item)
+        }
+        statusItem = makeStatusItem(withLength: desiredLength)
+        configureStatusItem()
+    }
+
+    private func verifyStatusItemAttachment(reason: String) {
+        let item = statusItem
+        let button = item?.button
+        let window = button?.window
         let screen = window?.screen
+        let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
         let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let attached = window.map { window in
-            guard let screen else { return false }
-            let frame = window.frame
-            let screenFrame = screen.frame
-            return window.isVisible
-                && frame.minX >= screenFrame.minX
-                && frame.maxX <= screenFrame.maxX
-                && frame.maxY >= screenFrame.maxY - 4
-                && frame.minY >= screenFrame.maxY - 48
-        } ?? false
+        let attached = item.map(statusItemIsAttached) ?? false
+        let observation: StatusItemAttachmentPolicy.Observation
+        if attached {
+            observation = .attached
+        } else if item == nil {
+            observation = .waitingForItem
+        } else if button == nil {
+            observation = .waitingForButton
+        } else if window == nil {
+            observation = .waitingForWindow
+        } else if screen == nil {
+            observation = .waitingForScreen
+        } else if window?.isVisible != true {
+            observation = .waitingForVisibility
+        } else {
+            observation = .waitingForFrame
+        }
 
         SwitchLog.write(
-            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
+            "status item attachment checked; reason=\(reason); observation=\(observation.logName); attached=\(attached); visible=\(item?.isVisible ?? false); window_visible=\(window?.isVisible ?? false); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item?.length ?? 0)",
             level: attached ? .debug : .warning,
             category: "ui.status-item",
-            throttleKey: "status-item-attachment-\(reason)",
-            minimumInterval: 0.5
+            throttleKey: "status-item-attachment-\(attached ? "attached" : "pending")",
+            minimumInterval: attached ? 2 : 1
         )
 
-        guard !attached else {
-            statusItemReanchorAttempts = 0
-            return
-        }
-        guard statusItemReanchorAttempts < 3 else {
+        let hadRecoveryState = statusItemAttachmentPolicy.hasPendingFailure
+            || statusItemAttachmentPolicy.recoveryAttempts > 0
+        switch statusItemAttachmentPolicy.observe(observation) {
+        case .stable:
             SwitchLog.write(
-                "status item attachment unresolved after retries; reason=\(reason); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
-                level: .error,
+                hadRecoveryState
+                    ? "status item recovery succeeded; reason=\(reason); window_frame=\(windowFrame); screen_frame=\(screenFrame)"
+                    : "status item attachment stable; reason=\(reason); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+                level: hadRecoveryState ? .info : .debug,
+                category: "ui.status-item",
+                throttleKey: hadRecoveryState ? nil : "status-item-attachment-stable",
+                minimumInterval: hadRecoveryState ? 0 : 2
+            )
+        case let .waitForAppKitLayout(confirmation, delay):
+            SwitchLog.write(
+                "status item attachment waiting for AppKit layout; reason=\(reason); observation=\(observation.logName); consecutive_failures=\(confirmation); next_check_after=\(delay)s",
+                level: .debug,
+                category: "ui.status-item",
+                throttleKey: "status-item-layout-wait",
+                minimumInterval: 0.5
+            )
+            scheduleStatusItemAttachmentCheck(
+                reason: reason,
+                delay: delay
+            )
+        case let .recover(attempt, delay):
+            SwitchLog.write(
+                "status item attachment continuously unresolved; reason=\(reason); observation=\(observation.logName); confirmations=\(StatusItemAttachmentPolicy.requiredConsecutiveFailures); recovery_attempt=\(attempt); recovery_after=\(delay)s",
+                level: .warning,
                 category: "ui.status-item"
             )
-            return
+            scheduleStatusItemRecovery(
+                reason: reason,
+                attempt: attempt,
+                delay: delay
+            )
+        case .abandon:
+            SwitchLog.write(
+                "status item recovery abandoned after bounded attempts; reason=\(reason); observation=\(observation.logName); recovery_attempts=\(statusItemAttachmentPolicy.recoveryAttempts); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+                level: .error,
+                category: "ui.status-item",
+                throttleKey: "status-item-recovery-abandoned",
+                minimumInterval: 60
+            )
+            scheduleStatusItemAttachmentCheck(
+                reason: "post-recovery probe",
+                delay: Self.statusItemPostRecoveryProbeDelay
+            )
         }
-
-        statusItemReanchorAttempts += 1
-        let desiredLength = max(CGFloat(30), item.length)
-        NSStatusBar.system.removeStatusItem(item)
-        statusItem = NSStatusBar.system.statusItem(withLength: desiredLength)
-        statusItem.menu = statusMenu
-        configureStatusItem()
-        scheduleStatusItemAttachmentCheck(reason: "re-registered-\(statusItemReanchorAttempts)-\(reason)")
     }
 
     private func configureRefreshTimers() {
