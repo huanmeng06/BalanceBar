@@ -2481,7 +2481,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        // Keep the complete standard titlebar button group enabled so AppKit
+        // owns the native colors, hover glyphs, pressed state, and zoom action.
+        window.standardWindowButton(.zoomButton)?.isEnabled = true
         installDashboardLayout(in: window)
         dashboard = window
         installDashboardMouseMonitor()
