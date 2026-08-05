@@ -2649,11 +2649,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebarContent.addSubview(navigation)
+        let panelInset: CGFloat = 4
         NSLayoutConstraint.activate([
-            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 8),
-            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 8),
-            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -8),
-            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -8),
+            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: panelInset),
+            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: panelInset),
+            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -panelInset),
+            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -panelInset),
             panel.topAnchor.constraint(equalTo: panelShadow.topAnchor),
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
