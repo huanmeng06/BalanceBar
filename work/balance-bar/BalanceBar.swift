@@ -972,52 +972,92 @@ private enum SwitchLog {
     }
 }
 
+private let productionBundleIdentifier = "com.huanmeng06.BalanceBar.app"
+private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
-private let preferencesMigrationMarker = "didMigrateLegacyPreferences.v1"
-private let migratedPreferenceKeys = [
-    "appLanguage",
-    "showMenuBarReset",
-    "showMenuBarIcon",
-    "showMenuBarAmount",
-    "animateCodexActivity",
-    "activityPollInterval",
-    "codexUsageRefreshInterval",
-    "postCodexRefreshDuration",
-    "showQuickSwitchMenu",
-    "showOpenChatGPTMenu",
-    "showOpenCCSwitchMenu",
-    "showStatusMenu",
-    "statusLinks",
-    "keepMenuOpenAfterRefresh",
-    "sortProvidersAlphabetically",
-    "menuBarHorizontalPadding"
-]
+private let preferencesMigrationMarker = "didMigrateToBalanceBarApp.v1"
+
+struct PreferencesMigrationPlan {
+    static let keys = [
+        "appLanguage",
+        "showMenuBarReset",
+        "showMenuBarIcon",
+        "showMenuBarAmount",
+        "animateCodexActivity",
+        "activityPollInterval",
+        "codexUsageRefreshInterval",
+        "postCodexRefreshDuration",
+        "showQuickSwitchMenu",
+        "showOpenChatGPTMenu",
+        "showOpenCCSwitchMenu",
+        "showStatusMenu",
+        "statusLinks",
+        "keepMenuOpenAfterRefresh",
+        "sortProvidersAlphabetically",
+        "menuBarHorizontalPadding"
+    ]
+
+    static func selectedValues(
+        target: [String: Any],
+        production: [String: Any],
+        local: [String: Any]
+    ) -> [String: Any] {
+        var selected: [String: Any] = [:]
+        for key in keys where target[key] == nil {
+            if let value = production[key] {
+                selected[key] = value
+            } else if let value = local[key] {
+                selected[key] = value
+            }
+        }
+        return selected
+    }
+}
 
 private func migrateLegacyPreferencesIfNeeded() {
     let defaults = UserDefaults.standard
-    guard defaults.object(forKey: preferencesMigrationMarker) == nil else { return }
-
-    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? "unknown"
-    let legacyDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
+    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
     let currentDomain = defaults.persistentDomain(forName: currentBundleIdentifier) ?? [:]
-    var migratedKeys: [String] = []
-    var skippedKeys: [String] = []
+    guard currentDomain[preferencesMigrationMarker] == nil else { return }
 
-    for key in migratedPreferenceKeys {
-        guard let value = legacyDomain[key] else { continue }
-        guard currentDomain[key] == nil else {
-            skippedKeys.append(key)
+    let productionDomain = defaults.persistentDomain(
+        forName: legacyProductionBundleIdentifier
+    ) ?? [:]
+    let localDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
+    let selectedValues = PreferencesMigrationPlan.selectedValues(
+        target: currentDomain,
+        production: productionDomain,
+        local: localDomain
+    )
+    var migratedFromProduction: [String] = []
+    var migratedFromLocal: [String] = []
+    var skippedExisting: [String] = []
+
+    for key in PreferencesMigrationPlan.keys {
+        guard let value = selectedValues[key] else {
+            if currentDomain[key] != nil { skippedExisting.append(key) }
             continue
         }
         defaults.set(value, forKey: key)
-        migratedKeys.append(key)
+        if productionDomain[key] != nil {
+            migratedFromProduction.append(key)
+        } else {
+            migratedFromLocal.append(key)
+        }
     }
 
     defaults.set(true, forKey: preferencesMigrationMarker)
-    let migratedSummary = migratedKeys.isEmpty ? "<none>" : migratedKeys.joined(separator: "|")
-    let skippedSummary = skippedKeys.isEmpty ? "<none>" : skippedKeys.joined(separator: "|")
+    let productionSummary = migratedFromProduction.isEmpty
+        ? "<none>"
+        : migratedFromProduction.joined(separator: "|")
+    let localSummary = migratedFromLocal.isEmpty
+        ? "<none>"
+        : migratedFromLocal.joined(separator: "|")
+    let skippedSummary = skippedExisting.isEmpty
+        ? "<none>"
+        : skippedExisting.joined(separator: "|")
     SwitchLog.write(
-        "preferences migration; source=\(legacyBundleIdentifier); target=\(currentBundleIdentifier); source_key_count=\(legacyDomain.count); migrated=\(migratedSummary); skipped_existing=\(skippedSummary)",
+        "preferences migration; source_priority=\(legacyProductionBundleIdentifier),\(legacyBundleIdentifier); target=\(currentBundleIdentifier); production_key_count=\(productionDomain.count); local_key_count=\(localDomain.count); migrated_from_production=\(productionSummary); migrated_from_local=\(localSummary); skipped_existing=\(skippedSummary)",
         category: "configuration"
     )
 }
@@ -5848,7 +5888,7 @@ enum BalanceBarMain {
     static func main() {
         migrateLegacyPreferencesIfNeeded()
         let currentPID = ProcessInfo.processInfo.processIdentifier
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar"
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
         let duplicate = NSRunningApplication.runningApplications(
             withBundleIdentifier: bundleIdentifier
         ).contains { $0.processIdentifier != currentPID }
