@@ -2473,6 +2473,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
+        let dashboardToolbar = NSToolbar(identifier: NSToolbar.Identifier("BalanceBarDashboardToolbar"))
+        dashboardToolbar.displayMode = .iconOnly
+        dashboardToolbar.allowsUserCustomization = false
+        dashboardToolbar.autosavesConfiguration = false
+        window.toolbar = dashboardToolbar
+        window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -2539,7 +2545,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         dashboardContentHost.removeFromSuperview()
         dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-        let sidebar = makeDashboardSidebar()
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        let sidebar = makeDashboardSidebar(titlebarHeight: titlebarHeight)
         let contentSurface = NSView()
         contentSurface.wantsLayer = true
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -2584,7 +2591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func makeDashboardSidebar() -> NSView {
+    private func makeDashboardSidebar(titlebarHeight: CGFloat) -> NSView {
         let sidebar = NSView()
         let panelShadow = NSView()
         panelShadow.wantsLayer = true
@@ -2649,7 +2656,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         navigation.translatesAutoresizingMaskIntoConstraints = false
         sidebarContent.addSubview(navigation)
-        let panelInset: CGFloat = 4
+        let panelInset: CGFloat = 8
+        let navigationTopInset = max(0, titlebarHeight + 14 - panelInset)
         NSLayoutConstraint.activate([
             panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: panelInset),
             panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: panelInset),
@@ -2659,7 +2667,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            navigation.topAnchor.constraint(equalTo: sidebarContent.topAnchor, constant: 58),
+            navigation.topAnchor.constraint(equalTo: sidebarContent.topAnchor, constant: navigationTopInset),
             navigation.leadingAnchor.constraint(equalTo: sidebarContent.leadingAnchor, constant: 14),
             navigation.trailingAnchor.constraint(equalTo: sidebarContent.trailingAnchor, constant: -14)
         ])
