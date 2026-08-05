@@ -859,6 +859,28 @@ private enum DashboardLogging {
 }
 
 struct StatusItemAttachmentGeometry {
+    static func rightEdgeAlignedWindowFrame(
+        windowFrame: CGRect,
+        screenFrame: CGRect
+    ) -> CGRect {
+        guard windowFrame.width > 0,
+              windowFrame.height > 0,
+              screenFrame.width > 0,
+              screenFrame.height > 0,
+              windowFrame.width <= screenFrame.width else {
+            return windowFrame
+        }
+
+        var alignedFrame = windowFrame
+        if alignedFrame.maxX > screenFrame.maxX {
+            alignedFrame.origin.x -= alignedFrame.maxX - screenFrame.maxX
+        }
+        if alignedFrame.minX < screenFrame.minX {
+            alignedFrame.origin.x = screenFrame.minX
+        }
+        return alignedFrame
+    }
+
     static func isAttached(
         buttonFrame: CGRect,
         screenFrame: CGRect,
@@ -906,6 +928,7 @@ struct StatusItemAttachmentPolicy {
         case waitForAppKitLayout(confirmation: Int, delay: TimeInterval)
         case reanchor(attempt: Int, delay: TimeInterval)
         case alreadyScheduled
+        case alreadyFinalUnresolved
         case finalUnresolved
     }
 
@@ -915,7 +938,6 @@ struct StatusItemAttachmentPolicy {
     static let confirmationDelays: [TimeInterval] = [0.25, 0.35]
     static let reanchorDelay: TimeInterval = 0.20
     static let postReanchorCheckDelay: TimeInterval = 0.30
-    static let finalProbeDelay: TimeInterval = 3
 
     static var normalPathUpperBound: TimeInterval {
         initialAttachmentCheckDelay
@@ -927,6 +949,7 @@ struct StatusItemAttachmentPolicy {
     private(set) var consecutiveFailures = 0
     private(set) var recoveryAttempts = 0
     private(set) var recoveryPerformed = false
+    private(set) var finalUnresolvedReported = false
     private var reanchorScheduled = false
 
     var hasPendingFailure: Bool {
@@ -941,12 +964,25 @@ struct StatusItemAttachmentPolicy {
         recoveryPerformed
     }
 
+    var hasFinalUnresolvedReported: Bool {
+        finalUnresolvedReported
+    }
+
+    mutating func resetForLayoutChange() {
+        consecutiveFailures = 0
+        recoveryAttempts = 0
+        recoveryPerformed = false
+        finalUnresolvedReported = false
+        reanchorScheduled = false
+    }
+
     mutating func observe(_ observation: Observation) -> Decision {
         switch observation {
         case .attached:
             consecutiveFailures = 0
             recoveryAttempts = 0
             recoveryPerformed = false
+            finalUnresolvedReported = false
             reanchorScheduled = false
             return .stable
         case .waitingForItem,
@@ -956,7 +992,11 @@ struct StatusItemAttachmentPolicy {
              .waitingForVisibility,
              .waitingForFrame:
             if reanchorScheduled { return .alreadyScheduled }
-            if recoveryPerformed { return .finalUnresolved }
+            if recoveryPerformed {
+                guard !finalUnresolvedReported else { return .alreadyFinalUnresolved }
+                finalUnresolvedReported = true
+                return .finalUnresolved
+            }
             consecutiveFailures += 1
             guard consecutiveFailures < Self.requiredConsecutiveFailures else {
                 reanchorScheduled = true
@@ -4421,13 +4461,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         reason: String,
         delay: TimeInterval? = nil
     ) {
-        guard !statusItemAttachmentCheckScheduled else { return }
+        guard !statusItemAttachmentCheckScheduled,
+              !statusItemAttachmentPolicy.hasFinalUnresolvedReported else { return }
         statusItemAttachmentCheckScheduled = true
-        let checkDelay = delay ?? (
-            statusItemAttachmentPolicy.hasPerformedRecovery
-                ? StatusItemAttachmentPolicy.finalProbeDelay
-                : StatusItemAttachmentPolicy.initialAttachmentCheckDelay
-        )
+        let checkDelay = delay ?? StatusItemAttachmentPolicy.initialAttachmentCheckDelay
         DispatchQueue.main.asyncAfter(deadline: .now() + checkDelay) { [weak self] in
             guard let self else { return }
             self.statusItemAttachmentCheckScheduled = false
@@ -4470,6 +4507,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             screenFrame: screen.frame,
             windowVisible: window.isVisible,
             statusItemVisible: item.isVisible
+        )
+    }
+
+    private func alignStatusItemWindowToScreenEdge(
+        _ item: NSStatusItem,
+        reason: String
+    ) {
+        guard let window = item.button?.window,
+              let screen = window.screen else {
+            return
+        }
+        let before = window.frame
+        let aligned = StatusItemAttachmentGeometry.rightEdgeAlignedWindowFrame(
+            windowFrame: before,
+            screenFrame: screen.frame
+        )
+        guard aligned != before else { return }
+        window.setFrameOrigin(aligned.origin)
+        SwitchLog.write(
+            "status item window right-edge reanchored; reason=\(reason); before=\(DashboardLogging.rect(before)); after=\(DashboardLogging.rect(aligned)); screen_frame=\(DashboardLogging.rect(screen.frame)); item_identity=\(ObjectIdentifier(item))",
+            level: .info,
+            category: "ui.status-item"
         )
     }
 
@@ -4528,9 +4587,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         item.button?.needsLayout = true
         item.button?.layoutSubtreeIfNeeded()
         item.isVisible = true
+        layoutStatusItem(for: snapshot)
         item.length = desiredLength
         item.button?.needsLayout = true
         item.button?.layoutSubtreeIfNeeded()
+        alignStatusItemWindowToScreenEdge(item, reason: "same-item recovery")
         SwitchLog.write(
             "status item same-item recovery requested; reason=\(reason); attempt=\(attempt); geometry_after=\(statusItemGeometryDescription(item))",
             level: .info,
@@ -4544,6 +4605,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func verifyStatusItemAttachment(reason: String) {
         let item = statusItem
+        if let item {
+            alignStatusItemWindowToScreenEdge(item, reason: "attachment check")
+        }
         let button = item?.button
         let window = button?.window
         let screen = window?.screen
@@ -4619,6 +4683,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 throttleKey: "status-item-attachment-coalesced",
                 minimumInterval: 1
             )
+        case .alreadyFinalUnresolved:
+            break
         case .finalUnresolved:
             SwitchLog.write(
                 "status item attachment unresolved by deadline; no new status item will be created; reason=\(reason); observation=\(observation.logName); deadline=\(StatusItemAttachmentPolicy.normalPathUpperBound)s; \(statusItemGeometryDescription(item))",
@@ -4626,10 +4692,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 category: "ui.status-item",
                 throttleKey: "status-item-attachment-deadline",
                 minimumInterval: 1
-            )
-            scheduleStatusItemAttachmentCheck(
-                reason: "post-reanchor probe",
-                delay: StatusItemAttachmentPolicy.finalProbeDelay
             )
         }
     }
@@ -4963,6 +5025,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             ceil(geometry.contentWidth + (menuBarHorizontalPadding * 2))
         )
         button.layoutSubtreeIfNeeded()
+        alignStatusItemWindowToScreenEdge(statusItem, reason: "content layout")
 
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
@@ -5011,7 +5074,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func updateStatusItem(for snapshot: Snapshot) {
+        let previousLength = statusItem.length
         layoutStatusItem(for: snapshot)
+        if abs(statusItem.length - previousLength) > 0.5 {
+            statusItemAttachmentPolicy.resetForLayoutChange()
+        }
         scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
         refreshDashboardMenuBarPage()
     }
