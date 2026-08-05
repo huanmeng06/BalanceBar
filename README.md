@@ -24,7 +24,7 @@ For repeatable local GUI verification, use the explicit development variant. It 
 codesign --force --sign - work/balance-bar/build/dev/BalanceBar-dev.app
 ```
 
-The production and development commands never edit the tracked `work/balance-bar/Info.plist` and never remove the other variant's app. Production output is `work/balance-bar/build/BalanceBar.app`; development output is `work/balance-bar/build/dev/BalanceBar-dev.app`. The development bundle is also named `BalanceBar Dev` so it is distinguishable when launched. The development variant's Dashboard About page shows the version with a `· Dev` suffix (for example `版本 0.10.6 · Dev` / `Version 0.10.6 · Dev`); the production About page keeps the plain version.
+The production and development commands never edit the tracked `work/balance-bar/Info.plist` and never remove the other variant's app. Production output is `work/balance-bar/build/BalanceBar.app`; development output is `work/balance-bar/build/dev/BalanceBar-dev.app`. The development bundle is also named `BalanceBar Dev` so it is distinguishable when launched. The development variant's Dashboard About page shows the version with a `· Dev` suffix (for example `版本 0.10.7 · Dev` / `Version 0.10.7 · Dev`); the production About page keeps the plain version.
 
 The build entry point recursively collects all Swift sources under `work/balance-bar`, sorts their paths deterministically, clears only the selected variant's generated output and module cache, and packages the executable, plist, `BalanceBar.icns`, `CodexIcon.svg`, `Claude.svg`, and `ClaudeThinking.svg`. Both bundles are unsigned until the ad-hoc signing command above is run.
 
