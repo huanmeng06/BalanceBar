@@ -2472,6 +2472,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        let dashboardToolbar = NSToolbar(identifier: NSToolbar.Identifier("BalanceBarDashboardToolbar"))
+        dashboardToolbar.displayMode = .iconOnly
+        dashboardToolbar.allowsUserCustomization = false
+        dashboardToolbar.autosavesConfiguration = false
+        window.toolbar = dashboardToolbar
+        window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -2481,7 +2488,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        // Keep the complete standard titlebar button group enabled so AppKit
+        // owns the native colors, hover glyphs, pressed state, and zoom action.
+        window.standardWindowButton(.zoomButton)?.isEnabled = true
         installDashboardLayout(in: window)
         dashboard = window
         installDashboardMouseMonitor()
@@ -2536,7 +2545,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         dashboardContentHost.removeFromSuperview()
         dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-        let sidebar = makeDashboardSidebar()
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        let sidebar = makeDashboardSidebar(titlebarHeight: titlebarHeight)
         let contentSurface = NSView()
         contentSurface.wantsLayer = true
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -2550,14 +2560,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         root.addSubview(sidebar)
         root.addSubview(dashboardContentHost)
         NSLayoutConstraint.activate([
-            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 216),
             contentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             contentSurface.topAnchor.constraint(equalTo: root.topAnchor),
             contentSurface.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: 216),
             dashboardContentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             dashboardContentHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             dashboardContentHost.topAnchor.constraint(equalTo: root.topAnchor),
@@ -2581,34 +2591,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func makeDashboardSidebar() -> NSView {
+    private func makeDashboardSidebar(titlebarHeight: CGFloat) -> NSView {
         let sidebar = NSView()
-
         let panelShadow = NSView()
         panelShadow.wantsLayer = true
         panelShadow.layer?.cornerRadius = 22
         panelShadow.layer?.shadowColor = NSColor.black.cgColor
-        panelShadow.layer?.shadowOpacity = 0
+        panelShadow.layer?.shadowOpacity = dashboardUsesDarkAppearance ? 0.18 : 0.08
+        panelShadow.layer?.shadowRadius = 10
+        panelShadow.layer?.shadowOffset = NSSize(width: 0, height: -2)
         panelShadow.layer?.masksToBounds = false
         panelShadow.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(panelShadow)
 
-        let panelContent = NSView()
+        let sidebarContent = NSView()
         let panel: NSView
         if #available(macOS 26.0, *) {
             let glassPanel = NSGlassEffectView()
             glassPanel.style = .regular
             glassPanel.cornerRadius = 22
-            glassPanel.tintColor = dashboardAdaptiveColor(
-                light: NSColor(
-                    calibratedRed: 0.86,
-                    green: 0.97,
-                    blue: 1.0,
-                    alpha: 0.08
-                ),
-                dark: NSColor.black.withAlphaComponent(0.08)
-            )
-            glassPanel.contentView = panelContent
+            glassPanel.contentView = sidebarContent
             panel = glassPanel
         } else {
             let visualEffectPanel = NSVisualEffectView()
@@ -2618,17 +2620,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             visualEffectPanel.wantsLayer = true
             visualEffectPanel.layer?.cornerRadius = 22
             visualEffectPanel.layer?.masksToBounds = true
-            panelContent.translatesAutoresizingMaskIntoConstraints = false
-            visualEffectPanel.addSubview(panelContent)
+            sidebarContent.translatesAutoresizingMaskIntoConstraints = false
+            visualEffectPanel.addSubview(sidebarContent)
             NSLayoutConstraint.activate([
-                panelContent.topAnchor.constraint(equalTo: visualEffectPanel.topAnchor),
-                panelContent.leadingAnchor.constraint(equalTo: visualEffectPanel.leadingAnchor),
-                panelContent.trailingAnchor.constraint(equalTo: visualEffectPanel.trailingAnchor),
-                panelContent.bottomAnchor.constraint(equalTo: visualEffectPanel.bottomAnchor)
+                sidebarContent.topAnchor.constraint(equalTo: visualEffectPanel.topAnchor),
+                sidebarContent.leadingAnchor.constraint(equalTo: visualEffectPanel.leadingAnchor),
+                sidebarContent.trailingAnchor.constraint(equalTo: visualEffectPanel.trailingAnchor),
+                sidebarContent.bottomAnchor.constraint(equalTo: visualEffectPanel.bottomAnchor)
             ])
-            panelShadow.layer?.shadowOpacity = dashboardUsesDarkAppearance ? 0.22 : 0.09
-            panelShadow.layer?.shadowRadius = 18
-            panelShadow.layer?.shadowOffset = NSSize(width: 0, height: -4)
             panel = visualEffectPanel
         }
         panel.translatesAutoresizingMaskIntoConstraints = false
@@ -2656,19 +2655,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
 
         navigation.translatesAutoresizingMaskIntoConstraints = false
-        panelContent.addSubview(navigation)
+        sidebarContent.addSubview(navigation)
+        let panelInset: CGFloat = 8
+        let navigationTopInset = max(0, titlebarHeight + 14 - panelInset)
         NSLayoutConstraint.activate([
-            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 8),
-            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 12),
-            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -8),
-            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -14),
+            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: panelInset),
+            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: panelInset),
+            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -panelInset),
+            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -panelInset),
             panel.topAnchor.constraint(equalTo: panelShadow.topAnchor),
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            navigation.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 58),
-            navigation.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
-            navigation.trailingAnchor.constraint(equalTo: panelContent.trailingAnchor, constant: -14)
+            navigation.topAnchor.constraint(equalTo: sidebarContent.topAnchor, constant: navigationTopInset),
+            navigation.leadingAnchor.constraint(equalTo: sidebarContent.leadingAnchor, constant: 14),
+            navigation.trailingAnchor.constraint(equalTo: sidebarContent.trailingAnchor, constant: -14)
         ])
         return sidebar
     }
@@ -3725,7 +3726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.10.4"
+        ) as? String ?? "0.10.5"
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
