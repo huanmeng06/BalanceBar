@@ -16,6 +16,8 @@
 		A10000000000000000000026 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
 		A10000000000000000000027 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* SwiftUI.framework */; };
 		A10000000000000000000028 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* libsqlite3.tbd */; };
+		A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002E /* MenuBarGeometryTests.swift */; };
+		A10000000000000000000031 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002F /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +32,9 @@
 		A10000000000000000000018 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		A10000000000000000000019 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		A1000000000000000000001A /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		A1000000000000000000002D /* BalanceBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BalanceBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000000000000000000002E /* MenuBarGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarGeometryTests.swift; sourceTree = "<group>"; };
+		A1000000000000000000002F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,6 +49,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000000000000000000034 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000031 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -51,6 +64,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000001C /* work/balance-bar */,
+				A1000000000000000000002C /* Tests */,
 				A1000000000000000000001D /* Frameworks */,
 				A1000000000000000000001E /* Products */,
 			);
@@ -77,6 +91,7 @@
 				A10000000000000000000018 /* Foundation.framework */,
 				A10000000000000000000019 /* SwiftUI.framework */,
 				A1000000000000000000001A /* libsqlite3.tbd */,
+				A1000000000000000000002F /* XCTest.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -85,8 +100,25 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000016 /* BalanceBar.app */,
+				A1000000000000000000002D /* BalanceBarTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000002C /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000002B /* BalanceBarTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000002B /* BalanceBarTests */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
+			);
+			path = BalanceBarTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -111,6 +143,26 @@
 			productReference = A10000000000000000000016 /* BalanceBar.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A10000000000000000000032 /* BalanceBarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000038 /* Build configuration list for PBXNativeTarget "BalanceBarTests" */;
+			buildPhases = (
+				A10000000000000000000033 /* Sources */,
+				A10000000000000000000034 /* Frameworks */,
+				A10000000000000000000035 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1000000000000000000003B /* PBXTargetDependency */,
+			);
+			name = BalanceBarTests;
+			packageProductDependencies = (
+			);
+			productName = BalanceBarTests;
+			productReference = A1000000000000000000002D /* BalanceBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -122,6 +174,10 @@
 				TargetAttributes = {
 					A10000000000000000000002 = {
 						CreatedOnToolsVersion = 2600;
+					};
+					A10000000000000000000032 = {
+						CreatedOnToolsVersion = 2600;
+						TestTargetID = A10000000000000000000002;
 					};
 				};
 			};
@@ -139,6 +195,7 @@
 			projectRoot = "";
 			targets = (
 				A10000000000000000000002 /* BalanceBar */,
+				A10000000000000000000032 /* BalanceBarTests */,
 			);
 		};
 /* End PBXProject section */
@@ -155,6 +212,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000000000000000000035 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -163,6 +227,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000020 /* BalanceBar.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000033 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -191,6 +263,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "work/balance-bar/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -223,6 +296,35 @@
 			};
 			name = Release;
 		};
+		A10000000000000000000036 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBarTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BalanceBar.app/Contents/MacOS/BalanceBar";
+			};
+			name = Debug;
+		};
+		A10000000000000000000037 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBarTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BalanceBar.app/Contents/MacOS/BalanceBar";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -244,7 +346,34 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A10000000000000000000038 /* Build configuration list for PBXNativeTarget "BalanceBarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000036 /* Debug */,
+				A10000000000000000000037 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin PBXContainerItemProxy section */
+		A1000000000000000000003A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000002;
+			remoteInfo = BalanceBar;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		A1000000000000000000003B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000002 /* BalanceBar */;
+			targetProxy = A1000000000000000000003A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 	};
 	rootObject = A10000000000000000000001 /* Project object */;
 }

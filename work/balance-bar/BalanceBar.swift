@@ -110,7 +110,7 @@ private final class MenuBarTextView: NSView {
     override var intrinsicContentSize: NSSize { layoutSize }
 }
 
-private struct MenuBarGeometry {
+struct MenuBarGeometry {
     let iconWidth: CGFloat
     let gap: CGFloat
     let textWidth: CGFloat
@@ -6113,6 +6113,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 @main
 enum BalanceBarMain {
     static func main() {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            NSApplication.shared.run()
+            return
+        }
         migrateLegacyPreferencesIfNeeded()
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
