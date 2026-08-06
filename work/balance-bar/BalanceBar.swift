@@ -146,6 +146,31 @@ private struct MenuBarGeometry {
             ? singleLineHeight
             : ceil(max(iconWidth, textHeight))
     }
+
+    func iconCenterYInFlippedButton(
+        buttonHeight: CGFloat,
+        iconViewYOffset: CGFloat
+    ) -> CGFloat {
+        let contentY = floor((buttonHeight - contentHeight) / 2)
+        let slotYFromTop = floor(max(0, (contentHeight - iconWidth) / 2))
+        // The status button and content stack are flipped while the icon slot
+        // is not. Positive local icon Y therefore decreases button-space Y.
+        return contentY + slotYFromTop - iconViewYOffset + (iconWidth / 2)
+    }
+
+    func iconViewYOffset(
+        alignedTo reference: MenuBarGeometry,
+        buttonHeight: CGFloat,
+        referenceIconViewYOffset: CGFloat
+    ) -> CGFloat {
+        iconCenterYInFlippedButton(
+            buttonHeight: buttonHeight,
+            iconViewYOffset: 0
+        ) - reference.iconCenterYInFlippedButton(
+            buttonHeight: buttonHeight,
+            iconViewYOffset: referenceIconViewYOffset
+        )
+    }
 }
 
 private enum StatusLinkField {
@@ -972,52 +997,93 @@ private enum SwitchLog {
     }
 }
 
+private let productionBundleIdentifier = "com.huanmeng06.BalanceBar.app"
+private let devBundleIdentifier = "com.huanmeng06.BalanceBar.dev"
+private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
-private let preferencesMigrationMarker = "didMigrateLegacyPreferences.v1"
-private let migratedPreferenceKeys = [
-    "appLanguage",
-    "showMenuBarReset",
-    "showMenuBarIcon",
-    "showMenuBarAmount",
-    "animateCodexActivity",
-    "activityPollInterval",
-    "codexUsageRefreshInterval",
-    "postCodexRefreshDuration",
-    "showQuickSwitchMenu",
-    "showOpenChatGPTMenu",
-    "showOpenCCSwitchMenu",
-    "showStatusMenu",
-    "statusLinks",
-    "keepMenuOpenAfterRefresh",
-    "sortProvidersAlphabetically",
-    "menuBarHorizontalPadding"
-]
+private let preferencesMigrationMarker = "didMigrateToBalanceBarApp.v1"
+
+struct PreferencesMigrationPlan {
+    static let keys = [
+        "appLanguage",
+        "showMenuBarReset",
+        "showMenuBarIcon",
+        "showMenuBarAmount",
+        "animateCodexActivity",
+        "activityPollInterval",
+        "codexUsageRefreshInterval",
+        "postCodexRefreshDuration",
+        "showQuickSwitchMenu",
+        "showOpenChatGPTMenu",
+        "showOpenCCSwitchMenu",
+        "showStatusMenu",
+        "statusLinks",
+        "keepMenuOpenAfterRefresh",
+        "sortProvidersAlphabetically",
+        "menuBarHorizontalPadding"
+    ]
+
+    static func selectedValues(
+        target: [String: Any],
+        production: [String: Any],
+        local: [String: Any]
+    ) -> [String: Any] {
+        var selected: [String: Any] = [:]
+        for key in keys where target[key] == nil {
+            if let value = production[key] {
+                selected[key] = value
+            } else if let value = local[key] {
+                selected[key] = value
+            }
+        }
+        return selected
+    }
+}
 
 private func migrateLegacyPreferencesIfNeeded() {
     let defaults = UserDefaults.standard
-    guard defaults.object(forKey: preferencesMigrationMarker) == nil else { return }
-
-    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? "unknown"
-    let legacyDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
+    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
     let currentDomain = defaults.persistentDomain(forName: currentBundleIdentifier) ?? [:]
-    var migratedKeys: [String] = []
-    var skippedKeys: [String] = []
+    guard currentDomain[preferencesMigrationMarker] == nil else { return }
 
-    for key in migratedPreferenceKeys {
-        guard let value = legacyDomain[key] else { continue }
-        guard currentDomain[key] == nil else {
-            skippedKeys.append(key)
+    let productionDomain = defaults.persistentDomain(
+        forName: legacyProductionBundleIdentifier
+    ) ?? [:]
+    let localDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
+    let selectedValues = PreferencesMigrationPlan.selectedValues(
+        target: currentDomain,
+        production: productionDomain,
+        local: localDomain
+    )
+    var migratedFromProduction: [String] = []
+    var migratedFromLocal: [String] = []
+    var skippedExisting: [String] = []
+
+    for key in PreferencesMigrationPlan.keys {
+        guard let value = selectedValues[key] else {
+            if currentDomain[key] != nil { skippedExisting.append(key) }
             continue
         }
         defaults.set(value, forKey: key)
-        migratedKeys.append(key)
+        if productionDomain[key] != nil {
+            migratedFromProduction.append(key)
+        } else {
+            migratedFromLocal.append(key)
+        }
     }
 
     defaults.set(true, forKey: preferencesMigrationMarker)
-    let migratedSummary = migratedKeys.isEmpty ? "<none>" : migratedKeys.joined(separator: "|")
-    let skippedSummary = skippedKeys.isEmpty ? "<none>" : skippedKeys.joined(separator: "|")
+    let productionSummary = migratedFromProduction.isEmpty
+        ? "<none>"
+        : migratedFromProduction.joined(separator: "|")
+    let localSummary = migratedFromLocal.isEmpty
+        ? "<none>"
+        : migratedFromLocal.joined(separator: "|")
+    let skippedSummary = skippedExisting.isEmpty
+        ? "<none>"
+        : skippedExisting.joined(separator: "|")
     SwitchLog.write(
-        "preferences migration; source=\(legacyBundleIdentifier); target=\(currentBundleIdentifier); source_key_count=\(legacyDomain.count); migrated=\(migratedSummary); skipped_existing=\(skippedSummary)",
+        "preferences migration; source_priority=\(legacyProductionBundleIdentifier),\(legacyBundleIdentifier); target=\(currentBundleIdentifier); production_key_count=\(productionDomain.count); local_key_count=\(localDomain.count); migrated_from_production=\(productionSummary); migrated_from_local=\(localSummary); skipped_existing=\(skippedSummary)",
         category: "configuration"
     )
 }
@@ -1435,6 +1501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
     private var isMenuBarContentStackConfigured = false
+    private var lastMenuBarIconFrameDiagnostic: String?
     private let dashboardProviderLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…"))
     private let dashboardAmountLabel = NSTextField(labelWithString: "—")
     private let dashboardQuotaLabel = NSTextField(labelWithString: tr("等待额度信息", "Waiting for quota data"))
@@ -2472,6 +2539,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        let dashboardToolbar = NSToolbar(identifier: NSToolbar.Identifier("BalanceBarDashboardToolbar"))
+        dashboardToolbar.displayMode = .iconOnly
+        dashboardToolbar.allowsUserCustomization = false
+        dashboardToolbar.autosavesConfiguration = false
+        window.toolbar = dashboardToolbar
+        window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -2481,7 +2555,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        // Keep the complete standard titlebar button group enabled so AppKit
+        // owns the native colors, hover glyphs, pressed state, and zoom action.
+        window.standardWindowButton(.zoomButton)?.isEnabled = true
         installDashboardLayout(in: window)
         dashboard = window
         installDashboardMouseMonitor()
@@ -2536,7 +2612,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         dashboardContentHost.removeFromSuperview()
         dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-        let sidebar = makeDashboardSidebar()
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        let sidebar = makeDashboardSidebar(titlebarHeight: titlebarHeight)
         let contentSurface = NSView()
         contentSurface.wantsLayer = true
         contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -2550,14 +2627,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         root.addSubview(sidebar)
         root.addSubview(dashboardContentHost)
         NSLayoutConstraint.activate([
-            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 216),
             contentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             contentSurface.topAnchor.constraint(equalTo: root.topAnchor),
             contentSurface.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: 216),
             dashboardContentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             dashboardContentHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             dashboardContentHost.topAnchor.constraint(equalTo: root.topAnchor),
@@ -2581,34 +2658,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func makeDashboardSidebar() -> NSView {
+    private func makeDashboardSidebar(titlebarHeight: CGFloat) -> NSView {
         let sidebar = NSView()
-
         let panelShadow = NSView()
         panelShadow.wantsLayer = true
         panelShadow.layer?.cornerRadius = 22
         panelShadow.layer?.shadowColor = NSColor.black.cgColor
-        panelShadow.layer?.shadowOpacity = 0
+        panelShadow.layer?.shadowOpacity = dashboardUsesDarkAppearance ? 0.18 : 0.08
+        panelShadow.layer?.shadowRadius = 10
+        panelShadow.layer?.shadowOffset = NSSize(width: 0, height: -2)
         panelShadow.layer?.masksToBounds = false
         panelShadow.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(panelShadow)
 
-        let panelContent = NSView()
+        let sidebarContent = NSView()
         let panel: NSView
         if #available(macOS 26.0, *) {
             let glassPanel = NSGlassEffectView()
             glassPanel.style = .regular
             glassPanel.cornerRadius = 22
-            glassPanel.tintColor = dashboardAdaptiveColor(
-                light: NSColor(
-                    calibratedRed: 0.86,
-                    green: 0.97,
-                    blue: 1.0,
-                    alpha: 0.08
-                ),
-                dark: NSColor.black.withAlphaComponent(0.08)
-            )
-            glassPanel.contentView = panelContent
+            glassPanel.contentView = sidebarContent
             panel = glassPanel
         } else {
             let visualEffectPanel = NSVisualEffectView()
@@ -2618,17 +2687,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             visualEffectPanel.wantsLayer = true
             visualEffectPanel.layer?.cornerRadius = 22
             visualEffectPanel.layer?.masksToBounds = true
-            panelContent.translatesAutoresizingMaskIntoConstraints = false
-            visualEffectPanel.addSubview(panelContent)
+            sidebarContent.translatesAutoresizingMaskIntoConstraints = false
+            visualEffectPanel.addSubview(sidebarContent)
             NSLayoutConstraint.activate([
-                panelContent.topAnchor.constraint(equalTo: visualEffectPanel.topAnchor),
-                panelContent.leadingAnchor.constraint(equalTo: visualEffectPanel.leadingAnchor),
-                panelContent.trailingAnchor.constraint(equalTo: visualEffectPanel.trailingAnchor),
-                panelContent.bottomAnchor.constraint(equalTo: visualEffectPanel.bottomAnchor)
+                sidebarContent.topAnchor.constraint(equalTo: visualEffectPanel.topAnchor),
+                sidebarContent.leadingAnchor.constraint(equalTo: visualEffectPanel.leadingAnchor),
+                sidebarContent.trailingAnchor.constraint(equalTo: visualEffectPanel.trailingAnchor),
+                sidebarContent.bottomAnchor.constraint(equalTo: visualEffectPanel.bottomAnchor)
             ])
-            panelShadow.layer?.shadowOpacity = dashboardUsesDarkAppearance ? 0.22 : 0.09
-            panelShadow.layer?.shadowRadius = 18
-            panelShadow.layer?.shadowOffset = NSSize(width: 0, height: -4)
             panel = visualEffectPanel
         }
         panel.translatesAutoresizingMaskIntoConstraints = false
@@ -2656,19 +2722,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
 
         navigation.translatesAutoresizingMaskIntoConstraints = false
-        panelContent.addSubview(navigation)
+        sidebarContent.addSubview(navigation)
+        let panelInset: CGFloat = 8
+        let navigationTopInset = max(0, titlebarHeight + 14 - panelInset)
         NSLayoutConstraint.activate([
-            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 8),
-            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 12),
-            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -8),
-            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -14),
+            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: panelInset),
+            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: panelInset),
+            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -panelInset),
+            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -panelInset),
             panel.topAnchor.constraint(equalTo: panelShadow.topAnchor),
             panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            navigation.topAnchor.constraint(equalTo: panelContent.topAnchor, constant: 58),
-            navigation.leadingAnchor.constraint(equalTo: panelContent.leadingAnchor, constant: 14),
-            navigation.trailingAnchor.constraint(equalTo: panelContent.trailingAnchor, constant: -14)
+            navigation.topAnchor.constraint(equalTo: sidebarContent.topAnchor, constant: navigationTopInset),
+            navigation.leadingAnchor.constraint(equalTo: sidebarContent.leadingAnchor, constant: 14),
+            navigation.trailingAnchor.constraint(equalTo: sidebarContent.trailingAnchor, constant: -14)
         ])
         return sidebar
     }
@@ -3725,11 +3793,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.10.4"
+        ) as? String ?? "0.10.5"
+        let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
             "Version \(appVersion)"
-        ))
+        ) + (isDevBuild ? " · Dev" : ""))
         version.textColor = .secondaryLabelColor
         let detail = NSTextField(labelWithString: tr(
             "基于 CC Switch 的菜单栏余量查看工具",
@@ -4633,6 +4702,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
     }
 
+    private func logMenuBarIconFrames(
+        snapshot: Snapshot,
+        button: NSStatusBarButton,
+        hasSecondary: Bool,
+        iconYOffset: CGFloat
+    ) {
+        guard showMenuBarIcon else { return }
+        let kind: String
+        switch snapshot.kind {
+        case .placeholder: kind = "placeholder"
+        case .official: kind = "official"
+        case .balance: kind = "balance"
+        case .error: kind = "error"
+        }
+        let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
+        let slotInButton = menuBarIconSlot.convert(menuBarIconSlot.bounds, to: button)
+        let iconInButton = menuBarIconView.convert(menuBarIconView.bounds, to: button)
+        let iconInWindow = menuBarIconView.convert(menuBarIconView.bounds, to: nil)
+        let iconInScreen = button.window?.convertToScreen(iconInWindow)
+        let diagnostic = "menu bar icon frames; kind=\(kind); show_amount=\(showMenuBarAmount); has_secondary=\(hasSecondary); offset=\(DashboardLogging.number(iconYOffset)); flipped=button:\(button.isFlipped),stack:\(menuBarContentStack.isFlipped),slot:\(menuBarIconSlot.isFlipped),icon:\(menuBarIconView.isFlipped); button=\(DashboardLogging.rect(button.bounds)); stack_local=\(DashboardLogging.rect(menuBarContentStack.frame)); stack_button=\(DashboardLogging.rect(stackInButton)); slot_local=\(DashboardLogging.rect(menuBarIconSlot.frame)); slot_button=\(DashboardLogging.rect(slotInButton)); icon_local=\(DashboardLogging.rect(menuBarIconView.frame)); icon_button=\(DashboardLogging.rect(iconInButton)); icon_window=\(DashboardLogging.rect(iconInWindow)); icon_screen=\(iconInScreen.map { DashboardLogging.rect($0) } ?? "none"); center_button=\(DashboardLogging.number(iconInButton.midY)); center_window=\(DashboardLogging.number(iconInWindow.midY))"
+        guard diagnostic != lastMenuBarIconFrameDiagnostic else { return }
+        lastMenuBarIconFrameDiagnostic = diagnostic
+        SwitchLog.write(diagnostic, level: .debug, category: "ui.geometry")
+    }
+
     private func layoutStatusItem(for snapshot: Snapshot) {
         guard let button = statusItem.button else { return }
         let reservedSecondary = showMenuBarAmount && snapshot.kind == .official
@@ -4689,9 +4783,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
-        let iconYOffset = snapshot.kind == .balance && showMenuBarIcon && showMenuBarAmount
+        let apiIconYOffset = showMenuBarIcon && showMenuBarAmount
             ? Self.menuBarSingleLineIconYOffset
             : 0
+        let iconYOffset: CGFloat
+        if snapshot.kind == .official, showMenuBarIcon {
+            let apiGeometry = MenuBarGeometry(
+                primarySize: menuBarPrimaryLabel.intrinsicContentSize,
+                secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
+                showIcon: showMenuBarIcon,
+                showAmount: showMenuBarAmount,
+                hasSecondary: false,
+                isBalance: true,
+                iconSlotWidth: Self.menuBarIconSlotWidth,
+                iconTextSpacing: Self.menuBarIconTextSpacing,
+                textRowSpacing: Self.menuBarTextRowSpacing,
+                textWidthSlack: Self.menuBarTextWidthSlack,
+                singleLineHeight: Self.menuBarSingleLineHeight
+            )
+            // Keep the API frame fixed and solve only the official icon's
+            // local Y from the complete stack -> slot -> view coordinate path.
+            iconYOffset = geometry.iconViewYOffset(
+                alignedTo: apiGeometry,
+                buttonHeight: buttonHeight,
+                referenceIconViewYOffset: apiIconYOffset
+            )
+        } else if snapshot.kind == .balance {
+            iconYOffset = apiIconYOffset
+        } else {
+            iconYOffset = 0
+        }
         menuBarIconView.frame = NSRect(
             x: 0,
             y: iconYOffset,
@@ -4714,6 +4835,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 y: -Self.menuBarSingleLineTextYOffset
             ))
         }
+        logMenuBarIconFrames(
+            snapshot: snapshot,
+            button: button,
+            hasSecondary: hasSecondary,
+            iconYOffset: iconYOffset
+        )
         button.toolTip = snapshot.menuBarToolTip
         button.isHidden = false
         button.isEnabled = true
@@ -4857,10 +4984,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.lastProviderID = current.id
             guard let query = current.query else {
                 guard current.isOfficial else {
+                    let failure = current.queryFailure ?? .unknown
                     SwitchLog.write(
-                        "balance query unavailable; client=\(client.rawValue); provider=\(current.name)",
+                        "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
                         level: .warning,
-                        category: "network"
+                        category: "network",
+                        throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
+                        minimumInterval: 60
                     )
                     self.render(.error(tr(
                         "\(current.name)：未启用 CC Switch 余额查询",
@@ -5746,6 +5876,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func makeOverviewMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
+        if snapshot.kind == .error {
+            // The error card has its own layout: the full message wraps below
+            // the title row and the card height grows to fit it. The top-right
+            // refresh time is preserved in the same format as the other cards.
+            return makeOverviewErrorMenuItem(for: snapshot, refreshDate: refreshDate)
+        }
         let item = NSMenuItem()
         // The overview is deliberately a static card, not a selectable menu
         // command. Custom labels keep it bright while the item stays disabled.
@@ -5791,9 +5927,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             quotaDetail.frame = NSRect(x: horizontalInset, y: 31, width: 128, height: 18)
             amount.frame = NSRect(x: amountX, y: 5, width: amountWidth, height: 48)
 
+            // Center the shared link row between the balance row and divider.
+            let linkRowY: CGFloat = 7
+
             let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = NSRect(x: 14, y: 10, width: AppLanguage.usesSimplifiedChinese ? 62 : 72, height: 17)
+            linkPrefix.frame = NSRect(x: 14, y: linkRowY, width: AppLanguage.usesSimplifiedChinese ? 62 : 72, height: 17)
             view.addSubview(linkPrefix)
 
             if snapshot.websiteURL != nil {
@@ -5802,7 +5941,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 // Match the prefix label's exact baseline and line box.
                 link.frame = NSRect(
                     x: AppLanguage.usesSimplifiedChinese ? 75 : 87,
-                    y: 10,
+                    y: linkRowY,
                     width: AppLanguage.usesSimplifiedChinese ? 148 : 136,
                     height: 17
                 )
@@ -5822,6 +5961,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
 
         [provider, quotaDetail, amount].forEach(view.addSubview)
+        item.view = view
+        return item
+    }
+
+    private func makeOverviewErrorMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
+        let item = NSMenuItem()
+        // Error cards are informational and stay non-interactive.
+        item.isEnabled = false
+        let message = snapshot.overviewReset(refreshDate: nil, formatter: Self.timeFormatter)
+        let frames = ErrorCardLayout.errorFrames(for: message)
+        let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
+
+        let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
+        provider.frame = frames.title
+        view.addSubview(provider)
+
+        // Keep the standard top-right refresh time (same format and position
+        // as the official/balance cards) so the error card still shows when
+        // it was last refreshed.
+        let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
+        let refreshTime = makeOverviewLabel(timeText, font: ErrorCardLayout.refreshTimeFont)
+        refreshTime.textColor = .secondaryLabelColor
+        refreshTime.alignment = .right
+        refreshTime.frame = frames.refreshTime
+        view.addSubview(refreshTime)
+
+        let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: ErrorCardLayout.quotaFont)
+        quotaDetail.frame = frames.quotaDetail
+        view.addSubview(quotaDetail)
+
+        let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
+        amount.alignment = .right
+        amount.frame = frames.amount
+        view.addSubview(amount)
+
+        let detail = ErrorCardLayout.makeDetailLabel(frames.detailText)
+        detail.frame = frames.detail
+        view.addSubview(detail)
+
         item.view = view
         return item
     }
@@ -5847,7 +6025,7 @@ enum BalanceBarMain {
     static func main() {
         migrateLegacyPreferencesIfNeeded()
         let currentPID = ProcessInfo.processInfo.processIdentifier
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.huanmeng06.BalanceBar"
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
         let duplicate = NSRunningApplication.runningApplications(
             withBundleIdentifier: bundleIdentifier
         ).contains { $0.processIdentifier != currentPID }
@@ -5861,6 +6039,131 @@ enum BalanceBarMain {
         withExtendedLifetime(delegate) {
             app.run()
         }
+    }
+}
+
+// Layout rules for the balance error overview card. The error detail must be
+// readable in full without truncation. Normal English words stay whole (word
+// wrapping); only over-wide unbreakable tokens such as URLs or continuous
+// error codes get character-level break opportunities so they cannot overflow.
+// The detail occupies the balance card's left column so the amount placeholder
+// can remain in the right column without overlap. Kept as a small pure helper
+// so the probe can verify wrapping and overlap headlessly.
+private enum ErrorCardLayout {
+    static let cardWidth: CGFloat = 304
+    static let horizontalInset: CGFloat = 14
+    static let contentWidth: CGFloat = cardWidth - horizontalInset * 2
+    static let detailWidth: CGFloat = 128
+    static let amountWidth: CGFloat = 141
+    static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
+    static let refreshTimeWidth: CGFloat = 81
+    static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
+
+    // Match the compact third-party balance card for a single-line error.
+    static let minimumCardHeight: CGFloat = 86
+    static let singleLineDetailHeight: CGFloat = 17
+
+    static let titleFont = NSFont.systemFont(ofSize: 15, weight: .semibold)
+    static let quotaFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+    static let detailFont = NSFont.systemFont(ofSize: 13, weight: .regular)
+    static let amountFont = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+    static let refreshTimeFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+
+    struct ErrorFrames {
+        let cardSize: NSSize
+        let title: NSRect
+        let refreshTime: NSRect
+        let quotaDetail: NSRect
+        let amount: NSRect
+        let detail: NSRect
+        let detailText: String
+    }
+
+    /// Prepares the detail text for word wrapping. Whitespace-delimited tokens
+    /// that fit on one line are left untouched, so normal English words stay
+    /// whole. Tokens wider than `width` (URLs, continuous error codes, long
+    /// unbroken runs) get a zero-width space between every character so they
+    /// always have safe break points and can never overflow or be truncated.
+    static func detailText(for message: String, width: CGFloat) -> String {
+        guard !message.isEmpty else { return message }
+        var result = ""
+        var token = ""
+        for character in message {
+            if character.isWhitespace {
+                result += wrapIfNeeded(token, width: width)
+                result.append(character)
+                token = ""
+            } else {
+                token.append(character)
+            }
+        }
+        result += wrapIfNeeded(token, width: width)
+        return result
+    }
+
+    private static func wrapIfNeeded(_ token: String, width: CGFloat) -> String {
+        guard !token.isEmpty else { return token }
+        let tokenWidth = (token as NSString).size(withAttributes: [.font: detailFont]).width
+        guard tokenWidth > width else { return token }
+        return token.map(String.init).joined(separator: "\u{200B}")
+    }
+
+    /// Minimum height that renders the full `message` at `width` using word
+    /// wrapping on the break-opportunity text from `detailText(for:width:)`.
+    /// Empty and short text keep the compact single-line height.
+    static func detailHeight(for message: String, width: CGFloat) -> CGFloat {
+        return measuredHeight(of: detailText(for: message, width: width), width: width)
+    }
+
+    private static func measuredHeight(of text: String, width: CGFloat) -> CGFloat {
+        guard !text.isEmpty else { return singleLineDetailHeight }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let attributed = NSAttributedString(
+            string: text,
+            attributes: [.font: detailFont, .paragraphStyle: paragraph]
+        )
+        let measured = attributed.boundingRect(
+            with: NSSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        return max(singleLineDetailHeight, ceil(measured.height) + 1)
+    }
+
+    /// Frames for the error card. A single-line detail follows the same three
+    /// row rhythm as the compact balance card; additional detail lines shift
+    /// the rows above upward by only the extra measured height.
+    static func errorFrames(for message: String) -> ErrorFrames {
+        let text = detailText(for: message, width: detailWidth)
+        let detailH = measuredHeight(of: text, width: detailWidth)
+        let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
+        let cardHeight = minimumCardHeight + extraDetailHeight
+        // The compact one-line amount center is 1pt above the geometric center
+        // of the left status/detail region. As that region grows, move the
+        // amount by half the extra height to preserve the same optical center.
+        let amountY = 5 + extraDetailHeight / 2
+        return ErrorFrames(
+            cardSize: NSSize(width: cardWidth, height: cardHeight),
+            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: 127, height: 20),
+            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight, width: refreshTimeWidth, height: 17),
+            quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
+            amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
+            detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),
+            detailText: text
+        )
+    }
+
+    /// Wrapping label for the error detail. Uses word wrapping on text prepared
+    /// by `detailText(for:width:)`, so normal English words stay whole while
+    /// over-wide tokens still have safe character-level break points. Never
+    /// truncates.
+    static func makeDetailLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: text)
+        label.font = detailFont
+        label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 0
+        return label
     }
 }
 
@@ -6054,6 +6357,7 @@ private struct Provider {
     let name: String
     let isOfficial: Bool
     let query: BalanceQuery?
+    let queryFailure: BalanceQueryFailure?
 
     static func loadCurrent(appType: String) -> Provider? {
         var database: OpaquePointer?
@@ -6071,15 +6375,24 @@ private struct Provider {
               let metaText = sqlite3_column_text(statement, 3).map({ String(cString: $0) }) else { return nil }
         let category = sqlite3_column_text(statement, 4).map({ String(cString: $0) })
         let websiteText = sqlite3_column_text(statement, 5).map({ String(cString: $0) })
-        guard category != "official", let query = BalanceQuery.make(
+        guard category != "official" else {
+            return Provider(id: id, name: name, isOfficial: true, query: nil, queryFailure: nil)
+        }
+        var queryFailure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
             settingsText: configText,
             metaText: metaText,
             websiteText: websiteText,
-            appType: appType
-        ) else {
-            return Provider(id: id, name: name, isOfficial: category == "official", query: nil)
-        }
-        return Provider(id: id, name: name, isOfficial: false, query: query)
+            appType: appType,
+            onFailure: { queryFailure = $0 }
+        )
+        return Provider(
+            id: id,
+            name: name,
+            isOfficial: false,
+            query: query,
+            queryFailure: queryFailure
+        )
     }
 
     static func loadChoices(appType: String) -> [ProviderChoice] {
@@ -6477,6 +6790,38 @@ private enum NativeBalanceProvider {
     }
 }
 
+private enum BalanceQueryFailure: String {
+    case settingsJSONInvalid = "settings-json-invalid"
+    case metaJSONInvalid = "meta-json-invalid"
+    case usageScriptMissing = "usage-script-missing"
+    case usageScriptInvalid = "usage-script-invalid"
+    case usageScriptDisabled = "usage-script-disabled"
+    case credentialMissing = "credential-missing"
+    case baseURLMissing = "base-url-missing"
+    case requestCodeMissing = "request-code-missing"
+    case requestEndpointMissing = "request-endpoint-missing"
+    case nativeTemplateUnsupported = "native-template-unsupported"
+    case newAPIUserIDMissing = "newapi-user-id-missing"
+    case unknown = "unknown"
+
+    var diagnostic: String {
+        switch self {
+        case .settingsJSONInvalid: return "stage=settings-json; reason=invalid"
+        case .metaJSONInvalid: return "stage=meta-json; reason=invalid"
+        case .usageScriptMissing: return "stage=usage-script; reason=missing"
+        case .usageScriptInvalid: return "stage=usage-script; reason=invalid"
+        case .usageScriptDisabled: return "stage=usage-script; reason=disabled"
+        case .credentialMissing: return "stage=credentials; reason=missing"
+        case .baseURLMissing: return "stage=base-url; reason=missing"
+        case .requestCodeMissing: return "stage=request-code; reason=missing"
+        case .requestEndpointMissing: return "stage=request-endpoint; reason=missing"
+        case .nativeTemplateUnsupported: return "stage=template; reason=native-provider-unsupported"
+        case .newAPIUserIDMissing: return "stage=template; reason=newapi-user-id-missing"
+        case .unknown: return "stage=configuration; reason=unknown"
+        }
+    }
+}
+
 private struct BalanceQuery {
     let url: String
     let websiteURL: URL?
@@ -6493,12 +6838,35 @@ private struct BalanceQuery {
         settingsText: String,
         metaText: String,
         websiteText: String?,
-        appType: String
+        appType: String,
+        onFailure: ((BalanceQueryFailure) -> Void)? = nil
     ) -> BalanceQuery? {
-        guard let settings = jsonObject(settingsText),
-              let meta = jsonObject(metaText),
-              let script = usageScript(from: meta),
-              boolValue(script["enabled"]) == true else { return nil }
+        guard let settings = jsonObject(settingsText) else {
+            onFailure?(.settingsJSONInvalid)
+            return nil
+        }
+        guard let meta = jsonObject(metaText) else {
+            onFailure?(.metaJSONInvalid)
+            return nil
+        }
+        guard let scriptValue = meta["usage_script"] else {
+            onFailure?(.usageScriptMissing)
+            return nil
+        }
+        let script: [String: Any]
+        if let dictionary = scriptValue as? [String: Any] {
+            script = dictionary
+        } else if let scriptText = scriptValue as? String,
+                  let dictionary = jsonObject(scriptText) {
+            script = dictionary
+        } else {
+            onFailure?(.usageScriptInvalid)
+            return nil
+        }
+        guard boolValue(script["enabled"]) == true else {
+            onFailure?(.usageScriptDisabled)
+            return nil
+        }
 
         let apiKey = findString(
             in: script,
@@ -6515,7 +6883,8 @@ private struct BalanceQuery {
                     "key",
                     "token"
                 ]
-            )
+            ) ??
+            tomlBearerToken(in: settings["config"] as? String)
         let baseURL = findString(in: script, names: ["baseUrl", "base_url", "url"]) ??
             findString(
                 in: settings,
@@ -6528,7 +6897,14 @@ private struct BalanceQuery {
                 ]
             ) ??
             tomlBaseURL(in: settings["config"] as? String)
-        guard let apiKey, !apiKey.isEmpty, let baseURL, !baseURL.isEmpty else { return nil }
+        guard let apiKey, !apiKey.isEmpty else {
+            onFailure?(.credentialMissing)
+            return nil
+        }
+        guard let baseURL, !baseURL.isEmpty else {
+            onFailure?(.baseURLMissing)
+            return nil
+        }
 
         let interval = (script["autoQueryInterval"] as? NSNumber)?.intValue ?? 30
         let timeout = (script["timeout"] as? NSNumber)?.intValue ?? 15
@@ -6541,7 +6917,10 @@ private struct BalanceQuery {
                 ?? ""
         ).lowercased()
         if templateType == "balance" {
-            guard let native = NativeBalanceProvider(baseURL: baseURL) else { return nil }
+            guard let native = NativeBalanceProvider(baseURL: baseURL) else {
+                onFailure?(.nativeTemplateUnsupported)
+                return nil
+            }
             return BalanceQuery(
                 url: native.endpoint,
                 websiteURL: websiteURL,
@@ -6556,13 +6935,17 @@ private struct BalanceQuery {
             )
         }
 
-        guard
-            let code = script["code"] as? String,
-            let template = capture(
-                "url\\s*:\\s*[`\\\"]([^`\\\"]+)",
-                in: code
-            )
-        else { return nil }
+        guard let code = script["code"] as? String, !code.isEmpty else {
+            onFailure?(.requestCodeMissing)
+            return nil
+        }
+        guard let template = capture(
+            "url\\s*:\\s*[`\\\"]([^`\\\"]+)",
+            in: code
+        ) else {
+            onFailure?(.requestEndpointMissing)
+            return nil
+        }
         let url = template.replacingOccurrences(
             of: "{{baseUrl}}",
             with: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -6572,7 +6955,10 @@ private struct BalanceQuery {
             guard let userID = findString(
                 in: script,
                 names: ["userId", "user_id", "userID"]
-            ), !userID.isEmpty else { return nil }
+            ), !userID.isEmpty else {
+                onFailure?(.newAPIUserIDMissing)
+                return nil
+            }
             additionalHeaders["Content-Type"] = "application/json"
             additionalHeaders["New-Api-User"] = userID
             additionalHeaders["User-Agent"] = "cc-switch/1.0"
@@ -6589,12 +6975,6 @@ private struct BalanceQuery {
             isNewAPI: templateType == "newapi",
             additionalHeaders: additionalHeaders
         )
-    }
-
-    private static func usageScript(from meta: [String: Any]) -> [String: Any]? {
-        if let script = meta["usage_script"] as? [String: Any] { return script }
-        if let scriptText = meta["usage_script"] as? String { return jsonObject(scriptText) }
-        return nil
     }
 
     private static func jsonObject(_ text: String) -> [String: Any]? {
@@ -6621,6 +7001,11 @@ private struct BalanceQuery {
     private static func tomlBaseURL(in config: String?) -> String? {
         guard let config else { return nil }
         return capture("base_url\\s*=\\s*\\\"([^\\\"]+)\\\"", in: config)
+    }
+
+    private static func tomlBearerToken(in config: String?) -> String? {
+        guard let config else { return nil }
+        return capture("(?m)^\\s*experimental_bearer_token\\s*=\\s*\\\"([^\\\"]+)\\\"", in: config)
     }
 
     private static func boolValue(_ value: Any?) -> Bool? {
