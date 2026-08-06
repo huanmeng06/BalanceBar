@@ -1,0 +1,250 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000020 /* BalanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* BalanceBar.swift */; };
+		A10000000000000000000021 /* BalanceBar.icns in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* BalanceBar.icns */; };
+		A10000000000000000000022 /* CodexIcon.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* CodexIcon.svg */; };
+		A10000000000000000000023 /* Claude.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Claude.svg */; };
+		A10000000000000000000024 /* ClaudeThinking.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* ClaudeThinking.svg */; };
+		A10000000000000000000025 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* AppKit.framework */; };
+		A10000000000000000000026 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
+		A10000000000000000000027 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* SwiftUI.framework */; };
+		A10000000000000000000028 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* libsqlite3.tbd */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000010 /* BalanceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceBar.swift; sourceTree = "<group>"; };
+		A10000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A10000000000000000000012 /* BalanceBar.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BalanceBar.icns; sourceTree = "<group>"; };
+		A10000000000000000000013 /* CodexIcon.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = CodexIcon.svg; sourceTree = "<group>"; };
+		A10000000000000000000014 /* Claude.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Claude.svg; sourceTree = "<group>"; };
+		A10000000000000000000015 /* ClaudeThinking.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = ClaudeThinking.svg; sourceTree = "<group>"; };
+		A10000000000000000000016 /* BalanceBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BalanceBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000017 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		A10000000000000000000018 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		A10000000000000000000019 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A1000000000000000000001A /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000025 /* AppKit.framework in Frameworks */,
+				A10000000000000000000026 /* Foundation.framework in Frameworks */,
+				A10000000000000000000027 /* SwiftUI.framework in Frameworks */,
+				A10000000000000000000028 /* libsqlite3.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A1000000000000000000001B /* BalanceBar */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000001C /* work/balance-bar */,
+				A1000000000000000000001D /* Frameworks */,
+				A1000000000000000000001E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A1000000000000000000001C /* work/balance-bar */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000010 /* BalanceBar.swift */,
+				A10000000000000000000011 /* Info.plist */,
+				A10000000000000000000012 /* BalanceBar.icns */,
+				A10000000000000000000013 /* CodexIcon.svg */,
+				A10000000000000000000014 /* Claude.svg */,
+				A10000000000000000000015 /* ClaudeThinking.svg */,
+			);
+			name = "work/balance-bar";
+			path = "work/balance-bar";
+			sourceTree = "<group>";
+		};
+		A1000000000000000000001D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000017 /* AppKit.framework */,
+				A10000000000000000000018 /* Foundation.framework */,
+				A10000000000000000000019 /* SwiftUI.framework */,
+				A1000000000000000000001A /* libsqlite3.tbd */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000001E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000016 /* BalanceBar.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000002 /* BalanceBar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000007 /* Build configuration list for PBXNativeTarget "BalanceBar" */;
+			buildPhases = (
+				A10000000000000000000003 /* Sources */,
+				A10000000000000000000004 /* Frameworks */,
+				A10000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BalanceBar;
+			packageProductDependencies = (
+			);
+			productName = BalanceBar;
+			productReference = A10000000000000000000016 /* BalanceBar.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A10000000000000000000002 = {
+						CreatedOnToolsVersion = 2600;
+					};
+				};
+			};
+			buildConfigurationList = A10000000000000000000006 /* Build configuration list for PBXProject "BalanceBar" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A1000000000000000000001B /* BalanceBar */;
+			productRefGroup = A1000000000000000000001E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000000000000000000002 /* BalanceBar */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000021 /* BalanceBar.icns in Resources */,
+				A10000000000000000000022 /* CodexIcon.svg in Resources */,
+				A10000000000000000000023 /* Claude.svg in Resources */,
+				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000020 /* BalanceBar.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A10000000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A1000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "work/balance-bar/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar.app";
+				PRODUCT_NAME = BalanceBar;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "work/balance-bar/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar.app";
+				PRODUCT_NAME = BalanceBar;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000006 /* Build configuration list for PBXProject "BalanceBar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000008 /* Debug */,
+				A10000000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000007 /* Build configuration list for PBXNativeTarget "BalanceBar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000000A /* Debug */,
+				A1000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}
