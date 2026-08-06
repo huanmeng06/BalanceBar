@@ -30,12 +30,13 @@ func settingsJSON(config: String, auth: [String: String] = [:]) -> String {
 }
 
 func usageMetaJSON(
+    enabled: Bool = true,
     interval: Int = 30,
     timeout: Int = 15,
     code: String
 ) -> String {
     let script: [String: Any] = [
-        "enabled": true,
+        "enabled": enabled,
         "autoQueryInterval": interval,
         "timeout": timeout,
         "code": code
@@ -43,6 +44,30 @@ func usageMetaJSON(
     let object: [String: Any] = ["usage_script": script]
     let data = try! JSONSerialization.data(withJSONObject: object)
     return String(data: data, encoding: .utf8)!
+}
+
+func metaJSON(usageScript: Any? = nil) -> String {
+    var object: [String: Any] = [:]
+    if let usageScript { object["usage_script"] = usageScript }
+    let data = try! JSONSerialization.data(withJSONObject: object)
+    return String(data: data, encoding: .utf8)!
+}
+
+private func resolve(
+    settingsText: String,
+    metaText: String,
+    websiteText: String? = nil,
+    appType: String = "codex"
+) -> (query: BalanceQuery?, failure: BalanceQueryFailure?) {
+    var failure: BalanceQueryFailure?
+    let query = BalanceQuery.make(
+        settingsText: settingsText,
+        metaText: metaText,
+        websiteText: websiteText,
+        appType: appType,
+        onFailure: { failure = $0 }
+    )
+    return (query, failure)
 }
 
 let usageCode = "const u = `url: \"{{baseUrl}}/v1/usage\"`;"
@@ -90,6 +115,12 @@ require(tomlFallback?.websiteURL == URL(string: "https://tokenshop.example.test"
 require(tomlFallback?.isNewAPI == false, "plain usage script keeps isNewAPI false")
 require(tomlFallback?.isRightCode == false, "plain usage script keeps isRightCode false")
 require(tomlFallback?.additionalHeaders.isEmpty == true, "no extra headers are added")
+private let successfulResolution = resolve(
+    settingsText: settingsJSON(config: tokenshopConfig),
+    metaText: usageMetaJSON(code: usageCode)
+)
+require(successfulResolution.query != nil, "successful configuration resolves a query")
+require(successfulResolution.failure == nil, "successful configuration emits no failure diagnostic")
 
 // 3. No credential anywhere -> no query.
 private let noCredential = BalanceQuery.make(
@@ -173,7 +204,91 @@ private let emptyJSONKey = BalanceQuery.make(
 require(emptyJSONKey != nil, "empty JSON credential falls through to TOML")
 require(emptyJSONKey?.apiKey == "tokenshop-sanitized-bearer", "TOML token is used after an empty JSON credential")
 
-print("balance query probe: PASS; JSON priority; TOML experimental_bearer_token fallback; endpoint from usage script; interval/timeout/website preserved; missing/empty/invalid/commented/unrelated TOML values safe")
+// Stable failure categories are produced at the exact parsing stage.
+private let invalidSettings = resolve(
+    settingsText: "{not-json",
+    metaText: usageMetaJSON(code: usageCode)
+)
+require(invalidSettings.query == nil, "malformed settings JSON returns no query")
+require(invalidSettings.failure == .settingsJSONInvalid, "malformed settings JSON has a distinct reason")
+
+private let invalidMeta = resolve(
+    settingsText: settingsJSON(config: tokenshopConfig),
+    metaText: "[not-a-meta-object]"
+)
+require(invalidMeta.failure == .metaJSONInvalid, "malformed meta JSON has a distinct reason")
+
+private let missingScript = resolve(
+    settingsText: settingsJSON(config: tokenshopConfig),
+    metaText: metaJSON()
+)
+require(missingScript.failure == .usageScriptMissing, "missing usage script has a distinct reason")
+
+private let disabledScript = resolve(
+    settingsText: settingsJSON(config: tokenshopConfig),
+    metaText: usageMetaJSON(enabled: false, code: usageCode)
+)
+require(disabledScript.failure == .usageScriptDisabled, "disabled usage script has a distinct reason")
+
+private let missingCredential = resolve(
+    settingsText: settingsJSON(config: tokenlessConfig),
+    metaText: usageMetaJSON(code: usageCode)
+)
+require(missingCredential.failure == .credentialMissing, "missing credential has a distinct reason")
+
+private let missingBaseURL = resolve(
+    settingsText: settingsJSON(config: "", auth: ["OPENAI_API_KEY": "sanitized-key"]),
+    metaText: usageMetaJSON(code: usageCode)
+)
+require(missingBaseURL.failure == .baseURLMissing, "missing base URL has a distinct reason")
+
+private let missingCode = resolve(
+    settingsText: settingsJSON(config: tokenshopConfig),
+    metaText: metaJSON(usageScript: ["enabled": true])
+)
+require(missingCode.failure == .requestCodeMissing, "missing request code has a distinct reason")
+
+private let missingEndpoint = resolve(
+    settingsText: settingsJSON(config: tokenshopConfig),
+    metaText: usageMetaJSON(code: "const value = 1;")
+)
+require(missingEndpoint.failure == .requestEndpointMissing, "missing endpoint has a distinct reason")
+
+let sensitiveCredential = "SENSITIVE_BEARER_MUST_NOT_APPEAR"
+private let missingTemplateField = resolve(
+    settingsText: settingsJSON(
+        config: tokenlessConfig,
+        auth: ["OPENAI_API_KEY": sensitiveCredential]
+    ),
+    metaText: metaJSON(usageScript: [
+        "enabled": true,
+        "templateType": "newapi",
+        "code": usageCode
+    ])
+)
+require(missingTemplateField.failure == .newAPIUserIDMissing, "missing New API user ID has a template-specific reason")
+
+let diagnostics = [
+    invalidSettings,
+    invalidMeta,
+    missingScript,
+    disabledScript,
+    missingCredential,
+    missingBaseURL,
+    missingCode,
+    missingEndpoint,
+    missingTemplateField
+].compactMap { $0.failure?.diagnostic }
+for diagnostic in diagnostics {
+    require(!diagnostic.contains(sensitiveCredential), "diagnostic excludes credential values")
+    require(!diagnostic.contains("Bearer"), "diagnostic excludes Bearer values")
+    require(!diagnostic.contains("https://"), "diagnostic excludes complete endpoints and configuration URLs")
+    require(!diagnostic.contains("\"auth\""), "diagnostic excludes full auth JSON")
+    require(!diagnostic.contains("\"config\""), "diagnostic excludes full config JSON")
+    require(!diagnostic.contains("\"response\""), "diagnostic excludes response content")
+}
+
+print("balance query probe: PASS; two success paths; TOML bearer fallback; stable parsing failure reasons; diagnostics exclude credentials, auth/config JSON, endpoints, and responses")
 SWIFT
 } | swiftc -framework Foundation -o "$probe_binary" -
 

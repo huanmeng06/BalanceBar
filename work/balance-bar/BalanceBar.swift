@@ -4984,10 +4984,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.lastProviderID = current.id
             guard let query = current.query else {
                 guard current.isOfficial else {
+                    let failure = current.queryFailure ?? .unknown
                     SwitchLog.write(
-                        "balance query unavailable; client=\(client.rawValue); provider=\(current.name)",
+                        "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
                         level: .warning,
-                        category: "network"
+                        category: "network",
+                        throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
+                        minimumInterval: 60
                     )
                     self.render(.error(tr(
                         "\(current.name)：未启用 CC Switch 余额查询",
@@ -6354,6 +6357,7 @@ private struct Provider {
     let name: String
     let isOfficial: Bool
     let query: BalanceQuery?
+    let queryFailure: BalanceQueryFailure?
 
     static func loadCurrent(appType: String) -> Provider? {
         var database: OpaquePointer?
@@ -6371,15 +6375,24 @@ private struct Provider {
               let metaText = sqlite3_column_text(statement, 3).map({ String(cString: $0) }) else { return nil }
         let category = sqlite3_column_text(statement, 4).map({ String(cString: $0) })
         let websiteText = sqlite3_column_text(statement, 5).map({ String(cString: $0) })
-        guard category != "official", let query = BalanceQuery.make(
+        guard category != "official" else {
+            return Provider(id: id, name: name, isOfficial: true, query: nil, queryFailure: nil)
+        }
+        var queryFailure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
             settingsText: configText,
             metaText: metaText,
             websiteText: websiteText,
-            appType: appType
-        ) else {
-            return Provider(id: id, name: name, isOfficial: category == "official", query: nil)
-        }
-        return Provider(id: id, name: name, isOfficial: false, query: query)
+            appType: appType,
+            onFailure: { queryFailure = $0 }
+        )
+        return Provider(
+            id: id,
+            name: name,
+            isOfficial: false,
+            query: query,
+            queryFailure: queryFailure
+        )
     }
 
     static func loadChoices(appType: String) -> [ProviderChoice] {
@@ -6777,6 +6790,38 @@ private enum NativeBalanceProvider {
     }
 }
 
+private enum BalanceQueryFailure: String {
+    case settingsJSONInvalid = "settings-json-invalid"
+    case metaJSONInvalid = "meta-json-invalid"
+    case usageScriptMissing = "usage-script-missing"
+    case usageScriptInvalid = "usage-script-invalid"
+    case usageScriptDisabled = "usage-script-disabled"
+    case credentialMissing = "credential-missing"
+    case baseURLMissing = "base-url-missing"
+    case requestCodeMissing = "request-code-missing"
+    case requestEndpointMissing = "request-endpoint-missing"
+    case nativeTemplateUnsupported = "native-template-unsupported"
+    case newAPIUserIDMissing = "newapi-user-id-missing"
+    case unknown = "unknown"
+
+    var diagnostic: String {
+        switch self {
+        case .settingsJSONInvalid: return "stage=settings-json; reason=invalid"
+        case .metaJSONInvalid: return "stage=meta-json; reason=invalid"
+        case .usageScriptMissing: return "stage=usage-script; reason=missing"
+        case .usageScriptInvalid: return "stage=usage-script; reason=invalid"
+        case .usageScriptDisabled: return "stage=usage-script; reason=disabled"
+        case .credentialMissing: return "stage=credentials; reason=missing"
+        case .baseURLMissing: return "stage=base-url; reason=missing"
+        case .requestCodeMissing: return "stage=request-code; reason=missing"
+        case .requestEndpointMissing: return "stage=request-endpoint; reason=missing"
+        case .nativeTemplateUnsupported: return "stage=template; reason=native-provider-unsupported"
+        case .newAPIUserIDMissing: return "stage=template; reason=newapi-user-id-missing"
+        case .unknown: return "stage=configuration; reason=unknown"
+        }
+    }
+}
+
 private struct BalanceQuery {
     let url: String
     let websiteURL: URL?
@@ -6793,12 +6838,35 @@ private struct BalanceQuery {
         settingsText: String,
         metaText: String,
         websiteText: String?,
-        appType: String
+        appType: String,
+        onFailure: ((BalanceQueryFailure) -> Void)? = nil
     ) -> BalanceQuery? {
-        guard let settings = jsonObject(settingsText),
-              let meta = jsonObject(metaText),
-              let script = usageScript(from: meta),
-              boolValue(script["enabled"]) == true else { return nil }
+        guard let settings = jsonObject(settingsText) else {
+            onFailure?(.settingsJSONInvalid)
+            return nil
+        }
+        guard let meta = jsonObject(metaText) else {
+            onFailure?(.metaJSONInvalid)
+            return nil
+        }
+        guard let scriptValue = meta["usage_script"] else {
+            onFailure?(.usageScriptMissing)
+            return nil
+        }
+        let script: [String: Any]
+        if let dictionary = scriptValue as? [String: Any] {
+            script = dictionary
+        } else if let scriptText = scriptValue as? String,
+                  let dictionary = jsonObject(scriptText) {
+            script = dictionary
+        } else {
+            onFailure?(.usageScriptInvalid)
+            return nil
+        }
+        guard boolValue(script["enabled"]) == true else {
+            onFailure?(.usageScriptDisabled)
+            return nil
+        }
 
         let apiKey = findString(
             in: script,
@@ -6829,7 +6897,14 @@ private struct BalanceQuery {
                 ]
             ) ??
             tomlBaseURL(in: settings["config"] as? String)
-        guard let apiKey, !apiKey.isEmpty, let baseURL, !baseURL.isEmpty else { return nil }
+        guard let apiKey, !apiKey.isEmpty else {
+            onFailure?(.credentialMissing)
+            return nil
+        }
+        guard let baseURL, !baseURL.isEmpty else {
+            onFailure?(.baseURLMissing)
+            return nil
+        }
 
         let interval = (script["autoQueryInterval"] as? NSNumber)?.intValue ?? 30
         let timeout = (script["timeout"] as? NSNumber)?.intValue ?? 15
@@ -6842,7 +6917,10 @@ private struct BalanceQuery {
                 ?? ""
         ).lowercased()
         if templateType == "balance" {
-            guard let native = NativeBalanceProvider(baseURL: baseURL) else { return nil }
+            guard let native = NativeBalanceProvider(baseURL: baseURL) else {
+                onFailure?(.nativeTemplateUnsupported)
+                return nil
+            }
             return BalanceQuery(
                 url: native.endpoint,
                 websiteURL: websiteURL,
@@ -6857,13 +6935,17 @@ private struct BalanceQuery {
             )
         }
 
-        guard
-            let code = script["code"] as? String,
-            let template = capture(
-                "url\\s*:\\s*[`\\\"]([^`\\\"]+)",
-                in: code
-            )
-        else { return nil }
+        guard let code = script["code"] as? String, !code.isEmpty else {
+            onFailure?(.requestCodeMissing)
+            return nil
+        }
+        guard let template = capture(
+            "url\\s*:\\s*[`\\\"]([^`\\\"]+)",
+            in: code
+        ) else {
+            onFailure?(.requestEndpointMissing)
+            return nil
+        }
         let url = template.replacingOccurrences(
             of: "{{baseUrl}}",
             with: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -6873,7 +6955,10 @@ private struct BalanceQuery {
             guard let userID = findString(
                 in: script,
                 names: ["userId", "user_id", "userID"]
-            ), !userID.isEmpty else { return nil }
+            ), !userID.isEmpty else {
+                onFailure?(.newAPIUserIDMissing)
+                return nil
+            }
             additionalHeaders["Content-Type"] = "application/json"
             additionalHeaders["New-Api-User"] = userID
             additionalHeaders["User-Agent"] = "cc-switch/1.0"
@@ -6890,12 +6975,6 @@ private struct BalanceQuery {
             isNewAPI: templateType == "newapi",
             additionalHeaders: additionalHeaders
         )
-    }
-
-    private static func usageScript(from meta: [String: Any]) -> [String: Any]? {
-        if let script = meta["usage_script"] as? [String: Any] { return script }
-        if let scriptText = meta["usage_script"] as? String { return jsonObject(scriptText) }
-        return nil
     }
 
     private static func jsonObject(_ text: String) -> [String: Any]? {
