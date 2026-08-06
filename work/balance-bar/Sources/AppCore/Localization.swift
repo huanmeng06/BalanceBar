@@ -34,7 +34,7 @@ enum AppLanguage: String, CaseIterable {
     }
 
     var localizedTitle: String {
-        localizedTitle(using: self)
+        localizedTitle(using: AppLanguage.selected)
     }
 
     func localizedTitle(using language: AppLanguage) -> String {
