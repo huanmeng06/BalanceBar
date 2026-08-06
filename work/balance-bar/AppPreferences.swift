@@ -7,11 +7,17 @@ struct StatusLink: Codable, Equatable {
 
 final class AppPreferences {
     private let defaults: UserDefaults
-    private let defaultStatusLinks: [StatusLink]
+    private let defaultStatusLinksProvider: () -> [StatusLink]
 
-    init(defaults: UserDefaults = .standard, defaultStatusLinks: [StatusLink]? = nil) {
+    init(
+        defaults: UserDefaults = .standard,
+        defaultStatusLinks: [StatusLink]? = nil,
+        defaultStatusLinksProvider: (() -> [StatusLink])? = nil
+    ) {
         self.defaults = defaults
-        self.defaultStatusLinks = defaultStatusLinks ?? Self.makeDefaultStatusLinks()
+        self.defaultStatusLinksProvider = defaultStatusLinksProvider ?? { [defaultStatusLinks] in
+            defaultStatusLinks ?? Self.makeDefaultStatusLinks()
+        }
     }
 
     static func makeDefaultStatusLinks() -> [StatusLink] {
@@ -20,6 +26,8 @@ final class AppPreferences {
             StatusLink(title: tr("Tibo 的动态", "Tibo's Updates"), url: "https://x.com/thsottiaux")
         ]
     }
+
+    var defaultStatusLinks: [StatusLink] { defaultStatusLinksProvider() }
 
     var showMenuBarReset: Bool { get { bool("showMenuBarReset", default: true) } set { defaults.set(newValue, forKey: "showMenuBarReset") } }
     var showMenuBarIcon: Bool { get { bool("showMenuBarIcon", default: true) } set { defaults.set(newValue, forKey: "showMenuBarIcon") } }
@@ -41,7 +49,7 @@ final class AppPreferences {
 
     var statusLinks: [StatusLink] {
         get {
-            guard let data = defaults.data(forKey: "statusLinks"), let links = try? JSONDecoder().decode([StatusLink].self, from: data) else { return defaultStatusLinks }
+            guard let data = defaults.data(forKey: "statusLinks"), let links = try? JSONDecoder().decode([StatusLink].self, from: data) else { return defaultStatusLinksProvider() }
             let normalized = links.map { link -> StatusLink in
                 var copy = link
                 if copy.url == "https://" { copy.url = "" }
