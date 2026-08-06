@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000020 /* BalanceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* BalanceBar.swift */; };
+		A10000000000000000000044 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000045 /* AppPreferences.swift */; };
 		A10000000000000000000021 /* BalanceBar.icns in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* BalanceBar.icns */; };
 		A10000000000000000000022 /* CodexIcon.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* CodexIcon.svg */; };
 		A10000000000000000000023 /* Claude.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Claude.svg */; };
@@ -19,6 +20,7 @@
 		A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002E /* MenuBarGeometryTests.swift */; };
 		A10000000000000000000040 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000041 /* Localization.swift */; };
 		A10000000000000000000042 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000043 /* LocalizationTests.swift */; };
+		A10000000000000000000046 /* AppPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000047 /* AppPreferencesTests.swift */; };
 		A10000000000000000000031 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002F /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
@@ -39,6 +41,8 @@
 		A1000000000000000000002F /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A10000000000000000000041 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/Localization.swift"; sourceTree = "<group>"; };
 		A10000000000000000000043 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000045 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
+		A10000000000000000000047 /* AppPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferencesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +82,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000010 /* BalanceBar.swift */,
+				A10000000000000000000045 /* AppPreferences.swift */,
 				A10000000000000000000041 /* Localization.swift */,
 				A10000000000000000000011 /* Info.plist */,
 				A10000000000000000000012 /* BalanceBar.icns */,
@@ -123,6 +128,7 @@
 			children = (
 				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
 				A10000000000000000000043 /* LocalizationTests.swift */,
+				A10000000000000000000047 /* AppPreferencesTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -233,6 +239,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000020 /* BalanceBar.swift in Sources */,
+				A10000000000000000000044 /* AppPreferences.swift in Sources */,
 				A10000000000000000000040 /* Localization.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -243,6 +250,7 @@
 			files = (
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
 				A10000000000000000000042 /* LocalizationTests.swift in Sources */,
+				A10000000000000000000046 /* AppPreferencesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
