@@ -1,0 +1,48 @@
+name: Build and Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-and-test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: macOS build and test
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: CLI fresh build
+        run: ./work/balance-bar/build.sh
+
+      - name: Xcode Debug build
+        run: >-
+          xcodebuild
+          -project BalanceBar.xcodeproj
+          -scheme BalanceBar
+          -configuration Debug
+          -derivedDataPath "$RUNNER_TEMP/BalanceBar-Build-DerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: XCTest
+        run: >-
+          xcodebuild
+          -project BalanceBar.xcodeproj
+          -scheme BalanceBar
+          -configuration Debug
+          -derivedDataPath "$RUNNER_TEMP/BalanceBar-Test-DerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          test
