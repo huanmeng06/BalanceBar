@@ -6558,7 +6558,8 @@ private struct BalanceQuery {
                     "key",
                     "token"
                 ]
-            )
+            ) ??
+            tomlBearerToken(in: settings["config"] as? String)
         let baseURL = findString(in: script, names: ["baseUrl", "base_url", "url"]) ??
             findString(
                 in: settings,
@@ -6664,6 +6665,11 @@ private struct BalanceQuery {
     private static func tomlBaseURL(in config: String?) -> String? {
         guard let config else { return nil }
         return capture("base_url\\s*=\\s*\\\"([^\\\"]+)\\\"", in: config)
+    }
+
+    private static func tomlBearerToken(in config: String?) -> String? {
+        guard let config else { return nil }
+        return capture("(?m)^\\s*experimental_bearer_token\\s*=\\s*\\\"([^\\\"]+)\\\"", in: config)
     }
 
     private static func boolValue(_ value: Any?) -> Bool? {
