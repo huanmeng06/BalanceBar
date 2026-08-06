@@ -5,18 +5,33 @@ set -Eeuo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-menu-bar-geometry-probe.XXXXXX")"
 probe_binary="$probe_dir/menu-bar-geometry-probe"
+geometry_source="$probe_dir/MenuBarGeometry.swift"
 trap 'rm -rf "$probe_dir"' EXIT
+
+awk '
+    /^[[:space:]]*((private|fileprivate|internal|package|public)[[:space:]]+)?struct[[:space:]]+MenuBarGeometry[[:space:]]*\{/ {
+        capture = 1
+        found = 1
+        print "struct MenuBarGeometry {"
+        next
+    }
+    capture {
+        print
+        if (/^}/) {
+            capture = 0
+            exit
+        }
+    }
+    END {
+        if (!found || capture) {
+            exit 1
+        }
+    }
+' "$source_dir/BalanceBar.swift" > "$geometry_source"
 
 {
     printf '%s\n' 'import AppKit'
-    awk '
-        /^private struct MenuBarGeometry \{/ { capture = 1 }
-        /^private enum StatusLinkField \{/ { exit }
-        capture {
-            sub(/^private struct MenuBarGeometry/, "struct MenuBarGeometry")
-            print
-        }
-    ' "$source_dir/BalanceBar.swift"
+    cat "$geometry_source"
     cat <<'SWIFT'
 
 func requireClose(_ actual: CGFloat, _ expected: CGFloat, _ message: String) {
