@@ -30,6 +30,8 @@ let longChinese = "tokenshop：未启用 usage script，无法查询余额，请
 let unbrokenURL = "https://tokenshop.example.test/v1/usage?error_code=E401_INVALID_TOKEN&detail=token_revoked&hint=reauthorize_via_cc_switch_settings"
 let mixed = "tokenshop 未启用 usage script（error_code=E401_INVALID_TOKEN）https://tokenshop.example.test/v1/usage?code=12345 请检查后重试"
 let short = "tokenshop：未启用"
+let twoLines = "第一行\n第二行"
+let threeLines = "第一行\n第二行\n第三行"
 let longToken = "ThisErrorCodeLooksLikeATokenThatIsFarTooLongToFitOnASingleLineWithoutBreaking"
 
 func coreTextLines(_ text: String, width: CGFloat) -> [CTLine] {
@@ -127,6 +129,8 @@ require(ErrorCardLayout.detailHeight(for: "", width: ErrorCardLayout.detailWidth
 //    in the standard format used by the other cards. A short error uses the
 //    compact balance-card geometry exactly.
 let layoutSamples: [(String, String)] = [
+    ("two-lines", twoLines),
+    ("three-lines", threeLines),
     ("english", englishSample),
     ("long-english", longEnglish),
     ("long-chinese", longChinese),
@@ -179,6 +183,23 @@ require(compactFrames.refreshTime == NSRect(x: 209, y: 59, width: 81, height: 17
 require(compactFrames.quotaDetail == NSRect(x: 14, y: 31, width: 128, height: 18), "single-line error status matches compact balance row")
 require(compactFrames.amount == NSRect(x: 149, y: 5, width: 141, height: 48), "single-line error amount placeholder matches compact balance row")
 require(compactFrames.detail == NSRect(x: 14, y: 7, width: ErrorCardLayout.detailWidth, height: 17), "single-line error detail matches compact balance third row")
+
+// The amount's accepted compact baseline places its center 1pt above the
+// geometric center of the left status/detail region. Preserve that optical
+// relationship for explicit one-, two-, three-, and longer-line details.
+for (name, sample) in [
+    ("one-line", short),
+    ("two-lines", twoLines),
+    ("three-lines", threeLines),
+    ("longer", longEnglish)
+] {
+    let frames = ErrorCardLayout.errorFrames(for: sample)
+    let leftContentCenterY = (frames.detail.minY + frames.quotaDetail.maxY) / 2
+    require(abs(frames.amount.midY - leftContentCenterY - 1) < 0.01, "\(name) amount keeps the compact optical center relative to status and detail")
+    if name != "one-line" {
+        require(frames.amount.minY > compactFrames.amount.minY, "\(name) amount moves upward as detail grows")
+    }
+}
 
 private let shortHeight = compactFrames.cardSize.height
 private let longHeight = ErrorCardLayout.errorFrames(for: longEnglish).cardSize.height

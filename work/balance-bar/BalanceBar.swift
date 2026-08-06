@@ -6051,12 +6051,16 @@ private enum ErrorCardLayout {
         let detailH = measuredHeight(of: text, width: detailWidth)
         let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
         let cardHeight = minimumCardHeight + extraDetailHeight
+        // The compact one-line amount center is 1pt above the geometric center
+        // of the left status/detail region. As that region grows, move the
+        // amount by half the extra height to preserve the same optical center.
+        let amountY = 5 + extraDetailHeight / 2
         return ErrorFrames(
             cardSize: NSSize(width: cardWidth, height: cardHeight),
             title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: 127, height: 20),
             refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight, width: refreshTimeWidth, height: 17),
             quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
-            amount: NSRect(x: amountX, y: 5, width: amountWidth, height: 48),
+            amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
             detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),
             detailText: text
         )
