@@ -26,10 +26,10 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
 
 let englishSample = "More Code: The network connection was lost."
 let longEnglish = "Failed to load balance because the configured usage script is not enabled; please enable it in CC Switch and try again, this text is intentionally long to verify wrapping"
-let longChinese = "tokenshop：未启用 usage script，无法查询余额，请先在 CC Switch 中启用对应的用量脚本后重试，本条消息用于验证错误详情多行换行与完整展示"
+let longChinese = "未启用 usage script，无法查询余额，请先在 CC Switch 中启用对应的用量脚本后重试，本条消息用于验证错误详情多行换行与完整展示"
 let unbrokenURL = "https://tokenshop.example.test/v1/usage?error_code=E401_INVALID_TOKEN&detail=token_revoked&hint=reauthorize_via_cc_switch_settings"
-let mixed = "tokenshop 未启用 usage script（error_code=E401_INVALID_TOKEN）https://tokenshop.example.test/v1/usage?code=12345 请检查后重试"
-let short = "tokenshop：未启用"
+let mixed = "未启用 usage script（error_code=E401_INVALID_TOKEN）https://tokenshop.example.test/v1/usage?code=12345 请检查后重试"
+let short = "未启用"
 let twoLines = "第一行\n第二行"
 let threeLines = "第一行\n第二行\n第三行"
 let longToken = "ThisErrorCodeLooksLikeATokenThatIsFarTooLongToFitOnASingleLineWithoutBreaking"

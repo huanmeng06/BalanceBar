@@ -1565,6 +1565,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var clientSnapshots: [
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
+    private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
     private var activeClient: AssistantClient = .codex
@@ -1792,7 +1793,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         statusMenuNeedsRebuild = false
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.isStatusMenuTracking else { return }
-            let refreshDate = self.lastSuccessfulRefresh ?? self.snapshot.date
+            let refreshDate = self.refreshDate(for: self.snapshot)
             self.rebuildStatusMenu(for: self.snapshot, refreshDate: refreshDate)
         }
     }
@@ -2173,7 +2174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // editing. The binding already contains the new value; rebuilding
         // here would discard focus, selection, and the insertion point.
         if !isStatusMenuTracking {
-            rebuildStatusMenu(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
+            rebuildStatusMenu(for: snapshot, refreshDate: refreshDate(for: snapshot))
         } else {
             statusMenuNeedsRebuild = true
         }
@@ -2490,7 +2491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.setActivationPolicy(.regular)
         if let dashboard {
             dashboard.makeKeyAndOrderFront(nil)
-            updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
+            updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
             NSApp.activate(ignoringOtherApps: true)
             return
         }
@@ -2563,7 +2564,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         installDashboardMouseMonitor()
         showDashboardSection(.general)
         window.makeKeyAndOrderFront(nil)
-        updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
+        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -2832,7 +2833,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         page.frame = dashboardContentHost.bounds
             page.autoresizingMask = [.width, .height]
         dashboardContentHost.addSubview(page)
-        updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
+        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
 
         if let scrollPosition {
             // The new document view needs one layout pass before its maximum
@@ -3312,7 +3313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         page.frame = dashboardContentHost.bounds
         page.autoresizingMask = [.width, .height]
         dashboardContentHost.addSubview(page)
-        updateDashboard(for: snapshot, refreshDate: lastSuccessfulRefresh ?? snapshot.date)
+        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
     private func makeSettingsPage(_ sections: [NSView]) -> NSView {
@@ -4992,11 +4993,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
                         minimumInterval: 60
                     )
-                    let separator = AppLanguage.usesSimplifiedChinese ? "：" : ": "
                     let reason = failure.userVisibleReason(
                         usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
                     )
-                    self.render(.error("\(current.name)\(separator)\(reason)"))
+                    self.renderBalanceErrorForCurrentProvider(
+                        providerID: current.id,
+                        providerName: current.name,
+                        reason: reason,
+                        client: client
+                    )
                     return
                 }
                 let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
@@ -5212,7 +5217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
             }
             self.rebuildDashboardProviderList()
-            self.updateDashboard(for: self.snapshot, refreshDate: self.lastSuccessfulRefresh ?? self.snapshot.date)
+            self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
         }
     }
 
@@ -5303,10 +5308,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 level: .error,
                 category: "network"
             )
-            renderForCurrentProvider(.error(tr(
-                "\(providerName)：余额接口不是 HTTPS",
-                "\(providerName): The balance endpoint is not HTTPS"
-            )), providerID: providerID, client: client)
+            renderBalanceErrorForCurrentProvider(
+                providerID: providerID,
+                providerName: providerName,
+                reason: tr("余额接口不是 HTTPS", "The balance endpoint is not HTTPS"),
+                client: client
+            )
             return
         }
         let requestKey = "balance:\(client.rawValue):\(providerID)"
@@ -5331,9 +5338,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     error,
                     usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
                 )
-                self.renderForCurrentProvider(
-                    .error(tr("\(providerName)：\(reason)", "\(providerName): \(reason)")),
+                self.renderBalanceErrorForCurrentProvider(
                     providerID: providerID,
+                    providerName: providerName,
+                    reason: reason,
                     client: client
                 )
                 return
@@ -5345,10 +5353,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     level: .error,
                     category: "network"
                 )
-                self.renderForCurrentProvider(.error(tr(
-                    "\(providerName)：余额接口返回异常",
-                    "\(providerName): The balance endpoint returned an error"
-                )), providerID: providerID, client: client)
+                self.renderBalanceErrorForCurrentProvider(
+                    providerID: providerID,
+                    providerName: providerName,
+                    reason: tr("余额接口返回异常", "The balance endpoint returned an error"),
+                    client: client
+                )
                 return
             }
             do {
@@ -5362,10 +5372,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         level: .error,
                         category: "parsing"
                     )
-                    self.renderForCurrentProvider(.error(tr(
-                        "\(providerName)：未识别余额格式",
-                        "\(providerName): Unrecognized balance format"
-                    )), providerID: providerID, client: client)
+                    self.renderBalanceErrorForCurrentProvider(
+                        providerID: providerID,
+                        providerName: providerName,
+                        reason: tr("未识别余额格式", "Unrecognized balance format"),
+                        client: client
+                    )
                     return
                 }
                 SwitchLog.write(
@@ -5396,10 +5408,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     level: .error,
                     category: "parsing"
                 )
-                self.renderForCurrentProvider(.error(tr(
-                    "\(providerName)：余额响应无法解析",
-                    "\(providerName): The balance response could not be parsed"
-                )), providerID: providerID, client: client)
+                self.renderBalanceErrorForCurrentProvider(
+                    providerID: providerID,
+                    providerName: providerName,
+                    reason: tr("余额响应无法解析", "The balance response could not be parsed"),
+                    client: client
+                )
             }
         }.resume()
     }
@@ -5502,6 +5516,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard let self,
                   Provider.loadCurrent(appType: client.appType)?.id == providerID
             else { return }
+            if next.kind == .balance {
+                self.providerBalanceSnapshots.store(
+                    next,
+                    clientID: client.rawValue,
+                    providerID: providerID
+                )
+            }
             DispatchQueue.main.async {
                 switch next.kind {
                 case .official, .balance:
@@ -5518,6 +5539,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     throttleKey: "render-\(client.rawValue)-\(providerID)-\(next.kind)",
                     minimumInterval: 10
                 )
+                self.render(next)
+            }
+        }
+    }
+
+    private func renderBalanceErrorForCurrentProvider(
+        providerID: String,
+        providerName: String,
+        reason: String,
+        client: AssistantClient
+    ) {
+        monitorQueue.async { [weak self] in
+            guard let self,
+                  Provider.loadCurrent(appType: client.appType)?.id == providerID
+            else { return }
+            let next = self.providerBalanceSnapshots.errorSnapshot(
+                clientID: client.rawValue,
+                providerID: providerID,
+                providerName: providerName,
+                reason: reason
+            )
+            DispatchQueue.main.async {
+                guard self.activeClient == client,
+                      self.lastProviderID == providerID else { return }
                 self.render(next)
             }
         }
@@ -5774,7 +5819,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.activeProviderWebsite = next.websiteURL
             self.updateStatusItem(for: next)
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
-            let refreshDate = self.lastSuccessfulRefresh ?? next.date
+            let refreshDate = self.refreshDate(for: next)
             self.updateDashboard(for: next, refreshDate: refreshDate)
             if self.isStatusMenuTracking {
                 self.statusMenuNeedsRebuild = true
@@ -5782,6 +5827,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.rebuildStatusMenu(for: next, refreshDate: refreshDate)
             }
         }
+    }
+
+    private func refreshDate(for snapshot: Snapshot) -> Date? {
+        if snapshot.kind == .error, !snapshot.provider.isEmpty {
+            return snapshot.date
+        }
+        return lastSuccessfulRefresh ?? snapshot.date
     }
 
     private func rebuildStatusMenu(for snapshot: Snapshot, refreshDate: Date?) {
@@ -6215,6 +6267,18 @@ private struct Snapshot {
     static func official(_ provider: String, _ remaining: Double, _ lane: String, _ reset: String?, _ date: Date) -> Snapshot { Snapshot(kind: .official, provider: provider, amount: remaining, unit: lane, date: date, message: reset, websiteURL: nil) }
     static func balance(_ provider: String, _ amount: Double, _ unit: String, _ websiteURL: URL?, _ date: Date) -> Snapshot { Snapshot(kind: .balance, provider: provider, amount: amount, unit: unit, date: date, message: nil, websiteURL: websiteURL) }
     static func error(_ message: String) -> Snapshot { Snapshot(kind: .error, provider: "", amount: nil, unit: nil, date: nil, message: message, websiteURL: nil) }
+    static func providerError(_ provider: String, reason: String, cachedBalance: Snapshot?) -> Snapshot {
+        let cached = cachedBalance?.kind == .balance ? cachedBalance : nil
+        return Snapshot(
+            kind: .error,
+            provider: provider,
+            amount: cached?.amount,
+            unit: cached?.unit,
+            date: cached?.date,
+            message: reason,
+            websiteURL: nil
+        )
+    }
 
     var menuBarTitle: String {
         switch kind {
@@ -6250,7 +6314,7 @@ private struct Snapshot {
         switch kind {
         case .placeholder: return "CC Switch"
         case .official, .balance: return provider
-        case .error: return "CC Switch"
+        case .error: return provider.isEmpty ? "CC Switch" : provider
         }
     }
 
@@ -6292,7 +6356,9 @@ private struct Snapshot {
         case .official: return "\(Int(amount ?? 0))%"
         case .balance: return format(amount ?? 0, unit ?? "USD")
         case .placeholder: return "—"
-        case .error: return "—"
+        case .error:
+            guard let amount, let unit else { return "—" }
+            return format(amount, unit)
         }
     }
 
@@ -6370,6 +6436,33 @@ private struct Snapshot {
         default:
             return "\(number) \(unit)"
         }
+    }
+}
+
+private struct ProviderBalanceSnapshotCache {
+    private struct Key: Hashable {
+        let clientID: String
+        let providerID: String
+    }
+
+    private var snapshots: [Key: Snapshot] = [:]
+
+    mutating func store(_ snapshot: Snapshot, clientID: String, providerID: String) {
+        guard snapshot.kind == .balance else { return }
+        snapshots[Key(clientID: clientID, providerID: providerID)] = snapshot
+    }
+
+    func errorSnapshot(
+        clientID: String,
+        providerID: String,
+        providerName: String,
+        reason: String
+    ) -> Snapshot {
+        Snapshot.providerError(
+            providerName,
+            reason: reason,
+            cachedBalance: snapshots[Key(clientID: clientID, providerID: providerID)]
+        )
     }
 }
 
