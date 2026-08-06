@@ -146,6 +146,31 @@ private struct MenuBarGeometry {
             ? singleLineHeight
             : ceil(max(iconWidth, textHeight))
     }
+
+    func iconCenterYInFlippedButton(
+        buttonHeight: CGFloat,
+        iconViewYOffset: CGFloat
+    ) -> CGFloat {
+        let contentY = floor((buttonHeight - contentHeight) / 2)
+        let slotYFromTop = floor(max(0, (contentHeight - iconWidth) / 2))
+        // The status button and content stack are flipped while the icon slot
+        // is not. Positive local icon Y therefore decreases button-space Y.
+        return contentY + slotYFromTop - iconViewYOffset + (iconWidth / 2)
+    }
+
+    func iconViewYOffset(
+        alignedTo reference: MenuBarGeometry,
+        buttonHeight: CGFloat,
+        referenceIconViewYOffset: CGFloat
+    ) -> CGFloat {
+        iconCenterYInFlippedButton(
+            buttonHeight: buttonHeight,
+            iconViewYOffset: 0
+        ) - reference.iconCenterYInFlippedButton(
+            buttonHeight: buttonHeight,
+            iconViewYOffset: referenceIconViewYOffset
+        )
+    }
 }
 
 private enum StatusLinkField {
@@ -1476,6 +1501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
     private var isMenuBarContentStackConfigured = false
+    private var lastMenuBarIconFrameDiagnostic: String?
     private let dashboardProviderLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…"))
     private let dashboardAmountLabel = NSTextField(labelWithString: "—")
     private let dashboardQuotaLabel = NSTextField(labelWithString: tr("等待额度信息", "Waiting for quota data"))
@@ -4676,6 +4702,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
     }
 
+    private func logMenuBarIconFrames(
+        snapshot: Snapshot,
+        button: NSStatusBarButton,
+        hasSecondary: Bool,
+        iconYOffset: CGFloat
+    ) {
+        guard showMenuBarIcon else { return }
+        let kind: String
+        switch snapshot.kind {
+        case .placeholder: kind = "placeholder"
+        case .official: kind = "official"
+        case .balance: kind = "balance"
+        case .error: kind = "error"
+        }
+        let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
+        let slotInButton = menuBarIconSlot.convert(menuBarIconSlot.bounds, to: button)
+        let iconInButton = menuBarIconView.convert(menuBarIconView.bounds, to: button)
+        let iconInWindow = menuBarIconView.convert(menuBarIconView.bounds, to: nil)
+        let iconInScreen = button.window?.convertToScreen(iconInWindow)
+        let diagnostic = "menu bar icon frames; kind=\(kind); show_amount=\(showMenuBarAmount); has_secondary=\(hasSecondary); offset=\(DashboardLogging.number(iconYOffset)); flipped=button:\(button.isFlipped),stack:\(menuBarContentStack.isFlipped),slot:\(menuBarIconSlot.isFlipped),icon:\(menuBarIconView.isFlipped); button=\(DashboardLogging.rect(button.bounds)); stack_local=\(DashboardLogging.rect(menuBarContentStack.frame)); stack_button=\(DashboardLogging.rect(stackInButton)); slot_local=\(DashboardLogging.rect(menuBarIconSlot.frame)); slot_button=\(DashboardLogging.rect(slotInButton)); icon_local=\(DashboardLogging.rect(menuBarIconView.frame)); icon_button=\(DashboardLogging.rect(iconInButton)); icon_window=\(DashboardLogging.rect(iconInWindow)); icon_screen=\(iconInScreen.map { DashboardLogging.rect($0) } ?? "none"); center_button=\(DashboardLogging.number(iconInButton.midY)); center_window=\(DashboardLogging.number(iconInWindow.midY))"
+        guard diagnostic != lastMenuBarIconFrameDiagnostic else { return }
+        lastMenuBarIconFrameDiagnostic = diagnostic
+        SwitchLog.write(diagnostic, level: .debug, category: "ui.geometry")
+    }
+
     private func layoutStatusItem(for snapshot: Snapshot) {
         guard let button = statusItem.button else { return }
         let reservedSecondary = showMenuBarAmount && snapshot.kind == .official
@@ -4732,9 +4783,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
-        let iconYOffset = snapshot.kind == .balance && showMenuBarIcon && showMenuBarAmount
+        let apiIconYOffset = showMenuBarIcon && showMenuBarAmount
             ? Self.menuBarSingleLineIconYOffset
             : 0
+        let iconYOffset: CGFloat
+        if snapshot.kind == .official, showMenuBarIcon {
+            let apiGeometry = MenuBarGeometry(
+                primarySize: menuBarPrimaryLabel.intrinsicContentSize,
+                secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
+                showIcon: showMenuBarIcon,
+                showAmount: showMenuBarAmount,
+                hasSecondary: false,
+                isBalance: true,
+                iconSlotWidth: Self.menuBarIconSlotWidth,
+                iconTextSpacing: Self.menuBarIconTextSpacing,
+                textRowSpacing: Self.menuBarTextRowSpacing,
+                textWidthSlack: Self.menuBarTextWidthSlack,
+                singleLineHeight: Self.menuBarSingleLineHeight
+            )
+            // Keep the API frame fixed and solve only the official icon's
+            // local Y from the complete stack -> slot -> view coordinate path.
+            iconYOffset = geometry.iconViewYOffset(
+                alignedTo: apiGeometry,
+                buttonHeight: buttonHeight,
+                referenceIconViewYOffset: apiIconYOffset
+            )
+        } else if snapshot.kind == .balance {
+            iconYOffset = apiIconYOffset
+        } else {
+            iconYOffset = 0
+        }
         menuBarIconView.frame = NSRect(
             x: 0,
             y: iconYOffset,
@@ -4757,6 +4835,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 y: -Self.menuBarSingleLineTextYOffset
             ))
         }
+        logMenuBarIconFrames(
+            snapshot: snapshot,
+            button: button,
+            hasSecondary: hasSecondary,
+            iconYOffset: iconYOffset
+        )
         button.toolTip = snapshot.menuBarToolTip
         button.isHidden = false
         button.isEnabled = true
