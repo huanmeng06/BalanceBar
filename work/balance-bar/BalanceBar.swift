@@ -4992,10 +4992,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
                         minimumInterval: 60
                     )
-                    self.render(.error(tr(
-                        "\(current.name)：未启用 CC Switch 余额查询",
-                        "\(current.name): CC Switch balance query is not enabled"
-                    )))
+                    let separator = AppLanguage.usesSimplifiedChinese ? "：" : ": "
+                    let reason = failure.userVisibleReason(
+                        usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
+                    )
+                    self.render(.error("\(current.name)\(separator)\(reason)"))
                     return
                 }
                 let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
@@ -6803,6 +6804,35 @@ private enum BalanceQueryFailure: String {
     case nativeTemplateUnsupported = "native-template-unsupported"
     case newAPIUserIDMissing = "newapi-user-id-missing"
     case unknown = "unknown"
+
+    func userVisibleReason(usesSimplifiedChinese: Bool) -> String {
+        let messages: (simplifiedChinese: String, english: String)
+        switch self {
+        case .settingsJSONInvalid, .metaJSONInvalid:
+            messages = ("CC Switch 配置格式无效", "CC Switch configuration is invalid")
+        case .usageScriptMissing:
+            messages = ("用量脚本缺失", "Usage script is missing")
+        case .usageScriptInvalid:
+            messages = ("用量脚本无效", "Usage script is invalid")
+        case .usageScriptDisabled:
+            messages = ("用量脚本未启用", "Usage script is not enabled")
+        case .credentialMissing:
+            messages = ("缺少访问凭据", "Access credential is missing")
+        case .baseURLMissing:
+            messages = ("缺少 API 地址", "API address is missing")
+        case .requestCodeMissing:
+            messages = ("用量脚本缺少请求代码", "Usage script request code is missing")
+        case .requestEndpointMissing:
+            messages = ("用量脚本缺少请求地址", "Usage script request address is missing")
+        case .nativeTemplateUnsupported:
+            messages = ("不支持当前余额模板", "Current balance template is not supported")
+        case .newAPIUserIDMissing:
+            messages = ("New API 用户 ID 缺失", "New API user ID is missing")
+        case .unknown:
+            messages = ("余额查询配置不完整", "Balance query configuration is incomplete")
+        }
+        return usesSimplifiedChinese ? messages.simplifiedChinese : messages.english
+    }
 
     var diagnostic: String {
         switch self {

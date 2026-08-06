@@ -224,6 +224,12 @@ private let missingScript = resolve(
 )
 require(missingScript.failure == .usageScriptMissing, "missing usage script has a distinct reason")
 
+private let invalidScript = resolve(
+    settingsText: settingsJSON(config: tokenshopConfig),
+    metaText: metaJSON(usageScript: "{not-json")
+)
+require(invalidScript.failure == .usageScriptInvalid, "invalid usage script has a distinct reason")
+
 private let disabledScript = resolve(
     settingsText: settingsJSON(config: tokenshopConfig),
     metaText: usageMetaJSON(enabled: false, code: usageCode)
@@ -254,6 +260,18 @@ private let missingEndpoint = resolve(
 )
 require(missingEndpoint.failure == .requestEndpointMissing, "missing endpoint has a distinct reason")
 
+private let unsupportedNativeTemplate = resolve(
+    settingsText: settingsJSON(
+        config: tokenlessConfig,
+        auth: ["OPENAI_API_KEY": "sanitized-key"]
+    ),
+    metaText: metaJSON(usageScript: [
+        "enabled": true,
+        "templateType": "balance"
+    ])
+)
+require(unsupportedNativeTemplate.failure == .nativeTemplateUnsupported, "unsupported native template has a distinct reason")
+
 let sensitiveCredential = "SENSITIVE_BEARER_MUST_NOT_APPEAR"
 private let missingTemplateField = resolve(
     settingsText: settingsJSON(
@@ -272,11 +290,13 @@ let diagnostics = [
     invalidSettings,
     invalidMeta,
     missingScript,
+    invalidScript,
     disabledScript,
     missingCredential,
     missingBaseURL,
     missingCode,
     missingEndpoint,
+    unsupportedNativeTemplate,
     missingTemplateField
 ].compactMap { $0.failure?.diagnostic }
 for diagnostic in diagnostics {
@@ -288,8 +308,58 @@ for diagnostic in diagnostics {
     require(!diagnostic.contains("\"response\""), "diagnostic excludes response content")
 }
 
-print("balance query probe: PASS; two success paths; TOML bearer fallback; stable parsing failure reasons; diagnostics exclude credentials, auth/config JSON, endpoints, and responses")
+private let expectedUserVisibleReasons: [(BalanceQueryFailure, String, String)] = [
+    (.settingsJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid"),
+    (.metaJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid"),
+    (.usageScriptMissing, "用量脚本缺失", "Usage script is missing"),
+    (.usageScriptInvalid, "用量脚本无效", "Usage script is invalid"),
+    (.usageScriptDisabled, "用量脚本未启用", "Usage script is not enabled"),
+    (.credentialMissing, "缺少访问凭据", "Access credential is missing"),
+    (.baseURLMissing, "缺少 API 地址", "API address is missing"),
+    (.requestCodeMissing, "用量脚本缺少请求代码", "Usage script request code is missing"),
+    (.requestEndpointMissing, "用量脚本缺少请求地址", "Usage script request address is missing"),
+    (.nativeTemplateUnsupported, "不支持当前余额模板", "Current balance template is not supported"),
+    (.newAPIUserIDMissing, "New API 用户 ID 缺失", "New API user ID is missing"),
+    (.unknown, "余额查询配置不完整", "Balance query configuration is incomplete")
+]
+require(expectedUserVisibleReasons.count == 12, "every stable failure type has a user-visible mapping")
+for (failure, simplifiedChinese, english) in expectedUserVisibleReasons {
+    let actualChinese = failure.userVisibleReason(usesSimplifiedChinese: true)
+    let actualEnglish = failure.userVisibleReason(usesSimplifiedChinese: false)
+    require(actualChinese == simplifiedChinese, "Chinese user-visible reason is fixed for \(failure.rawValue)")
+    require(actualEnglish == english, "English user-visible reason is fixed for \(failure.rawValue)")
+    for message in [actualChinese, actualEnglish] {
+        require(!message.contains(failure.rawValue), "user-visible reason excludes internal raw values")
+        require(!message.contains("stage="), "user-visible reason excludes diagnostic stages")
+        require(!message.contains("reason="), "user-visible reason excludes diagnostic reasons")
+        require(!message.contains("SENSITIVE_BEARER_MUST_NOT_APPEAR"), "user-visible reason excludes credentials")
+        require(!message.contains("Bearer"), "user-visible reason excludes Bearer values")
+        require(!message.contains("https://"), "user-visible reason excludes complete URLs")
+        require(!message.contains("\"auth\""), "user-visible reason excludes auth configuration")
+        require(!message.contains("\"config\""), "user-visible reason excludes full configuration")
+        require(!message.contains("\"response\""), "user-visible reason excludes response content")
+    }
+}
+
 SWIFT
 } | swiftc -framework Foundation -o "$probe_binary" -
 
 "$probe_binary"
+
+ui_render_block="$({
+    awk '
+        /let separator = AppLanguage\.usesSimplifiedChinese/ { capture = 1 }
+        capture { print }
+        capture && /self\.render\(\.error/ { exit }
+    ' "$source_dir/BalanceBar.swift"
+})"
+[[ "$ui_render_block" == *"failure.userVisibleReason"* ]] || {
+    echo "balance query probe: FAIL; query-unavailable UI does not use the safe localized mapping" >&2
+    exit 1
+}
+if grep -Eq 'rawValue|diagnostic|stage=|reason=|https?://|Bearer|SENSITIVE_BEARER_MUST_NOT_APPEAR' <<<"$ui_render_block"; then
+    echo "balance query probe: FAIL; query-unavailable UI exposes a technical or sensitive value" >&2
+    exit 1
+fi
+
+echo "balance query probe: PASS; success paths; all stable parsing failures; fixed Chinese/English user-visible mappings; diagnostics and UI text exclude sensitive configuration"
