@@ -208,15 +208,47 @@ require(longHeight - shortHeight == longDetailHeight - ErrorCardLayout.singleLin
 
 // 6. The detail label uses word wrapping, unlimited lines, and never truncates.
 let detailLabel = ErrorCardLayout.makeDetailLabel(
-    ErrorCardLayout.detailText(for: longEnglish, width: ErrorCardLayout.detailWidth)
+    ErrorCardLayout.detailText(for: longEnglish, width: ErrorCardLayout.detailWidth),
+    textColor: .systemRed
 )
+require(detailLabel.textColor == .systemRed, "Provider error detail uses the system semantic red")
 require(detailLabel.lineBreakMode == .byWordWrapping, "detail label uses word wrapping")
 require(detailLabel.maximumNumberOfLines == 0, "detail label is not limited to a single line")
 require(detailLabel.usesSingleLineMode == false, "detail label does not force single-line mode")
 require(detailLabel.cell?.wraps == true, "detail label cell wraps")
 require(detailLabel.lineBreakMode != .byTruncatingTail && detailLabel.lineBreakMode != .byTruncatingHead && detailLabel.lineBreakMode != .byTruncatingMiddle, "detail label never truncates")
 
-print("error card layout probe: PASS; English words stay whole; URL/error-code tokens fall back to char breaks; all breaks at word boundaries; height fits full text; refresh time present top-right; frames inside card with no overlap; label uses word wrapping without truncation")
+// 7. Cached Provider errors warn only on the successful cache time and error
+//    reason. The title, load-failed status, and cached amount retain the normal
+//    label color, and all labels use the unchanged layout frames above.
+let cachedRefreshTime = ErrorCardLayout.makeRefreshTimeLabel("22:13:21", showsCachedBalance: true)
+cachedRefreshTime.frame = compactFrames.refreshTime
+require(cachedRefreshTime.stringValue == "22:13:21", "cached error time label preserves the supplied successful time text")
+require(cachedRefreshTime.textColor == .systemRed, "cached error time uses the system semantic red")
+require(cachedRefreshTime.frame == compactFrames.refreshTime, "warning color does not change the refresh-time frame")
+
+let emptyRefreshTime = ErrorCardLayout.makeRefreshTimeLabel("--:--:--", showsCachedBalance: false)
+require(emptyRefreshTime.textColor == .secondaryLabelColor, "no-cache error time keeps the secondary label color")
+
+let providerTitle = NSTextField(labelWithString: "Provider One")
+providerTitle.textColor = .labelColor
+providerTitle.frame = compactFrames.title
+let loadFailed = NSTextField(labelWithString: "Load Failed")
+loadFailed.textColor = .labelColor
+loadFailed.frame = compactFrames.quotaDetail
+let cachedAmount = NSTextField(labelWithString: "$12.34")
+cachedAmount.font = ErrorCardLayout.amountFont
+cachedAmount.textColor = .labelColor
+cachedAmount.frame = compactFrames.amount
+require(providerTitle.textColor != .systemRed, "Provider title is not red")
+require(loadFailed.textColor != .systemRed, "load-failed status is not red")
+require(cachedAmount.textColor != .systemRed, "cached amount is not red")
+require(cachedAmount.font == ErrorCardLayout.amountFont, "cached amount keeps the existing amount font")
+require(providerTitle.frame == compactFrames.title, "Provider title frame stays unchanged")
+require(loadFailed.frame == compactFrames.quotaDetail, "load-failed frame stays unchanged")
+require(cachedAmount.frame == compactFrames.amount, "cached amount frame stays unchanged")
+
+print("error card layout probe: PASS; wrapping and frames unchanged; Provider detail and cached success time use system red; title, status, and amount keep normal colors")
 SWIFT
 } | swiftc -framework AppKit -framework CoreText -o "$probe_binary" -
 

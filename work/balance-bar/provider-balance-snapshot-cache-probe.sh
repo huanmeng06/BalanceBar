@@ -45,6 +45,13 @@ require(sameProvider.message == "Network request timed out", "error detail conta
 require(sameProvider.amount == 12.34 && sameProvider.unit == "USD", "same Provider reuses amount and unit")
 require(sameProvider.date == firstDate, "same Provider reuses the exact successful date")
 require(sameProvider.date != errorOccurredAt, "error occurrence time is never used as success time")
+require(sameProvider.hasCachedBalance, "same Provider error reports a complete cached balance")
+let timeFormatter = DateFormatter()
+timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+timeFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+timeFormatter.dateFormat = "HH:mm:ss"
+require(timeFormatter.string(from: sameProvider.date!) == timeFormatter.string(from: firstDate), "error time text comes from the exact cached success date")
+require(timeFormatter.string(from: sameProvider.date!) != timeFormatter.string(from: errorOccurredAt), "error time text does not use the error occurrence date")
 
 let otherProvider = cache.errorSnapshot(
     clientID: "codex",
@@ -55,6 +62,7 @@ let otherProvider = cache.errorSnapshot(
 require(otherProvider.amount == nil && otherProvider.unit == nil, "cross-Provider balance is isolated")
 require(otherProvider.date == nil, "cross-Provider successful date is isolated")
 require(otherProvider.overviewLargeAmount == "—", "cross-Provider error displays no amount")
+require(!otherProvider.hasCachedBalance, "cross-Provider error does not report cached balance")
 
 let otherClient = cache.errorSnapshot(
     clientID: "claude",
@@ -73,6 +81,7 @@ let empty = ProviderBalanceSnapshotCache().errorSnapshot(
 require(empty.provider == "Missing Provider" && empty.message == "Balance query is unavailable", "no-cache error preserves Provider and pure reason")
 require(empty.amount == nil && empty.unit == nil && empty.date == nil, "no-cache error has no balance or successful date")
 require(empty.overviewLargeAmount == "—", "no-cache error displays the em dash")
+require(!empty.hasCachedBalance, "no-cache error keeps the empty-time state")
 
 cache.store(official, clientID: "codex", providerID: "official")
 let officialMiss = cache.errorSnapshot(
