@@ -4732,7 +4732,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
-        let iconYOffset = snapshot.kind == .balance && showMenuBarIcon && showMenuBarAmount
+        // The accepted API baseline applies this offset inside the non-flipped
+        // icon slot. Use that same frame-local baseline for the official state;
+        // the content stack and centered slot already resolve to the same Y.
+        let iconYOffset = (snapshot.kind == .balance || snapshot.kind == .official)
+            && showMenuBarIcon
+            && showMenuBarAmount
             ? Self.menuBarSingleLineIconYOffset
             : 0
         menuBarIconView.frame = NSRect(
