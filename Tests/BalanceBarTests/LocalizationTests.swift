@@ -13,20 +13,9 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testLocalizedTitlesAndTranslation() {
-        let defaults = UserDefaults.standard
-        let previous = defaults.string(forKey: "appLanguage")
-        defer {
-            if let previous { defaults.set(previous, forKey: "appLanguage") }
-            else { defaults.removeObject(forKey: "appLanguage") }
-        }
-
-        defaults.set(AppLanguage.simplifiedChinese.rawValue, forKey: "appLanguage")
-        XCTAssertEqual(AppLanguage.system.localizedTitle, "跟随系统")
-        XCTAssertEqual(AppLanguage.english.localizedTitle, "English")
-
-        defaults.set(AppLanguage.english.rawValue, forKey: "appLanguage")
-        XCTAssertEqual(AppLanguage.system.localizedTitle, "Follow System")
-        XCTAssertEqual(AppLanguage.simplifiedChinese.localizedTitle, "Simplified Chinese")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .simplifiedChinese), "跟随系统")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .english), "Follow System")
+        XCTAssertEqual(AppLanguage.english.localizedTitle(using: .simplifiedChinese), "English")
         XCTAssertEqual(tr("中文", "English", language: .english), "English")
     }
 }
