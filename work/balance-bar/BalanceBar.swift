@@ -24,52 +24,6 @@ private func dashboardAdaptiveColor(light: NSColor, dark: NSColor) -> NSColor {
     dashboardUsesDarkAppearance ? dark : light
 }
 
-private enum AppLanguage: String, CaseIterable {
-    case system
-    case simplifiedChinese
-    case english
-
-    static var selected: AppLanguage {
-        get {
-            guard let rawValue = UserDefaults.standard.string(forKey: "appLanguage"),
-                  let language = AppLanguage(rawValue: rawValue) else {
-                return .system
-            }
-            return language
-        }
-        set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: "appLanguage")
-        }
-    }
-
-    static var usesSimplifiedChinese: Bool {
-        switch selected {
-        case .simplifiedChinese:
-            return true
-        case .english:
-            return false
-        case .system:
-            let identifier = (Locale.preferredLanguages.first ?? Locale.current.identifier).lowercased()
-            return identifier.hasPrefix("zh")
-        }
-    }
-
-    var localizedTitle: String {
-        switch self {
-        case .system:
-            return tr("跟随系统", "Follow System")
-        case .simplifiedChinese:
-            return tr("简体中文", "Simplified Chinese")
-        case .english:
-            return "English"
-        }
-    }
-}
-
-private func tr(_ simplifiedChinese: String, _ english: String) -> String {
-    AppLanguage.usesSimplifiedChinese ? simplifiedChinese : english
-}
-
 private enum AssistantClient: String {
     case codex
     case claude
