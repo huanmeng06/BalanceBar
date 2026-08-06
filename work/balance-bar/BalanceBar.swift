@@ -5791,8 +5791,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func makeOverviewMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
         if snapshot.kind == .error {
             // The error card has its own layout: the full message wraps below
-            // the title row and the card height grows to fit it.
-            return makeOverviewErrorMenuItem(for: snapshot)
+            // the title row and the card height grows to fit it. The top-right
+            // refresh time is preserved in the same format as the other cards.
+            return makeOverviewErrorMenuItem(for: snapshot, refreshDate: refreshDate)
         }
         let item = NSMenuItem()
         // The overview is deliberately a static card, not a selectable menu
@@ -5874,7 +5875,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return item
     }
 
-    private func makeOverviewErrorMenuItem(for snapshot: Snapshot) -> NSMenuItem {
+    private func makeOverviewErrorMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
         let item = NSMenuItem()
         // Error cards are informational and stay non-interactive.
         item.isEnabled = false
@@ -5886,6 +5887,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         provider.frame = frames.title
         view.addSubview(provider)
 
+        // Keep the standard top-right refresh time (same format and position
+        // as the official/balance cards) so the error card still shows when
+        // it was last refreshed.
+        let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
+        let refreshTime = makeOverviewLabel(timeText, font: ErrorCardLayout.refreshTimeFont)
+        refreshTime.textColor = .secondaryLabelColor
+        refreshTime.alignment = .right
+        refreshTime.frame = frames.refreshTime
+        view.addSubview(refreshTime)
+
         let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: ErrorCardLayout.quotaFont)
         quotaDetail.frame = frames.quotaDetail
         view.addSubview(quotaDetail)
@@ -5895,7 +5906,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         amount.frame = frames.amount
         view.addSubview(amount)
 
-        let detail = ErrorCardLayout.makeDetailLabel(message)
+        let detail = ErrorCardLayout.makeDetailLabel(frames.detailText)
         detail.frame = frames.detail
         view.addSubview(detail)
 
@@ -5942,15 +5953,19 @@ enum BalanceBarMain {
 }
 
 // Layout rules for the balance error overview card. The error detail must be
-// readable in full, so the message wraps at character boundaries across the
-// whole content width and the card height grows downward to fit it. Kept as a
-// small pure helper so the probe can verify wrapping and overlap headlessly.
+// readable in full without truncation. Normal English words stay whole (word
+// wrapping); only over-wide unbreakable tokens such as URLs or continuous
+// error codes get character-level break opportunities so they cannot overflow.
+// The card height grows downward as needed. Kept as a small pure helper so the
+// probe can verify wrapping and overlap headlessly.
 private enum ErrorCardLayout {
     static let cardWidth: CGFloat = 304
     static let horizontalInset: CGFloat = 14
     static let contentWidth: CGFloat = cardWidth - horizontalInset * 2
     static let amountWidth: CGFloat = 141
     static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
+    static let refreshTimeWidth: CGFloat = 81
+    static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
 
     static let minimumCardHeight: CGFloat = 102
     static let singleLineDetailHeight: CGFloat = 17
@@ -5959,24 +5974,60 @@ private enum ErrorCardLayout {
     static let quotaFont = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let detailFont = NSFont.systemFont(ofSize: 13, weight: .regular)
     static let amountFont = NSFont.monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+    static let refreshTimeFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
 
     struct ErrorFrames {
         let cardSize: NSSize
         let title: NSRect
+        let refreshTime: NSRect
         let quotaDetail: NSRect
         let amount: NSRect
         let detail: NSRect
+        let detailText: String
     }
 
-    /// Minimum height that renders the full `message` wrapped at character
-    /// boundaries inside `width`. Empty and short text keep the compact
-    /// single-line height so small error cards do not grow.
+    /// Prepares the detail text for word wrapping. Whitespace-delimited tokens
+    /// that fit on one line are left untouched, so normal English words stay
+    /// whole. Tokens wider than `width` (URLs, continuous error codes, long
+    /// unbroken runs) get a zero-width space between every character so they
+    /// always have safe break points and can never overflow or be truncated.
+    static func detailText(for message: String, width: CGFloat) -> String {
+        guard !message.isEmpty else { return message }
+        var result = ""
+        var token = ""
+        for character in message {
+            if character.isWhitespace {
+                result += wrapIfNeeded(token, width: width)
+                result.append(character)
+                token = ""
+            } else {
+                token.append(character)
+            }
+        }
+        result += wrapIfNeeded(token, width: width)
+        return result
+    }
+
+    private static func wrapIfNeeded(_ token: String, width: CGFloat) -> String {
+        guard !token.isEmpty else { return token }
+        let tokenWidth = (token as NSString).size(withAttributes: [.font: detailFont]).width
+        guard tokenWidth > width else { return token }
+        return token.map(String.init).joined(separator: "\u{200B}")
+    }
+
+    /// Minimum height that renders the full `message` at `width` using word
+    /// wrapping on the break-opportunity text from `detailText(for:width:)`.
+    /// Empty and short text keep the compact single-line height.
     static func detailHeight(for message: String, width: CGFloat) -> CGFloat {
-        guard !message.isEmpty else { return singleLineDetailHeight }
+        return measuredHeight(of: detailText(for: message, width: width), width: width)
+    }
+
+    private static func measuredHeight(of text: String, width: CGFloat) -> CGFloat {
+        guard !text.isEmpty else { return singleLineDetailHeight }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineBreakMode = .byCharWrapping
+        paragraph.lineBreakMode = .byWordWrapping
         let attributed = NSAttributedString(
-            string: message,
+            string: text,
             attributes: [.font: detailFont, .paragraphStyle: paragraph]
         )
         let measured = attributed.boundingRect(
@@ -5986,28 +6037,34 @@ private enum ErrorCardLayout {
         return max(singleLineDetailHeight, ceil(measured.height) + 1)
     }
 
-    /// Frames for the error card. The title and the amount placeholder share
-    /// the top row; the full message wraps below across the content width. The
-    /// card height grows downward only as much as the message needs.
+    /// Frames for the error card. The title and refresh time share the top row;
+    /// the quota row and amount placeholder sit below; the full message wraps
+    /// across the content width at the bottom. The card height grows downward
+    /// only as much as the message needs, and no frame overlaps another.
     static func errorFrames(for message: String) -> ErrorFrames {
-        let detailH = detailHeight(for: message, width: contentWidth)
-        let cardHeight = max(minimumCardHeight, 65 + detailH)
+        let text = detailText(for: message, width: contentWidth)
+        let detailH = measuredHeight(of: text, width: contentWidth)
+        let cardHeight = max(minimumCardHeight, 87 + detailH)
         return ErrorFrames(
             cardSize: NSSize(width: cardWidth, height: cardHeight),
-            title: NSRect(x: horizontalInset, y: cardHeight - 27, width: 127, height: 20),
-            quotaDetail: NSRect(x: horizontalInset, y: cardHeight - 53, width: 128, height: 18),
-            amount: NSRect(x: amountX, y: cardHeight - 48, width: amountWidth, height: 40),
-            detail: NSRect(x: horizontalInset, y: cardHeight - 59 - detailH, width: contentWidth, height: detailH)
+            title: NSRect(x: horizontalInset, y: 60 + detailH, width: 127, height: 20),
+            refreshTime: NSRect(x: refreshTimeX, y: 61 + detailH, width: refreshTimeWidth, height: 17),
+            quotaDetail: NSRect(x: horizontalInset, y: 23 + detailH, width: 128, height: 18),
+            amount: NSRect(x: amountX, y: 12 + detailH, width: amountWidth, height: 40),
+            detail: NSRect(x: horizontalInset, y: 6, width: contentWidth, height: detailH),
+            detailText: text
         )
     }
 
-    /// Wrapping label for the error detail. Never truncates; long CJK, English
-    /// and unbroken URL/error-code text wraps at character boundaries instead.
-    static func makeDetailLabel(_ message: String) -> NSTextField {
-        let label = NSTextField(wrappingLabelWithString: message)
+    /// Wrapping label for the error detail. Uses word wrapping on text prepared
+    /// by `detailText(for:width:)`, so normal English words stay whole while
+    /// over-wide tokens still have safe character-level break points. Never
+    /// truncates.
+    static func makeDetailLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: text)
         label.font = detailFont
         label.textColor = .secondaryLabelColor
-        label.lineBreakMode = .byCharWrapping
+        label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
         return label
     }
