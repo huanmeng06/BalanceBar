@@ -5262,6 +5262,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         balanceRequestLock.unlock()
     }
 
+    private static func localizedBalanceNetworkErrorReason(
+        _ error: Error,
+        usesSimplifiedChinese: Bool
+    ) -> String {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else {
+            return usesSimplifiedChinese ? "网络请求失败" : "Network request failed"
+        }
+
+        let messages: (simplifiedChinese: String, english: String)
+        switch URLError.Code(rawValue: nsError.code) {
+        case .timedOut:
+            messages = ("网络请求超时", "Network request timed out")
+        case .notConnectedToInternet:
+            messages = ("无网络连接", "No internet connection")
+        case .networkConnectionLost:
+            messages = ("网络连接已中断", "Network connection was lost")
+        case .cannotFindHost:
+            messages = ("找不到主机", "Host could not be found")
+        case .cannotConnectToHost:
+            messages = ("无法连接主机", "Could not connect to host")
+        case .secureConnectionFailed:
+            messages = ("安全连接失败", "Secure connection failed")
+        default:
+            messages = ("网络请求失败", "Network request failed")
+        }
+        return usesSimplifiedChinese ? messages.simplifiedChinese : messages.english
+    }
+
     private func fetchBalance(
         providerID: String,
         providerName: String,
@@ -5298,8 +5327,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     level: .error,
                     category: "network"
                 )
+                let reason = Self.localizedBalanceNetworkErrorReason(
+                    error,
+                    usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
+                )
                 self.renderForCurrentProvider(
-                    .error("\(providerName)：\(error.localizedDescription)"),
+                    .error(tr("\(providerName)：\(reason)", "\(providerName): \(reason)")),
                     providerID: providerID,
                     client: client
                 )
