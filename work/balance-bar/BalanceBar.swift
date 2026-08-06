@@ -6067,9 +6067,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // as the official/balance cards) so the error card still shows when
         // it was last refreshed.
         let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
-        let refreshTime = makeOverviewLabel(timeText, font: ErrorCardLayout.refreshTimeFont)
-        refreshTime.textColor = .secondaryLabelColor
-        refreshTime.alignment = .right
+        let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
+            timeText,
+            showsCachedBalance: snapshot.hasCachedBalance
+        )
         refreshTime.frame = frames.refreshTime
         view.addSubview(refreshTime)
 
@@ -6082,7 +6083,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         amount.frame = frames.amount
         view.addSubview(amount)
 
-        let detail = ErrorCardLayout.makeDetailLabel(frames.detailText)
+        let detail = ErrorCardLayout.makeDetailLabel(
+            frames.detailText,
+            textColor: snapshot.provider.isEmpty ? .secondaryLabelColor : .systemRed
+        )
         detail.frame = frames.detail
         view.addSubview(detail)
 
@@ -6243,10 +6247,22 @@ private enum ErrorCardLayout {
     /// by `detailText(for:width:)`, so normal English words stay whole while
     /// over-wide tokens still have safe character-level break points. Never
     /// truncates.
-    static func makeDetailLabel(_ text: String) -> NSTextField {
+    static func makeRefreshTimeLabel(_ text: String, showsCachedBalance: Bool) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = refreshTimeFont
+        label.textColor = showsCachedBalance ? .systemRed : .secondaryLabelColor
+        label.alignment = .right
+        label.lineBreakMode = .byTruncatingTail
+        return label
+    }
+
+    static func makeDetailLabel(
+        _ text: String,
+        textColor: NSColor = .secondaryLabelColor
+    ) -> NSTextField {
         let label = NSTextField(wrappingLabelWithString: text)
         label.font = detailFont
-        label.textColor = .secondaryLabelColor
+        label.textColor = textColor
         label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
         return label
@@ -6360,6 +6376,10 @@ private struct Snapshot {
             guard let amount, let unit else { return "—" }
             return format(amount, unit)
         }
+    }
+
+    var hasCachedBalance: Bool {
+        kind == .error && amount != nil && unit != nil && date != nil
     }
 
     var progressPercentage: Double? {
