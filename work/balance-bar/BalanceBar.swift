@@ -5840,9 +5840,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             quotaDetail.frame = NSRect(x: horizontalInset, y: 31, width: 128, height: 18)
             amount.frame = NSRect(x: amountX, y: 5, width: amountWidth, height: 48)
 
+            // Center the shared link row between the balance row and divider.
+            let linkRowY: CGFloat = 7
+
             let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = NSRect(x: 14, y: 10, width: AppLanguage.usesSimplifiedChinese ? 62 : 72, height: 17)
+            linkPrefix.frame = NSRect(x: 14, y: linkRowY, width: AppLanguage.usesSimplifiedChinese ? 62 : 72, height: 17)
             view.addSubview(linkPrefix)
 
             if snapshot.websiteURL != nil {
@@ -5851,7 +5854,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 // Match the prefix label's exact baseline and line box.
                 link.frame = NSRect(
                     x: AppLanguage.usesSimplifiedChinese ? 75 : 87,
-                    y: 10,
+                    y: linkRowY,
                     width: AppLanguage.usesSimplifiedChinese ? 148 : 136,
                     height: 17
                 )
