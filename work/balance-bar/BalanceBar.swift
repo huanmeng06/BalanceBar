@@ -5959,18 +5959,21 @@ enum BalanceBarMain {
 // readable in full without truncation. Normal English words stay whole (word
 // wrapping); only over-wide unbreakable tokens such as URLs or continuous
 // error codes get character-level break opportunities so they cannot overflow.
-// The card height grows downward as needed. Kept as a small pure helper so the
-// probe can verify wrapping and overlap headlessly.
+// The detail occupies the balance card's left column so the amount placeholder
+// can remain in the right column without overlap. Kept as a small pure helper
+// so the probe can verify wrapping and overlap headlessly.
 private enum ErrorCardLayout {
     static let cardWidth: CGFloat = 304
     static let horizontalInset: CGFloat = 14
     static let contentWidth: CGFloat = cardWidth - horizontalInset * 2
+    static let detailWidth: CGFloat = 128
     static let amountWidth: CGFloat = 141
     static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
     static let refreshTimeWidth: CGFloat = 81
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
 
-    static let minimumCardHeight: CGFloat = 102
+    // Match the compact third-party balance card for a single-line error.
+    static let minimumCardHeight: CGFloat = 86
     static let singleLineDetailHeight: CGFloat = 17
 
     static let titleFont = NSFont.systemFont(ofSize: 15, weight: .semibold)
@@ -6040,21 +6043,25 @@ private enum ErrorCardLayout {
         return max(singleLineDetailHeight, ceil(measured.height) + 1)
     }
 
-    /// Frames for the error card. The title and refresh time share the top row;
-    /// the quota row and amount placeholder sit below; the full message wraps
-    /// across the content width at the bottom. The card height grows downward
-    /// only as much as the message needs, and no frame overlaps another.
+    /// Frames for the error card. A single-line detail follows the same three
+    /// row rhythm as the compact balance card; additional detail lines shift
+    /// the rows above upward by only the extra measured height.
     static func errorFrames(for message: String) -> ErrorFrames {
-        let text = detailText(for: message, width: contentWidth)
-        let detailH = measuredHeight(of: text, width: contentWidth)
-        let cardHeight = max(minimumCardHeight, 87 + detailH)
+        let text = detailText(for: message, width: detailWidth)
+        let detailH = measuredHeight(of: text, width: detailWidth)
+        let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
+        let cardHeight = minimumCardHeight + extraDetailHeight
+        // The compact one-line amount center is 1pt above the geometric center
+        // of the left status/detail region. As that region grows, move the
+        // amount by half the extra height to preserve the same optical center.
+        let amountY = 5 + extraDetailHeight / 2
         return ErrorFrames(
             cardSize: NSSize(width: cardWidth, height: cardHeight),
-            title: NSRect(x: horizontalInset, y: 60 + detailH, width: 127, height: 20),
-            refreshTime: NSRect(x: refreshTimeX, y: 61 + detailH, width: refreshTimeWidth, height: 17),
-            quotaDetail: NSRect(x: horizontalInset, y: 23 + detailH, width: 128, height: 18),
-            amount: NSRect(x: amountX, y: 12 + detailH, width: amountWidth, height: 40),
-            detail: NSRect(x: horizontalInset, y: 6, width: contentWidth, height: detailH),
+            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: 127, height: 20),
+            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight, width: refreshTimeWidth, height: 17),
+            quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
+            amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
+            detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),
             detailText: text
         )
     }
