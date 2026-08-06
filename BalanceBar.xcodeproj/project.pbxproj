@@ -191,7 +191,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 21;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "work/balance-bar/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -199,8 +198,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.10.4;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar.app";
 				PRODUCT_NAME = BalanceBar;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -211,7 +209,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 21;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "work/balance-bar/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -219,8 +216,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.10.4;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar.app";
 				PRODUCT_NAME = BalanceBar;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
