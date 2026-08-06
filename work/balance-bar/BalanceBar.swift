@@ -803,11 +803,6 @@ private enum DashboardSection: Int, CaseIterable {
     }
 }
 
-private struct StatusLink: Codable, Equatable {
-    var title: String
-    var url: String
-}
-
 private struct DashboardScrollPosition {
     let operation: String
     let visibleDocumentOriginY: CGFloat
@@ -955,93 +950,17 @@ private let productionBundleIdentifier = "com.huanmeng06.BalanceBar.app"
 private let devBundleIdentifier = "com.huanmeng06.BalanceBar.dev"
 private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
-private let preferencesMigrationMarker = "didMigrateToBalanceBarApp.v1"
-
-struct PreferencesMigrationPlan {
-    static let keys = [
-        "appLanguage",
-        "showMenuBarReset",
-        "showMenuBarIcon",
-        "showMenuBarAmount",
-        "animateCodexActivity",
-        "activityPollInterval",
-        "codexUsageRefreshInterval",
-        "postCodexRefreshDuration",
-        "showQuickSwitchMenu",
-        "showOpenChatGPTMenu",
-        "showOpenCCSwitchMenu",
-        "showStatusMenu",
-        "statusLinks",
-        "keepMenuOpenAfterRefresh",
-        "sortProvidersAlphabetically",
-        "menuBarHorizontalPadding"
-    ]
-
-    static func selectedValues(
-        target: [String: Any],
-        production: [String: Any],
-        local: [String: Any]
-    ) -> [String: Any] {
-        var selected: [String: Any] = [:]
-        for key in keys where target[key] == nil {
-            if let value = production[key] {
-                selected[key] = value
-            } else if let value = local[key] {
-                selected[key] = value
-            }
-        }
-        return selected
-    }
-}
 
 private func migrateLegacyPreferencesIfNeeded() {
     let defaults = UserDefaults.standard
-    let currentBundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
-    let currentDomain = defaults.persistentDomain(forName: currentBundleIdentifier) ?? [:]
-    guard currentDomain[preferencesMigrationMarker] == nil else { return }
-
-    let productionDomain = defaults.persistentDomain(
-        forName: legacyProductionBundleIdentifier
-    ) ?? [:]
-    let localDomain = defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
-    let selectedValues = PreferencesMigrationPlan.selectedValues(
-        target: currentDomain,
-        production: productionDomain,
-        local: localDomain
-    )
-    var migratedFromProduction: [String] = []
-    var migratedFromLocal: [String] = []
-    var skippedExisting: [String] = []
-
-    for key in PreferencesMigrationPlan.keys {
-        guard let value = selectedValues[key] else {
-            if currentDomain[key] != nil { skippedExisting.append(key) }
-            continue
-        }
-        defaults.set(value, forKey: key)
-        if productionDomain[key] != nil {
-            migratedFromProduction.append(key)
-        } else {
-            migratedFromLocal.append(key)
-        }
-    }
-
-    defaults.set(true, forKey: preferencesMigrationMarker)
-    let productionSummary = migratedFromProduction.isEmpty
-        ? "<none>"
-        : migratedFromProduction.joined(separator: "|")
-    let localSummary = migratedFromLocal.isEmpty
-        ? "<none>"
-        : migratedFromLocal.joined(separator: "|")
-    let skippedSummary = skippedExisting.isEmpty
-        ? "<none>"
-        : skippedExisting.joined(separator: "|")
-    SwitchLog.write(
-        "preferences migration; source_priority=\(legacyProductionBundleIdentifier),\(legacyBundleIdentifier); target=\(currentBundleIdentifier); production_key_count=\(productionDomain.count); local_key_count=\(localDomain.count); migrated_from_production=\(productionSummary); migrated_from_local=\(localSummary); skipped_existing=\(skippedSummary)",
-        category: "configuration"
+    let bundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
+    AppPreferencesMigration.migrate(
+        defaults: defaults,
+        bundleIdentifier: bundleIdentifier,
+        productionDomain: defaults.persistentDomain(forName: legacyProductionBundleIdentifier) ?? [:],
+        localDomain: defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
     )
 }
-
 private final class CodexActivityMonitor {
     private static let activityWindow = 10 * 60
     private static let terminalTypes: Set<String> = [
@@ -1529,130 +1448,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var isActivityCheckInFlight = false
     private var lastCodexUsageRefresh: Date?
     private var postCodexRefreshDeadline: Date?
-
-    private var showMenuBarReset: Bool {
-        get { UserDefaults.standard.object(forKey: "showMenuBarReset") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showMenuBarReset") }
-    }
-
-    private var showMenuBarIcon: Bool {
-        get { UserDefaults.standard.object(forKey: "showMenuBarIcon") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showMenuBarIcon") }
-    }
-
-    private var showMenuBarAmount: Bool {
-        get { UserDefaults.standard.object(forKey: "showMenuBarAmount") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showMenuBarAmount") }
-    }
-
-    private var animateCodexActivity: Bool {
-        get { UserDefaults.standard.object(forKey: "animateCodexActivity") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "animateCodexActivity") }
-    }
-
     private let providerPollInterval: TimeInterval = 3
-
-    private var activityPollInterval: TimeInterval {
-        get {
-            let value = UserDefaults.standard.double(forKey: "activityPollInterval")
-            return value > 0 ? value : 0.25
-        }
-        set { UserDefaults.standard.set(newValue, forKey: "activityPollInterval") }
-    }
-
-    private var codexUsageRefreshInterval: TimeInterval {
-        get {
-            let value = UserDefaults.standard.double(forKey: "codexUsageRefreshInterval")
-            return value > 0 ? value : 3
-        }
-        set { UserDefaults.standard.set(newValue, forKey: "codexUsageRefreshInterval") }
-    }
-
-    private var postCodexRefreshDuration: TimeInterval {
-        get {
-            guard let value = UserDefaults.standard.object(forKey: "postCodexRefreshDuration") as? NSNumber else {
-                return 12
-            }
-            return max(0, value.doubleValue)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: "postCodexRefreshDuration") }
-    }
-
-    private var showQuickSwitchMenu: Bool {
-        get { UserDefaults.standard.object(forKey: "showQuickSwitchMenu") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showQuickSwitchMenu") }
-    }
-
-    private var showOpenCCSwitchMenu: Bool {
-        get { UserDefaults.standard.object(forKey: "showOpenCCSwitchMenu") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showOpenCCSwitchMenu") }
-    }
-
-    private var showOpenChatGPTMenu: Bool {
-        get { UserDefaults.standard.object(forKey: "showOpenChatGPTMenu") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showOpenChatGPTMenu") }
-    }
-
-    private var showStatusMenu: Bool {
-        get { UserDefaults.standard.object(forKey: "showStatusMenu") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "showStatusMenu") }
-    }
-
-    private var defaultStatusLinks: [StatusLink] {
-        [
-            StatusLink(
-                title: "OpenAI Status",
-                url: "https://status.openai.com/"
-            ),
-            StatusLink(
-                title: tr("Tibo 的动态", "Tibo's Updates"),
-                url: "https://x.com/thsottiaux"
-            )
-        ]
-    }
-
-    private var statusLinks: [StatusLink] {
-        get {
-            guard let data = UserDefaults.standard.data(forKey: "statusLinks"),
-                  let links = try? JSONDecoder().decode([StatusLink].self, from: data) else {
-                return defaultStatusLinks
-            }
-            let normalized = links.map { link in
-                var link = link
-                if link.url == "https://" {
-                    link.url = ""
-                }
-                return link
-            }
-            if normalized != links,
-               let normalizedData = try? JSONEncoder().encode(normalized) {
-                UserDefaults.standard.set(normalizedData, forKey: "statusLinks")
-            }
-            return normalized
-        }
-        set {
-            guard let data = try? JSONEncoder().encode(newValue) else { return }
-            UserDefaults.standard.set(data, forKey: "statusLinks")
-        }
-    }
-
-    private var keepMenuOpenAfterRefresh: Bool {
-        get { UserDefaults.standard.object(forKey: "keepMenuOpenAfterRefresh") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "keepMenuOpenAfterRefresh") }
-    }
-
-    private var sortProvidersAlphabetically: Bool {
-        get { UserDefaults.standard.bool(forKey: "sortProvidersAlphabetically") }
-        set { UserDefaults.standard.set(newValue, forKey: "sortProvidersAlphabetically") }
-    }
-
-    private var menuBarHorizontalPadding: CGFloat {
-        get {
-            let value = UserDefaults.standard.double(forKey: "menuBarHorizontalPadding")
-            return value > 0 ? CGFloat(value) : 10
-        }
-        set { UserDefaults.standard.set(Double(newValue), forKey: "menuBarHorizontalPadding") }
-    }
+    private let preferences = AppPreferences()
+    private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
+    private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
+    private var showMenuBarAmount: Bool { get { preferences.showMenuBarAmount } set { preferences.showMenuBarAmount = newValue } }
+    private var animateCodexActivity: Bool { get { preferences.animateCodexActivity } set { preferences.animateCodexActivity = newValue } }
+    private var activityPollInterval: TimeInterval { get { preferences.activityPollInterval } set { preferences.activityPollInterval = newValue } }
+    private var codexUsageRefreshInterval: TimeInterval { get { preferences.codexUsageRefreshInterval } set { preferences.codexUsageRefreshInterval = newValue } }
+    private var postCodexRefreshDuration: TimeInterval { get { preferences.postCodexRefreshDuration } set { preferences.postCodexRefreshDuration = newValue } }
+    private var showQuickSwitchMenu: Bool { get { preferences.showQuickSwitchMenu } set { preferences.showQuickSwitchMenu = newValue } }
+    private var showOpenCCSwitchMenu: Bool { get { preferences.showOpenCCSwitchMenu } set { preferences.showOpenCCSwitchMenu = newValue } }
+    private var showOpenChatGPTMenu: Bool { get { preferences.showOpenChatGPTMenu } set { preferences.showOpenChatGPTMenu = newValue } }
+    private var showStatusMenu: Bool { get { preferences.showStatusMenu } set { preferences.showStatusMenu = newValue } }
+    private var statusLinks: [StatusLink] { get { preferences.statusLinks } set { preferences.statusLinks = newValue } }
+    private var defaultStatusLinks: [StatusLink] { AppPreferences().statusLinks }
+    private var keepMenuOpenAfterRefresh: Bool { get { preferences.keepMenuOpenAfterRefresh } set { preferences.keepMenuOpenAfterRefresh = newValue } }
+    private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
+    private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
