@@ -348,13 +348,21 @@ SWIFT
 
 ui_render_block="$({
     awk '
-        /let separator = AppLanguage\.usesSimplifiedChinese/ { capture = 1 }
+        /let reason = failure\.userVisibleReason/ { capture = 1 }
         capture { print }
-        capture && /self\.render\(\.error/ { exit }
+        capture && /client: client/ { exit }
     ' "$source_dir/BalanceBar.swift"
 })"
 [[ "$ui_render_block" == *"failure.userVisibleReason"* ]] || {
     echo "balance query probe: FAIL; query-unavailable UI does not use the safe localized mapping" >&2
+    exit 1
+}
+[[ "$ui_render_block" == *"renderBalanceErrorForCurrentProvider"* ]] || {
+    echo "balance query probe: FAIL; query-unavailable UI bypasses the Provider error helper" >&2
+    exit 1
+}
+[[ "$ui_render_block" == *"providerName: current.name"* && "$ui_render_block" == *"reason: reason"* ]] || {
+    echo "balance query probe: FAIL; Provider name and pure reason are not passed separately" >&2
     exit 1
 }
 if grep -Eq 'rawValue|diagnostic|stage=|reason=|https?://|Bearer|SENSITIVE_BEARER_MUST_NOT_APPEAR' <<<"$ui_render_block"; then
