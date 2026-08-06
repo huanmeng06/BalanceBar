@@ -951,6 +951,16 @@ private let devBundleIdentifier = "com.huanmeng06.BalanceBar.dev"
 private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
+struct PreferencesMigrationPlan {
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding"]
+
+    static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
+        var selected: [String: Any] = [:]
+        for key in keys where target[key] == nil { selected[key] = production[key] ?? local[key] }
+        return selected
+    }
+}
+
 private func migrateLegacyPreferencesIfNeeded() {
     let defaults = UserDefaults.standard
     let bundleIdentifier = Bundle.main.bundleIdentifier ?? productionBundleIdentifier
@@ -1462,7 +1472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var showOpenChatGPTMenu: Bool { get { preferences.showOpenChatGPTMenu } set { preferences.showOpenChatGPTMenu = newValue } }
     private var showStatusMenu: Bool { get { preferences.showStatusMenu } set { preferences.showStatusMenu = newValue } }
     private var statusLinks: [StatusLink] { get { preferences.statusLinks } set { preferences.statusLinks = newValue } }
-    private var defaultStatusLinks: [StatusLink] { AppPreferences().statusLinks }
+    private var defaultStatusLinks: [StatusLink] { AppPreferences.makeDefaultStatusLinks() }
     private var keepMenuOpenAfterRefresh: Bool { get { preferences.keepMenuOpenAfterRefresh } set { preferences.keepMenuOpenAfterRefresh = newValue } }
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }

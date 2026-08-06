@@ -31,6 +31,18 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode([StatusLink].self, from: stored).first?.url, "")
     }
 
+    func testDefaultStatusLinksStayIndependentFromPersistedCustomLinks() throws {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let custom = [StatusLink(title: "Custom", url: "https://custom.example")]
+        preferences.statusLinks = custom
+
+        XCTAssertEqual(preferences.statusLinks, custom)
+        XCTAssertEqual(AppPreferences.makeDefaultStatusLinks().first?.title, "OpenAI Status")
+        XCTAssertEqual(AppPreferences.makeDefaultStatusLinks().first?.url, "https://status.openai.com/")
+        XCTAssertNotEqual(AppPreferences.makeDefaultStatusLinks(), custom)
+    }
+
     func testMigrationIsIdempotentAndPreservesCurrentValues() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

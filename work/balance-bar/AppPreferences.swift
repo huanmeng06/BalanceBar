@@ -11,8 +11,12 @@ final class AppPreferences {
 
     init(defaults: UserDefaults = .standard, defaultStatusLinks: [StatusLink]? = nil) {
         self.defaults = defaults
-        self.defaultStatusLinks = defaultStatusLinks ?? [
-            StatusLink(title: tr("OpenAI 状态", "OpenAI Status"), url: "https://status.openai.com/"),
+        self.defaultStatusLinks = defaultStatusLinks ?? Self.makeDefaultStatusLinks()
+    }
+
+    static func makeDefaultStatusLinks() -> [StatusLink] {
+        [
+            StatusLink(title: "OpenAI Status", url: "https://status.openai.com/"),
             StatusLink(title: tr("Tibo 的动态", "Tibo's Updates"), url: "https://x.com/thsottiaux")
         ]
     }
@@ -55,12 +59,13 @@ final class AppPreferences {
 
 enum AppPreferencesMigration {
     static let marker = "didMigrateToBalanceBarApp.v1"
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding"]
 
     static func migrate(defaults: UserDefaults, bundleIdentifier: String, productionDomain: [String: Any], localDomain: [String: Any]) {
         let current = defaults.persistentDomain(forName: bundleIdentifier) ?? [:]
         guard current[marker] == nil else { return }
-        for key in keys where current[key] == nil { if let value = productionDomain[key] ?? localDomain[key] { defaults.set(value, forKey: key) } }
+        for (key, value) in PreferencesMigrationPlan.selectedValues(target: current, production: productionDomain, local: localDomain) {
+            defaults.set(value, forKey: key)
+        }
         defaults.set(true, forKey: marker)
     }
 }
