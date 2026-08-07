@@ -22,13 +22,49 @@ struct BalanceAPIResult {
 ///
 /// The transport (`URLSession`) is injectable so tests can run entirely
 /// offline through a `URLProtocol` stub. Concurrent requests for the same
-/// `client` + `providerID` key are deduplicated in-flight and the key is
-/// always released on completion, transport error, HTTP error, or parse
-/// failure.
+/// `client` + `providerID` key share one transport request, and every consumer
+/// receives its result. The key is always released on completion, transport
+/// error, HTTP error, or parse failure.
 final class BalanceAPIClient {
+    private typealias Completion = (Result<BalanceAPIResult, BalanceAPIClientError>) -> Void
+
+    /// Owns in-flight state independently from the API client so a request can
+    /// finish and release its key even after the client itself is gone.
+    private final class InFlightRegistry {
+        private let lock = NSLock()
+        private var completionsByKey: [String: [Completion]] = [:]
+
+        /// Returns true when this call owns the transport request. Duplicate
+        /// consumers are retained and will receive the same eventual result.
+        func register(key: String, completion: @escaping Completion) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if completionsByKey[key] != nil {
+                completionsByKey[key, default: []].append(completion)
+                return false
+            }
+            completionsByKey[key] = [completion]
+            return true
+        }
+
+        func contains(key: String) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return completionsByKey[key] != nil
+        }
+
+        /// Remove the key before invoking consumers so a callback can safely
+        /// start a new request for the same provider.
+        func finish(key: String, result: Result<BalanceAPIResult, BalanceAPIClientError>) {
+            lock.lock()
+            let completions = completionsByKey.removeValue(forKey: key) ?? []
+            lock.unlock()
+            completions.forEach { $0(result) }
+        }
+    }
+
     private let session: URLSession
-    private let lock = NSLock()
-    private var inFlight: Set<String> = []
+    private let inFlight = InFlightRegistry()
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -43,16 +79,14 @@ final class BalanceAPIClient {
     /// in flight. Exposed for tests that verify cleanup after completion,
     /// transport error, HTTP error, and parse failures.
     func isRequestInFlight(client: AssistantClient, providerID: String) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return inFlight.contains(Self.requestKey(client: client, providerID: providerID))
+        inFlight.contains(key: Self.requestKey(client: client, providerID: providerID))
     }
 
     /// Starts a third-party balance request.
     ///
     /// - Returns: `false` when a request for the same `client`/`providerID`
-    ///   is already in flight (the caller should silently skip, matching the
-    ///   previous AppDelegate behavior); `true` when the request was started.
+    ///   is already in flight and this consumer was attached to it; `true`
+    ///   when this call started the transport request.
     @discardableResult
     func fetchBalance(
         query: BalanceQuery,
@@ -67,12 +101,10 @@ final class BalanceAPIClient {
         }
 
         let key = Self.requestKey(client: client, providerID: providerID)
-        lock.lock()
-        guard inFlight.insert(key).inserted else {
-            lock.unlock()
+        let registry = inFlight
+        guard registry.register(key: key, completion: completion) else {
             return false
         }
-        lock.unlock()
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -83,45 +115,36 @@ final class BalanceAPIClient {
             request.setValue(value, forHTTPHeaderField: name)
         }
 
-        session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self else { return }
-            defer { self.endRequest(key) }
-
+        session.dataTask(with: request) { data, response, error in
+            let result: Result<BalanceAPIResult, BalanceAPIClientError>
             if let error {
-                completion(.failure(.transport(error)))
-                return
-            }
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let data else {
-                completion(.failure(.httpStatus(
-                    (response as? HTTPURLResponse)?.statusCode ?? -1
-                )))
-                return
-            }
-            do {
-                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-                guard let result = try? BalanceResponseParser.parse(
-                    object: object,
-                    query: query
-                ) else {
-                    completion(.failure(.unsupportedFormat(dataSize: data.count)))
-                    return
+                result = .failure(.transport(error))
+            } else if let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode),
+                      let data {
+                do {
+                    let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+                    if let output = try? BalanceResponseParser.parse(
+                        object: object,
+                        query: query
+                    ) {
+                        result = .success(BalanceAPIResult(
+                            output: output,
+                            dataSize: data.count
+                        ))
+                    } else {
+                        result = .failure(.unsupportedFormat(dataSize: data.count))
+                    }
+                } catch let error {
+                    result = .failure(.invalidJSON(dataSize: data.count, underlying: error))
                 }
-                completion(.success(BalanceAPIResult(
-                    output: result,
-                    dataSize: data.count
-                )))
-            } catch let error {
-                completion(.failure(.invalidJSON(dataSize: data.count, underlying: error)))
+            } else {
+                result = .failure(.httpStatus(
+                    (response as? HTTPURLResponse)?.statusCode ?? -1
+                ))
             }
+            registry.finish(key: key, result: result)
         }.resume()
         return true
-    }
-
-    private func endRequest(_ key: String) {
-        lock.lock()
-        inFlight.remove(key)
-        lock.unlock()
     }
 }

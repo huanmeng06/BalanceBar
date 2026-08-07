@@ -338,9 +338,9 @@ final class BalanceAPIClientTests: XCTestCase {
         XCTAssertFalse(client.isRequestInFlight(client: .codex, providerID: "provider-1"))
     }
 
-    // MARK: - Concurrent deduplication
+    // MARK: - Concurrent deduplication and consumer fan-out
 
-    func testConcurrentSameKeyRequestsAreDeduplicatedAndReleasedAfterCompletion() throws {
+    func testPrefetchFirstThenMainRefreshReceivesSharedResponseAndKeyCanBeReused() throws {
         let client = BalanceAPIClient(session: session)
         let firstStarted = DispatchSemaphore(value: 0)
         let releaseFirst = DispatchSemaphore(value: 0)
@@ -353,42 +353,49 @@ final class BalanceAPIClientTests: XCTestCase {
             return StubResult(statusCode: 200, data: self.balanceBody("9.75", unit: "CNY"))
         }
 
-        let firstCompletion = expectation(description: "first request completed")
-        var firstResult: Result<BalanceAPIResult, BalanceAPIClientError>?
-        let firstStartedFlag = client.fetchBalance(
+        let prefetchCompletion = expectation(description: "quick-switch prefetch completed")
+        let mainRefreshCompletion = expectation(description: "main refresh completed")
+        var prefetchResult: Result<BalanceAPIResult, BalanceAPIClientError>?
+        var mainRefreshResult: Result<BalanceAPIResult, BalanceAPIClientError>?
+        let prefetchStarted = client.fetchBalance(
             query: makeQuery(),
             client: .codex,
             providerID: "provider-1"
         ) { result in
-            firstResult = result
-            firstCompletion.fulfill()
+            prefetchResult = result
+            prefetchCompletion.fulfill()
         }
-        XCTAssertTrue(firstStartedFlag)
+        XCTAssertTrue(prefetchStarted)
         XCTAssertEqual(firstStarted.wait(timeout: .now() + 2), .success)
         XCTAssertTrue(client.isRequestInFlight(client: .codex, providerID: "provider-1"))
 
-        // Second concurrent request for the same client/provider key is
-        // suppressed and never reaches the transport.
-        var duplicateCompleted = false
-        let duplicateStarted = client.fetchBalance(
+        // The main refresh joins the prefetch transport and retains its own
+        // callback, so both UI consumers observe the shared response.
+        let mainRefreshStarted = client.fetchBalance(
             query: makeQuery(),
             client: .codex,
             providerID: "provider-1"
-        ) { _ in
-            duplicateCompleted = true
+        ) { result in
+            mainRefreshResult = result
+            mainRefreshCompletion.fulfill()
         }
-        XCTAssertFalse(duplicateStarted, "duplicate same-key request must be deduplicated")
+        XCTAssertFalse(mainRefreshStarted, "same-key main refresh must reuse the prefetch transport")
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
 
         // Release the first request; it completes and releases its key.
         releaseFirst.signal()
-        wait(for: [firstCompletion], timeout: 2)
-        guard case .success(let response)? = firstResult else {
-            return XCTFail("expected first request success, got \(String(describing: firstResult))")
+        wait(for: [prefetchCompletion, mainRefreshCompletion], timeout: 2)
+        guard case .success(let prefetchResponse)? = prefetchResult else {
+            return XCTFail("expected prefetch success, got \(String(describing: prefetchResult))")
         }
-        XCTAssertEqual(response.output.amount, 9.75, accuracy: 0.000001)
+        guard case .success(let mainResponse)? = mainRefreshResult else {
+            return XCTFail("expected main refresh success, got \(String(describing: mainRefreshResult))")
+        }
+        XCTAssertEqual(prefetchResponse.output.amount, 9.75, accuracy: 0.000001)
+        XCTAssertEqual(mainResponse.output.amount, 9.75, accuracy: 0.000001)
+        XCTAssertEqual(prefetchResponse.output.unit, "CNY")
+        XCTAssertEqual(mainResponse.output.unit, "CNY")
         XCTAssertFalse(client.isRequestInFlight(client: .codex, providerID: "provider-1"))
-        XCTAssertFalse(duplicateCompleted, "suppressed duplicate must not complete")
 
         // A different provider key starts its own transport request.
         let otherCompletion = expectation(description: "other provider completed")
@@ -429,6 +436,45 @@ final class BalanceAPIClientTests: XCTestCase {
         wait(for: [thirdCompletion], timeout: 2)
         XCTAssertEqual(StubURLProtocol.requestCount, 4)
         XCTAssertFalse(client.isRequestInFlight(client: .codex, providerID: "provider-1"))
+    }
+
+    func testClientCanBeReleasedBeforeResponseAndRequestStillFinishesAndCleansUp() throws {
+        let requestStarted = expectation(description: "request reached transport")
+        let requestFinished = expectation(description: "request completed after client release")
+        let releaseResponse = DispatchSemaphore(value: 0)
+        StubURLProtocol.setHandler { _ in
+            requestStarted.fulfill()
+            releaseResponse.wait()
+            return StubResult(statusCode: 200, data: self.balanceBody("6.5", unit: "USD"))
+        }
+
+        var client: BalanceAPIClient? = BalanceAPIClient(session: session)
+        weak var weakClient = client
+        var captured: Result<BalanceAPIResult, BalanceAPIClientError>?
+        let started = client!.fetchBalance(
+            query: makeQuery(),
+            client: .codex,
+            providerID: "provider-lifecycle"
+        ) { result in
+            captured = result
+            requestFinished.fulfill()
+        }
+        XCTAssertTrue(started)
+        wait(for: [requestStarted], timeout: 2)
+
+        // The URLSession completion must retain cleanup state, not the client
+        // instance, so releasing the client cannot drop the result or key cleanup.
+        client = nil
+        XCTAssertNil(weakClient)
+        releaseResponse.signal()
+
+        wait(for: [requestFinished], timeout: 2)
+        guard case .success(let response)? = captured else {
+            return XCTFail("expected success after client release, got \(String(describing: captured))")
+        }
+        XCTAssertEqual(response.output.amount, 6.5, accuracy: 0.000001)
+        XCTAssertEqual(response.output.unit, "USD")
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
     }
 
     private final class AtomicCounter {
