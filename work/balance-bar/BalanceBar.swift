@@ -4919,7 +4919,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                               (200..<300).contains(http.statusCode),
                               let data,
                               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let quota = Self.extractOfficialQuota(from: object, client: client)
+                              let quota = try? OfficialQuotaResponseParser.parse(object: object, client: client)
                         else { return }
                         self.updateQuickSwitchSummary(
                             providerID: source.id,
@@ -4942,8 +4942,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                           (200..<300).contains(http.statusCode),
                           let data,
                           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let result = Self.extractBalanceResult(
-                              from: object,
+                          let result = try? BalanceResponseParser.parse(
+                              object: object,
                               query: query
                           )
                     else { return }
@@ -5131,8 +5131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
             do {
                 let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-                guard let result = Self.extractBalanceResult(
-                    from: object,
+                guard let result = try? BalanceResponseParser.parse(
+                    object: object,
                     query: query
                 ) else {
                     SwitchLog.write(
@@ -5247,7 +5247,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 )), providerID: providerID, client: client)
                 return
             }
-            guard let quota = Self.extractOfficialQuota(from: object, client: client) else {
+            guard let quota = try? OfficialQuotaResponseParser.parse(object: object, client: client) else {
                 SwitchLog.write(
                     "official quota parse failed; client=\(client.rawValue); provider=\(providerName); bytes=\(data.count); duration=\(String(format: "%.3f", duration))s",
                     level: .error,
@@ -5336,89 +5336,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private static func extractBalance(
-        from object: [String: Any],
-        rightCode: Bool,
-        subscriptionPrefix: String
-    ) -> Double? {
-        if rightCode {
-            let cash = numberValue(object["balance"]) ?? 0
-            let subscriptions = object["subscriptions"] as? [[String: Any]] ?? []
-            let subscriptionBalance = subscriptions.reduce(0.0) { total, subscription in
-                let prefixes = subscription["available_prefixes"] as? [String] ?? []
-                guard prefixes.contains(subscriptionPrefix) else { return total }
-                let remaining = numberValue(subscription["remaining_quota"]) ?? 0
-                let limit = numberValue(subscription["total_quota"]) ?? 0
-                let resetsToday = (subscription["reset_today"] as? Bool) ?? false
-                return total + (resetsToday ? remaining : remaining + limit)
-            }
-            return cash + subscriptionBalance
-        }
-        if let direct = numberValue(object["remaining"]) ?? numberValue(object["balance"]) { return direct }
-        if let quota = object["quota"] as? [String: Any] { return numberValue(quota["remaining"]) }
-        return nil
-    }
-
-    private static func extractBalanceResult(
-        from object: [String: Any],
-        query: BalanceQuery
-    ) -> (amount: Double, unit: String)? {
-        if query.isNewAPI {
-            guard
-                (object["success"] as? Bool) != false,
-                let data = object["data"] as? [String: Any],
-                let quota = numberValue(data["quota"])
-            else { return nil }
-            return (quota / 500_000, "USD")
-        }
-
-        if let native = query.nativeBalanceProvider {
-            switch native {
-            case .deepSeek:
-                let balances = object["balance_infos"] as? [[String: Any]] ?? []
-                for balance in balances {
-                    if let amount = numberValue(balance["total_balance"]) {
-                        return (
-                            amount,
-                            stringValue(balance["currency"]) ?? "CNY"
-                        )
-                    }
-                }
-                return nil
-            case .stepFun:
-                guard let amount = numberValue(object["balance"]) else { return nil }
-                return (amount, "CNY")
-            case .siliconFlowCN, .siliconFlowEN:
-                guard
-                    let data = object["data"] as? [String: Any],
-                    let amount = numberValue(data["totalBalance"])
-                else { return nil }
-                return (
-                    amount,
-                    native == .siliconFlowCN ? "CNY" : "USD"
-                )
-            case .openRouter:
-                let data = (object["data"] as? [String: Any]) ?? object
-                guard let total = numberValue(data["total_credits"]) else { return nil }
-                let used = numberValue(data["total_usage"]) ?? 0
-                return (total - used, "USD")
-            case .novitaAI:
-                guard let raw = numberValue(object["availableBalance"]) else { return nil }
-                return (raw / 10_000, "USD")
-            }
-        }
-
-        guard let amount = extractBalance(
-            from: object,
-            rightCode: query.isRightCode,
-            subscriptionPrefix: query.subscriptionPrefix
-        ) else { return nil }
-        let unit = stringValue(object["unit"])
-            ?? stringValue((object["quota"] as? [String: Any])?["unit"])
-            ?? "USD"
-        return (amount, unit)
-    }
-
     private static func makeOfficialQuotaRequest(
         client: AssistantClient,
         storedAccessToken: String?
@@ -5495,90 +5412,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let oauth = (object["claudeAiOauth"] as? [String: Any])
             ?? (object["claude.ai_oauth"] as? [String: Any])
         return oauth?["accessToken"] as? String
-    }
-
-    private static func extractOfficialQuota(
-        from object: [String: Any],
-        client: AssistantClient
-    ) -> (remaining: Double, label: String, daysText: String, reset: String?)? {
-        if client == .claude {
-            let tierNames = [
-                ("seven_day", tr("7 日额度", "7-Day Quota"), tr("7 天", "7 Days")),
-                ("five_hour", tr("5 小时额度", "5-Hour Quota"), tr("5 小时", "5 Hours")),
-                ("seven_day_sonnet", tr("Sonnet 7 日额度", "Sonnet 7-Day Quota"), tr("7 天", "7 Days")),
-                ("seven_day_opus", tr("Opus 7 日额度", "Opus 7-Day Quota"), tr("7 天", "7 Days"))
-            ]
-            for (name, label, daysText) in tierNames {
-                guard let window = object[name] as? [String: Any],
-                      let utilization = numberValue(window["utilization"]) else { continue }
-                return (
-                    max(0, min(100, 100 - utilization)),
-                    label,
-                    daysText,
-                    resetDescription(window["resets_at"])
-                )
-            }
-            return nil
-        }
-
-        let limits = (object["rate_limit"] as? [String: Any]) ?? object
-        let primary = limits["primary_window"] as? [String: Any]
-        let secondary = limits["secondary_window"] as? [String: Any]
-        // Select the longest actual window; CC Switch may expose weekly quota
-        // in either primary_window or secondary_window.
-        let windows = [primary, secondary].compactMap { $0 }
-        guard let chosen = windows.max(by: {
-            (numberValue($0["limit_window_seconds"]) ?? 0) <
-            (numberValue($1["limit_window_seconds"]) ?? 0)
-        }), let used = numberValue(chosen["used_percent"]) else { return nil }
-        let remaining = max(0, min(100, 100 - used))
-        let duration = numberValue(chosen["limit_window_seconds"]) ?? 0
-        let isWeekly = duration >= 6 * 86_400
-        let reset = resetDescription(chosen["reset_after_seconds"])
-            ?? resetDescription(chosen["reset_at"])
-            ?? (chosen["reset_description"] as? String)
-        return (
-            remaining,
-            isWeekly ? tr("7 日额度", "7-Day Quota") : tr("额度", "Quota"),
-            isWeekly ? tr("7 天", "7 Days") : tr("额度", "Quota"),
-            reset
-        )
-    }
-
-    private static func numberValue(_ value: Any?) -> Double? {
-        switch value {
-        case let number as NSNumber: return number.doubleValue
-        case let string as String: return Double(string)
-        default: return nil
-        }
-    }
-
-    private static func stringValue(_ value: Any?) -> String? {
-        value as? String
-    }
-
-    private static func resetDescription(_ value: Any?) -> String? {
-        if let number = numberValue(value) {
-            let timestamp = number > 10_000_000_000 ? number / 1_000 : number
-            let date = timestamp > 1_000_000_000
-                ? Date(timeIntervalSince1970: timestamp)
-                : Date().addingTimeInterval(timestamp)
-            return remainingTime(until: date)
-        }
-        guard let text = stringValue(value), !text.isEmpty else { return nil }
-        if let number = Double(text) { return resetDescription(number) }
-        if let date = ISO8601DateFormatter().date(from: text) { return remainingTime(until: date) }
-        return text
-    }
-
-    private static func remainingTime(until date: Date) -> String {
-        let seconds = max(0, Int(date.timeIntervalSinceNow.rounded(.down)))
-        let days = seconds / 86_400
-        let hours = (seconds % 86_400) / 3_600
-        let minutes = (seconds % 3_600) / 60
-        if days > 0 { return "\(days)d\(hours)h" }
-        if hours > 0 { return "\(hours)h\(minutes)m" }
-        return "\(minutes)m"
     }
 
     private func render(_ next: Snapshot) {
