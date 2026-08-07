@@ -37,6 +37,8 @@
 		A10000000000000000000062 /* CredentialReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000063 /* CredentialReaderTests.swift */; };
 		A10000000000000000000064 /* BalanceAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000065 /* BalanceAPIClient.swift */; };
 		A10000000000000000000066 /* BalanceAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000067 /* BalanceAPIClientTests.swift */; };
+		A10000000000000000000068 /* OfficialQuotaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000069 /* OfficialQuotaClient.swift */; };
+		A1000000000000000000006A /* OfficialQuotaClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006B /* OfficialQuotaClientTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +74,8 @@
 		A10000000000000000000063 /* CredentialReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialReaderTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000065 /* BalanceAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceAPIClient.swift; sourceTree = "<group>"; };
 		A10000000000000000000067 /* BalanceAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceAPIClientTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000069 /* OfficialQuotaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClient.swift; sourceTree = "<group>"; };
+		A1000000000000000000006B /* OfficialQuotaClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClientTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -166,6 +170,7 @@
 				A1000000000000000000005F /* CCSwitchRepositoryTests.swift */,
 				A10000000000000000000063 /* CredentialReaderTests.swift */,
 				A10000000000000000000067 /* BalanceAPIClientTests.swift */,
+				A1000000000000000000006B /* OfficialQuotaClientTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -189,6 +194,7 @@
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
 				A10000000000000000000061 /* CredentialReader.swift */,
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
+				A10000000000000000000069 /* OfficialQuotaClient.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
@@ -321,6 +327,7 @@
 				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
 				A10000000000000000000060 /* CredentialReader.swift in Sources */,
 				A10000000000000000000064 /* BalanceAPIClient.swift in Sources */,
+				A10000000000000000000068 /* OfficialQuotaClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -336,6 +343,7 @@
 				A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */,
 				A10000000000000000000062 /* CredentialReaderTests.swift in Sources */,
 				A10000000000000000000066 /* BalanceAPIClientTests.swift in Sources */,
+				A1000000000000000000006A /* OfficialQuotaClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
