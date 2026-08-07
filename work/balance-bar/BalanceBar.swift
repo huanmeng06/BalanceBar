@@ -1442,6 +1442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let credentialReader = CredentialReader()
     private let preferences = AppPreferences()
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
@@ -4913,7 +4914,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     // quick-switch list. Official Claude quota is still loaded
                     // when it is the current Provider.
                     if client == .claude { continue }
-                    guard let request = Self.makeOfficialQuotaRequest(
+                    guard let request = makeOfficialQuotaRequest(
                         client: client,
                         storedAccessToken: source.officialAccessToken
                     ) else { continue }
@@ -5203,7 +5204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         providerName: String,
         client: AssistantClient
     ) {
-        guard let request = Self.makeOfficialQuotaRequest(
+        guard let request = makeOfficialQuotaRequest(
             client: client,
             storedAccessToken: nil
         ) else {
@@ -5340,7 +5341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private static func makeOfficialQuotaRequest(
+    private func makeOfficialQuotaRequest(
         client: AssistantClient,
         storedAccessToken: String?
     ) -> URLRequest? {
@@ -5348,10 +5349,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let url: URL?
         switch client {
         case .codex:
-            accessToken = storedAccessToken ?? codexAccessToken()
+            accessToken = storedAccessToken ?? credentialReader.codexAccessToken()
             url = URL(string: "https://chatgpt.com/backend-api/wham/usage")
         case .claude:
-            accessToken = claudeAccessToken()
+            accessToken = credentialReader.claudeAccessToken()
             url = URL(string: "https://api.anthropic.com/api/oauth/usage")
         }
         guard let accessToken, !accessToken.isEmpty, let url else { return nil }
@@ -5363,59 +5364,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         }
         return request
-    }
-
-    private static func codexAccessToken() -> String? {
-        let authPath = NSString(string: "~/.codex/auth.json").expandingTildeInPath
-        guard
-            let data = try? Data(contentsOf: URL(fileURLWithPath: authPath)),
-            let auth = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let tokens = auth["tokens"] as? [String: Any]
-        else { return nil }
-        return tokens["access_token"] as? String
-    }
-
-    private static func claudeAccessToken() -> String? {
-        if let keychainJSON = claudeCredentialsFromKeychain(),
-           let token = claudeAccessToken(from: keychainJSON) {
-            return token
-        }
-        let credentialsURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/.credentials.json")
-        guard let data = try? Data(contentsOf: credentialsURL) else { return nil }
-        return claudeAccessToken(from: data)
-    }
-
-    private static func claudeCredentialsFromKeychain() -> Data? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = [
-            "find-generic-password",
-            "-s", "Claude Code-credentials",
-            "-w"
-        ]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        let data: Data
-        do {
-            try process.run()
-            data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
-        return data.isEmpty ? nil : data
-    }
-
-    private static func claudeAccessToken(from data: Data) -> String? {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        let oauth = (object["claudeAiOauth"] as? [String: Any])
-            ?? (object["claude.ai_oauth"] as? [String: Any])
-        return oauth?["accessToken"] as? String
     }
 
     private func render(_ next: Snapshot) {

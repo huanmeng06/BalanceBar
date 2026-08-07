@@ -33,6 +33,8 @@
 		A1000000000000000000005B /* CCSwitchRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000005E /* CCSwitchRepository.swift */; };
 		A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000005F /* CCSwitchRepositoryTests.swift */; };
 		A1000000000000000000005D /* libsqlite3.tbd in Test Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* libsqlite3.tbd */; };
+		A10000000000000000000060 /* CredentialReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000061 /* CredentialReader.swift */; };
+		A10000000000000000000062 /* CredentialReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000063 /* CredentialReaderTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +66,8 @@
 		A10000000000000000000058 /* ResponseParsersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParsersTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000005E /* CCSwitchRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRepository.swift; sourceTree = "<group>"; };
 		A1000000000000000000005F /* CCSwitchRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRepositoryTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000061 /* CredentialReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialReader.swift; sourceTree = "<group>"; };
+		A10000000000000000000063 /* CredentialReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialReaderTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +160,7 @@
 				A10000000000000000000053 /* DomainModelsTests.swift */,
 				A10000000000000000000058 /* ResponseParsersTests.swift */,
 				A1000000000000000000005F /* CCSwitchRepositoryTests.swift */,
+				A10000000000000000000063 /* CredentialReaderTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -177,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
+				A10000000000000000000061 /* CredentialReader.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
@@ -307,6 +313,7 @@
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
 				A10000000000000000000055 /* ResponseParsers.swift in Sources */,
 				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
+				A10000000000000000000060 /* CredentialReader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -320,6 +327,7 @@
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,
 				A10000000000000000000057 /* ResponseParsersTests.swift in Sources */,
 				A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */,
+				A10000000000000000000062 /* CredentialReaderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
