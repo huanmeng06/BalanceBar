@@ -9,10 +9,7 @@ trap 'rm -rf "$probe_dir"' EXIT
 
 {
     printf '%s\n' 'import Foundation'
-    awk '
-        /^private enum NativeBalanceProvider \{/ { capture = 1 }
-        capture { print }
-    ' "$source_dir/BalanceBar.swift"
+    cat "$source_dir/Sources/Domain/BalanceQuery.swift"
     cat <<'SWIFT'
 
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {

@@ -9,15 +9,12 @@ trap 'rm -rf "$probe_dir"' EXIT
 
 {
     printf '%s\n' 'import Foundation' 'func tr(_ chinese: String, _ english: String) -> String { english }'
+    cat "$source_dir/Sources/Domain/Snapshot.swift"
     awk '
-        /^private struct Snapshot \{/ { capture = 1 }
-        /^private struct ProviderChoice \{/ { exit }
-        capture {
-            sub(/^private struct Snapshot/, "struct Snapshot")
-            sub(/^private struct ProviderBalanceSnapshotCache/, "struct ProviderBalanceSnapshotCache")
-            print
-        }
-    ' "$source_dir/BalanceBar.swift"
+        /^struct ProviderBalanceSnapshotCache \{/ { capture = 1 }
+        /^struct ProviderChoice \{/ { exit }
+        capture { print }
+    ' "$source_dir/Sources/Domain/ProviderModels.swift"
     cat <<'SWIFT'
 
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {

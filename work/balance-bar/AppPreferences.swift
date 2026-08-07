@@ -1,10 +1,5 @@
 import Foundation
 
-struct StatusLink: Codable, Equatable {
-    var title: String
-    var url: String
-}
-
 final class AppPreferences {
     private let defaults: UserDefaults
     private let defaultStatusLinksProvider: () -> [StatusLink]
