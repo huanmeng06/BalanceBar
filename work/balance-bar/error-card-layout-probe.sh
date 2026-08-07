@@ -11,7 +11,7 @@ trap 'rm -rf "$probe_dir"' EXIT
     printf '%s\n' 'import AppKit' 'import CoreText'
     awk '
         /^private enum ErrorCardLayout \{/ { capture = 1 }
-        /^private struct Snapshot \{/ { exit }
+        /^private struct Provider \{/ { exit }
         capture { print }
     ' "$source_dir/BalanceBar.swift"
     cat <<'SWIFT'
