@@ -30,6 +30,9 @@
 		A1000000000000000000004D /* DomainModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000053 /* DomainModelsTests.swift */; };
 		A10000000000000000000055 /* ResponseParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000056 /* ResponseParsers.swift */; };
 		A10000000000000000000057 /* ResponseParsersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000058 /* ResponseParsersTests.swift */; };
+		A1000000000000000000005B /* CCSwitchRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000005E /* CCSwitchRepository.swift */; };
+		A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000005F /* CCSwitchRepositoryTests.swift */; };
+		A1000000000000000000005D /* libsqlite3.tbd in Test Frameworks */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* libsqlite3.tbd */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -59,6 +62,8 @@
 		A10000000000000000000053 /* DomainModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModelsTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000056 /* ResponseParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParsers.swift; sourceTree = "<group>"; };
 		A10000000000000000000058 /* ResponseParsersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParsersTests.swift; sourceTree = "<group>"; };
+		A1000000000000000000005E /* CCSwitchRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRepository.swift; sourceTree = "<group>"; };
+		A1000000000000000000005F /* CCSwitchRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRepositoryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +83,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000031 /* XCTest.framework in Frameworks */,
+				A1000000000000000000005D /* libsqlite3.tbd in Test Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -149,6 +155,7 @@
 				A10000000000000000000047 /* AppPreferencesTests.swift */,
 				A10000000000000000000053 /* DomainModelsTests.swift */,
 				A10000000000000000000058 /* ResponseParsersTests.swift */,
+				A1000000000000000000005F /* CCSwitchRepositoryTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -169,6 +176,7 @@
 		A10000000000000000000059 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A1000000000000000000005E /* CCSwitchRepository.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
@@ -298,6 +306,7 @@
 				A1000000000000000000004B /* Snapshot.swift in Sources */,
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
 				A10000000000000000000055 /* ResponseParsers.swift in Sources */,
+				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -310,6 +319,7 @@
 				A10000000000000000000046 /* AppPreferencesTests.swift in Sources */,
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,
 				A10000000000000000000057 /* ResponseParsersTests.swift in Sources */,
+				A1000000000000000000005C /* CCSwitchRepositoryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

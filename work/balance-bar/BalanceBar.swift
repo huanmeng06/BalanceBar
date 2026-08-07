@@ -4,10 +4,6 @@ import SQLite3
 import Darwin
 import SwiftUI
 
-private let databasePath = NSString(string: "~/.cc-switch/cc-switch.db").expandingTildeInPath
-private let ccSwitchDirectory = NSString(string: "~/.cc-switch").expandingTildeInPath
-private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-
 private func fileIdentity(atPath path: String) -> (size: UInt64, modifiedAt: TimeInterval)? {
     var value = stat()
     guard path.withCString({ Darwin.lstat($0, &value) }) == 0 else { return nil }
@@ -818,7 +814,7 @@ private enum DashboardLogging {
     }
 }
 
-private enum SwitchLog {
+enum SwitchLog {
     enum Level: String {
         case debug = "DEBUG"
         case info = "INFO"
@@ -1445,6 +1441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastCodexUsageRefresh: Date?
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
+    private let ccSwitchRepository: CCSwitchRepository
     private let preferences = AppPreferences()
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
@@ -1462,6 +1459,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var keepMenuOpenAfterRefresh: Bool { get { preferences.keepMenuOpenAfterRefresh } set { preferences.keepMenuOpenAfterRefresh = newValue } }
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
+
+    init(repository: CCSwitchRepository = CCSwitchRepository()) {
+        self.ccSwitchRepository = repository
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
@@ -1481,7 +1483,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "unknown"
         SwitchLog.write(
-            "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString); database=\(databasePath)",
+            "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString); database=\(ccSwitchRepository.databaseURL.path)",
             category: "lifecycle"
         )
         SwitchLog.write(
@@ -1592,11 +1594,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let appType = activeClient.appType
         // The visible menu title also contains the cached balance. Keep the
         // actual Provider name separate for logs and CC Switch synchronization.
-        let providerName = Provider.loadChoices(appType: appType)
+        let providerName = ccSwitchRepository.loadChoices(appType: appType)
             .first(where: { $0.id == providerID })?.name ?? sender.title
         monitorQueue.async { [weak self] in
             guard let self else { return }
-            let current = Provider.loadChoices(appType: appType)
+            let current = ccSwitchRepository.loadChoices(appType: appType)
                 .first(where: { $0.isCurrent })
             SwitchLog.write("switch requested; from=\(current?.name ?? "none"); to=\(providerName); id=\(providerID)")
             if current?.id == providerID {
@@ -1631,8 +1633,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
 
             do {
-                try Provider.switchCurrent(to: providerID, appType: appType)
-                let confirmed = Provider.loadChoices(appType: appType)
+                try ccSwitchRepository.switchCurrent(to: providerID, appType: appType)
+                let confirmed = ccSwitchRepository.loadChoices(appType: appType)
                     .first(where: { $0.isCurrent })
                 guard confirmed?.id == providerID else {
                     throw NSError(
@@ -2283,7 +2285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let selectedProviderID = dashboardSelectedProviderID
         installDashboardLayout(in: window)
         if let selectedProviderID,
-           Provider.loadChoices(appType: activeClient.appType)
+           ccSwitchRepository.loadChoices(appType: activeClient.appType)
                .contains(where: { $0.id == selectedProviderID }) {
             showDashboardProvider(selectedProviderID)
         } else {
@@ -2414,7 +2416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let selectedProviderID = dashboardSelectedProviderID
         installDashboardLayout(in: window)
         if let selectedProviderID,
-           Provider.loadChoices(appType: activeClient.appType)
+           ccSwitchRepository.loadChoices(appType: activeClient.appType)
                .contains(where: { $0.id == selectedProviderID }) {
             showDashboardProvider(selectedProviderID)
         } else {
@@ -3028,15 +3030,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardProviderButtons.removeAll()
 
         let query = dashboardProviderSearch.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        var choices = Provider.loadChoices(appType: activeClient.appType).filter {
+        var choices = ccSwitchRepository.loadChoices(appType: activeClient.appType).filter {
             query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)
         }
         if sortProvidersAlphabetically {
             choices.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         }
         dashboardProviderCountLabel.stringValue = tr(
-            "\(Provider.loadChoices(appType: activeClient.appType).count) 个",
-            "\(Provider.loadChoices(appType: activeClient.appType).count)"
+            "\(ccSwitchRepository.loadChoices(appType: activeClient.appType).count) 个",
+            "\(ccSwitchRepository.loadChoices(appType: activeClient.appType).count)"
         )
 
         for choice in choices {
@@ -3070,7 +3072,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func showDashboardProvider(_ providerID: String) {
-        guard let choice = Provider.loadChoices(appType: activeClient.appType)
+        guard let choice = ccSwitchRepository.loadChoices(appType: activeClient.appType)
             .first(where: { $0.id == providerID }) else { return }
         dashboardSelectedProviderID = providerID
         dashboard?.title = choice.name
@@ -3280,7 +3282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func makeGeneralDashboardPage() -> NSView {
         let openButton = NSButton(title: tr("打开 CC Switch", "Open CC Switch"), target: self, action: #selector(openCCSwitch))
-        let currentName = Provider.loadChoices(appType: activeClient.appType)
+        let currentName = ccSwitchRepository.loadChoices(appType: activeClient.appType)
             .first(where: { $0.isCurrent })?.name ?? tr("未找到", "Not Found")
         let currentProviderText = tr(
             "当前供应商：\(currentName)",
@@ -4360,7 +4362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
         if let cached = clientSnapshots[client],
-           Provider.loadCurrent(appType: client.appType)?.id == cached.providerID {
+           ccSwitchRepository.loadCurrent(appType: client.appType)?.id == cached.providerID {
             lastProviderID = cached.providerID
             render(cached.snapshot)
         }
@@ -4624,12 +4626,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func updateDashboard(for snapshot: Snapshot, refreshDate: Date?) {
         guard dashboard?.isVisible == true else { return }
-        if let currentName = Provider.loadChoices(appType: activeClient.appType)
+        if let currentName = ccSwitchRepository.loadChoices(appType: activeClient.appType)
             .first(where: { $0.isCurrent })?.name {
             updateDashboardCurrentProvider(currentName)
         }
         if let selectedID = dashboardSelectedProviderID,
-           let choice = Provider.loadChoices(appType: activeClient.appType)
+           let choice = ccSwitchRepository.loadChoices(appType: activeClient.appType)
                .first(where: { $0.id == selectedID }) {
             dashboardProviderLabel.stringValue = choice.name
             if choice.isCurrent {
@@ -4667,7 +4669,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             child.removeFromSuperview()
         }
 
-        let choices = Provider.loadChoices(appType: activeClient.appType)
+        let choices = ccSwitchRepository.loadChoices(appType: activeClient.appType)
         if choices.isEmpty {
             let empty = NSTextField(labelWithString: tr("未找到 Codex 供应商", "No Codex Provider Found"))
             empty.textColor = .secondaryLabelColor
@@ -4724,7 +4726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let client = activeClient
         monitorQueue.async { [weak self] in
             guard let self else { return }
-            let current = Provider.loadCurrent(appType: client.appType)
+            let current = ccSwitchRepository.loadCurrent(appType: client.appType)
             guard let current else {
                 SwitchLog.write(
                     "refresh failed; client=\(client.rawValue); current provider not found",
@@ -4813,7 +4815,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func prefetchCurrentBalance(for client: AssistantClient) {
         monitorQueue.async { [weak self] in
             guard let self,
-                  let current = Provider.loadCurrent(appType: client.appType)
+                  let current = ccSwitchRepository.loadCurrent(appType: client.appType)
             else { return }
 
             if let query = current.query {
@@ -4850,6 +4852,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func startDatabaseWatchers() {
         // SQLite commits usually update the WAL file; watching both the main DB
         // and its WAL gives near-instant provider-switch detection.
+        let databasePath = ccSwitchRepository.databaseURL.path
+        let ccSwitchDirectory = ccSwitchRepository.databaseURL.deletingLastPathComponent().path
         let paths = [databasePath, "\(databasePath)-wal", ccSwitchDirectory]
         databaseWatchers = paths.compactMap { makeWatcher(for: $0) }
     }
@@ -4903,7 +4907,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard force || due else { return }
             self.lastQuickSwitchFetch = Date()
 
-            for source in Provider.loadSummarySources(appType: client.appType) {
+            for source in ccSwitchRepository.loadSummarySources(appType: client.appType) {
                 if source.isOfficial {
                     // Avoid querying the macOS Keychain merely to decorate the
                     // quick-switch list. Official Claude quota is still loaded
@@ -4971,7 +4975,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let names = Dictionary(uniqueKeysWithValues: Provider.loadChoices(
+            let names = Dictionary(uniqueKeysWithValues: ccSwitchRepository.loadChoices(
                 appType: self.activeClient.appType
             ).map { ($0.id, $0.name) })
             if self.isStatusMenuTracking {
@@ -5282,7 +5286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     ) {
         monitorQueue.async { [weak self] in
             guard let self,
-                  Provider.loadCurrent(appType: client.appType)?.id == providerID
+                  ccSwitchRepository.loadCurrent(appType: client.appType)?.id == providerID
             else { return }
             if next.kind == .balance {
                 self.providerBalanceSnapshots.store(
@@ -5320,7 +5324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     ) {
         monitorQueue.async { [weak self] in
             guard let self,
-                  Provider.loadCurrent(appType: client.appType)?.id == providerID
+                  ccSwitchRepository.loadCurrent(appType: client.appType)?.id == providerID
             else { return }
             let next = self.providerBalanceSnapshots.errorSnapshot(
                 clientID: client.rawValue,
@@ -5529,7 +5533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let parent = NSMenuItem(title: tr("快速切换", "Quick Switch"), action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: tr("快速切换", "Quick Switch"))
         submenu.minimumWidth = 210
-        let choices = Provider.loadChoices(appType: activeClient.appType)
+        let choices = ccSwitchRepository.loadChoices(appType: activeClient.appType)
         let choiceSummary = choices.map {
             "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
         }.joined(separator: "|")
@@ -5871,397 +5875,5 @@ private enum ErrorCardLayout {
         label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
         return label
-    }
-}
-
-private struct Provider {
-    let id: String
-    let name: String
-    let isOfficial: Bool
-    let query: BalanceQuery?
-    let queryFailure: BalanceQueryFailure?
-
-    static func loadCurrent(appType: String) -> Provider? {
-        var database: OpaquePointer?
-        guard sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let database else { return nil }
-        defer { sqlite3_close(database) }
-        let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? AND is_current = 1 LIMIT 1"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, appType, -1, sqliteTransient)
-        guard sqlite3_step(statement) == SQLITE_ROW,
-              let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
-              let name = sqlite3_column_text(statement, 1).map({ String(cString: $0) }),
-              let configText = sqlite3_column_text(statement, 2).map({ String(cString: $0) }),
-              let metaText = sqlite3_column_text(statement, 3).map({ String(cString: $0) }) else { return nil }
-        let category = sqlite3_column_text(statement, 4).map({ String(cString: $0) })
-        let websiteText = sqlite3_column_text(statement, 5).map({ String(cString: $0) })
-        guard category != "official" else {
-            return Provider(id: id, name: name, isOfficial: true, query: nil, queryFailure: nil)
-        }
-        var queryFailure: BalanceQueryFailure?
-        let query = BalanceQuery.make(
-            settingsText: configText,
-            metaText: metaText,
-            websiteText: websiteText,
-            appType: appType,
-            onFailure: { queryFailure = $0 }
-        )
-        return Provider(
-            id: id,
-            name: name,
-            isOfficial: false,
-            query: query,
-            queryFailure: queryFailure
-        )
-    }
-
-    static func loadChoices(appType: String) -> [ProviderChoice] {
-        let fileManager = FileManager.default
-        let databaseExists = fileManager.fileExists(atPath: databasePath)
-        let databaseReadable = fileManager.isReadableFile(atPath: databasePath)
-        let attributes = try? fileManager.attributesOfItem(atPath: databasePath)
-        let databaseSize = (attributes?[.size] as? NSNumber)?.int64Value ?? -1
-        SwitchLog.write(
-            "provider choices read started; app_type=\(appType); database_path=\(databasePath); exists=\(databaseExists); readable=\(databaseReadable); size=\(databaseSize)",
-            level: .debug,
-            category: "provider.read",
-            throttleKey: "provider-read-start-\(appType)",
-            minimumInterval: 1
-        )
-
-        var database: OpaquePointer?
-        let openCode = sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY, nil)
-        guard openCode == SQLITE_OK, let database else {
-            let error = database.map { String(cString: sqlite3_errmsg($0)) } ?? "no sqlite handle"
-            if let database { sqlite3_close(database) }
-            SwitchLog.write(
-                "provider choices read failed; app_type=\(appType); stage=open; sqlite_code=\(openCode); error=\(error)",
-                level: .error,
-                category: "provider.read"
-            )
-            return []
-        }
-        defer { sqlite3_close(database) }
-        let sql = "SELECT id, name, is_current FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
-        var statement: OpaquePointer?
-        let prepareCode = sqlite3_prepare_v2(database, sql, -1, &statement, nil)
-        guard prepareCode == SQLITE_OK, let statement else {
-            SwitchLog.write(
-                "provider choices read failed; app_type=\(appType); stage=prepare; sqlite_code=\(prepareCode); error=\(String(cString: sqlite3_errmsg(database)))",
-                level: .error,
-                category: "provider.read"
-            )
-            return []
-        }
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, appType, -1, sqliteTransient)
-        var result: [ProviderChoice] = []
-        var rowCount = 0
-        var skippedRowCount = 0
-        while true {
-            let stepCode = sqlite3_step(statement)
-            if stepCode == SQLITE_DONE { break }
-            guard stepCode == SQLITE_ROW else {
-                SwitchLog.write(
-                    "provider choices read failed; app_type=\(appType); stage=step; sqlite_code=\(stepCode); error=\(String(cString: sqlite3_errmsg(database)))",
-                    level: .error,
-                    category: "provider.read"
-                )
-                break
-            }
-            rowCount += 1
-            guard let idText = sqlite3_column_text(statement, 0),
-                  let nameText = sqlite3_column_text(statement, 1) else {
-                skippedRowCount += 1
-                SwitchLog.write(
-                    "provider row skipped; app_type=\(appType); row=\(rowCount); reason=missing id or name",
-                    level: .warning,
-                    category: "provider.read"
-                )
-                continue
-            }
-            result.append(ProviderChoice(
-                id: String(cString: idText),
-                name: String(cString: nameText),
-                isCurrent: sqlite3_column_int(statement, 2) != 0
-            ))
-        }
-        let choiceSummary = result.map {
-            "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
-        }.joined(separator: "|")
-        SwitchLog.write(
-            "provider choices read completed; app_type=\(appType); row_count=\(rowCount); result_count=\(result.count); skipped_rows=\(skippedRowCount); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary)",
-            category: "provider.read",
-            throttleKey: "provider-read-complete-\(appType)",
-            minimumInterval: 1
-        )
-        return result
-    }
-
-    static func loadSummarySources(appType: String) -> [ProviderSummarySource] {
-        var database: OpaquePointer?
-        guard sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
-              let database else { return [] }
-        defer { sqlite3_close(database) }
-        sqlite3_busy_timeout(database, 3_000)
-
-        let sql = "SELECT id, settings_config, meta, category, website_url FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return [] }
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, appType, -1, sqliteTransient)
-
-        var result: [ProviderSummarySource] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            guard let idText = sqlite3_column_text(statement, 0) else { continue }
-            let id = String(cString: idText)
-            let settingsText = sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? "{}"
-            let metaText = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? "{}"
-            let category = sqlite3_column_text(statement, 3).map { String(cString: $0) }
-            let websiteText = sqlite3_column_text(statement, 4).map { String(cString: $0) }
-
-            if category == "official" {
-                let stored = settingsText.data(using: .utf8)
-                    .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-                let auth = stored?["auth"] as? [String: Any]
-                let tokens = auth?["tokens"] as? [String: Any]
-                let accessToken = tokens?["access_token"] as? String
-                result.append(ProviderSummarySource(
-                    id: id,
-                    isOfficial: true,
-                    query: nil,
-                    officialAccessToken: accessToken
-                ))
-            } else {
-                result.append(ProviderSummarySource(
-                    id: id,
-                    isOfficial: false,
-                    query: BalanceQuery.make(
-                        settingsText: settingsText,
-                        metaText: metaText,
-                        websiteText: websiteText,
-                        appType: appType
-                    ),
-                    officialAccessToken: nil
-                ))
-            }
-        }
-        return result
-    }
-
-    static func switchCurrent(to providerID: String, appType: String) throws {
-        var database: OpaquePointer?
-        guard sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
-              let database else {
-            throw switchError(tr("无法打开 CC Switch 数据库", "Unable to open the CC Switch database"))
-        }
-        defer { sqlite3_close(database) }
-        sqlite3_busy_timeout(database, 3_000)
-
-        guard let target = loadSwitchTarget(providerID, appType: appType, database: database) else {
-            throw switchError(tr("供应商不存在", "Provider does not exist"))
-        }
-
-        let settingsURL = URL(fileURLWithPath: NSString(string: "~/.cc-switch/settings.json").expandingTildeInPath)
-        var appSettings = (try? Data(contentsOf: settingsURL))
-            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-        let preserveOfficialAuth = appSettings["preserveCodexOfficialAuthOnSwitch"] as? Bool ?? false
-        let unifyHistory = appSettings["unifyCodexSessionHistory"] as? Bool ?? true
-
-        if !proxyTakeoverIsActive(appType: appType, database: database) {
-            if appType == "claude" {
-                guard
-                    let object = try? JSONSerialization.jsonObject(
-                        with: Data(target.settingsConfig.utf8)
-                    ) as? [String: Any]
-                else {
-                    throw switchError(tr(
-                        "供应商的 Claude 配置不完整",
-                        "The Provider's Claude configuration is incomplete"
-                    ))
-                }
-                let settingsURL = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent(".claude/settings.json")
-                try FileManager.default.createDirectory(
-                    at: settingsURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                let settingsData = try JSONSerialization.data(
-                    withJSONObject: object,
-                    options: [.prettyPrinted, .sortedKeys]
-                )
-                try settingsData.write(to: settingsURL, options: .atomic)
-            } else {
-            guard let stored = try? JSONSerialization.jsonObject(with: Data(target.settingsConfig.utf8)) as? [String: Any],
-                  let auth = stored["auth"],
-                  var config = stored["config"] as? String else {
-                throw switchError(tr("供应商的 Codex 配置不完整", "The Provider's Codex configuration is incomplete"))
-            }
-
-            let codexDirectory = URL(fileURLWithPath: NSString(string: "~/.codex").expandingTildeInPath, isDirectory: true)
-            let authURL = codexDirectory.appendingPathComponent("auth.json")
-            let configURL = codexDirectory.appendingPathComponent("config.toml")
-            try FileManager.default.createDirectory(at: codexDirectory, withIntermediateDirectories: true)
-
-            // CC Switch syncs MCP entries separately after a provider switch.
-            // Preserve the currently enabled live MCP sections here as well.
-            let liveConfig = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
-            config = replacingMCPSections(in: config, with: mcpSections(from: liveConfig))
-
-            if target.category == "official", unifyHistory {
-                config = injectingUnifiedOfficialRoute(into: config)
-            }
-
-            if target.category != "official", preserveOfficialAuth {
-                if let authObject = auth as? [String: Any],
-                   let token = authObject["OPENAI_API_KEY"] as? String, !token.isEmpty {
-                    config = injectingBearerToken(token, into: config)
-                }
-            } else {
-                let authData = try JSONSerialization.data(withJSONObject: auth, options: [.prettyPrinted, .sortedKeys])
-                try authData.write(to: authURL, options: .atomic)
-            }
-            try Data(config.utf8).write(to: configURL, options: .atomic)
-            }
-        }
-
-        guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
-            throw switchError(tr("CC Switch 数据库正忙", "The CC Switch database is busy"))
-        }
-        var committed = false
-        defer { if !committed { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) } }
-        try execute(
-            database,
-            sql: "UPDATE providers SET is_current = 0 WHERE app_type = ?",
-            bindings: [appType]
-        )
-        try execute(
-            database,
-            sql: "UPDATE providers SET is_current = 1 WHERE id = ? AND app_type = ?",
-            bindings: [providerID, appType]
-        )
-        guard sqlite3_changes(database) == 1 else {
-            throw switchError(tr("未能选中供应商", "Unable to select the Provider"))
-        }
-        guard sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK else {
-            throw switchError(tr("无法保存供应商切换", "Unable to save the Provider switch"))
-        }
-        committed = true
-
-        appSettings[appType == "claude" ? "currentProviderClaude" : "currentProviderCodex"] = providerID
-        let settingsData = try JSONSerialization.data(withJSONObject: appSettings, options: [.prettyPrinted, .sortedKeys])
-        try settingsData.write(to: settingsURL, options: .atomic)
-    }
-
-    private struct SwitchTarget {
-        let settingsConfig: String
-        let category: String?
-    }
-
-    private static func loadSwitchTarget(
-        _ id: String,
-        appType: String,
-        database: OpaquePointer
-    ) -> SwitchTarget? {
-        var statement: OpaquePointer?
-        let sql = "SELECT settings_config, category FROM providers WHERE id = ? AND app_type = ? LIMIT 1"
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return nil }
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, id, -1, sqliteTransient)
-        sqlite3_bind_text(statement, 2, appType, -1, sqliteTransient)
-        guard sqlite3_step(statement) == SQLITE_ROW,
-              let settingsText = sqlite3_column_text(statement, 0) else { return nil }
-        return SwitchTarget(
-            settingsConfig: String(cString: settingsText),
-            category: sqlite3_column_text(statement, 1).map { String(cString: $0) }
-        )
-    }
-
-    private static func proxyTakeoverIsActive(
-        appType: String,
-        database: OpaquePointer
-    ) -> Bool {
-        let sql = "SELECT EXISTS(SELECT 1 FROM proxy_config WHERE app_type = ? AND (live_takeover_active = 1 OR enabled = 1)) OR EXISTS(SELECT 1 FROM proxy_live_backup WHERE app_type = ?)"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return false }
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, appType, -1, sqliteTransient)
-        sqlite3_bind_text(statement, 2, appType, -1, sqliteTransient)
-        return sqlite3_step(statement) == SQLITE_ROW && sqlite3_column_int(statement, 0) != 0
-    }
-
-    private static func execute(
-        _ database: OpaquePointer,
-        sql: String,
-        bindings: [String] = []
-    ) throws {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else {
-            throw switchError(tr("数据库写入准备失败", "Failed to prepare the database write"))
-        }
-        defer { sqlite3_finalize(statement) }
-        for (index, binding) in bindings.enumerated() {
-            sqlite3_bind_text(statement, Int32(index + 1), binding, -1, sqliteTransient)
-        }
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw switchError(tr("数据库写入失败", "Database write failed"))
-        }
-    }
-
-    private static func mcpSections(from config: String) -> String {
-        var collecting = false
-        var lines: [String] = []
-        for line in config.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") {
-                collecting = trimmed == "[mcp_servers]" || trimmed.hasPrefix("[mcp_servers.")
-            }
-            if collecting { lines.append(line) }
-        }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func replacingMCPSections(in config: String, with replacement: String) -> String {
-        var skipping = false
-        var lines: [String] = []
-        for line in config.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") {
-                skipping = trimmed == "[mcp_servers]" || trimmed.hasPrefix("[mcp_servers.")
-            }
-            if !skipping { lines.append(line) }
-        }
-        var result = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !replacement.isEmpty { result += "\n\n" + replacement }
-        return result + "\n"
-    }
-
-    private static func injectingUnifiedOfficialRoute(into config: String) -> String {
-        if config.range(of: #"(?m)^\s*model_provider\s*="# , options: .regularExpression) != nil { return config }
-        if config.contains("[model_providers.custom]") { return config }
-        return "model_provider = \"custom\"\n" + config.trimmingCharacters(in: .whitespacesAndNewlines) + "\n\n" +
-            "[model_providers.custom]\nname = \"OpenAI\"\nrequires_openai_auth = true\nsupports_websockets = true\nwire_api = \"responses\"\n"
-    }
-
-    private static func injectingBearerToken(_ token: String, into config: String) -> String {
-        let escaped = token.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let line = "experimental_bearer_token = \"\(escaped)\""
-        if config.range(of: #"(?m)^\s*experimental_bearer_token\s*="# , options: .regularExpression) != nil {
-            return config.replacingOccurrences(of: #"(?m)^\s*experimental_bearer_token\s*=.*$"#, with: line, options: .regularExpression)
-        }
-        guard let header = config.range(of: #"(?m)^\[model_providers\.[^\]]+\]\s*$"#, options: .regularExpression) else {
-            return config + "\n" + line + "\n"
-        }
-        return config[..<header.upperBound] + "\n" + line + config[header.upperBound...]
-    }
-
-    private static func switchError(_ message: String) -> NSError {
-        NSError(domain: "BalanceBar.ProviderSwitch", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 }
