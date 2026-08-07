@@ -1443,6 +1443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
     private let credentialReader = CredentialReader()
+    private let balanceAPIClient = BalanceAPIClient()
     private let preferences = AppPreferences()
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
@@ -4934,29 +4935,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     continue
                 }
 
-                guard let query = source.query,
-                      let url = URL(string: query.url),
-                      url.scheme?.lowercased() == "https" else { continue }
-                var request = URLRequest(url: url)
-                request.httpMethod = "GET"
-                request.timeoutInterval = TimeInterval(query.timeoutSeconds)
-                Self.applyBalanceHeaders(query, to: &request)
-                URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
-                    guard let self,
-                          let http = response as? HTTPURLResponse,
-                          (200..<300).contains(http.statusCode),
-                          let data,
-                          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let result = try? BalanceResponseParser.parse(
-                              object: object,
-                              query: query
-                          )
-                    else { return }
-                    self.updateQuickSwitchSummary(
-                        providerID: source.id,
-                        text: Self.formatBalanceSummary(result.amount, unit: result.unit)
-                    )
-                }.resume()
+                guard let query = source.query else { continue }
+                self.balanceAPIClient.fetchBalance(
+                    query: query,
+                    client: client,
+                    providerID: source.id,
+                    completion: { [weak self] result in
+                        guard let self,
+                              case .success(let response) = result else { return }
+                        self.updateQuickSwitchSummary(
+                            providerID: source.id,
+                            text: Self.formatBalanceSummary(
+                                response.output.amount,
+                                unit: response.output.unit
+                            )
+                        )
+                    }
+                )
             }
         }
     }
@@ -5075,73 +5070,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         query: BalanceQuery,
         client: AssistantClient
     ) {
-        guard let url = URL(string: query.url), url.scheme?.lowercased() == "https" else {
-            SwitchLog.write(
-                "balance request rejected; client=\(client.rawValue); provider=\(providerName); reason=non-HTTPS endpoint",
-                level: .error,
-                category: "network"
-            )
-            renderBalanceErrorForCurrentProvider(
-                providerID: providerID,
-                providerName: providerName,
-                reason: tr("余额接口不是 HTTPS", "The balance endpoint is not HTTPS"),
-                client: client
-            )
-            return
-        }
-        let requestKey = "balance:\(client.rawValue):\(providerID)"
-        guard beginBalanceRequest(requestKey) else { return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = TimeInterval(query.timeoutSeconds)
-        Self.applyBalanceHeaders(query, to: &request)
         let requestStartedAt = Date()
-
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self else { return }
-            defer { self.endBalanceRequest(requestKey) }
-            let duration = Date().timeIntervalSince(requestStartedAt)
-            if let error {
-                SwitchLog.write(
-                    "balance request failed; client=\(client.rawValue); provider=\(providerName); duration=\(String(format: "%.3f", duration))s; error=\(error.localizedDescription)",
-                    level: .error,
-                    category: "network"
-                )
-                let reason = Self.localizedBalanceNetworkErrorReason(
-                    error,
-                    usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
-                )
-                self.renderBalanceErrorForCurrentProvider(
-                    providerID: providerID,
-                    providerName: providerName,
-                    reason: reason,
-                    client: client
-                )
-                return
-            }
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), let data else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                SwitchLog.write(
-                    "balance request failed; client=\(client.rawValue); provider=\(providerName); status=\(status); duration=\(String(format: "%.3f", duration))s",
-                    level: .error,
-                    category: "network"
-                )
-                self.renderBalanceErrorForCurrentProvider(
-                    providerID: providerID,
-                    providerName: providerName,
-                    reason: tr("余额接口返回异常", "The balance endpoint returned an error"),
-                    client: client
-                )
-                return
-            }
-            do {
-                let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-                guard let result = try? BalanceResponseParser.parse(
-                    object: object,
-                    query: query
-                ) else {
+        guard balanceAPIClient.fetchBalance(
+            query: query,
+            client: client,
+            providerID: providerID,
+            completion: { [weak self] result in
+                guard let self else { return }
+                let duration = Date().timeIntervalSince(requestStartedAt)
+                switch result {
+                case .success(let response):
+                    let output = response.output
                     SwitchLog.write(
-                        "balance parse failed; client=\(client.rawValue); provider=\(providerName); bytes=\(data.count); duration=\(String(format: "%.3f", duration))s",
+                        "balance request succeeded; client=\(client.rawValue); provider=\(providerName); amount=\(output.amount); unit=\(output.unit); bytes=\(response.dataSize); duration=\(String(format: "%.3f", duration))s",
+                        level: .debug,
+                        category: "network",
+                        throttleKey: "balance-success-\(client.rawValue)-\(providerID)",
+                        minimumInterval: 10
+                    )
+                    self.updateQuickSwitchSummary(
+                        providerID: providerID,
+                        text: Self.formatBalanceSummary(output.amount, unit: output.unit)
+                    )
+                    self.renderForCurrentProvider(
+                        .balance(
+                            providerName,
+                            output.amount,
+                            output.unit,
+                            query.websiteURL,
+                            Date()
+                        ),
+                        providerID: providerID,
+                        client: client
+                    )
+                case .failure(.nonHTTPS):
+                    SwitchLog.write(
+                        "balance request rejected; client=\(client.rawValue); provider=\(providerName); reason=non-HTTPS endpoint",
+                        level: .error,
+                        category: "network"
+                    )
+                    self.renderBalanceErrorForCurrentProvider(
+                        providerID: providerID,
+                        providerName: providerName,
+                        reason: tr("余额接口不是 HTTPS", "The balance endpoint is not HTTPS"),
+                        client: client
+                    )
+                case .failure(.transport(let error)):
+                    SwitchLog.write(
+                        "balance request failed; client=\(client.rawValue); provider=\(providerName); duration=\(String(format: "%.3f", duration))s; error=\(error.localizedDescription)",
+                        level: .error,
+                        category: "network"
+                    )
+                    let reason = Self.localizedBalanceNetworkErrorReason(
+                        error,
+                        usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
+                    )
+                    self.renderBalanceErrorForCurrentProvider(
+                        providerID: providerID,
+                        providerName: providerName,
+                        reason: reason,
+                        client: client
+                    )
+                case .failure(.httpStatus(let status)):
+                    SwitchLog.write(
+                        "balance request failed; client=\(client.rawValue); provider=\(providerName); status=\(status); duration=\(String(format: "%.3f", duration))s",
+                        level: .error,
+                        category: "network"
+                    )
+                    self.renderBalanceErrorForCurrentProvider(
+                        providerID: providerID,
+                        providerName: providerName,
+                        reason: tr("余额接口返回异常", "The balance endpoint returned an error"),
+                        client: client
+                    )
+                case .failure(.unsupportedFormat(let dataSize)):
+                    SwitchLog.write(
+                        "balance parse failed; client=\(client.rawValue); provider=\(providerName); bytes=\(dataSize); duration=\(String(format: "%.3f", duration))s",
                         level: .error,
                         category: "parsing"
                     )
@@ -5151,51 +5155,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         reason: tr("未识别余额格式", "Unrecognized balance format"),
                         client: client
                     )
-                    return
+                case .failure(.invalidJSON(let dataSize, let underlying)):
+                    SwitchLog.write(
+                        "balance JSON decode failed; client=\(client.rawValue); provider=\(providerName); bytes=\(dataSize); duration=\(String(format: "%.3f", duration))s; error=\(underlying.localizedDescription)",
+                        level: .error,
+                        category: "parsing"
+                    )
+                    self.renderBalanceErrorForCurrentProvider(
+                        providerID: providerID,
+                        providerName: providerName,
+                        reason: tr("余额响应无法解析", "The balance response could not be parsed"),
+                        client: client
+                    )
                 }
-                SwitchLog.write(
-                    "balance request succeeded; client=\(client.rawValue); provider=\(providerName); amount=\(result.amount); unit=\(result.unit); bytes=\(data.count); duration=\(String(format: "%.3f", duration))s",
-                    level: .debug,
-                    category: "network",
-                    throttleKey: "balance-success-\(client.rawValue)-\(providerID)",
-                    minimumInterval: 10
-                )
-                self.updateQuickSwitchSummary(
-                    providerID: providerID,
-                    text: Self.formatBalanceSummary(result.amount, unit: result.unit)
-                )
-                self.renderForCurrentProvider(
-                    .balance(
-                        providerName,
-                        result.amount,
-                        result.unit,
-                        query.websiteURL,
-                        Date()
-                    ),
-                    providerID: providerID,
-                    client: client
-                )
-            } catch {
-                SwitchLog.write(
-                    "balance JSON decode failed; client=\(client.rawValue); provider=\(providerName); bytes=\(data.count); duration=\(String(format: "%.3f", duration))s; error=\(error.localizedDescription)",
-                    level: .error,
-                    category: "parsing"
-                )
-                self.renderBalanceErrorForCurrentProvider(
-                    providerID: providerID,
-                    providerName: providerName,
-                    reason: tr("余额响应无法解析", "The balance response could not be parsed"),
-                    client: client
-                )
             }
-        }.resume()
-    }
-
-    private static func applyBalanceHeaders(_ query: BalanceQuery, to request: inout URLRequest) {
-        request.setValue("Bearer \(query.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        for (name, value) in query.additionalHeaders {
-            request.setValue(value, forHTTPHeaderField: name)
+        ) else {
+            // A request for this client/provider key is already in flight;
+            // BalanceAPIClient intentionally suppresses the duplicate.
+            return
         }
     }
 
