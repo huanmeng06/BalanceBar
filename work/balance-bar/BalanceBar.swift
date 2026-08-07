@@ -2436,6 +2436,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    private func makeGlassEffectView(contentView: NSView, cornerRadius: CGFloat) -> NSView? {
+        guard #available(macOS 26.0, *),
+              let glassViewClass = NSClassFromString("NSGlassEffectView") as? NSView.Type else {
+            return nil
+        }
+        // Resolve this macOS 26 class dynamically so older SDKs can compile the source.
+        let glassView = glassViewClass.init(frame: .zero)
+        glassView.setValue(0, forKey: "style") // NSGlassEffectViewStyleRegular
+        glassView.setValue(cornerRadius, forKey: "cornerRadius")
+        glassView.setValue(contentView, forKey: "contentView")
+        return glassView
+    }
+
     private func makeDashboardSidebar(titlebarHeight: CGFloat) -> NSView {
         let sidebar = NSView()
         let panelShadow = NSView()
@@ -2451,11 +2464,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let sidebarContent = NSView()
         let panel: NSView
-        if #available(macOS 26.0, *) {
-            let glassPanel = NSGlassEffectView()
-            glassPanel.style = .regular
-            glassPanel.cornerRadius = 22
-            glassPanel.contentView = sidebarContent
+        if let glassPanel = makeGlassEffectView(contentView: sidebarContent, cornerRadius: 22) {
             panel = glassPanel
         } else {
             let visualEffectPanel = NSVisualEffectView()
@@ -3721,11 +3730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func makeMenuBarDashboardPage() -> NSView {
         let previewContent = NSView()
         let preview: NSView
-        if #available(macOS 26.0, *) {
-            let glassPreview = NSGlassEffectView()
-            glassPreview.style = .regular
-            glassPreview.cornerRadius = 7
-            glassPreview.contentView = previewContent
+        if let glassPreview = makeGlassEffectView(contentView: previewContent, cornerRadius: 7) {
             preview = glassPreview
         } else {
             let visualEffectPreview = NSVisualEffectView()
