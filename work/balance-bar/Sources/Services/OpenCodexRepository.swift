@@ -15,11 +15,16 @@ struct OpenCodexEndpointCandidate: Hashable {
     }
 
     static func parse(settingsConfig: String) -> OpenCodexEndpointCandidate? {
+        // CC Switch stores Codex providers as a JSON wrapper whose `config`
+        // value contains the actual config.toml text. Keep accepting the
+        // direct TOML form used by callers and fixtures, but unwrap this
+        // storage format before looking for structured OpenCodex signals.
+        let tomlConfig = embeddedConfig(from: settingsConfig) ?? settingsConfig
         var topLevel: [String: String] = [:]
         var providerSections: [String: [String: String]] = [:]
         var currentSection: String?
 
-        for rawLine in settingsConfig.components(separatedBy: .newlines) {
+        for rawLine in tomlConfig.components(separatedBy: .newlines) {
             let line = rawLine.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
                 .first
                 .map(String.init)?
@@ -58,6 +63,16 @@ struct OpenCodexEndpointCandidate: Hashable {
             modelProvider: modelProvider,
             wireAPI: "responses"
         )
+    }
+
+    private static func embeddedConfig(from settingsConfig: String) -> String? {
+        guard let data = settingsConfig.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let config = object["config"] as? String,
+              !config.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return config
     }
 
     private static func quotedSectionName(in line: String) -> String? {

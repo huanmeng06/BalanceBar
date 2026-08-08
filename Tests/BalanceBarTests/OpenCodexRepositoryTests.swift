@@ -31,6 +31,45 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertNil(OpenCodexEndpointCandidate.parse(settingsConfig: remoteEndpoint))
     }
 
+    func testEndpointCandidateUnwrapsCCSwitchJSONConfigWrapper() {
+        let embedded = """
+        disable_response_storage = true
+        model = "fixture-model"
+        model_provider = "custom"
+
+        [model_providers.custom]
+        name = "fixture"
+        requires_openai_auth = false
+        wire_api = "responses"
+        base_url = "http://127.0.0.1:10100/v1"
+        """
+        let wrapper: [String: Any] = [
+            "auth": ["mode": "none"],
+            "config": embedded,
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: wrapper)
+        let settingsConfig = String(data: data, encoding: .utf8)!
+
+        let candidate = OpenCodexEndpointCandidate.parse(settingsConfig: settingsConfig)
+        XCTAssertEqual(candidate?.modelProvider, "custom")
+        XCTAssertEqual(candidate?.wireAPI, "responses")
+        XCTAssertEqual(candidate?.baseURL, URL(string: "http://127.0.0.1:10100/v1"))
+
+        let ordinaryWrapper = embedded.replacingOccurrences(
+            of: "wire_api = \"responses\"",
+            with: "wire_api = \"chat\""
+        )
+        let ordinaryData = try! JSONSerialization.data(withJSONObject: [
+            "auth": ["mode": "none"],
+            "config": ordinaryWrapper,
+        ])
+        XCTAssertNil(
+            OpenCodexEndpointCandidate.parse(
+                settingsConfig: String(data: ordinaryData, encoding: .utf8)!
+            )
+        )
+    }
+
     func testReadsStableMaximumFiveChosenPreferencesAndCurrentSelection() {
         let transport = MutableOpenCodexTransport(candidate: candidate)
         let repository = OpenCodexRepository(
