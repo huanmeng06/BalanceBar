@@ -82,7 +82,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         }
         wait(for: [readExpectation], timeout: 2)
         let original = state
-        let preference = try! XCTUnwrap(state?.preferences.first)
+        let preference = try! XCTUnwrap(state?.preferences[2])
 
         let switchExpectation = expectation(description: "switch OpenCodex preference")
         repository.select(preference, from: try! XCTUnwrap(state)) { result in
@@ -92,15 +92,57 @@ final class OpenCodexRepositoryTests: XCTestCase {
                 return
             }
             XCTAssertEqual(updated.defaultProvider, "openai")
-            XCTAssertEqual(updated.providerDefaultModels["openai"], "gpt-5.6-sol")
-            XCTAssertEqual(updated.chosenSelectors.first, "gpt-5.6-sol")
-            XCTAssertEqual(updated.currentSelector, "gpt-5.6-sol")
+            XCTAssertEqual(updated.providerDefaultModels["openai"], "gpt-5.6-luna")
+            XCTAssertEqual(updated.chosenSelectors.first, "gpt-5.6-luna")
+            XCTAssertEqual(updated.currentSelector, "gpt-5.6-luna")
             XCTAssertNotEqual(updated, original)
             XCTAssertTrue(transport.requests.contains {
                 $0.method == "PATCH" && $0.path == "/api/providers" && $0.queryName == "openai"
             })
             XCTAssertTrue(transport.requests.contains { $0.method == "PUT" && $0.path == "/api/subagent-models" })
             XCTAssertEqual(transport.defaultProvider, "openai")
+            switchExpectation.fulfill()
+        }
+        wait(for: [switchExpectation], timeout: 2)
+    }
+
+    func testSelectMovesDisplayedPreferenceWithoutTruncatingCompleteChosenList() {
+        let transport = MutableOpenCodexTransport(candidate: candidate)
+        let repository = OpenCodexRepository(
+            transport: transport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: NoTokenProvider()
+        )
+        let readExpectation = expectation(description: "read state before full-list reorder")
+        var state: OpenCodexRuntimeState?
+
+        repository.readState(for: candidate) { result in
+            if case .recognized(let value) = result { state = value }
+            readExpectation.fulfill()
+        }
+        wait(for: [readExpectation], timeout: 2)
+
+        let originalChosen = transport.chosenSelectors
+        let target = try! XCTUnwrap(state?.preferences.last)
+        let switchExpectation = expectation(description: "reorder complete chosen list")
+        repository.select(target, from: try! XCTUnwrap(state)) { result in
+            guard case .success(let updated) = result else {
+                XCTFail("expected full-list reorder to succeed: \(result)")
+                switchExpectation.fulfill()
+                return
+            }
+
+            XCTAssertEqual(updated.chosenSelectors.count, originalChosen.count)
+            XCTAssertEqual(transport.chosenSelectors.count, originalChosen.count)
+            XCTAssertEqual(updated.chosenSelectors.first, target.selector)
+            XCTAssertEqual(transport.chosenSelectors.first, target.selector)
+            XCTAssertEqual(transport.chosenSelectors[5], originalChosen[5])
+            XCTAssertTrue(transport.chosenSelectors.contains(originalChosen[5]))
+            XCTAssertEqual(transport.chosenSelectors.last, originalChosen.last)
+            XCTAssertEqual(
+                transport.chosenSelectors,
+                [target.selector] + originalChosen.filter { $0 != target.selector }
+            )
             switchExpectation.fulfill()
         }
         wait(for: [switchExpectation], timeout: 2)

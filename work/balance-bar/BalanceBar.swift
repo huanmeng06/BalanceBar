@@ -5735,16 +5735,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func makeQuickSwitchMenuItem() -> NSMenuItem {
-        if activeClient == .codex,
-           let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
-           current.openCodexCandidate != nil,
-           let entry = openCodexState,
-           entry.providerID == current.id {
-            return makeOpenCodexQuickSwitchMenuItem(
-                providerID: current.id,
-                providerName: current.name
-            )
-        }
         let parent = NSMenuItem(title: tr("快速切换", "Quick Switch"), action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: tr("快速切换", "Quick Switch"))
         submenu.minimumWidth = 210
@@ -5769,6 +5759,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 applyQuickSwitchTitle(to: item, providerID: choice.id, providerName: choice.name)
                 submenu.addItem(item)
             }
+        }
+
+        if activeClient == .codex,
+           let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
+           current.openCodexCandidate != nil,
+           let entry = openCodexState,
+           entry.providerID == current.id {
+            submenu.addItem(.separator())
+            submenu.addItem(
+                makeOpenCodexQuickSwitchMenuItem(
+                    providerID: current.id,
+                    providerName: current.name
+                )
+            )
         }
         SwitchLog.write(
             "quick-switch menu built; app_type=\(activeClient.appType); choice_count=\(choices.count); submenu_item_count=\(submenu.items.count); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary); empty_state=\(choices.isEmpty)",

@@ -557,11 +557,17 @@ final class OpenCodexRepository {
         let targetModel = preference.model
         let oldDefaultProvider = state.defaultProvider
         let oldTargetModel = state.providerDefaultModels[targetProvider]
-        let desiredChosen = Array(
-            ([preference.selector] + state.chosenSelectors.filter {
-                canonical($0) != targetSelector
-            }).prefix(Self.maxPreferences)
-        )
+        // The UI is limited to the first five preferences, but selecting one
+        // of those preferences must reorder the complete OpenCodex list. Do
+        // not write the display limit back to the service: the tail is user
+        // configuration and must remain intact.
+        var desiredChosen = state.chosenSelectors
+        if let currentIndex = desiredChosen.firstIndex(where: {
+            canonical($0) == targetSelector
+        }) {
+            let selected = desiredChosen.remove(at: currentIndex)
+            desiredChosen.insert(selected, at: 0)
+        }
 
         var defaultProviderChanged = false
         var targetModelChanged = false
