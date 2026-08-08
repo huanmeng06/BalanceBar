@@ -38,4 +38,5 @@ struct ProviderSummarySource {
     let isOfficial: Bool
     let query: BalanceQuery?
     let officialAccessToken: String?
+    let openCodexCandidate: OpenCodexEndpointCandidate?
 }

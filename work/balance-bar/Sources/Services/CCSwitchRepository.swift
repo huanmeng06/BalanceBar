@@ -7,6 +7,7 @@ struct CCSwitchProvider {
     let isOfficial: Bool
     let query: BalanceQuery?
     let queryFailure: BalanceQueryFailure?
+    let openCodexCandidate: OpenCodexEndpointCandidate?
 }
 
 final class CCSwitchRepository {
@@ -79,7 +80,8 @@ final class CCSwitchRepository {
                 name: name,
                 isOfficial: true,
                 query: nil,
-                queryFailure: nil
+                queryFailure: nil,
+                openCodexCandidate: nil
             )
         }
 
@@ -96,7 +98,8 @@ final class CCSwitchRepository {
             name: name,
             isOfficial: false,
             query: query,
-            queryFailure: queryFailure
+            queryFailure: queryFailure,
+            openCodexCandidate: OpenCodexEndpointCandidate.parse(settingsConfig: configText)
         )
     }
 
@@ -222,19 +225,24 @@ final class CCSwitchRepository {
                     id: id,
                     isOfficial: true,
                     query: nil,
-                    officialAccessToken: accessToken
+                    officialAccessToken: accessToken,
+                    openCodexCandidate: nil
                 ))
             } else {
+                let query = BalanceQuery.make(
+                    settingsText: settingsText,
+                    metaText: metaText,
+                    websiteText: websiteText,
+                    appType: appType
+                )
                 result.append(ProviderSummarySource(
                     id: id,
                     isOfficial: false,
-                    query: BalanceQuery.make(
-                        settingsText: settingsText,
-                        metaText: metaText,
-                        websiteText: websiteText,
-                        appType: appType
-                    ),
-                    officialAccessToken: nil
+                    query: query,
+                    officialAccessToken: nil,
+                    openCodexCandidate: appType == "codex"
+                        ? OpenCodexEndpointCandidate.parse(settingsConfig: settingsText)
+                        : nil
                 ))
             }
         }

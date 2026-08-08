@@ -1423,6 +1423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
     private var lastQuickSwitchFetch: Date?
+    private var lastOpenCodexFetch: Date?
     private let quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaries: [String: String] = [:]
     private let balanceRequestLock = NSLock()
@@ -1431,6 +1432,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
+    private var openCodexState: (providerID: String, state: OpenCodexRuntimeState)?
+    // These caches are owned by monitorQueue. They let a previously verified
+    // OpenCodex remain special while its process is temporarily unavailable,
+    // without treating an unverified loopback as OpenCodex.
+    private var confirmedOpenCodexCandidates: [String: OpenCodexEndpointCandidate] = [:]
+    private var confirmedOpenCodexStates: [String: OpenCodexRuntimeState] = [:]
+    private var openCodexSwitchInFlight = false
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
     private var activeClient: AssistantClient = .codex
@@ -1442,6 +1450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let openCodexRepository: OpenCodexRepository
     private let credentialReader = CredentialReader()
     private let balanceAPIClient = BalanceAPIClient()
     private let preferences = AppPreferences()
@@ -1462,8 +1471,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
 
-    init(repository: CCSwitchRepository = CCSwitchRepository()) {
+    init(
+        repository: CCSwitchRepository = CCSwitchRepository(),
+        openCodexRepository: OpenCodexRepository = OpenCodexRepository()
+    ) {
         self.ccSwitchRepository = repository
+        self.openCodexRepository = openCodexRepository
         super.init()
     }
 
@@ -1665,6 +1678,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.lastProviderID = nil
                 self.lastBalanceFetch = nil
                 self.lastOfficialFetch = nil
+                self.lastOpenCodexFetch = nil
+                DispatchQueue.main.async { [weak self] in
+                    self?.openCodexState = nil
+                    self?.openCodexSwitchInFlight = false
+                }
                 self.refresh(forceBalance: true)
             } catch {
                 SwitchLog.write("switch failed; target=\(providerName); error=\(error.localizedDescription)")
@@ -1680,6 +1698,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     "切换失败：\(error.localizedDescription)",
                     "Switch failed: \(error.localizedDescription)"
                 )))
+            }
+        }
+    }
+
+    @objc private func switchOpenCodexPreference(_ sender: NSMenuItem) {
+        guard activeClient == .codex,
+              !openCodexSwitchInFlight,
+              let preference = sender.representedObject as? OpenCodexPreference,
+              let entry = openCodexState,
+              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
+              current.id == entry.providerID,
+              current.openCodexCandidate != nil else { return }
+
+        openCodexSwitchInFlight = true
+        let providerID = entry.providerID
+        let providerName = current.name
+        let oldState = entry.state
+        monitorQueue.async { [weak self] in
+            guard let self else { return }
+            self.openCodexRepository.select(preference, from: oldState) { [weak self] result in
+                guard let self else { return }
+                self.monitorQueue.async {
+                    guard self.activeClient == .codex,
+                          self.ccSwitchRepository.loadCurrent(appType: AssistantClient.codex.appType)?.id == providerID else {
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        return
+                    }
+                    switch result {
+                    case .success(let state):
+                        self.confirmedOpenCodexCandidates[providerID] = state.candidate
+                        self.confirmedOpenCodexStates[providerID] = state
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexState = (providerID, state)
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: state.representativeSelector,
+                                status: self.openCodexStatusText(for: state),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: .codex
+                        )
+                    case .failure(let error):
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: oldState.representativeSelector,
+                                status: tr(
+                                    "切换失败：\(error.simplifiedChineseMessage)",
+                                    "Switch failed: \(error.englishMessage)"
+                                ),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: .codex
+                        )
+                    }
+                }
             }
         }
     }
@@ -3877,7 +3961,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance,
+            isBalance: snapshot.kind == .balance || snapshot.kind == .openCodex,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -3902,7 +3986,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
         dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
         dashboardMenuPreviewText.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+        if snapshot.kind == .balance || snapshot.kind == .openCodex,
+           showMenuBarIcon,
+           showMenuBarAmount {
             dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
                 y: -Self.menuBarSingleLineIconYOffset
@@ -4357,6 +4443,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         lastBalanceFetch = nil
         lastOfficialFetch = nil
         lastQuickSwitchFetch = nil
+        lastOpenCodexFetch = nil
+        openCodexState = nil
+        openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         updateActivityIcon()
@@ -4487,6 +4576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .placeholder: kind = "placeholder"
         case .official: kind = "official"
         case .balance: kind = "balance"
+        case .openCodex: kind = "open-codex"
         case .error: kind = "error"
         }
         let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
@@ -4519,7 +4609,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance,
+            isBalance: snapshot.kind == .balance || snapshot.kind == .openCodex,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -4581,7 +4671,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 buttonHeight: buttonHeight,
                 referenceIconViewYOffset: apiIconYOffset
             )
-        } else if snapshot.kind == .balance {
+        } else if snapshot.kind == .balance || snapshot.kind == .openCodex {
             iconYOffset = apiIconYOffset
         } else {
             iconYOffset = 0
@@ -4602,7 +4692,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The optical adjustment is always applied from a clean transform
         // after the current snapshot's frames have been assigned.
         menuBarTextStack.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+        if snapshot.kind == .balance || snapshot.kind == .openCodex,
+           showMenuBarIcon,
+           showMenuBarAmount {
             menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
                 y: -Self.menuBarSingleLineTextYOffset
@@ -4753,65 +4845,242 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let switched = current.id != self.lastProviderID
             if switched {
                 SwitchLog.write("provider observed; app=\(client.appType); id=\(current.id); name=\(current.name); source=database watcher/poll")
+                self.lastOpenCodexFetch = nil
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeClient == client else { return }
+                    self.openCodexState = nil
+                    self.openCodexSwitchInFlight = false
+                }
             }
             self.lastProviderID = current.id
-            guard let query = current.query else {
-                guard current.isOfficial else {
-                    let failure = current.queryFailure ?? .unknown
-                    SwitchLog.write(
-                        "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
-                        level: .warning,
-                        category: "network",
-                        throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
-                        minimumInterval: 60
-                    )
-                    let reason = failure.userVisibleReason(
-                        usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
-                    )
-                    self.renderBalanceErrorForCurrentProvider(
-                        providerID: current.id,
-                        providerName: current.name,
-                        reason: reason,
-                        client: client
-                    )
-                    return
-                }
-                let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
+            if client == .codex, let candidate = current.openCodexCandidate {
+                let due = self.lastOpenCodexFetch.map {
+                    Date().timeIntervalSince($0) >= 5
+                } ?? true
                 guard forceBalance || switched || due else { return }
-                self.lastOfficialFetch = Date()
-                SwitchLog.write(
-                    "quota fetch started; client=\(client.rawValue); provider=\(current.name)",
-                    level: .debug,
-                    category: "network",
-                    throttleKey: "quota-fetch-\(client.rawValue)-\(current.id)",
-                    minimumInterval: 10
-                )
-                self.fetchOfficialQuota(
+                self.lastOpenCodexFetch = Date()
+                self.refreshOpenCodex(
                     providerID: current.id,
                     providerName: current.name,
-                    client: client
+                    candidate: candidate,
+                    client: client,
+                    forceBalance: forceBalance,
+                    switched: switched
                 )
                 return
             }
 
-            let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
-            let due = self.lastBalanceFetch.map { Date().timeIntervalSince($0) >= interval } ?? true
-            guard forceBalance || switched || due else { return }
-            self.lastBalanceFetch = Date()
-            SwitchLog.write(
-                "balance fetch started; client=\(client.rawValue); provider=\(current.name)",
-                level: .debug,
-                category: "network",
-                throttleKey: "balance-fetch-\(client.rawValue)-\(current.id)",
-                minimumInterval: 10
-            )
-            self.fetchBalance(
-                providerID: current.id,
-                providerName: current.name,
-                query: query,
-                client: client
+            if client == .codex {
+                self.confirmedOpenCodexCandidates.removeValue(forKey: current.id)
+                self.confirmedOpenCodexStates.removeValue(forKey: current.id)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.openCodexState?.providerID == current.id else { return }
+                    self.openCodexState = nil
+                    self.openCodexSwitchInFlight = false
+                }
+            }
+
+            self.refreshStandardProvider(
+                current: current,
+                client: client,
+                forceBalance: forceBalance,
+                switched: switched
             )
         }
+    }
+
+    private func refreshStandardProvider(
+        current: CCSwitchProvider,
+        client: AssistantClient,
+        forceBalance: Bool,
+        switched: Bool
+    ) {
+        guard let query = current.query else {
+            guard current.isOfficial else {
+                let failure = current.queryFailure ?? .unknown
+                SwitchLog.write(
+                    "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
+                    level: .warning,
+                    category: "network",
+                    throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
+                    minimumInterval: 60
+                )
+                let reason = failure.userVisibleReason(
+                    usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
+                )
+                self.renderBalanceErrorForCurrentProvider(
+                    providerID: current.id,
+                    providerName: current.name,
+                    reason: reason,
+                    client: client
+                )
+                return
+            }
+            let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
+            guard forceBalance || switched || due else { return }
+            self.lastOfficialFetch = Date()
+            SwitchLog.write(
+                "quota fetch started; client=\(client.rawValue); provider=\(current.name)",
+                level: .debug,
+                category: "network",
+                throttleKey: "quota-fetch-\(client.rawValue)-\(current.id)",
+                minimumInterval: 10
+            )
+            self.fetchOfficialQuota(
+                providerID: current.id,
+                providerName: current.name,
+                client: client
+            )
+            return
+        }
+
+        let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
+        let due = self.lastBalanceFetch.map { Date().timeIntervalSince($0) >= interval } ?? true
+        guard forceBalance || switched || due else { return }
+        self.lastBalanceFetch = Date()
+        SwitchLog.write(
+            "balance fetch started; client=\(client.rawValue); provider=\(current.name)",
+            level: .debug,
+            category: "network",
+            throttleKey: "balance-fetch-\(client.rawValue)-\(current.id)",
+            minimumInterval: 10
+        )
+        self.fetchBalance(
+            providerID: current.id,
+            providerName: current.name,
+            query: query,
+            client: client
+        )
+    }
+
+    private func refreshOpenCodex(
+        providerID: String,
+        providerName: String,
+        candidate: OpenCodexEndpointCandidate,
+        client: AssistantClient,
+        forceBalance: Bool,
+        switched: Bool
+    ) {
+        openCodexRepository.readState(for: candidate) { [weak self] result in
+            guard let self else { return }
+            self.monitorQueue.async {
+                guard self.activeClient == client,
+                      self.ccSwitchRepository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+                switch result {
+                case .notRecognized:
+                    self.confirmedOpenCodexCandidates.removeValue(forKey: providerID)
+                    self.confirmedOpenCodexStates.removeValue(forKey: providerID)
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.openCodexState?.providerID == providerID else { return }
+                        self.openCodexState = nil
+                        self.openCodexSwitchInFlight = false
+                    }
+                    guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
+                    self.refreshStandardProvider(
+                        current: current,
+                        client: client,
+                        forceBalance: forceBalance,
+                        switched: switched
+                    )
+                case .unavailable:
+                    if self.confirmedOpenCodexCandidates[providerID] == candidate,
+                       let previous = self.confirmedOpenCodexStates[providerID] {
+                        let unavailable = self.unavailableOpenCodexState(from: previous)
+                        self.confirmedOpenCodexStates[providerID] = unavailable
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self else { return }
+                            self.openCodexState = (providerID, unavailable)
+                            self.openCodexSwitchInFlight = false
+                        }
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: unavailable.representativeSelector,
+                                status: self.openCodexStatusText(for: unavailable),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: client
+                        )
+                    } else {
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.openCodexState?.providerID == providerID else { return }
+                            self.openCodexState = nil
+                            self.openCodexSwitchInFlight = false
+                        }
+                        guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
+                        self.refreshStandardProvider(
+                            current: current,
+                            client: client,
+                            forceBalance: forceBalance,
+                            switched: switched
+                        )
+                    }
+                case .recognized(let state):
+                    self.confirmedOpenCodexCandidates[providerID] = candidate
+                    self.confirmedOpenCodexStates[providerID] = state
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.openCodexState = (providerID, state)
+                        self.openCodexSwitchInFlight = false
+                    }
+                    self.renderForCurrentProvider(
+                        .openCodex(
+                            providerName,
+                            selector: state.representativeSelector,
+                            status: self.openCodexStatusText(for: state),
+                            Date()
+                        ),
+                        providerID: providerID,
+                        client: client
+                    )
+                }
+            }
+        }
+    }
+
+    private func openCodexStatusText(for state: OpenCodexRuntimeState) -> String {
+        if !state.managementAvailable {
+            return tr(
+                "管理接口不可用，等待 OpenCodex 恢复",
+                "Management API unavailable; waiting for OpenCodex"
+            )
+        }
+        if !state.preferenceDataAvailable {
+            return tr(
+                "暂未读取到 OpenCodex 偏好",
+                "OpenCodex preferences are not available yet"
+            )
+        }
+        if state.preferences.isEmpty {
+            return tr(
+                "没有配置 OpenCodex 子项",
+                "No OpenCodex preferences configured"
+            )
+        }
+        if let current = state.currentSelector {
+            return tr("当前：\(current)", "Current: \(current)")
+        }
+        return tr(
+            "已读取 OpenCodex 偏好",
+            "OpenCodex preferences loaded"
+        )
+    }
+
+    private func unavailableOpenCodexState(
+        from state: OpenCodexRuntimeState
+    ) -> OpenCodexRuntimeState {
+        OpenCodexRuntimeState(
+            candidate: state.candidate,
+            defaultProvider: state.defaultProvider,
+            providerDefaultModels: state.providerDefaultModels,
+            chosenSelectors: state.chosenSelectors,
+            availableSelectors: state.availableSelectors,
+            preferences: state.preferences,
+            managementAvailable: false,
+            preferenceDataAvailable: state.preferenceDataAvailable
+        )
     }
 
     private func prefetchCurrentBalance(for client: AssistantClient) {
@@ -4819,6 +5088,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard let self,
                   let current = ccSwitchRepository.loadCurrent(appType: client.appType)
             else { return }
+
+            if client == .codex,
+               let candidate = current.openCodexCandidate,
+               self.confirmedOpenCodexCandidates[current.id] == candidate {
+                return
+            }
 
             if let query = current.query {
                 SwitchLog.write(
@@ -4910,6 +5185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.lastQuickSwitchFetch = Date()
 
             for source in ccSwitchRepository.loadSummarySources(appType: client.appType) {
+                if client == .codex,
+                   let candidate = source.openCodexCandidate,
+                   self.confirmedOpenCodexCandidates[source.id] == candidate {
+                    continue
+                }
                 if source.isOfficial {
                     // Avoid querying the macOS Keychain merely to decorate the
                     // quick-switch list. Official Claude quota is still loaded
@@ -5277,7 +5557,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 switch next.kind {
                 case .official, .balance:
                     self.clientSnapshots[client] = (providerID, next)
-                case .placeholder, .error:
+                case .placeholder, .openCodex, .error:
                     break
                 }
                 guard self.activeClient == client,
@@ -5455,6 +5735,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func makeQuickSwitchMenuItem() -> NSMenuItem {
+        if activeClient == .codex,
+           let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
+           current.openCodexCandidate != nil,
+           let entry = openCodexState,
+           entry.providerID == current.id {
+            return makeOpenCodexQuickSwitchMenuItem(
+                providerID: current.id,
+                providerName: current.name
+            )
+        }
         let parent = NSMenuItem(title: tr("快速切换", "Quick Switch"), action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: tr("快速切换", "Quick Switch"))
         submenu.minimumWidth = 210
@@ -5491,7 +5781,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return parent
     }
 
+    private func makeOpenCodexQuickSwitchMenuItem(
+        providerID: String,
+        providerName: String
+    ) -> NSMenuItem {
+        let parent = NSMenuItem(
+            title: tr("OpenCodex 快速切换", "OpenCodex Quick Switch"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        let submenu = NSMenu(title: parent.title)
+        submenu.minimumWidth = 260
+
+        guard let entry = openCodexState, entry.providerID == providerID else {
+            let item = NSMenuItem(
+                title: tr("正在读取 OpenCodex 偏好…", "Reading OpenCodex preferences…"),
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = false
+            submenu.addItem(item)
+            parent.submenu = submenu
+            return parent
+        }
+
+        let state = entry.state
+        if !state.managementAvailable {
+            let item = NSMenuItem(
+                title: tr("OpenCodex 管理接口不可用", "OpenCodex management API unavailable"),
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = false
+            submenu.addItem(item)
+        } else if !state.preferenceDataAvailable {
+            let item = NSMenuItem(
+                title: tr("暂未读取到可用偏好", "No preferences available yet"),
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = false
+            submenu.addItem(item)
+        } else if state.preferences.isEmpty {
+            let item = NSMenuItem(
+                title: tr("没有配置 OpenCodex 子项", "No OpenCodex preferences configured"),
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = false
+            submenu.addItem(item)
+        }
+
+        if !state.preferences.contains(where: \OpenCodexPreference.isCurrent),
+           let current = state.currentSelector {
+            let item = NSMenuItem(
+                title: tr("当前：\(current)", "Current: \(current)"),
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = false
+            submenu.addItem(item)
+        }
+
+        for (index, preference) in state.preferences.enumerated() {
+            let item = NSMenuItem(
+                title: "\(index + 1). \(preference.selector)",
+                action: #selector(switchOpenCodexPreference(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = preference
+            item.state = preference.isCurrent ? .on : .off
+            item.isEnabled = state.managementAvailable && !openCodexSwitchInFlight
+            submenu.addItem(item)
+        }
+
+        SwitchLog.write(
+            "OpenCodex quick-switch menu built; preference_count=\(state.preferences.count); management_available=\(state.managementAvailable); provider_id_present=\(!providerID.isEmpty); provider_name_present=\(!providerName.isEmpty)",
+            level: .debug,
+            category: "provider.menu",
+            throttleKey: "opencodex-quick-switch-menu",
+            minimumInterval: 1
+        )
+        parent.submenu = submenu
+        return parent
+    }
+
     private func makeOverviewMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
+        if snapshot.kind == .openCodex {
+            return makeOverviewOpenCodexMenuItem(for: snapshot, refreshDate: refreshDate)
+        }
         if snapshot.kind == .error {
             // The error card has its own layout: the full message wraps below
             // the title row and the card height grows to fit it. The top-right
@@ -5577,6 +5956,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
 
         [provider, quotaDetail, amount].forEach(view.addSubview)
+        item.view = view
+        return item
+    }
+
+    private func makeOverviewOpenCodexMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.isEnabled = false
+        let viewWidth: CGFloat = 304
+        let viewHeight: CGFloat = 96
+        let horizontalInset: CGFloat = 14
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: viewWidth, height: viewHeight))
+
+        let provider = makeOverviewLabel(
+            snapshot.overviewProvider,
+            font: .systemFont(ofSize: 15, weight: .semibold)
+        )
+        provider.frame = NSRect(x: horizontalInset, y: 69, width: 189, height: 20)
+
+        let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
+        let refreshTime = makeOverviewLabel(
+            timeText,
+            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        )
+        refreshTime.textColor = .secondaryLabelColor
+        refreshTime.alignment = .right
+        refreshTime.frame = NSRect(x: 209, y: 70, width: 81, height: 17)
+
+        let quotaDetail = makeOverviewLabel(
+            snapshot.overviewQuotaDetail,
+            font: .systemFont(ofSize: 12, weight: .regular)
+        )
+        quotaDetail.textColor = .secondaryLabelColor
+        quotaDetail.frame = NSRect(x: horizontalInset, y: 46, width: 128, height: 18)
+
+        let selector = makeOverviewLabel(
+            snapshot.overviewLargeAmount,
+            font: .monospacedDigitSystemFont(ofSize: 20, weight: .semibold)
+        )
+        selector.alignment = .right
+        selector.frame = NSRect(x: 142, y: 37, width: 148, height: 29)
+
+        let status = makeOverviewLabel(
+            snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter),
+            font: .systemFont(ofSize: 12, weight: .regular)
+        )
+        status.textColor = .secondaryLabelColor
+        status.lineBreakMode = .byTruncatingTail
+        status.frame = NSRect(x: horizontalInset, y: 12, width: viewWidth - horizontalInset * 2, height: 18)
+
+        [provider, refreshTime, quotaDetail, selector, status].forEach(view.addSubview)
         item.view = view
         return item
     }
