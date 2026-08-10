@@ -234,6 +234,49 @@ struct OpenCodexDashboardMode: Equatable {
     }
 }
 
+/// Main-thread interaction state for the Advanced page. It keeps the value
+/// used to seed manual mode local to the UI, so a checkbox click never needs
+/// to synchronously rediscover the current provider or runtime.
+struct OpenCodexDashboardInteractionState: Equatable {
+    var mode: OpenCodexDashboardMode
+    private(set) var lastResolvedPort: Int
+    private(set) var isPortEditorActive: Bool
+
+    init(
+        mode: OpenCodexDashboardMode,
+        lastResolvedPort: Int = OpenCodexDashboardResolver.defaultPort,
+        isPortEditorActive: Bool = false
+    ) {
+        self.mode = mode
+        self.lastResolvedPort = OpenCodexDashboardResolver.isValidPort(lastResolvedPort)
+            ? lastResolvedPort
+            : OpenCodexDashboardResolver.defaultPort
+        self.isPortEditorActive = isPortEditorActive
+    }
+
+    var showsManualPortInput: Bool { mode.showsManualPortInput }
+    var effectiveManualPort: Int? { mode.effectiveManualPort }
+
+    mutating func updateResolvedPort(_ port: Int) {
+        guard OpenCodexDashboardResolver.isValidPort(port) else { return }
+        lastResolvedPort = port
+    }
+
+    mutating func markPortEditorActive(_ active: Bool) {
+        isPortEditorActive = active
+    }
+
+    mutating func setAutomaticDetection(_ enabled: Bool) {
+        mode = mode.changingAutomaticDetection(
+            to: enabled,
+            seedPort: lastResolvedPort
+        )
+        // A mode transition must not leave a field editor attached to a row
+        // that is about to become hidden.
+        isPortEditorActive = false
+    }
+}
+
 struct OpenCodexDashboardResolution: Equatable {
     enum Source: Equatable {
         case manual

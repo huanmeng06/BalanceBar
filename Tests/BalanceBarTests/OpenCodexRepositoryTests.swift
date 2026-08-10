@@ -205,6 +205,72 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(resolution.url, URL(string: "http://localhost:23456/#dashboard"))
     }
 
+    func testEditingPortAndSwitchingToAutomaticEndsEditorAndHidesManualInput() {
+        var state = OpenCodexDashboardInteractionState(
+            mode: OpenCodexDashboardMode(
+                automaticDetection: false,
+                manualPort: 34567
+            ),
+            lastResolvedPort: 34567,
+            isPortEditorActive: true
+        )
+
+        state.setAutomaticDetection(true)
+
+        XCTAssertFalse(state.isPortEditorActive)
+        XCTAssertFalse(state.showsManualPortInput)
+        XCTAssertNil(state.effectiveManualPort)
+        XCTAssertTrue(state.mode.automaticDetection)
+        XCTAssertNil(state.mode.manualPort)
+    }
+
+    func testRapidModeTogglesPersistTheFinalUIStateAndResolverPriority() {
+        let suite = "BalanceBarTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        var state = OpenCodexDashboardInteractionState(
+            mode: OpenCodexDashboardMode(
+                automaticDetection: true,
+                manualPort: nil
+            ),
+            lastResolvedPort: 23456
+        )
+        state.updateResolvedPort(23456)
+
+        // Ten consecutive changes model the same main-thread transition path
+        // used by the switch. The last state must be the only durable state.
+        for enabled in [false, true, false, true, false, true, false, true, false, true] {
+            state.setAutomaticDetection(enabled)
+            preferences.openCodexDashboardAutomaticDetection = state.mode.automaticDetection
+            preferences.openCodexDashboardPortOverride = state.mode.manualPort
+        }
+
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertTrue(state.mode.automaticDetection)
+        XCTAssertFalse(state.showsManualPortInput)
+        XCTAssertNil(state.effectiveManualPort)
+        XCTAssertTrue(reloaded.openCodexDashboardAutomaticDetection)
+        XCTAssertNil(reloaded.openCodexDashboardPortOverride)
+
+        let runtime = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://localhost:45678/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        let resolution = OpenCodexDashboardResolver.resolve(
+            manualPort: reloaded.openCodexDashboardAutomaticDetection
+                ? nil
+                : reloaded.openCodexDashboardPortOverride,
+            runtimeCandidate: runtime
+        )
+        XCTAssertEqual(resolution.source, .runtime)
+        XCTAssertEqual(resolution.port, 45678)
+        XCTAssertEqual(resolution.url, URL(string: "http://localhost:45678/#dashboard"))
+    }
+
     func testDashboardResolverUsesManualRuntimeThenLocalFallbackPriority() {
         let runtime = OpenCodexEndpointCandidate(
             baseURL: URL(string: "https://localhost:23456/v1")!,

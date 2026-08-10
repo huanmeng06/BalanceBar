@@ -1386,10 +1386,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dashboardMenuPreviewCapsule = NSView()
     private weak var dashboardMenuBarIconSwitch: NSSwitch?
     private weak var dashboardMenuBarAmountSwitch: NSSwitch?
+    private weak var openCodexAutomaticDetectionSwitch: NSSwitch?
     private weak var openCodexPortField: NSTextField?
+    private weak var openCodexManualPortRow: NSView?
+    private weak var openCodexManualPortRowHeightConstraint: NSLayoutConstraint?
     private weak var openCodexPortStatusLabel: NSTextField?
     private weak var openCodexPortErrorLabel: NSTextField?
     private weak var openCodexOpenButton: NSButton?
+    private weak var openCodexSettingsRowsStack: NSStackView?
+    private weak var openCodexSettingsCardHeightConstraint: NSLayoutConstraint?
+    private var openCodexSettingsSeparators: [NSView] = []
+    private var openCodexDashboardInteractionState = OpenCodexDashboardInteractionState(
+        mode: OpenCodexDashboardMode(automaticDetection: true, manualPort: nil)
+    )
+    private var openCodexDashboardLastResolvedPort: Int {
+        get { openCodexDashboardInteractionState.lastResolvedPort }
+        set { openCodexDashboardInteractionState.updateResolvedPort(newValue) }
+    }
+    private var isEndingOpenCodexPortEditing = false
     private var dashboardMenuPreviewCapsuleLeadingConstraint: NSLayoutConstraint?
     private var dashboardMenuPreviewCapsuleTrailingConstraint: NSLayoutConstraint?
     private var dashboardMenuPreviewTextWidthConstraint: NSLayoutConstraint?
@@ -2068,100 +2082,106 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             setCodexTaskRunning(isCodexTaskRunning, force: true)
         case "openCodexAutomaticDetection":
             let enabled = sender.state == .on
+            // End the native field editor before hiding its row. In particular,
+            // do not let an invalid in-progress edit re-enter the preference
+            // path while the switch is being applied.
+            endOpenCodexPortEditingForModeSwitch()
             setOpenCodexDashboardAutomaticDetection(enabled)
             openCodexPortInputHasError = false
             openCodexPortErrorLabel?.stringValue = ""
             openCodexPortErrorLabel?.isHidden = true
+            openCodexManualPortRowHeightConstraint?.constant = 86
+            updateOpenCodexDashboardModeUI()
             SwitchLog.write(
                 "OpenCodex Dashboard detection mode changed; mode=\(enabled ? "automatic" : "manual")",
                 category: "configuration"
             )
-            if dashboardSection == .advanced {
-                showDashboardSection(.advanced)
-            }
-            refreshStatusMenuAfterOpenCodexSettingsChanged()
         default:
             break
         }
     }
 
     private func setOpenCodexDashboardAutomaticDetection(_ enabled: Bool) {
-        let currentPort = currentOpenCodexDashboardResolution()?.port
-            ?? OpenCodexDashboardResolver.defaultPort
-        let nextMode = openCodexDashboardMode.changingAutomaticDetection(
-            to: enabled,
-            seedPort: currentPort
-        )
+        openCodexDashboardInteractionState.mode = openCodexDashboardMode
+        openCodexDashboardInteractionState.updateResolvedPort(openCodexDashboardLastResolvedPort)
+        openCodexDashboardInteractionState.setAutomaticDetection(enabled)
+        let nextMode = openCodexDashboardInteractionState.mode
         openCodexDashboardAutomaticDetection = nextMode.automaticDetection
         openCodexDashboardPortOverride = nextMode.manualPort
     }
 
-    private func refreshStatusMenuAfterOpenCodexSettingsChanged() {
-        if isStatusMenuTracking {
-            statusMenuNeedsRebuild = true
-        } else {
-            rebuildStatusMenu(
-                for: snapshot,
-                refreshDate: refreshDate(for: snapshot)
-            )
-        }
+    private func endOpenCodexPortEditingForModeSwitch() {
+        guard let field = openCodexPortField,
+              field.currentEditor() != nil else { return }
+        openCodexDashboardInteractionState.markPortEditorActive(true)
+        isEndingOpenCodexPortEditing = true
+        _ = field.abortEditing()
+        _ = dashboard?.makeFirstResponder(nil)
+        isEndingOpenCodexPortEditing = false
+        openCodexDashboardInteractionState.markPortEditorActive(false)
     }
 
-    @objc private func openCodexDashboardPortChanged(_ sender: NSTextField) {
-        switch OpenCodexDashboardPortInput.parse(sender.stringValue) {
-        case .success(let port):
-            openCodexPortInputHasError = false
-            openCodexPortErrorLabel?.isHidden = true
-            openCodexDashboardPortOverride = port
-            if port == nil {
-                setOpenCodexDashboardAutomaticDetection(true)
-            } else {
-                openCodexDashboardAutomaticDetection = false
-            }
-            openCodexPortErrorLabel?.stringValue = ""
-            SwitchLog.write(
-                "OpenCodex Dashboard port preference changed; mode=\(port == nil ? "automatic" : "manual")",
-                category: "configuration"
-            )
-            if port == nil, dashboardSection == .advanced {
-                showDashboardSection(.advanced)
-            } else {
-                refreshDashboardOpenCodexSettings()
-            }
-            refreshStatusMenuAfterOpenCodexSettingsChanged()
-        case .failure:
-            openCodexPortInputHasError = true
-            openCodexPortErrorLabel?.isHidden = false
-            openCodexPortErrorLabel?.stringValue = tr(
-                "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
-                "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
-            )
-        }
-    }
-
-    func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField,
-              field === openCodexPortField else { return }
-        openCodexDashboardPortChanged(field)
-    }
-
-    private func refreshDashboardOpenCodexSettings() {
+    private func updateOpenCodexDashboardModeUI() {
         guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
 
-        let currentResolution = currentOpenCodexDashboardResolution()
-        let resolution = currentResolution ?? OpenCodexDashboardResolver.resolve(
-            manualPort: openCodexDashboardMode.effectiveManualPort,
-            runtimeCandidate: nil
-        )
-        let canOpen = currentResolution != nil
-        let isEditing = openCodexPortField?.currentEditor() != nil
+        let mode = openCodexDashboardMode
+        openCodexAutomaticDetectionSwitch?.state = mode.automaticDetection ? .on : .off
+        openCodexManualPortRow?.isHidden = !mode.showsManualPortInput
+        if openCodexSettingsSeparators.count >= 2 {
+            // When the manual row is hidden, keep only the separator between
+            // the automatic row and the independent open action.
+            openCodexSettingsSeparators[0].isHidden = !mode.showsManualPortInput
+            openCodexSettingsSeparators[1].isHidden = false
+        }
 
+        let resolution = OpenCodexDashboardResolver.resolve(
+            manualPort: mode.effectiveManualPort,
+            runtimeCandidate: openCodexState?.state.candidate
+        )
+        applyOpenCodexDashboardResolution(resolution, canOpen: nil)
+        updateOpenCodexDashboardCardLayout()
+    }
+
+    private func updateOpenCodexDashboardCardLayout() {
+        guard let rowsStack = openCodexSettingsRowsStack,
+              let cardHeightConstraint = openCodexSettingsCardHeightConstraint else { return }
+
+        rowsStack.layoutSubtreeIfNeeded()
+        let visibleRows = rowsStack.arrangedSubviews.filter {
+            !($0 is NSBox) && !$0.isHidden
+        }
+        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
+            let explicitHeight = row.constraints.first {
+                ($0.firstItem as? NSView) === row &&
+                    $0.firstAttribute == .height &&
+                    $0.relation == .equal
+            }?.constant
+            return partial + max(1, explicitHeight ?? row.fittingSize.height)
+        }
+        let separatorHeight = openCodexSettingsSeparators
+            .filter { !$0.isHidden }
+            .reduce(CGFloat(0)) { partial, separator in
+                partial + max(1, separator.fittingSize.height)
+            }
+        cardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
+        dashboardContentHost.layoutSubtreeIfNeeded()
+    }
+
+    private func applyOpenCodexDashboardResolution(
+        _ resolution: OpenCodexDashboardResolution,
+        canOpen: Bool?
+    ) {
+        openCodexDashboardInteractionState.mode = openCodexDashboardMode
+        openCodexDashboardLastResolvedPort = resolution.port
+        let isEditing = openCodexPortField?.currentEditor() != nil
         if !isEditing, !openCodexPortInputHasError {
             openCodexPortField?.stringValue = String(
                 openCodexDashboardMode.manualPort ?? resolution.port
             )
         }
-        openCodexOpenButton?.isEnabled = canOpen
+        if let canOpen {
+            openCodexOpenButton?.isEnabled = canOpen
+        }
 
         let currentPort = tr(
             "当前端口：\(resolution.port)",
@@ -2184,6 +2204,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 "\(currentPort)\nNot detected yet; the default port 10100 will be used"
             )
         }
+    }
+
+    @objc private func openCodexDashboardPortChanged(_ sender: NSTextField) {
+        guard !isEndingOpenCodexPortEditing else { return }
+        switch OpenCodexDashboardPortInput.parse(sender.stringValue) {
+        case .success(let port):
+            openCodexPortInputHasError = false
+            openCodexPortErrorLabel?.isHidden = true
+            openCodexManualPortRowHeightConstraint?.constant = 86
+            openCodexDashboardPortOverride = port
+            openCodexDashboardAutomaticDetection = port == nil
+            openCodexAutomaticDetectionSwitch?.state = port == nil ? .on : .off
+            openCodexPortErrorLabel?.stringValue = ""
+            SwitchLog.write(
+                "OpenCodex Dashboard port preference changed; mode=\(port == nil ? "automatic" : "manual")",
+                category: "configuration"
+            )
+            updateOpenCodexDashboardModeUI()
+        case .failure:
+            openCodexPortInputHasError = true
+            openCodexPortErrorLabel?.isHidden = false
+            openCodexPortErrorLabel?.stringValue = tr(
+                "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
+                "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
+            )
+            openCodexManualPortRowHeightConstraint?.constant = 112
+            updateOpenCodexDashboardCardLayout()
+        }
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField,
+              field === openCodexPortField,
+              !isEndingOpenCodexPortEditing else { return }
+        openCodexDashboardPortChanged(field)
+    }
+
+    private func refreshDashboardOpenCodexSettings() {
+        guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
+
+        let currentResolution = currentOpenCodexDashboardResolution()
+        let resolution = currentResolution ?? OpenCodexDashboardResolver.resolve(
+            manualPort: openCodexDashboardMode.effectiveManualPort,
+            runtimeCandidate: nil
+        )
+        let canOpen = currentResolution != nil
+        applyOpenCodexDashboardResolution(resolution, canOpen: canOpen)
+        let showsManualPortInput = openCodexDashboardMode.showsManualPortInput
+        openCodexAutomaticDetectionSwitch?.state = showsManualPortInput ? .off : .on
+        openCodexManualPortRow?.isHidden = !showsManualPortInput
+        if openCodexSettingsSeparators.count >= 2 {
+            openCodexSettingsSeparators[0].isHidden = !showsManualPortInput
+            openCodexSettingsSeparators[1].isHidden = false
+        }
+        updateOpenCodexDashboardCardLayout()
     }
 
     private func dashboardStatusLinkChanged(
@@ -3411,7 +3486,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return root
     }
 
-    private func makeSettingsSection(_ title: String, rows: [NSView]) -> NSView {
+    private func makeSettingsSection(
+        _ title: String,
+        rows: [NSView],
+        onLayoutCreated: ((NSStackView, NSLayoutConstraint, [NSView]) -> Void)? = nil
+    ) -> NSView {
         let heading = NSTextField(labelWithString: title)
         heading.font = .systemFont(ofSize: 17, weight: .semibold)
         let card = NSView()
@@ -3451,6 +3530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             rowsStack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
             rowsStack.bottomAnchor.constraint(equalTo: card.bottomAnchor)
         ])
+        var separators: [NSView] = []
         for (index, row) in rows.enumerated() {
             rowsStack.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
@@ -3460,13 +3540,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
                 rowsStack.addArrangedSubview(separator)
                 separator.widthAnchor.constraint(equalTo: rowsStack.widthAnchor, constant: -32).isActive = true
+                separators.append(separator)
             }
         }
 
         // NSView has no intrinsic height. Give the card the exact height of
         // its rows so a short settings page cannot stretch the first row to
         // fill the scroll viewport.
-        let rowsHeight = rows.reduce(CGFloat(0)) { partial, row in
+        let visibleRows = rows.filter { !$0.isHidden }
+        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
             let explicitHeight = row.constraints.first {
                 ($0.firstItem as? NSView) === row &&
                     $0.firstAttribute == .height &&
@@ -3480,10 +3562,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
             return partial + max(1, explicitHeight ?? fittingHeight)
         }
-        let separatorHeight = CGFloat(max(0, rows.count - 1))
-        card.heightAnchor.constraint(
+        let separatorHeight = CGFloat(max(0, visibleRows.count - 1))
+        let cardHeightConstraint = card.heightAnchor.constraint(
             equalToConstant: max(1, ceil(rowsHeight + separatorHeight))
-        ).isActive = true
+        )
+        cardHeightConstraint.isActive = true
+        onLayoutCreated?(rowsStack, cardHeightConstraint, separators)
 
         let section = NSStackView(views: [heading, card])
         section.orientation = .vertical
@@ -3546,6 +3630,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             constraints.append(labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -20))
         }
         NSLayoutConstraint.activate(constraints)
+        return row
+    }
+
+    private func makeOpenCodexManualPortRow(
+        portField: NSTextField,
+        errorLabel: NSTextField
+    ) -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        let heightConstraint = row.heightAnchor.constraint(equalToConstant: 86)
+        heightConstraint.isActive = true
+        openCodexManualPortRowHeightConstraint = heightConstraint
+
+        let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually"))
+        title.font = .systemFont(ofSize: 14, weight: .semibold)
+        let detail = NSTextField(wrappingLabelWithString: tr(
+            "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
+            "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
+        ))
+        detail.font = .systemFont(ofSize: 12)
+        detail.textColor = .secondaryLabelColor
+        errorLabel.font = .systemFont(ofSize: 12)
+        errorLabel.textColor = .systemRed
+        errorLabel.isEditable = false
+        errorLabel.isSelectable = false
+        errorLabel.isHidden = true
+
+        let labels = NSStackView(views: [title, detail, errorLabel])
+        labels.orientation = .vertical
+        labels.alignment = .leading
+        labels.spacing = 2
+        labels.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(labels)
+
+        portField.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(portField)
+        NSLayoutConstraint.activate([
+            labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
+            labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 11),
+            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -11),
+            portField.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+            portField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            labels.trailingAnchor.constraint(lessThanOrEqualTo: portField.leadingAnchor, constant: -20)
+        ])
         return row
     }
 
@@ -3794,10 +3923,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func makeAdvancedDashboardPage() -> NSView {
         openCodexPortInputHasError = false
+        openCodexAutomaticDetectionSwitch = nil
         openCodexPortField = nil
+        openCodexManualPortRow = nil
+        openCodexManualPortRowHeightConstraint = nil
         openCodexPortStatusLabel = nil
         openCodexPortErrorLabel = nil
         openCodexOpenButton = nil
+        openCodexSettingsRowsStack = nil
+        openCodexSettingsCardHeightConstraint = nil
+        openCodexSettingsSeparators = []
+        openCodexDashboardInteractionState.mode = openCodexDashboardMode
+        openCodexDashboardInteractionState.markPortEditorActive(false)
         let animation = makeDashboardSwitch(
             identifier: "animateCodexActivity",
             isOn: animateCodexActivity
@@ -3810,7 +3947,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ])
 
         let automaticDetection = openCodexDashboardAutomaticDetection
-        let initialResolution = currentOpenCodexDashboardResolution()
+        let currentResolution = currentOpenCodexDashboardResolution()
+        let initialResolution = currentResolution
             ?? OpenCodexDashboardResolver.resolve(
                 manualPort: openCodexDashboardMode.effectiveManualPort,
                 runtimeCandidate: nil
@@ -3835,48 +3973,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             minimumHeight: 86
         )
 
+        let portField = NSTextField()
+        portField.stringValue = String(
+            openCodexDashboardMode.manualPort ?? initialResolution.port
+        )
+        portField.placeholderString = "10100"
+        portField.alignment = .right
+        portField.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        portField.isEditable = true
+        portField.isSelectable = true
+        portField.delegate = self
+        portField.widthAnchor.constraint(equalToConstant: 112).isActive = true
+
         let errorLabel = NSTextField(wrappingLabelWithString: "")
-        errorLabel.font = .systemFont(ofSize: 12)
-        errorLabel.textColor = .systemRed
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.isHidden = true
 
-        var openCodexRows: [NSView] = [automaticRow]
-        if !automaticDetection {
-            let portField = NSTextField()
-            portField.stringValue = String(
-                openCodexDashboardPortOverride ?? initialResolution.port
-            )
-            portField.placeholderString = "10100"
-            portField.alignment = .right
-            portField.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-            portField.isEditable = true
-            portField.isSelectable = true
-            portField.delegate = self
-            portField.widthAnchor.constraint(equalToConstant: 112).isActive = true
-            openCodexPortField = portField
-            openCodexPortErrorLabel = errorLabel
-            openCodexRows.append(makeSettingsRow(
-                tr("手动输入端口号", "Enter Port Manually"),
-                subtitle: tr(
-                    "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
-                    "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
-                ),
-                control: portField,
-                minimumHeight: 86
-            ))
-            openCodexRows.append(errorLabel)
-        }
+        let manualPortRow = makeOpenCodexManualPortRow(
+            portField: portField,
+            errorLabel: errorLabel
+        )
+        manualPortRow.isHidden = automaticDetection
 
         let openButton = NSButton(
             title: tr("打开 OpenCodex", "Open OpenCodex"),
             target: self,
             action: #selector(openOpenCodex)
         )
-        openButton.isEnabled = currentOpenCodexDashboardResolution() != nil
+        openButton.isEnabled = currentResolution != nil
+        openCodexAutomaticDetectionSwitch = automaticSwitch
+        openCodexPortField = portField
+        openCodexManualPortRow = manualPortRow
         openCodexPortStatusLabel = statusLabel
+        openCodexPortErrorLabel = errorLabel
         openCodexOpenButton = openButton
-        openCodexRows.append(makeSettingsRow(
+        let openButtonRow = makeSettingsRow(
             tr("OpenCodex Dashboard", "OpenCodex Dashboard"),
             subtitle: tr(
                 "使用当前解析到的本机地址；固定打开 /#dashboard",
@@ -3884,9 +4015,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             ),
             control: openButton,
             minimumHeight: 78
-        ))
+        )
 
-        let openCodex = makeSettingsSection(tr("OpenCodex", "OpenCodex"), rows: openCodexRows)
+        let openCodex = makeSettingsSection(
+            tr("OpenCodex", "OpenCodex"),
+            rows: [automaticRow, manualPortRow, openButtonRow],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                guard let self else { return }
+                self.openCodexSettingsRowsStack = rowsStack
+                self.openCodexSettingsCardHeightConstraint = cardHeightConstraint
+                self.openCodexSettingsSeparators = separators
+                if automaticDetection, !separators.isEmpty {
+                    separators[0].isHidden = true
+                }
+            }
+        )
+        openCodexDashboardLastResolvedPort = initialResolution.port
+        applyOpenCodexDashboardResolution(
+            initialResolution,
+            canOpen: currentResolution != nil
+        )
 
         let refreshLog = NSButton(title: tr("重新载入", "Reload"), target: self, action: #selector(refreshDashboardLog))
         let revealLog = NSButton(title: tr("在 Finder 中显示", "Show in Finder"), target: self, action: #selector(revealDashboardLog))
