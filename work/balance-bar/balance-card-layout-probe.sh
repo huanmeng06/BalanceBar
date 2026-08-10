@@ -46,8 +46,7 @@ SWIFT
 swiftc -framework Foundation -o "$probe_binary" "$swift_source"
 "$probe_binary"
 
-source_file="$(dirname "$BASH_SOURCE")/BalanceBar.swift"
-grep -F 'let linkRowY: CGFloat = 7' "$source_file" >/dev/null
-grep -F 'linkPrefix.frame = NSRect(x: 14, y: linkRowY' "$source_file" >/dev/null
-grep -F 'y: linkRowY,' "$source_file" >/dev/null
-printf '%s\n' 'balance card layout probe: PASS; source uses one shared y constant for both controls'
+layout_source="$(dirname "$BASH_SOURCE")/Sources/Domain/ProviderModels.swift"
+grep -F 'linkPrefix: CGRect(x: horizontalInset, y: 7, width: linkPrefixWidth, height: 17)' "$layout_source" >/dev/null
+grep -F 'link: CGRect(x: linkX, y: 7, width: linkWidth, height: 17)' "$layout_source" >/dev/null
+printf '%s\n' 'balance card layout probe: PASS; shared layout helper keeps both controls on one link row'

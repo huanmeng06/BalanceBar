@@ -787,7 +787,7 @@ private enum DashboardSection: Int, CaseIterable {
 
 private struct DashboardScrollPosition {
     let operation: String
-    let visibleDocumentOriginY: CGFloat
+    let visibleDocumentOffset: CGFloat
     let contentOriginY: CGFloat
     let distanceFromBottom: CGFloat
     let previousMaximumOffset: CGFloat
@@ -934,7 +934,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding"]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection"]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -1335,7 +1335,7 @@ private final class ClaudeCodeActivityMonitor {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSTextFieldDelegate {
     private static let menuBarPrimaryFont = NSFont.monospacedDigitSystemFont(
         ofSize: 13,
         weight: .semibold
@@ -1386,6 +1386,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let dashboardMenuPreviewCapsule = NSView()
     private weak var dashboardMenuBarIconSwitch: NSSwitch?
     private weak var dashboardMenuBarAmountSwitch: NSSwitch?
+    private weak var openCodexAutomaticDetectionSwitch: NSSwitch?
+    private weak var openCodexPortField: NSTextField?
+    private weak var openCodexManualPortRow: NSView?
+    private weak var openCodexManualPortRowHeightConstraint: NSLayoutConstraint?
+    private weak var openCodexPortStatusLabel: NSTextField?
+    private weak var openCodexPortErrorLabel: NSTextField?
+    private weak var openCodexOpenButton: NSButton?
+    private weak var openCodexSettingsRowsStack: NSStackView?
+    private weak var openCodexSettingsCardHeightConstraint: NSLayoutConstraint?
+    private var openCodexSettingsSeparators: [NSView] = []
+    private var openCodexDashboardInteractionState = OpenCodexDashboardInteractionState(
+        mode: OpenCodexDashboardMode(automaticDetection: true, manualPort: nil)
+    )
+    private var openCodexDashboardLastResolvedPort: Int {
+        get { openCodexDashboardInteractionState.lastResolvedPort }
+        set { openCodexDashboardInteractionState.updateResolvedPort(newValue) }
+    }
+    private var isEndingOpenCodexPortEditing = false
     private var dashboardMenuPreviewCapsuleLeadingConstraint: NSLayoutConstraint?
     private var dashboardMenuPreviewCapsuleTrailingConstraint: NSLayoutConstraint?
     private var dashboardMenuPreviewTextWidthConstraint: NSLayoutConstraint?
@@ -1423,12 +1441,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
     private var lastQuickSwitchFetch: Date?
+    private var lastOpenCodexFetch: Date?
     private let quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaries: [String: String] = [:]
     private var clientSnapshots: [
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
+    private var openCodexState: (providerID: String, state: OpenCodexRuntimeState)?
+    private var openCodexCards: [OpenCodexModelCard] = []
+    // OpenCodex card planning and data refresh run on monitorQueue. The array
+    // above is published to the main queue because the status-menu view is a
+    // UI object; these backing values never contain credentials.
+    private var openCodexCardPlans: [OpenCodexCardPlan] = []
+    private var openCodexCardData: [OpenCodexCardSource: OpenCodexCardData] = [:]
+    private var openCodexCardRefreshCoordinator = OpenCodexCardRefreshCoordinator()
+    private var openCodexCardRequestsInFlight: Set<OpenCodexCardSource> = []
+    // These caches are owned by monitorQueue. They let a previously verified
+    // OpenCodex remain special while its process is temporarily unavailable,
+    // without treating an unverified loopback as OpenCodex.
+    private var confirmedOpenCodexCandidates: [String: OpenCodexEndpointCandidate] = [:]
+    private var confirmedOpenCodexStates: [String: OpenCodexRuntimeState] = [:]
+    private var openCodexSwitchInFlight = false
+    private var openCodexPortInputHasError = false
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
     private var activeClient: AssistantClient = .codex
@@ -1441,6 +1476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
+    private let openCodexRepository: OpenCodexRepository
     private let balanceAPIClient = BalanceAPIClient()
     private let preferences = AppPreferences()
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
@@ -1459,13 +1495,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var keepMenuOpenAfterRefresh: Bool { get { preferences.keepMenuOpenAfterRefresh } set { preferences.keepMenuOpenAfterRefresh = newValue } }
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
+    private var openCodexDashboardPortOverride: Int? {
+        get { preferences.openCodexDashboardPortOverride }
+        set { preferences.openCodexDashboardPortOverride = newValue }
+    }
+    private var openCodexDashboardAutomaticDetection: Bool {
+        get { preferences.openCodexDashboardAutomaticDetection }
+        set { preferences.openCodexDashboardAutomaticDetection = newValue }
+    }
+    private var openCodexDashboardMode: OpenCodexDashboardMode {
+        OpenCodexDashboardMode(
+            automaticDetection: openCodexDashboardAutomaticDetection,
+            manualPort: openCodexDashboardPortOverride
+        )
+    }
 
     init(
         repository: CCSwitchRepository = CCSwitchRepository(),
-        officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient()
+        officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
+        openCodexRepository: OpenCodexRepository = OpenCodexRepository()
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
+        self.openCodexRepository = openCodexRepository
         super.init()
     }
 
@@ -1503,7 +1555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             "database watchers started; count=\(databaseWatchers.count)",
             category: "database"
         )
-        refresh(forceBalance: true)
+        refresh(reason: .initial)
         refreshQuickSwitchSummaries(force: true)
         refreshQuickSwitchSummaries(force: true, for: .claude)
         prefetchCurrentBalance(for: .claude)
@@ -1550,6 +1602,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.clampDashboardScrollViewBounds()
+        }
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
@@ -1589,7 +1648,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
         )
-        refresh(forceBalance: true)
+        refresh(reason: .manual)
         refreshQuickSwitchSummaries(force: true)
     }
 
@@ -1667,7 +1726,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.lastProviderID = nil
                 self.lastBalanceFetch = nil
                 self.lastOfficialFetch = nil
-                self.refresh(forceBalance: true)
+                self.lastOpenCodexFetch = nil
+                self.resetOpenCodexCards()
+                DispatchQueue.main.async { [weak self] in
+                    self?.openCodexState = nil
+                    self?.openCodexCards = []
+                    self?.openCodexSwitchInFlight = false
+                }
+                self.refresh(reason: .providerChanged)
             } catch {
                 SwitchLog.write("switch failed; target=\(providerName); error=\(error.localizedDescription)")
                 if ccSwitch != nil, let ccSwitchURL {
@@ -1682,6 +1748,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     "切换失败：\(error.localizedDescription)",
                     "Switch failed: \(error.localizedDescription)"
                 )))
+            }
+        }
+    }
+
+    @objc private func switchOpenCodexPreference(_ sender: NSMenuItem) {
+        guard let preference = sender.representedObject as? OpenCodexPreference else { return }
+        performOpenCodexPreferenceSwitch(preference)
+    }
+
+    private func performOpenCodexPreferenceSwitch(_ preference: OpenCodexPreference) {
+        guard activeClient == .codex,
+              !openCodexSwitchInFlight,
+              let entry = openCodexState,
+              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
+              current.id == entry.providerID,
+              current.openCodexCandidate != nil else { return }
+
+        openCodexSwitchInFlight = true
+        let providerID = entry.providerID
+        let providerName = current.name
+        let oldState = entry.state
+        monitorQueue.async { [weak self] in
+            guard let self else { return }
+            self.openCodexRepository.select(preference, from: oldState) { [weak self] result in
+                guard let self else { return }
+                self.monitorQueue.async {
+                    guard self.activeClient == .codex,
+                          self.ccSwitchRepository.loadCurrent(appType: AssistantClient.codex.appType)?.id == providerID else {
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        return
+                    }
+                    switch result {
+                    case .success(let state):
+                        self.confirmedOpenCodexCandidates[providerID] = state.candidate
+                        self.confirmedOpenCodexStates[providerID] = state
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexState = (providerID, state)
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        self.prepareOpenCodexCards(
+                            providerID: providerID,
+                            state: state
+                        )
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: state.currentSelector,
+                                status: self.openCodexStatusText(for: state),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: .codex
+                        )
+                    case .failure(let error):
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: oldState.currentSelector,
+                                status: tr(
+                                    "切换失败：\(error.simplifiedChineseMessage)",
+                                    "Switch failed: \(error.englishMessage)"
+                                ),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: .codex
+                        )
+                    }
+                }
             }
         }
     }
@@ -1707,7 +1847,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         configureApplicationMenu()
         rebuildDashboardForLanguageChange()
         render(snapshot)
-        refresh(forceBalance: true)
+        refresh(reason: .configurationChanged)
         refreshQuickSwitchSummaries(force: true)
     }
 
@@ -1805,6 +1945,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in }
+    }
+
+    @objc private func openOpenCodex() {
+        guard let resolution = currentOpenCodexDashboardResolution() else { return }
+        SwitchLog.write(
+            "OpenCodex Dashboard launch requested; source=\(String(describing: resolution.source)); port=\(resolution.port); path=\(resolution.url.path); fragment=\(resolution.url.fragment ?? "none")",
+            category: "open-codex.dashboard"
+        )
+        NSWorkspace.shared.open(resolution.url)
+    }
+
+    private func currentOpenCodexDashboardURL() -> URL? {
+        currentOpenCodexDashboardResolution()?.url
+    }
+
+    private func currentOpenCodexDashboardResolution() -> OpenCodexDashboardResolution? {
+        guard activeClient == .codex,
+              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType) else {
+            return nil
+        }
+        let runtimeCandidate: OpenCodexEndpointCandidate?
+        if let entry = openCodexState, entry.providerID == current.id {
+            runtimeCandidate = entry.state.candidate
+        } else {
+            runtimeCandidate = nil
+        }
+        guard current.openCodexCandidate != nil || runtimeCandidate != nil else { return nil }
+        return OpenCodexDashboardResolver.resolve(
+            manualPort: openCodexDashboardMode.effectiveManualPort,
+            runtimeCandidate: runtimeCandidate
+        )
     }
 
     @objc private func openChatGPT() {
@@ -1916,9 +2087,186 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case "animateCodexActivity":
             animateCodexActivity = sender.state == .on
             setCodexTaskRunning(isCodexTaskRunning, force: true)
+        case "openCodexAutomaticDetection":
+            let enabled = sender.state == .on
+            // End the native field editor before hiding its row. In particular,
+            // do not let an invalid in-progress edit re-enter the preference
+            // path while the switch is being applied.
+            endOpenCodexPortEditingForModeSwitch()
+            setOpenCodexDashboardAutomaticDetection(enabled)
+            openCodexPortInputHasError = false
+            openCodexPortErrorLabel?.stringValue = ""
+            openCodexPortErrorLabel?.isHidden = true
+            openCodexManualPortRowHeightConstraint?.constant = 86
+            updateOpenCodexDashboardModeUI()
+            SwitchLog.write(
+                "OpenCodex Dashboard detection mode changed; mode=\(enabled ? "automatic" : "manual")",
+                category: "configuration"
+            )
         default:
             break
         }
+    }
+
+    private func setOpenCodexDashboardAutomaticDetection(_ enabled: Bool) {
+        openCodexDashboardInteractionState.mode = openCodexDashboardMode
+        openCodexDashboardInteractionState.updateResolvedPort(openCodexDashboardLastResolvedPort)
+        openCodexDashboardInteractionState.setAutomaticDetection(enabled)
+        let nextMode = openCodexDashboardInteractionState.mode
+        openCodexDashboardAutomaticDetection = nextMode.automaticDetection
+        openCodexDashboardPortOverride = nextMode.manualPort
+    }
+
+    private func endOpenCodexPortEditingForModeSwitch() {
+        guard let field = openCodexPortField,
+              field.currentEditor() != nil else { return }
+        openCodexDashboardInteractionState.markPortEditorActive(true)
+        isEndingOpenCodexPortEditing = true
+        _ = field.abortEditing()
+        _ = dashboard?.makeFirstResponder(nil)
+        isEndingOpenCodexPortEditing = false
+        openCodexDashboardInteractionState.markPortEditorActive(false)
+    }
+
+    private func updateOpenCodexDashboardModeUI() {
+        guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
+
+        let mode = openCodexDashboardMode
+        openCodexAutomaticDetectionSwitch?.state = mode.automaticDetection ? .on : .off
+        openCodexManualPortRow?.isHidden = !mode.showsManualPortInput
+        if openCodexSettingsSeparators.count >= 2 {
+            // When the manual row is hidden, keep only the separator between
+            // the automatic row and the independent open action.
+            openCodexSettingsSeparators[0].isHidden = !mode.showsManualPortInput
+            openCodexSettingsSeparators[1].isHidden = false
+        }
+
+        let resolution = OpenCodexDashboardResolver.resolve(
+            manualPort: mode.effectiveManualPort,
+            runtimeCandidate: openCodexState?.state.candidate
+        )
+        applyOpenCodexDashboardResolution(resolution, canOpen: nil)
+        updateOpenCodexDashboardCardLayout()
+    }
+
+    private func updateOpenCodexDashboardCardLayout() {
+        guard let rowsStack = openCodexSettingsRowsStack,
+              let cardHeightConstraint = openCodexSettingsCardHeightConstraint else { return }
+
+        rowsStack.layoutSubtreeIfNeeded()
+        let visibleRows = rowsStack.arrangedSubviews.filter {
+            !($0 is NSBox) && !$0.isHidden
+        }
+        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
+            let explicitHeight = row.constraints.first {
+                ($0.firstItem as? NSView) === row &&
+                    $0.firstAttribute == .height &&
+                    $0.relation == .equal
+            }?.constant
+            return partial + max(1, explicitHeight ?? row.fittingSize.height)
+        }
+        let separatorHeight = openCodexSettingsSeparators
+            .filter { !$0.isHidden }
+            .reduce(CGFloat(0)) { partial, separator in
+                partial + max(1, separator.fittingSize.height)
+            }
+        cardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
+        dashboardContentHost.layoutSubtreeIfNeeded()
+        clampDashboardScrollViewBounds()
+    }
+
+    private func applyOpenCodexDashboardResolution(
+        _ resolution: OpenCodexDashboardResolution,
+        canOpen: Bool?
+    ) {
+        openCodexDashboardInteractionState.mode = openCodexDashboardMode
+        openCodexDashboardLastResolvedPort = resolution.port
+        let isEditing = openCodexPortField?.currentEditor() != nil
+        if !isEditing, !openCodexPortInputHasError {
+            openCodexPortField?.stringValue = String(
+                openCodexDashboardMode.manualPort ?? resolution.port
+            )
+        }
+        if let canOpen {
+            openCodexOpenButton?.isEnabled = canOpen
+        }
+
+        let currentPort = tr(
+            "当前端口：\(resolution.port)",
+            "Current port: \(resolution.port)"
+        )
+        switch resolution.source {
+        case .manual:
+            openCodexPortStatusLabel?.stringValue = tr(
+                "\(currentPort)\n手动端口只用于打开本机 Dashboard；不会修改 OpenCodex 配置",
+                "\(currentPort)\nThe manual port only opens the local Dashboard; it does not modify OpenCodex configuration"
+            )
+        case .runtime:
+            openCodexPortStatusLabel?.stringValue = tr(
+                "\(currentPort)\n已自动检测 OpenCodex runtime 端口",
+                "\(currentPort)\nOpenCodex runtime port detected automatically"
+            )
+        case .fallback:
+            openCodexPortStatusLabel?.stringValue = tr(
+                "\(currentPort)\n尚未自动检测；将使用默认端口 10100",
+                "\(currentPort)\nNot detected yet; the default port 10100 will be used"
+            )
+        }
+    }
+
+    @objc private func openCodexDashboardPortChanged(_ sender: NSTextField) {
+        guard !isEndingOpenCodexPortEditing else { return }
+        switch OpenCodexDashboardPortInput.parse(sender.stringValue) {
+        case .success(let port):
+            openCodexPortInputHasError = false
+            openCodexPortErrorLabel?.isHidden = true
+            openCodexManualPortRowHeightConstraint?.constant = 86
+            openCodexDashboardPortOverride = port
+            openCodexDashboardAutomaticDetection = port == nil
+            openCodexAutomaticDetectionSwitch?.state = port == nil ? .on : .off
+            openCodexPortErrorLabel?.stringValue = ""
+            SwitchLog.write(
+                "OpenCodex Dashboard port preference changed; mode=\(port == nil ? "automatic" : "manual")",
+                category: "configuration"
+            )
+            updateOpenCodexDashboardModeUI()
+        case .failure:
+            openCodexPortInputHasError = true
+            openCodexPortErrorLabel?.isHidden = false
+            openCodexPortErrorLabel?.stringValue = tr(
+                "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
+                "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
+            )
+            openCodexManualPortRowHeightConstraint?.constant = 112
+            updateOpenCodexDashboardCardLayout()
+        }
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField,
+              field === openCodexPortField,
+              !isEndingOpenCodexPortEditing else { return }
+        openCodexDashboardPortChanged(field)
+    }
+
+    private func refreshDashboardOpenCodexSettings() {
+        guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
+
+        let currentResolution = currentOpenCodexDashboardResolution()
+        let resolution = currentResolution ?? OpenCodexDashboardResolver.resolve(
+            manualPort: openCodexDashboardMode.effectiveManualPort,
+            runtimeCandidate: nil
+        )
+        let canOpen = currentResolution != nil
+        applyOpenCodexDashboardResolution(resolution, canOpen: canOpen)
+        let showsManualPortInput = openCodexDashboardMode.showsManualPortInput
+        openCodexAutomaticDetectionSwitch?.state = showsManualPortInput ? .off : .on
+        openCodexManualPortRow?.isHidden = !showsManualPortInput
+        if openCodexSettingsSeparators.count >= 2 {
+            openCodexSettingsSeparators[0].isHidden = !showsManualPortInput
+            openCodexSettingsSeparators[1].isHidden = false
+        }
+        updateOpenCodexDashboardCardLayout()
     }
 
     private func dashboardStatusLinkChanged(
@@ -2691,6 +3039,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.stopDashboardScrollAnchorMaintenance()
             page.layoutSubtreeIfNeeded()
             editor.superview?.layoutSubtreeIfNeeded()
+            self.clampDashboardScrollViewBounds()
             SwitchLog.write(
                 "in-place status-link refresh animation completed; action=\(operation); rows=\(editor.rowCount); editor_frame=\(DashboardLogging.rect(editor.frame)); page_frame=\(DashboardLogging.rect(page.frame))",
                 category: "ui.layout"
@@ -2724,6 +3073,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.logDashboardScrollState(label: "during \(operation) animation")
         }
         return true
+    }
+
+    private func clampDashboardScrollViewBounds() {
+        guard let page = dashboardContentHost.subviews.first,
+              let scrollView = firstScrollView(in: page),
+              let documentView = scrollView.documentView else {
+            return
+        }
+        page.layoutSubtreeIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        setDashboardScrollBounds(
+            scrollView.contentView.bounds,
+            scrollView: scrollView,
+            documentView: documentView
+        )
     }
 
     private func startDashboardScrollAnchorMaintenance(
@@ -2764,20 +3128,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let contentView = scrollView.contentView
         // A removal shrinks the document from the bottom. Restore the clip
-        // view in document coordinates so AppKit never receives a positive
-        // unflipped bounds origin (which is interpreted as an overscroll and
-        // snaps the page to the top).
+        // view through the shared visual-offset clamp so the new document
+        // range, rather than the old coordinate origin, decides the result.
         if position.operation != "add" {
+            let geometry = dashboardScrollGeometry(
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            let targetVisualOffset = geometry.clampedVisualOffset(
+                geometry.maximumOffset - max(0, position.distanceFromBottom)
+            )
             let targetContentOriginY = dashboardScrollContentOrigin(
                 scrollView: scrollView,
                 documentView: documentView,
-                distanceFromBottom: position.distanceFromBottom
+                visualOffset: targetVisualOffset
             )
             var bounds = contentView.bounds
             guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
             bounds.origin.y = targetContentOriginY
-            contentView.bounds = bounds
-            scrollView.reflectScrolledClipView(contentView)
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
             return
         }
 
@@ -2796,35 +3169,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // moved, so the edge stays visually fixed throughout the height
             // animation instead of letting the blue top edge win by default.
             bounds.origin.y += correction
-            contentView.bounds = bounds
-            scrollView.reflectScrolledClipView(contentView)
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
             return
         }
 
         var bounds = contentView.bounds
-        guard abs(bounds.origin.y - position.contentOriginY) > 0.01 else { return }
-        bounds.origin.y = position.contentOriginY
-        contentView.bounds = bounds
+        let targetContentOriginY = dashboardScrollContentOrigin(
+            scrollView: scrollView,
+            documentView: documentView,
+            visualOffset: position.visibleDocumentOffset
+        )
+        guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
+        bounds.origin.y = targetContentOriginY
+        setDashboardScrollBounds(
+            bounds,
+            scrollView: scrollView,
+            documentView: documentView
+        )
+    }
+
+    private func dashboardScrollGeometry(
+        scrollView: NSScrollView,
+        documentView: NSView
+    ) -> DashboardScrollGeometry {
+        DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+    }
+
+    private func setDashboardScrollBounds(
+        _ proposedBounds: NSRect,
+        scrollView: NSScrollView,
+        documentView: NSView
+    ) {
+        let contentView = scrollView.contentView
+        contentView.bounds = dashboardClampedContentBounds(
+            proposedBounds: proposedBounds,
+            contentView: contentView,
+            documentView: documentView
+        )
         scrollView.reflectScrolledClipView(contentView)
     }
 
     private func dashboardScrollContentOrigin(
         scrollView: NSScrollView,
         documentView: NSView,
-        distanceFromBottom: CGFloat
+        visualOffset: CGFloat
     ) -> CGFloat {
-        let maximumOffset = dashboardMaximumOffset(
-            documentView: documentView,
-            viewportHeight: scrollView.contentView.bounds.height
+        let geometry = dashboardScrollGeometry(
+            scrollView: scrollView,
+            documentView: documentView
         )
-        let targetDocumentOriginY = min(
-            maximumOffset,
-            max(0, maximumOffset - distanceFromBottom)
+        let targetDocumentRect = geometry.visibleDocumentRect(
+            forVisualOffset: visualOffset
+        )
+        let targetDocumentY = geometry.contentOriginDocumentY(
+            for: targetDocumentRect,
+            contentViewIsFlipped: scrollView.contentView.isFlipped
         )
         return documentView.convert(
             NSPoint(
                 x: documentView.bounds.minX,
-                y: documentView.bounds.minY + targetDocumentOriginY
+                y: targetDocumentY
             ),
             to: scrollView.contentView
         ).y
@@ -2847,17 +3259,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
-        let maximumOffset = dashboardMaximumOffset(
-            documentView: documentView,
-            viewportHeight: scrollView.contentView.bounds.height
+        let geometry = dashboardScrollGeometry(
+            scrollView: scrollView,
+            documentView: documentView
         )
         let visibleDocumentRect = scrollView.contentView.convert(
             scrollView.contentView.bounds,
             to: documentView
         )
-        let originY = min(
-            maximumOffset,
-            max(0, visibleDocumentRect.origin.y)
+        let visibleDocumentOffset = geometry.clampedVisualOffset(
+            for: visibleDocumentRect
         )
         let bottomAnchor = statusLinksBottomAnchor(
             in: page,
@@ -2871,15 +3282,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let activeBottomAnchor = bottomAnchorIsVisible ? bottomAnchor : nil
         let position = DashboardScrollPosition(
             operation: operation,
-            visibleDocumentOriginY: originY,
+            visibleDocumentOffset: visibleDocumentOffset,
             contentOriginY: scrollView.contentView.bounds.origin.y,
-            distanceFromBottom: max(0, maximumOffset - originY),
-            previousMaximumOffset: maximumOffset,
+            distanceFromBottom: max(0, geometry.maximumOffset - visibleDocumentOffset),
+            previousMaximumOffset: geometry.maximumOffset,
             bottomAnchorView: activeBottomAnchor?.view,
             bottomAnchorViewportY: activeBottomAnchor?.viewportY
         )
         SwitchLog.write(
-            "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOriginY=\(DashboardLogging.number(originY)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
+            "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOffset=\(DashboardLogging.number(visibleDocumentOffset)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(geometry.maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
             category: "ui.scroll"
         )
         return position
@@ -2912,7 +3323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
         SwitchLog.write(
-            "scroll restore begin; action=\(position.operation); attempt=\(attempt); target_visibleDocumentOriginY=\(DashboardLogging.number(position.visibleDocumentOriginY)); captured_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); target_distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(position.previousMaximumOffset)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+            "scroll restore begin; action=\(position.operation); attempt=\(attempt); target_visibleDocumentOffset=\(DashboardLogging.number(position.visibleDocumentOffset)); captured_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); target_distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(position.previousMaximumOffset)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
             category: "ui.scroll"
         )
         dashboard?.displayIfNeeded()
@@ -2920,16 +3331,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         if position.operation != "add" {
+            let geometry = dashboardScrollGeometry(
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            let targetVisualOffset = geometry.clampedVisualOffset(
+                geometry.maximumOffset - max(0, position.distanceFromBottom)
+            )
             let targetContentOriginY = dashboardScrollContentOrigin(
                 scrollView: scrollView,
                 documentView: documentView,
-                distanceFromBottom: position.distanceFromBottom
+                visualOffset: targetVisualOffset
             )
             var bounds = scrollView.contentView.bounds
             let correction = targetContentOriginY - bounds.origin.y
             bounds.origin.y = targetContentOriginY
-            scrollView.contentView.bounds = bounds
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
             SwitchLog.write(
                 "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=document-distance; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
                 category: "ui.scroll"
@@ -2951,8 +3372,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if abs(correction) > 0.01 {
                 var bounds = scrollView.contentView.bounds
                 bounds.origin.y += correction
-                scrollView.contentView.bounds = bounds
-                scrollView.reflectScrolledClipView(scrollView.contentView)
+                setDashboardScrollBounds(
+                    bounds,
+                    scrollView: scrollView,
+                    documentView: documentView
+                )
             }
             SwitchLog.write(
                 "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=card-bottom; target_viewportY=\(DashboardLogging.number(targetViewportY)); actual_viewportY=\(DashboardLogging.number(currentViewportY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
@@ -2965,12 +3389,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
 
         var bounds = scrollView.contentView.bounds
-        let correction = position.contentOriginY - bounds.origin.y
-        bounds.origin.y = position.contentOriginY
-        scrollView.contentView.bounds = bounds
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        let targetContentOriginY = dashboardScrollContentOrigin(
+            scrollView: scrollView,
+            documentView: documentView,
+            visualOffset: position.visibleDocumentOffset
+        )
+        let correction = targetContentOriginY - bounds.origin.y
+        bounds.origin.y = targetContentOriginY
+        setDashboardScrollBounds(
+            bounds,
+            scrollView: scrollView,
+            documentView: documentView
+        )
         SwitchLog.write(
-            "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=content-origin; target_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+            "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=visible-document-offset; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
             category: "ui.scroll"
         )
 
@@ -2981,13 +3413,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func dashboardMaximumOffset(
-        documentView: NSView,
-        viewportHeight: CGFloat
-    ) -> CGFloat {
-        max(0, documentView.bounds.height - viewportHeight)
-    }
-
     private func dashboardScrollMetrics(
         scrollView: NSScrollView,
         documentView: NSView
@@ -2995,9 +3420,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let contentView = scrollView.contentView
         let bounds = contentView.bounds
         let viewportRect = contentView.convert(bounds, to: documentView)
-        let boundsMaximum = max(0, documentView.bounds.height - bounds.height)
-        let frameMaximum = max(0, documentView.frame.height - bounds.height)
-        return "page=\(dashboardSection.title); links=\(statusLinks.count); content_originY=\(DashboardLogging.number(bounds.origin.y)); content_height=\(DashboardLogging.number(bounds.height)); document_frame=\(DashboardLogging.rect(documentView.frame)); document_bounds=\(DashboardLogging.rect(documentView.bounds)); viewport_document=\(DashboardLogging.rect(viewportRect)); maxOffset(bounds)=\(DashboardLogging.number(boundsMaximum)); maxOffset(frame)=\(DashboardLogging.number(frameMaximum))"
+        let geometry = dashboardScrollGeometry(
+            scrollView: scrollView,
+            documentView: documentView
+        )
+        let visualOffset = geometry.clampedVisualOffset(for: viewportRect)
+        return "page=\(dashboardSection.title); links=\(statusLinks.count); content_originY=\(DashboardLogging.number(bounds.origin.y)); content_height=\(DashboardLogging.number(bounds.height)); document_frame=\(DashboardLogging.rect(documentView.frame)); document_bounds=\(DashboardLogging.rect(documentView.bounds)); viewport_document=\(DashboardLogging.rect(viewportRect)); visual_offset=\(DashboardLogging.number(visualOffset)); maxOffset=\(DashboardLogging.number(geometry.maximumOffset))"
     }
 
     private func logDashboardScrollState(label: String) {
@@ -3097,9 +3525,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func makeSettingsPage(_ sections: [NSView]) -> NSView {
         let root = NSView()
         let scrollView = NSScrollView()
+        scrollView.contentView = DashboardClipView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
+        scrollView.verticalScrollElasticity = .none
+        scrollView.horizontalScrollElasticity = .none
         // Keep the scrollbar discoverable on dense settings pages. The
         // document is taller than the viewport when the status-link editor is
         // present, so hiding the scroller makes the add control look missing.
@@ -3146,7 +3577,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return root
     }
 
-    private func makeSettingsSection(_ title: String, rows: [NSView]) -> NSView {
+    private func makeSettingsSection(
+        _ title: String,
+        rows: [NSView],
+        onLayoutCreated: ((NSStackView, NSLayoutConstraint, [NSView]) -> Void)? = nil
+    ) -> NSView {
         let heading = NSTextField(labelWithString: title)
         heading.font = .systemFont(ofSize: 17, weight: .semibold)
         let card = NSView()
@@ -3186,6 +3621,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             rowsStack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
             rowsStack.bottomAnchor.constraint(equalTo: card.bottomAnchor)
         ])
+        var separators: [NSView] = []
         for (index, row) in rows.enumerated() {
             rowsStack.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
@@ -3195,13 +3631,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
                 rowsStack.addArrangedSubview(separator)
                 separator.widthAnchor.constraint(equalTo: rowsStack.widthAnchor, constant: -32).isActive = true
+                separators.append(separator)
             }
         }
 
         // NSView has no intrinsic height. Give the card the exact height of
         // its rows so a short settings page cannot stretch the first row to
         // fill the scroll viewport.
-        let rowsHeight = rows.reduce(CGFloat(0)) { partial, row in
+        let visibleRows = rows.filter { !$0.isHidden }
+        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
             let explicitHeight = row.constraints.first {
                 ($0.firstItem as? NSView) === row &&
                     $0.firstAttribute == .height &&
@@ -3215,10 +3653,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
             return partial + max(1, explicitHeight ?? fittingHeight)
         }
-        let separatorHeight = CGFloat(max(0, rows.count - 1))
-        card.heightAnchor.constraint(
+        let separatorHeight = CGFloat(max(0, visibleRows.count - 1))
+        let cardHeightConstraint = card.heightAnchor.constraint(
             equalToConstant: max(1, ceil(rowsHeight + separatorHeight))
-        ).isActive = true
+        )
+        cardHeightConstraint.isActive = true
+        onLayoutCreated?(rowsStack, cardHeightConstraint, separators)
 
         let section = NSStackView(views: [heading, card])
         section.orientation = .vertical
@@ -3281,6 +3721,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             constraints.append(labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -20))
         }
         NSLayoutConstraint.activate(constraints)
+        return row
+    }
+
+    private func makeOpenCodexManualPortRow(
+        portField: NSTextField,
+        errorLabel: NSTextField
+    ) -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        let heightConstraint = row.heightAnchor.constraint(equalToConstant: 86)
+        heightConstraint.isActive = true
+        openCodexManualPortRowHeightConstraint = heightConstraint
+
+        let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually"))
+        title.font = .systemFont(ofSize: 14, weight: .semibold)
+        let detail = NSTextField(wrappingLabelWithString: tr(
+            "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
+            "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
+        ))
+        detail.font = .systemFont(ofSize: 12)
+        detail.textColor = .secondaryLabelColor
+        errorLabel.font = .systemFont(ofSize: 12)
+        errorLabel.textColor = .systemRed
+        errorLabel.isEditable = false
+        errorLabel.isSelectable = false
+        errorLabel.isHidden = true
+
+        let labels = NSStackView(views: [title, detail, errorLabel])
+        labels.orientation = .vertical
+        labels.alignment = .leading
+        labels.spacing = 2
+        labels.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(labels)
+
+        portField.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(portField)
+        NSLayoutConstraint.activate([
+            labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
+            labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 11),
+            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -11),
+            portField.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+            portField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            labels.trailingAnchor.constraint(lessThanOrEqualTo: portField.leadingAnchor, constant: -20)
+        ])
         return row
     }
 
@@ -3511,6 +3996,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         scroll.documentView = dashboardLogView
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
+        scroll.verticalScrollElasticity = .none
+        scroll.horizontalScrollElasticity = .none
         scroll.autohidesScrollers = true
         scroll.drawsBackground = true
         scroll.backgroundColor = dashboardLogView.backgroundColor
@@ -3528,6 +4015,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func makeAdvancedDashboardPage() -> NSView {
+        openCodexPortInputHasError = false
+        openCodexAutomaticDetectionSwitch = nil
+        openCodexPortField = nil
+        openCodexManualPortRow = nil
+        openCodexManualPortRowHeightConstraint = nil
+        openCodexPortStatusLabel = nil
+        openCodexPortErrorLabel = nil
+        openCodexOpenButton = nil
+        openCodexSettingsRowsStack = nil
+        openCodexSettingsCardHeightConstraint = nil
+        openCodexSettingsSeparators = []
+        openCodexDashboardInteractionState.mode = openCodexDashboardMode
+        openCodexDashboardInteractionState.markPortEditorActive(false)
         let animation = makeDashboardSwitch(
             identifier: "animateCodexActivity",
             isOn: animateCodexActivity
@@ -3538,6 +4038,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 control: animation
             )
         ])
+
+        let automaticDetection = openCodexDashboardAutomaticDetection
+        let currentResolution = currentOpenCodexDashboardResolution()
+        let initialResolution = currentResolution
+            ?? OpenCodexDashboardResolver.resolve(
+                manualPort: openCodexDashboardMode.effectiveManualPort,
+                runtimeCandidate: nil
+            )
+        let statusLabel = NSTextField(wrappingLabelWithString: tr("正在解析…", "Resolving…"))
+        statusLabel.font = .systemFont(ofSize: 12)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let automaticSwitch = makeDashboardSwitch(
+            identifier: "openCodexAutomaticDetection",
+            isOn: automaticDetection
+        )
+        let automaticRow = makeSettingsRow(
+            tr("自动检测端口", "Detect Port Automatically"),
+            subtitle: tr(
+                "使用已验证的 OpenCodex runtime 端口；未检测时使用 10100",
+                "Use the verified OpenCodex runtime port; use 10100 until one is detected"
+            ),
+            subtitleLabel: statusLabel,
+            control: automaticSwitch,
+            minimumHeight: 86
+        )
+
+        let portField = NSTextField()
+        portField.stringValue = String(
+            openCodexDashboardMode.manualPort ?? initialResolution.port
+        )
+        portField.placeholderString = "10100"
+        portField.alignment = .right
+        portField.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        portField.isEditable = true
+        portField.isSelectable = true
+        portField.delegate = self
+        portField.widthAnchor.constraint(equalToConstant: 112).isActive = true
+
+        let errorLabel = NSTextField(wrappingLabelWithString: "")
+        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        errorLabel.isHidden = true
+
+        let manualPortRow = makeOpenCodexManualPortRow(
+            portField: portField,
+            errorLabel: errorLabel
+        )
+        manualPortRow.isHidden = automaticDetection
+
+        let openButton = NSButton(
+            title: tr("打开 OpenCodex", "Open OpenCodex"),
+            target: self,
+            action: #selector(openOpenCodex)
+        )
+        openButton.isEnabled = currentResolution != nil
+        openCodexAutomaticDetectionSwitch = automaticSwitch
+        openCodexPortField = portField
+        openCodexManualPortRow = manualPortRow
+        openCodexPortStatusLabel = statusLabel
+        openCodexPortErrorLabel = errorLabel
+        openCodexOpenButton = openButton
+        let openButtonRow = makeSettingsRow(
+            tr("OpenCodex Dashboard", "OpenCodex Dashboard"),
+            subtitle: tr(
+                "使用当前解析到的本机地址；固定打开 /#dashboard",
+                "Uses the resolved local address and always opens /#dashboard"
+            ),
+            control: openButton,
+            minimumHeight: 78
+        )
+
+        let openCodex = makeSettingsSection(
+            tr("OpenCodex", "OpenCodex"),
+            rows: [automaticRow, manualPortRow, openButtonRow],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                guard let self else { return }
+                self.openCodexSettingsRowsStack = rowsStack
+                self.openCodexSettingsCardHeightConstraint = cardHeightConstraint
+                self.openCodexSettingsSeparators = separators
+                if automaticDetection, !separators.isEmpty {
+                    separators[0].isHidden = true
+                }
+            }
+        )
+        openCodexDashboardLastResolvedPort = initialResolution.port
+        applyOpenCodexDashboardResolution(
+            initialResolution,
+            canOpen: currentResolution != nil
+        )
 
         let refreshLog = NSButton(title: tr("重新载入", "Reload"), target: self, action: #selector(refreshDashboardLog))
         let revealLog = NSButton(title: tr("在 Finder 中显示", "Show in Finder"), target: self, action: #selector(revealDashboardLog))
@@ -3555,7 +4145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             ),
             makeDashboardLogViewer()
         ])
-        return makeSettingsPage([activity, logs])
+        return makeSettingsPage([activity, openCodex, logs])
     }
 
     private func makeAboutDashboardPage() -> NSView {
@@ -3572,7 +4162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.10.5"
+        ) as? String ?? "0.11.3"
         let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
@@ -3865,13 +4455,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // which can otherwise leave overlapping on/off layers on vibrancy.
         dashboardMenuBarIconSwitch?.isEnabled = showMenuBarAmount
         dashboardMenuBarAmountSwitch?.isEnabled = showMenuBarIcon
-        dashboardMenuPreviewPrimary.stringValue = showMenuBarAmount ? snapshot.menuBarPrimary : ""
-        dashboardMenuPreviewSecondary.stringValue = snapshot.kind == .official
-            ? snapshot.menuBarSecondary
+        let effectiveMenuBarSnapshot = menuBarSnapshot(for: snapshot)
+        dashboardMenuPreviewPrimary.stringValue = showMenuBarAmount ? effectiveMenuBarSnapshot.menuBarPrimary : ""
+        dashboardMenuPreviewSecondary.stringValue = effectiveMenuBarSnapshot.kind == .official
+            ? effectiveMenuBarSnapshot.menuBarSecondary
             : ""
         let hasSecondary = showMenuBarAmount
             && showMenuBarReset
-            && snapshot.kind == .official
+            && effectiveMenuBarSnapshot.kind == .official
             && !dashboardMenuPreviewSecondary.stringValue.isEmpty
         let geometry = MenuBarGeometry(
             primarySize: dashboardMenuPreviewPrimary.intrinsicContentSize,
@@ -3879,7 +4470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance,
+            isBalance: effectiveMenuBarSnapshot.kind == .balance,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -3904,7 +4495,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
         dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
         dashboardMenuPreviewText.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+        if effectiveMenuBarSnapshot.kind == .balance,
+           showMenuBarIcon,
+           showMenuBarAmount {
             dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
                 y: -Self.menuBarSingleLineIconYOffset
@@ -4023,6 +4616,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let scroll = NSScrollView()
         scroll.borderType = .bezelBorder
         scroll.hasVerticalScroller = true
+        scroll.verticalScrollElasticity = .none
+        scroll.horizontalScrollElasticity = .none
         scroll.documentView = dashboardLogView
 
         [header, buttons, scroll].forEach {
@@ -4193,7 +4788,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         activityTimer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
-            self?.refresh(forceBalance: false)
+            self?.refresh(reason: .scheduled)
             self?.refreshQuickSwitchSummaries(force: false)
         }
         timer = providerTimer
@@ -4344,7 +4939,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         } ?? true
         if shouldRefreshUsage && (stateChanged || refreshIsDue) {
             lastCodexUsageRefresh = now
-            refresh(forceBalance: true)
+            refresh(reason: .activityUsage)
         } else if !shouldRefreshUsage {
             lastCodexUsageRefresh = nil
             postCodexRefreshDeadline = nil
@@ -4359,6 +4954,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         lastBalanceFetch = nil
         lastOfficialFetch = nil
         lastQuickSwitchFetch = nil
+        lastOpenCodexFetch = nil
+        openCodexState = nil
+        openCodexCards = []
+        resetOpenCodexCards()
+        refreshOpenCodexMenuBar()
+        openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         updateActivityIcon()
@@ -4370,7 +4971,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             lastProviderID = cached.providerID
             render(cached.snapshot)
         }
-        refresh(forceBalance: true)
+        refresh(reason: .clientChanged)
         refreshQuickSwitchSummaries(force: true)
         if dashboard != nil {
             showDashboardSection(dashboardSection)
@@ -4489,6 +5090,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .placeholder: kind = "placeholder"
         case .official: kind = "official"
         case .balance: kind = "balance"
+        case .openCodex: kind = "open-codex"
         case .error: kind = "error"
         }
         let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
@@ -4503,15 +5105,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func layoutStatusItem(for snapshot: Snapshot) {
+        let effectiveSnapshot = menuBarSnapshot(for: snapshot)
         guard let button = statusItem.button else { return }
-        let reservedSecondary = showMenuBarAmount && snapshot.kind == .official
-            ? snapshot.menuBarSecondary
+        let reservedSecondary = showMenuBarAmount && effectiveSnapshot.kind == .official
+            ? effectiveSnapshot.menuBarSecondary
             : ""
         let hasSecondary = showMenuBarAmount
             && showMenuBarReset
             && !reservedSecondary.isEmpty
 
-        menuBarPrimaryLabel.stringValue = showMenuBarAmount ? snapshot.menuBarPrimary : ""
+        menuBarPrimaryLabel.stringValue = showMenuBarAmount ? effectiveSnapshot.menuBarPrimary : ""
         menuBarSecondaryLabel.stringValue = reservedSecondary
         menuBarIconSlot.isHidden = !showMenuBarIcon
         menuBarTextStack.isHidden = !showMenuBarAmount
@@ -4521,7 +5124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance,
+            isBalance: effectiveSnapshot.kind == .balance,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -4562,7 +5165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             ? Self.menuBarSingleLineIconYOffset
             : 0
         let iconYOffset: CGFloat
-        if snapshot.kind == .official, showMenuBarIcon {
+        if effectiveSnapshot.kind == .official, showMenuBarIcon {
             let apiGeometry = MenuBarGeometry(
                 primarySize: menuBarPrimaryLabel.intrinsicContentSize,
                 secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
@@ -4583,7 +5186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 buttonHeight: buttonHeight,
                 referenceIconViewYOffset: apiIconYOffset
             )
-        } else if snapshot.kind == .balance {
+        } else if effectiveSnapshot.kind == .balance {
             iconYOffset = apiIconYOffset
         } else {
             iconYOffset = 0
@@ -4604,19 +5207,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The optical adjustment is always applied from a clean transform
         // after the current snapshot's frames have been assigned.
         menuBarTextStack.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+        if effectiveSnapshot.kind == .balance,
+           showMenuBarIcon,
+           showMenuBarAmount {
             menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
                 y: -Self.menuBarSingleLineTextYOffset
             ))
         }
         logMenuBarIconFrames(
-            snapshot: snapshot,
+            snapshot: effectiveSnapshot,
             button: button,
             hasSecondary: hasSecondary,
             iconYOffset: iconYOffset
         )
-        button.toolTip = snapshot.menuBarToolTip
+        button.toolTip = effectiveSnapshot.menuBarToolTip
         button.isHidden = false
         button.isEnabled = true
         statusItem.isVisible = true
@@ -4626,6 +5231,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         layoutStatusItem(for: snapshot)
         scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
         refreshDashboardMenuBarPage()
+    }
+
+    private func snapshotKindDiagnosticName(_ kind: Snapshot.Kind) -> String {
+        switch kind {
+        case .placeholder: return "placeholder"
+        case .official: return "official"
+        case .balance: return "balance"
+        case .openCodex: return "openCodex"
+        case .error: return "error"
+        }
+    }
+
+    private func openCodexCardDiagnostic(
+        _ card: OpenCodexModelCard,
+        index: Int
+    ) -> String {
+        "\(index){selector=\(card.selector),isCurrent=\(card.isCurrent),data=\(card.data.diagnosticName)}"
+    }
+
+    private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {
+        let effective = OpenCodexCardPresentation.menuBarSnapshot(
+            for: snapshot,
+            cards: openCodexCards
+        )
+        guard snapshot.kind == .openCodex else { return effective }
+
+        let match = OpenCodexCardPresentation.menuBarCardMatch(from: openCodexCards)
+        let cardSummary = openCodexCards.enumerated()
+            .map { openCodexCardDiagnostic($0.element, index: $0.offset) }
+            .joined(separator: ";")
+        let selection = match.card?.selector ?? "none"
+        let signature = [
+            snapshot.unit ?? "none",
+            cardSummary,
+            match.diagnosticReason,
+            snapshotKindDiagnosticName(effective.kind),
+            effective.menuBarPrimary,
+            effective.menuBarSecondary
+        ].joined(separator: "|")
+        SwitchLog.write(
+            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(effective.kind)); primary=\(effective.menuBarPrimary); secondary=\(effective.menuBarSecondary)",
+            level: .debug,
+            category: "open-codex.menu-bar",
+            throttleKey: "open-codex-menu-resolution-\(signature)",
+            minimumInterval: 1
+        )
+        return effective
     }
 
     private func updateDashboard(for snapshot: Snapshot, refreshDate: Date?) {
@@ -4657,6 +5309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         rebuildDashboardProviderList()
         refreshDashboardMenuBarPage()
+        refreshDashboardOpenCodexSettings()
     }
 
     private func updateDashboardCurrentProvider(_ name: String) {
@@ -4726,7 +5379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func refresh(forceBalance: Bool) {
+    private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
         monitorQueue.async { [weak self] in
             guard let self else { return }
@@ -4755,65 +5408,784 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let switched = current.id != self.lastProviderID
             if switched {
                 SwitchLog.write("provider observed; app=\(client.appType); id=\(current.id); name=\(current.name); source=database watcher/poll")
+                self.lastOpenCodexFetch = nil
+                self.resetOpenCodexCards()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeClient == client else { return }
+                    self.openCodexState = nil
+                    self.openCodexSwitchInFlight = false
+                    self.openCodexCards = []
+                    self.refreshOpenCodexMenuBar()
+                }
             }
             self.lastProviderID = current.id
-            guard let query = current.query else {
-                guard current.isOfficial else {
-                    let failure = current.queryFailure ?? .unknown
-                    SwitchLog.write(
-                        "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
-                        level: .warning,
-                        category: "network",
-                        throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
-                        minimumInterval: 60
-                    )
-                    let reason = failure.userVisibleReason(
-                        usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
-                    )
-                    self.renderBalanceErrorForCurrentProvider(
-                        providerID: current.id,
-                        providerName: current.name,
-                        reason: reason,
-                        client: client
-                    )
-                    return
-                }
-                let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
-                guard forceBalance || switched || due else { return }
-                self.lastOfficialFetch = Date()
-                SwitchLog.write(
-                    "quota fetch started; client=\(client.rawValue); provider=\(current.name)",
-                    level: .debug,
-                    category: "network",
-                    throttleKey: "quota-fetch-\(client.rawValue)-\(current.id)",
-                    minimumInterval: 10
-                )
-                self.fetchOfficialQuota(
+            if client == .codex, let candidate = current.openCodexCandidate {
+                let due = self.lastOpenCodexFetch.map {
+                    Date().timeIntervalSince($0) >= 5
+                } ?? true
+                guard reason.forcesStandardProviderBalance || switched || due else { return }
+                self.lastOpenCodexFetch = Date()
+                self.refreshOpenCodex(
                     providerID: current.id,
                     providerName: current.name,
-                    client: client
+                    candidate: candidate,
+                    client: client,
+                    reason: reason,
+                    switched: switched
                 )
                 return
             }
 
-            let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
-            let due = self.lastBalanceFetch.map { Date().timeIntervalSince($0) >= interval } ?? true
-            guard forceBalance || switched || due else { return }
-            self.lastBalanceFetch = Date()
-            SwitchLog.write(
-                "balance fetch started; client=\(client.rawValue); provider=\(current.name)",
-                level: .debug,
-                category: "network",
-                throttleKey: "balance-fetch-\(client.rawValue)-\(current.id)",
-                minimumInterval: 10
-            )
-            self.fetchBalance(
-                providerID: current.id,
-                providerName: current.name,
-                query: query,
-                client: client
+            if client == .codex {
+                self.confirmedOpenCodexCandidates.removeValue(forKey: current.id)
+                self.confirmedOpenCodexStates.removeValue(forKey: current.id)
+                self.resetOpenCodexCards()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.openCodexState?.providerID == current.id else { return }
+                    self.openCodexState = nil
+                    self.openCodexCards = []
+                    self.openCodexSwitchInFlight = false
+                    self.refreshOpenCodexMenuBar()
+                }
+            }
+
+            self.refreshStandardProvider(
+                current: current,
+                client: client,
+                forceBalance: reason.forcesStandardProviderBalance,
+                switched: switched
             )
         }
+    }
+
+    private func refreshStandardProvider(
+        current: CCSwitchProvider,
+        client: AssistantClient,
+        forceBalance: Bool,
+        switched: Bool
+    ) {
+        guard let query = current.query else {
+            guard current.isOfficial else {
+                let failure = current.queryFailure ?? .unknown
+                SwitchLog.write(
+                    "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
+                    level: .warning,
+                    category: "network",
+                    throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
+                    minimumInterval: 60
+                )
+                let reason = failure.userVisibleReason(
+                    usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
+                )
+                self.renderBalanceErrorForCurrentProvider(
+                    providerID: current.id,
+                    providerName: current.name,
+                    reason: reason,
+                    client: client
+                )
+                return
+            }
+            let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
+            guard forceBalance || switched || due else { return }
+            self.lastOfficialFetch = Date()
+            SwitchLog.write(
+                "quota fetch started; client=\(client.rawValue); provider=\(current.name)",
+                level: .debug,
+                category: "network",
+                throttleKey: "quota-fetch-\(client.rawValue)-\(current.id)",
+                minimumInterval: 10
+            )
+            self.fetchOfficialQuota(
+                providerID: current.id,
+                providerName: current.name,
+                client: client
+            )
+            return
+        }
+
+        let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
+        let due = self.lastBalanceFetch.map { Date().timeIntervalSince($0) >= interval } ?? true
+        guard forceBalance || switched || due else { return }
+        self.lastBalanceFetch = Date()
+        SwitchLog.write(
+            "balance fetch started; client=\(client.rawValue); provider=\(current.name)",
+            level: .debug,
+            category: "network",
+            throttleKey: "balance-fetch-\(client.rawValue)-\(current.id)",
+            minimumInterval: 10
+        )
+        self.fetchBalance(
+            providerID: current.id,
+            providerName: current.name,
+            query: query,
+            client: client
+        )
+    }
+
+    private func refreshOpenCodex(
+        providerID: String,
+        providerName: String,
+        candidate: OpenCodexEndpointCandidate,
+        client: AssistantClient,
+        reason: BalanceRefreshReason,
+        switched: Bool
+    ) {
+        openCodexRepository.readState(for: candidate) { [weak self] result in
+            guard let self else { return }
+            self.monitorQueue.async {
+                guard self.activeClient == client,
+                      self.ccSwitchRepository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+                switch result {
+                case .notRecognized:
+                    self.confirmedOpenCodexCandidates.removeValue(forKey: providerID)
+                    self.confirmedOpenCodexStates.removeValue(forKey: providerID)
+                    self.resetOpenCodexCards()
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.openCodexState?.providerID == providerID else { return }
+                        self.openCodexState = nil
+                        self.openCodexCards = []
+                        self.openCodexSwitchInFlight = false
+                        self.refreshOpenCodexMenuBar()
+                    }
+                    guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
+                    self.refreshStandardProvider(
+                        current: current,
+                        client: client,
+                        forceBalance: reason.forcesStandardProviderBalance,
+                        switched: switched
+                    )
+                case .unavailable:
+                    if self.confirmedOpenCodexCandidates[providerID] == candidate,
+                       let previous = self.confirmedOpenCodexStates[providerID] {
+                        let unavailable = self.unavailableOpenCodexState(from: previous)
+                        self.confirmedOpenCodexStates[providerID] = unavailable
+                        self.publishOpenCodexCardsUnavailable(
+                            providerID: providerID,
+                            reason: tr(
+                                "OpenCodex 管理接口不可用",
+                                "OpenCodex management API is unavailable"
+                            )
+                        )
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self else { return }
+                            self.openCodexState = (providerID, unavailable)
+                            self.openCodexSwitchInFlight = false
+                        }
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: unavailable.currentSelector,
+                                status: self.openCodexStatusText(for: unavailable),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: client
+                        )
+                    } else {
+                        self.resetOpenCodexCards()
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.openCodexState?.providerID == providerID else { return }
+                            self.openCodexState = nil
+                            self.openCodexCards = []
+                            self.openCodexSwitchInFlight = false
+                            self.refreshOpenCodexMenuBar()
+                        }
+                        guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
+                        self.refreshStandardProvider(
+                            current: current,
+                            client: client,
+                            forceBalance: reason.forcesStandardProviderBalance,
+                            switched: switched
+                        )
+                    }
+                case .recognized(let state):
+                    self.confirmedOpenCodexCandidates[providerID] = candidate
+                    self.confirmedOpenCodexStates[providerID] = state
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.openCodexState = (providerID, state)
+                        self.openCodexSwitchInFlight = false
+                    }
+                    self.prepareOpenCodexCards(
+                        providerID: providerID,
+                        state: state,
+                        force: reason.forcesOpenCodexCardSources || switched
+                    )
+                    self.renderForCurrentProvider(
+                        .openCodex(
+                            providerName,
+                            selector: state.currentSelector,
+                            status: self.openCodexStatusText(for: state),
+                            Date()
+                        ),
+                        providerID: providerID,
+                        client: client
+                    )
+                }
+            }
+        }
+    }
+
+    private func resetOpenCodexCards() {
+        openCodexCardPlans = []
+        openCodexCardData = [:]
+        openCodexCardRefreshCoordinator.reset()
+        openCodexCardRequestsInFlight.removeAll()
+    }
+
+    private func prepareOpenCodexCards(
+        providerID: String,
+        state: OpenCodexRuntimeState,
+        force: Bool = false
+    ) {
+        let sources = ccSwitchRepository.loadSummarySources(appType: AssistantClient.codex.appType)
+        let plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
+        let refreshSources = makeOpenCodexCardRefreshSources(
+            plans: plans,
+            state: state,
+            sources: sources
+        )
+        let refreshPlan = openCodexCardRefreshCoordinator.plan(
+            sources: refreshSources,
+            now: Date(),
+            force: force,
+            allowRequests: state.managementAvailable,
+            inFlight: openCodexCardRequestsInFlight
+        )
+        let inFlightBefore = openCodexCardRequestsInFlight
+            .map(\.diagnosticName)
+            .sorted()
+            .joined(separator: ",")
+        let activeSources = Set(refreshSources.map(\OpenCodexCardRefreshSource.source))
+        openCodexCardRequestsInFlight.formIntersection(activeSources)
+        openCodexCardRequestsInFlight.subtract(refreshPlan.configurationChanged)
+        let plannedSources = refreshSources
+            .map { $0.source.diagnosticName }
+            .joined(separator: ",")
+        let dueSources = refreshPlan.dueSources
+            .map { $0.source.diagnosticName }
+            .joined(separator: ",")
+        let changedSources = refreshPlan.configurationChanged
+            .map(\.diagnosticName)
+            .sorted()
+            .joined(separator: ",")
+        let inFlightAfter = openCodexCardRequestsInFlight
+            .map(\.diagnosticName)
+            .sorted()
+            .joined(separator: ",")
+        SwitchLog.write(
+            "OpenCodex card refresh plan; provider_id=\(providerID); current_selector=\(state.currentSelector ?? "none"); management=\(state.managementAvailable); force=\(force); planned=[\(plannedSources)]; due=[\(dueSources)]; configuration_changed=[\(changedSources)]; in_flight_before=[\(inFlightBefore)]; in_flight_after=[\(inFlightAfter)]",
+            level: .debug,
+            category: "open-codex.coordinator",
+            throttleKey: "open-codex-plan-\(providerID)-\(plannedSources)-\(dueSources)-\(changedSources)-\(inFlightAfter)",
+            minimumInterval: 1
+        )
+        openCodexCardPlans = plans
+        var nextData: [OpenCodexCardSource: OpenCodexCardData] = [:]
+        for plan in plans {
+            switch plan.source {
+            case .unavailable:
+                continue
+            default:
+                if let cached = openCodexCardRefreshCoordinator.visibleData(for: plan.source) {
+                    nextData[plan.source] = cached
+                } else if state.managementAvailable {
+                    nextData[plan.source] = .loading(category: plan.source.category)
+                } else {
+                    nextData[plan.source] = .unavailable(
+                        category: plan.source.category,
+                        reason: tr(
+                            "OpenCodex 管理接口不可用",
+                            "OpenCodex management API is unavailable"
+                        )
+                    )
+                }
+            }
+        }
+        openCodexCardData = nextData
+        publishOpenCodexCards(providerID: providerID, plans: plans)
+
+        guard state.managementAvailable else { return }
+        for refreshSource in refreshPlan.dueSources {
+            let source = refreshSource.source
+            guard let generation = openCodexCardRefreshCoordinator.generation(for: source) else {
+                SwitchLog.write(
+                    "OpenCodex card request skipped; provider_id=\(providerID); source=\(source.diagnosticName); reason=missing-generation",
+                    level: .warning,
+                    category: "open-codex.coordinator"
+                )
+                continue
+            }
+            openCodexCardRequestsInFlight.insert(source)
+            SwitchLog.write(
+                "OpenCodex card request started; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); in_flight=\(openCodexCardRequestsInFlight.map(\.diagnosticName).sorted().joined(separator: ","))",
+                level: .debug,
+                category: "open-codex.request"
+            )
+            switch source {
+            case .official:
+                fetchOpenCodexOfficialCard(
+                    providerID: providerID,
+                    generation: generation
+                )
+            case .balance(let sourceID):
+                guard let summary = sources.first(where: { $0.id == sourceID }),
+                      let query = summary.query else {
+                    SwitchLog.write(
+                        "OpenCodex balance card request completed; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=unavailable/balance; reason=missing-query",
+                        level: .warning,
+                        category: "open-codex.request"
+                    )
+                    updateOpenCodexCard(
+                        providerID: providerID,
+                        generation: generation,
+                        source: source,
+                        data: .unavailable(
+                            category: .balance,
+                            reason: tr(
+                                "余额来源配置不完整",
+                                "The balance source configuration is incomplete"
+                            )
+                        )
+                    )
+                    continue
+                }
+                let requestStartedAt = Date()
+                let transportStarted = balanceAPIClient.fetchBalance(
+                    query: query,
+                    client: .codex,
+                    providerID: "opencodex-card:\(sourceID)"
+                ) { [weak self] result in
+                    guard let self else { return }
+                    let data: OpenCodexCardData
+                    switch result {
+                    case .success(let response):
+                        data = .balance(
+                            amount: response.output.amount,
+                            unit: response.output.unit,
+                            websiteURL: Self.secureOpenCodexWebsiteURL(
+                                summary.websiteURL ?? query.websiteURL
+                            ),
+                            updatedAt: Date()
+                        )
+                    case .failure(.nonHTTPS):
+                        data = .unavailable(
+                            category: .balance,
+                            reason: tr(
+                                "余额不可用：余额接口不是 HTTPS",
+                                "Balance unavailable: the balance endpoint is not HTTPS"
+                            )
+                        )
+                    default:
+                        data = .unavailable(
+                            category: .balance,
+                            reason: tr(
+                                "余额不可用：无法读取上游余额",
+                                "Balance unavailable: the upstream balance could not be read"
+                            )
+                        )
+                    }
+                    SwitchLog.write(
+                        "OpenCodex balance card request completed; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=\(data.diagnosticName); duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
+                        level: data.isSuccessful ? .debug : .warning,
+                        category: "open-codex.request"
+                    )
+                    self.monitorQueue.async {
+                        self.updateOpenCodexCard(
+                            providerID: providerID,
+                            generation: generation,
+                            source: source,
+                            data: data
+                        )
+                    }
+                }
+                SwitchLog.write(
+                    "OpenCodex balance card request registered; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); transport_started=\(transportStarted)",
+                    level: .debug,
+                    category: "open-codex.request"
+                )
+            case .unavailable:
+                openCodexCardRequestsInFlight.remove(source)
+                continue
+            }
+        }
+    }
+
+    private func makeOpenCodexCardRefreshSources(
+        plans: [OpenCodexCardPlan],
+        state: OpenCodexRuntimeState,
+        sources: [ProviderSummarySource]
+    ) -> [OpenCodexCardRefreshSource] {
+        var result: [OpenCodexCardRefreshSource] = []
+        var seen = Set<OpenCodexCardSource>()
+
+        for plan in plans {
+            guard seen.insert(plan.source).inserted else { continue }
+            switch plan.source {
+            case .official:
+                result.append(
+                    OpenCodexCardRefreshSource(
+                        source: .official,
+                        interval: 60,
+                        configurationFingerprint: officialOpenCodexCardFingerprint(
+                            plans: plans,
+                            state: state,
+                            sources: sources
+                        )
+                    )
+                )
+            case .balance(let sourceID):
+                guard let summary = sources.first(where: { $0.id == sourceID }),
+                      let query = summary.query else { continue }
+                result.append(
+                    OpenCodexCardRefreshSource(
+                        source: plan.source,
+                        interval: TimeInterval(max(query.intervalMinutes, 1) * 60),
+                        configurationFingerprint: balanceOpenCodexCardFingerprint(
+                            summary: summary,
+                            query: query,
+                            state: state,
+                            plans: plans
+                        )
+                    )
+                )
+            case .unavailable:
+                continue
+            }
+        }
+        return result
+    }
+
+    private func officialOpenCodexCardFingerprint(
+        plans: [OpenCodexCardPlan],
+        state: OpenCodexRuntimeState,
+        sources: [ProviderSummarySource]
+    ) -> String {
+        let providerFingerprint = plans.compactMap { plan in
+            guard let descriptor = state.providers[plan.provider], descriptor.isOfficial else {
+                return nil
+            }
+            return openCodexProviderFingerprint(descriptor)
+        }.joined(separator: ";")
+        let sourceFingerprint = sources.filter(\.isOfficial).map {
+            [
+                $0.id,
+                $0.name,
+                $0.websiteURL?.absoluteString ?? "",
+                $0.officialAccessToken.map { String($0.hashValue) } ?? "missing"
+            ].joined(separator: "|")
+        }.joined(separator: ";")
+        return "official:\(providerFingerprint):\(sourceFingerprint)"
+    }
+
+    private func balanceOpenCodexCardFingerprint(
+        summary: ProviderSummarySource,
+        query: BalanceQuery,
+        state: OpenCodexRuntimeState,
+        plans: [OpenCodexCardPlan]
+    ) -> String {
+        let providerFingerprint = plans.compactMap { plan in
+            guard case .balance(let sourceID) = plan.source,
+                  sourceID == summary.id,
+                  let descriptor = state.providers[plan.provider] else { return nil }
+            return openCodexProviderFingerprint(descriptor)
+        }.joined(separator: ";")
+        let headerNames = query.additionalHeaders.keys.sorted().joined(separator: ",")
+        return [
+            summary.id,
+            summary.name,
+            query.url,
+            String(query.intervalMinutes),
+            summary.websiteURL?.absoluteString ?? query.websiteURL?.absoluteString ?? "",
+            String(query.apiKey.hashValue),
+            headerNames,
+            String(query.isRightCode),
+            query.subscriptionPrefix,
+            String(query.isNewAPI),
+            String(describing: query.nativeBalanceProvider),
+            providerFingerprint
+        ].joined(separator: "|")
+    }
+
+    private func openCodexProviderFingerprint(
+        _ descriptor: OpenCodexProviderDescriptor
+    ) -> String {
+        [
+            descriptor.id,
+            descriptor.adapter,
+            descriptor.authMode,
+            descriptor.baseURL.absoluteString,
+            descriptor.defaultModel ?? "",
+            descriptor.models.joined(separator: ","),
+            String(descriptor.isOfficial)
+        ].joined(separator: "|")
+    }
+
+    private func fetchOpenCodexOfficialCard(
+        providerID: String,
+        generation: UUID
+    ) {
+        let requestStartedAt = Date()
+        officialQuotaClient.fetchQuota(
+            client: .codex,
+            providerID: providerID,
+            storedAccessToken: nil
+        ) { [weak self] result in
+            guard let self else { return }
+            let cardData: OpenCodexCardData
+            let status: Int
+            let dataSize: Int
+            let transportError: Bool
+            switch result {
+            case .success(let response):
+                let quota = response.output
+                cardData = .official(
+                    remaining: quota.remaining,
+                    label: quota.label,
+                    reset: quota.reset,
+                    updatedAt: Date()
+                )
+                status = 200
+                dataSize = response.dataSize
+                transportError = false
+            case .failure(.missingCredentials):
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：未找到官方登录态",
+                        "Quota unavailable: official sign-in credentials were not found"
+                    )
+                )
+                status = -1
+                dataSize = 0
+                transportError = false
+            case .failure(.httpStatus(let statusCode, let responseSize)):
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：官方额度接口暂时不可用",
+                        "Quota unavailable: the official quota endpoint is temporarily unavailable"
+                    )
+                )
+                status = statusCode
+                dataSize = responseSize
+                transportError = false
+            case .failure(.transport(_)):
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：官方额度接口暂时不可用",
+                        "Quota unavailable: the official quota endpoint is temporarily unavailable"
+                    )
+                )
+                status = -1
+                dataSize = 0
+                transportError = true
+            case .failure(.invalidJSON(let responseSize)),
+                 .failure(.unsupportedFormat(let responseSize)):
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：官方额度接口暂时不可用",
+                        "Quota unavailable: the official quota endpoint is temporarily unavailable"
+                    )
+                )
+                status = 200
+                dataSize = responseSize
+                transportError = false
+            }
+            SwitchLog.write(
+                "OpenCodex official card request completed; provider_id=\(providerID); source=official; generation=\(generation.uuidString); result=\(cardData.diagnosticName); status=\(status); bytes=\(dataSize); transport_error=\(transportError); duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
+                level: cardData.isSuccessful ? .debug : .warning,
+                category: "open-codex.request"
+            )
+            self.monitorQueue.async {
+                self.updateOpenCodexCard(
+                    providerID: providerID,
+                    generation: generation,
+                    source: .official,
+                    data: cardData
+                )
+            }
+        }
+    }
+
+    private func publishOpenCodexCards(
+        providerID: String,
+        plans: [OpenCodexCardPlan]
+    ) {
+        let cards = OpenCodexCardPlanner.cards(
+            plans: plans,
+            data: openCodexCardData
+        )
+        let cardSummary = cards.enumerated()
+            .map { index, card in
+                let source = plans.indices.contains(index)
+                    ? plans[index].source.diagnosticName
+                    : "unknown"
+                return "\(openCodexCardDiagnostic(card, index: index));source=\(source)"
+            }
+            .joined(separator: ";")
+        SwitchLog.write(
+            "OpenCodex cards publish prepared; provider_id=\(providerID); cards=[\(cardSummary)]",
+            level: .debug,
+            category: "open-codex.publish",
+            throttleKey: "open-codex-publish-\(providerID)-\(cardSummary)",
+            minimumInterval: 1
+        )
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.activeClient == .codex,
+                  self.openCodexState?.providerID == providerID else {
+                SwitchLog.write(
+                    "OpenCodex cards publish discarded on main; provider_id=\(providerID); active_client=\(self.activeClient.rawValue); state_provider_id=\(self.openCodexState?.providerID ?? "none")",
+                    level: .warning,
+                    category: "open-codex.publish"
+                )
+                return
+            }
+            self.openCodexCards = cards
+            if self.snapshot.kind == .openCodex {
+                self.refreshOpenCodexMenuBar()
+            }
+        }
+    }
+
+    private func refreshOpenCodexMenuBar() {
+        guard snapshot.kind == .openCodex else { return }
+        SwitchLog.write(
+            "OpenCodex menu bar refresh requested after card publish; card_count=\(openCodexCards.count); snapshot_selector=\(snapshot.unit ?? "none")",
+            level: .debug,
+            category: "open-codex.menu-bar",
+            throttleKey: "open-codex-menu-refresh-\(snapshot.unit ?? "none")-\(openCodexCards.map { $0.data.diagnosticName }.joined(separator: ","))",
+            minimumInterval: 1
+        )
+        updateStatusItem(for: snapshot)
+        if isStatusMenuTracking {
+            statusMenuNeedsRebuild = true
+        } else {
+            rebuildStatusMenu(
+                for: snapshot,
+                refreshDate: refreshDate(for: snapshot)
+            )
+        }
+    }
+
+    private func updateOpenCodexCard(
+        providerID: String,
+        generation: UUID,
+        source: OpenCodexCardSource,
+        data: OpenCodexCardData
+    ) {
+        guard let currentGeneration = openCodexCardRefreshCoordinator.generation(for: source) else {
+            SwitchLog.write(
+                "OpenCodex card completion discarded; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=\(data.diagnosticName); reason=source-removed",
+                level: .warning,
+                category: "open-codex.coordinator"
+            )
+            return
+        }
+        guard currentGeneration == generation else {
+            SwitchLog.write(
+                "OpenCodex card completion discarded; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); current_generation=\(currentGeneration.uuidString); result=\(data.diagnosticName); reason=stale-generation",
+                level: .warning,
+                category: "open-codex.coordinator"
+            )
+            return
+        }
+        guard let visibleData = openCodexCardRefreshCoordinator.store(
+            data,
+            for: source,
+            generation: generation
+        ) else {
+            SwitchLog.write(
+                "OpenCodex card completion discarded; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=\(data.diagnosticName); reason=store-rejected",
+                level: .warning,
+                category: "open-codex.coordinator"
+            )
+            return
+        }
+        openCodexCardRequestsInFlight.remove(source)
+        openCodexCardData[source] = visibleData
+        SwitchLog.write(
+            "OpenCodex card completion accepted; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); incoming=\(data.diagnosticName); visible=\(visibleData.diagnosticName); in_flight=\(openCodexCardRequestsInFlight.map(\.diagnosticName).sorted().joined(separator: ","))",
+            level: .debug,
+            category: "open-codex.coordinator"
+        )
+        publishOpenCodexCards(
+            providerID: providerID,
+            plans: openCodexCardPlans
+        )
+    }
+
+    private func publishOpenCodexCardsUnavailable(
+        providerID: String,
+        reason: String
+    ) {
+        for plan in openCodexCardPlans {
+            switch plan.source {
+            case .unavailable:
+                continue
+            default:
+                if let cached = openCodexCardRefreshCoordinator.visibleData(for: plan.source) {
+                    openCodexCardData[plan.source] = cached
+                } else {
+                    openCodexCardData[plan.source] = .unavailable(
+                        category: plan.source.category,
+                        reason: reason
+                    )
+                }
+            }
+        }
+        publishOpenCodexCards(
+            providerID: providerID,
+            plans: openCodexCardPlans
+        )
+    }
+
+    private func openCodexStatusText(for state: OpenCodexRuntimeState) -> String {
+        if !state.managementAvailable {
+            return tr(
+                "管理接口不可用，等待 OpenCodex 恢复",
+                "Management API unavailable; waiting for OpenCodex"
+            )
+        }
+        if !state.preferenceDataAvailable {
+            return tr(
+                "暂未读取到 OpenCodex 偏好",
+                "OpenCodex preferences are not available yet"
+            )
+        }
+        if state.preferences.isEmpty {
+            return tr(
+                "没有配置 OpenCodex 子项",
+                "No OpenCodex preferences configured"
+            )
+        }
+        if let current = state.currentSelector {
+            return tr("当前：\(current)", "Current: \(current)")
+        }
+        return tr(
+            "已读取 OpenCodex 偏好",
+            "OpenCodex preferences loaded"
+        )
+    }
+
+    private func unavailableOpenCodexState(
+        from state: OpenCodexRuntimeState
+    ) -> OpenCodexRuntimeState {
+        OpenCodexRuntimeState(
+            candidate: state.candidate,
+            defaultProvider: state.defaultProvider,
+            providerDefaultModels: state.providerDefaultModels,
+            providers: state.providers,
+            chosenSelectors: state.chosenSelectors,
+            availableSelectors: state.availableSelectors,
+            preferences: state.preferences,
+            managementAvailable: false,
+            preferenceDataAvailable: state.preferenceDataAvailable
+        )
     }
 
     private func prefetchCurrentBalance(for client: AssistantClient) {
@@ -4821,6 +6193,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard let self,
                   let current = ccSwitchRepository.loadCurrent(appType: client.appType)
             else { return }
+
+            if client == .codex,
+               let candidate = current.openCodexCandidate,
+               self.confirmedOpenCodexCandidates[current.id] == candidate {
+                return
+            }
 
             if let query = current.query {
                 SwitchLog.write(
@@ -4891,7 +6269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // A CC Switch database write may represent either a Provider
             // switch or a credential/configuration update. Bypass the normal
             // provider interval so the menu follows it immediately.
-            self?.refresh(forceBalance: true)
+            self?.refresh(reason: .configurationChanged)
             self?.refreshQuickSwitchSummaries(force: true)
         }
         syncWorkItem = workItem
@@ -4912,6 +6290,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.lastQuickSwitchFetch = Date()
 
             for source in ccSwitchRepository.loadSummarySources(appType: client.appType) {
+                if client == .codex,
+                   let candidate = source.openCodexCandidate,
+                   self.confirmedOpenCodexCandidates[source.id] == candidate {
+                    continue
+                }
                 if source.isOfficial {
                     // Avoid querying the macOS Keychain merely to decorate the
                     // quick-switch list. Official Claude quota is still loaded
@@ -5017,6 +6400,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         default:
             return "\(number) \(unit)"
         }
+    }
+
+    private static func secureOpenCodexWebsiteURL(_ url: URL?) -> URL? {
+        guard let url,
+              url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased(),
+              url.user == nil,
+              url.password == nil,
+              host != "localhost",
+              host != "::1",
+              !(host == "127.0.0.1" || host.hasPrefix("127.")) else {
+            return nil
+        }
+        return url
     }
 
     private static func localizedBalanceNetworkErrorReason(
@@ -5262,7 +6659,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 switch next.kind {
                 case .official, .balance:
                     self.clientSnapshots[client] = (providerID, next)
-                case .placeholder, .error:
+                case .placeholder, .openCodex, .error:
                     break
                 }
                 guard self.activeClient == client,
@@ -5328,7 +6725,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func rebuildStatusMenu(for snapshot: Snapshot, refreshDate: Date?) {
         statusMenu.removeAllItems()
-        statusMenu.addItem(makeOverviewMenuItem(for: snapshot, refreshDate: refreshDate))
+        if snapshot.kind == .openCodex {
+            if openCodexCards.isEmpty {
+                statusMenu.addItem(makeOpenCodexEmptyMenuItem())
+            } else {
+                for (index, card) in openCodexCards.enumerated() {
+                    statusMenu.addItem(makeOpenCodexCardMenuItem(card))
+                    if index < openCodexCards.count - 1 {
+                        statusMenu.addItem(.separator())
+                    }
+                }
+            }
+        } else {
+            statusMenu.addItem(makeOverviewMenuItem(for: snapshot, refreshDate: refreshDate))
+        }
         statusMenu.addItem(.separator())
         if showQuickSwitchMenu {
             statusMenu.addItem(makeQuickSwitchMenuItem())
@@ -5357,6 +6767,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 action: #selector(openCCSwitch),
                 keyEquivalent: ""
             ).target = self
+            if currentOpenCodexDashboardURL() != nil {
+                statusMenu.addItem(
+                    withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
+                    action: #selector(openOpenCodex),
+                    keyEquivalent: ""
+                ).target = self
+            }
         }
         if showStatusMenu {
             statusMenu.addItem(makeStatusLinksMenuItem())
@@ -5422,12 +6839,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let choiceSummary = choices.map {
             "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
         }.joined(separator: "|")
-        if choices.isEmpty {
+        let menuChoices = QuickSwitchMenuModel.entries(from: choices)
+        if menuChoices.isEmpty {
             let empty = NSMenuItem(title: tr("未找到 Codex 供应商", "No Codex Provider Found"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             submenu.addItem(empty)
         } else {
-            for choice in choices {
+            for choice in menuChoices {
                 let item = NSMenuItem(
                     title: "",
                     action: #selector(switchProvider(_:)),
@@ -5440,6 +6858,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 submenu.addItem(item)
             }
         }
+
         SwitchLog.write(
             "quick-switch menu built; app_type=\(activeClient.appType); choice_count=\(choices.count); submenu_item_count=\(submenu.items.count); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary); empty_state=\(choices.isEmpty)",
             level: .debug,
@@ -5463,31 +6882,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // command. Custom labels keep it bright while the item stays disabled.
         item.isEnabled = snapshot.kind == .balance && snapshot.websiteURL != nil
         let isBalance = snapshot.kind == .balance
-        let viewHeight: CGFloat = isBalance ? 86 : 102
-        let viewWidth: CGFloat = 304
-        let horizontalInset: CGFloat = 14
-        let contentWidth = viewWidth - (horizontalInset * 2)
-        let amountWidth: CGFloat = 141
-        let amountX = viewWidth - horizontalInset - amountWidth
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: viewWidth, height: viewHeight))
+        let layout = OpenCodexCardLayout.frames(
+            for: isBalance ? .balance : .quota,
+            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
+        )
+        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
 
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
-        provider.frame = NSRect(x: horizontalInset, y: isBalance ? 58 : 75, width: 189, height: 20)
+        provider.frame = layout.title
 
         if snapshot.kind == .official || snapshot.kind == .balance {
             let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
             let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.textColor = .secondaryLabelColor
             refreshTime.alignment = .right
-            refreshTime.frame = NSRect(x: 209, y: isBalance ? 59 : 76, width: 81, height: 17)
+            refreshTime.frame = layout.refreshTime
             view.addSubview(refreshTime)
         }
 
-        if let percentage = snapshot.progressPercentage {
+        if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
             // Keep the header clean. The progress bar belongs below the two
             // quota-detail rows, in the otherwise empty space above actions.
-            progress.frame = NSRect(x: horizontalInset, y: 8, width: contentWidth, height: 5)
+            progress.frame = progressFrame
             view.addSubview(progress)
         }
 
@@ -5500,43 +6917,213 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // Align the number with these two compact text rows instead.
             // Preserve the previous spacing above these rows. Only the empty
             // space below the link is reduced by the shorter card height.
-            quotaDetail.frame = NSRect(x: horizontalInset, y: 31, width: 128, height: 18)
-            amount.frame = NSRect(x: amountX, y: 5, width: amountWidth, height: 48)
+            quotaDetail.frame = layout.quotaDetail
+            amount.frame = layout.amount
 
             // Center the shared link row between the balance row and divider.
-            let linkRowY: CGFloat = 7
-
             let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = NSRect(x: 14, y: linkRowY, width: AppLanguage.usesSimplifiedChinese ? 62 : 72, height: 17)
+            linkPrefix.frame = layout.linkPrefix ?? .zero
             view.addSubview(linkPrefix)
 
-            if snapshot.websiteURL != nil {
+            if snapshot.websiteURL != nil, let linkFrame = layout.link {
                 let link = HoverLinkTextField(text: snapshot.provider)
                 link.onActivate = { [weak self] in self?.openProviderWebsite() }
                 // Match the prefix label's exact baseline and line box.
-                link.frame = NSRect(
-                    x: AppLanguage.usesSimplifiedChinese ? 75 : 87,
-                    y: linkRowY,
-                    width: AppLanguage.usesSimplifiedChinese ? 148 : 136,
-                    height: 17
-                )
+                link.frame = linkFrame
                 view.addSubview(link)
             }
         } else {
             // The following two rows form the left half of the quota display;
             // the amount spans both on right.
-            quotaDetail.frame = NSRect(x: horizontalInset, y: 47, width: 128, height: 18)
+            quotaDetail.frame = layout.quotaDetail
             let reset = makeOverviewLabel(snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter), font: .systemFont(ofSize: 13, weight: .regular))
             reset.textColor = .secondaryLabelColor
-            reset.frame = NSRect(x: horizontalInset, y: 28, width: 128, height: 17)
+            reset.frame = layout.reset ?? .zero
             // Visually center the large percentage across the combined height
             // of the two left-hand rows (equivalent to merged-cell centering).
-            amount.frame = NSRect(x: amountX, y: 18, width: amountWidth, height: 48)
+            amount.frame = layout.amount
             view.addSubview(reset)
         }
 
         [provider, quotaDetail, amount].forEach(view.addSubview)
+        item.view = view
+        return item
+    }
+
+    private func makeOpenCodexEmptyMenuItem() -> NSMenuItem {
+        let item = NSMenuItem()
+        item.isEnabled = false
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 68))
+        let title = makeOverviewLabel(
+            tr("OpenCodex", "OpenCodex"),
+            font: .systemFont(ofSize: 15, weight: .semibold)
+        )
+        title.frame = NSRect(x: 14, y: 38, width: 220, height: 20)
+        let status: String
+        if let state = openCodexState?.state, !state.managementAvailable {
+            status = tr(
+                "OpenCodex 管理接口不可用",
+                "OpenCodex management API is unavailable"
+            )
+        } else if openCodexState?.state.preferenceDataAvailable == false {
+            status = tr(
+                "暂未读取到 OpenCodex 精选模型",
+                "OpenCodex chosen models are not available yet"
+            )
+        } else {
+            status = tr(
+                "没有配置 OpenCodex 精选模型",
+                "No OpenCodex chosen models are configured"
+            )
+        }
+        let detail = makeOverviewLabel(status, font: .systemFont(ofSize: 12))
+        detail.textColor = .secondaryLabelColor
+        detail.frame = NSRect(x: 14, y: 14, width: 312, height: 18)
+        [title, detail].forEach(view.addSubview)
+        item.view = view
+        return item
+    }
+
+    private func makeOpenCodexCardMenuItem(_ card: OpenCodexModelCard) -> NSMenuItem {
+        let item = NSMenuItem()
+        let category = card.data.category
+        let layout = OpenCodexCardLayout.frames(
+            for: category,
+            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
+        )
+        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
+
+        let titleText = OpenCodexCardPresentation.identity(for: card)
+            + (card.isCurrent ? tr(" · 当前", " · Current") : "")
+        let provider = makeOverviewLabel(
+            titleText,
+            font: .systemFont(ofSize: 15, weight: .semibold)
+        )
+        provider.frame = layout.title
+
+        let updatedAt: Date?
+        switch card.data {
+        case .official(_, _, _, let date), .balance(_, _, _, let date):
+            updatedAt = date
+        case .loading, .unavailable:
+            updatedAt = nil
+        }
+        let refreshTime = makeOverviewLabel(
+            updatedAt.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--",
+            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        )
+        refreshTime.textColor = .secondaryLabelColor
+        refreshTime.alignment = .right
+        refreshTime.frame = layout.refreshTime
+
+        let primary: NSTextField
+        let detail: NSTextField
+        let secondary: NSTextField
+        var progress: QuotaProgressView?
+        var websiteLink: HoverLinkTextField?
+
+        switch card.data {
+        case .official(let remaining, let label, let reset, _):
+            progress = QuotaProgressView(percentage: remaining)
+            progress?.frame = layout.progress ?? .zero
+            primary = makeOverviewLabel(
+                "\(Int(remaining))%",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                label,
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                reset.map { tr("重置：\($0)", "Reset: \($0)") }
+                    ?? tr("重置时间不可用", "Reset time unavailable"),
+                font: .systemFont(ofSize: 13, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.reset ?? .zero
+        case .balance(let amount, let unit, let websiteURL, _):
+            primary = makeOverviewLabel(
+                Self.formatBalanceSummary(amount, unit: unit),
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                tr("剩余额度", "Remaining Balance"),
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                tr("官方链接：", "Official Link:"),
+                font: .systemFont(ofSize: 12, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.linkPrefix ?? .zero
+            if let websiteURL, let linkFrame = layout.link {
+                let link = HoverLinkTextField(text: card.provider)
+                link.frame = linkFrame
+                link.onActivate = { NSWorkspace.shared.open(websiteURL) }
+                websiteLink = link
+            }
+        case .loading:
+            primary = makeOverviewLabel(
+                "—",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                category == .quota
+                    ? tr("正在读取额度…", "Reading quota…")
+                    : tr("正在读取余额…", "Reading balance…"),
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                tr("尚未获得真实数据", "No live data received yet"),
+                font: .systemFont(ofSize: 13, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
+        case .unavailable(_, let reason):
+            primary = makeOverviewLabel(
+                "—",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                category.unavailableTitle,
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                reason,
+                font: .systemFont(ofSize: 12, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.lineBreakMode = .byTruncatingTail
+            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
+        }
+
+        [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
+        if let progress { view.addSubview(progress) }
+        if let websiteLink { view.addSubview(websiteLink) }
+
+        let preference = openCodexState?.state.preferences.first {
+            $0.selector == card.selector
+        }
+        item.target = self
+        item.action = #selector(switchOpenCodexPreference(_:))
+        item.representedObject = preference
+        item.state = card.isCurrent ? .on : .off
+        item.isEnabled = preference != nil
+            && openCodexState?.state.managementAvailable == true
+            && !openCodexSwitchInFlight
         item.view = view
         return item
     }

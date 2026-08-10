@@ -24,14 +24,22 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     /// Offline URLProtocol stub. No request can leave this test target.
     private final class StubURLProtocol: URLProtocol {
+        private struct HeldResponse {
+            let loader: StubURLProtocol
+            let request: URLRequest
+            let result: StubResult
+        }
+
         private static let stateLock = NSLock()
         private static var requestHandler: ((URLRequest) -> StubResult)?
         private static var recordedRequests: [URLRequest] = []
+        private static var heldResponses: [HeldResponse] = []
 
         static func reset() {
             stateLock.lock()
             requestHandler = nil
             recordedRequests = []
+            heldResponses = []
             stateLock.unlock()
         }
 
@@ -53,6 +61,14 @@ final class OfficialQuotaClientTests: XCTestCase {
             return recordedRequests.last
         }
 
+        static func releaseHeldResponses() {
+            stateLock.lock()
+            let held = heldResponses
+            heldResponses = []
+            stateLock.unlock()
+            held.forEach { $0.loader.deliver($0.result, for: $0.request) }
+        }
+
         override class func canInit(with request: URLRequest) -> Bool { true }
 
         override class func canonicalRequest(for request: URLRequest) -> URLRequest {
@@ -65,7 +81,18 @@ final class OfficialQuotaClientTests: XCTestCase {
             let handler = Self.requestHandler
             Self.stateLock.unlock()
             let result = handler?(request) ?? StubResult(data: Data("{}".utf8))
-            if result.holdsResponse { return }
+            if result.holdsResponse {
+                Self.stateLock.lock()
+                Self.heldResponses.append(
+                    HeldResponse(loader: self, request: request, result: result)
+                )
+                Self.stateLock.unlock()
+                return
+            }
+            deliver(result, for: request)
+        }
+
+        private func deliver(_ result: StubResult, for request: URLRequest) {
             if let error = result.error {
                 client?.urlProtocol(self, didFailWithError: error)
                 return
@@ -181,6 +208,102 @@ final class OfficialQuotaClientTests: XCTestCase {
             request.value(forHTTPHeaderField: "Authorization"),
             "Bearer fixture-stored-value"
         )
+    }
+
+    func testOverlappingCredentialSourcesDoNotShareTransport() throws {
+        let requestsStarted = expectation(description: "both credential-source requests reached URLProtocol")
+        requestsStarted.expectedFulfillmentCount = 2
+        let observedLock = NSLock()
+        var observedAuthorizationHeaders: [String] = []
+        let localBody = Data(#"{"rate_limit":{"secondary_window":{"used_percent":"10","limit_window_seconds":604800,"reset_after_seconds":5400}}}"#.utf8)
+        let storedBody = Data(#"{"rate_limit":{"secondary_window":{"used_percent":"70","limit_window_seconds":604800,"reset_after_seconds":5400}}}"#.utf8)
+
+        StubURLProtocol.setHandler { request in
+            let authorization = request.value(forHTTPHeaderField: "Authorization") ?? "<missing>"
+            observedLock.lock()
+            observedAuthorizationHeaders.append(authorization)
+            observedLock.unlock()
+            requestsStarted.fulfill()
+            switch authorization {
+            case "Bearer fixture-local-source":
+                return StubResult(data: localBody, holdsResponse: true)
+            case "Bearer fixture-stored-source":
+                return StubResult(data: storedBody, holdsResponse: true)
+            default:
+                return StubResult(statusCode: 500, data: Data(#"{"error":"unexpected fixture"}"#.utf8))
+            }
+        }
+
+        let client = makeClient(codexToken: "fixture-local-source")
+        let localCompletion = expectation(description: "local credential source completed")
+        let storedCompletion = expectation(description: "stored credential source completed")
+        var localResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
+        var storedResult: Result<OfficialQuotaResult, OfficialQuotaClientError>?
+
+        let localStarted = client.fetchQuota(
+            client: .codex,
+            providerID: "overlapping-provider",
+            storedAccessToken: nil
+        ) { result in
+            localResult = result
+            localCompletion.fulfill()
+        }
+        let storedStarted = client.fetchQuota(
+            client: .codex,
+            providerID: "overlapping-provider",
+            storedAccessToken: "fixture-stored-source"
+        ) { result in
+            storedResult = result
+            storedCompletion.fulfill()
+        }
+
+        XCTAssertTrue(localStarted)
+        XCTAssertTrue(storedStarted)
+        wait(for: [requestsStarted], timeout: 2)
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
+        StubURLProtocol.releaseHeldResponses()
+        wait(for: [localCompletion, storedCompletion], timeout: 2)
+
+        guard case .success(let localResponse) = localResult else {
+            return XCTFail("expected local credential source success, got \(String(describing: localResult))")
+        }
+        guard case .success(let storedResponse) = storedResult else {
+            return XCTFail("expected stored credential source success, got \(String(describing: storedResult))")
+        }
+        XCTAssertEqual(localResponse.output.remaining, 90, accuracy: 0.000001)
+        XCTAssertEqual(storedResponse.output.remaining, 30, accuracy: 0.000001)
+
+        observedLock.lock()
+        let authorizationHeaders = observedAuthorizationHeaders
+        observedLock.unlock()
+        XCTAssertEqual(
+            Set(authorizationHeaders),
+            Set(["Bearer fixture-local-source", "Bearer fixture-stored-source"])
+        )
+
+        let localKey = OfficialQuotaClient.requestKey(
+            client: .codex,
+            providerID: "overlapping-provider",
+            credentialSource: .localReader
+        )
+        let storedKey = OfficialQuotaClient.requestKey(
+            client: .codex,
+            providerID: "overlapping-provider",
+            credentialSource: .storedAccessToken
+        )
+        XCTAssertNotEqual(localKey, storedKey)
+        XCTAssertFalse(localKey.contains("fixture-local-source"))
+        XCTAssertFalse(storedKey.contains("fixture-stored-source"))
+        XCTAssertFalse(client.isRequestInFlight(
+            client: .codex,
+            providerID: "overlapping-provider",
+            credentialSource: .localReader
+        ))
+        XCTAssertFalse(client.isRequestInFlight(
+            client: .codex,
+            providerID: "overlapping-provider",
+            credentialSource: .storedAccessToken
+        ))
     }
 
     func testMissingCredentialsCompletesWithoutStartingTransport() throws {

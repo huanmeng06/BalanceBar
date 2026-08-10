@@ -31,6 +31,13 @@ struct OfficialQuotaResult {
     let dataSize: Int
 }
 
+/// Identifies the credential path used by a request without retaining the
+/// credential itself in request-deduplication state.
+enum OfficialQuotaCredentialSource: String, Hashable {
+    case localReader = "local-reader"
+    case storedAccessToken = "stored-access-token"
+}
+
 protocol OfficialQuotaCredentialReading {
     func codexAccessToken() -> String?
     func claudeAccessToken() -> String?
@@ -140,16 +147,40 @@ final class OfficialQuotaClient {
         self.parser = parser
     }
 
-    static func requestKey(client: AssistantClient, providerID: String) -> String {
-        "official:\(client.rawValue):\(providerID)"
+    static func credentialSource(
+        client: AssistantClient,
+        storedAccessToken: String?
+    ) -> OfficialQuotaCredentialSource {
+        client == .codex && storedAccessToken != nil
+            ? .storedAccessToken
+            : .localReader
     }
 
-    func isRequestInFlight(client: AssistantClient, providerID: String) -> Bool {
-        inFlight.contains(key: Self.requestKey(client: client, providerID: providerID))
+    static func requestKey(
+        client: AssistantClient,
+        providerID: String,
+        credentialSource: OfficialQuotaCredentialSource = .localReader
+    ) -> String {
+        "official:\(client.rawValue):\(providerID):\(credentialSource.rawValue)"
     }
 
-    /// Starts one request for a client/provider key. Duplicate consumers share
-    /// the transport and each receives its result, matching BalanceAPIClient.
+    func isRequestInFlight(
+        client: AssistantClient,
+        providerID: String,
+        credentialSource: OfficialQuotaCredentialSource = .localReader
+    ) -> Bool {
+        inFlight.contains(
+            key: Self.requestKey(
+                client: client,
+                providerID: providerID,
+                credentialSource: credentialSource
+            )
+        )
+    }
+
+    /// Starts one request for a client/provider/credential-source key.
+    /// Duplicate consumers with the same source share the transport and each
+    /// receives its result, matching BalanceAPIClient.
     @discardableResult
     func fetchQuota(
         client: AssistantClient,
@@ -157,12 +188,20 @@ final class OfficialQuotaClient {
         storedAccessToken: String? = nil,
         completion: @escaping (Result<OfficialQuotaResult, OfficialQuotaClientError>) -> Void
     ) -> Bool {
+        let credentialSource = Self.credentialSource(
+            client: client,
+            storedAccessToken: storedAccessToken
+        )
         guard let request = makeRequest(client: client, storedAccessToken: storedAccessToken) else {
             completion(.failure(.missingCredentials))
             return true
         }
 
-        let key = Self.requestKey(client: client, providerID: providerID)
+        let key = Self.requestKey(
+            client: client,
+            providerID: providerID,
+            credentialSource: credentialSource
+        )
         let registry = inFlight
         guard registry.register(key: key, completion: completion) else {
             return false
@@ -228,8 +267,16 @@ final class OfficialQuotaClient {
 
     /// Cancels a request and immediately releases all consumers. URLSession may
     /// still deliver a late cancellation callback, but the registry ignores it.
-    func cancelQuota(client: AssistantClient, providerID: String) {
-        let key = Self.requestKey(client: client, providerID: providerID)
+    func cancelQuota(
+        client: AssistantClient,
+        providerID: String,
+        credentialSource: OfficialQuotaCredentialSource = .localReader
+    ) {
+        let key = Self.requestKey(
+            client: client,
+            providerID: providerID,
+            credentialSource: credentialSource
+        )
         let completions = inFlight.cancel(key: key)
         let result: Result<OfficialQuotaResult, OfficialQuotaClientError> =
             .failure(.transport(.urlError(.cancelled)))
