@@ -17,6 +17,9 @@ final class CodexActivityMonitor {
         "task_complete", "task_completed", "task_stopped", "task_failed", "task_cancelled",
         "turn_complete", "turn_completed", "turn_aborted", "turn_failed", "turn_cancelled"
     ]
+    private static let responseTerminalTypes: Set<String> = [
+        "response.completed", "response.failed", "response.incomplete", "response.cancelled"
+    ]
 
     private struct SessionCache {
         let size: UInt64
@@ -102,6 +105,7 @@ final class CodexActivityMonitor {
         guard let data = try? handle.readToEnd() else { return false }
         let text = String(decoding: data, as: UTF8.self)
         var running = false
+        var terminalSeen = false
         for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
             guard let lineData = String(line).data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
@@ -112,17 +116,30 @@ final class CodexActivityMonitor {
                    let phase = payload["phase"] as? String,
                    Self.terminalPhases.contains(phase) {
                     running = false
-                } else if payloadType == "task_started" || payloadType == "user_message" || payloadType == "agent_message" {
-                    running = true
-                } else if Self.terminalTypes.contains(payloadType) {
+                    terminalSeen = true
+                } else if Self.terminalTypes.contains(payloadType)
+                            || Self.responseTerminalTypes.contains(payloadType) {
                     running = false
+                    terminalSeen = true
+                } else if payloadType == "task_started" || payloadType == "user_message" {
+                    running = true
+                    terminalSeen = false
+                } else if payloadType == "agent_message", !terminalSeen {
+                    running = true
                 }
             } else if topType == "response_item", let payload = object["payload"] as? [String: Any] {
                 let phase = payload["phase"] as? String
                 if let phase, Self.terminalPhases.contains(phase) {
                     running = false
-                } else {
+                    terminalSeen = true
+                } else if payload["role"] as? String == "user" {
                     running = true
+                    terminalSeen = false
+                } else if !terminalSeen {
+                    running = true
+                } else {
+                    // Ignore trailing response items after a terminal event.
+                    // A new user message above is the explicit start of another turn.
                 }
             }
         }
@@ -148,7 +165,9 @@ final class CodexActivityMonitor {
         let completion = ([
             "\(normalized) like '%\"phase\":\"final\"%'",
             "\(normalized) like '%\"phase\":\"final_answer\"%'"
-        ] + Self.terminalTypes.sorted().map { "\(normalized) like '%\"type\":\"\($0)\"%'" })
+        ] + (Self.terminalTypes.union(Self.responseTerminalTypes)).sorted().map {
+            "\(normalized) like '%\"type\":\"\($0)\"%'"
+        })
             .joined(separator: " or ")
         let sql = """
         select
@@ -176,7 +195,8 @@ final class CodexActivityMonitor {
             }
             // Events can share a one-second timestamp. Keep a short grace
             // period so an active stream does not flicker off at that boundary.
-            if latestActivity > 0, latestActivity >= latestDone, nowEpoch - latestActivity < 20 {
+            // A known completion wins when both events have the same timestamp.
+            if latestActivity > 0, latestDone == 0, nowEpoch - latestActivity < 20 {
                 return true
             }
         }

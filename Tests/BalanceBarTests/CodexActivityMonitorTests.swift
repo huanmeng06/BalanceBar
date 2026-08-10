@@ -24,11 +24,32 @@ final class CodexActivityMonitorTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testRecentRolloutActivityIsDetected() throws {
+    func testActiveTaskIsDetected() throws {
         let sessionURL = try writeSession([eventMessage("task_started")])
         try makeStateDatabase(rolloutPath: sessionURL.path)
 
         XCTAssertTrue(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testIdleLaunchWithRecentlyCompletedLogIsInactive() throws {
+        let timestamp = epoch - 5
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: timestamp, body: #"{"type":"response.output_text.delta"}"#),
+            (threadID: "fixture-thread", timestamp: timestamp, body: #"{"type":"response.completed","response":{"status":"completed"}}"#)
+        ])
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testCompletedRolloutWithTrailingResponseItemIsInactive() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("task_complete"),
+            #"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[]}}"#
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
     }
 
     func testCompletionEventsStopRolloutActivity() throws {
@@ -50,6 +71,35 @@ final class CodexActivityMonitorTests: XCTestCase {
         try makeStateDatabase(rolloutPath: sessionURL.path)
 
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testTransitionToFinalThenNextPollIsInactive() throws {
+        let sessionURL = try writeSession([eventMessage("task_started")])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try appendSession([responseItem(phase: "final")], to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(1.1)
+
+        XCTAssertFalse(monitor.isTaskRunning(now: currentDate))
+    }
+
+    func testSessionCacheInvalidatesAcrossActiveToCompletedTransition() throws {
+        let sessionURL = try writeSession([eventMessage("task_started")])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try appendSession([eventMessage("task_complete")], to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(0.1)
+
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "a changed rollout file must invalidate the cached active result before the path cache refreshes"
+        )
     }
 
     func testExpiredLogActivityIsIgnored() throws {
@@ -115,6 +165,13 @@ final class CodexActivityMonitorTests: XCTestCase {
         let contents = lines.joined(separator: "\n") + "\n"
         try Data(contents.utf8).write(to: url)
         return url
+    }
+
+    private func appendSession(_ lines: [String], to url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
+        try handle.close()
     }
 
     private func eventMessage(_ type: String) -> String {
