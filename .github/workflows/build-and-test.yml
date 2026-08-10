@@ -44,5 +44,7 @@ jobs:
           -scheme BalanceBar
           -configuration Debug
           -derivedDataPath "$RUNNER_TEMP/BalanceBar-Test-DerivedData"
+          -destination 'platform=macOS,arch=arm64'
           CODE_SIGNING_ALLOWED=NO
+          -parallel-testing-enabled NO
           test

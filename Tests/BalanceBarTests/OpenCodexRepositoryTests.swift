@@ -70,6 +70,113 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
+    func testLoopbackCandidateBuildsDynamicDashboardURLAndRejectsNonCurrentProvider() {
+        let ipv4 = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://127.0.0.1:23456/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertEqual(
+            ipv4.dashboardURL,
+            URL(string: "http://127.0.0.1:23456/#dashboard")
+        )
+
+        let localhost = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "https://localhost:34567/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertEqual(
+            localhost.dashboardURL,
+            URL(string: "https://localhost:34567/#dashboard")
+        )
+
+        let ipv6 = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://[::1]:45678/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertEqual(
+            ipv6.dashboardURL,
+            URL(string: "http://[::1]:45678/#dashboard")
+        )
+
+        XCTAssertNil(
+            OpenCodexCardPresentation.dashboardURL(
+                confirmedProviderID: "open-codex",
+                currentProviderID: "another-provider",
+                candidate: ipv4
+            )
+        )
+        XCTAssertEqual(
+            OpenCodexCardPresentation.dashboardURL(
+                confirmedProviderID: "open-codex",
+                currentProviderID: "open-codex",
+                candidate: ipv4
+            ),
+            ipv4.dashboardURL
+        )
+
+        let remote = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "https://provider.example.test:56789/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertNil(remote.dashboardURL)
+    }
+
+    func testLoopbackHostValidationRequiresARealIPv4Address() {
+        for host in ["127.0.0.1", "127.0.0.2", "localhost", "::1"] {
+            let urlHost = host.contains(":") ? "[\(host)]" : host
+            let candidate = OpenCodexEndpointCandidate(
+                baseURL: URL(string: "http://\(urlHost):23456/v1")!,
+                modelProvider: "custom",
+                wireAPI: "responses"
+            )
+            XCTAssertNotNil(candidate.dashboardURL, "expected \(host) to be accepted")
+        }
+
+        for host in ["127.0.0.evil", "127.0.0.999", "192.168.1.1", "provider.example"] {
+            let candidate = OpenCodexEndpointCandidate(
+                baseURL: URL(string: "http://\(host):23456/v1")!,
+                modelProvider: "custom",
+                wireAPI: "responses"
+            )
+            XCTAssertNil(candidate.dashboardURL, "expected \(host) to be rejected")
+        }
+    }
+
+    func testMalformedLoopbackPrefixCannotReceiveAdminToken() {
+        let maliciousCandidate = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://127.0.0.evil:23456/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertNil(maliciousCandidate.dashboardURL)
+
+        let transport = MutableOpenCodexTransport(candidate: maliciousCandidate)
+        let tokenProvider = CountingTokenProvider()
+        let repository = OpenCodexRepository(
+            transport: transport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: tokenProvider
+        )
+        let expectation = expectation(description: "reject malformed loopback prefix")
+
+        repository.readState(for: maliciousCandidate) { result in
+            guard case .notRecognized = result else {
+                XCTFail("expected a malformed loopback prefix to remain ordinary")
+                expectation.fulfill()
+                return
+            }
+            XCTAssertEqual(tokenProvider.calls, 0)
+            XCTAssertTrue(transport.requests.isEmpty)
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2)
+    }
+
     func testProviderDescriptorClassificationUsesAdapterAuthAndEndpointNotModelName() {
         let official = OpenCodexProviderDescriptor.parse(
             id: "official",
@@ -92,6 +199,28 @@ final class OpenCodexRepositoryTests: XCTestCase {
 
         XCTAssertEqual(official?.isOfficial, true)
         XCTAssertEqual(thirdParty?.isOfficial, false)
+    }
+
+    func testProviderDescriptorKeepsApiKeyAndPoolForInMemoryIdentityMatching() {
+        let descriptor = OpenCodexProviderDescriptor.parse(
+            id: "tokenshop",
+            object: [
+                "adapter": "openai-responses",
+                "authMode": "key",
+                "baseUrl": "https://api.tokenshop.homes/v1",
+                "apiKey": " primary-key ",
+                "apiKeyPool": [
+                    "secondary-key",
+                    "",
+                    ["apiKey": "pool-key"],
+                ],
+            ]
+        )
+
+        XCTAssertEqual(
+            descriptor?.apiKeys,
+            ["primary-key", "secondary-key", "pool-key"]
+        )
     }
 
     func testReadsStableMaximumFiveChosenPreferencesAndCurrentSelection() {
@@ -336,6 +465,42 @@ final class OpenCodexRepositoryTests: XCTestCase {
         wait(for: [expectation], timeout: 2)
     }
 
+    func testManagementStateMergesLocalProviderCredentialsWhenAPIConfigIsRedacted() {
+        let transport = MutableOpenCodexTransport(candidate: candidate)
+        let localDescriptor = OpenCodexProviderDescriptor(
+            id: "tokenshop",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "https://tokenshop.example.test/v1")!,
+            apiKeys: ["local-matching-key"]
+        )
+        let local = OpenCodexLocalConfigSnapshot(
+            port: candidate.port,
+            defaultProvider: "tokenshop",
+            providerDefaultModels: ["tokenshop": "gpt-5.6-sol"],
+            chosenSelectors: ["tokenshop/gpt-5.6-sol"],
+            providers: ["tokenshop": localDescriptor]
+        )
+        let repository = OpenCodexRepository(
+            transport: transport,
+            configReader: StubConfigReader(snapshot: local),
+            tokenProvider: NoTokenProvider()
+        )
+        let expectation = expectation(description: "merge local provider credentials")
+
+        repository.readState(for: candidate) { result in
+            guard case .recognized(let state) = result else {
+                XCTFail("expected OpenCodex management state")
+                expectation.fulfill()
+                return
+            }
+            XCTAssertEqual(state.providers["tokenshop"]?.apiKeys, ["local-matching-key"])
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2)
+    }
+
     func testUnverifiedLoopbackCandidateDoesNotBecomeOpenCodex() {
         let repository = OpenCodexRepository(
             transport: AlwaysFailTransport(),
@@ -472,6 +637,71 @@ final class OpenCodexRepositoryTests: XCTestCase {
             .balance(providerID: "relay-source"),
             .balance(providerID: "relay-source"),
         ])
+    }
+
+    func testCardPlannerUsesUniqueCredentialToDisambiguateDuplicateBalanceSources() {
+        let descriptor = OpenCodexProviderDescriptor(
+            id: "tokenshop",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "https://api.tokenshop.homes/v1")!,
+            apiKeys: ["unused-key", "matching-key"]
+        )
+        let state = makeCardState(
+            selectors: ["tokenshop/gpt-5.6-sol"],
+            descriptors: ["tokenshop": descriptor]
+        )
+        let sources = [
+            tokenshopSummarySource(
+                id: "tokenshop-lower",
+                name: "tokenshop",
+                apiKey: "matching-key"
+            ),
+            tokenshopSummarySource(
+                id: "tokenshop-upper",
+                name: "Tokenshop",
+                apiKey: "different-key"
+            ),
+        ]
+
+        let plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
+
+        XCTAssertEqual(plans[0].source, .balance(providerID: "tokenshop-lower"))
+    }
+
+    func testCardPlannerKeepsDuplicateBalanceSourcesUnavailableWithoutCredentialMatch() {
+        let descriptor = OpenCodexProviderDescriptor(
+            id: "tokenshop",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "https://api.tokenshop.homes/v1")!,
+            apiKeys: ["open-codex-key"]
+        )
+        let state = makeCardState(
+            selectors: ["tokenshop/gpt-5.6-sol"],
+            descriptors: ["tokenshop": descriptor]
+        )
+        let sources = [
+            tokenshopSummarySource(
+                id: "tokenshop-lower",
+                name: "tokenshop",
+                apiKey: "different-key-a"
+            ),
+            tokenshopSummarySource(
+                id: "tokenshop-upper",
+                name: "Tokenshop",
+                apiKey: "different-key-b"
+            ),
+        ]
+
+        let plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
+
+        guard case .unavailable(.balance, let reason) = plans[0].source else {
+            return XCTFail("duplicate sources without a credential match must remain unavailable")
+        }
+        XCTAssertTrue(reason.contains("多个余额来源") || reason.contains("Multiple balance sources"))
+        XCTAssertFalse(reason.contains("未找到可验证的余额来源"))
+        XCTAssertFalse(reason.contains("No verifiable balance source"))
     }
 
     func testCardPlannerExcludesOpenCodexLoopbackBalanceSourceAndMarksMissingData() {
@@ -1052,11 +1282,35 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
-    private func fixtureBalanceQuery(url: String) -> BalanceQuery {
+    private func tokenshopSummarySource(
+        id: String,
+        name: String,
+        apiKey: String
+    ) -> ProviderSummarySource {
+        ProviderSummarySource(
+            id: id,
+            name: name,
+            isOfficial: false,
+            query: fixtureBalanceQuery(
+                url: "https://api.tokenshop.homes/user/balance",
+                apiKey: apiKey,
+                websiteURL: URL(string: "https://tokenshop.homes")!
+            ),
+            officialAccessToken: nil,
+            openCodexCandidate: nil,
+            websiteURL: URL(string: "https://tokenshop.homes")!
+        )
+    }
+
+    private func fixtureBalanceQuery(
+        url: String,
+        apiKey: String = "test-only",
+        websiteURL: URL = URL(string: "https://relay.example.test")!
+    ) -> BalanceQuery {
         BalanceQuery(
             url: url,
-            websiteURL: URL(string: "https://relay.example.test")!,
-            apiKey: "test-only",
+            websiteURL: websiteURL,
+            apiKey: apiKey,
             intervalMinutes: 30,
             timeoutSeconds: 5,
             isRightCode: false,
@@ -1138,32 +1392,32 @@ private final class MutableOpenCodexTransport: OpenCodexHTTPTransport {
         _ request: URLRequest,
         completion: @escaping (Result<OpenCodexHTTPResponse, Error>) -> Void
     ) {
-        DispatchQueue.global().async { [weak self] in
-            guard let self else { return }
-            let method = request.httpMethod ?? "GET"
-            let path = request.url?.path ?? ""
-            let queryName = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "name" })?.value
-            self.lock.lock()
-            self.requests.append(RequestRecord(method: method, path: path, queryName: queryName))
-            let shouldFailWrite: Bool
-            if method == "GET" {
-                shouldFailWrite = false
-            } else {
-                self.writeRequestCount += 1
-                shouldFailWrite = self.failWrites || self.failWriteAt == self.writeRequestCount
-            }
-            let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-            let response: OpenCodexHTTPResponse
-            if self.failSubagentReads && method == "GET" && path == "/api/subagent-models" {
-                response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
-            } else if shouldFailWrite {
-                response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
-            } else {
-                response = self.response(method: method, path: path, queryName: queryName, body: body)
-            }
-            self.lock.unlock()
-            completion(.success(response))
+        // Keep this fixture deterministic across Xcode test-host versions.
+        // The production URLSession transport remains asynchronous; this
+        // mock must not race its preconfigured failure flags with readState.
+        let method = request.httpMethod ?? "GET"
+        let path = request.url?.path ?? ""
+        let queryName = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "name" })?.value
+        lock.lock()
+        requests.append(RequestRecord(method: method, path: path, queryName: queryName))
+        let shouldFailWrite: Bool
+        if method == "GET" {
+            shouldFailWrite = false
+        } else {
+            writeRequestCount += 1
+            shouldFailWrite = failWrites || failWriteAt == writeRequestCount
         }
+        let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let response: OpenCodexHTTPResponse
+        if failSubagentReads && method == "GET" && path == "/api/subagent-models" {
+            response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
+        } else if shouldFailWrite {
+            response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
+        } else {
+            response = self.response(method: method, path: path, queryName: queryName, body: body)
+        }
+        lock.unlock()
+        completion(.success(response))
     }
 
     private func response(

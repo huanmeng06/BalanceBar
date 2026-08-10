@@ -114,12 +114,30 @@ enum OpenCodexCardCategory: Equatable, Hashable {
             return tr("余额不可用", "Balance unavailable")
         }
     }
+
+    var diagnosticName: String {
+        switch self {
+        case .quota: return "quota"
+        case .balance: return "balance"
+        }
+    }
 }
 
 enum OpenCodexCardSource: Equatable, Hashable {
     case official
     case balance(providerID: String)
     case unavailable(category: OpenCodexCardCategory, reason: String)
+
+    var diagnosticName: String {
+        switch self {
+        case .official:
+            return "official"
+        case .balance(let providerID):
+            return "balance:\(providerID)"
+        case .unavailable(let category, _):
+            return "unavailable:\(category.diagnosticName)"
+        }
+    }
 }
 
 enum OpenCodexCardData: Equatable {
@@ -146,6 +164,19 @@ enum OpenCodexCardData: Equatable {
             return .quota
         case .balance:
             return .balance
+        }
+    }
+
+    var diagnosticName: String {
+        switch self {
+        case .loading(let category):
+            return "loading/\(category.diagnosticName)"
+        case .official:
+            return "official/quota"
+        case .balance:
+            return "balance"
+        case .unavailable(let category, _):
+            return "unavailable/\(category.diagnosticName)"
         }
     }
 
@@ -303,8 +334,97 @@ struct OpenCodexModelCard: Equatable {
 }
 
 enum OpenCodexCardPresentation {
+    enum MenuBarCardMatch: Equatable {
+        case firstPreference(OpenCodexModelCard)
+        case none
+
+        var card: OpenCodexModelCard? {
+            switch self {
+            case .firstPreference(let card): return card
+            case .none: return nil
+            }
+        }
+
+        var diagnosticReason: String {
+            switch self {
+            case .firstPreference: return "first-preference"
+            case .none: return "no-preference"
+            }
+        }
+    }
+
     static func identity(for card: OpenCodexModelCard) -> String {
         "\(card.provider)/\(card.model)"
+    }
+
+    /// The menu bar follows the OpenCodex preference order exactly. The
+    /// `isCurrent` marker and runtime selector describe another UI concern and
+    /// must not make a later card replace the first preference here.
+    static func menuBarCardMatch(
+        from cards: [OpenCodexModelCard]
+    ) -> MenuBarCardMatch {
+        guard let first = cards.first else { return .none }
+        return .firstPreference(first)
+    }
+
+    /// The menu bar summarizes the first preference card, while the status-menu
+    /// card itself may continue to show the selector/model identity. Keeping
+    /// this mapping pure prevents card identity from leaking into the compact
+    /// menu-bar presentation.
+    static func menuBarSnapshot(
+        for card: OpenCodexModelCard?
+    ) -> Snapshot {
+        guard let card else { return .placeholder }
+
+        switch card.data {
+        case .official(let remaining, let label, let reset, let updatedAt):
+            return .official(
+                card.provider,
+                remaining,
+                label,
+                reset,
+                updatedAt
+            )
+        case .balance(let amount, let unit, let websiteURL, let updatedAt):
+            return .balance(
+                card.provider,
+                amount,
+                unit,
+                websiteURL,
+                updatedAt
+            )
+        case .loading:
+            return .placeholder
+        case .unavailable(_, let reason):
+            return .error(reason)
+        }
+    }
+
+    /// Resolve the compact presentation from the latest published card list.
+    /// Keeping the base OpenCodex snapshot separate is important because it
+    /// carries selector/status text for the full status menu, while the menu
+    /// bar must be recomputed whenever card data is published.
+    static func menuBarSnapshot(
+        for snapshot: Snapshot,
+        cards: [OpenCodexModelCard]
+    ) -> Snapshot {
+        guard snapshot.kind == .openCodex else { return snapshot }
+        switch menuBarCardMatch(from: cards) {
+        case .firstPreference(let card):
+            return menuBarSnapshot(for: card)
+        case .none:
+            return .placeholder
+        }
+    }
+
+    static func dashboardURL(
+        confirmedProviderID: String?,
+        currentProviderID: String?,
+        candidate: OpenCodexEndpointCandidate?
+    ) -> URL? {
+        guard let confirmedProviderID,
+              confirmedProviderID == currentProviderID else { return nil }
+        return candidate?.dashboardURL
     }
 }
 
@@ -417,6 +537,13 @@ enum OpenCodexCardPlanner {
         sources: [ProviderSummarySource]
     ) -> OpenCodexCardSource {
         guard let descriptor = state.providers[providerID] else {
+            logSourceMatch(
+                providerID: providerID,
+                host: nil,
+                candidates: [],
+                strategy: "missing-provider",
+                selected: nil
+            )
             return .unavailable(
                 category: .balance,
                 reason: tr(
@@ -437,27 +564,104 @@ enum OpenCodexCardPlanner {
                 && secureWebsiteURL(for: source) != nil
                 && hostsMatch(descriptor.baseURL, source: source)
         }
-        let exactNameMatches = candidates.filter {
+        let exactRawNameMatches = candidates.filter {
+            $0.name == descriptor.id
+        }
+        let normalizedNameMatches = candidates.filter {
             normalized($0.name) == normalized(descriptor.id)
         }
+        let credentialMatches: [ProviderSummarySource]
+        if descriptor.apiKeys.isEmpty {
+            credentialMatches = []
+        } else {
+            let credentials = Set(descriptor.apiKeys)
+            credentialMatches = candidates.filter { source in
+                guard let apiKey = source.query?.apiKey
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                    !apiKey.isEmpty else { return false }
+                return credentials.contains(apiKey)
+            }
+        }
+
         let selected: ProviderSummarySource?
-        if exactNameMatches.count == 1 {
-            selected = exactNameMatches[0]
-        } else if exactNameMatches.isEmpty, candidates.count == 1 {
+        let strategy: String
+        if credentialMatches.count == 1 {
+            selected = credentialMatches[0]
+            strategy = "unique-credential"
+        } else if credentialMatches.count > 1 {
+            selected = nil
+            strategy = "ambiguous-credential"
+        } else if exactRawNameMatches.count == 1,
+                  normalizedNameMatches.count == 1 {
+            // A case-only name difference is not an identity signal. The
+            // normalized count guard keeps a pair such as `tokenshop` and
+            // `Tokenshop` ambiguous unless credentials disambiguate it.
+            selected = exactRawNameMatches[0]
+            strategy = "unique-exact-name"
+        } else if candidates.count == 1 {
             selected = candidates[0]
+            strategy = "unique-candidate"
+        } else if candidates.isEmpty {
+            selected = nil
+            strategy = "no-safe-host-candidate"
         } else {
             selected = nil
+            strategy = "ambiguous-name-or-candidate"
         }
+        logSourceMatch(
+            providerID: descriptor.id,
+            host: normalizedHost(descriptor.baseURL),
+            candidates: candidates,
+            strategy: strategy,
+            selected: selected,
+            credentialMatchCount: credentialMatches.count,
+            exactNameMatchCount: exactRawNameMatches.count,
+            normalizedNameMatchCount: normalizedNameMatches.count
+        )
         guard let selected else {
-            return .unavailable(
-                category: .balance,
-                reason: tr(
+            let reason = candidates.count > 1 || credentialMatches.count > 1
+                ? tr(
+                    "找到多个余额来源，无法确认账户",
+                    "Multiple balance sources were found; the account could not be confirmed"
+                )
+                : tr(
                     "未找到可验证的余额来源",
                     "No verifiable balance source was found"
                 )
+            return .unavailable(
+                category: .balance,
+                reason: reason
             )
         }
         return .balance(providerID: selected.id)
+    }
+
+    private static func logSourceMatch(
+        providerID: String,
+        host: String?,
+        candidates: [ProviderSummarySource],
+        strategy: String,
+        selected: ProviderSummarySource?,
+        credentialMatchCount: Int = 0,
+        exactNameMatchCount: Int = 0,
+        normalizedNameMatchCount: Int = 0
+    ) {
+        let candidateSummary = candidates.map { source in
+            "id=\(source.id),name=\(source.name),host=\(diagnosticHost(for: source))"
+        }.joined(separator: "|")
+        SwitchLog.write(
+            "OpenCodex balance source match; provider_id=\(providerID); host=\(host ?? "unknown"); candidate_count=\(candidates.count); credential_match_count=\(credentialMatchCount); exact_name_match_count=\(exactNameMatchCount); normalized_name_match_count=\(normalizedNameMatchCount); candidates=\(candidateSummary.isEmpty ? "<none>" : candidateSummary); strategy=\(strategy); selected_source_id=\(selected?.id ?? "none")",
+            level: strategy.hasPrefix("ambiguous") ? .warning : .debug,
+            category: "open-codex.source-match",
+            throttleKey: "open-codex-source-match-\(providerID)",
+            minimumInterval: 1
+        )
+    }
+
+    private static func diagnosticHost(for source: ProviderSummarySource) -> String {
+        normalizedHost(URL(string: source.query?.url ?? ""))
+            ?? normalizedHost(source.websiteURL ?? source.query?.websiteURL)
+            ?? "unknown"
     }
 
     private static func hostsMatch(
@@ -468,9 +672,9 @@ enum OpenCodexCardPlanner {
               let descriptorHost = normalizedHost(descriptorURL) else { return false }
         let queryHost = source.query.flatMap { URL(string: $0.url) }.flatMap(normalizedHost)
         let websiteHost = normalizedHost(source.websiteURL ?? source.query?.websiteURL)
-        guard !isLoopbackHost(descriptorHost),
-              queryHost.map({ !isLoopbackHost($0) }) ?? true,
-              websiteHost.map({ !isLoopbackHost($0) }) ?? true else {
+        guard !OpenCodexHostSecurity.isLocalOnlyHost(descriptorHost),
+              queryHost.map({ !OpenCodexHostSecurity.isLocalOnlyHost($0) }) ?? true,
+              websiteHost.map({ !OpenCodexHostSecurity.isLocalOnlyHost($0) }) ?? true else {
             return false
         }
         return descriptorHost == queryHost || descriptorHost == websiteHost
@@ -488,14 +692,14 @@ enum OpenCodexCardPlanner {
         guard let url,
               isSecureHTTPSURL(url),
               let host = normalizedHost(url),
-              !isLoopbackHost(host) else { return nil }
+              !OpenCodexHostSecurity.isLocalOnlyHost(host) else { return nil }
         return url
     }
 
     private static func isSecureHTTPSURL(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https",
               let host = normalizedHost(url),
-              !isLoopbackHost(host),
+              !OpenCodexHostSecurity.isLocalOnlyHost(host),
               url.user == nil,
               url.password == nil else { return false }
         return true
@@ -506,15 +710,6 @@ enum OpenCodexCardPlanner {
               let host = url.host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !host.isEmpty else { return nil }
         return host
-    }
-
-    private static func isLoopbackHost(_ host: String) -> Bool {
-        host == "localhost"
-            || host == "::1"
-            || host == "::"
-            || host == "0.0.0.0"
-            || host == "127.0.0.1"
-            || (host.hasPrefix("127.") && host.split(separator: ".").count == 4)
     }
 
     private static func normalized(_ value: String) -> String {
