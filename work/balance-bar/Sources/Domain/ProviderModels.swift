@@ -672,9 +672,9 @@ enum OpenCodexCardPlanner {
               let descriptorHost = normalizedHost(descriptorURL) else { return false }
         let queryHost = source.query.flatMap { URL(string: $0.url) }.flatMap(normalizedHost)
         let websiteHost = normalizedHost(source.websiteURL ?? source.query?.websiteURL)
-        guard !isLoopbackHost(descriptorHost),
-              queryHost.map({ !isLoopbackHost($0) }) ?? true,
-              websiteHost.map({ !isLoopbackHost($0) }) ?? true else {
+        guard !OpenCodexHostSecurity.isLocalOnlyHost(descriptorHost),
+              queryHost.map({ !OpenCodexHostSecurity.isLocalOnlyHost($0) }) ?? true,
+              websiteHost.map({ !OpenCodexHostSecurity.isLocalOnlyHost($0) }) ?? true else {
             return false
         }
         return descriptorHost == queryHost || descriptorHost == websiteHost
@@ -692,14 +692,14 @@ enum OpenCodexCardPlanner {
         guard let url,
               isSecureHTTPSURL(url),
               let host = normalizedHost(url),
-              !isLoopbackHost(host) else { return nil }
+              !OpenCodexHostSecurity.isLocalOnlyHost(host) else { return nil }
         return url
     }
 
     private static func isSecureHTTPSURL(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https",
               let host = normalizedHost(url),
-              !isLoopbackHost(host),
+              !OpenCodexHostSecurity.isLocalOnlyHost(host),
               url.user == nil,
               url.password == nil else { return false }
         return true
@@ -710,15 +710,6 @@ enum OpenCodexCardPlanner {
               let host = url.host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !host.isEmpty else { return nil }
         return host
-    }
-
-    private static func isLoopbackHost(_ host: String) -> Bool {
-        host == "localhost"
-            || host == "::1"
-            || host == "::"
-            || host == "0.0.0.0"
-            || host == "127.0.0.1"
-            || (host.hasPrefix("127.") && host.split(separator: ".").count == 4)
     }
 
     private static func normalized(_ value: String) -> String {

@@ -125,6 +125,58 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertNil(remote.dashboardURL)
     }
 
+    func testLoopbackHostValidationRequiresARealIPv4Address() {
+        for host in ["127.0.0.1", "127.0.0.2", "localhost", "::1"] {
+            let urlHost = host.contains(":") ? "[\(host)]" : host
+            let candidate = OpenCodexEndpointCandidate(
+                baseURL: URL(string: "http://\(urlHost):23456/v1")!,
+                modelProvider: "custom",
+                wireAPI: "responses"
+            )
+            XCTAssertNotNil(candidate.dashboardURL, "expected \(host) to be accepted")
+        }
+
+        for host in ["127.0.0.evil", "127.0.0.999", "192.168.1.1", "provider.example"] {
+            let candidate = OpenCodexEndpointCandidate(
+                baseURL: URL(string: "http://\(host):23456/v1")!,
+                modelProvider: "custom",
+                wireAPI: "responses"
+            )
+            XCTAssertNil(candidate.dashboardURL, "expected \(host) to be rejected")
+        }
+    }
+
+    func testMalformedLoopbackPrefixCannotReceiveAdminToken() {
+        let maliciousCandidate = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://127.0.0.evil:23456/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertNil(maliciousCandidate.dashboardURL)
+
+        let transport = MutableOpenCodexTransport(candidate: maliciousCandidate)
+        let tokenProvider = CountingTokenProvider()
+        let repository = OpenCodexRepository(
+            transport: transport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: tokenProvider
+        )
+        let expectation = expectation(description: "reject malformed loopback prefix")
+
+        repository.readState(for: maliciousCandidate) { result in
+            guard case .notRecognized = result else {
+                XCTFail("expected a malformed loopback prefix to remain ordinary")
+                expectation.fulfill()
+                return
+            }
+            XCTAssertEqual(tokenProvider.calls, 0)
+            XCTAssertTrue(transport.requests.isEmpty)
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2)
+    }
+
     func testProviderDescriptorClassificationUsesAdapterAuthAndEndpointNotModelName() {
         let official = OpenCodexProviderDescriptor.parse(
             id: "official",

@@ -1,6 +1,40 @@
 import Foundation
 import Darwin
 
+enum OpenCodexHostSecurity {
+    static func isLoopbackHost(_ host: String) -> Bool {
+        let normalizedHost = host
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        switch normalizedHost {
+        case "localhost", "::1":
+            return true
+        default:
+            break
+        }
+
+        var address = in_addr()
+        guard normalizedHost.withCString({
+            inet_pton(AF_INET, $0, &address) == 1
+        }) else {
+            return false
+        }
+        return UInt32(bigEndian: address.s_addr) >> 24 == 127
+    }
+
+    /// Addresses that must never be treated as an external balance service.
+    /// Unspecified addresses are kept here for the HTTPS source checks, while
+    /// endpoint discovery itself only accepts actual loopback hosts above.
+    static func isLocalOnlyHost(_ host: String) -> Bool {
+        let normalizedHost = host
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return isLoopbackHost(normalizedHost)
+            || normalizedHost == "0.0.0.0"
+            || normalizedHost == "::"
+    }
+}
+
 struct OpenCodexEndpointCandidate: Hashable {
     let baseURL: URL
     let modelProvider: String
@@ -118,7 +152,7 @@ struct OpenCodexEndpointCandidate: Hashable {
         guard let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
               let host = url.host?.lowercased(),
-              isLoopbackHost(host),
+              OpenCodexHostSecurity.isLoopbackHost(host),
               url.user == nil,
               url.password == nil,
               url.query == nil,
@@ -141,12 +175,6 @@ struct OpenCodexEndpointCandidate: Hashable {
         return trimmed.isEmpty ? "/" : "/\(trimmed)"
     }
 
-    fileprivate static func isLoopbackHost(_ host: String) -> Bool {
-        host == "localhost"
-            || host == "127.0.0.1"
-            || host == "::1"
-            || (host.hasPrefix("127.") && host.split(separator: ".").count == 4)
-    }
 }
 
 struct OpenCodexPreference: Equatable {
