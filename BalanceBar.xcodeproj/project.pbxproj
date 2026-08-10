@@ -39,6 +39,8 @@
 		A10000000000000000000066 /* BalanceAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000067 /* BalanceAPIClientTests.swift */; };
 		A10000000000000000000069 /* OpenCodexRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000068 /* OpenCodexRepository.swift */; };
 		A1000000000000000000006B /* OpenCodexRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006A /* OpenCodexRepositoryTests.swift */; };
+		A1000000000000000000006C /* DashboardScrollClamping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006D /* DashboardScrollClamping.swift */; };
+		A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006F /* DashboardScrollClampingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -76,6 +78,8 @@
 		A10000000000000000000067 /* BalanceAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceAPIClientTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000068 /* OpenCodexRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRepository.swift; sourceTree = "<group>"; };
 		A1000000000000000000006A /* OpenCodexRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRepositoryTests.swift; sourceTree = "<group>"; };
+		A1000000000000000000006D /* DashboardScrollClamping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/DashboardScrollClamping.swift"; sourceTree = "<group>"; };
+		A1000000000000000000006F /* DashboardScrollClampingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardScrollClampingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,6 +122,7 @@
 				A10000000000000000000010 /* BalanceBar.swift */,
 				A10000000000000000000045 /* AppPreferences.swift */,
 				A10000000000000000000041 /* Localization.swift */,
+				A1000000000000000000006D /* DashboardScrollClamping.swift */,
 				A10000000000000000000054 /* Domain */,
 				A10000000000000000000059 /* Services */,
 				A10000000000000000000011 /* Info.plist */,
@@ -163,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
+				A1000000000000000000006F /* DashboardScrollClampingTests.swift */,
 				A10000000000000000000043 /* LocalizationTests.swift */,
 				A10000000000000000000047 /* AppPreferencesTests.swift */,
 				A10000000000000000000053 /* DomainModelsTests.swift */,
@@ -323,6 +329,7 @@
 				A1000000000000000000004A /* ProviderModels.swift in Sources */,
 				A1000000000000000000004B /* Snapshot.swift in Sources */,
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
+				A1000000000000000000006C /* DashboardScrollClamping.swift in Sources */,
 				A10000000000000000000055 /* ResponseParsers.swift in Sources */,
 				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
 				A10000000000000000000060 /* CredentialReader.swift in Sources */,
@@ -336,6 +343,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
+				A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */,
 				A10000000000000000000042 /* LocalizationTests.swift in Sources */,
 				A10000000000000000000046 /* AppPreferencesTests.swift in Sources */,
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,

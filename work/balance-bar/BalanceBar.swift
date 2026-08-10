@@ -787,7 +787,7 @@ private enum DashboardSection: Int, CaseIterable {
 
 private struct DashboardScrollPosition {
     let operation: String
-    let visibleDocumentOriginY: CGFloat
+    let visibleDocumentOffset: CGFloat
     let contentOriginY: CGFloat
     let distanceFromBottom: CGFloat
     let previousMaximumOffset: CGFloat
@@ -1602,6 +1602,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
+    func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.clampDashboardScrollViewBounds()
+        }
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
@@ -2165,6 +2172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         cardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
         dashboardContentHost.layoutSubtreeIfNeeded()
+        clampDashboardScrollViewBounds()
     }
 
     private func applyOpenCodexDashboardResolution(
@@ -3031,6 +3039,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.stopDashboardScrollAnchorMaintenance()
             page.layoutSubtreeIfNeeded()
             editor.superview?.layoutSubtreeIfNeeded()
+            self.clampDashboardScrollViewBounds()
             SwitchLog.write(
                 "in-place status-link refresh animation completed; action=\(operation); rows=\(editor.rowCount); editor_frame=\(DashboardLogging.rect(editor.frame)); page_frame=\(DashboardLogging.rect(page.frame))",
                 category: "ui.layout"
@@ -3064,6 +3073,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.logDashboardScrollState(label: "during \(operation) animation")
         }
         return true
+    }
+
+    private func clampDashboardScrollViewBounds() {
+        guard let page = dashboardContentHost.subviews.first,
+              let scrollView = firstScrollView(in: page),
+              let documentView = scrollView.documentView else {
+            return
+        }
+        page.layoutSubtreeIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        setDashboardScrollBounds(
+            scrollView.contentView.bounds,
+            scrollView: scrollView,
+            documentView: documentView
+        )
     }
 
     private func startDashboardScrollAnchorMaintenance(
@@ -3104,20 +3128,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let contentView = scrollView.contentView
         // A removal shrinks the document from the bottom. Restore the clip
-        // view in document coordinates so AppKit never receives a positive
-        // unflipped bounds origin (which is interpreted as an overscroll and
-        // snaps the page to the top).
+        // view through the shared visual-offset clamp so the new document
+        // range, rather than the old coordinate origin, decides the result.
         if position.operation != "add" {
+            let geometry = dashboardScrollGeometry(
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            let targetVisualOffset = geometry.clampedVisualOffset(
+                geometry.maximumOffset - max(0, position.distanceFromBottom)
+            )
             let targetContentOriginY = dashboardScrollContentOrigin(
                 scrollView: scrollView,
                 documentView: documentView,
-                distanceFromBottom: position.distanceFromBottom
+                visualOffset: targetVisualOffset
             )
             var bounds = contentView.bounds
             guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
             bounds.origin.y = targetContentOriginY
-            contentView.bounds = bounds
-            scrollView.reflectScrolledClipView(contentView)
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
             return
         }
 
@@ -3136,35 +3169,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // moved, so the edge stays visually fixed throughout the height
             // animation instead of letting the blue top edge win by default.
             bounds.origin.y += correction
-            contentView.bounds = bounds
-            scrollView.reflectScrolledClipView(contentView)
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
             return
         }
 
         var bounds = contentView.bounds
-        guard abs(bounds.origin.y - position.contentOriginY) > 0.01 else { return }
-        bounds.origin.y = position.contentOriginY
-        contentView.bounds = bounds
+        let targetContentOriginY = dashboardScrollContentOrigin(
+            scrollView: scrollView,
+            documentView: documentView,
+            visualOffset: position.visibleDocumentOffset
+        )
+        guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
+        bounds.origin.y = targetContentOriginY
+        setDashboardScrollBounds(
+            bounds,
+            scrollView: scrollView,
+            documentView: documentView
+        )
+    }
+
+    private func dashboardScrollGeometry(
+        scrollView: NSScrollView,
+        documentView: NSView
+    ) -> DashboardScrollGeometry {
+        DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+    }
+
+    private func setDashboardScrollBounds(
+        _ proposedBounds: NSRect,
+        scrollView: NSScrollView,
+        documentView: NSView
+    ) {
+        let contentView = scrollView.contentView
+        contentView.bounds = dashboardClampedContentBounds(
+            proposedBounds: proposedBounds,
+            contentView: contentView,
+            documentView: documentView
+        )
         scrollView.reflectScrolledClipView(contentView)
     }
 
     private func dashboardScrollContentOrigin(
         scrollView: NSScrollView,
         documentView: NSView,
-        distanceFromBottom: CGFloat
+        visualOffset: CGFloat
     ) -> CGFloat {
-        let maximumOffset = dashboardMaximumOffset(
-            documentView: documentView,
-            viewportHeight: scrollView.contentView.bounds.height
+        let geometry = dashboardScrollGeometry(
+            scrollView: scrollView,
+            documentView: documentView
         )
-        let targetDocumentOriginY = min(
-            maximumOffset,
-            max(0, maximumOffset - distanceFromBottom)
+        let targetDocumentRect = geometry.visibleDocumentRect(
+            forVisualOffset: visualOffset
+        )
+        let targetDocumentY = geometry.contentOriginDocumentY(
+            for: targetDocumentRect,
+            contentViewIsFlipped: scrollView.contentView.isFlipped
         )
         return documentView.convert(
             NSPoint(
                 x: documentView.bounds.minX,
-                y: documentView.bounds.minY + targetDocumentOriginY
+                y: targetDocumentY
             ),
             to: scrollView.contentView
         ).y
@@ -3187,17 +3259,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
-        let maximumOffset = dashboardMaximumOffset(
-            documentView: documentView,
-            viewportHeight: scrollView.contentView.bounds.height
+        let geometry = dashboardScrollGeometry(
+            scrollView: scrollView,
+            documentView: documentView
         )
         let visibleDocumentRect = scrollView.contentView.convert(
             scrollView.contentView.bounds,
             to: documentView
         )
-        let originY = min(
-            maximumOffset,
-            max(0, visibleDocumentRect.origin.y)
+        let visibleDocumentOffset = geometry.clampedVisualOffset(
+            for: visibleDocumentRect
         )
         let bottomAnchor = statusLinksBottomAnchor(
             in: page,
@@ -3211,15 +3282,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let activeBottomAnchor = bottomAnchorIsVisible ? bottomAnchor : nil
         let position = DashboardScrollPosition(
             operation: operation,
-            visibleDocumentOriginY: originY,
+            visibleDocumentOffset: visibleDocumentOffset,
             contentOriginY: scrollView.contentView.bounds.origin.y,
-            distanceFromBottom: max(0, maximumOffset - originY),
-            previousMaximumOffset: maximumOffset,
+            distanceFromBottom: max(0, geometry.maximumOffset - visibleDocumentOffset),
+            previousMaximumOffset: geometry.maximumOffset,
             bottomAnchorView: activeBottomAnchor?.view,
             bottomAnchorViewportY: activeBottomAnchor?.viewportY
         )
         SwitchLog.write(
-            "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOriginY=\(DashboardLogging.number(originY)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
+            "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOffset=\(DashboardLogging.number(visibleDocumentOffset)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(geometry.maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
             category: "ui.scroll"
         )
         return position
@@ -3252,7 +3323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
         SwitchLog.write(
-            "scroll restore begin; action=\(position.operation); attempt=\(attempt); target_visibleDocumentOriginY=\(DashboardLogging.number(position.visibleDocumentOriginY)); captured_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); target_distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(position.previousMaximumOffset)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+            "scroll restore begin; action=\(position.operation); attempt=\(attempt); target_visibleDocumentOffset=\(DashboardLogging.number(position.visibleDocumentOffset)); captured_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); target_distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(position.previousMaximumOffset)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
             category: "ui.scroll"
         )
         dashboard?.displayIfNeeded()
@@ -3260,16 +3331,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         if position.operation != "add" {
+            let geometry = dashboardScrollGeometry(
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            let targetVisualOffset = geometry.clampedVisualOffset(
+                geometry.maximumOffset - max(0, position.distanceFromBottom)
+            )
             let targetContentOriginY = dashboardScrollContentOrigin(
                 scrollView: scrollView,
                 documentView: documentView,
-                distanceFromBottom: position.distanceFromBottom
+                visualOffset: targetVisualOffset
             )
             var bounds = scrollView.contentView.bounds
             let correction = targetContentOriginY - bounds.origin.y
             bounds.origin.y = targetContentOriginY
-            scrollView.contentView.bounds = bounds
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
             SwitchLog.write(
                 "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=document-distance; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
                 category: "ui.scroll"
@@ -3291,8 +3372,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if abs(correction) > 0.01 {
                 var bounds = scrollView.contentView.bounds
                 bounds.origin.y += correction
-                scrollView.contentView.bounds = bounds
-                scrollView.reflectScrolledClipView(scrollView.contentView)
+                setDashboardScrollBounds(
+                    bounds,
+                    scrollView: scrollView,
+                    documentView: documentView
+                )
             }
             SwitchLog.write(
                 "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=card-bottom; target_viewportY=\(DashboardLogging.number(targetViewportY)); actual_viewportY=\(DashboardLogging.number(currentViewportY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
@@ -3305,12 +3389,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
 
         var bounds = scrollView.contentView.bounds
-        let correction = position.contentOriginY - bounds.origin.y
-        bounds.origin.y = position.contentOriginY
-        scrollView.contentView.bounds = bounds
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        let targetContentOriginY = dashboardScrollContentOrigin(
+            scrollView: scrollView,
+            documentView: documentView,
+            visualOffset: position.visibleDocumentOffset
+        )
+        let correction = targetContentOriginY - bounds.origin.y
+        bounds.origin.y = targetContentOriginY
+        setDashboardScrollBounds(
+            bounds,
+            scrollView: scrollView,
+            documentView: documentView
+        )
         SwitchLog.write(
-            "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=content-origin; target_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+            "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=visible-document-offset; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
             category: "ui.scroll"
         )
 
@@ -3321,13 +3413,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func dashboardMaximumOffset(
-        documentView: NSView,
-        viewportHeight: CGFloat
-    ) -> CGFloat {
-        max(0, documentView.bounds.height - viewportHeight)
-    }
-
     private func dashboardScrollMetrics(
         scrollView: NSScrollView,
         documentView: NSView
@@ -3335,9 +3420,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let contentView = scrollView.contentView
         let bounds = contentView.bounds
         let viewportRect = contentView.convert(bounds, to: documentView)
-        let boundsMaximum = max(0, documentView.bounds.height - bounds.height)
-        let frameMaximum = max(0, documentView.frame.height - bounds.height)
-        return "page=\(dashboardSection.title); links=\(statusLinks.count); content_originY=\(DashboardLogging.number(bounds.origin.y)); content_height=\(DashboardLogging.number(bounds.height)); document_frame=\(DashboardLogging.rect(documentView.frame)); document_bounds=\(DashboardLogging.rect(documentView.bounds)); viewport_document=\(DashboardLogging.rect(viewportRect)); maxOffset(bounds)=\(DashboardLogging.number(boundsMaximum)); maxOffset(frame)=\(DashboardLogging.number(frameMaximum))"
+        let geometry = dashboardScrollGeometry(
+            scrollView: scrollView,
+            documentView: documentView
+        )
+        let visualOffset = geometry.clampedVisualOffset(for: viewportRect)
+        return "page=\(dashboardSection.title); links=\(statusLinks.count); content_originY=\(DashboardLogging.number(bounds.origin.y)); content_height=\(DashboardLogging.number(bounds.height)); document_frame=\(DashboardLogging.rect(documentView.frame)); document_bounds=\(DashboardLogging.rect(documentView.bounds)); viewport_document=\(DashboardLogging.rect(viewportRect)); visual_offset=\(DashboardLogging.number(visualOffset)); maxOffset=\(DashboardLogging.number(geometry.maximumOffset))"
     }
 
     private func logDashboardScrollState(label: String) {
@@ -3437,9 +3525,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func makeSettingsPage(_ sections: [NSView]) -> NSView {
         let root = NSView()
         let scrollView = NSScrollView()
+        scrollView.contentView = DashboardClipView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
+        scrollView.verticalScrollElasticity = .none
+        scrollView.horizontalScrollElasticity = .none
         // Keep the scrollbar discoverable on dense settings pages. The
         // document is taller than the viewport when the status-link editor is
         // present, so hiding the scroller makes the add control look missing.
@@ -3905,6 +3996,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         scroll.documentView = dashboardLogView
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
+        scroll.verticalScrollElasticity = .none
+        scroll.horizontalScrollElasticity = .none
         scroll.autohidesScrollers = true
         scroll.drawsBackground = true
         scroll.backgroundColor = dashboardLogView.backgroundColor
@@ -4523,6 +4616,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let scroll = NSScrollView()
         scroll.borderType = .bezelBorder
         scroll.hasVerticalScroller = true
+        scroll.verticalScrollElasticity = .none
+        scroll.horizontalScrollElasticity = .none
         scroll.documentView = dashboardLogView
 
         [header, buttons, scroll].forEach {
