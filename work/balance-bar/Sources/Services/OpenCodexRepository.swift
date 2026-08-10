@@ -53,12 +53,21 @@ struct OpenCodexEndpointCandidate: Hashable {
     /// from a candidate carried by a recognized runtime state, never from an
     /// arbitrary user-entered URL.
     var dashboardURL: URL? {
+        dashboardURL(port: port)
+    }
+
+    /// Builds the fixed Dashboard path while changing only the port of this
+    /// already-validated loopback candidate. The candidate's scheme and host
+    /// are never taken from user input.
+    func dashboardURL(port: Int) -> URL? {
         guard wireAPI.lowercased() == "responses",
+              OpenCodexDashboardResolver.isValidPort(port),
               Self.isSafeLoopbackV1Endpoint(baseURL),
               var components = URLComponents(
                   url: baseURL,
                   resolvingAgainstBaseURL: false
               ) else { return nil }
+        components.port = port
         components.path = "/"
         components.query = nil
         components.fragment = "dashboard"
@@ -175,6 +184,170 @@ struct OpenCodexEndpointCandidate: Hashable {
         return trimmed.isEmpty ? "/" : "/\(trimmed)"
     }
 
+}
+
+enum OpenCodexDashboardPortInputError: Error, Equatable {
+    case invalid
+}
+
+enum OpenCodexDashboardPortInput {
+    static func parse(
+        _ rawValue: String
+    ) -> Result<Int?, OpenCodexDashboardPortInputError> {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty { return .success(nil) }
+        guard value.unicodeScalars.allSatisfy({ scalar in
+            scalar.value >= 48 && scalar.value <= 57
+        }),
+        let port = Int(value),
+        OpenCodexDashboardResolver.isValidPort(port) else {
+            return .failure(.invalid)
+        }
+        return .success(port)
+    }
+}
+
+/// The settings state shared by the Advanced page and the Dashboard resolver.
+/// Automatic mode deliberately ignores any stale manual value so switching
+/// the checkbox back on immediately restores runtime detection.
+struct OpenCodexDashboardMode: Equatable {
+    let automaticDetection: Bool
+    let manualPort: Int?
+
+    var showsManualPortInput: Bool { !automaticDetection }
+    var effectiveManualPort: Int? { automaticDetection ? nil : manualPort }
+
+    func changingAutomaticDetection(
+        to enabled: Bool,
+        seedPort: Int?
+    ) -> OpenCodexDashboardMode {
+        if enabled {
+            return OpenCodexDashboardMode(
+                automaticDetection: true,
+                manualPort: nil
+            )
+        }
+        return OpenCodexDashboardMode(
+            automaticDetection: false,
+            manualPort: manualPort ?? seedPort
+        )
+    }
+}
+
+/// Main-thread interaction state for the Advanced page. It keeps the value
+/// used to seed manual mode local to the UI, so a checkbox click never needs
+/// to synchronously rediscover the current provider or runtime.
+struct OpenCodexDashboardInteractionState: Equatable {
+    var mode: OpenCodexDashboardMode
+    private(set) var lastResolvedPort: Int
+    private(set) var isPortEditorActive: Bool
+
+    init(
+        mode: OpenCodexDashboardMode,
+        lastResolvedPort: Int = OpenCodexDashboardResolver.defaultPort,
+        isPortEditorActive: Bool = false
+    ) {
+        self.mode = mode
+        self.lastResolvedPort = OpenCodexDashboardResolver.isValidPort(lastResolvedPort)
+            ? lastResolvedPort
+            : OpenCodexDashboardResolver.defaultPort
+        self.isPortEditorActive = isPortEditorActive
+    }
+
+    var showsManualPortInput: Bool { mode.showsManualPortInput }
+    var effectiveManualPort: Int? { mode.effectiveManualPort }
+
+    mutating func updateResolvedPort(_ port: Int) {
+        guard OpenCodexDashboardResolver.isValidPort(port) else { return }
+        lastResolvedPort = port
+    }
+
+    mutating func markPortEditorActive(_ active: Bool) {
+        isPortEditorActive = active
+    }
+
+    mutating func setAutomaticDetection(_ enabled: Bool) {
+        mode = mode.changingAutomaticDetection(
+            to: enabled,
+            seedPort: lastResolvedPort
+        )
+        // A mode transition must not leave a field editor attached to a row
+        // that is about to become hidden.
+        isPortEditorActive = false
+    }
+}
+
+struct OpenCodexDashboardResolution: Equatable {
+    enum Source: Equatable {
+        case manual
+        case runtime
+        case fallback
+    }
+
+    let url: URL
+    let port: Int
+    let source: Source
+}
+
+enum OpenCodexDashboardResolver {
+    static let defaultPort = 10100
+
+    static func isValidPort(_ port: Int) -> Bool {
+        AppPreferences.validOpenCodexDashboardPortRange.contains(port)
+    }
+
+    /// Resolve the only URL used to launch the local OpenCodex Dashboard.
+    /// Manual input wins, then a verified runtime candidate, then the fixed
+    /// localhost fallback. Every branch produces the fixed `/#dashboard`
+    /// path and cannot accept a user-provided host, scheme, or full URL.
+    static func resolve(
+        manualPort: Int?,
+        runtimeCandidate: OpenCodexEndpointCandidate?
+    ) -> OpenCodexDashboardResolution {
+        if let manualPort,
+           isValidPort(manualPort) {
+            if let url = runtimeCandidate?.dashboardURL(port: manualPort) {
+                return OpenCodexDashboardResolution(
+                    url: url,
+                    port: manualPort,
+                    source: .manual
+                )
+            }
+            if let url = localhostDashboardURL(port: manualPort) {
+                return OpenCodexDashboardResolution(
+                    url: url,
+                    port: manualPort,
+                    source: .manual
+                )
+            }
+        }
+
+        if let url = runtimeCandidate?.dashboardURL {
+            return OpenCodexDashboardResolution(
+                url: url,
+                port: runtimeCandidate?.port ?? defaultPort,
+                source: .runtime
+            )
+        }
+
+        let url = localhostDashboardURL(port: defaultPort)!
+        return OpenCodexDashboardResolution(
+            url: url,
+            port: defaultPort,
+            source: .fallback
+        )
+    }
+
+    private static func localhostDashboardURL(port: Int) -> URL? {
+        guard isValidPort(port) else { return nil }
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "localhost"
+        components.port = port
+        components.path = "/"
+        components.fragment = "dashboard"
+        return components.url
+    }
 }
 
 struct OpenCodexPreference: Equatable {

@@ -1,6 +1,10 @@
 import Foundation
 
 final class AppPreferences {
+    static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
+    static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
+    static let validOpenCodexDashboardPortRange = 1...65535
+
     private let defaults: UserDefaults
     private let defaultStatusLinksProvider: () -> [StatusLink]
 
@@ -41,6 +45,48 @@ final class AppPreferences {
     var keepMenuOpenAfterRefresh: Bool { get { bool("keepMenuOpenAfterRefresh", default: true) } set { defaults.set(newValue, forKey: "keepMenuOpenAfterRefresh") } }
     var sortProvidersAlphabetically: Bool { get { defaults.bool(forKey: "sortProvidersAlphabetically") } set { defaults.set(newValue, forKey: "sortProvidersAlphabetically") } }
     var menuBarHorizontalPadding: CGFloat { get { CGFloat(positiveDouble("menuBarHorizontalPadding", default: 10)) } set { defaults.set(Double(newValue), forKey: "menuBarHorizontalPadding") } }
+
+    /// An optional local-only Dashboard port override. The value is deliberately
+    /// kept separate from the OpenCodex configuration so it can only affect
+    /// BalanceBar's Dashboard launch action.
+    var openCodexDashboardPortOverride: Int? {
+        get {
+            guard let number = defaults.object(
+                forKey: Self.openCodexDashboardPortOverrideKey
+            ) as? NSNumber else { return nil }
+            let value = number.intValue
+            guard number.doubleValue == Double(value),
+                  Self.validOpenCodexDashboardPortRange.contains(value) else {
+                return nil
+            }
+            return value
+        }
+        set {
+            guard let newValue else {
+                defaults.removeObject(forKey: Self.openCodexDashboardPortOverrideKey)
+                return
+            }
+            guard Self.validOpenCodexDashboardPortRange.contains(newValue) else { return }
+            defaults.set(newValue, forKey: Self.openCodexDashboardPortOverrideKey)
+        }
+    }
+
+    /// Whether BalanceBar should resolve the Dashboard port from the verified
+    /// OpenCodex runtime. A pre-existing port override implies manual mode for
+    /// preferences written before this explicit mode key was introduced.
+    var openCodexDashboardAutomaticDetection: Bool {
+        get {
+            if let stored = defaults.object(
+                forKey: Self.openCodexDashboardAutomaticDetectionKey
+            ) as? Bool {
+                return stored
+            }
+            return openCodexDashboardPortOverride == nil
+        }
+        set {
+            defaults.set(newValue, forKey: Self.openCodexDashboardAutomaticDetectionKey)
+        }
+    }
 
     var statusLinks: [StatusLink] {
         get {
