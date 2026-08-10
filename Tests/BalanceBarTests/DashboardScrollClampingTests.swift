@@ -1,0 +1,194 @@
+import AppKit
+import XCTest
+@testable import BalanceBar
+
+final class DashboardScrollClampingTests: XCTestCase {
+    func testShortDocumentHasNoVerticalOffset() {
+        let geometry = makeGeometry(
+            documentBounds: NSRect(x: 12, y: 40, width: 400, height: 180),
+            viewportHeight: 240,
+            isDocumentFlipped: true
+        )
+
+        XCTAssertEqual(geometry.maximumOffset, 0)
+        XCTAssertEqual(geometry.clampedVisualOffset(-80), 0)
+        XCTAssertEqual(geometry.clampedVisualOffset(80), 0)
+        XCTAssertEqual(
+            geometry.visibleDocumentRect(forVisualOffset: 80).minY,
+            40
+        )
+    }
+
+    func testFlippedDocumentClampsTopAndBottomOverscroll() {
+        let geometry = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 25, width: 400, height: 300),
+            viewportHeight: 100,
+            isDocumentFlipped: true
+        )
+
+        XCTAssertEqual(
+            geometry.clampedVisualOffset(
+                for: NSRect(x: 0, y: 5, width: 400, height: 100)
+            ),
+            0
+        )
+        XCTAssertEqual(
+            geometry.clampedVisualOffset(
+                for: NSRect(x: 0, y: 260, width: 400, height: 100)
+            ),
+            200
+        )
+        XCTAssertEqual(
+            geometry.visibleDocumentRect(forVisualOffset: 200).minY,
+            225
+        )
+    }
+
+    func testUnflippedDocumentUsesVisualTopForBothBounds() {
+        let geometry = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 25, width: 400, height: 300),
+            viewportHeight: 100,
+            isDocumentFlipped: false
+        )
+
+        let visualTop = NSRect(x: 0, y: 225, width: 400, height: 100)
+        let visualBottom = NSRect(x: 0, y: 25, width: 400, height: 100)
+        let topOverscroll = NSRect(x: 0, y: 245, width: 400, height: 100)
+        let bottomOverscroll = NSRect(x: 0, y: 5, width: 400, height: 100)
+
+        XCTAssertEqual(geometry.clampedVisualOffset(for: visualTop), 0)
+        XCTAssertEqual(geometry.clampedVisualOffset(for: visualBottom), 200)
+        XCTAssertEqual(geometry.clampedVisualOffset(for: topOverscroll), 0)
+        XCTAssertEqual(geometry.clampedVisualOffset(for: bottomOverscroll), 200)
+        XCTAssertEqual(
+            geometry.visibleDocumentRect(forVisualOffset: 0).minY,
+            225
+        )
+        XCTAssertEqual(
+            geometry.visibleDocumentRect(forVisualOffset: 200).minY,
+            25
+        )
+    }
+
+    func testWindowHeightChangeReclampsExistingOffset() {
+        let tallViewport = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 0, width: 400, height: 500),
+            viewportHeight: 300,
+            isDocumentFlipped: false
+        )
+        let resizedViewport = makeGeometry(
+            documentBounds: tallViewport.documentBounds,
+            viewportHeight: 460,
+            isDocumentFlipped: false
+        )
+
+        XCTAssertEqual(tallViewport.maximumOffset, 200)
+        XCTAssertEqual(resizedViewport.maximumOffset, 40)
+        XCTAssertEqual(resizedViewport.clampedVisualOffset(150), 40)
+    }
+
+    func testDocumentHeightChangeRemovesStaleBottomOffset() {
+        let longDocument = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 10, width: 400, height: 440),
+            viewportHeight: 200,
+            isDocumentFlipped: true
+        )
+        let shortenedDocument = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 10, width: 400, height: 170),
+            viewportHeight: 200,
+            isDocumentFlipped: true
+        )
+
+        XCTAssertEqual(longDocument.maximumOffset, 240)
+        XCTAssertEqual(shortenedDocument.maximumOffset, 0)
+        XCTAssertEqual(shortenedDocument.clampedVisualOffset(240), 0)
+    }
+
+    func testVisibleDocumentRectRoundTripsForBothCoordinateSystems() {
+        for isFlipped in [false, true] {
+            let geometry = makeGeometry(
+                documentBounds: NSRect(x: 4, y: 30, width: 400, height: 260),
+                viewportHeight: 80,
+                isDocumentFlipped: isFlipped
+            )
+            let offset: CGFloat = 55
+            let visibleRect = geometry.visibleDocumentRect(forVisualOffset: offset)
+
+            XCTAssertEqual(
+                geometry.visualOffset(for: visibleRect),
+                offset,
+                accuracy: 0.0001
+            )
+            XCTAssertEqual(
+                geometry.clampedVisualOffset(for: visibleRect),
+                offset,
+                accuracy: 0.0001
+            )
+        }
+    }
+
+    func testContentOriginEdgeMatchesDocumentAndClipCoordinateSystems() {
+        let unflippedDocument = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 10, width: 400, height: 260),
+            viewportHeight: 80,
+            isDocumentFlipped: false
+        ).visibleDocumentRect(forVisualOffset: 55)
+        let flippedDocument = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 10, width: 400, height: 260),
+            viewportHeight: 80,
+            isDocumentFlipped: true
+        ).visibleDocumentRect(forVisualOffset: 55)
+
+        let unflippedGeometry = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 10, width: 400, height: 260),
+            viewportHeight: 80,
+            isDocumentFlipped: false
+        )
+        let flippedGeometry = makeGeometry(
+            documentBounds: NSRect(x: 0, y: 10, width: 400, height: 260),
+            viewportHeight: 80,
+            isDocumentFlipped: true
+        )
+
+        XCTAssertEqual(
+            unflippedGeometry.contentOriginDocumentY(
+                for: unflippedDocument,
+                contentViewIsFlipped: false
+            ),
+            unflippedDocument.minY
+        )
+        XCTAssertEqual(
+            unflippedGeometry.contentOriginDocumentY(
+                for: unflippedDocument,
+                contentViewIsFlipped: true
+            ),
+            unflippedDocument.maxY
+        )
+        XCTAssertEqual(
+            flippedGeometry.contentOriginDocumentY(
+                for: flippedDocument,
+                contentViewIsFlipped: false
+            ),
+            flippedDocument.maxY
+        )
+        XCTAssertEqual(
+            flippedGeometry.contentOriginDocumentY(
+                for: flippedDocument,
+                contentViewIsFlipped: true
+            ),
+            flippedDocument.minY
+        )
+    }
+
+    private func makeGeometry(
+        documentBounds: NSRect,
+        viewportHeight: CGFloat,
+        isDocumentFlipped: Bool
+    ) -> DashboardScrollGeometry {
+        DashboardScrollGeometry(
+            documentBounds: documentBounds,
+            viewportHeight: viewportHeight,
+            isDocumentFlipped: isDocumentFlipped
+        )
+    }
+}
