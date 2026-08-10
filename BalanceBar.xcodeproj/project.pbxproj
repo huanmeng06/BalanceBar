@@ -46,6 +46,8 @@
 		A10000000000000000000074 /* CodexActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000076 /* CodexActivityMonitor.swift */; };
 		A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000077 /* CodexActivityMonitorTests.swift */; };
 		A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */; };
+		A1000000000000000000007B /* ClaudeCodeActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */; };
+		A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,6 +92,8 @@
 		A10000000000000000000076 /* CodexActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivityMonitor.swift; sourceTree = "<group>"; };
 		A10000000000000000000077 /* CodexActivityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivityMonitorTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowDragRegionTests.swift; sourceTree = "<group>"; };
+		A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeActivityMonitor.swift; sourceTree = "<group>"; };
+		A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeActivityMonitorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,6 +195,7 @@
 				A1000000000000000000006A /* OpenCodexRepositoryTests.swift */,
 				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
 				A10000000000000000000077 /* CodexActivityMonitorTests.swift */,
+				A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -235,6 +240,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000076 /* CodexActivityMonitor.swift */,
+				A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */,
 			);
 			name = Monitoring;
 			path = "Sources/Monitoring";
@@ -361,6 +367,7 @@
 				A10000000000000000000069 /* OpenCodexRepository.swift in Sources */,
 				A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */,
 				A10000000000000000000074 /* CodexActivityMonitor.swift in Sources */,
+				A1000000000000000000007B /* ClaudeCodeActivityMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -381,6 +388,7 @@
 				A1000000000000000000006B /* OpenCodexRepositoryTests.swift in Sources */,
 				A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */,
 				A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */,
+				A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
