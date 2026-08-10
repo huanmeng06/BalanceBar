@@ -7,6 +7,7 @@ struct CCSwitchProvider {
     let isOfficial: Bool
     let query: BalanceQuery?
     let queryFailure: BalanceQueryFailure?
+    let openCodexCandidate: OpenCodexEndpointCandidate?
 }
 
 final class CCSwitchRepository {
@@ -79,7 +80,8 @@ final class CCSwitchRepository {
                 name: name,
                 isOfficial: true,
                 query: nil,
-                queryFailure: nil
+                queryFailure: nil,
+                openCodexCandidate: nil
             )
         }
 
@@ -96,7 +98,8 @@ final class CCSwitchRepository {
             name: name,
             isOfficial: false,
             query: query,
-            queryFailure: queryFailure
+            queryFailure: queryFailure,
+            openCodexCandidate: OpenCodexEndpointCandidate.parse(settingsConfig: configText)
         )
     }
 
@@ -197,7 +200,7 @@ final class CCSwitchRepository {
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 3_000)
 
-        let sql = "SELECT id, settings_config, meta, category, website_url FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
+        let sql = "SELECT id, name, settings_config, meta, category, website_url FROM providers WHERE app_type = ? ORDER BY COALESCE(sort_index, 999999), created_at, id"
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else { return [] }
@@ -207,10 +210,12 @@ final class CCSwitchRepository {
         var result: [ProviderSummarySource] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let id = text(from: statement, column: 0) else { continue }
-            let settingsText = text(from: statement, column: 1) ?? "{}"
-            let metaText = text(from: statement, column: 2) ?? "{}"
-            let category = text(from: statement, column: 3)
-            let websiteText = text(from: statement, column: 4)
+            let name = text(from: statement, column: 1) ?? ""
+            let settingsText = text(from: statement, column: 2) ?? "{}"
+            let metaText = text(from: statement, column: 3) ?? "{}"
+            let category = text(from: statement, column: 4)
+            let websiteText = text(from: statement, column: 5)
+            let websiteURL = safeWebsiteURL(from: websiteText)
 
             if category == "official" {
                 let stored = settingsText.data(using: .utf8)
@@ -220,25 +225,44 @@ final class CCSwitchRepository {
                 let accessToken = tokens?["access_token"] as? String
                 result.append(ProviderSummarySource(
                     id: id,
+                    name: name,
                     isOfficial: true,
                     query: nil,
-                    officialAccessToken: accessToken
+                    officialAccessToken: accessToken,
+                    openCodexCandidate: nil,
+                    websiteURL: websiteURL
                 ))
             } else {
+                let query = BalanceQuery.make(
+                    settingsText: settingsText,
+                    metaText: metaText,
+                    websiteText: websiteText,
+                    appType: appType
+                )
                 result.append(ProviderSummarySource(
                     id: id,
+                    name: name,
                     isOfficial: false,
-                    query: BalanceQuery.make(
-                        settingsText: settingsText,
-                        metaText: metaText,
-                        websiteText: websiteText,
-                        appType: appType
-                    ),
-                    officialAccessToken: nil
+                    query: query,
+                    officialAccessToken: nil,
+                    openCodexCandidate: appType == "codex"
+                        ? OpenCodexEndpointCandidate.parse(settingsConfig: settingsText)
+                        : nil,
+                    websiteURL: websiteURL
                 ))
             }
         }
         return result
+    }
+
+    private func safeWebsiteURL(from text: String?) -> URL? {
+        guard let text,
+              let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.user == nil,
+              url.password == nil else { return nil }
+        return url
     }
 
     func switchCurrent(to providerID: String, appType: String) throws {

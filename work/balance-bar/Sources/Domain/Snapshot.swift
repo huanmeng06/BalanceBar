@@ -1,7 +1,7 @@
 import Foundation
 
 struct Snapshot {
-    enum Kind { case placeholder, official, balance, error }
+    enum Kind { case placeholder, official, balance, openCodex, error }
     let kind: Kind
     let provider: String
     let amount: Double?
@@ -13,6 +13,7 @@ struct Snapshot {
     static let placeholder = Snapshot(kind: .placeholder, provider: "", amount: nil, unit: nil, date: nil, message: nil, websiteURL: nil)
     static func official(_ provider: String, _ remaining: Double, _ lane: String, _ reset: String?, _ date: Date) -> Snapshot { Snapshot(kind: .official, provider: provider, amount: remaining, unit: lane, date: date, message: reset, websiteURL: nil) }
     static func balance(_ provider: String, _ amount: Double, _ unit: String, _ websiteURL: URL?, _ date: Date) -> Snapshot { Snapshot(kind: .balance, provider: provider, amount: amount, unit: unit, date: date, message: nil, websiteURL: websiteURL) }
+    static func openCodex(_ provider: String, selector: String?, status: String, _ date: Date) -> Snapshot { Snapshot(kind: .openCodex, provider: provider, amount: nil, unit: selector, date: date, message: status, websiteURL: nil) }
     static func error(_ message: String) -> Snapshot { Snapshot(kind: .error, provider: "", amount: nil, unit: nil, date: nil, message: message, websiteURL: nil) }
     static func providerError(_ provider: String, reason: String, cachedBalance: Snapshot?) -> Snapshot {
         let cached = cachedBalance?.kind == .balance ? cachedBalance : nil
@@ -32,6 +33,7 @@ struct Snapshot {
         case .placeholder: return " …"
         case .official: return " \(Int(amount ?? 0))%"
         case .balance: return " \(format(amount ?? 0, unit ?? "USD"))"
+        case .openCodex: return " \(unit ?? "OpenCodex")"
         case .error: return " !"
         }
     }
@@ -41,6 +43,7 @@ struct Snapshot {
         case .placeholder: return "…"
         case .official: return "\(Int(amount ?? 0))%"
         case .balance: return format(amount ?? 0, unit ?? "USD")
+        case .openCodex: return unit ?? "OpenCodex"
         case .error: return "!"
         }
     }
@@ -50,7 +53,13 @@ struct Snapshot {
     }
 
     var menuBarToolTip: String {
-        guard kind == .official else { return title }
+        guard kind == .official || kind == .openCodex else { return title }
+        if kind == .openCodex {
+            return tr(
+                "\(title) · \(message ?? "状态未知")",
+                "\(title) · \(message ?? "Unknown status")"
+            )
+        }
         return tr(
             "\(title) · 重置：\(message ?? "未知")",
             "\(title) · Reset: \(message ?? "Unknown")"
@@ -60,7 +69,7 @@ struct Snapshot {
     var overviewProvider: String {
         switch kind {
         case .placeholder: return "CC Switch"
-        case .official, .balance: return provider
+        case .official, .balance, .openCodex: return provider
         case .error: return provider.isEmpty ? "CC Switch" : provider
         }
     }
@@ -74,6 +83,8 @@ struct Snapshot {
                 "最后刷新：\(formatter.string(from: refreshDate ?? date ?? Date()))",
                 "Last refreshed: \(formatter.string(from: refreshDate ?? date ?? Date()))"
             )
+        case .openCodex:
+            return message ?? tr("OpenCodex 状态未知", "OpenCodex status is unknown")
         case .placeholder:
             return tr("正在读取当前供应商…", "Loading the current Provider…")
         case .error:
@@ -85,6 +96,7 @@ struct Snapshot {
         switch kind {
         case .official: return tr("可用额度", "Available Quota")
         case .balance: return tr("可用余额", "Available Balance")
+        case .openCodex: return tr("OpenCodex", "OpenCodex")
         case .placeholder, .error: return tr("额度状态", "Balance Status")
         }
     }
@@ -93,6 +105,7 @@ struct Snapshot {
         switch kind {
         case .official: return unit ?? tr("7 日额度", "7-Day Quota")
         case .balance: return tr("剩余额度", "Remaining Balance")
+        case .openCodex: return tr("当前 provider/model", "Current provider/model")
         case .placeholder: return tr("等待刷新", "Waiting to Refresh")
         case .error: return tr("读取失败", "Load Failed")
         }
@@ -102,6 +115,7 @@ struct Snapshot {
         switch kind {
         case .official: return "\(Int(amount ?? 0))%"
         case .balance: return format(amount ?? 0, unit ?? "USD")
+        case .openCodex: return unit ?? "—"
         case .placeholder: return "—"
         case .error:
             guard let amount, let unit else { return "—" }
@@ -130,6 +144,11 @@ struct Snapshot {
             return tr(
                 "\(provider) 剩余：\(format(amount ?? 0, unit ?? "USD"))",
                 "\(provider) remaining: \(format(amount ?? 0, unit ?? "USD"))"
+            )
+        case .openCodex:
+            return tr(
+                "\(provider) · \(unit ?? "OpenCodex")",
+                "\(provider) · \(unit ?? "OpenCodex")"
             )
         case .error:
             return tr("余额读取失败", "Failed to Load Balance")
@@ -172,6 +191,8 @@ struct Snapshot {
                 tr(" · 重置：\($0)", " · Reset: \($0)")
             } ?? ""
             return tr("每分钟更新官方额度\(resetText)", "Official quota updates every minute\(resetText)")
+        case .openCodex:
+            return message ?? tr("等待 OpenCodex 状态", "Waiting for OpenCodex status")
         case .error: return message ?? tr("未知错误", "Unknown Error")
         case .placeholder: return tr("等待 CC Switch 状态", "Waiting for CC Switch Status")
         }

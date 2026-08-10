@@ -1423,6 +1423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
     private var lastQuickSwitchFetch: Date?
+    private var lastOpenCodexFetch: Date?
     private let quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaries: [String: String] = [:]
     private let balanceRequestLock = NSLock()
@@ -1431,6 +1432,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
+    private var openCodexState: (providerID: String, state: OpenCodexRuntimeState)?
+    private var openCodexCards: [OpenCodexModelCard] = []
+    // OpenCodex card planning and data refresh run on monitorQueue. The array
+    // above is published to the main queue because the status-menu view is a
+    // UI object; these backing values never contain credentials.
+    private var openCodexCardPlans: [OpenCodexCardPlan] = []
+    private var openCodexCardData: [OpenCodexCardSource: OpenCodexCardData] = [:]
+    private var openCodexCardRefreshCoordinator = OpenCodexCardRefreshCoordinator()
+    private var openCodexCardRequestsInFlight: Set<OpenCodexCardSource> = []
+    // These caches are owned by monitorQueue. They let a previously verified
+    // OpenCodex remain special while its process is temporarily unavailable,
+    // without treating an unverified loopback as OpenCodex.
+    private var confirmedOpenCodexCandidates: [String: OpenCodexEndpointCandidate] = [:]
+    private var confirmedOpenCodexStates: [String: OpenCodexRuntimeState] = [:]
+    private var openCodexSwitchInFlight = false
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
     private var activeClient: AssistantClient = .codex
@@ -1442,6 +1458,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let openCodexRepository: OpenCodexRepository
     private let credentialReader = CredentialReader()
     private let balanceAPIClient = BalanceAPIClient()
     private let preferences = AppPreferences()
@@ -1462,8 +1479,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
 
-    init(repository: CCSwitchRepository = CCSwitchRepository()) {
+    init(
+        repository: CCSwitchRepository = CCSwitchRepository(),
+        openCodexRepository: OpenCodexRepository = OpenCodexRepository()
+    ) {
         self.ccSwitchRepository = repository
+        self.openCodexRepository = openCodexRepository
         super.init()
     }
 
@@ -1501,7 +1522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             "database watchers started; count=\(databaseWatchers.count)",
             category: "database"
         )
-        refresh(forceBalance: true)
+        refresh(reason: .initial)
         refreshQuickSwitchSummaries(force: true)
         refreshQuickSwitchSummaries(force: true, for: .claude)
         prefetchCurrentBalance(for: .claude)
@@ -1587,7 +1608,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
         )
-        refresh(forceBalance: true)
+        refresh(reason: .manual)
         refreshQuickSwitchSummaries(force: true)
     }
 
@@ -1665,7 +1686,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.lastProviderID = nil
                 self.lastBalanceFetch = nil
                 self.lastOfficialFetch = nil
-                self.refresh(forceBalance: true)
+                self.lastOpenCodexFetch = nil
+                self.resetOpenCodexCards()
+                DispatchQueue.main.async { [weak self] in
+                    self?.openCodexState = nil
+                    self?.openCodexCards = []
+                    self?.openCodexSwitchInFlight = false
+                }
+                self.refresh(reason: .providerChanged)
             } catch {
                 SwitchLog.write("switch failed; target=\(providerName); error=\(error.localizedDescription)")
                 if ccSwitch != nil, let ccSwitchURL {
@@ -1680,6 +1708,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     "切换失败：\(error.localizedDescription)",
                     "Switch failed: \(error.localizedDescription)"
                 )))
+            }
+        }
+    }
+
+    @objc private func switchOpenCodexPreference(_ sender: NSMenuItem) {
+        guard let preference = sender.representedObject as? OpenCodexPreference else { return }
+        performOpenCodexPreferenceSwitch(preference)
+    }
+
+    private func performOpenCodexPreferenceSwitch(_ preference: OpenCodexPreference) {
+        guard activeClient == .codex,
+              !openCodexSwitchInFlight,
+              let entry = openCodexState,
+              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
+              current.id == entry.providerID,
+              current.openCodexCandidate != nil else { return }
+
+        openCodexSwitchInFlight = true
+        let providerID = entry.providerID
+        let providerName = current.name
+        let oldState = entry.state
+        monitorQueue.async { [weak self] in
+            guard let self else { return }
+            self.openCodexRepository.select(preference, from: oldState) { [weak self] result in
+                guard let self else { return }
+                self.monitorQueue.async {
+                    guard self.activeClient == .codex,
+                          self.ccSwitchRepository.loadCurrent(appType: AssistantClient.codex.appType)?.id == providerID else {
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        return
+                    }
+                    switch result {
+                    case .success(let state):
+                        self.confirmedOpenCodexCandidates[providerID] = state.candidate
+                        self.confirmedOpenCodexStates[providerID] = state
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexState = (providerID, state)
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        self.prepareOpenCodexCards(
+                            providerID: providerID,
+                            state: state
+                        )
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: state.representativeSelector,
+                                status: self.openCodexStatusText(for: state),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: .codex
+                        )
+                    case .failure(let error):
+                        DispatchQueue.main.async { [weak self] in
+                            self?.openCodexSwitchInFlight = false
+                        }
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: oldState.representativeSelector,
+                                status: tr(
+                                    "切换失败：\(error.simplifiedChineseMessage)",
+                                    "Switch failed: \(error.englishMessage)"
+                                ),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: .codex
+                        )
+                    }
+                }
             }
         }
     }
@@ -1705,7 +1807,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         configureApplicationMenu()
         rebuildDashboardForLanguageChange()
         render(snapshot)
-        refresh(forceBalance: true)
+        refresh(reason: .configurationChanged)
         refreshQuickSwitchSummaries(force: true)
     }
 
@@ -3877,7 +3979,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance,
+            isBalance: snapshot.kind == .balance || snapshot.kind == .openCodex,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -3902,7 +4004,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
         dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
         dashboardMenuPreviewText.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+        if snapshot.kind == .balance || snapshot.kind == .openCodex,
+           showMenuBarIcon,
+           showMenuBarAmount {
             dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
                 y: -Self.menuBarSingleLineIconYOffset
@@ -4191,7 +4295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         activityTimer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
-            self?.refresh(forceBalance: false)
+            self?.refresh(reason: .scheduled)
             self?.refreshQuickSwitchSummaries(force: false)
         }
         timer = providerTimer
@@ -4342,7 +4446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         } ?? true
         if shouldRefreshUsage && (stateChanged || refreshIsDue) {
             lastCodexUsageRefresh = now
-            refresh(forceBalance: true)
+            refresh(reason: .activityUsage)
         } else if !shouldRefreshUsage {
             lastCodexUsageRefresh = nil
             postCodexRefreshDeadline = nil
@@ -4357,6 +4461,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         lastBalanceFetch = nil
         lastOfficialFetch = nil
         lastQuickSwitchFetch = nil
+        lastOpenCodexFetch = nil
+        openCodexState = nil
+        openCodexCards = []
+        resetOpenCodexCards()
+        openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         updateActivityIcon()
@@ -4368,7 +4477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             lastProviderID = cached.providerID
             render(cached.snapshot)
         }
-        refresh(forceBalance: true)
+        refresh(reason: .clientChanged)
         refreshQuickSwitchSummaries(force: true)
         if dashboard != nil {
             showDashboardSection(dashboardSection)
@@ -4487,6 +4596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case .placeholder: kind = "placeholder"
         case .official: kind = "official"
         case .balance: kind = "balance"
+        case .openCodex: kind = "open-codex"
         case .error: kind = "error"
         }
         let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
@@ -4519,7 +4629,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance,
+            isBalance: snapshot.kind == .balance || snapshot.kind == .openCodex,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -4581,7 +4691,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 buttonHeight: buttonHeight,
                 referenceIconViewYOffset: apiIconYOffset
             )
-        } else if snapshot.kind == .balance {
+        } else if snapshot.kind == .balance || snapshot.kind == .openCodex {
             iconYOffset = apiIconYOffset
         } else {
             iconYOffset = 0
@@ -4602,7 +4712,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The optical adjustment is always applied from a clean transform
         // after the current snapshot's frames have been assigned.
         menuBarTextStack.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance, showMenuBarIcon, showMenuBarAmount {
+        if snapshot.kind == .balance || snapshot.kind == .openCodex,
+           showMenuBarIcon,
+           showMenuBarAmount {
             menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
                 y: -Self.menuBarSingleLineTextYOffset
@@ -4724,7 +4836,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func refresh(forceBalance: Bool) {
+    private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
         monitorQueue.async { [weak self] in
             guard let self else { return }
@@ -4753,65 +4865,634 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let switched = current.id != self.lastProviderID
             if switched {
                 SwitchLog.write("provider observed; app=\(client.appType); id=\(current.id); name=\(current.name); source=database watcher/poll")
+                self.lastOpenCodexFetch = nil
+                self.resetOpenCodexCards()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.activeClient == client else { return }
+                    self.openCodexState = nil
+                    self.openCodexSwitchInFlight = false
+                    self.openCodexCards = []
+                }
             }
             self.lastProviderID = current.id
-            guard let query = current.query else {
-                guard current.isOfficial else {
-                    let failure = current.queryFailure ?? .unknown
-                    SwitchLog.write(
-                        "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
-                        level: .warning,
-                        category: "network",
-                        throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
-                        minimumInterval: 60
-                    )
-                    let reason = failure.userVisibleReason(
-                        usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
-                    )
-                    self.renderBalanceErrorForCurrentProvider(
-                        providerID: current.id,
-                        providerName: current.name,
-                        reason: reason,
-                        client: client
-                    )
-                    return
-                }
-                let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
-                guard forceBalance || switched || due else { return }
-                self.lastOfficialFetch = Date()
-                SwitchLog.write(
-                    "quota fetch started; client=\(client.rawValue); provider=\(current.name)",
-                    level: .debug,
-                    category: "network",
-                    throttleKey: "quota-fetch-\(client.rawValue)-\(current.id)",
-                    minimumInterval: 10
-                )
-                self.fetchOfficialQuota(
+            if client == .codex, let candidate = current.openCodexCandidate {
+                let due = self.lastOpenCodexFetch.map {
+                    Date().timeIntervalSince($0) >= 5
+                } ?? true
+                guard reason.forcesStandardProviderBalance || switched || due else { return }
+                self.lastOpenCodexFetch = Date()
+                self.refreshOpenCodex(
                     providerID: current.id,
                     providerName: current.name,
-                    client: client
+                    candidate: candidate,
+                    client: client,
+                    reason: reason,
+                    switched: switched
                 )
                 return
             }
 
-            let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
-            let due = self.lastBalanceFetch.map { Date().timeIntervalSince($0) >= interval } ?? true
-            guard forceBalance || switched || due else { return }
-            self.lastBalanceFetch = Date()
-            SwitchLog.write(
-                "balance fetch started; client=\(client.rawValue); provider=\(current.name)",
-                level: .debug,
-                category: "network",
-                throttleKey: "balance-fetch-\(client.rawValue)-\(current.id)",
-                minimumInterval: 10
-            )
-            self.fetchBalance(
-                providerID: current.id,
-                providerName: current.name,
-                query: query,
-                client: client
+            if client == .codex {
+                self.confirmedOpenCodexCandidates.removeValue(forKey: current.id)
+                self.confirmedOpenCodexStates.removeValue(forKey: current.id)
+                self.resetOpenCodexCards()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          self.openCodexState?.providerID == current.id else { return }
+                    self.openCodexState = nil
+                    self.openCodexCards = []
+                    self.openCodexSwitchInFlight = false
+                }
+            }
+
+            self.refreshStandardProvider(
+                current: current,
+                client: client,
+                forceBalance: reason.forcesStandardProviderBalance,
+                switched: switched
             )
         }
+    }
+
+    private func refreshStandardProvider(
+        current: CCSwitchProvider,
+        client: AssistantClient,
+        forceBalance: Bool,
+        switched: Bool
+    ) {
+        guard let query = current.query else {
+            guard current.isOfficial else {
+                let failure = current.queryFailure ?? .unknown
+                SwitchLog.write(
+                    "balance query unavailable; client=\(client.rawValue); provider_id=\(current.id); provider=\(current.name); \(failure.diagnostic)",
+                    level: .warning,
+                    category: "network",
+                    throttleKey: "balance-query-unavailable-\(client.rawValue)-\(current.id)-\(failure.rawValue)",
+                    minimumInterval: 60
+                )
+                let reason = failure.userVisibleReason(
+                    usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
+                )
+                self.renderBalanceErrorForCurrentProvider(
+                    providerID: current.id,
+                    providerName: current.name,
+                    reason: reason,
+                    client: client
+                )
+                return
+            }
+            let due = self.lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
+            guard forceBalance || switched || due else { return }
+            self.lastOfficialFetch = Date()
+            SwitchLog.write(
+                "quota fetch started; client=\(client.rawValue); provider=\(current.name)",
+                level: .debug,
+                category: "network",
+                throttleKey: "quota-fetch-\(client.rawValue)-\(current.id)",
+                minimumInterval: 10
+            )
+            self.fetchOfficialQuota(
+                providerID: current.id,
+                providerName: current.name,
+                client: client
+            )
+            return
+        }
+
+        let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
+        let due = self.lastBalanceFetch.map { Date().timeIntervalSince($0) >= interval } ?? true
+        guard forceBalance || switched || due else { return }
+        self.lastBalanceFetch = Date()
+        SwitchLog.write(
+            "balance fetch started; client=\(client.rawValue); provider=\(current.name)",
+            level: .debug,
+            category: "network",
+            throttleKey: "balance-fetch-\(client.rawValue)-\(current.id)",
+            minimumInterval: 10
+        )
+        self.fetchBalance(
+            providerID: current.id,
+            providerName: current.name,
+            query: query,
+            client: client
+        )
+    }
+
+    private func refreshOpenCodex(
+        providerID: String,
+        providerName: String,
+        candidate: OpenCodexEndpointCandidate,
+        client: AssistantClient,
+        reason: BalanceRefreshReason,
+        switched: Bool
+    ) {
+        openCodexRepository.readState(for: candidate) { [weak self] result in
+            guard let self else { return }
+            self.monitorQueue.async {
+                guard self.activeClient == client,
+                      self.ccSwitchRepository.loadCurrent(appType: client.appType)?.id == providerID else { return }
+                switch result {
+                case .notRecognized:
+                    self.confirmedOpenCodexCandidates.removeValue(forKey: providerID)
+                    self.confirmedOpenCodexStates.removeValue(forKey: providerID)
+                    self.resetOpenCodexCards()
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.openCodexState?.providerID == providerID else { return }
+                        self.openCodexState = nil
+                        self.openCodexCards = []
+                        self.openCodexSwitchInFlight = false
+                    }
+                    guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
+                    self.refreshStandardProvider(
+                        current: current,
+                        client: client,
+                        forceBalance: reason.forcesStandardProviderBalance,
+                        switched: switched
+                    )
+                case .unavailable:
+                    if self.confirmedOpenCodexCandidates[providerID] == candidate,
+                       let previous = self.confirmedOpenCodexStates[providerID] {
+                        let unavailable = self.unavailableOpenCodexState(from: previous)
+                        self.confirmedOpenCodexStates[providerID] = unavailable
+                        self.publishOpenCodexCardsUnavailable(
+                            providerID: providerID,
+                            reason: tr(
+                                "OpenCodex 管理接口不可用",
+                                "OpenCodex management API is unavailable"
+                            )
+                        )
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self else { return }
+                            self.openCodexState = (providerID, unavailable)
+                            self.openCodexSwitchInFlight = false
+                        }
+                        self.renderForCurrentProvider(
+                            .openCodex(
+                                providerName,
+                                selector: unavailable.representativeSelector,
+                                status: self.openCodexStatusText(for: unavailable),
+                                Date()
+                            ),
+                            providerID: providerID,
+                            client: client
+                        )
+                    } else {
+                        self.resetOpenCodexCards()
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.openCodexState?.providerID == providerID else { return }
+                            self.openCodexState = nil
+                            self.openCodexCards = []
+                            self.openCodexSwitchInFlight = false
+                        }
+                        guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
+                        self.refreshStandardProvider(
+                            current: current,
+                            client: client,
+                            forceBalance: reason.forcesStandardProviderBalance,
+                            switched: switched
+                        )
+                    }
+                case .recognized(let state):
+                    self.confirmedOpenCodexCandidates[providerID] = candidate
+                    self.confirmedOpenCodexStates[providerID] = state
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.openCodexState = (providerID, state)
+                        self.openCodexSwitchInFlight = false
+                    }
+                    self.prepareOpenCodexCards(
+                        providerID: providerID,
+                        state: state,
+                        force: reason.forcesOpenCodexCardSources || switched
+                    )
+                    self.renderForCurrentProvider(
+                        .openCodex(
+                            providerName,
+                            selector: state.representativeSelector,
+                            status: self.openCodexStatusText(for: state),
+                            Date()
+                        ),
+                        providerID: providerID,
+                        client: client
+                    )
+                }
+            }
+        }
+    }
+
+    private func resetOpenCodexCards() {
+        openCodexCardPlans = []
+        openCodexCardData = [:]
+        openCodexCardRefreshCoordinator.reset()
+        openCodexCardRequestsInFlight.removeAll()
+    }
+
+    private func prepareOpenCodexCards(
+        providerID: String,
+        state: OpenCodexRuntimeState,
+        force: Bool = false
+    ) {
+        let sources = ccSwitchRepository.loadSummarySources(appType: AssistantClient.codex.appType)
+        let plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
+        let refreshSources = makeOpenCodexCardRefreshSources(
+            plans: plans,
+            state: state,
+            sources: sources
+        )
+        let refreshPlan = openCodexCardRefreshCoordinator.plan(
+            sources: refreshSources,
+            now: Date(),
+            force: force,
+            allowRequests: state.managementAvailable,
+            inFlight: openCodexCardRequestsInFlight
+        )
+        let activeSources = Set(refreshSources.map(\OpenCodexCardRefreshSource.source))
+        openCodexCardRequestsInFlight.formIntersection(activeSources)
+        openCodexCardRequestsInFlight.subtract(refreshPlan.configurationChanged)
+        openCodexCardPlans = plans
+        var nextData: [OpenCodexCardSource: OpenCodexCardData] = [:]
+        for plan in plans {
+            switch plan.source {
+            case .unavailable:
+                continue
+            default:
+                if let cached = openCodexCardRefreshCoordinator.visibleData(for: plan.source) {
+                    nextData[plan.source] = cached
+                } else if state.managementAvailable {
+                    nextData[plan.source] = .loading(category: plan.source.category)
+                } else {
+                    nextData[plan.source] = .unavailable(
+                        category: plan.source.category,
+                        reason: tr(
+                            "OpenCodex 管理接口不可用",
+                            "OpenCodex management API is unavailable"
+                        )
+                    )
+                }
+            }
+        }
+        openCodexCardData = nextData
+        publishOpenCodexCards(providerID: providerID, plans: plans)
+
+        guard state.managementAvailable else { return }
+        for refreshSource in refreshPlan.dueSources {
+            let source = refreshSource.source
+            guard let generation = openCodexCardRefreshCoordinator.generation(for: source) else {
+                continue
+            }
+            openCodexCardRequestsInFlight.insert(source)
+            switch source {
+            case .official:
+                fetchOpenCodexOfficialCard(
+                    providerID: providerID,
+                    generation: generation
+                )
+            case .balance(let sourceID):
+                guard let summary = sources.first(where: { $0.id == sourceID }),
+                      let query = summary.query else {
+                    updateOpenCodexCard(
+                        providerID: providerID,
+                        generation: generation,
+                        source: source,
+                        data: .unavailable(
+                            category: .balance,
+                            reason: tr(
+                                "余额来源配置不完整",
+                                "The balance source configuration is incomplete"
+                            )
+                        )
+                    )
+                    continue
+                }
+                balanceAPIClient.fetchBalance(
+                    query: query,
+                    client: .codex,
+                    providerID: "opencodex-card:\(sourceID)"
+                ) { [weak self] result in
+                    guard let self else { return }
+                    let data: OpenCodexCardData
+                    switch result {
+                    case .success(let response):
+                        data = .balance(
+                            amount: response.output.amount,
+                            unit: response.output.unit,
+                            websiteURL: Self.secureOpenCodexWebsiteURL(
+                                summary.websiteURL ?? query.websiteURL
+                            ),
+                            updatedAt: Date()
+                        )
+                    case .failure(.nonHTTPS):
+                        data = .unavailable(
+                            category: .balance,
+                            reason: tr(
+                                "余额不可用：余额接口不是 HTTPS",
+                                "Balance unavailable: the balance endpoint is not HTTPS"
+                            )
+                        )
+                    default:
+                        data = .unavailable(
+                            category: .balance,
+                            reason: tr(
+                                "余额不可用：无法读取上游余额",
+                                "Balance unavailable: the upstream balance could not be read"
+                            )
+                        )
+                    }
+                    self.monitorQueue.async {
+                        self.updateOpenCodexCard(
+                            providerID: providerID,
+                            generation: generation,
+                            source: source,
+                            data: data
+                        )
+                    }
+                }
+            case .unavailable:
+                openCodexCardRequestsInFlight.remove(source)
+                continue
+            }
+        }
+    }
+
+    private func makeOpenCodexCardRefreshSources(
+        plans: [OpenCodexCardPlan],
+        state: OpenCodexRuntimeState,
+        sources: [ProviderSummarySource]
+    ) -> [OpenCodexCardRefreshSource] {
+        var result: [OpenCodexCardRefreshSource] = []
+        var seen = Set<OpenCodexCardSource>()
+
+        for plan in plans {
+            guard seen.insert(plan.source).inserted else { continue }
+            switch plan.source {
+            case .official:
+                result.append(
+                    OpenCodexCardRefreshSource(
+                        source: .official,
+                        interval: 60,
+                        configurationFingerprint: officialOpenCodexCardFingerprint(
+                            plans: plans,
+                            state: state,
+                            sources: sources
+                        )
+                    )
+                )
+            case .balance(let sourceID):
+                guard let summary = sources.first(where: { $0.id == sourceID }),
+                      let query = summary.query else { continue }
+                result.append(
+                    OpenCodexCardRefreshSource(
+                        source: plan.source,
+                        interval: TimeInterval(max(query.intervalMinutes, 1) * 60),
+                        configurationFingerprint: balanceOpenCodexCardFingerprint(
+                            summary: summary,
+                            query: query,
+                            state: state,
+                            plans: plans
+                        )
+                    )
+                )
+            case .unavailable:
+                continue
+            }
+        }
+        return result
+    }
+
+    private func officialOpenCodexCardFingerprint(
+        plans: [OpenCodexCardPlan],
+        state: OpenCodexRuntimeState,
+        sources: [ProviderSummarySource]
+    ) -> String {
+        let providerFingerprint = plans.compactMap { plan in
+            guard let descriptor = state.providers[plan.provider], descriptor.isOfficial else {
+                return nil
+            }
+            return openCodexProviderFingerprint(descriptor)
+        }.joined(separator: ";")
+        let sourceFingerprint = sources.filter(\.isOfficial).map {
+            [
+                $0.id,
+                $0.name,
+                $0.websiteURL?.absoluteString ?? "",
+                $0.officialAccessToken.map { String($0.hashValue) } ?? "missing"
+            ].joined(separator: "|")
+        }.joined(separator: ";")
+        return "official:\(providerFingerprint):\(sourceFingerprint)"
+    }
+
+    private func balanceOpenCodexCardFingerprint(
+        summary: ProviderSummarySource,
+        query: BalanceQuery,
+        state: OpenCodexRuntimeState,
+        plans: [OpenCodexCardPlan]
+    ) -> String {
+        let providerFingerprint = plans.compactMap { plan in
+            guard case .balance(let sourceID) = plan.source,
+                  sourceID == summary.id,
+                  let descriptor = state.providers[plan.provider] else { return nil }
+            return openCodexProviderFingerprint(descriptor)
+        }.joined(separator: ";")
+        let headerNames = query.additionalHeaders.keys.sorted().joined(separator: ",")
+        return [
+            summary.id,
+            summary.name,
+            query.url,
+            String(query.intervalMinutes),
+            summary.websiteURL?.absoluteString ?? query.websiteURL?.absoluteString ?? "",
+            String(query.apiKey.hashValue),
+            headerNames,
+            String(query.isRightCode),
+            query.subscriptionPrefix,
+            String(query.isNewAPI),
+            String(describing: query.nativeBalanceProvider),
+            providerFingerprint
+        ].joined(separator: "|")
+    }
+
+    private func openCodexProviderFingerprint(
+        _ descriptor: OpenCodexProviderDescriptor
+    ) -> String {
+        [
+            descriptor.id,
+            descriptor.adapter,
+            descriptor.authMode,
+            descriptor.baseURL.absoluteString,
+            descriptor.defaultModel ?? "",
+            descriptor.models.joined(separator: ","),
+            String(descriptor.isOfficial)
+        ].joined(separator: "|")
+    }
+
+    private func fetchOpenCodexOfficialCard(
+        providerID: String,
+        generation: UUID
+    ) {
+        guard let request = makeOfficialQuotaRequest(
+            client: .codex,
+            storedAccessToken: nil
+        ) else {
+            updateOpenCodexCard(
+                providerID: providerID,
+                generation: generation,
+                source: .official,
+                data: .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：未找到官方登录态",
+                        "Quota unavailable: official sign-in credentials were not found"
+                    )
+                )
+            )
+            return
+        }
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            guard let self else { return }
+            let cardData: OpenCodexCardData
+            if let http = response as? HTTPURLResponse,
+               (200..<300).contains(http.statusCode),
+               let data,
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let quota = try? OfficialQuotaResponseParser.parse(object: object, client: .codex) {
+                cardData = .official(
+                    remaining: quota.remaining,
+                    label: quota.label,
+                    reset: quota.reset,
+                    updatedAt: Date()
+                )
+            } else {
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：官方额度接口暂时不可用",
+                        "Quota unavailable: the official quota endpoint is temporarily unavailable"
+                    )
+                )
+            }
+            self.monitorQueue.async {
+                self.updateOpenCodexCard(
+                    providerID: providerID,
+                    generation: generation,
+                    source: .official,
+                    data: cardData
+                )
+            }
+        }.resume()
+    }
+
+    private func publishOpenCodexCards(
+        providerID: String,
+        plans: [OpenCodexCardPlan]
+    ) {
+        let cards = OpenCodexCardPlanner.cards(
+            plans: plans,
+            data: openCodexCardData
+        )
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.activeClient == .codex,
+                  self.openCodexState?.providerID == providerID else { return }
+            self.openCodexCards = cards
+            if self.snapshot.kind == .openCodex {
+                if self.isStatusMenuTracking {
+                    self.statusMenuNeedsRebuild = true
+                } else {
+                    self.rebuildStatusMenu(
+                        for: self.snapshot,
+                        refreshDate: self.refreshDate(for: self.snapshot)
+                    )
+                }
+            }
+        }
+    }
+
+    private func updateOpenCodexCard(
+        providerID: String,
+        generation: UUID,
+        source: OpenCodexCardSource,
+        data: OpenCodexCardData
+    ) {
+        guard openCodexCardRefreshCoordinator.generation(for: source) == generation,
+              let visibleData = openCodexCardRefreshCoordinator.store(
+                  data,
+                  for: source,
+                  generation: generation
+              ) else { return }
+        openCodexCardRequestsInFlight.remove(source)
+        openCodexCardData[source] = visibleData
+        publishOpenCodexCards(
+            providerID: providerID,
+            plans: openCodexCardPlans
+        )
+    }
+
+    private func publishOpenCodexCardsUnavailable(
+        providerID: String,
+        reason: String
+    ) {
+        for plan in openCodexCardPlans {
+            switch plan.source {
+            case .unavailable:
+                continue
+            default:
+                if let cached = openCodexCardRefreshCoordinator.visibleData(for: plan.source) {
+                    openCodexCardData[plan.source] = cached
+                } else {
+                    openCodexCardData[plan.source] = .unavailable(
+                        category: plan.source.category,
+                        reason: reason
+                    )
+                }
+            }
+        }
+        publishOpenCodexCards(
+            providerID: providerID,
+            plans: openCodexCardPlans
+        )
+    }
+
+    private func openCodexStatusText(for state: OpenCodexRuntimeState) -> String {
+        if !state.managementAvailable {
+            return tr(
+                "管理接口不可用，等待 OpenCodex 恢复",
+                "Management API unavailable; waiting for OpenCodex"
+            )
+        }
+        if !state.preferenceDataAvailable {
+            return tr(
+                "暂未读取到 OpenCodex 偏好",
+                "OpenCodex preferences are not available yet"
+            )
+        }
+        if state.preferences.isEmpty {
+            return tr(
+                "没有配置 OpenCodex 子项",
+                "No OpenCodex preferences configured"
+            )
+        }
+        if let current = state.currentSelector {
+            return tr("当前：\(current)", "Current: \(current)")
+        }
+        return tr(
+            "已读取 OpenCodex 偏好",
+            "OpenCodex preferences loaded"
+        )
+    }
+
+    private func unavailableOpenCodexState(
+        from state: OpenCodexRuntimeState
+    ) -> OpenCodexRuntimeState {
+        OpenCodexRuntimeState(
+            candidate: state.candidate,
+            defaultProvider: state.defaultProvider,
+            providerDefaultModels: state.providerDefaultModels,
+            providers: state.providers,
+            chosenSelectors: state.chosenSelectors,
+            availableSelectors: state.availableSelectors,
+            preferences: state.preferences,
+            managementAvailable: false,
+            preferenceDataAvailable: state.preferenceDataAvailable
+        )
     }
 
     private func prefetchCurrentBalance(for client: AssistantClient) {
@@ -4819,6 +5500,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             guard let self,
                   let current = ccSwitchRepository.loadCurrent(appType: client.appType)
             else { return }
+
+            if client == .codex,
+               let candidate = current.openCodexCandidate,
+               self.confirmedOpenCodexCandidates[current.id] == candidate {
+                return
+            }
 
             if let query = current.query {
                 SwitchLog.write(
@@ -4889,7 +5576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // A CC Switch database write may represent either a Provider
             // switch or a credential/configuration update. Bypass the normal
             // provider interval so the menu follows it immediately.
-            self?.refresh(forceBalance: true)
+            self?.refresh(reason: .configurationChanged)
             self?.refreshQuickSwitchSummaries(force: true)
         }
         syncWorkItem = workItem
@@ -4910,6 +5597,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.lastQuickSwitchFetch = Date()
 
             for source in ccSwitchRepository.loadSummarySources(appType: client.appType) {
+                if client == .codex,
+                   let candidate = source.openCodexCandidate,
+                   self.confirmedOpenCodexCandidates[source.id] == candidate {
+                    continue
+                }
                 if source.isOfficial {
                     // Avoid querying the macOS Keychain merely to decorate the
                     // quick-switch list. Official Claude quota is still loaded
@@ -5021,6 +5713,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         default:
             return "\(number) \(unit)"
         }
+    }
+
+    private static func secureOpenCodexWebsiteURL(_ url: URL?) -> URL? {
+        guard let url,
+              url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased(),
+              url.user == nil,
+              url.password == nil,
+              host != "localhost",
+              host != "::1",
+              !(host == "127.0.0.1" || host.hasPrefix("127.")) else {
+            return nil
+        }
+        return url
     }
 
     private func beginBalanceRequest(_ key: String) -> Bool {
@@ -5277,7 +5983,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 switch next.kind {
                 case .official, .balance:
                     self.clientSnapshots[client] = (providerID, next)
-                case .placeholder, .error:
+                case .placeholder, .openCodex, .error:
                     break
                 }
                 guard self.activeClient == client,
@@ -5368,7 +6074,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func rebuildStatusMenu(for snapshot: Snapshot, refreshDate: Date?) {
         statusMenu.removeAllItems()
-        statusMenu.addItem(makeOverviewMenuItem(for: snapshot, refreshDate: refreshDate))
+        if snapshot.kind == .openCodex {
+            if openCodexCards.isEmpty {
+                statusMenu.addItem(makeOpenCodexEmptyMenuItem())
+            } else {
+                for (index, card) in openCodexCards.enumerated() {
+                    statusMenu.addItem(makeOpenCodexCardMenuItem(card))
+                    if index < openCodexCards.count - 1 {
+                        statusMenu.addItem(.separator())
+                    }
+                }
+            }
+        } else {
+            statusMenu.addItem(makeOverviewMenuItem(for: snapshot, refreshDate: refreshDate))
+        }
         statusMenu.addItem(.separator())
         if showQuickSwitchMenu {
             statusMenu.addItem(makeQuickSwitchMenuItem())
@@ -5462,12 +6181,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let choiceSummary = choices.map {
             "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
         }.joined(separator: "|")
-        if choices.isEmpty {
+        let menuChoices = QuickSwitchMenuModel.entries(from: choices)
+        if menuChoices.isEmpty {
             let empty = NSMenuItem(title: tr("未找到 Codex 供应商", "No Codex Provider Found"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             submenu.addItem(empty)
         } else {
-            for choice in choices {
+            for choice in menuChoices {
                 let item = NSMenuItem(
                     title: "",
                     action: #selector(switchProvider(_:)),
@@ -5480,6 +6200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 submenu.addItem(item)
             }
         }
+
         SwitchLog.write(
             "quick-switch menu built; app_type=\(activeClient.appType); choice_count=\(choices.count); submenu_item_count=\(submenu.items.count); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary); empty_state=\(choices.isEmpty)",
             level: .debug,
@@ -5503,31 +6224,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // command. Custom labels keep it bright while the item stays disabled.
         item.isEnabled = snapshot.kind == .balance && snapshot.websiteURL != nil
         let isBalance = snapshot.kind == .balance
-        let viewHeight: CGFloat = isBalance ? 86 : 102
-        let viewWidth: CGFloat = 304
-        let horizontalInset: CGFloat = 14
-        let contentWidth = viewWidth - (horizontalInset * 2)
-        let amountWidth: CGFloat = 141
-        let amountX = viewWidth - horizontalInset - amountWidth
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: viewWidth, height: viewHeight))
+        let layout = OpenCodexCardLayout.frames(
+            for: isBalance ? .balance : .quota,
+            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
+        )
+        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
 
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
-        provider.frame = NSRect(x: horizontalInset, y: isBalance ? 58 : 75, width: 189, height: 20)
+        provider.frame = layout.title
 
         if snapshot.kind == .official || snapshot.kind == .balance {
             let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
             let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.textColor = .secondaryLabelColor
             refreshTime.alignment = .right
-            refreshTime.frame = NSRect(x: 209, y: isBalance ? 59 : 76, width: 81, height: 17)
+            refreshTime.frame = layout.refreshTime
             view.addSubview(refreshTime)
         }
 
-        if let percentage = snapshot.progressPercentage {
+        if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
             // Keep the header clean. The progress bar belongs below the two
             // quota-detail rows, in the otherwise empty space above actions.
-            progress.frame = NSRect(x: horizontalInset, y: 8, width: contentWidth, height: 5)
+            progress.frame = progressFrame
             view.addSubview(progress)
         }
 
@@ -5540,43 +6259,213 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // Align the number with these two compact text rows instead.
             // Preserve the previous spacing above these rows. Only the empty
             // space below the link is reduced by the shorter card height.
-            quotaDetail.frame = NSRect(x: horizontalInset, y: 31, width: 128, height: 18)
-            amount.frame = NSRect(x: amountX, y: 5, width: amountWidth, height: 48)
+            quotaDetail.frame = layout.quotaDetail
+            amount.frame = layout.amount
 
             // Center the shared link row between the balance row and divider.
-            let linkRowY: CGFloat = 7
-
             let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = NSRect(x: 14, y: linkRowY, width: AppLanguage.usesSimplifiedChinese ? 62 : 72, height: 17)
+            linkPrefix.frame = layout.linkPrefix ?? .zero
             view.addSubview(linkPrefix)
 
-            if snapshot.websiteURL != nil {
+            if snapshot.websiteURL != nil, let linkFrame = layout.link {
                 let link = HoverLinkTextField(text: snapshot.provider)
                 link.onActivate = { [weak self] in self?.openProviderWebsite() }
                 // Match the prefix label's exact baseline and line box.
-                link.frame = NSRect(
-                    x: AppLanguage.usesSimplifiedChinese ? 75 : 87,
-                    y: linkRowY,
-                    width: AppLanguage.usesSimplifiedChinese ? 148 : 136,
-                    height: 17
-                )
+                link.frame = linkFrame
                 view.addSubview(link)
             }
         } else {
             // The following two rows form the left half of the quota display;
             // the amount spans both on right.
-            quotaDetail.frame = NSRect(x: horizontalInset, y: 47, width: 128, height: 18)
+            quotaDetail.frame = layout.quotaDetail
             let reset = makeOverviewLabel(snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter), font: .systemFont(ofSize: 13, weight: .regular))
             reset.textColor = .secondaryLabelColor
-            reset.frame = NSRect(x: horizontalInset, y: 28, width: 128, height: 17)
+            reset.frame = layout.reset ?? .zero
             // Visually center the large percentage across the combined height
             // of the two left-hand rows (equivalent to merged-cell centering).
-            amount.frame = NSRect(x: amountX, y: 18, width: amountWidth, height: 48)
+            amount.frame = layout.amount
             view.addSubview(reset)
         }
 
         [provider, quotaDetail, amount].forEach(view.addSubview)
+        item.view = view
+        return item
+    }
+
+    private func makeOpenCodexEmptyMenuItem() -> NSMenuItem {
+        let item = NSMenuItem()
+        item.isEnabled = false
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 68))
+        let title = makeOverviewLabel(
+            tr("OpenCodex", "OpenCodex"),
+            font: .systemFont(ofSize: 15, weight: .semibold)
+        )
+        title.frame = NSRect(x: 14, y: 38, width: 220, height: 20)
+        let status: String
+        if let state = openCodexState?.state, !state.managementAvailable {
+            status = tr(
+                "OpenCodex 管理接口不可用",
+                "OpenCodex management API is unavailable"
+            )
+        } else if openCodexState?.state.preferenceDataAvailable == false {
+            status = tr(
+                "暂未读取到 OpenCodex 精选模型",
+                "OpenCodex chosen models are not available yet"
+            )
+        } else {
+            status = tr(
+                "没有配置 OpenCodex 精选模型",
+                "No OpenCodex chosen models are configured"
+            )
+        }
+        let detail = makeOverviewLabel(status, font: .systemFont(ofSize: 12))
+        detail.textColor = .secondaryLabelColor
+        detail.frame = NSRect(x: 14, y: 14, width: 312, height: 18)
+        [title, detail].forEach(view.addSubview)
+        item.view = view
+        return item
+    }
+
+    private func makeOpenCodexCardMenuItem(_ card: OpenCodexModelCard) -> NSMenuItem {
+        let item = NSMenuItem()
+        let category = card.data.category
+        let layout = OpenCodexCardLayout.frames(
+            for: category,
+            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
+        )
+        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
+
+        let titleText = OpenCodexCardPresentation.identity(for: card)
+            + (card.isCurrent ? tr(" · 当前", " · Current") : "")
+        let provider = makeOverviewLabel(
+            titleText,
+            font: .systemFont(ofSize: 15, weight: .semibold)
+        )
+        provider.frame = layout.title
+
+        let updatedAt: Date?
+        switch card.data {
+        case .official(_, _, _, let date), .balance(_, _, _, let date):
+            updatedAt = date
+        case .loading, .unavailable:
+            updatedAt = nil
+        }
+        let refreshTime = makeOverviewLabel(
+            updatedAt.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--",
+            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        )
+        refreshTime.textColor = .secondaryLabelColor
+        refreshTime.alignment = .right
+        refreshTime.frame = layout.refreshTime
+
+        let primary: NSTextField
+        let detail: NSTextField
+        let secondary: NSTextField
+        var progress: QuotaProgressView?
+        var websiteLink: HoverLinkTextField?
+
+        switch card.data {
+        case .official(let remaining, let label, let reset, _):
+            progress = QuotaProgressView(percentage: remaining)
+            progress?.frame = layout.progress ?? .zero
+            primary = makeOverviewLabel(
+                "\(Int(remaining))%",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                label,
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                reset.map { tr("重置：\($0)", "Reset: \($0)") }
+                    ?? tr("重置时间不可用", "Reset time unavailable"),
+                font: .systemFont(ofSize: 13, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.reset ?? .zero
+        case .balance(let amount, let unit, let websiteURL, _):
+            primary = makeOverviewLabel(
+                Self.formatBalanceSummary(amount, unit: unit),
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                tr("剩余额度", "Remaining Balance"),
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                tr("官方链接：", "Official Link:"),
+                font: .systemFont(ofSize: 12, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.linkPrefix ?? .zero
+            if let websiteURL, let linkFrame = layout.link {
+                let link = HoverLinkTextField(text: card.provider)
+                link.frame = linkFrame
+                link.onActivate = { NSWorkspace.shared.open(websiteURL) }
+                websiteLink = link
+            }
+        case .loading:
+            primary = makeOverviewLabel(
+                "—",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                category == .quota
+                    ? tr("正在读取额度…", "Reading quota…")
+                    : tr("正在读取余额…", "Reading balance…"),
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                tr("尚未获得真实数据", "No live data received yet"),
+                font: .systemFont(ofSize: 13, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
+        case .unavailable(_, let reason):
+            primary = makeOverviewLabel(
+                "—",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
+            primary.alignment = .right
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                category.unavailableTitle,
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                reason,
+                font: .systemFont(ofSize: 12, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.lineBreakMode = .byTruncatingTail
+            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
+        }
+
+        [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
+        if let progress { view.addSubview(progress) }
+        if let websiteLink { view.addSubview(websiteLink) }
+
+        let preference = openCodexState?.state.preferences.first {
+            $0.selector == card.selector
+        }
+        item.target = self
+        item.action = #selector(switchOpenCodexPreference(_:))
+        item.representedObject = preference
+        item.state = card.isCurrent ? .on : .off
+        item.isEnabled = preference != nil
+            && openCodexState?.state.managementAvailable == true
+            && !openCodexSwitchInFlight
         item.view = view
         return item
     }
