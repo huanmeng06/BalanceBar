@@ -1392,32 +1392,32 @@ private final class MutableOpenCodexTransport: OpenCodexHTTPTransport {
         _ request: URLRequest,
         completion: @escaping (Result<OpenCodexHTTPResponse, Error>) -> Void
     ) {
-        DispatchQueue.global().async { [weak self] in
-            guard let self else { return }
-            let method = request.httpMethod ?? "GET"
-            let path = request.url?.path ?? ""
-            let queryName = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "name" })?.value
-            self.lock.lock()
-            self.requests.append(RequestRecord(method: method, path: path, queryName: queryName))
-            let shouldFailWrite: Bool
-            if method == "GET" {
-                shouldFailWrite = false
-            } else {
-                self.writeRequestCount += 1
-                shouldFailWrite = self.failWrites || self.failWriteAt == self.writeRequestCount
-            }
-            let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-            let response: OpenCodexHTTPResponse
-            if self.failSubagentReads && method == "GET" && path == "/api/subagent-models" {
-                response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
-            } else if shouldFailWrite {
-                response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
-            } else {
-                response = self.response(method: method, path: path, queryName: queryName, body: body)
-            }
-            self.lock.unlock()
-            completion(.success(response))
+        // Keep this fixture deterministic across Xcode test-host versions.
+        // The production URLSession transport remains asynchronous; this
+        // mock must not race its preconfigured failure flags with readState.
+        let method = request.httpMethod ?? "GET"
+        let path = request.url?.path ?? ""
+        let queryName = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "name" })?.value
+        lock.lock()
+        requests.append(RequestRecord(method: method, path: path, queryName: queryName))
+        let shouldFailWrite: Bool
+        if method == "GET" {
+            shouldFailWrite = false
+        } else {
+            writeRequestCount += 1
+            shouldFailWrite = failWrites || failWriteAt == writeRequestCount
         }
+        let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let response: OpenCodexHTTPResponse
+        if failSubagentReads && method == "GET" && path == "/api/subagent-models" {
+            response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
+        } else if shouldFailWrite {
+            response = OpenCodexHTTPResponse(statusCode: 503, data: Data())
+        } else {
+            response = self.response(method: method, path: path, queryName: queryName, body: body)
+        }
+        lock.unlock()
+        completion(.success(response))
     }
 
     private func response(
