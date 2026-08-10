@@ -1439,6 +1439,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // UI object; these backing values never contain credentials.
     private var openCodexCardPlans: [OpenCodexCardPlan] = []
     private var openCodexCardData: [OpenCodexCardSource: OpenCodexCardData] = [:]
+    private var openCodexCardRefreshCoordinator = OpenCodexCardRefreshCoordinator()
+    private var openCodexCardRequestsInFlight: Set<OpenCodexCardSource> = []
     private var openCodexCardRefreshID = UUID()
     // These caches are owned by monitorQueue. They let a previously verified
     // OpenCodex remain special while its process is temporarily unavailable,
@@ -1686,9 +1688,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.lastBalanceFetch = nil
                 self.lastOfficialFetch = nil
                 self.lastOpenCodexFetch = nil
-                self.openCodexCardPlans = []
-                self.openCodexCardData = [:]
-                self.openCodexCardRefreshID = UUID()
+                self.resetOpenCodexCards()
                 DispatchQueue.main.async { [weak self] in
                     self?.openCodexState = nil
                     self?.openCodexCards = []
@@ -4465,9 +4465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         lastOpenCodexFetch = nil
         openCodexState = nil
         openCodexCards = []
-        openCodexCardPlans = []
-        openCodexCardData = [:]
-        openCodexCardRefreshID = UUID()
+        resetOpenCodexCards()
         openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
@@ -5065,7 +5063,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     }
                     self.prepareOpenCodexCards(
                         providerID: providerID,
-                        state: state
+                        state: state,
+                        force: forceBalance || switched
                     )
                     self.renderForCurrentProvider(
                         .openCodex(
@@ -5086,35 +5085,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         openCodexCardRefreshID = UUID()
         openCodexCardPlans = []
         openCodexCardData = [:]
+        openCodexCardRefreshCoordinator.reset()
+        openCodexCardRequestsInFlight.removeAll()
     }
 
     private func prepareOpenCodexCards(
         providerID: String,
-        state: OpenCodexRuntimeState
+        state: OpenCodexRuntimeState,
+        force: Bool = false
     ) {
         let sources = ccSwitchRepository.loadSummarySources(appType: AssistantClient.codex.appType)
         let plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
-        let refreshID = UUID()
-        openCodexCardRefreshID = refreshID
+        let refreshSources = makeOpenCodexCardRefreshSources(
+            plans: plans,
+            state: state,
+            sources: sources
+        )
+        let refreshPlan = openCodexCardRefreshCoordinator.plan(
+            sources: refreshSources,
+            now: Date(),
+            force: force,
+            allowRequests: state.managementAvailable,
+            inFlight: openCodexCardRequestsInFlight
+        )
+        if !refreshPlan.configurationChanged.isEmpty {
+            openCodexCardRefreshID = UUID()
+        }
+        let refreshID = openCodexCardRefreshID
         openCodexCardPlans = plans
-        openCodexCardData = [:]
-
-        if state.managementAvailable {
-            for plan in plans {
-                switch plan.source {
-                case .unavailable:
-                    continue
-                default:
-                    openCodexCardData[plan.source] = .loading(category: plan.source.category)
-                }
-            }
-        } else {
-            for plan in plans {
-                switch plan.source {
-                case .unavailable:
-                    continue
-                default:
-                    openCodexCardData[plan.source] = .unavailable(
+        var nextData: [OpenCodexCardSource: OpenCodexCardData] = [:]
+        for plan in plans {
+            switch plan.source {
+            case .unavailable:
+                continue
+            default:
+                if let cached = openCodexCardRefreshCoordinator.visibleData(for: plan.source) {
+                    nextData[plan.source] = cached
+                } else if state.managementAvailable {
+                    nextData[plan.source] = .loading(category: plan.source.category)
+                } else {
+                    nextData[plan.source] = .unavailable(
                         category: plan.source.category,
                         reason: tr(
                             "OpenCodex 管理接口不可用",
@@ -5124,10 +5134,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
             }
         }
+        openCodexCardData = nextData
         publishOpenCodexCards(providerID: providerID, plans: plans)
 
         guard state.managementAvailable else { return }
-        for source in Set(plans.map(\.source)) {
+        for refreshSource in refreshPlan.dueSources {
+            let source = refreshSource.source
+            openCodexCardRequestsInFlight.insert(source)
             switch source {
             case .official:
                 fetchOpenCodexOfficialCard(
@@ -5195,9 +5208,120 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     }
                 }
             case .unavailable:
+                openCodexCardRequestsInFlight.remove(source)
                 continue
             }
         }
+    }
+
+    private func makeOpenCodexCardRefreshSources(
+        plans: [OpenCodexCardPlan],
+        state: OpenCodexRuntimeState,
+        sources: [ProviderSummarySource]
+    ) -> [OpenCodexCardRefreshSource] {
+        var result: [OpenCodexCardRefreshSource] = []
+        var seen = Set<OpenCodexCardSource>()
+
+        for plan in plans {
+            guard seen.insert(plan.source).inserted else { continue }
+            switch plan.source {
+            case .official:
+                result.append(
+                    OpenCodexCardRefreshSource(
+                        source: .official,
+                        interval: 60,
+                        configurationFingerprint: officialOpenCodexCardFingerprint(
+                            plans: plans,
+                            state: state,
+                            sources: sources
+                        )
+                    )
+                )
+            case .balance(let sourceID):
+                guard let summary = sources.first(where: { $0.id == sourceID }),
+                      let query = summary.query else { continue }
+                result.append(
+                    OpenCodexCardRefreshSource(
+                        source: plan.source,
+                        interval: TimeInterval(max(query.intervalMinutes, 1) * 60),
+                        configurationFingerprint: balanceOpenCodexCardFingerprint(
+                            summary: summary,
+                            query: query,
+                            state: state,
+                            plans: plans
+                        )
+                    )
+                )
+            case .unavailable:
+                continue
+            }
+        }
+        return result
+    }
+
+    private func officialOpenCodexCardFingerprint(
+        plans: [OpenCodexCardPlan],
+        state: OpenCodexRuntimeState,
+        sources: [ProviderSummarySource]
+    ) -> String {
+        let providerFingerprint = plans.compactMap { plan in
+            guard let descriptor = state.providers[plan.provider], descriptor.isOfficial else {
+                return nil
+            }
+            return openCodexProviderFingerprint(descriptor)
+        }.joined(separator: ";")
+        let sourceFingerprint = sources.filter(\.isOfficial).map {
+            [
+                $0.id,
+                $0.name,
+                $0.websiteURL?.absoluteString ?? "",
+                $0.officialAccessToken.map { String($0.hashValue) } ?? "missing"
+            ].joined(separator: "|")
+        }.joined(separator: ";")
+        return "official:\(providerFingerprint):\(sourceFingerprint)"
+    }
+
+    private func balanceOpenCodexCardFingerprint(
+        summary: ProviderSummarySource,
+        query: BalanceQuery,
+        state: OpenCodexRuntimeState,
+        plans: [OpenCodexCardPlan]
+    ) -> String {
+        let providerFingerprint = plans.compactMap { plan in
+            guard case .balance(let sourceID) = plan.source,
+                  sourceID == summary.id,
+                  let descriptor = state.providers[plan.provider] else { return nil }
+            return openCodexProviderFingerprint(descriptor)
+        }.joined(separator: ";")
+        let headerNames = query.additionalHeaders.keys.sorted().joined(separator: ",")
+        return [
+            summary.id,
+            summary.name,
+            query.url,
+            String(query.intervalMinutes),
+            summary.websiteURL?.absoluteString ?? query.websiteURL?.absoluteString ?? "",
+            String(query.apiKey.hashValue),
+            headerNames,
+            String(query.isRightCode),
+            query.subscriptionPrefix,
+            String(query.isNewAPI),
+            String(describing: query.nativeBalanceProvider),
+            providerFingerprint
+        ].joined(separator: "|")
+    }
+
+    private func openCodexProviderFingerprint(
+        _ descriptor: OpenCodexProviderDescriptor
+    ) -> String {
+        [
+            descriptor.id,
+            descriptor.adapter,
+            descriptor.authMode,
+            descriptor.baseURL.absoluteString,
+            descriptor.defaultModel ?? "",
+            descriptor.models.joined(separator: ","),
+            String(descriptor.isOfficial)
+        ].joined(separator: "|")
     }
 
     private func fetchOpenCodexOfficialCard(
@@ -5289,6 +5413,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         data: OpenCodexCardData
     ) {
         guard refreshID == openCodexCardRefreshID else { return }
+        openCodexCardRequestsInFlight.remove(source)
+        openCodexCardRefreshCoordinator.store(data, for: source)
         openCodexCardData[source] = data
         publishOpenCodexCards(
             providerID: providerID,
@@ -5305,10 +5431,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             case .unavailable:
                 continue
             default:
-                openCodexCardData[plan.source] = .unavailable(
-                    category: plan.source.category,
-                    reason: reason
-                )
+                if let cached = openCodexCardRefreshCoordinator.visibleData(for: plan.source) {
+                    openCodexCardData[plan.source] = cached
+                } else {
+                    openCodexCardData[plan.source] = .unavailable(
+                        category: plan.source.category,
+                        reason: reason
+                    )
+                }
             }
         }
         publishOpenCodexCards(

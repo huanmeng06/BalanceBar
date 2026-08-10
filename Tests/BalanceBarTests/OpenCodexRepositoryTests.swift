@@ -714,6 +714,153 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
+    func testOpenCodexCardRefreshCoordinatorCachesUntilDueAndForceRefreshes() {
+        let official = OpenCodexCardRefreshSource(
+            source: .official,
+            interval: 60,
+            configurationFingerprint: "official-v1"
+        )
+        let relay = OpenCodexCardRefreshSource(
+            source: .balance(providerID: "relay-source"),
+            interval: 30 * 60,
+            configurationFingerprint: "relay-v1"
+        )
+        let sources = [official, relay, official]
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var coordinator = OpenCodexCardRefreshCoordinator()
+        var loaderCalls = 0
+
+        func recordLoads(
+            _ plan: OpenCodexCardRefreshPlan,
+            at date: Date
+        ) {
+            loaderCalls += plan.dueSources.count
+            for source in plan.dueSources {
+                coordinator.store(
+                    successfulCardData(for: source.source, updatedAt: date),
+                    for: source.source
+                )
+            }
+        }
+
+        var plan = coordinator.plan(
+            sources: sources,
+            now: start,
+            force: false,
+            allowRequests: true,
+            inFlight: []
+        )
+        XCTAssertEqual(loaderCalls, 0)
+        XCTAssertEqual(
+            plan.dueSources.map(\OpenCodexCardRefreshSource.source),
+            [.official, .balance(providerID: "relay-source")]
+        )
+        XCTAssertEqual(plan.configurationChanged, [
+            .official,
+            .balance(providerID: "relay-source")
+        ])
+        recordLoads(plan, at: start)
+        XCTAssertEqual(loaderCalls, 2)
+        XCTAssertNotNil(coordinator.lastSuccessfulData(for: .official))
+        XCTAssertNotNil(
+            coordinator.lastSuccessfulData(for: .balance(providerID: "relay-source"))
+        )
+
+        // A management-state poll does not invoke either card loader before
+        // its source interval expires, and the last successful cards remain
+        // available for rendering.
+        plan = coordinator.plan(
+            sources: sources,
+            now: start.addingTimeInterval(5),
+            force: false,
+            allowRequests: true,
+            inFlight: []
+        )
+        recordLoads(plan, at: start.addingTimeInterval(5))
+        XCTAssertTrue(plan.dueSources.isEmpty)
+        XCTAssertEqual(loaderCalls, 2)
+        XCTAssertEqual(
+            coordinator.visibleData(for: .official),
+            coordinator.lastSuccessfulData(for: .official)
+        )
+        XCTAssertEqual(
+            coordinator.lastRequestedAt(for: .official),
+            start
+        )
+
+        // Even when a state poll happens exactly when the official source is
+        // due, an unavailable management API does not start card requests.
+        plan = coordinator.plan(
+            sources: sources,
+            now: start.addingTimeInterval(60),
+            force: false,
+            allowRequests: false,
+            inFlight: []
+        )
+        XCTAssertTrue(plan.dueSources.isEmpty)
+        XCTAssertEqual(loaderCalls, 2)
+        XCTAssertEqual(
+            coordinator.lastRequestedAt(for: .official),
+            start
+        )
+
+        // Once management is available again, the official source is due at
+        // 60 seconds while the configured 30-minute relay interval is not.
+        plan = coordinator.plan(
+            sources: sources,
+            now: start.addingTimeInterval(60),
+            force: false,
+            allowRequests: true,
+            inFlight: []
+        )
+        XCTAssertEqual(
+            plan.dueSources.map(\OpenCodexCardRefreshSource.source),
+            [.official]
+        )
+        recordLoads(plan, at: start.addingTimeInterval(60))
+        XCTAssertEqual(loaderCalls, 3)
+
+        // A user refresh bypasses both source intervals, while still
+        // returning one request per deduplicated data source.
+        plan = coordinator.plan(
+            sources: sources,
+            now: start.addingTimeInterval(61),
+            force: true,
+            allowRequests: true,
+            inFlight: []
+        )
+        XCTAssertEqual(
+            Set(plan.dueSources.map(\OpenCodexCardRefreshSource.source)),
+            [.official, .balance(providerID: "relay-source")]
+        )
+        recordLoads(plan, at: start.addingTimeInterval(61))
+        XCTAssertEqual(loaderCalls, 5)
+
+        // A source configuration change invalidates only that source's cache
+        // and forces its next load without refetching an unchanged source.
+        let changedOfficial = OpenCodexCardRefreshSource(
+            source: .official,
+            interval: 60,
+            configurationFingerprint: "official-v2"
+        )
+        plan = coordinator.plan(
+            sources: [changedOfficial, relay],
+            now: start.addingTimeInterval(62),
+            force: false,
+            allowRequests: true,
+            inFlight: []
+        )
+        XCTAssertEqual(plan.configurationChanged, [.official])
+        XCTAssertEqual(
+            plan.dueSources.map(\OpenCodexCardRefreshSource.source),
+            [.official]
+        )
+        XCTAssertNil(coordinator.visibleData(for: .official))
+        XCTAssertNil(coordinator.lastSuccessfulData(for: .official))
+        recordLoads(plan, at: start.addingTimeInterval(62))
+        XCTAssertEqual(loaderCalls, 6)
+    }
+
     private func makeCardState(
         selectors: [String],
         descriptors: [String: OpenCodexProviderDescriptor]
@@ -741,6 +888,33 @@ final class OpenCodexRepositoryTests: XCTestCase {
             managementAvailable: true,
             preferenceDataAvailable: true
         )
+    }
+
+    private func successfulCardData(
+        for source: OpenCodexCardSource,
+        updatedAt: Date
+    ) -> OpenCodexCardData {
+        switch source {
+        case .official:
+            return .official(
+                remaining: 0.96,
+                label: "fixture quota",
+                reset: "fixture reset",
+                updatedAt: updatedAt
+            )
+        case .balance:
+            return .balance(
+                amount: 12.34,
+                unit: "USD",
+                websiteURL: URL(string: "https://relay.example.test"),
+                updatedAt: updatedAt
+            )
+        case .unavailable:
+            return .unavailable(
+                category: source.category,
+                reason: "fixture unavailable"
+            )
+        }
     }
 
     private func relaySummarySource(name: String) -> ProviderSummarySource {

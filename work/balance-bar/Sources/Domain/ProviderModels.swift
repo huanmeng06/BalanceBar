@@ -125,6 +125,119 @@ enum OpenCodexCardData: Equatable {
             return .balance
         }
     }
+
+    var isSuccessful: Bool {
+        switch self {
+        case .official, .balance:
+            return true
+        case .loading, .unavailable:
+            return false
+        }
+    }
+}
+
+struct OpenCodexCardRefreshSource: Equatable, Hashable {
+    let source: OpenCodexCardSource
+    let interval: TimeInterval
+    let configurationFingerprint: String
+}
+
+struct OpenCodexCardRefreshPlan: Equatable {
+    let dueSources: [OpenCodexCardRefreshSource]
+    let configurationChanged: Set<OpenCodexCardSource>
+}
+
+struct OpenCodexCardRefreshCoordinator {
+    private struct Entry {
+        var visibleData: OpenCodexCardData?
+        var lastSuccessfulData: OpenCodexCardData?
+        var lastRequestedAt: Date?
+        var configurationFingerprint: String
+    }
+
+    private var entries: [OpenCodexCardSource: Entry] = [:]
+
+    mutating func reset() {
+        entries.removeAll()
+    }
+
+    mutating func plan(
+        sources: [OpenCodexCardRefreshSource],
+        now: Date,
+        force: Bool,
+        allowRequests: Bool,
+        inFlight: Set<OpenCodexCardSource>
+    ) -> OpenCodexCardRefreshPlan {
+        let activeSources = Set(sources.map(\OpenCodexCardRefreshSource.source))
+        entries = entries.filter { activeSources.contains($0.key) }
+
+        var dueSources: [OpenCodexCardRefreshSource] = []
+        var configurationChanged = Set<OpenCodexCardSource>()
+        var seenSources = Set<OpenCodexCardSource>()
+
+        for descriptor in sources {
+            guard seenSources.insert(descriptor.source).inserted else { continue }
+
+            let previous = entries[descriptor.source]
+            let changed = previous?.configurationFingerprint != descriptor.configurationFingerprint
+            if changed {
+                entries[descriptor.source] = Entry(
+                    visibleData: nil,
+                    lastSuccessfulData: nil,
+                    lastRequestedAt: nil,
+                    configurationFingerprint: descriptor.configurationFingerprint
+                )
+                configurationChanged.insert(descriptor.source)
+            } else if previous == nil {
+                entries[descriptor.source] = Entry(
+                    visibleData: nil,
+                    lastSuccessfulData: nil,
+                    lastRequestedAt: nil,
+                    configurationFingerprint: descriptor.configurationFingerprint
+                )
+            }
+
+            guard allowRequests,
+                  let entry = entries[descriptor.source] else { continue }
+            let interval = max(TimeInterval(60), descriptor.interval)
+            let due = force
+                || changed
+                || entry.lastRequestedAt.map {
+                    now.timeIntervalSince($0) >= interval
+                } ?? true
+            guard due,
+                  changed || !inFlight.contains(descriptor.source) else { continue }
+
+            entries[descriptor.source]?.lastRequestedAt = now
+            dueSources.append(descriptor)
+        }
+
+        return OpenCodexCardRefreshPlan(
+            dueSources: dueSources,
+            configurationChanged: configurationChanged
+        )
+    }
+
+    func visibleData(for source: OpenCodexCardSource) -> OpenCodexCardData? {
+        entries[source]?.visibleData
+    }
+
+    func lastSuccessfulData(for source: OpenCodexCardSource) -> OpenCodexCardData? {
+        entries[source]?.lastSuccessfulData
+    }
+
+    func lastRequestedAt(for source: OpenCodexCardSource) -> Date? {
+        entries[source]?.lastRequestedAt
+    }
+
+    mutating func store(_ data: OpenCodexCardData, for source: OpenCodexCardSource) {
+        guard var entry = entries[source] else { return }
+        entry.visibleData = data
+        if data.isSuccessful {
+            entry.lastSuccessfulData = data
+        }
+        entries[source] = entry
+    }
 }
 
 struct OpenCodexCardPlan: Equatable {
