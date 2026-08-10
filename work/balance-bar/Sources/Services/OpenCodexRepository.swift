@@ -163,6 +163,10 @@ struct OpenCodexProviderDescriptor: Equatable {
     let baseURL: URL
     let defaultModel: String?
     let models: [String]
+    /// Credentials are retained only in the in-memory runtime descriptor so
+    /// OpenCodex can be matched to the corresponding CC Switch source. They
+    /// are never serialized or included in diagnostics.
+    let apiKeys: [String]
     let isOfficial: Bool
 
     init(
@@ -172,6 +176,7 @@ struct OpenCodexProviderDescriptor: Equatable {
         baseURL: URL,
         defaultModel: String? = nil,
         models: [String] = [],
+        apiKeys: [String] = [],
         isOfficial: Bool? = nil
     ) {
         self.id = id
@@ -180,11 +185,36 @@ struct OpenCodexProviderDescriptor: Equatable {
         self.baseURL = baseURL
         self.defaultModel = defaultModel
         self.models = models
+        self.apiKeys = Self.normalizedCredentials(apiKeys)
         self.isOfficial = isOfficial ?? Self.isOfficialEndpoint(
             adapter: adapter,
             authMode: authMode,
             baseURL: baseURL
         )
+    }
+
+    func withAdditionalAPIKeys(_ additionalAPIKeys: [String]) -> OpenCodexProviderDescriptor {
+        OpenCodexProviderDescriptor(
+            id: id,
+            adapter: adapter,
+            authMode: authMode,
+            baseURL: baseURL,
+            defaultModel: defaultModel,
+            models: models,
+            apiKeys: apiKeys + additionalAPIKeys,
+            isOfficial: isOfficial
+        )
+    }
+
+    func withAdditionalAPIKeys(
+        from fallback: OpenCodexProviderDescriptor?
+    ) -> OpenCodexProviderDescriptor {
+        guard let fallback,
+              let host = baseURL.host?.lowercased(),
+              host == fallback.baseURL.host?.lowercased() else {
+            return self
+        }
+        return withAdditionalAPIKeys(fallback.apiKeys)
     }
 
     static func parse(
@@ -210,8 +240,44 @@ struct OpenCodexProviderDescriptor: Equatable {
             authMode: authMode,
             baseURL: baseURL,
             defaultModel: stringValue(object["defaultModel"]),
-            models: models
+            models: models,
+            apiKeys: credentialValues(from: object)
         )
+    }
+
+    private static func credentialValues(from object: [String: Any]) -> [String] {
+        var values: [String] = []
+        appendCredentials(from: object["apiKey"], to: &values)
+        appendCredentials(from: object["apiKeyPool"] ?? object["api_key_pool"], to: &values)
+        return normalizedCredentials(values)
+    }
+
+    private static func appendCredentials(
+        from value: Any?,
+        to values: inout [String]
+    ) {
+        if let value = stringValue(value) {
+            values.append(value)
+            return
+        }
+        if let array = value as? [Any] {
+            array.forEach { appendCredentials(from: $0, to: &values) }
+            return
+        }
+        guard let dictionary = value as? [String: Any] else { return }
+        for key in ["apiKey", "api_key", "key", "token"] {
+            appendCredentials(from: dictionary[key], to: &values)
+        }
+    }
+
+    private static func normalizedCredentials(_ values: [String]) -> [String] {
+        var result: [String] = []
+        for value in values {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !result.contains(trimmed) else { continue }
+            result.append(trimmed)
+        }
+        return result
     }
 
     private static func stringValue(_ value: Any?) -> String? {
@@ -624,7 +690,11 @@ final class OpenCodexRepository {
             let resolvedConfig = configObject
             let resolvedSubagent = subagentObject
             resultLock.unlock()
-            if let config = self.parseConfig(resolvedConfig, candidate: candidate),
+            if let config = self.parseConfig(
+                resolvedConfig,
+                candidate: candidate,
+                fallbackProviders: localSnapshot?.providers ?? [:]
+            ),
                let subagent = self.parseSubagent(resolvedSubagent) {
                 let chosen = subagent.chosen
                 let available = subagent.available
@@ -641,7 +711,11 @@ final class OpenCodexRepository {
                 return
             }
 
-            if let config = self.parseConfig(resolvedConfig, candidate: candidate) {
+            if let config = self.parseConfig(
+                resolvedConfig,
+                candidate: candidate,
+                fallbackProviders: localSnapshot?.providers ?? [:]
+            ) {
                 completion(.recognized(self.makeState(
                     candidate: candidate,
                     defaultProvider: config.defaultProvider,
@@ -1001,7 +1075,8 @@ final class OpenCodexRepository {
 
     private func parseConfig(
         _ object: [String: Any]?,
-        candidate: OpenCodexEndpointCandidate
+        candidate: OpenCodexEndpointCandidate,
+        fallbackProviders: [String: OpenCodexProviderDescriptor] = [:]
     ) -> (
         defaultProvider: String,
         providerDefaultModels: [String: String],
@@ -1028,7 +1103,9 @@ final class OpenCodexRepository {
                     id: entry.key,
                     object: provider
                   ) else { return }
-            result[entry.key] = descriptor
+            result[entry.key] = descriptor.withAdditionalAPIKeys(
+                from: fallbackProviders[entry.key]
+            )
         }
         return (defaultProvider, providerDefaultModels, descriptors)
     }

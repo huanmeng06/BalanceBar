@@ -149,6 +149,28 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(thirdParty?.isOfficial, false)
     }
 
+    func testProviderDescriptorKeepsApiKeyAndPoolForInMemoryIdentityMatching() {
+        let descriptor = OpenCodexProviderDescriptor.parse(
+            id: "tokenshop",
+            object: [
+                "adapter": "openai-responses",
+                "authMode": "key",
+                "baseUrl": "https://api.tokenshop.homes/v1",
+                "apiKey": " primary-key ",
+                "apiKeyPool": [
+                    "secondary-key",
+                    "",
+                    ["apiKey": "pool-key"],
+                ],
+            ]
+        )
+
+        XCTAssertEqual(
+            descriptor?.apiKeys,
+            ["primary-key", "secondary-key", "pool-key"]
+        )
+    }
+
     func testReadsStableMaximumFiveChosenPreferencesAndCurrentSelection() {
         let transport = MutableOpenCodexTransport(candidate: candidate)
         let repository = OpenCodexRepository(
@@ -391,6 +413,42 @@ final class OpenCodexRepositoryTests: XCTestCase {
         wait(for: [expectation], timeout: 2)
     }
 
+    func testManagementStateMergesLocalProviderCredentialsWhenAPIConfigIsRedacted() {
+        let transport = MutableOpenCodexTransport(candidate: candidate)
+        let localDescriptor = OpenCodexProviderDescriptor(
+            id: "tokenshop",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "https://tokenshop.example.test/v1")!,
+            apiKeys: ["local-matching-key"]
+        )
+        let local = OpenCodexLocalConfigSnapshot(
+            port: candidate.port,
+            defaultProvider: "tokenshop",
+            providerDefaultModels: ["tokenshop": "gpt-5.6-sol"],
+            chosenSelectors: ["tokenshop/gpt-5.6-sol"],
+            providers: ["tokenshop": localDescriptor]
+        )
+        let repository = OpenCodexRepository(
+            transport: transport,
+            configReader: StubConfigReader(snapshot: local),
+            tokenProvider: NoTokenProvider()
+        )
+        let expectation = expectation(description: "merge local provider credentials")
+
+        repository.readState(for: candidate) { result in
+            guard case .recognized(let state) = result else {
+                XCTFail("expected OpenCodex management state")
+                expectation.fulfill()
+                return
+            }
+            XCTAssertEqual(state.providers["tokenshop"]?.apiKeys, ["local-matching-key"])
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2)
+    }
+
     func testUnverifiedLoopbackCandidateDoesNotBecomeOpenCodex() {
         let repository = OpenCodexRepository(
             transport: AlwaysFailTransport(),
@@ -527,6 +585,71 @@ final class OpenCodexRepositoryTests: XCTestCase {
             .balance(providerID: "relay-source"),
             .balance(providerID: "relay-source"),
         ])
+    }
+
+    func testCardPlannerUsesUniqueCredentialToDisambiguateDuplicateBalanceSources() {
+        let descriptor = OpenCodexProviderDescriptor(
+            id: "tokenshop",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "https://api.tokenshop.homes/v1")!,
+            apiKeys: ["unused-key", "matching-key"]
+        )
+        let state = makeCardState(
+            selectors: ["tokenshop/gpt-5.6-sol"],
+            descriptors: ["tokenshop": descriptor]
+        )
+        let sources = [
+            tokenshopSummarySource(
+                id: "tokenshop-lower",
+                name: "tokenshop",
+                apiKey: "matching-key"
+            ),
+            tokenshopSummarySource(
+                id: "tokenshop-upper",
+                name: "Tokenshop",
+                apiKey: "different-key"
+            ),
+        ]
+
+        let plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
+
+        XCTAssertEqual(plans[0].source, .balance(providerID: "tokenshop-lower"))
+    }
+
+    func testCardPlannerKeepsDuplicateBalanceSourcesUnavailableWithoutCredentialMatch() {
+        let descriptor = OpenCodexProviderDescriptor(
+            id: "tokenshop",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "https://api.tokenshop.homes/v1")!,
+            apiKeys: ["open-codex-key"]
+        )
+        let state = makeCardState(
+            selectors: ["tokenshop/gpt-5.6-sol"],
+            descriptors: ["tokenshop": descriptor]
+        )
+        let sources = [
+            tokenshopSummarySource(
+                id: "tokenshop-lower",
+                name: "tokenshop",
+                apiKey: "different-key-a"
+            ),
+            tokenshopSummarySource(
+                id: "tokenshop-upper",
+                name: "Tokenshop",
+                apiKey: "different-key-b"
+            ),
+        ]
+
+        let plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
+
+        guard case .unavailable(.balance, let reason) = plans[0].source else {
+            return XCTFail("duplicate sources without a credential match must remain unavailable")
+        }
+        XCTAssertTrue(reason.contains("多个余额来源") || reason.contains("Multiple balance sources"))
+        XCTAssertFalse(reason.contains("未找到可验证的余额来源"))
+        XCTAssertFalse(reason.contains("No verifiable balance source"))
     }
 
     func testCardPlannerExcludesOpenCodexLoopbackBalanceSourceAndMarksMissingData() {
@@ -1107,11 +1230,35 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
-    private func fixtureBalanceQuery(url: String) -> BalanceQuery {
+    private func tokenshopSummarySource(
+        id: String,
+        name: String,
+        apiKey: String
+    ) -> ProviderSummarySource {
+        ProviderSummarySource(
+            id: id,
+            name: name,
+            isOfficial: false,
+            query: fixtureBalanceQuery(
+                url: "https://api.tokenshop.homes/user/balance",
+                apiKey: apiKey,
+                websiteURL: URL(string: "https://tokenshop.homes")!
+            ),
+            officialAccessToken: nil,
+            openCodexCandidate: nil,
+            websiteURL: URL(string: "https://tokenshop.homes")!
+        )
+    }
+
+    private func fixtureBalanceQuery(
+        url: String,
+        apiKey: String = "test-only",
+        websiteURL: URL = URL(string: "https://relay.example.test")!
+    ) -> BalanceQuery {
         BalanceQuery(
             url: url,
-            websiteURL: URL(string: "https://relay.example.test")!,
-            apiKey: "test-only",
+            websiteURL: websiteURL,
+            apiKey: apiKey,
             intervalMinutes: 30,
             timeoutSeconds: 5,
             isRightCode: false,

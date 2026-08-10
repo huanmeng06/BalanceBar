@@ -603,6 +603,13 @@ enum OpenCodexCardPlanner {
         sources: [ProviderSummarySource]
     ) -> OpenCodexCardSource {
         guard let descriptor = state.providers[providerID] else {
+            logSourceMatch(
+                providerID: providerID,
+                host: nil,
+                candidates: [],
+                strategy: "missing-provider",
+                selected: nil
+            )
             return .unavailable(
                 category: .balance,
                 reason: tr(
@@ -623,27 +630,104 @@ enum OpenCodexCardPlanner {
                 && secureWebsiteURL(for: source) != nil
                 && hostsMatch(descriptor.baseURL, source: source)
         }
-        let exactNameMatches = candidates.filter {
+        let exactRawNameMatches = candidates.filter {
+            $0.name == descriptor.id
+        }
+        let normalizedNameMatches = candidates.filter {
             normalized($0.name) == normalized(descriptor.id)
         }
+        let credentialMatches: [ProviderSummarySource]
+        if descriptor.apiKeys.isEmpty {
+            credentialMatches = []
+        } else {
+            let credentials = Set(descriptor.apiKeys)
+            credentialMatches = candidates.filter { source in
+                guard let apiKey = source.query?.apiKey
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                    !apiKey.isEmpty else { return false }
+                return credentials.contains(apiKey)
+            }
+        }
+
         let selected: ProviderSummarySource?
-        if exactNameMatches.count == 1 {
-            selected = exactNameMatches[0]
-        } else if exactNameMatches.isEmpty, candidates.count == 1 {
+        let strategy: String
+        if credentialMatches.count == 1 {
+            selected = credentialMatches[0]
+            strategy = "unique-credential"
+        } else if credentialMatches.count > 1 {
+            selected = nil
+            strategy = "ambiguous-credential"
+        } else if exactRawNameMatches.count == 1,
+                  normalizedNameMatches.count == 1 {
+            // A case-only name difference is not an identity signal. The
+            // normalized count guard keeps a pair such as `tokenshop` and
+            // `Tokenshop` ambiguous unless credentials disambiguate it.
+            selected = exactRawNameMatches[0]
+            strategy = "unique-exact-name"
+        } else if candidates.count == 1 {
             selected = candidates[0]
+            strategy = "unique-candidate"
+        } else if candidates.isEmpty {
+            selected = nil
+            strategy = "no-safe-host-candidate"
         } else {
             selected = nil
+            strategy = "ambiguous-name-or-candidate"
         }
+        logSourceMatch(
+            providerID: descriptor.id,
+            host: normalizedHost(descriptor.baseURL),
+            candidates: candidates,
+            strategy: strategy,
+            selected: selected,
+            credentialMatchCount: credentialMatches.count,
+            exactNameMatchCount: exactRawNameMatches.count,
+            normalizedNameMatchCount: normalizedNameMatches.count
+        )
         guard let selected else {
-            return .unavailable(
-                category: .balance,
-                reason: tr(
+            let reason = candidates.count > 1 || credentialMatches.count > 1
+                ? tr(
+                    "找到多个余额来源，无法确认账户",
+                    "Multiple balance sources were found; the account could not be confirmed"
+                )
+                : tr(
                     "未找到可验证的余额来源",
                     "No verifiable balance source was found"
                 )
+            return .unavailable(
+                category: .balance,
+                reason: reason
             )
         }
         return .balance(providerID: selected.id)
+    }
+
+    private static func logSourceMatch(
+        providerID: String,
+        host: String?,
+        candidates: [ProviderSummarySource],
+        strategy: String,
+        selected: ProviderSummarySource?,
+        credentialMatchCount: Int = 0,
+        exactNameMatchCount: Int = 0,
+        normalizedNameMatchCount: Int = 0
+    ) {
+        let candidateSummary = candidates.map { source in
+            "id=\(source.id),name=\(source.name),host=\(diagnosticHost(for: source))"
+        }.joined(separator: "|")
+        SwitchLog.write(
+            "OpenCodex balance source match; provider_id=\(providerID); host=\(host ?? "unknown"); candidate_count=\(candidates.count); credential_match_count=\(credentialMatchCount); exact_name_match_count=\(exactNameMatchCount); normalized_name_match_count=\(normalizedNameMatchCount); candidates=\(candidateSummary.isEmpty ? "<none>" : candidateSummary); strategy=\(strategy); selected_source_id=\(selected?.id ?? "none")",
+            level: strategy.hasPrefix("ambiguous") ? .warning : .debug,
+            category: "open-codex.source-match",
+            throttleKey: "open-codex-source-match-\(providerID)",
+            minimumInterval: 1
+        )
+    }
+
+    private static func diagnosticHost(for source: ProviderSummarySource) -> String {
+        normalizedHost(URL(string: source.query?.url ?? ""))
+            ?? normalizedHost(source.websiteURL ?? source.query?.websiteURL)
+            ?? "unknown"
     }
 
     private static func hostsMatch(
