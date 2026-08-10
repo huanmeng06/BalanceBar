@@ -13,6 +13,9 @@ private func codexFileIdentity(atPath path: String) -> (size: UInt64, modifiedAt
 final class CodexActivityMonitor {
     private static let activityWindow = 10 * 60
     private static let terminalPhases: Set<String> = ["final", "final_answer"]
+    private static let startTypes: Set<String> = [
+        "task_started", "task_start", "turn_started", "turn_start", "user_message"
+    ]
     private static let terminalTypes: Set<String> = [
         "task_complete", "task_completed", "task_stopped", "task_failed", "task_cancelled",
         "turn_complete", "turn_completed", "turn_aborted", "turn_failed", "turn_cancelled"
@@ -110,6 +113,11 @@ final class CodexActivityMonitor {
             guard let lineData = String(line).data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   let topType = object["type"] as? String else { continue }
+            if Self.responseTerminalTypes.contains(topType) {
+                running = false
+                terminalSeen = true
+                continue
+            }
             if topType == "event_msg", let payload = object["payload"] as? [String: Any],
                let payloadType = payload["type"] as? String {
                 if payloadType == "agent_message",
@@ -121,7 +129,7 @@ final class CodexActivityMonitor {
                             || Self.responseTerminalTypes.contains(payloadType) {
                     running = false
                     terminalSeen = true
-                } else if payloadType == "task_started" || payloadType == "user_message" {
+                } else if Self.startTypes.contains(payloadType) {
                     running = true
                     terminalSeen = false
                 } else if payloadType == "agent_message", !terminalSeen {
@@ -132,14 +140,8 @@ final class CodexActivityMonitor {
                 if let phase, Self.terminalPhases.contains(phase) {
                     running = false
                     terminalSeen = true
-                } else if payload["role"] as? String == "user" {
+                } else if payload["status"] as? String == "in_progress", !terminalSeen {
                     running = true
-                    terminalSeen = false
-                } else if !terminalSeen {
-                    running = true
-                } else {
-                    // Ignore trailing response items after a terminal event.
-                    // A new user message above is the explicit start of another turn.
                 }
             }
         }
@@ -154,14 +156,19 @@ final class CodexActivityMonitor {
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 150)
 
-        // This follows codex-monitor's activity model: streaming/in-progress
-        // events start activity, while task/turn terminal events stop it.
+        // Require an explicit response-in-progress event to start activity;
+        // streaming output then keeps that active turn alive until a terminal
+        // event wins. Output from an older completed turn is not sufficient.
         let normalized = "replace(feedback_log_body, ' ', '')"
-        let activity = """
+        let outputActivity = """
         \(normalized) like '%response.output_item.added%'
         or \(normalized) like '%response.output_text.delta%'
+        """
+        let inProgress = """
+        \(normalized) like '%response.in_progress%'
         or \(normalized) like '%\"status\":\"in_progress\"%'
         """
+        let activity = "\(outputActivity) or \(inProgress)"
         let completion = ([
             "\(normalized) like '%\"phase\":\"final\"%'",
             "\(normalized) like '%\"phase\":\"final_answer\"%'"
@@ -172,6 +179,7 @@ final class CodexActivityMonitor {
         let sql = """
         select
           max(case when \(activity) then ts else 0 end) as latest_activity,
+          max(case when \(inProgress) then ts else 0 end) as latest_in_progress,
           max(case when \(completion) then ts else 0 end) as latest_done
         from logs indexed by idx_logs_ts
         where thread_id is not null
@@ -189,14 +197,21 @@ final class CodexActivityMonitor {
 
         while sqlite3_step(statement) == SQLITE_ROW {
             let latestActivity = sqlite3_column_int64(statement, 0)
-            let latestDone = sqlite3_column_int64(statement, 1)
-            if latestActivity > latestDone, nowEpoch - latestActivity < Int64(Self.activityWindow) {
+            let latestInProgress = sqlite3_column_int64(statement, 1)
+            let latestDone = sqlite3_column_int64(statement, 2)
+            if latestInProgress > latestDone,
+               latestActivity > latestDone,
+               nowEpoch - latestActivity < Int64(Self.activityWindow) {
                 return true
             }
             // Events can share a one-second timestamp. Keep a short grace
             // period so an active stream does not flicker off at that boundary.
-            // A known completion wins when both events have the same timestamp.
-            if latestActivity > 0, latestDone == 0, nowEpoch - latestActivity < 20 {
+            // A known completion wins when both events have the same timestamp,
+            // and output alone is not a positive in-progress signal.
+            if latestInProgress > latestDone,
+               latestActivity > 0,
+               latestDone == 0,
+               nowEpoch - latestActivity < 20 {
                 return true
             }
         }

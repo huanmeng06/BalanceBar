@@ -41,6 +41,42 @@ final class CodexActivityMonitorTests: XCTestCase {
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
     }
 
+    func testIdleRecentOutputWithoutExplicitInProgressSignalIsInactive() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 5, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testActiveLogWithExplicitInProgressSignalIsDetected() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 5, body: #"{"type":"response.in_progress","response":{"status":"in_progress"}}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+
+        XCTAssertTrue(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testResponseCompletionOverridesPriorInProgressActivity() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 5, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.completed"}"#)
+        ])
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testIdleRecentResponseItemWithoutTaskStartIsInactive() throws {
+        let sessionURL = try writeSession([
+            #"{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"commentary","content":[]}}"#
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
     func testCompletedRolloutWithTrailingResponseItemIsInactive() throws {
         let sessionURL = try writeSession([
             eventMessage("task_started"),
