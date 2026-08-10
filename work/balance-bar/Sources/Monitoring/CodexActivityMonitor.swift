@@ -30,10 +30,15 @@ final class CodexActivityMonitor {
         let running: Bool
     }
 
+    private struct RolloutCandidate {
+        let path: String
+        let updatedAt: TimeInterval
+    }
+
     private let codexDirectory: URL
     private let clock: () -> Date
     private var sessionCache: [String: SessionCache] = [:]
-    private var rolloutPathsCache: (scannedAt: Date, paths: [String]) = (.distantPast, [])
+    private var rolloutPathsCache: (scannedAt: Date, candidates: [RolloutCandidate]) = (.distantPast, [])
 
     init(codexDirectory: URL? = nil, clock: @escaping () -> Date = { Date() }) {
         self.codexDirectory = codexDirectory
@@ -50,35 +55,38 @@ final class CodexActivityMonitor {
     }
 
     private func recentRolloutRunningState(now: Date) -> Bool? {
-        let paths = recentRolloutPaths()
+        let candidates = recentRolloutPaths(now: now)
         var nextCache: [String: SessionCache] = [:]
         var parsedAny = false
         var anyRunning = false
-        for path in paths {
-            guard let identity = codexFileIdentity(atPath: path) else { continue }
+        for candidate in candidates {
+            // The path list is cached for one second, so recheck both clocks
+            // on every poll before reusing a cached parse result.
+            guard Self.isWithinActivityWindow(candidate.updatedAt, now: now),
+                  let identity = codexFileIdentity(atPath: candidate.path),
+                  Self.isWithinActivityWindow(identity.modifiedAt, now: now) else { continue }
             parsedAny = true
             let sizeValue = identity.size
             let modifiedValue = identity.modifiedAt
-            if let cached = sessionCache[path],
+            if let cached = sessionCache[candidate.path],
                cached.size == sizeValue,
                cached.modifiedAt == modifiedValue {
-                nextCache[path] = cached
+                nextCache[candidate.path] = cached
                 anyRunning = anyRunning || cached.running
                 continue
             }
-            let running = parseSession(path: path)
+            let running = parseSession(path: candidate.path)
             let entry = SessionCache(size: sizeValue, modifiedAt: modifiedValue, running: running)
-            nextCache[path] = entry
+            nextCache[candidate.path] = entry
             anyRunning = anyRunning || running
         }
         sessionCache = nextCache
         return parsedAny ? anyRunning : nil
     }
 
-    private func recentRolloutPaths() -> [String] {
-        let now = clock()
+    private func recentRolloutPaths(now: Date) -> [RolloutCandidate] {
         if now.timeIntervalSince(rolloutPathsCache.scannedAt) < 1 {
-            return rolloutPathsCache.paths
+            return rolloutPathsCache.candidates
         }
         guard let databasePath = latestDatabase(prefix: "state_") else { return [] }
         var database: OpaquePointer?
@@ -86,18 +94,40 @@ final class CodexActivityMonitor {
               let database else { return [] }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 150)
-        let sql = "SELECT rollout_path FROM threads WHERE rollout_path <> '' ORDER BY updated_at DESC, updated_at_ms DESC LIMIT 24"
+        // Codex stores updated_at as Unix seconds and updated_at_ms as Unix
+        // milliseconds. Filter before LIMIT so a stale row cannot occupy one
+        // of the 24 candidates and poison an otherwise idle startup.
+        let updatedAt = "coalesce(nullif(updated_at_ms, 0), updated_at * 1000)"
+        let cutoff = Int64((now.timeIntervalSince1970 - TimeInterval(Self.activityWindow)) * 1000)
+        let sql = """
+        SELECT rollout_path, \(updatedAt)
+        FROM threads
+        WHERE rollout_path <> ''
+          AND \(updatedAt) >= ?
+        ORDER BY \(updatedAt) DESC
+        LIMIT 24
+        """
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else { return [] }
         defer { sqlite3_finalize(statement) }
-        var paths: [String] = []
+        sqlite3_bind_int64(statement, 1, cutoff)
+        var candidates: [RolloutCandidate] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let text = sqlite3_column_text(statement, 0) else { continue }
-            paths.append(String(cString: text))
+            let updatedAtMilliseconds = sqlite3_column_int64(statement, 1)
+            candidates.append(RolloutCandidate(
+                path: String(cString: text),
+                updatedAt: TimeInterval(updatedAtMilliseconds) / 1000
+            ))
         }
-        rolloutPathsCache = (now, paths)
-        return paths
+        rolloutPathsCache = (now, candidates)
+        return candidates
+    }
+
+    private static func isWithinActivityWindow(_ timestamp: TimeInterval, now: Date) -> Bool {
+        let age = now.timeIntervalSince1970 - timestamp
+        return age >= 0 && age < TimeInterval(activityWindow)
     }
 
     private func parseSession(path: String) -> Bool {

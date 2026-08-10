@@ -9,6 +9,7 @@ final class CodexActivityMonitorTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        currentDate = Date(timeIntervalSince1970: 2_000_000_000)
         fixtureDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BalanceBar-CodexActivityMonitor-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(
@@ -29,6 +30,43 @@ final class CodexActivityMonitorTests: XCTestCase {
         try makeStateDatabase(rolloutPath: sessionURL.path)
 
         XCTAssertTrue(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testStaleUnterminatedRolloutIsInactive() throws {
+        let sessionURL = try writeSession([eventMessage("task_started")])
+        try setSessionModificationDate(sessionURL, to: currentDate.addingTimeInterval(-601))
+        try makeStateDatabase(rolloutPath: sessionURL.path, updatedAt: epoch - 601)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testRecentStateWithStaleSessionFileIsInactive() throws {
+        let sessionURL = try writeSession([eventMessage("task_started")])
+        try setSessionModificationDate(sessionURL, to: currentDate.addingTimeInterval(-601))
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testStaleStateWithRecentSessionFileIsInactive() throws {
+        let sessionURL = try writeSession([eventMessage("task_started")])
+        try makeStateDatabase(rolloutPath: sessionURL.path, updatedAt: epoch - 601)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testIdleLaunchWithRecentTerminalAndStaleUnterminatedRolloutsIsInactive() throws {
+        var rollouts: [RolloutFixture] = []
+        for index in 0..<23 {
+            let sessionURL = try writeSession([eventMessage("task_complete")])
+            rollouts.append(RolloutFixture(path: sessionURL.path, updatedAt: epoch - Int64(index + 1)))
+        }
+        let staleSessionURL = try writeSession([eventMessage("task_started")])
+        try setSessionModificationDate(staleSessionURL, to: currentDate.addingTimeInterval(-601))
+        rollouts.append(RolloutFixture(path: staleSessionURL.path, updatedAt: epoch - 601))
+        try makeStateDatabase(rollouts: rollouts)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
     }
 
     func testIdleLaunchWithRecentlyCompletedLogIsInactive() throws {
@@ -200,6 +238,7 @@ final class CodexActivityMonitorTests: XCTestCase {
         let url = fixtureDirectory.appendingPathComponent("session-\(UUID().uuidString).jsonl")
         let contents = lines.joined(separator: "\n") + "\n"
         try Data(contents.utf8).write(to: url)
+        try setSessionModificationDate(url, to: currentDate)
         return url
     }
 
@@ -208,6 +247,11 @@ final class CodexActivityMonitorTests: XCTestCase {
         try handle.seekToEnd()
         try handle.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
         try handle.close()
+        try setSessionModificationDate(url, to: currentDate)
+    }
+
+    private func setSessionModificationDate(_ url: URL, to date: Date) throws {
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
     }
 
     private func eventMessage(_ type: String) -> String {
@@ -218,10 +262,21 @@ final class CodexActivityMonitorTests: XCTestCase {
         "{\"type\":\"response_item\",\"payload\":{\"phase\":\"\(phase)\"}}"
     }
 
-    private func makeStateDatabase(rolloutPath: String) throws {
+    private struct RolloutFixture {
+        let path: String
+        let updatedAt: Int64
+    }
+
+    private func makeStateDatabase(rolloutPath: String, updatedAt: Int64? = nil) throws {
+        try makeStateDatabase(rollouts: [RolloutFixture(path: rolloutPath, updatedAt: updatedAt ?? epoch)])
+    }
+
+    private func makeStateDatabase(rollouts: [RolloutFixture]) throws {
         try withDatabase(named: "state_1.sqlite") { database in
             try execute(database, sql: "CREATE TABLE threads (rollout_path TEXT, updated_at INTEGER, updated_at_ms INTEGER)")
-            try insertThread(database, rolloutPath: rolloutPath)
+            for rollout in rollouts {
+                try insertThread(database, rolloutPath: rollout.path, updatedAt: rollout.updatedAt)
+            }
         }
     }
 
@@ -232,7 +287,7 @@ final class CodexActivityMonitorTests: XCTestCase {
         }
     }
 
-    private func insertThread(_ database: OpaquePointer, rolloutPath: String) throws {
+    private func insertThread(_ database: OpaquePointer, rolloutPath: String, updatedAt: Int64? = nil) throws {
         var statement: OpaquePointer?
         let sql = "INSERT INTO threads (rollout_path, updated_at, updated_at_ms) VALUES (?, ?, ?)"
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
@@ -241,8 +296,9 @@ final class CodexActivityMonitorTests: XCTestCase {
         }
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_text(statement, 1, rolloutPath, -1, Self.sqliteTransient)
-        sqlite3_bind_int64(statement, 2, epoch)
-        sqlite3_bind_int64(statement, 3, 0)
+        let updatedAt = updatedAt ?? epoch
+        sqlite3_bind_int64(statement, 2, updatedAt)
+        sqlite3_bind_int64(statement, 3, updatedAt * 1000)
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw fixtureError("failed to insert state fixture row")
         }
