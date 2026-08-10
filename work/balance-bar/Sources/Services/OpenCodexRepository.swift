@@ -1244,13 +1244,21 @@ final class OpenCodexRepository {
         authenticated: Bool = true,
         completion: @escaping (Result<OpenCodexHTTPResponse, OpenCodexRepositoryError>) -> Void
     ) {
+        let requestPath = path
+            .split(separator: "?", maxSplits: 1)
+            .first
+            .map(String.init) ?? path
         guard var components = URLComponents(
-            url: candidate.managementURL.appendingPathComponent(path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path),
+            url: candidate.managementURL,
             resolvingAgainstBaseURL: false
         ) else {
             completion(.failure(.invalidResponse))
             return
         }
+        // `managementURL` is rooted at `/`. Assign the path explicitly so
+        // Foundation versions that preserve the base URL's trailing slash do
+        // not turn `/healthz` into `//healthz` when given a leading slash.
+        components.path = "/" + requestPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         if let question = path.firstIndex(of: "?") {
             let query = String(path[path.index(after: question)...])
             components.percentEncodedQuery = query
