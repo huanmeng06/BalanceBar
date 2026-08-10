@@ -334,27 +334,21 @@ struct OpenCodexModelCard: Equatable {
 }
 
 enum OpenCodexCardPresentation {
-    enum CurrentCardMatch: Equatable {
-        case isCurrent(OpenCodexModelCard)
-        case exactSelector(OpenCodexModelCard)
-        case canonicalSelector(OpenCodexModelCard)
+    enum MenuBarCardMatch: Equatable {
+        case firstPreference(OpenCodexModelCard)
         case none
 
         var card: OpenCodexModelCard? {
             switch self {
-            case .isCurrent(let card), .exactSelector(let card), .canonicalSelector(let card):
-                return card
-            case .none:
-                return nil
+            case .firstPreference(let card): return card
+            case .none: return nil
             }
         }
 
         var diagnosticReason: String {
             switch self {
-            case .isCurrent: return "isCurrent"
-            case .exactSelector: return "exact-selector"
-            case .canonicalSelector: return "canonical-selector"
-            case .none: return "no-match"
+            case .firstPreference: return "first-preference"
+            case .none: return "no-preference"
             }
         }
     }
@@ -363,47 +357,20 @@ enum OpenCodexCardPresentation {
         "\(card.provider)/\(card.model)"
     }
 
-    static func currentCard(
-        from cards: [OpenCodexModelCard],
-        fallbackSelector: String? = nil
-    ) -> OpenCodexModelCard? {
-        currentCardMatch(
-            from: cards,
-            fallbackSelector: fallbackSelector
-        ).card
+    /// The menu bar follows the OpenCodex preference order exactly. The
+    /// `isCurrent` marker and runtime selector describe another UI concern and
+    /// must not make a later card replace the first preference here.
+    static func menuBarCardMatch(
+        from cards: [OpenCodexModelCard]
+    ) -> MenuBarCardMatch {
+        guard let first = cards.first else { return .none }
+        return .firstPreference(first)
     }
 
-    static func currentCardMatch(
-        from cards: [OpenCodexModelCard],
-        fallbackSelector: String?
-    ) -> CurrentCardMatch {
-        if let current = cards.first(where: \OpenCodexModelCard.isCurrent) {
-            return .isCurrent(current)
-        }
-
-        guard let fallbackSelector = normalizedSelector(fallbackSelector) else {
-            return .none
-        }
-        if let exact = cards.first(where: {
-            normalizedSelector($0.selector) == fallbackSelector
-        }) {
-            return .exactSelector(exact)
-        }
-        guard let canonicalFallback = canonicalSelector(fallbackSelector) else {
-            return .none
-        }
-        guard let canonical = cards.first(where: {
-            canonicalSelector($0.selector) == canonicalFallback
-        }) else {
-            return .none
-        }
-        return .canonicalSelector(canonical)
-    }
-
-    /// The menu bar summarizes the selected card, while the status-menu card
-    /// itself may continue to show the selector/model identity. Keeping this
-    /// mapping pure prevents transient card states from leaking that identity
-    /// into the compact menu-bar presentation.
+    /// The menu bar summarizes the first preference card, while the status-menu
+    /// card itself may continue to show the selector/model identity. Keeping
+    /// this mapping pure prevents card identity from leaking into the compact
+    /// menu-bar presentation.
     static func menuBarSnapshot(
         for card: OpenCodexModelCard?
     ) -> Snapshot {
@@ -442,45 +409,12 @@ enum OpenCodexCardPresentation {
         cards: [OpenCodexModelCard]
     ) -> Snapshot {
         guard snapshot.kind == .openCodex else { return snapshot }
-        switch currentCardMatch(from: cards, fallbackSelector: snapshot.unit) {
-        case .isCurrent(let card), .exactSelector(let card), .canonicalSelector(let card):
+        switch menuBarCardMatch(from: cards) {
+        case .firstPreference(let card):
             return menuBarSnapshot(for: card)
         case .none:
-            return cards.isEmpty
-                ? .placeholder
-                : .error(
-                    tr(
-                        "OpenCodex 当前精选模型未匹配",
-                        "The current OpenCodex model could not be matched"
-                    )
-                )
+            return .placeholder
         }
-    }
-
-    private static func normalizedSelector(_ selector: String?) -> String? {
-        guard let selector else { return nil }
-        let trimmed = selector.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private static func canonicalSelector(_ selector: String) -> String? {
-        let trimmed = selector.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let provider: String
-        let model: String
-        if let slash = trimmed.firstIndex(of: "/") {
-            provider = String(trimmed[..<slash])
-            model = String(trimmed[trimmed.index(after: slash)...])
-        } else {
-            provider = "openai"
-            model = trimmed
-        }
-        let normalizedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let normalizedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedProvider.isEmpty, !normalizedModel.isEmpty else { return nil }
-        return normalizedProvider == "openai"
-            ? normalizedModel
-            : "\(normalizedProvider)/\(normalizedModel)"
     }
 
     static func dashboardURL(

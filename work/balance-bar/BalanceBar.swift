@@ -4781,10 +4781,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         guard snapshot.kind == .openCodex else { return effective }
 
-        let match = OpenCodexCardPresentation.currentCardMatch(
-            from: openCodexCards,
-            fallbackSelector: snapshot.unit
-        )
+        let match = OpenCodexCardPresentation.menuBarCardMatch(from: openCodexCards)
         let cardSummary = openCodexCards.enumerated()
             .map { openCodexCardDiagnostic($0.element, index: $0.offset) }
             .joined(separator: ";")
@@ -4798,7 +4795,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             effective.menuBarSecondary
         ].joined(separator: "|")
         SwitchLog.write(
-            "OpenCodex menu bar resolution; base_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(effective.kind)); primary=\(effective.menuBarPrimary); secondary=\(effective.menuBarSecondary)",
+            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(effective.kind)); primary=\(effective.menuBarPrimary); secondary=\(effective.menuBarSecondary)",
             level: .debug,
             category: "open-codex.menu-bar",
             throttleKey: "open-codex-menu-resolution-\(signature)",
