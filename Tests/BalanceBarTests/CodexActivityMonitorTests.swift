@@ -42,6 +42,16 @@ final class CodexActivityMonitorTests: XCTestCase {
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
     }
 
+    func testFinalAgentMessageStopsRolloutActivity() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            #"{"type":"event_msg","payload":{"type":"agent_message","message":"done","phase":"final_answer","memory_citation":null}}"#
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
     func testExpiredLogActivityIsIgnored() throws {
         try makeLogsDatabase(rows: [
             (threadID: "fixture-thread", timestamp: epoch - 601, body: #"{"type":"response.output_text.delta"}"#)

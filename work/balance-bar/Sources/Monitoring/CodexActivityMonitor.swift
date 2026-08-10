@@ -12,6 +12,7 @@ private func codexFileIdentity(atPath path: String) -> (size: UInt64, modifiedAt
 
 final class CodexActivityMonitor {
     private static let activityWindow = 10 * 60
+    private static let terminalPhases: Set<String> = ["final", "final_answer"]
     private static let terminalTypes: Set<String> = [
         "task_complete", "task_completed", "task_stopped", "task_failed", "task_cancelled",
         "turn_complete", "turn_completed", "turn_aborted", "turn_failed", "turn_cancelled"
@@ -107,14 +108,18 @@ final class CodexActivityMonitor {
                   let topType = object["type"] as? String else { continue }
             if topType == "event_msg", let payload = object["payload"] as? [String: Any],
                let payloadType = payload["type"] as? String {
-                if payloadType == "task_started" || payloadType == "user_message" || payloadType == "agent_message" {
+                if payloadType == "agent_message",
+                   let phase = payload["phase"] as? String,
+                   Self.terminalPhases.contains(phase) {
+                    running = false
+                } else if payloadType == "task_started" || payloadType == "user_message" || payloadType == "agent_message" {
                     running = true
                 } else if Self.terminalTypes.contains(payloadType) {
                     running = false
                 }
             } else if topType == "response_item", let payload = object["payload"] as? [String: Any] {
                 let phase = payload["phase"] as? String
-                if phase == "final" || phase == "final_answer" {
+                if let phase, Self.terminalPhases.contains(phase) {
                     running = false
                 } else {
                     running = true
