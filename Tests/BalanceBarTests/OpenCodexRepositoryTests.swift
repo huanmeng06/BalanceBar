@@ -234,7 +234,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
 
         repository.readState(for: candidate) { result in
             guard case .recognized(let state) = result else {
-                XCTFail("expected OpenCodex management API to be recognized")
+                XCTFail("expected OpenCodex management API to be recognized; \(transport.diagnosticSummary)")
                 expectation.fulfill()
                 return
             }
@@ -451,7 +451,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
 
         repository.readState(for: candidate) { result in
             guard case .recognized(let state) = result else {
-                XCTFail("expected structured OpenCodex config to remain recognized")
+                XCTFail("expected structured OpenCodex config to remain recognized; \(transport.diagnosticSummary)")
                 expectation.fulfill()
                 return
             }
@@ -1382,7 +1382,16 @@ private final class MutableOpenCodexTransport: OpenCodexHTTPTransport {
     var failWriteAt: Int?
     var healthService = "opencodex"
     private(set) var requests: [RequestRecord] = []
+    private(set) var responseSummaries: [String] = []
     private var writeRequestCount = 0
+
+    var diagnosticSummary: String {
+        lock.lock()
+        defer { lock.unlock() }
+        let requests = requests.map { "\($0.method) \($0.path)" }.joined(separator: ",")
+        let responses = responseSummaries.joined(separator: ",")
+        return "requests=[\(requests)] responses=[\(responses)]"
+    }
 
     init(candidate: OpenCodexEndpointCandidate) {
         self.candidate = candidate
@@ -1416,6 +1425,7 @@ private final class MutableOpenCodexTransport: OpenCodexHTTPTransport {
         } else {
             response = self.response(method: method, path: path, queryName: queryName, body: body)
         }
+        responseSummaries.append("\(method) \(path) status=\(response.statusCode)")
         lock.unlock()
         completion(.success(response))
     }
