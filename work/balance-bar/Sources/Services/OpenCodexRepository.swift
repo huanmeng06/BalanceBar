@@ -139,10 +139,92 @@ struct OpenCodexPreference: Equatable {
     let isCurrent: Bool
 }
 
+struct OpenCodexProviderDescriptor: Equatable {
+    let id: String
+    let adapter: String
+    let authMode: String
+    let baseURL: URL
+    let defaultModel: String?
+    let models: [String]
+    let isOfficial: Bool
+
+    init(
+        id: String,
+        adapter: String,
+        authMode: String,
+        baseURL: URL,
+        defaultModel: String? = nil,
+        models: [String] = [],
+        isOfficial: Bool? = nil
+    ) {
+        self.id = id
+        self.adapter = adapter
+        self.authMode = authMode
+        self.baseURL = baseURL
+        self.defaultModel = defaultModel
+        self.models = models
+        self.isOfficial = isOfficial ?? Self.isOfficialEndpoint(
+            adapter: adapter,
+            authMode: authMode,
+            baseURL: baseURL
+        )
+    }
+
+    static func parse(
+        id: String,
+        object: [String: Any]
+    ) -> OpenCodexProviderDescriptor? {
+        guard let adapter = stringValue(object["adapter"]),
+              let rawBaseURL = stringValue(object["baseUrl"] ?? object["baseURL"]),
+              let baseURL = URL(string: rawBaseURL),
+              let host = baseURL.host,
+              !host.isEmpty else { return nil }
+        let authMode = stringValue(
+            object["authMode"] ?? object["auth_mode"] ?? object["auth"]
+        ) ?? ""
+        let models = (object["models"] as? [Any] ?? []).compactMap { value -> String? in
+            if let model = value as? String { return model }
+            guard let model = value as? [String: Any] else { return nil }
+            return stringValue(model["id"] ?? model["name"] ?? model["model"])
+        }
+        return OpenCodexProviderDescriptor(
+            id: id,
+            adapter: adapter,
+            authMode: authMode,
+            baseURL: baseURL,
+            defaultModel: stringValue(object["defaultModel"]),
+            models: models
+        )
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        guard let value = value as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func isOfficialEndpoint(
+        adapter: String,
+        authMode: String,
+        baseURL: URL
+    ) -> Bool {
+        let normalizedAdapter = adapter.lowercased()
+        let normalizedAuthMode = authMode.lowercased()
+        guard normalizedAdapter == "openai-responses",
+              ["forward", "oauth", "key", "api-key", "apikey"].contains(normalizedAuthMode),
+              let host = baseURL.host?.lowercased() else { return false }
+        return host == "openai.com"
+            || host.hasSuffix(".openai.com")
+            || host == "chatgpt.com"
+            || host.hasSuffix(".chatgpt.com")
+    }
+}
+
 struct OpenCodexRuntimeState: Equatable {
     let candidate: OpenCodexEndpointCandidate
     let defaultProvider: String
     let providerDefaultModels: [String: String]
+    let providers: [String: OpenCodexProviderDescriptor]
     let chosenSelectors: [String]
     let availableSelectors: [String]
     let preferences: [OpenCodexPreference]
@@ -331,6 +413,21 @@ struct OpenCodexLocalConfigSnapshot {
     let defaultProvider: String
     let providerDefaultModels: [String: String]
     let chosenSelectors: [String]
+    let providers: [String: OpenCodexProviderDescriptor]
+
+    init(
+        port: Int,
+        defaultProvider: String,
+        providerDefaultModels: [String: String],
+        chosenSelectors: [String],
+        providers: [String: OpenCodexProviderDescriptor] = [:]
+    ) {
+        self.port = port
+        self.defaultProvider = defaultProvider
+        self.providerDefaultModels = providerDefaultModels
+        self.chosenSelectors = chosenSelectors
+        self.providers = providers
+    }
 }
 
 protocol OpenCodexConfigReader {
@@ -379,12 +476,21 @@ final class FileOpenCodexConfigReader: OpenCodexConfigReader {
         let chosenSelectors = (object["subagentModels"] as? [Any] ?? [])
             .compactMap { $0 as? String }
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let descriptors = providers.reduce(into: [String: OpenCodexProviderDescriptor]()) { result, entry in
+            guard let provider = entry.value as? [String: Any],
+                  let descriptor = OpenCodexProviderDescriptor.parse(
+                    id: entry.key,
+                    object: provider
+                  ) else { return }
+            result[entry.key] = descriptor
+        }
 
         return OpenCodexLocalConfigSnapshot(
             port: port,
             defaultProvider: defaultProvider,
             providerDefaultModels: providerDefaultModels,
-            chosenSelectors: chosenSelectors
+            chosenSelectors: chosenSelectors,
+            providers: descriptors
         )
     }
 
@@ -453,6 +559,7 @@ final class OpenCodexRepository {
                         candidate: candidate,
                         defaultProvider: localSnapshot.defaultProvider,
                         providerDefaultModels: localSnapshot.providerDefaultModels,
+                        providers: localSnapshot.providers,
                         chosenSelectors: localSnapshot.chosenSelectors,
                         availableSelectors: [],
                         managementAvailable: false,
@@ -508,6 +615,7 @@ final class OpenCodexRepository {
                     candidate: candidate,
                     defaultProvider: config.defaultProvider,
                     providerDefaultModels: config.providerDefaultModels,
+                    providers: config.providers,
                     chosenSelectors: chosen,
                     availableSelectors: available,
                     managementAvailable: true,
@@ -521,6 +629,7 @@ final class OpenCodexRepository {
                     candidate: candidate,
                     defaultProvider: config.defaultProvider,
                     providerDefaultModels: config.providerDefaultModels,
+                    providers: config.providers,
                     chosenSelectors: localSnapshot?.chosenSelectors ?? [],
                     availableSelectors: [],
                     managementAvailable: false,
@@ -534,6 +643,7 @@ final class OpenCodexRepository {
                     candidate: candidate,
                     defaultProvider: candidate.modelProvider,
                     providerDefaultModels: [:],
+                    providers: [:],
                     chosenSelectors: [],
                     availableSelectors: [],
                     managementAvailable: false,
@@ -545,6 +655,7 @@ final class OpenCodexRepository {
                 candidate: candidate,
                 defaultProvider: localSnapshot.defaultProvider,
                 providerDefaultModels: localSnapshot.providerDefaultModels,
+                providers: localSnapshot.providers,
                 chosenSelectors: localSnapshot.chosenSelectors,
                 availableSelectors: [],
                 managementAvailable: false,
@@ -814,6 +925,7 @@ final class OpenCodexRepository {
         candidate: OpenCodexEndpointCandidate,
         defaultProvider: String,
         providerDefaultModels: [String: String],
+        providers: [String: OpenCodexProviderDescriptor],
         chosenSelectors: [String],
         availableSelectors: [String],
         managementAvailable: Bool,
@@ -846,6 +958,7 @@ final class OpenCodexRepository {
             candidate: candidate,
             defaultProvider: defaultProvider,
             providerDefaultModels: providerDefaultModels,
+            providers: providers,
             chosenSelectors: chosen,
             availableSelectors: available,
             preferences: preferences,
@@ -872,7 +985,11 @@ final class OpenCodexRepository {
     private func parseConfig(
         _ object: [String: Any]?,
         candidate: OpenCodexEndpointCandidate
-    ) -> (defaultProvider: String, providerDefaultModels: [String: String])? {
+    ) -> (
+        defaultProvider: String,
+        providerDefaultModels: [String: String],
+        providers: [String: OpenCodexProviderDescriptor]
+    )? {
         guard let object,
               object["codexAutoStart"] is Bool,
               object["websockets"] is Bool,
@@ -888,7 +1005,15 @@ final class OpenCodexRepository {
                   !model.isEmpty else { return }
             result[entry.key] = model
         }
-        return (defaultProvider, providerDefaultModels)
+        let descriptors = providers.reduce(into: [String: OpenCodexProviderDescriptor]()) { result, entry in
+            guard let provider = entry.value as? [String: Any],
+                  let descriptor = OpenCodexProviderDescriptor.parse(
+                    id: entry.key,
+                    object: provider
+                  ) else { return }
+            result[entry.key] = descriptor
+        }
+        return (defaultProvider, providerDefaultModels, descriptors)
     }
 
     private func providerIsConfigured(_ name: String, in providers: [String: Any]) -> Bool {
