@@ -681,6 +681,24 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(englishBalance.link, CGRect(x: 85, y: 7, width: 136, height: 17))
     }
 
+    func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {
+        let card = OpenCodexModelCard(
+            selector: "openai/gpt-5.6-sol",
+            provider: "openai",
+            model: "gpt-5.6-sol",
+            isCurrent: true,
+            data: .loading(category: .quota)
+        )
+
+        XCTAssertEqual(
+            OpenCodexCardPresentation.identity(for: card),
+            "openai/gpt-5.6-sol"
+        )
+        XCTAssertFalse(
+            OpenCodexCardPresentation.identity(for: card).hasPrefix("1. ")
+        )
+    }
+
     private func makeCardState(
         selectors: [String],
         descriptors: [String: OpenCodexProviderDescriptor]

@@ -125,6 +125,12 @@ struct OpenCodexModelCard: Equatable {
     let data: OpenCodexCardData
 }
 
+enum OpenCodexCardPresentation {
+    static func identity(for card: OpenCodexModelCard) -> String {
+        "\(card.provider)/\(card.model)"
+    }
+}
+
 /// Frames shared by OpenCodex cards and the existing overview cards.
 /// Keeping these values in a pure helper makes the visual baseline testable
 /// without launching AppKit or the status menu.

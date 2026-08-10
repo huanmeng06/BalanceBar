@@ -5945,7 +5945,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 statusMenu.addItem(makeOpenCodexEmptyMenuItem())
             } else {
                 for (index, card) in openCodexCards.enumerated() {
-                    statusMenu.addItem(makeOpenCodexCardMenuItem(card, index: index + 1))
+                    statusMenu.addItem(makeOpenCodexCardMenuItem(card))
                     if index < openCodexCards.count - 1 {
                         statusMenu.addItem(.separator())
                     }
@@ -6066,110 +6066,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
         }
 
-        if activeClient == .codex,
-           let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
-           current.openCodexCandidate != nil,
-           let entry = openCodexState,
-           entry.providerID == current.id {
-            submenu.addItem(.separator())
-            submenu.addItem(
-                makeOpenCodexQuickSwitchMenuItem(
-                    providerID: current.id,
-                    providerName: current.name
-                )
-            )
-        }
         SwitchLog.write(
             "quick-switch menu built; app_type=\(activeClient.appType); choice_count=\(choices.count); submenu_item_count=\(submenu.items.count); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary); empty_state=\(choices.isEmpty)",
             level: .debug,
             category: "provider.menu",
             throttleKey: "quick-switch-menu-\(activeClient.appType)",
-            minimumInterval: 1
-        )
-        parent.submenu = submenu
-        return parent
-    }
-
-    private func makeOpenCodexQuickSwitchMenuItem(
-        providerID: String,
-        providerName: String
-    ) -> NSMenuItem {
-        let parent = NSMenuItem(
-            title: tr("OpenCodex 快速切换", "OpenCodex Quick Switch"),
-            action: nil,
-            keyEquivalent: ""
-        )
-        let submenu = NSMenu(title: parent.title)
-        submenu.minimumWidth = 260
-
-        guard let entry = openCodexState, entry.providerID == providerID else {
-            let item = NSMenuItem(
-                title: tr("正在读取 OpenCodex 偏好…", "Reading OpenCodex preferences…"),
-                action: nil,
-                keyEquivalent: ""
-            )
-            item.isEnabled = false
-            submenu.addItem(item)
-            parent.submenu = submenu
-            return parent
-        }
-
-        let state = entry.state
-        if !state.managementAvailable {
-            let item = NSMenuItem(
-                title: tr("OpenCodex 管理接口不可用", "OpenCodex management API unavailable"),
-                action: nil,
-                keyEquivalent: ""
-            )
-            item.isEnabled = false
-            submenu.addItem(item)
-        } else if !state.preferenceDataAvailable {
-            let item = NSMenuItem(
-                title: tr("暂未读取到可用偏好", "No preferences available yet"),
-                action: nil,
-                keyEquivalent: ""
-            )
-            item.isEnabled = false
-            submenu.addItem(item)
-        } else if state.preferences.isEmpty {
-            let item = NSMenuItem(
-                title: tr("没有配置 OpenCodex 子项", "No OpenCodex preferences configured"),
-                action: nil,
-                keyEquivalent: ""
-            )
-            item.isEnabled = false
-            submenu.addItem(item)
-        }
-
-        if !state.preferences.contains(where: \OpenCodexPreference.isCurrent),
-           let current = state.currentSelector {
-            let item = NSMenuItem(
-                title: tr("当前：\(current)", "Current: \(current)"),
-                action: nil,
-                keyEquivalent: ""
-            )
-            item.isEnabled = false
-            submenu.addItem(item)
-        }
-
-        for (index, preference) in state.preferences.enumerated() {
-            let item = NSMenuItem(
-                title: "\(index + 1). \(preference.selector)",
-                action: #selector(switchOpenCodexPreference(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = preference
-            item.state = preference.isCurrent ? .on : .off
-            item.isEnabled = state.managementAvailable && !openCodexSwitchInFlight
-            submenu.addItem(item)
-        }
-
-        SwitchLog.write(
-            "OpenCodex quick-switch menu built; preference_count=\(state.preferences.count); management_available=\(state.managementAvailable); provider_id_present=\(!providerID.isEmpty); provider_name_present=\(!providerName.isEmpty)",
-            level: .debug,
-            category: "provider.menu",
-            throttleKey: "opencodex-quick-switch-menu",
             minimumInterval: 1
         )
         parent.submenu = submenu
@@ -6291,10 +6192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return item
     }
 
-    private func makeOpenCodexCardMenuItem(
-        _ card: OpenCodexModelCard,
-        index: Int
-    ) -> NSMenuItem {
+    private func makeOpenCodexCardMenuItem(_ card: OpenCodexModelCard) -> NSMenuItem {
         let item = NSMenuItem()
         let category = card.data.category
         let layout = OpenCodexCardLayout.frames(
@@ -6303,7 +6201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
 
-        let titleText = "\(index). \(card.provider)/\(card.model)"
+        let titleText = OpenCodexCardPresentation.identity(for: card)
             + (card.isCurrent ? tr(" · 当前", " · Current") : "")
         let provider = makeOverviewLabel(
             titleText,
