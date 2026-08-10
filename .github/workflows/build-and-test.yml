@@ -45,4 +45,5 @@ jobs:
           -configuration Debug
           -derivedDataPath "$RUNNER_TEMP/BalanceBar-Test-DerivedData"
           CODE_SIGNING_ALLOWED=NO
+          -parallel-testing-enabled NO
           test
