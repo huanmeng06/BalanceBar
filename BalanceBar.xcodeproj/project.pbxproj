@@ -41,6 +41,8 @@
 		A1000000000000000000006B /* OpenCodexRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006A /* OpenCodexRepositoryTests.swift */; };
 		A1000000000000000000006C /* DashboardScrollClamping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006D /* DashboardScrollClamping.swift */; };
 		A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000006F /* DashboardScrollClampingTests.swift */; };
+		A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000071 /* OfficialQuotaClient.swift */; };
+		A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000073 /* OfficialQuotaClientTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,6 +82,8 @@
 		A1000000000000000000006A /* OpenCodexRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRepositoryTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000006D /* DashboardScrollClamping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/DashboardScrollClamping.swift"; sourceTree = "<group>"; };
 		A1000000000000000000006F /* DashboardScrollClampingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardScrollClampingTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000071 /* OfficialQuotaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClient.swift; sourceTree = "<group>"; };
+		A10000000000000000000073 /* OfficialQuotaClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClientTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,6 +181,7 @@
 				A10000000000000000000063 /* CredentialReaderTests.swift */,
 				A10000000000000000000067 /* BalanceAPIClientTests.swift */,
 				A1000000000000000000006A /* OpenCodexRepositoryTests.swift */,
+				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -201,6 +206,7 @@
 				A10000000000000000000061 /* CredentialReader.swift */,
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
 				A10000000000000000000068 /* OpenCodexRepository.swift */,
+				A10000000000000000000071 /* OfficialQuotaClient.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
@@ -335,6 +341,7 @@
 				A10000000000000000000060 /* CredentialReader.swift in Sources */,
 				A10000000000000000000064 /* BalanceAPIClient.swift in Sources */,
 				A10000000000000000000069 /* OpenCodexRepository.swift in Sources */,
+				A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -352,6 +359,7 @@
 				A10000000000000000000062 /* CredentialReaderTests.swift in Sources */,
 				A10000000000000000000066 /* BalanceAPIClientTests.swift in Sources */,
 				A1000000000000000000006B /* OpenCodexRepositoryTests.swift in Sources */,
+				A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

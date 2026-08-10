@@ -1444,8 +1444,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var lastOpenCodexFetch: Date?
     private let quickSwitchSummaryLock = NSLock()
     private var quickSwitchSummaries: [String: String] = [:]
-    private let balanceRequestLock = NSLock()
-    private var balanceRequestsInFlight: Set<String> = []
     private var clientSnapshots: [
         AssistantClient: (providerID: String, snapshot: Snapshot)
     ] = [:]
@@ -1477,8 +1475,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let officialQuotaClient: OfficialQuotaClient
     private let openCodexRepository: OpenCodexRepository
-    private let credentialReader = CredentialReader()
     private let balanceAPIClient = BalanceAPIClient()
     private let preferences = AppPreferences()
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
@@ -1514,9 +1512,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     init(
         repository: CCSwitchRepository = CCSwitchRepository(),
+        officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
         openCodexRepository: OpenCodexRepository = OpenCodexRepository()
     ) {
         self.ccSwitchRepository = repository
+        self.officialQuotaClient = officialQuotaClient
         self.openCodexRepository = openCodexRepository
         super.init()
     }
@@ -4162,7 +4162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.11.3"
+        ) as? String ?? "0.11.4"
         let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
@@ -5927,44 +5927,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         generation: UUID
     ) {
         let requestStartedAt = Date()
-        guard let request = makeOfficialQuotaRequest(
+        officialQuotaClient.fetchQuota(
             client: .codex,
+            providerID: providerID,
             storedAccessToken: nil
-        ) else {
-            SwitchLog.write(
-                "OpenCodex official card request completed; provider_id=\(providerID); source=official; generation=\(generation.uuidString); result=unavailable/quota; reason=missing-local-auth; duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
-                level: .warning,
-                category: "open-codex.request"
-            )
-            updateOpenCodexCard(
-                providerID: providerID,
-                generation: generation,
-                source: .official,
-                data: .unavailable(
-                    category: .quota,
-                    reason: tr(
-                        "额度不可用：未找到官方登录态",
-                        "Quota unavailable: official sign-in credentials were not found"
-                    )
-                )
-            )
-            return
-        }
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        ) { [weak self] result in
             guard let self else { return }
             let cardData: OpenCodexCardData
-            if let http = response as? HTTPURLResponse,
-               (200..<300).contains(http.statusCode),
-               let data,
-               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let quota = try? OfficialQuotaResponseParser.parse(object: object, client: .codex) {
+            let status: Int
+            let dataSize: Int
+            let transportError: Bool
+            switch result {
+            case .success(let response):
+                let quota = response.output
                 cardData = .official(
                     remaining: quota.remaining,
                     label: quota.label,
                     reset: quota.reset,
                     updatedAt: Date()
                 )
-            } else {
+                status = 200
+                dataSize = response.dataSize
+                transportError = false
+            case .failure(.missingCredentials):
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：未找到官方登录态",
+                        "Quota unavailable: official sign-in credentials were not found"
+                    )
+                )
+                status = -1
+                dataSize = 0
+                transportError = false
+            case .failure(.httpStatus(let statusCode, let responseSize)):
                 cardData = .unavailable(
                     category: .quota,
                     reason: tr(
@@ -5972,10 +5968,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         "Quota unavailable: the official quota endpoint is temporarily unavailable"
                     )
                 )
+                status = statusCode
+                dataSize = responseSize
+                transportError = false
+            case .failure(.transport(_)):
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：官方额度接口暂时不可用",
+                        "Quota unavailable: the official quota endpoint is temporarily unavailable"
+                    )
+                )
+                status = -1
+                dataSize = 0
+                transportError = true
+            case .failure(.invalidJSON(let responseSize)),
+                 .failure(.unsupportedFormat(let responseSize)):
+                cardData = .unavailable(
+                    category: .quota,
+                    reason: tr(
+                        "额度不可用：官方额度接口暂时不可用",
+                        "Quota unavailable: the official quota endpoint is temporarily unavailable"
+                    )
+                )
+                status = 200
+                dataSize = responseSize
+                transportError = false
             }
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
             SwitchLog.write(
-                "OpenCodex official card request completed; provider_id=\(providerID); source=official; generation=\(generation.uuidString); result=\(cardData.diagnosticName); status=\(status); bytes=\(data?.count ?? 0); transport_error=\(error != nil); duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
+                "OpenCodex official card request completed; provider_id=\(providerID); source=official; generation=\(generation.uuidString); result=\(cardData.diagnosticName); status=\(status); bytes=\(dataSize); transport_error=\(transportError); duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
                 level: cardData.isSuccessful ? .debug : .warning,
                 category: "open-codex.request"
             )
@@ -5987,7 +6008,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     data: cardData
                 )
             }
-        }.resume()
+        }
     }
 
     private func publishOpenCodexCards(
@@ -6279,23 +6300,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     // quick-switch list. Official Claude quota is still loaded
                     // when it is the current Provider.
                     if client == .claude { continue }
-                    guard let request = makeOfficialQuotaRequest(
+                    self.officialQuotaClient.fetchQuota(
                         client: client,
+                        providerID: source.id,
                         storedAccessToken: source.officialAccessToken
-                    ) else { continue }
-                    URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
-                        guard let self,
-                              let http = response as? HTTPURLResponse,
-                              (200..<300).contains(http.statusCode),
-                              let data,
-                              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let quota = try? OfficialQuotaResponseParser.parse(object: object, client: client)
-                        else { return }
+                    ) { [weak self] result in
+                        guard let self, case .success(let response) = result else { return }
                         self.updateQuickSwitchSummary(
                             providerID: source.id,
-                            text: "\(Int(quota.remaining))% / \(quota.daysText)"
+                            text: "\(Int(response.output.remaining))% / \(response.output.daysText)"
                         )
-                    }.resume()
+                    }
                     continue
                 }
 
@@ -6399,18 +6414,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return nil
         }
         return url
-    }
-
-    private func beginBalanceRequest(_ key: String) -> Bool {
-        balanceRequestLock.lock()
-        defer { balanceRequestLock.unlock() }
-        return balanceRequestsInFlight.insert(key).inserted
-    }
-
-    private func endBalanceRequest(_ key: String) {
-        balanceRequestLock.lock()
-        balanceRequestsInFlight.remove(key)
-        balanceRequestLock.unlock()
     }
 
     private static func localizedBalanceNetworkErrorReason(
@@ -6559,29 +6562,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         providerName: String,
         client: AssistantClient
     ) {
-        guard let request = makeOfficialQuotaRequest(
-            client: client,
-            storedAccessToken: nil
-        ) else {
-            SwitchLog.write(
-                "official quota request unavailable; client=\(client.rawValue); provider=\(providerName); reason=missing local credentials",
-                level: .error,
-                category: "authentication"
-            )
-            renderForCurrentProvider(.error(tr(
-                "\(client.displayName) 官方账号：未找到本机登录态",
-                "Official \(client.displayName): Local sign-in credentials were not found"
-            )), providerID: providerID, client: client)
-            return
-        }
-        let requestKey = "official:\(client.rawValue):\(providerID)"
-        guard beginBalanceRequest(requestKey) else { return }
         let requestStartedAt = Date()
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        officialQuotaClient.fetchQuota(
+            client: client,
+            providerID: providerID
+        ) { [weak self] result in
             guard let self else { return }
-            defer { self.endBalanceRequest(requestKey) }
             let duration = Date().timeIntervalSince(requestStartedAt)
-            if let error {
+            switch result {
+            case .failure(.missingCredentials):
+                SwitchLog.write(
+                    "official quota request unavailable; client=\(client.rawValue); provider=\(providerName); reason=missing local credentials",
+                    level: .error,
+                    category: "authentication"
+                )
+                self.renderForCurrentProvider(.error(tr(
+                    "\(client.displayName) 官方账号：未找到本机登录态",
+                    "Official \(client.displayName): Local sign-in credentials were not found"
+                )), providerID: providerID, client: client)
+            case .failure(.transport(let error)):
                 SwitchLog.write(
                     "official quota request failed; client=\(client.rawValue); provider=\(providerName); duration=\(String(format: "%.3f", duration))s; error=\(error.localizedDescription)",
                     level: .error,
@@ -6591,13 +6590,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     "\(client.displayName) 官方账号：\(error.localizedDescription)",
                     "Official \(client.displayName): \(error.localizedDescription)"
                 )), providerID: providerID, client: client)
-                return
-            }
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), let data,
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            case .failure(.httpStatus(let status, let dataSize)):
                 SwitchLog.write(
-                    "official quota request failed; client=\(client.rawValue); provider=\(providerName); status=\(status); bytes=\(data?.count ?? 0); duration=\(String(format: "%.3f", duration))s",
+                    "official quota request failed; client=\(client.rawValue); provider=\(providerName); status=\(status); bytes=\(dataSize); duration=\(String(format: "%.3f", duration))s",
                     level: .error,
                     category: "network"
                 )
@@ -6605,11 +6600,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     "\(client.displayName) 官方账号：额度接口返回异常",
                     "Official \(client.displayName): The quota endpoint returned an error"
                 )), providerID: providerID, client: client)
-                return
-            }
-            guard let quota = try? OfficialQuotaResponseParser.parse(object: object, client: client) else {
+            case .failure(.invalidJSON(let dataSize)):
                 SwitchLog.write(
-                    "official quota parse failed; client=\(client.rawValue); provider=\(providerName); bytes=\(data.count); duration=\(String(format: "%.3f", duration))s",
+                    "official quota request failed; client=\(client.rawValue); provider=\(providerName); status=200; bytes=\(dataSize); duration=\(String(format: "%.3f", duration))s",
+                    level: .error,
+                    category: "network"
+                )
+                self.renderForCurrentProvider(.error(tr(
+                    "\(client.displayName) 官方账号：额度接口返回异常",
+                    "Official \(client.displayName): The quota endpoint returned an error"
+                )), providerID: providerID, client: client)
+            case .failure(.unsupportedFormat(let dataSize)):
+                SwitchLog.write(
+                    "official quota parse failed; client=\(client.rawValue); provider=\(providerName); bytes=\(dataSize); duration=\(String(format: "%.3f", duration))s",
                     level: .error,
                     category: "parsing"
                 )
@@ -6617,22 +6620,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     "\(client.displayName) 官方账号：未识别额度格式",
                     "Official \(client.displayName): Unrecognized quota format"
                 )), providerID: providerID, client: client)
-                return
+            case .success(let response):
+                let quota = response.output
+                SwitchLog.write(
+                    "official quota request succeeded; client=\(client.rawValue); provider=\(providerName); remaining=\(quota.remaining); label=\(quota.label); duration=\(String(format: "%.3f", duration))s",
+                    level: .debug,
+                    category: "network",
+                    throttleKey: "quota-success-\(client.rawValue)-\(providerID)",
+                    minimumInterval: 10
+                )
+                self.updateQuickSwitchSummary(providerID: providerID, text: "\(Int(quota.remaining))% / \(quota.daysText)")
+                self.renderForCurrentProvider(
+                    .official(providerName, quota.remaining, quota.label, quota.reset, Date()),
+                    providerID: providerID,
+                    client: client
+                )
             }
-            SwitchLog.write(
-                "official quota request succeeded; client=\(client.rawValue); provider=\(providerName); remaining=\(quota.remaining); label=\(quota.label); duration=\(String(format: "%.3f", duration))s",
-                level: .debug,
-                category: "network",
-                throttleKey: "quota-success-\(client.rawValue)-\(providerID)",
-                minimumInterval: 10
-            )
-            self.updateQuickSwitchSummary(providerID: providerID, text: "\(Int(quota.remaining))% / \(quota.daysText)")
-            self.renderForCurrentProvider(
-                .official(providerName, quota.remaining, quota.label, quota.reset, Date()),
-                providerID: providerID,
-                client: client
-            )
-        }.resume()
+        }
     }
 
     private func renderForCurrentProvider(
@@ -6694,31 +6698,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 self.render(next)
             }
         }
-    }
-
-    private func makeOfficialQuotaRequest(
-        client: AssistantClient,
-        storedAccessToken: String?
-    ) -> URLRequest? {
-        let accessToken: String?
-        let url: URL?
-        switch client {
-        case .codex:
-            accessToken = storedAccessToken ?? credentialReader.codexAccessToken()
-            url = URL(string: "https://chatgpt.com/backend-api/wham/usage")
-        case .claude:
-            accessToken = credentialReader.claudeAccessToken()
-            url = URL(string: "https://api.anthropic.com/api/oauth/usage")
-        }
-        guard let accessToken, !accessToken.isEmpty, let url else { return nil }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if client == .claude {
-            request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        }
-        return request
     }
 
     private func render(_ next: Snapshot) {
