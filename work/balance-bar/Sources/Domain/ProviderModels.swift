@@ -306,6 +306,55 @@ enum OpenCodexCardPresentation {
     static func identity(for card: OpenCodexModelCard) -> String {
         "\(card.provider)/\(card.model)"
     }
+
+    static func currentCard(
+        from cards: [OpenCodexModelCard]
+    ) -> OpenCodexModelCard? {
+        cards.first(where: \OpenCodexModelCard.isCurrent)
+    }
+
+    /// The menu bar summarizes the selected card, while the status-menu card
+    /// itself may continue to show the selector/model identity. Keeping this
+    /// mapping pure prevents transient card states from leaking that identity
+    /// into the compact menu-bar presentation.
+    static func menuBarSnapshot(
+        for card: OpenCodexModelCard?
+    ) -> Snapshot {
+        guard let card else { return .placeholder }
+
+        switch card.data {
+        case .official(let remaining, let label, let reset, let updatedAt):
+            return .official(
+                card.provider,
+                remaining,
+                label,
+                reset,
+                updatedAt
+            )
+        case .balance(let amount, let unit, let websiteURL, let updatedAt):
+            return .balance(
+                card.provider,
+                amount,
+                unit,
+                websiteURL,
+                updatedAt
+            )
+        case .loading:
+            return .placeholder
+        case .unavailable(_, let reason):
+            return .error(reason)
+        }
+    }
+
+    static func dashboardURL(
+        confirmedProviderID: String?,
+        currentProviderID: String?,
+        candidate: OpenCodexEndpointCandidate?
+    ) -> URL? {
+        guard let confirmedProviderID,
+              confirmedProviderID == currentProviderID else { return nil }
+        return candidate?.dashboardURL
+    }
 }
 
 /// Frames shared by OpenCodex cards and the existing overview cards.

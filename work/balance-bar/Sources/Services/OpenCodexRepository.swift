@@ -14,6 +14,23 @@ struct OpenCodexEndpointCandidate: Hashable {
         baseURL.port ?? (baseURL.scheme?.lowercased() == "https" ? 443 : 80)
     }
 
+    /// Builds the Dashboard URL only from the same constrained endpoint shape
+    /// used to identify an OpenCodex runtime. Callers should use this value
+    /// from a candidate carried by a recognized runtime state, never from an
+    /// arbitrary user-entered URL.
+    var dashboardURL: URL? {
+        guard wireAPI.lowercased() == "responses",
+              Self.isSafeLoopbackV1Endpoint(baseURL),
+              var components = URLComponents(
+                  url: baseURL,
+                  resolvingAgainstBaseURL: false
+              ) else { return nil }
+        components.path = "/"
+        components.query = nil
+        components.fragment = "dashboard"
+        return components.url
+    }
+
     static func parse(settingsConfig: String) -> OpenCodexEndpointCandidate? {
         // CC Switch stores Codex providers as a JSON wrapper whose `config`
         // value contains the actual config.toml text. Keep accepting the
@@ -1167,14 +1184,7 @@ final class OpenCodexRepository {
     }
 
     private static func isValidCandidate(_ candidate: OpenCodexEndpointCandidate) -> Bool {
-        guard let scheme = candidate.baseURL.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              let host = candidate.baseURL.host?.lowercased(),
-              OpenCodexEndpointCandidate.isLoopbackHost(host),
-              candidate.wireAPI.lowercased() == "responses" else {
-            return false
-        }
-        return candidate.baseURL.path == "/v1"
+        candidate.dashboardURL != nil
     }
 
     private static func percentEncode(_ value: String) -> String {

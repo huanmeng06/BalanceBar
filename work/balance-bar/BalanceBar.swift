@@ -1907,6 +1907,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in }
     }
 
+    @objc private func openOpenCodex() {
+        guard let url = currentOpenCodexDashboardURL() else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func currentOpenCodexDashboardURL() -> URL? {
+        guard activeClient == .codex,
+              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType),
+              let entry = openCodexState else { return nil }
+        return OpenCodexCardPresentation.dashboardURL(
+            confirmedProviderID: entry.providerID,
+            currentProviderID: current.id,
+            candidate: entry.state.candidate
+        )
+    }
+
     @objc private func openChatGPT() {
         let applicationURLs: [URL] = [
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex"),
@@ -3965,13 +3981,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // which can otherwise leave overlapping on/off layers on vibrancy.
         dashboardMenuBarIconSwitch?.isEnabled = showMenuBarAmount
         dashboardMenuBarAmountSwitch?.isEnabled = showMenuBarIcon
-        dashboardMenuPreviewPrimary.stringValue = showMenuBarAmount ? snapshot.menuBarPrimary : ""
-        dashboardMenuPreviewSecondary.stringValue = snapshot.kind == .official
-            ? snapshot.menuBarSecondary
+        let effectiveMenuBarSnapshot = menuBarSnapshot(for: snapshot)
+        dashboardMenuPreviewPrimary.stringValue = showMenuBarAmount ? effectiveMenuBarSnapshot.menuBarPrimary : ""
+        dashboardMenuPreviewSecondary.stringValue = effectiveMenuBarSnapshot.kind == .official
+            ? effectiveMenuBarSnapshot.menuBarSecondary
             : ""
         let hasSecondary = showMenuBarAmount
             && showMenuBarReset
-            && snapshot.kind == .official
+            && effectiveMenuBarSnapshot.kind == .official
             && !dashboardMenuPreviewSecondary.stringValue.isEmpty
         let geometry = MenuBarGeometry(
             primarySize: dashboardMenuPreviewPrimary.intrinsicContentSize,
@@ -3979,7 +3996,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance || snapshot.kind == .openCodex,
+            isBalance: effectiveMenuBarSnapshot.kind == .balance,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -4004,7 +4021,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
         dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
         dashboardMenuPreviewText.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance || snapshot.kind == .openCodex,
+        if effectiveMenuBarSnapshot.kind == .balance,
            showMenuBarIcon,
            showMenuBarAmount {
             dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
@@ -4465,6 +4482,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         openCodexState = nil
         openCodexCards = []
         resetOpenCodexCards()
+        refreshOpenCodexMenuBar()
         openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
@@ -4733,9 +4751,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func updateStatusItem(for snapshot: Snapshot) {
-        layoutStatusItem(for: snapshot)
+        layoutStatusItem(for: menuBarSnapshot(for: snapshot))
         scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
         refreshDashboardMenuBarPage()
+    }
+
+    private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {
+        guard snapshot.kind == .openCodex else { return snapshot }
+        return OpenCodexCardPresentation.menuBarSnapshot(
+            for: OpenCodexCardPresentation.currentCard(from: openCodexCards)
+        )
     }
 
     private func updateDashboard(for snapshot: Snapshot, refreshDate: Date?) {
@@ -4872,6 +4897,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.openCodexState = nil
                     self.openCodexSwitchInFlight = false
                     self.openCodexCards = []
+                    self.refreshOpenCodexMenuBar()
                 }
             }
             self.lastProviderID = current.id
@@ -4902,6 +4928,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.openCodexState = nil
                     self.openCodexCards = []
                     self.openCodexSwitchInFlight = false
+                    self.refreshOpenCodexMenuBar()
                 }
             }
 
@@ -5001,6 +5028,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         self.openCodexState = nil
                         self.openCodexCards = []
                         self.openCodexSwitchInFlight = false
+                        self.refreshOpenCodexMenuBar()
                     }
                     guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
                     self.refreshStandardProvider(
@@ -5043,6 +5071,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                             self.openCodexState = nil
                             self.openCodexCards = []
                             self.openCodexSwitchInFlight = false
+                            self.refreshOpenCodexMenuBar()
                         }
                         guard let current = self.ccSwitchRepository.loadCurrent(appType: client.appType) else { return }
                         self.refreshStandardProvider(
@@ -5394,15 +5423,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                   self.openCodexState?.providerID == providerID else { return }
             self.openCodexCards = cards
             if self.snapshot.kind == .openCodex {
-                if self.isStatusMenuTracking {
-                    self.statusMenuNeedsRebuild = true
-                } else {
-                    self.rebuildStatusMenu(
-                        for: self.snapshot,
-                        refreshDate: self.refreshDate(for: self.snapshot)
-                    )
-                }
+                self.refreshOpenCodexMenuBar()
             }
+        }
+    }
+
+    private func refreshOpenCodexMenuBar() {
+        guard snapshot.kind == .openCodex else { return }
+        updateStatusItem(for: snapshot)
+        if isStatusMenuTracking {
+            statusMenuNeedsRebuild = true
+        } else {
+            rebuildStatusMenu(
+                for: snapshot,
+                refreshDate: refreshDate(for: snapshot)
+            )
         }
     }
 
@@ -6116,6 +6151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 action: #selector(openCCSwitch),
                 keyEquivalent: ""
             ).target = self
+            if currentOpenCodexDashboardURL() != nil {
+                statusMenu.addItem(
+                    withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
+                    action: #selector(openOpenCodex),
+                    keyEquivalent: ""
+                ).target = self
+            }
         }
         if showStatusMenu {
             statusMenu.addItem(makeStatusLinksMenuItem())

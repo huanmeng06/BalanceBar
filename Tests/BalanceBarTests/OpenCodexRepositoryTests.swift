@@ -70,6 +70,61 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
+    func testLoopbackCandidateBuildsDynamicDashboardURLAndRejectsNonCurrentProvider() {
+        let ipv4 = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://127.0.0.1:23456/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertEqual(
+            ipv4.dashboardURL,
+            URL(string: "http://127.0.0.1:23456/#dashboard")
+        )
+
+        let localhost = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "https://localhost:34567/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertEqual(
+            localhost.dashboardURL,
+            URL(string: "https://localhost:34567/#dashboard")
+        )
+
+        let ipv6 = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://[::1]:45678/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertEqual(
+            ipv6.dashboardURL,
+            URL(string: "http://[::1]:45678/#dashboard")
+        )
+
+        XCTAssertNil(
+            OpenCodexCardPresentation.dashboardURL(
+                confirmedProviderID: "open-codex",
+                currentProviderID: "another-provider",
+                candidate: ipv4
+            )
+        )
+        XCTAssertEqual(
+            OpenCodexCardPresentation.dashboardURL(
+                confirmedProviderID: "open-codex",
+                currentProviderID: "open-codex",
+                candidate: ipv4
+            ),
+            ipv4.dashboardURL
+        )
+
+        let remote = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "https://provider.example.test:56789/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        XCTAssertNil(remote.dashboardURL)
+    }
+
     func testProviderDescriptorClassificationUsesAdapterAuthAndEndpointNotModelName() {
         let official = OpenCodexProviderDescriptor.parse(
             id: "official",
