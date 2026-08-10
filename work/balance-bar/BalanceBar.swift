@@ -6047,12 +6047,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let choiceSummary = choices.map {
             "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
         }.joined(separator: "|")
-        if choices.isEmpty {
+        let menuChoices = QuickSwitchMenuModel.entries(from: choices)
+        if menuChoices.isEmpty {
             let empty = NSMenuItem(title: tr("未找到 Codex 供应商", "No Codex Provider Found"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             submenu.addItem(empty)
         } else {
-            for choice in choices {
+            for choice in menuChoices {
                 let item = NSMenuItem(
                     title: "",
                     action: #selector(switchProvider(_:)),

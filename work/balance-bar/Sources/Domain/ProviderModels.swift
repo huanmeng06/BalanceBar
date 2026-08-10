@@ -33,6 +33,24 @@ struct ProviderChoice {
     let isCurrent: Bool
 }
 
+struct QuickSwitchMenuEntry: Equatable {
+    let id: String
+    let name: String
+    let isCurrent: Bool
+}
+
+enum QuickSwitchMenuModel {
+    static func entries(from choices: [ProviderChoice]) -> [QuickSwitchMenuEntry] {
+        choices.map { choice in
+            QuickSwitchMenuEntry(
+                id: choice.id,
+                name: choice.name,
+                isCurrent: choice.isCurrent
+            )
+        }
+    }
+}
+
 struct ProviderSummarySource {
     let id: String
     let name: String

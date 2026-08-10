@@ -699,6 +699,21 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
+    func testQuickSwitchMenuEntriesContainOnlyCCSwitchProviderChoices() {
+        let choices = [
+            ProviderChoice(id: "opencodex", name: "OpenCodex", isCurrent: true),
+            ProviderChoice(id: "ordinary", name: "Ordinary", isCurrent: false)
+        ]
+
+        XCTAssertEqual(
+            QuickSwitchMenuModel.entries(from: choices),
+            [
+                QuickSwitchMenuEntry(id: "opencodex", name: "OpenCodex", isCurrent: true),
+                QuickSwitchMenuEntry(id: "ordinary", name: "Ordinary", isCurrent: false)
+            ]
+        )
+    }
+
     private func makeCardState(
         selectors: [String],
         descriptors: [String: OpenCodexProviderDescriptor]
