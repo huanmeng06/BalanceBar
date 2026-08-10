@@ -1441,7 +1441,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var openCodexCardData: [OpenCodexCardSource: OpenCodexCardData] = [:]
     private var openCodexCardRefreshCoordinator = OpenCodexCardRefreshCoordinator()
     private var openCodexCardRequestsInFlight: Set<OpenCodexCardSource> = []
-    private var openCodexCardRefreshID = UUID()
     // These caches are owned by monitorQueue. They let a previously verified
     // OpenCodex remain special while its process is temporarily unavailable,
     // without treating an unverified loopback as OpenCodex.
@@ -1523,7 +1522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             "database watchers started; count=\(databaseWatchers.count)",
             category: "database"
         )
-        refresh(forceBalance: true)
+        refresh(reason: .initial)
         refreshQuickSwitchSummaries(force: true)
         refreshQuickSwitchSummaries(force: true, for: .claude)
         prefetchCurrentBalance(for: .claude)
@@ -1609,7 +1608,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
         )
-        refresh(forceBalance: true)
+        refresh(reason: .manual)
         refreshQuickSwitchSummaries(force: true)
     }
 
@@ -1694,7 +1693,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self?.openCodexCards = []
                     self?.openCodexSwitchInFlight = false
                 }
-                self.refresh(forceBalance: true)
+                self.refresh(reason: .providerChanged)
             } catch {
                 SwitchLog.write("switch failed; target=\(providerName); error=\(error.localizedDescription)")
                 if ccSwitch != nil, let ccSwitchURL {
@@ -1808,7 +1807,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         configureApplicationMenu()
         rebuildDashboardForLanguageChange()
         render(snapshot)
-        refresh(forceBalance: true)
+        refresh(reason: .configurationChanged)
         refreshQuickSwitchSummaries(force: true)
     }
 
@@ -4296,7 +4295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         activityTimer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
-            self?.refresh(forceBalance: false)
+            self?.refresh(reason: .scheduled)
             self?.refreshQuickSwitchSummaries(force: false)
         }
         timer = providerTimer
@@ -4447,7 +4446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         } ?? true
         if shouldRefreshUsage && (stateChanged || refreshIsDue) {
             lastCodexUsageRefresh = now
-            refresh(forceBalance: true)
+            refresh(reason: .activityUsage)
         } else if !shouldRefreshUsage {
             lastCodexUsageRefresh = nil
             postCodexRefreshDeadline = nil
@@ -4478,7 +4477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             lastProviderID = cached.providerID
             render(cached.snapshot)
         }
-        refresh(forceBalance: true)
+        refresh(reason: .clientChanged)
         refreshQuickSwitchSummaries(force: true)
         if dashboard != nil {
             showDashboardSection(dashboardSection)
@@ -4837,7 +4836,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func refresh(forceBalance: Bool) {
+    private func refresh(reason: BalanceRefreshReason) {
         let client = activeClient
         monitorQueue.async { [weak self] in
             guard let self else { return }
@@ -4880,14 +4879,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let due = self.lastOpenCodexFetch.map {
                     Date().timeIntervalSince($0) >= 5
                 } ?? true
-                guard forceBalance || switched || due else { return }
+                guard reason.forcesStandardProviderBalance || switched || due else { return }
                 self.lastOpenCodexFetch = Date()
                 self.refreshOpenCodex(
                     providerID: current.id,
                     providerName: current.name,
                     candidate: candidate,
                     client: client,
-                    forceBalance: forceBalance,
+                    reason: reason,
                     switched: switched
                 )
                 return
@@ -4909,7 +4908,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.refreshStandardProvider(
                 current: current,
                 client: client,
-                forceBalance: forceBalance,
+                forceBalance: reason.forcesStandardProviderBalance,
                 switched: switched
             )
         }
@@ -4984,7 +4983,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         providerName: String,
         candidate: OpenCodexEndpointCandidate,
         client: AssistantClient,
-        forceBalance: Bool,
+        reason: BalanceRefreshReason,
         switched: Bool
     ) {
         openCodexRepository.readState(for: candidate) { [weak self] result in
@@ -5007,7 +5006,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.refreshStandardProvider(
                         current: current,
                         client: client,
-                        forceBalance: forceBalance,
+                        forceBalance: reason.forcesStandardProviderBalance,
                         switched: switched
                     )
                 case .unavailable:
@@ -5049,7 +5048,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         self.refreshStandardProvider(
                             current: current,
                             client: client,
-                            forceBalance: forceBalance,
+                            forceBalance: reason.forcesStandardProviderBalance,
                             switched: switched
                         )
                     }
@@ -5064,7 +5063,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.prepareOpenCodexCards(
                         providerID: providerID,
                         state: state,
-                        force: forceBalance || switched
+                        force: reason.forcesOpenCodexCardSources || switched
                     )
                     self.renderForCurrentProvider(
                         .openCodex(
@@ -5082,7 +5081,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func resetOpenCodexCards() {
-        openCodexCardRefreshID = UUID()
         openCodexCardPlans = []
         openCodexCardData = [:]
         openCodexCardRefreshCoordinator.reset()
@@ -5108,10 +5106,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             allowRequests: state.managementAvailable,
             inFlight: openCodexCardRequestsInFlight
         )
-        if !refreshPlan.configurationChanged.isEmpty {
-            openCodexCardRefreshID = UUID()
-        }
-        let refreshID = openCodexCardRefreshID
+        let activeSources = Set(refreshSources.map(\OpenCodexCardRefreshSource.source))
+        openCodexCardRequestsInFlight.formIntersection(activeSources)
+        openCodexCardRequestsInFlight.subtract(refreshPlan.configurationChanged)
         openCodexCardPlans = plans
         var nextData: [OpenCodexCardSource: OpenCodexCardData] = [:]
         for plan in plans {
@@ -5140,19 +5137,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard state.managementAvailable else { return }
         for refreshSource in refreshPlan.dueSources {
             let source = refreshSource.source
+            guard let generation = openCodexCardRefreshCoordinator.generation(for: source) else {
+                continue
+            }
             openCodexCardRequestsInFlight.insert(source)
             switch source {
             case .official:
                 fetchOpenCodexOfficialCard(
                     providerID: providerID,
-                    refreshID: refreshID
+                    generation: generation
                 )
             case .balance(let sourceID):
                 guard let summary = sources.first(where: { $0.id == sourceID }),
                       let query = summary.query else {
                     updateOpenCodexCard(
                         providerID: providerID,
-                        refreshID: refreshID,
+                        generation: generation,
                         source: source,
                         data: .unavailable(
                             category: .balance,
@@ -5201,7 +5201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.monitorQueue.async {
                         self.updateOpenCodexCard(
                             providerID: providerID,
-                            refreshID: refreshID,
+                            generation: generation,
                             source: source,
                             data: data
                         )
@@ -5326,7 +5326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func fetchOpenCodexOfficialCard(
         providerID: String,
-        refreshID: UUID
+        generation: UUID
     ) {
         guard let request = makeOfficialQuotaRequest(
             client: .codex,
@@ -5334,7 +5334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ) else {
             updateOpenCodexCard(
                 providerID: providerID,
-                refreshID: refreshID,
+                generation: generation,
                 source: .official,
                 data: .unavailable(
                     category: .quota,
@@ -5372,7 +5372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.monitorQueue.async {
                 self.updateOpenCodexCard(
                     providerID: providerID,
-                    refreshID: refreshID,
+                    generation: generation,
                     source: .official,
                     data: cardData
                 )
@@ -5408,14 +5408,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func updateOpenCodexCard(
         providerID: String,
-        refreshID: UUID,
+        generation: UUID,
         source: OpenCodexCardSource,
         data: OpenCodexCardData
     ) {
-        guard refreshID == openCodexCardRefreshID else { return }
+        guard openCodexCardRefreshCoordinator.generation(for: source) == generation,
+              let visibleData = openCodexCardRefreshCoordinator.store(
+                  data,
+                  for: source,
+                  generation: generation
+              ) else { return }
         openCodexCardRequestsInFlight.remove(source)
-        openCodexCardRefreshCoordinator.store(data, for: source)
-        openCodexCardData[source] = data
+        openCodexCardData[source] = visibleData
         publishOpenCodexCards(
             providerID: providerID,
             plans: openCodexCardPlans
@@ -5572,7 +5576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // A CC Switch database write may represent either a Provider
             // switch or a credential/configuration update. Bypass the normal
             // provider interval so the menu follows it immediately.
-            self?.refresh(forceBalance: true)
+            self?.refresh(reason: .configurationChanged)
             self?.refreshQuickSwitchSummaries(force: true)
         }
         syncWorkItem = workItem

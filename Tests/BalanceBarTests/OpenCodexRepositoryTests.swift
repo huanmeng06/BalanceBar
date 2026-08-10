@@ -714,6 +714,20 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
+    func testBalanceRefreshReasonSeparatesActivityUsageFromManualCardRefresh() {
+        XCTAssertFalse(BalanceRefreshReason.scheduled.forcesOpenCodexCardSources)
+        XCTAssertFalse(BalanceRefreshReason.activityUsage.forcesOpenCodexCardSources)
+        XCTAssertTrue(BalanceRefreshReason.initial.forcesOpenCodexCardSources)
+        XCTAssertTrue(BalanceRefreshReason.manual.forcesOpenCodexCardSources)
+        XCTAssertTrue(BalanceRefreshReason.providerChanged.forcesOpenCodexCardSources)
+        XCTAssertTrue(BalanceRefreshReason.configurationChanged.forcesOpenCodexCardSources)
+
+        // Activity refreshes still force ordinary provider balance updates;
+        // only OpenCodex card-source intervals remain protected.
+        XCTAssertTrue(BalanceRefreshReason.activityUsage.forcesStandardProviderBalance)
+        XCTAssertFalse(BalanceRefreshReason.scheduled.forcesStandardProviderBalance)
+    }
+
     func testOpenCodexCardRefreshCoordinatorCachesUntilDueAndForceRefreshes() {
         let official = OpenCodexCardRefreshSource(
             source: .official,
@@ -736,10 +750,15 @@ final class OpenCodexRepositoryTests: XCTestCase {
         ) {
             loaderCalls += plan.dueSources.count
             for source in plan.dueSources {
-                coordinator.store(
+                guard let generation = coordinator.generation(for: source.source) else {
+                    XCTFail("missing generation for \(source.source)")
+                    continue
+                }
+                XCTAssertNotNil(coordinator.store(
                     successfulCardData(for: source.source, updatedAt: date),
-                    for: source.source
-                )
+                    for: source.source,
+                    generation: generation
+                ))
             }
         }
 
@@ -766,13 +785,30 @@ final class OpenCodexRepositoryTests: XCTestCase {
             coordinator.lastSuccessfulData(for: .balance(providerID: "relay-source"))
         )
 
+        let initialOfficialGeneration = try! XCTUnwrap(
+            coordinator.generation(for: .official)
+        )
+        let retainedAfterFailure = coordinator.store(
+            .unavailable(category: .quota, reason: "fixture transient failure"),
+            for: .official,
+            generation: initialOfficialGeneration
+        )
+        XCTAssertEqual(
+            retainedAfterFailure,
+            coordinator.lastSuccessfulData(for: .official)
+        )
+        XCTAssertEqual(
+            coordinator.visibleData(for: .official),
+            coordinator.lastSuccessfulData(for: .official)
+        )
+
         // A management-state poll does not invoke either card loader before
         // its source interval expires, and the last successful cards remain
         // available for rendering.
         plan = coordinator.plan(
             sources: sources,
             now: start.addingTimeInterval(5),
-            force: false,
+            force: BalanceRefreshReason.activityUsage.forcesOpenCodexCardSources,
             allowRequests: true,
             inFlight: []
         )
@@ -793,7 +829,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         plan = coordinator.plan(
             sources: sources,
             now: start.addingTimeInterval(60),
-            force: false,
+            force: BalanceRefreshReason.activityUsage.forcesOpenCodexCardSources,
             allowRequests: false,
             inFlight: []
         )
@@ -809,7 +845,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         plan = coordinator.plan(
             sources: sources,
             now: start.addingTimeInterval(60),
-            force: false,
+            force: BalanceRefreshReason.activityUsage.forcesOpenCodexCardSources,
             allowRequests: true,
             inFlight: []
         )
@@ -825,7 +861,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         plan = coordinator.plan(
             sources: sources,
             now: start.addingTimeInterval(61),
-            force: true,
+            force: BalanceRefreshReason.manual.forcesOpenCodexCardSources,
             allowRequests: true,
             inFlight: []
         )
@@ -843,6 +879,9 @@ final class OpenCodexRepositoryTests: XCTestCase {
             interval: 60,
             configurationFingerprint: "official-v2"
         )
+        let previousOfficialGeneration = try! XCTUnwrap(
+            coordinator.generation(for: .official)
+        )
         plan = coordinator.plan(
             sources: [changedOfficial, relay],
             now: start.addingTimeInterval(62),
@@ -857,8 +896,92 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
         XCTAssertNil(coordinator.visibleData(for: .official))
         XCTAssertNil(coordinator.lastSuccessfulData(for: .official))
+        XCTAssertNotEqual(
+            previousOfficialGeneration,
+            coordinator.generation(for: .official)
+        )
+        XCTAssertNil(
+            coordinator.store(
+                successfulCardData(for: .official, updatedAt: start),
+                for: .official,
+                generation: previousOfficialGeneration
+            )
+        )
         recordLoads(plan, at: start.addingTimeInterval(62))
         XCTAssertEqual(loaderCalls, 6)
+    }
+
+    func testOpenCodexCardRefreshCoordinatorAllowsChangedSourcePastStaleInFlightRequest() {
+        let initialSource = OpenCodexCardRefreshSource(
+            source: .official,
+            interval: 60,
+            configurationFingerprint: "official-v1"
+        )
+        let changedSource = OpenCodexCardRefreshSource(
+            source: .official,
+            interval: 60,
+            configurationFingerprint: "official-v2"
+        )
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        var coordinator = OpenCodexCardRefreshCoordinator()
+
+        let initialPlan = coordinator.plan(
+            sources: [initialSource],
+            now: now,
+            force: false,
+            allowRequests: true,
+            inFlight: []
+        )
+        let oldGeneration = try! XCTUnwrap(coordinator.generation(for: .official))
+        XCTAssertEqual(initialPlan.dueSources.map(\.source), [.official])
+        XCTAssertNotNil(
+            coordinator.store(
+                successfulCardData(for: .official, updatedAt: now),
+                for: .official,
+                generation: oldGeneration
+            )
+        )
+
+        let unchangedPlan = coordinator.plan(
+            sources: [initialSource],
+            now: now.addingTimeInterval(1),
+            force: false,
+            allowRequests: true,
+            inFlight: [.official]
+        )
+        XCTAssertTrue(unchangedPlan.dueSources.isEmpty)
+
+        let changedPlan = coordinator.plan(
+            sources: [changedSource],
+            now: now.addingTimeInterval(2),
+            force: false,
+            allowRequests: true,
+            inFlight: [.official]
+        )
+        let newGeneration = try! XCTUnwrap(coordinator.generation(for: .official))
+        XCTAssertEqual(changedPlan.configurationChanged, [.official])
+        XCTAssertEqual(changedPlan.dueSources.map(\.source), [.official])
+        XCTAssertNotEqual(oldGeneration, newGeneration)
+        XCTAssertNil(
+            coordinator.store(
+                successfulCardData(
+                    for: .official,
+                    updatedAt: now.addingTimeInterval(2)
+                ),
+                for: .official,
+                generation: oldGeneration
+            )
+        )
+        XCTAssertNotNil(
+            coordinator.store(
+                successfulCardData(
+                    for: .official,
+                    updatedAt: now.addingTimeInterval(2)
+                ),
+                for: .official,
+                generation: newGeneration
+            )
+        )
     }
 
     private func makeCardState(

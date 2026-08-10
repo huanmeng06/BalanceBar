@@ -79,6 +79,29 @@ struct ProviderSummarySource {
     }
 }
 
+enum BalanceRefreshReason: Equatable {
+    case initial
+    case scheduled
+    case manual
+    case activityUsage
+    case providerChanged
+    case clientChanged
+    case configurationChanged
+
+    var forcesStandardProviderBalance: Bool {
+        self != .scheduled
+    }
+
+    var forcesOpenCodexCardSources: Bool {
+        switch self {
+        case .scheduled, .activityUsage:
+            return false
+        case .initial, .manual, .providerChanged, .clientChanged, .configurationChanged:
+            return true
+        }
+    }
+}
+
 enum OpenCodexCardCategory: Equatable, Hashable {
     case quota
     case balance
@@ -153,6 +176,7 @@ struct OpenCodexCardRefreshCoordinator {
         var lastSuccessfulData: OpenCodexCardData?
         var lastRequestedAt: Date?
         var configurationFingerprint: String
+        var generation: UUID
     }
 
     private var entries: [OpenCodexCardSource: Entry] = [:]
@@ -185,7 +209,8 @@ struct OpenCodexCardRefreshCoordinator {
                     visibleData: nil,
                     lastSuccessfulData: nil,
                     lastRequestedAt: nil,
-                    configurationFingerprint: descriptor.configurationFingerprint
+                    configurationFingerprint: descriptor.configurationFingerprint,
+                    generation: UUID()
                 )
                 configurationChanged.insert(descriptor.source)
             } else if previous == nil {
@@ -193,7 +218,8 @@ struct OpenCodexCardRefreshCoordinator {
                     visibleData: nil,
                     lastSuccessfulData: nil,
                     lastRequestedAt: nil,
-                    configurationFingerprint: descriptor.configurationFingerprint
+                    configurationFingerprint: descriptor.configurationFingerprint,
+                    generation: UUID()
                 )
             }
 
@@ -230,13 +256,33 @@ struct OpenCodexCardRefreshCoordinator {
         entries[source]?.lastRequestedAt
     }
 
-    mutating func store(_ data: OpenCodexCardData, for source: OpenCodexCardSource) {
-        guard var entry = entries[source] else { return }
-        entry.visibleData = data
+    func generation(for source: OpenCodexCardSource) -> UUID? {
+        entries[source]?.generation
+    }
+
+    @discardableResult
+    mutating func store(
+        _ data: OpenCodexCardData,
+        for source: OpenCodexCardSource,
+        generation: UUID
+    ) -> OpenCodexCardData? {
+        guard var entry = entries[source], entry.generation == generation else {
+            return nil
+        }
+
         if data.isSuccessful {
+            entry.visibleData = data
             entry.lastSuccessfulData = data
+        } else if let lastSuccessfulData = entry.lastSuccessfulData {
+            // A failed refresh must not replace a previously verified card
+            // with a transient unavailable state. Keep the timestamped
+            // successful data visible until the next successful refresh.
+            entry.visibleData = lastSuccessfulData
+        } else {
+            entry.visibleData = data
         }
         entries[source] = entry
+        return entry.visibleData
     }
 }
 
