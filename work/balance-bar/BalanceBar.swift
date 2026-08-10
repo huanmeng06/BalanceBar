@@ -19,6 +19,81 @@ private func dashboardAdaptiveColor(light: NSColor, dark: NSColor) -> NSColor {
     dashboardUsesDarkAppearance ? dark : light
 }
 
+struct DashboardWindowDragRegion {
+    let bounds: NSRect
+    let titlebarHeight: CGFloat
+    let excludedRects: [NSRect]
+
+    var frame: NSRect {
+        let height = min(max(0, titlebarHeight), bounds.height)
+        return NSRect(
+            x: bounds.minX,
+            y: bounds.maxY - height,
+            width: bounds.width,
+            height: height
+        )
+    }
+
+    func contains(_ point: NSPoint) -> Bool {
+        guard frame.height > 0,
+              NSPointInRect(point, frame),
+              !excludedRects.contains(where: { NSPointInRect(point, $0) })
+        else { return false }
+        return true
+    }
+}
+
+final class DashboardContentRootView: NSVisualEffectView {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
+final class DashboardTitlebarDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden,
+              alphaValue > 0,
+              let window,
+              !window.styleMask.contains(.fullScreen)
+        else { return nil }
+
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        let region = DashboardWindowDragRegion(
+            bounds: bounds,
+            titlebarHeight: titlebarHeight,
+            excludedRects: standardWindowButtonRects(in: window)
+        )
+        return region.contains(point) ? self : nil
+    }
+
+    private func standardWindowButtonRects(in window: NSWindow) -> [NSRect] {
+        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { type in
+            guard let button = window.standardWindowButton(type), !button.isHidden else {
+                return nil
+            }
+            return convert(button.bounds, from: button)
+        }
+    }
+}
+
+enum DashboardWindowDragPolicy {
+    @discardableResult
+    static func install(in window: NSWindow, contentRoot: NSView) -> DashboardTitlebarDragView {
+        window.isMovableByWindowBackground = false
+
+        let dragView = DashboardTitlebarDragView()
+        dragView.translatesAutoresizingMaskIntoConstraints = false
+        contentRoot.addSubview(dragView)
+        NSLayoutConstraint.activate([
+            dragView.leadingAnchor.constraint(equalTo: contentRoot.leadingAnchor),
+            dragView.trailingAnchor.constraint(equalTo: contentRoot.trailingAnchor),
+            dragView.topAnchor.constraint(equalTo: contentRoot.topAnchor),
+            dragView.bottomAnchor.constraint(equalTo: contentRoot.bottomAnchor)
+        ])
+        return dragView
+    }
+}
+
 private final class PassthroughTextField: NSTextField {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
@@ -2487,7 +2562,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardToolbar.autosavesConfiguration = false
         window.toolbar = dashboardToolbar
         window.toolbarStyle = .unified
-        window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = true
@@ -2538,7 +2612,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func installDashboardLayout(in window: NSWindow) {
-        let root = NSVisualEffectView(frame: window.contentView?.bounds ?? .zero)
+        let root = DashboardContentRootView(frame: window.contentView?.bounds ?? .zero)
         root.material = .underWindowBackground
         root.blendingMode = .behindWindow
         root.state = .active
@@ -2583,6 +2657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ])
 
         window.contentView = root
+        DashboardWindowDragPolicy.install(in: window, contentRoot: root)
     }
 
     private func rebuildDashboardForLanguageChange() {

@@ -45,6 +45,7 @@
 		A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000073 /* OfficialQuotaClientTests.swift */; };
 		A10000000000000000000074 /* CodexActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000076 /* CodexActivityMonitor.swift */; };
 		A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000077 /* CodexActivityMonitorTests.swift */; };
+		A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -88,6 +89,7 @@
 		A10000000000000000000073 /* OfficialQuotaClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialQuotaClientTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000076 /* CodexActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivityMonitor.swift; sourceTree = "<group>"; };
 		A10000000000000000000077 /* CodexActivityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivityMonitorTests.swift; sourceTree = "<group>"; };
+		A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowDragRegionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,6 +179,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
+				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
 				A1000000000000000000006F /* DashboardScrollClampingTests.swift */,
 				A10000000000000000000043 /* LocalizationTests.swift */,
 				A10000000000000000000047 /* AppPreferencesTests.swift */,
@@ -366,6 +369,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
+				A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */,
 				A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */,
 				A10000000000000000000042 /* LocalizationTests.swift in Sources */,
 				A10000000000000000000046 /* AppPreferencesTests.swift in Sources */,
