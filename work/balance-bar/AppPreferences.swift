@@ -2,6 +2,7 @@ import Foundation
 
 final class AppPreferences {
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
+    static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
     static let validOpenCodexDashboardPortRange = 1...65535
 
     private let defaults: UserDefaults
@@ -67,6 +68,23 @@ final class AppPreferences {
             }
             guard Self.validOpenCodexDashboardPortRange.contains(newValue) else { return }
             defaults.set(newValue, forKey: Self.openCodexDashboardPortOverrideKey)
+        }
+    }
+
+    /// Whether BalanceBar should resolve the Dashboard port from the verified
+    /// OpenCodex runtime. A pre-existing port override implies manual mode for
+    /// preferences written before this explicit mode key was introduced.
+    var openCodexDashboardAutomaticDetection: Bool {
+        get {
+            if let stored = defaults.object(
+                forKey: Self.openCodexDashboardAutomaticDetectionKey
+            ) as? Bool {
+                return stored
+            }
+            return openCodexDashboardPortOverride == nil
+        }
+        set {
+            defaults.set(newValue, forKey: Self.openCodexDashboardAutomaticDetectionKey)
         }
     }
 

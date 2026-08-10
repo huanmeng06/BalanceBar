@@ -106,6 +106,35 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(preferences.openCodexDashboardPortOverride)
     }
 
+    func testOpenCodexDashboardAutomaticDetectionDefaultsOnAndPersistsMode() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertTrue(preferences.openCodexDashboardAutomaticDetection)
+        preferences.openCodexDashboardAutomaticDetection = false
+        XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
+        XCTAssertEqual(
+            defaults.object(forKey: AppPreferences.openCodexDashboardAutomaticDetectionKey) as? Bool,
+            false
+        )
+
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertFalse(reloaded.openCodexDashboardAutomaticDetection)
+
+        reloaded.openCodexDashboardAutomaticDetection = true
+        XCTAssertTrue(reloaded.openCodexDashboardAutomaticDetection)
+    }
+
+    func testExistingPortOverrideKeepsManualModeUntilExplicitlyEnabled() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set(23456, forKey: AppPreferences.openCodexDashboardPortOverrideKey)
+        XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
+        preferences.openCodexDashboardAutomaticDetection = true
+        XCTAssertTrue(preferences.openCodexDashboardAutomaticDetection)
+    }
+
     func testInvalidIntervalsAndStatusLinkNormalization() throws {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -158,12 +187,14 @@ final class AppPreferencesTests: XCTestCase {
         let source = [
             "showMenuBarIcon": false,
             "activityPollInterval": 4.0,
-            AppPreferences.openCodexDashboardPortOverrideKey: 23456
+            AppPreferences.openCodexDashboardPortOverrideKey: 23456,
+            AppPreferences.openCodexDashboardAutomaticDetectionKey: false
         ] as [String: Any]
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: source, localDomain: [:])
         XCTAssertFalse(preferences.showMenuBarIcon)
         XCTAssertEqual(preferences.activityPollInterval, 4)
         XCTAssertEqual(preferences.openCodexDashboardPortOverride, 23456)
+        XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
         defaults.set(true, forKey: "showMenuBarIcon")
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: ["showMenuBarIcon": false], localDomain: [:])
         XCTAssertTrue(preferences.showMenuBarIcon)

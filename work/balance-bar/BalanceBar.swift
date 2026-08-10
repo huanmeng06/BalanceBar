@@ -934,7 +934,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride"]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection"]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -1387,7 +1387,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private weak var dashboardMenuBarIconSwitch: NSSwitch?
     private weak var dashboardMenuBarAmountSwitch: NSSwitch?
     private weak var openCodexPortField: NSTextField?
-    private weak var openCodexPortModeLabel: NSTextField?
     private weak var openCodexPortStatusLabel: NSTextField?
     private weak var openCodexPortErrorLabel: NSTextField?
     private weak var openCodexOpenButton: NSButton?
@@ -1487,6 +1486,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var openCodexDashboardPortOverride: Int? {
         get { preferences.openCodexDashboardPortOverride }
         set { preferences.openCodexDashboardPortOverride = newValue }
+    }
+    private var openCodexDashboardAutomaticDetection: Bool {
+        get { preferences.openCodexDashboardAutomaticDetection }
+        set { preferences.openCodexDashboardAutomaticDetection = newValue }
+    }
+    private var openCodexDashboardMode: OpenCodexDashboardMode {
+        OpenCodexDashboardMode(
+            automaticDetection: openCodexDashboardAutomaticDetection,
+            manualPort: openCodexDashboardPortOverride
+        )
     }
 
     init(
@@ -1943,7 +1952,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         guard current.openCodexCandidate != nil || runtimeCandidate != nil else { return nil }
         return OpenCodexDashboardResolver.resolve(
-            manualPort: openCodexDashboardPortOverride,
+            manualPort: openCodexDashboardMode.effectiveManualPort,
             runtimeCandidate: runtimeCandidate
         )
     }
@@ -2057,8 +2066,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case "animateCodexActivity":
             animateCodexActivity = sender.state == .on
             setCodexTaskRunning(isCodexTaskRunning, force: true)
+        case "openCodexAutomaticDetection":
+            let enabled = sender.state == .on
+            setOpenCodexDashboardAutomaticDetection(enabled)
+            openCodexPortInputHasError = false
+            openCodexPortErrorLabel?.stringValue = ""
+            openCodexPortErrorLabel?.isHidden = true
+            SwitchLog.write(
+                "OpenCodex Dashboard detection mode changed; mode=\(enabled ? "automatic" : "manual")",
+                category: "configuration"
+            )
+            if dashboardSection == .advanced {
+                showDashboardSection(.advanced)
+            }
+            refreshStatusMenuAfterOpenCodexSettingsChanged()
         default:
             break
+        }
+    }
+
+    private func setOpenCodexDashboardAutomaticDetection(_ enabled: Bool) {
+        let currentPort = currentOpenCodexDashboardResolution()?.port
+            ?? OpenCodexDashboardResolver.defaultPort
+        let nextMode = openCodexDashboardMode.changingAutomaticDetection(
+            to: enabled,
+            seedPort: currentPort
+        )
+        openCodexDashboardAutomaticDetection = nextMode.automaticDetection
+        openCodexDashboardPortOverride = nextMode.manualPort
+    }
+
+    private func refreshStatusMenuAfterOpenCodexSettingsChanged() {
+        if isStatusMenuTracking {
+            statusMenuNeedsRebuild = true
+        } else {
+            rebuildStatusMenu(
+                for: snapshot,
+                refreshDate: refreshDate(for: snapshot)
+            )
         }
     }
 
@@ -2066,23 +2111,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         switch OpenCodexDashboardPortInput.parse(sender.stringValue) {
         case .success(let port):
             openCodexPortInputHasError = false
+            openCodexPortErrorLabel?.isHidden = true
             openCodexDashboardPortOverride = port
+            if port == nil {
+                setOpenCodexDashboardAutomaticDetection(true)
+            } else {
+                openCodexDashboardAutomaticDetection = false
+            }
             openCodexPortErrorLabel?.stringValue = ""
             SwitchLog.write(
                 "OpenCodex Dashboard port preference changed; mode=\(port == nil ? "automatic" : "manual")",
                 category: "configuration"
             )
-            refreshDashboardOpenCodexSettings()
-            if isStatusMenuTracking {
-                statusMenuNeedsRebuild = true
+            if port == nil, dashboardSection == .advanced {
+                showDashboardSection(.advanced)
             } else {
-                rebuildStatusMenu(
-                    for: snapshot,
-                    refreshDate: refreshDate(for: snapshot)
-                )
+                refreshDashboardOpenCodexSettings()
             }
+            refreshStatusMenuAfterOpenCodexSettingsChanged()
         case .failure:
             openCodexPortInputHasError = true
+            openCodexPortErrorLabel?.isHidden = false
             openCodexPortErrorLabel?.stringValue = tr(
                 "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
                 "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
@@ -2096,59 +2145,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         openCodexDashboardPortChanged(field)
     }
 
-    @objc private func restoreOpenCodexDashboardPort(_ sender: NSButton) {
-        openCodexPortInputHasError = false
-        openCodexDashboardPortOverride = nil
-        openCodexPortErrorLabel?.stringValue = ""
-        SwitchLog.write(
-            "OpenCodex Dashboard port preference reset; mode=automatic",
-            category: "configuration"
-        )
-        refreshDashboardOpenCodexSettings()
-        if isStatusMenuTracking {
-            statusMenuNeedsRebuild = true
-        } else {
-            rebuildStatusMenu(
-                for: snapshot,
-                refreshDate: refreshDate(for: snapshot)
-            )
-        }
-    }
-
     private func refreshDashboardOpenCodexSettings() {
         guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
 
         let currentResolution = currentOpenCodexDashboardResolution()
         let resolution = currentResolution ?? OpenCodexDashboardResolver.resolve(
-            manualPort: openCodexDashboardPortOverride,
+            manualPort: openCodexDashboardMode.effectiveManualPort,
             runtimeCandidate: nil
         )
         let canOpen = currentResolution != nil
         let isEditing = openCodexPortField?.currentEditor() != nil
 
         if !isEditing, !openCodexPortInputHasError {
-            openCodexPortField?.stringValue = String(resolution.port)
+            openCodexPortField?.stringValue = String(
+                openCodexDashboardMode.manualPort ?? resolution.port
+            )
         }
-        openCodexPortModeLabel?.stringValue = openCodexDashboardPortOverride == nil
-            ? tr("自动检测", "Automatic")
-            : tr("手动设置", "Manual")
         openCodexOpenButton?.isEnabled = canOpen
 
+        let currentPort = tr(
+            "当前端口：\(resolution.port)",
+            "Current port: \(resolution.port)"
+        )
         switch resolution.source {
         case .manual:
             openCodexPortStatusLabel?.stringValue = tr(
-                "手动端口只用于打开本机 Dashboard；不会修改 OpenCodex 配置",
-                "The manual port only opens the local Dashboard; it does not modify OpenCodex configuration"
+                "\(currentPort)\n手动端口只用于打开本机 Dashboard；不会修改 OpenCodex 配置",
+                "\(currentPort)\nThe manual port only opens the local Dashboard; it does not modify OpenCodex configuration"
             )
         case .runtime:
             openCodexPortStatusLabel?.stringValue = tr(
-                "已自动检测 OpenCodex runtime 端口",
-                "OpenCodex runtime port detected automatically"
+                "\(currentPort)\n已自动检测 OpenCodex runtime 端口",
+                "\(currentPort)\nOpenCodex runtime port detected automatically"
             )
         case .fallback:
             openCodexPortStatusLabel?.stringValue = tr(
-                "尚未自动检测；将使用默认端口 10100",
-                "Not detected yet; the default port 10100 will be used"
+                "\(currentPort)\n尚未自动检测；将使用默认端口 10100",
+                "\(currentPort)\nNot detected yet; the default port 10100 will be used"
             )
         }
     }
@@ -3761,6 +3794,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func makeAdvancedDashboardPage() -> NSView {
         openCodexPortInputHasError = false
+        openCodexPortField = nil
+        openCodexPortStatusLabel = nil
+        openCodexPortErrorLabel = nil
+        openCodexOpenButton = nil
         let animation = makeDashboardSwitch(
             identifier: "animateCodexActivity",
             isOn: animateCodexActivity
@@ -3772,71 +3809,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             )
         ])
 
+        let automaticDetection = openCodexDashboardAutomaticDetection
         let initialResolution = currentOpenCodexDashboardResolution()
             ?? OpenCodexDashboardResolver.resolve(
-                manualPort: openCodexDashboardPortOverride,
+                manualPort: openCodexDashboardMode.effectiveManualPort,
                 runtimeCandidate: nil
             )
-        let portField = NSTextField()
-        portField.stringValue = String(initialResolution.port)
-        portField.placeholderString = "10100"
-        portField.alignment = .right
-        portField.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        portField.isEditable = true
-        portField.isSelectable = true
-        portField.delegate = self
-        portField.widthAnchor.constraint(equalToConstant: 92).isActive = true
+        let statusLabel = NSTextField(wrappingLabelWithString: tr("正在解析…", "Resolving…"))
+        statusLabel.font = .systemFont(ofSize: 12)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let modeLabel = NSTextField(labelWithString: openCodexDashboardPortOverride == nil
-            ? tr("自动检测", "Automatic")
-            : tr("手动设置", "Manual"))
-        modeLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        modeLabel.textColor = .secondaryLabelColor
-        modeLabel.alignment = .right
-        modeLabel.widthAnchor.constraint(equalToConstant: 72).isActive = true
-
-        let restoreButton = NSButton(
-            title: tr("恢复自动检测", "Restore Automatic"),
-            target: self,
-            action: #selector(restoreOpenCodexDashboardPort(_:))
+        let automaticSwitch = makeDashboardSwitch(
+            identifier: "openCodexAutomaticDetection",
+            isOn: automaticDetection
         )
+        let automaticRow = makeSettingsRow(
+            tr("自动检测端口", "Detect Port Automatically"),
+            subtitle: tr(
+                "使用已验证的 OpenCodex runtime 端口；未检测时使用 10100",
+                "Use the verified OpenCodex runtime port; use 10100 until one is detected"
+            ),
+            subtitleLabel: statusLabel,
+            control: automaticSwitch,
+            minimumHeight: 86
+        )
+
+        let errorLabel = NSTextField(wrappingLabelWithString: "")
+        errorLabel.font = .systemFont(ofSize: 12)
+        errorLabel.textColor = .systemRed
+        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        errorLabel.isHidden = true
+
+        var openCodexRows: [NSView] = [automaticRow]
+        if !automaticDetection {
+            let portField = NSTextField()
+            portField.stringValue = String(
+                openCodexDashboardPortOverride ?? initialResolution.port
+            )
+            portField.placeholderString = "10100"
+            portField.alignment = .right
+            portField.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+            portField.isEditable = true
+            portField.isSelectable = true
+            portField.delegate = self
+            portField.widthAnchor.constraint(equalToConstant: 112).isActive = true
+            openCodexPortField = portField
+            openCodexPortErrorLabel = errorLabel
+            openCodexRows.append(makeSettingsRow(
+                tr("手动输入端口号", "Enter Port Manually"),
+                subtitle: tr(
+                    "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
+                    "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
+                ),
+                control: portField,
+                minimumHeight: 86
+            ))
+            openCodexRows.append(errorLabel)
+        }
+
         let openButton = NSButton(
             title: tr("打开 OpenCodex", "Open OpenCodex"),
             target: self,
             action: #selector(openOpenCodex)
         )
         openButton.isEnabled = currentOpenCodexDashboardResolution() != nil
-        let portControls = NSStackView(views: [portField, modeLabel, restoreButton, openButton])
-        portControls.orientation = .horizontal
-        portControls.alignment = .centerY
-        portControls.spacing = 8
-
-        let statusLabel = NSTextField(wrappingLabelWithString: "")
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabelColor
-        let errorLabel = NSTextField(wrappingLabelWithString: "")
-        errorLabel.font = .systemFont(ofSize: 12)
-        errorLabel.textColor = .systemRed
-
-        openCodexPortField = portField
-        openCodexPortModeLabel = modeLabel
         openCodexPortStatusLabel = statusLabel
-        openCodexPortErrorLabel = errorLabel
         openCodexOpenButton = openButton
-
-        let openCodex = makeSettingsSection(tr("OpenCodex", "OpenCodex"), rows: [
-            makeSettingsRow(
-                tr("OpenCodex 端口", "OpenCodex Port"),
-                subtitle: tr(
-                    "用于打开本机 OpenCodex Dashboard；不会修改 OpenCodex 配置",
-                    "Opens the local OpenCodex Dashboard; does not modify OpenCodex configuration"
-                ),
-                control: portControls,
-                minimumHeight: 78
+        openCodexRows.append(makeSettingsRow(
+            tr("OpenCodex Dashboard", "OpenCodex Dashboard"),
+            subtitle: tr(
+                "使用当前解析到的本机地址；固定打开 /#dashboard",
+                "Uses the resolved local address and always opens /#dashboard"
             ),
-            statusLabel,
-            errorLabel
-        ])
+            control: openButton,
+            minimumHeight: 78
+        ))
+
+        let openCodex = makeSettingsSection(tr("OpenCodex", "OpenCodex"), rows: openCodexRows)
 
         let refreshLog = NSButton(title: tr("重新载入", "Reload"), target: self, action: #selector(refreshDashboardLog))
         let revealLog = NSButton(title: tr("在 Finder 中显示", "Show in Finder"), target: self, action: #selector(revealDashboardLog))

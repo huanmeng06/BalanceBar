@@ -145,6 +145,66 @@ final class OpenCodexRepositoryTests: XCTestCase {
         }
     }
 
+    func testDashboardModeSwitchControlsManualInputVisibilityAndEffectivePort() {
+        let automatic = OpenCodexDashboardMode(
+            automaticDetection: true,
+            manualPort: nil
+        )
+        XCTAssertFalse(automatic.showsManualPortInput)
+        XCTAssertNil(automatic.effectiveManualPort)
+
+        let manualFromSeed = automatic.changingAutomaticDetection(
+            to: false,
+            seedPort: 34567
+        )
+        XCTAssertTrue(manualFromSeed.showsManualPortInput)
+        XCTAssertEqual(manualFromSeed.manualPort, 34567)
+        XCTAssertEqual(manualFromSeed.effectiveManualPort, 34567)
+
+        let existingManual = OpenCodexDashboardMode(
+            automaticDetection: true,
+            manualPort: 23456
+        ).changingAutomaticDetection(
+            to: false,
+            seedPort: 34567
+        )
+        XCTAssertTrue(existingManual.showsManualPortInput)
+        XCTAssertEqual(existingManual.manualPort, 23456)
+        XCTAssertEqual(existingManual.effectiveManualPort, 23456)
+
+        let automaticAgain = existingManual.changingAutomaticDetection(
+            to: true,
+            seedPort: 45678
+        )
+        XCTAssertFalse(automaticAgain.showsManualPortInput)
+        XCTAssertNil(automaticAgain.manualPort)
+        XCTAssertNil(automaticAgain.effectiveManualPort)
+    }
+
+    func testDashboardModeAutomaticReenableRestoresRuntimeResolverPriority() {
+        let runtime = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://localhost:23456/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+        let manual = OpenCodexDashboardMode(
+            automaticDetection: false,
+            manualPort: 34567
+        )
+        let automatic = manual.changingAutomaticDetection(
+            to: true,
+            seedPort: nil
+        )
+
+        let resolution = OpenCodexDashboardResolver.resolve(
+            manualPort: automatic.effectiveManualPort,
+            runtimeCandidate: runtime
+        )
+        XCTAssertEqual(resolution.source, .runtime)
+        XCTAssertEqual(resolution.port, 23456)
+        XCTAssertEqual(resolution.url, URL(string: "http://localhost:23456/#dashboard"))
+    }
+
     func testDashboardResolverUsesManualRuntimeThenLocalFallbackPriority() {
         let runtime = OpenCodexEndpointCandidate(
             baseURL: URL(string: "https://localhost:23456/v1")!,

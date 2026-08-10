@@ -207,6 +207,33 @@ enum OpenCodexDashboardPortInput {
     }
 }
 
+/// The settings state shared by the Advanced page and the Dashboard resolver.
+/// Automatic mode deliberately ignores any stale manual value so switching
+/// the checkbox back on immediately restores runtime detection.
+struct OpenCodexDashboardMode: Equatable {
+    let automaticDetection: Bool
+    let manualPort: Int?
+
+    var showsManualPortInput: Bool { !automaticDetection }
+    var effectiveManualPort: Int? { automaticDetection ? nil : manualPort }
+
+    func changingAutomaticDetection(
+        to enabled: Bool,
+        seedPort: Int?
+    ) -> OpenCodexDashboardMode {
+        if enabled {
+            return OpenCodexDashboardMode(
+                automaticDetection: true,
+                manualPort: nil
+            )
+        }
+        return OpenCodexDashboardMode(
+            automaticDetection: false,
+            manualPort: manualPort ?? seedPort
+        )
+    }
+}
+
 struct OpenCodexDashboardResolution: Equatable {
     enum Source: Equatable {
         case manual
