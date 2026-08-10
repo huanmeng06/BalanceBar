@@ -59,20 +59,33 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertFalse(root.mouseDownCanMoveWindow)
         XCTAssertTrue(dragView.mouseDownCanMoveWindow)
 
-        let topPoint = root.convert(
+        let topPointInFrameView = root.convert(
             NSPoint(x: root.bounds.midX, y: root.bounds.maxY - 8),
             to: frameView
         )
-        XCTAssertTrue(frameView.hitTest(topPoint) === dragView)
+        let topPoint = frameView.convert(topPointInFrameView, to: frameView.superview)
+        let topHitView = frameView.hitTest(topPoint)
+        XCTAssertTrue(
+            topHitView === dragView,
+            "Expected titlebar drag view; got \(String(describing: topHitView)), "
+                + "window=\(window.frame), contentLayout=\(window.contentLayoutRect), "
+                + "rootFrame=\(root.frame), rootBounds=\(root.bounds), "
+                + "dragFrame=\(dragView.frame), dragBounds=\(dragView.bounds), "
+                + "frameFrame=\(frameView.frame), frameBounds=\(frameView.bounds), "
+                + "rootPoint=\(NSPoint(x: root.bounds.midX, y: root.bounds.maxY - 8)), "
+                + "framePoint=\(topPointInFrameView), hitTestPoint=\(topPoint)"
+        )
 
-        let sidebarPoint = root.convert(
+        let sidebarPointInFrameView = root.convert(
             NSPoint(x: 100, y: root.bounds.midY),
             to: frameView
         )
-        let cardGapPoint = root.convert(
+        let cardGapPointInFrameView = root.convert(
             NSPoint(x: 500, y: root.bounds.midY),
             to: frameView
         )
+        let sidebarPoint = frameView.convert(sidebarPointInFrameView, to: frameView.superview)
+        let cardGapPoint = frameView.convert(cardGapPointInFrameView, to: frameView.superview)
         XCTAssertTrue(frameView.hitTest(sidebarPoint) === root)
         XCTAssertTrue(frameView.hitTest(cardGapPoint) === root)
 
@@ -80,10 +93,11 @@ final class DashboardWindowDragRegionTests: XCTestCase {
             guard let button = window.standardWindowButton(type) else {
                 return XCTFail("Missing standard window button \(type.rawValue)")
             }
-            let buttonPoint = button.convert(
+            let buttonPointInFrameView = button.convert(
                 NSPoint(x: button.bounds.midX, y: button.bounds.midY),
                 to: frameView
             )
+            let buttonPoint = frameView.convert(buttonPointInFrameView, to: frameView.superview)
             XCTAssertTrue(frameView.hitTest(buttonPoint) === button)
         }
     }
@@ -97,20 +111,32 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         guard let frameView = root.superview else {
             return XCTFail("Expected AppKit window frame view")
         }
-        let resizeEdgePoint = root.convert(
+        let resizeEdgePointInFrameView = root.convert(
             NSPoint(x: root.bounds.maxX - 10, y: root.bounds.maxY - 8),
             to: frameView
         )
-        let resizedTopPoint = root.convert(
+        let resizedTopPointInFrameView = root.convert(
             NSPoint(x: root.bounds.maxX - 40, y: root.bounds.maxY - 8),
             to: frameView
         )
-        let resizedContentPoint = root.convert(
+        let resizedContentPointInFrameView = root.convert(
             NSPoint(x: root.bounds.maxX - 40, y: root.bounds.midY),
             to: frameView
         )
+        let resizeEdgePoint = frameView.convert(resizeEdgePointInFrameView, to: frameView.superview)
+        let resizedTopPoint = frameView.convert(resizedTopPointInFrameView, to: frameView.superview)
+        let resizedContentPoint = frameView.convert(resizedContentPointInFrameView, to: frameView.superview)
         XCTAssertFalse(frameView.hitTest(resizeEdgePoint) === dragView)
-        XCTAssertTrue(frameView.hitTest(resizedTopPoint) === dragView)
+        let resizedTopHitView = frameView.hitTest(resizedTopPoint)
+        XCTAssertTrue(
+            resizedTopHitView === dragView,
+            "Expected resized titlebar drag view; got \(String(describing: resizedTopHitView)), "
+                + "window=\(window.frame), contentLayout=\(window.contentLayoutRect), "
+                + "rootFrame=\(root.frame), rootBounds=\(root.bounds), "
+                + "dragFrame=\(dragView.frame), dragBounds=\(dragView.bounds), "
+                + "frameFrame=\(frameView.frame), frameBounds=\(frameView.bounds), "
+                + "framePoint=\(resizedTopPointInFrameView), hitTestPoint=\(resizedTopPoint)"
+        )
         XCTAssertTrue(frameView.hitTest(resizedContentPoint) === root)
     }
 
