@@ -346,6 +346,18 @@ enum OpenCodexCardPresentation {
         }
     }
 
+    /// Resolve the compact presentation from the latest published card list.
+    /// Keeping the base OpenCodex snapshot separate is important because it
+    /// carries selector/status text for the full status menu, while the menu
+    /// bar must be recomputed whenever card data is published.
+    static func menuBarSnapshot(
+        for snapshot: Snapshot,
+        cards: [OpenCodexModelCard]
+    ) -> Snapshot {
+        guard snapshot.kind == .openCodex else { return snapshot }
+        return menuBarSnapshot(for: currentCard(from: cards))
+    }
+
     static func dashboardURL(
         confirmedProviderID: String?,
         currentProviderID: String?,

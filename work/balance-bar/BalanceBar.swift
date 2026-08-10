@@ -4629,15 +4629,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func layoutStatusItem(for snapshot: Snapshot) {
+        let effectiveSnapshot = menuBarSnapshot(for: snapshot)
         guard let button = statusItem.button else { return }
-        let reservedSecondary = showMenuBarAmount && snapshot.kind == .official
-            ? snapshot.menuBarSecondary
+        let reservedSecondary = showMenuBarAmount && effectiveSnapshot.kind == .official
+            ? effectiveSnapshot.menuBarSecondary
             : ""
         let hasSecondary = showMenuBarAmount
             && showMenuBarReset
             && !reservedSecondary.isEmpty
 
-        menuBarPrimaryLabel.stringValue = showMenuBarAmount ? snapshot.menuBarPrimary : ""
+        menuBarPrimaryLabel.stringValue = showMenuBarAmount ? effectiveSnapshot.menuBarPrimary : ""
         menuBarSecondaryLabel.stringValue = reservedSecondary
         menuBarIconSlot.isHidden = !showMenuBarIcon
         menuBarTextStack.isHidden = !showMenuBarAmount
@@ -4647,7 +4648,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: snapshot.kind == .balance || snapshot.kind == .openCodex,
+            isBalance: effectiveSnapshot.kind == .balance,
             iconSlotWidth: Self.menuBarIconSlotWidth,
             iconTextSpacing: Self.menuBarIconTextSpacing,
             textRowSpacing: Self.menuBarTextRowSpacing,
@@ -4688,7 +4689,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             ? Self.menuBarSingleLineIconYOffset
             : 0
         let iconYOffset: CGFloat
-        if snapshot.kind == .official, showMenuBarIcon {
+        if effectiveSnapshot.kind == .official, showMenuBarIcon {
             let apiGeometry = MenuBarGeometry(
                 primarySize: menuBarPrimaryLabel.intrinsicContentSize,
                 secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
@@ -4709,7 +4710,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 buttonHeight: buttonHeight,
                 referenceIconViewYOffset: apiIconYOffset
             )
-        } else if snapshot.kind == .balance || snapshot.kind == .openCodex {
+        } else if effectiveSnapshot.kind == .balance {
             iconYOffset = apiIconYOffset
         } else {
             iconYOffset = 0
@@ -4730,7 +4731,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The optical adjustment is always applied from a clean transform
         // after the current snapshot's frames have been assigned.
         menuBarTextStack.layer?.setAffineTransform(.identity)
-        if snapshot.kind == .balance || snapshot.kind == .openCodex,
+        if effectiveSnapshot.kind == .balance,
            showMenuBarIcon,
            showMenuBarAmount {
             menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
@@ -4739,27 +4740,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             ))
         }
         logMenuBarIconFrames(
-            snapshot: snapshot,
+            snapshot: effectiveSnapshot,
             button: button,
             hasSecondary: hasSecondary,
             iconYOffset: iconYOffset
         )
-        button.toolTip = snapshot.menuBarToolTip
+        button.toolTip = effectiveSnapshot.menuBarToolTip
         button.isHidden = false
         button.isEnabled = true
         statusItem.isVisible = true
     }
 
     private func updateStatusItem(for snapshot: Snapshot) {
-        layoutStatusItem(for: menuBarSnapshot(for: snapshot))
+        layoutStatusItem(for: snapshot)
         scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
         refreshDashboardMenuBarPage()
     }
 
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {
-        guard snapshot.kind == .openCodex else { return snapshot }
         return OpenCodexCardPresentation.menuBarSnapshot(
-            for: OpenCodexCardPresentation.currentCard(from: openCodexCards)
+            for: snapshot,
+            cards: openCodexCards
         )
     }
 

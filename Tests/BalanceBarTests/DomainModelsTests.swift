@@ -207,6 +207,72 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertFalse(unavailable.menuBarTitle.contains("secret-model"))
     }
 
+    func testOpenCodexMenuBarRecomputesAfterPublishedOfficialAndBalanceData() {
+        let date = Date(timeIntervalSince1970: 1_700_000_456)
+        let baseSnapshot = Snapshot.openCodex(
+            "OpenCodex",
+            selector: "gpt-5.6-luna",
+            status: "Connected",
+            date
+        )
+
+        var publishedCards = [
+            OpenCodexModelCard(
+                selector: "gpt-5.6-luna",
+                provider: "openai",
+                model: "gpt-5.6-luna",
+                isCurrent: true,
+                data: .loading(category: .quota)
+            )
+        ]
+        let loading = OpenCodexCardPresentation.menuBarSnapshot(
+            for: baseSnapshot,
+            cards: publishedCards
+        )
+        XCTAssertEqual(loading.menuBarPrimary, "…")
+        XCTAssertEqual(loading.menuBarSecondary, "")
+
+        publishedCards[0] = OpenCodexModelCard(
+            selector: "gpt-5.6-luna",
+            provider: "openai",
+            model: "gpt-5.6-luna",
+            isCurrent: true,
+            data: .official(
+                remaining: 81.7,
+                label: "7-Day Quota",
+                reset: "6d19h",
+                updatedAt: date
+            )
+        )
+        let official = OpenCodexCardPresentation.menuBarSnapshot(
+            for: baseSnapshot,
+            cards: publishedCards
+        )
+        XCTAssertEqual(official.menuBarPrimary, "81%")
+        XCTAssertEqual(official.menuBarSecondary, "6d19h")
+        XCTAssertFalse(official.menuBarTitle.contains("gpt-5.6-luna"))
+
+        publishedCards[0] = OpenCodexModelCard(
+            selector: "relay/gpt-5.6-sol",
+            provider: "relay",
+            model: "gpt-5.6-sol",
+            isCurrent: true,
+            data: .balance(
+                amount: 12.34,
+                unit: "USD",
+                websiteURL: URL(string: "https://relay.example.test"),
+                updatedAt: date
+            )
+        )
+        let balance = OpenCodexCardPresentation.menuBarSnapshot(
+            for: baseSnapshot,
+            cards: publishedCards
+        )
+        XCTAssertEqual(balance.menuBarPrimary, "$12.34")
+        XCTAssertEqual(balance.menuBarSecondary, "")
+        XCTAssertFalse(balance.menuBarTitle.contains("gpt-5.6-sol"))
+    }
+
     func testBalanceQueryPreservesExistingConfigurationRules() {
         let settingsText = #"{"apiKey":"test-token","baseUrl":"https://tokenshop.example.test/"}"#
         let metaText = #"{"usage_script":{"enabled":true,"code":"fetch({ url: \"{{baseUrl}}/v1/usage\" })","autoQueryInterval":12,"timeout":9}}"#
