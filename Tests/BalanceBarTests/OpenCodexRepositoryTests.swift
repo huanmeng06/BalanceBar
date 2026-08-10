@@ -125,6 +125,92 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertNil(remote.dashboardURL)
     }
 
+    func testDashboardPortInputAcceptsTrimmedDecimalBoundariesAndEmptyAutomaticMode() {
+        for (rawValue, expected) in [("1", 1), (" 10100 ", 10100), ("65535", 65535)] {
+            switch OpenCodexDashboardPortInput.parse(rawValue) {
+            case .success(let port): XCTAssertEqual(port, expected)
+            case .failure(let error): XCTFail("unexpected parse failure: \(error)")
+            }
+        }
+
+        switch OpenCodexDashboardPortInput.parse("   ") {
+        case .success(let port): XCTAssertNil(port)
+        case .failure(let error): XCTFail("empty input should restore automatic mode: \(error)")
+        }
+
+        for rawValue in ["0", "65536", "-1", "+1", "1.5", "abc", "http://localhost:10100/#dashboard", "10 100"] {
+            guard case .failure(.invalid) = OpenCodexDashboardPortInput.parse(rawValue) else {
+                return XCTFail("expected invalid port input: \(rawValue)")
+            }
+        }
+    }
+
+    func testDashboardResolverUsesManualRuntimeThenLocalFallbackPriority() {
+        let runtime = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "https://localhost:23456/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+
+        let manual = OpenCodexDashboardResolver.resolve(
+            manualPort: 34567,
+            runtimeCandidate: runtime
+        )
+        XCTAssertEqual(manual.source, .manual)
+        XCTAssertEqual(manual.port, 34567)
+        XCTAssertEqual(manual.url, URL(string: "https://localhost:34567/#dashboard"))
+        XCTAssertEqual(
+            OpenCodexCardPresentation.dashboardURL(
+                confirmedProviderID: "open-codex",
+                currentProviderID: "open-codex",
+                candidate: runtime,
+                manualPort: 34567
+            ),
+            manual.url
+        )
+
+        let automatic = OpenCodexDashboardResolver.resolve(
+            manualPort: nil,
+            runtimeCandidate: runtime
+        )
+        XCTAssertEqual(automatic.source, .runtime)
+        XCTAssertEqual(automatic.port, 23456)
+        XCTAssertEqual(automatic.url, runtime.dashboardURL)
+
+        let fallback = OpenCodexDashboardResolver.resolve(
+            manualPort: nil,
+            runtimeCandidate: nil
+        )
+        XCTAssertEqual(fallback.source, .fallback)
+        XCTAssertEqual(fallback.port, 10100)
+        XCTAssertEqual(fallback.url, URL(string: "http://localhost:10100/#dashboard"))
+    }
+
+    func testDashboardResolverRejectsMalformedLoopbackCandidateAndKeepsURLShapeFixed() {
+        let malicious = OpenCodexEndpointCandidate(
+            baseURL: URL(string: "http://127.0.0.evil:23456/v1")!,
+            modelProvider: "custom",
+            wireAPI: "responses"
+        )
+
+        let manual = OpenCodexDashboardResolver.resolve(
+            manualPort: 34567,
+            runtimeCandidate: malicious
+        )
+        XCTAssertEqual(manual.url, URL(string: "http://localhost:34567/#dashboard"))
+        XCTAssertFalse(manual.url.absoluteString.contains("127.0.0.evil"))
+
+        let automatic = OpenCodexDashboardResolver.resolve(
+            manualPort: nil,
+            runtimeCandidate: malicious
+        )
+        XCTAssertEqual(automatic.url, URL(string: "http://localhost:10100/#dashboard"))
+        XCTAssertFalse(automatic.url.absoluteString.contains("127.0.0.evil"))
+        XCTAssertEqual(automatic.url.path, "/")
+        XCTAssertEqual(automatic.url.fragment, "dashboard")
+        XCTAssertNil(automatic.url.query)
+    }
+
     func testLoopbackHostValidationRequiresARealIPv4Address() {
         for host in ["127.0.0.1", "127.0.0.2", "localhost", "::1"] {
             let urlHost = host.contains(":") ? "[\(host)]" : host

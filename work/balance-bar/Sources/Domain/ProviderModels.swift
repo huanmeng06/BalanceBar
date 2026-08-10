@@ -420,11 +420,16 @@ enum OpenCodexCardPresentation {
     static func dashboardURL(
         confirmedProviderID: String?,
         currentProviderID: String?,
-        candidate: OpenCodexEndpointCandidate?
+        candidate: OpenCodexEndpointCandidate?,
+        manualPort: Int? = nil
     ) -> URL? {
         guard let confirmedProviderID,
-              confirmedProviderID == currentProviderID else { return nil }
-        return candidate?.dashboardURL
+              confirmedProviderID == currentProviderID,
+              candidate != nil || manualPort != nil else { return nil }
+        return OpenCodexDashboardResolver.resolve(
+            manualPort: manualPort,
+            runtimeCandidate: candidate
+        ).url
     }
 }
 

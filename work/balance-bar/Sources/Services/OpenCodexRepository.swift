@@ -53,12 +53,21 @@ struct OpenCodexEndpointCandidate: Hashable {
     /// from a candidate carried by a recognized runtime state, never from an
     /// arbitrary user-entered URL.
     var dashboardURL: URL? {
+        dashboardURL(port: port)
+    }
+
+    /// Builds the fixed Dashboard path while changing only the port of this
+    /// already-validated loopback candidate. The candidate's scheme and host
+    /// are never taken from user input.
+    func dashboardURL(port: Int) -> URL? {
         guard wireAPI.lowercased() == "responses",
+              OpenCodexDashboardResolver.isValidPort(port),
               Self.isSafeLoopbackV1Endpoint(baseURL),
               var components = URLComponents(
                   url: baseURL,
                   resolvingAgainstBaseURL: false
               ) else { return nil }
+        components.port = port
         components.path = "/"
         components.query = nil
         components.fragment = "dashboard"
@@ -175,6 +184,100 @@ struct OpenCodexEndpointCandidate: Hashable {
         return trimmed.isEmpty ? "/" : "/\(trimmed)"
     }
 
+}
+
+enum OpenCodexDashboardPortInputError: Error, Equatable {
+    case invalid
+}
+
+enum OpenCodexDashboardPortInput {
+    static func parse(
+        _ rawValue: String
+    ) -> Result<Int?, OpenCodexDashboardPortInputError> {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty { return .success(nil) }
+        guard value.unicodeScalars.allSatisfy({ scalar in
+            scalar.value >= 48 && scalar.value <= 57
+        }),
+        let port = Int(value),
+        OpenCodexDashboardResolver.isValidPort(port) else {
+            return .failure(.invalid)
+        }
+        return .success(port)
+    }
+}
+
+struct OpenCodexDashboardResolution: Equatable {
+    enum Source: Equatable {
+        case manual
+        case runtime
+        case fallback
+    }
+
+    let url: URL
+    let port: Int
+    let source: Source
+}
+
+enum OpenCodexDashboardResolver {
+    static let defaultPort = 10100
+
+    static func isValidPort(_ port: Int) -> Bool {
+        AppPreferences.validOpenCodexDashboardPortRange.contains(port)
+    }
+
+    /// Resolve the only URL used to launch the local OpenCodex Dashboard.
+    /// Manual input wins, then a verified runtime candidate, then the fixed
+    /// localhost fallback. Every branch produces the fixed `/#dashboard`
+    /// path and cannot accept a user-provided host, scheme, or full URL.
+    static func resolve(
+        manualPort: Int?,
+        runtimeCandidate: OpenCodexEndpointCandidate?
+    ) -> OpenCodexDashboardResolution {
+        if let manualPort,
+           isValidPort(manualPort) {
+            if let url = runtimeCandidate?.dashboardURL(port: manualPort) {
+                return OpenCodexDashboardResolution(
+                    url: url,
+                    port: manualPort,
+                    source: .manual
+                )
+            }
+            if let url = localhostDashboardURL(port: manualPort) {
+                return OpenCodexDashboardResolution(
+                    url: url,
+                    port: manualPort,
+                    source: .manual
+                )
+            }
+        }
+
+        if let url = runtimeCandidate?.dashboardURL {
+            return OpenCodexDashboardResolution(
+                url: url,
+                port: runtimeCandidate?.port ?? defaultPort,
+                source: .runtime
+            )
+        }
+
+        let url = localhostDashboardURL(port: defaultPort)!
+        return OpenCodexDashboardResolution(
+            url: url,
+            port: defaultPort,
+            source: .fallback
+        )
+    }
+
+    private static func localhostDashboardURL(port: Int) -> URL? {
+        guard isValidPort(port) else { return nil }
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "localhost"
+        components.port = port
+        components.path = "/"
+        components.fragment = "dashboard"
+        return components.url
+    }
 }
 
 struct OpenCodexPreference: Equatable {
