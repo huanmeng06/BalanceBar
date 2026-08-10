@@ -273,6 +273,95 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertFalse(balance.menuBarTitle.contains("gpt-5.6-sol"))
     }
 
+    func testOpenCodexMenuBarMatchesSnapshotSelectorWithoutCurrentMarker() {
+        let date = Date(timeIntervalSince1970: 1_700_000_789)
+        let officialSnapshot = Snapshot.openCodex(
+            "OpenCodex",
+            selector: "gpt-5.6-luna",
+            status: "Connected",
+            date
+        )
+        var officialCards = [
+            OpenCodexModelCard(
+                selector: "openai/gpt-5.6-luna",
+                provider: "openai",
+                model: "gpt-5.6-luna",
+                isCurrent: false,
+                data: .loading(category: .quota)
+            )
+        ]
+
+        let loading = OpenCodexCardPresentation.menuBarSnapshot(
+            for: officialSnapshot,
+            cards: officialCards
+        )
+        XCTAssertEqual(loading.menuBarPrimary, "…")
+
+        officialCards[0] = OpenCodexModelCard(
+            selector: "openai/gpt-5.6-luna",
+            provider: "openai",
+            model: "gpt-5.6-luna",
+            isCurrent: false,
+            data: .official(
+                remaining: 81.7,
+                label: "7-Day Quota",
+                reset: "6d19h",
+                updatedAt: date
+            )
+        )
+        let official = OpenCodexCardPresentation.menuBarSnapshot(
+            for: officialSnapshot,
+            cards: officialCards
+        )
+        XCTAssertEqual(official.menuBarPrimary, "81%")
+        XCTAssertEqual(official.menuBarSecondary, "6d19h")
+
+        let balanceSnapshot = Snapshot.openCodex(
+            "OpenCodex",
+            selector: "relay/gpt-5.6-sol",
+            status: "Connected",
+            date
+        )
+        let balanceCard = OpenCodexModelCard(
+            selector: "RELAY/gpt-5.6-sol",
+            provider: "relay",
+            model: "gpt-5.6-sol",
+            isCurrent: false,
+            data: .balance(
+                amount: 12.34,
+                unit: "USD",
+                websiteURL: URL(string: "https://relay.example.test"),
+                updatedAt: date
+            )
+        )
+        let balance = OpenCodexCardPresentation.menuBarSnapshot(
+            for: balanceSnapshot,
+            cards: [balanceCard]
+        )
+        XCTAssertEqual(balance.menuBarPrimary, "$12.34")
+        XCTAssertEqual(balance.menuBarSecondary, "")
+
+        let unmatched = OpenCodexCardPresentation.menuBarSnapshot(
+            for: officialSnapshot,
+            cards: [
+                OpenCodexModelCard(
+                    selector: "relay/other-model",
+                    provider: "relay",
+                    model: "other-model",
+                    isCurrent: false,
+                    data: .official(
+                        remaining: 99,
+                        label: "7-Day Quota",
+                        reset: "1h",
+                        updatedAt: date
+                    )
+                )
+            ]
+        )
+        XCTAssertEqual(unmatched.menuBarPrimary, "!")
+        XCTAssertFalse(unmatched.menuBarTitle.contains("other-model"))
+    }
+
     func testBalanceQueryPreservesExistingConfigurationRules() {
         let settingsText = #"{"apiKey":"test-token","baseUrl":"https://tokenshop.example.test/"}"#
         let metaText = #"{"usage_script":{"enabled":true,"code":"fetch({ url: \"{{baseUrl}}/v1/usage\" })","autoQueryInterval":12,"timeout":9}}"#

@@ -1756,7 +1756,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         self.renderForCurrentProvider(
                             .openCodex(
                                 providerName,
-                                selector: state.representativeSelector,
+                                selector: state.currentSelector,
                                 status: self.openCodexStatusText(for: state),
                                 Date()
                             ),
@@ -1770,7 +1770,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         self.renderForCurrentProvider(
                             .openCodex(
                                 providerName,
-                                selector: oldState.representativeSelector,
+                                selector: oldState.currentSelector,
                                 status: tr(
                                     "切换失败：\(error.simplifiedChineseMessage)",
                                     "Switch failed: \(error.englishMessage)"
@@ -4757,11 +4757,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         refreshDashboardMenuBarPage()
     }
 
+    private func snapshotKindDiagnosticName(_ kind: Snapshot.Kind) -> String {
+        switch kind {
+        case .placeholder: return "placeholder"
+        case .official: return "official"
+        case .balance: return "balance"
+        case .openCodex: return "openCodex"
+        case .error: return "error"
+        }
+    }
+
+    private func openCodexCardDiagnostic(
+        _ card: OpenCodexModelCard,
+        index: Int
+    ) -> String {
+        "\(index){selector=\(card.selector),isCurrent=\(card.isCurrent),data=\(card.data.diagnosticName)}"
+    }
+
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {
-        return OpenCodexCardPresentation.menuBarSnapshot(
+        let effective = OpenCodexCardPresentation.menuBarSnapshot(
             for: snapshot,
             cards: openCodexCards
         )
+        guard snapshot.kind == .openCodex else { return effective }
+
+        let match = OpenCodexCardPresentation.currentCardMatch(
+            from: openCodexCards,
+            fallbackSelector: snapshot.unit
+        )
+        let cardSummary = openCodexCards.enumerated()
+            .map { openCodexCardDiagnostic($0.element, index: $0.offset) }
+            .joined(separator: ";")
+        let selection = match.card?.selector ?? "none"
+        let signature = [
+            snapshot.unit ?? "none",
+            cardSummary,
+            match.diagnosticReason,
+            snapshotKindDiagnosticName(effective.kind),
+            effective.menuBarPrimary,
+            effective.menuBarSecondary
+        ].joined(separator: "|")
+        SwitchLog.write(
+            "OpenCodex menu bar resolution; base_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(effective.kind)); primary=\(effective.menuBarPrimary); secondary=\(effective.menuBarSecondary)",
+            level: .debug,
+            category: "open-codex.menu-bar",
+            throttleKey: "open-codex-menu-resolution-\(signature)",
+            minimumInterval: 1
+        )
+        return effective
     }
 
     private func updateDashboard(for snapshot: Snapshot, refreshDate: Date?) {
@@ -5058,7 +5101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         self.renderForCurrentProvider(
                             .openCodex(
                                 providerName,
-                                selector: unavailable.representativeSelector,
+                                selector: unavailable.currentSelector,
                                 status: self.openCodexStatusText(for: unavailable),
                                 Date()
                             ),
@@ -5098,7 +5141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     self.renderForCurrentProvider(
                         .openCodex(
                             providerName,
-                            selector: state.representativeSelector,
+                            selector: state.currentSelector,
                             status: self.openCodexStatusText(for: state),
                             Date()
                         ),
@@ -5136,9 +5179,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             allowRequests: state.managementAvailable,
             inFlight: openCodexCardRequestsInFlight
         )
+        let inFlightBefore = openCodexCardRequestsInFlight
+            .map(\.diagnosticName)
+            .sorted()
+            .joined(separator: ",")
         let activeSources = Set(refreshSources.map(\OpenCodexCardRefreshSource.source))
         openCodexCardRequestsInFlight.formIntersection(activeSources)
         openCodexCardRequestsInFlight.subtract(refreshPlan.configurationChanged)
+        let plannedSources = refreshSources
+            .map { $0.source.diagnosticName }
+            .joined(separator: ",")
+        let dueSources = refreshPlan.dueSources
+            .map { $0.source.diagnosticName }
+            .joined(separator: ",")
+        let changedSources = refreshPlan.configurationChanged
+            .map(\.diagnosticName)
+            .sorted()
+            .joined(separator: ",")
+        let inFlightAfter = openCodexCardRequestsInFlight
+            .map(\.diagnosticName)
+            .sorted()
+            .joined(separator: ",")
+        SwitchLog.write(
+            "OpenCodex card refresh plan; provider_id=\(providerID); current_selector=\(state.currentSelector ?? "none"); management=\(state.managementAvailable); force=\(force); planned=[\(plannedSources)]; due=[\(dueSources)]; configuration_changed=[\(changedSources)]; in_flight_before=[\(inFlightBefore)]; in_flight_after=[\(inFlightAfter)]",
+            level: .debug,
+            category: "open-codex.coordinator",
+            throttleKey: "open-codex-plan-\(providerID)-\(plannedSources)-\(dueSources)-\(changedSources)-\(inFlightAfter)",
+            minimumInterval: 1
+        )
         openCodexCardPlans = plans
         var nextData: [OpenCodexCardSource: OpenCodexCardData] = [:]
         for plan in plans {
@@ -5168,9 +5236,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         for refreshSource in refreshPlan.dueSources {
             let source = refreshSource.source
             guard let generation = openCodexCardRefreshCoordinator.generation(for: source) else {
+                SwitchLog.write(
+                    "OpenCodex card request skipped; provider_id=\(providerID); source=\(source.diagnosticName); reason=missing-generation",
+                    level: .warning,
+                    category: "open-codex.coordinator"
+                )
                 continue
             }
             openCodexCardRequestsInFlight.insert(source)
+            SwitchLog.write(
+                "OpenCodex card request started; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); in_flight=\(openCodexCardRequestsInFlight.map(\.diagnosticName).sorted().joined(separator: ","))",
+                level: .debug,
+                category: "open-codex.request"
+            )
             switch source {
             case .official:
                 fetchOpenCodexOfficialCard(
@@ -5180,6 +5258,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             case .balance(let sourceID):
                 guard let summary = sources.first(where: { $0.id == sourceID }),
                       let query = summary.query else {
+                    SwitchLog.write(
+                        "OpenCodex balance card request completed; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=unavailable/balance; reason=missing-query",
+                        level: .warning,
+                        category: "open-codex.request"
+                    )
                     updateOpenCodexCard(
                         providerID: providerID,
                         generation: generation,
@@ -5194,7 +5277,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     )
                     continue
                 }
-                balanceAPIClient.fetchBalance(
+                let requestStartedAt = Date()
+                let transportStarted = balanceAPIClient.fetchBalance(
                     query: query,
                     client: .codex,
                     providerID: "opencodex-card:\(sourceID)"
@@ -5228,6 +5312,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                             )
                         )
                     }
+                    SwitchLog.write(
+                        "OpenCodex balance card request completed; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=\(data.diagnosticName); duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
+                        level: data.isSuccessful ? .debug : .warning,
+                        category: "open-codex.request"
+                    )
                     self.monitorQueue.async {
                         self.updateOpenCodexCard(
                             providerID: providerID,
@@ -5237,6 +5326,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                         )
                     }
                 }
+                SwitchLog.write(
+                    "OpenCodex balance card request registered; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); transport_started=\(transportStarted)",
+                    level: .debug,
+                    category: "open-codex.request"
+                )
             case .unavailable:
                 openCodexCardRequestsInFlight.remove(source)
                 continue
@@ -5358,10 +5452,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         providerID: String,
         generation: UUID
     ) {
+        let requestStartedAt = Date()
         guard let request = makeOfficialQuotaRequest(
             client: .codex,
             storedAccessToken: nil
         ) else {
+            SwitchLog.write(
+                "OpenCodex official card request completed; provider_id=\(providerID); source=official; generation=\(generation.uuidString); result=unavailable/quota; reason=missing-local-auth; duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
+                level: .warning,
+                category: "open-codex.request"
+            )
             updateOpenCodexCard(
                 providerID: providerID,
                 generation: generation,
@@ -5376,7 +5476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             )
             return
         }
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self else { return }
             let cardData: OpenCodexCardData
             if let http = response as? HTTPURLResponse,
@@ -5399,6 +5499,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     )
                 )
             }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            SwitchLog.write(
+                "OpenCodex official card request completed; provider_id=\(providerID); source=official; generation=\(generation.uuidString); result=\(cardData.diagnosticName); status=\(status); bytes=\(data?.count ?? 0); transport_error=\(error != nil); duration=\(String(format: "%.3f", Date().timeIntervalSince(requestStartedAt)))s",
+                level: cardData.isSuccessful ? .debug : .warning,
+                category: "open-codex.request"
+            )
             self.monitorQueue.async {
                 self.updateOpenCodexCard(
                     providerID: providerID,
@@ -5418,10 +5524,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             plans: plans,
             data: openCodexCardData
         )
+        let cardSummary = cards.enumerated()
+            .map { index, card in
+                let source = plans.indices.contains(index)
+                    ? plans[index].source.diagnosticName
+                    : "unknown"
+                return "\(openCodexCardDiagnostic(card, index: index));source=\(source)"
+            }
+            .joined(separator: ";")
+        SwitchLog.write(
+            "OpenCodex cards publish prepared; provider_id=\(providerID); cards=[\(cardSummary)]",
+            level: .debug,
+            category: "open-codex.publish",
+            throttleKey: "open-codex-publish-\(providerID)-\(cardSummary)",
+            minimumInterval: 1
+        )
         DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  self.activeClient == .codex,
-                  self.openCodexState?.providerID == providerID else { return }
+            guard let self else { return }
+            guard self.activeClient == .codex,
+                  self.openCodexState?.providerID == providerID else {
+                SwitchLog.write(
+                    "OpenCodex cards publish discarded on main; provider_id=\(providerID); active_client=\(self.activeClient.rawValue); state_provider_id=\(self.openCodexState?.providerID ?? "none")",
+                    level: .warning,
+                    category: "open-codex.publish"
+                )
+                return
+            }
             self.openCodexCards = cards
             if self.snapshot.kind == .openCodex {
                 self.refreshOpenCodexMenuBar()
@@ -5431,6 +5559,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func refreshOpenCodexMenuBar() {
         guard snapshot.kind == .openCodex else { return }
+        SwitchLog.write(
+            "OpenCodex menu bar refresh requested after card publish; card_count=\(openCodexCards.count); snapshot_selector=\(snapshot.unit ?? "none")",
+            level: .debug,
+            category: "open-codex.menu-bar",
+            throttleKey: "open-codex-menu-refresh-\(snapshot.unit ?? "none")-\(openCodexCards.map { $0.data.diagnosticName }.joined(separator: ","))",
+            minimumInterval: 1
+        )
         updateStatusItem(for: snapshot)
         if isStatusMenuTracking {
             statusMenuNeedsRebuild = true
@@ -5448,14 +5583,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         source: OpenCodexCardSource,
         data: OpenCodexCardData
     ) {
-        guard openCodexCardRefreshCoordinator.generation(for: source) == generation,
-              let visibleData = openCodexCardRefreshCoordinator.store(
-                  data,
-                  for: source,
-                  generation: generation
-              ) else { return }
+        guard let currentGeneration = openCodexCardRefreshCoordinator.generation(for: source) else {
+            SwitchLog.write(
+                "OpenCodex card completion discarded; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=\(data.diagnosticName); reason=source-removed",
+                level: .warning,
+                category: "open-codex.coordinator"
+            )
+            return
+        }
+        guard currentGeneration == generation else {
+            SwitchLog.write(
+                "OpenCodex card completion discarded; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); current_generation=\(currentGeneration.uuidString); result=\(data.diagnosticName); reason=stale-generation",
+                level: .warning,
+                category: "open-codex.coordinator"
+            )
+            return
+        }
+        guard let visibleData = openCodexCardRefreshCoordinator.store(
+            data,
+            for: source,
+            generation: generation
+        ) else {
+            SwitchLog.write(
+                "OpenCodex card completion discarded; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); result=\(data.diagnosticName); reason=store-rejected",
+                level: .warning,
+                category: "open-codex.coordinator"
+            )
+            return
+        }
         openCodexCardRequestsInFlight.remove(source)
         openCodexCardData[source] = visibleData
+        SwitchLog.write(
+            "OpenCodex card completion accepted; provider_id=\(providerID); source=\(source.diagnosticName); generation=\(generation.uuidString); incoming=\(data.diagnosticName); visible=\(visibleData.diagnosticName); in_flight=\(openCodexCardRequestsInFlight.map(\.diagnosticName).sorted().joined(separator: ","))",
+            level: .debug,
+            category: "open-codex.coordinator"
+        )
         publishOpenCodexCards(
             providerID: providerID,
             plans: openCodexCardPlans

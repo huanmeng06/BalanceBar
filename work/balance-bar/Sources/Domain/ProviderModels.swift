@@ -114,12 +114,30 @@ enum OpenCodexCardCategory: Equatable, Hashable {
             return tr("余额不可用", "Balance unavailable")
         }
     }
+
+    var diagnosticName: String {
+        switch self {
+        case .quota: return "quota"
+        case .balance: return "balance"
+        }
+    }
 }
 
 enum OpenCodexCardSource: Equatable, Hashable {
     case official
     case balance(providerID: String)
     case unavailable(category: OpenCodexCardCategory, reason: String)
+
+    var diagnosticName: String {
+        switch self {
+        case .official:
+            return "official"
+        case .balance(let providerID):
+            return "balance:\(providerID)"
+        case .unavailable(let category, _):
+            return "unavailable:\(category.diagnosticName)"
+        }
+    }
 }
 
 enum OpenCodexCardData: Equatable {
@@ -146,6 +164,19 @@ enum OpenCodexCardData: Equatable {
             return .quota
         case .balance:
             return .balance
+        }
+    }
+
+    var diagnosticName: String {
+        switch self {
+        case .loading(let category):
+            return "loading/\(category.diagnosticName)"
+        case .official:
+            return "official/quota"
+        case .balance:
+            return "balance"
+        case .unavailable(let category, _):
+            return "unavailable/\(category.diagnosticName)"
         }
     }
 
@@ -303,14 +334,70 @@ struct OpenCodexModelCard: Equatable {
 }
 
 enum OpenCodexCardPresentation {
+    enum CurrentCardMatch: Equatable {
+        case isCurrent(OpenCodexModelCard)
+        case exactSelector(OpenCodexModelCard)
+        case canonicalSelector(OpenCodexModelCard)
+        case none
+
+        var card: OpenCodexModelCard? {
+            switch self {
+            case .isCurrent(let card), .exactSelector(let card), .canonicalSelector(let card):
+                return card
+            case .none:
+                return nil
+            }
+        }
+
+        var diagnosticReason: String {
+            switch self {
+            case .isCurrent: return "isCurrent"
+            case .exactSelector: return "exact-selector"
+            case .canonicalSelector: return "canonical-selector"
+            case .none: return "no-match"
+            }
+        }
+    }
+
     static func identity(for card: OpenCodexModelCard) -> String {
         "\(card.provider)/\(card.model)"
     }
 
     static func currentCard(
-        from cards: [OpenCodexModelCard]
+        from cards: [OpenCodexModelCard],
+        fallbackSelector: String? = nil
     ) -> OpenCodexModelCard? {
-        cards.first(where: \OpenCodexModelCard.isCurrent)
+        currentCardMatch(
+            from: cards,
+            fallbackSelector: fallbackSelector
+        ).card
+    }
+
+    static func currentCardMatch(
+        from cards: [OpenCodexModelCard],
+        fallbackSelector: String?
+    ) -> CurrentCardMatch {
+        if let current = cards.first(where: \OpenCodexModelCard.isCurrent) {
+            return .isCurrent(current)
+        }
+
+        guard let fallbackSelector = normalizedSelector(fallbackSelector) else {
+            return .none
+        }
+        if let exact = cards.first(where: {
+            normalizedSelector($0.selector) == fallbackSelector
+        }) {
+            return .exactSelector(exact)
+        }
+        guard let canonicalFallback = canonicalSelector(fallbackSelector) else {
+            return .none
+        }
+        guard let canonical = cards.first(where: {
+            canonicalSelector($0.selector) == canonicalFallback
+        }) else {
+            return .none
+        }
+        return .canonicalSelector(canonical)
     }
 
     /// The menu bar summarizes the selected card, while the status-menu card
@@ -355,7 +442,45 @@ enum OpenCodexCardPresentation {
         cards: [OpenCodexModelCard]
     ) -> Snapshot {
         guard snapshot.kind == .openCodex else { return snapshot }
-        return menuBarSnapshot(for: currentCard(from: cards))
+        switch currentCardMatch(from: cards, fallbackSelector: snapshot.unit) {
+        case .isCurrent(let card), .exactSelector(let card), .canonicalSelector(let card):
+            return menuBarSnapshot(for: card)
+        case .none:
+            return cards.isEmpty
+                ? .placeholder
+                : .error(
+                    tr(
+                        "OpenCodex 当前精选模型未匹配",
+                        "The current OpenCodex model could not be matched"
+                    )
+                )
+        }
+    }
+
+    private static func normalizedSelector(_ selector: String?) -> String? {
+        guard let selector else { return nil }
+        let trimmed = selector.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func canonicalSelector(_ selector: String) -> String? {
+        let trimmed = selector.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let provider: String
+        let model: String
+        if let slash = trimmed.firstIndex(of: "/") {
+            provider = String(trimmed[..<slash])
+            model = String(trimmed[trimmed.index(after: slash)...])
+        } else {
+            provider = "openai"
+            model = trimmed
+        }
+        let normalizedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProvider.isEmpty, !normalizedModel.isEmpty else { return nil }
+        return normalizedProvider == "openai"
+            ? normalizedModel
+            : "\(normalizedProvider)/\(normalizedModel)"
     }
 
     static func dashboardURL(
