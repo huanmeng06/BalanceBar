@@ -1718,14 +1718,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         performOpenCodexPreferenceSwitch(preference)
     }
 
-    @objc private func switchOpenCodexCard(_ sender: NSButton) {
-        guard let selector = sender.identifier?.rawValue,
-              let preference = openCodexState?.state.preferences.first(where: {
-                  $0.selector == selector
-              }) else { return }
-        performOpenCodexPreferenceSwitch(preference)
-    }
-
     private func performOpenCodexPreferenceSwitch(_ preference: OpenCodexPreference) {
         guard activeClient == .codex,
               !openCodexSwitchInFlight,
@@ -6196,31 +6188,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // command. Custom labels keep it bright while the item stays disabled.
         item.isEnabled = snapshot.kind == .balance && snapshot.websiteURL != nil
         let isBalance = snapshot.kind == .balance
-        let viewHeight: CGFloat = isBalance ? 86 : 102
-        let viewWidth: CGFloat = 304
-        let horizontalInset: CGFloat = 14
-        let contentWidth = viewWidth - (horizontalInset * 2)
-        let amountWidth: CGFloat = 141
-        let amountX = viewWidth - horizontalInset - amountWidth
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: viewWidth, height: viewHeight))
+        let layout = OpenCodexCardLayout.frames(
+            for: isBalance ? .balance : .quota,
+            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
+        )
+        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
 
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
-        provider.frame = NSRect(x: horizontalInset, y: isBalance ? 58 : 75, width: 189, height: 20)
+        provider.frame = layout.title
 
         if snapshot.kind == .official || snapshot.kind == .balance {
             let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
             let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
             refreshTime.textColor = .secondaryLabelColor
             refreshTime.alignment = .right
-            refreshTime.frame = NSRect(x: 209, y: isBalance ? 59 : 76, width: 81, height: 17)
+            refreshTime.frame = layout.refreshTime
             view.addSubview(refreshTime)
         }
 
-        if let percentage = snapshot.progressPercentage {
+        if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
             // Keep the header clean. The progress bar belongs below the two
             // quota-detail rows, in the otherwise empty space above actions.
-            progress.frame = NSRect(x: horizontalInset, y: 8, width: contentWidth, height: 5)
+            progress.frame = progressFrame
             view.addSubview(progress)
         }
 
@@ -6233,39 +6223,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // Align the number with these two compact text rows instead.
             // Preserve the previous spacing above these rows. Only the empty
             // space below the link is reduced by the shorter card height.
-            quotaDetail.frame = NSRect(x: horizontalInset, y: 31, width: 128, height: 18)
-            amount.frame = NSRect(x: amountX, y: 5, width: amountWidth, height: 48)
+            quotaDetail.frame = layout.quotaDetail
+            amount.frame = layout.amount
 
             // Center the shared link row between the balance row and divider.
-            let linkRowY: CGFloat = 7
-
             let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = NSRect(x: 14, y: linkRowY, width: AppLanguage.usesSimplifiedChinese ? 62 : 72, height: 17)
+            linkPrefix.frame = layout.linkPrefix ?? .zero
             view.addSubview(linkPrefix)
 
-            if snapshot.websiteURL != nil {
+            if snapshot.websiteURL != nil, let linkFrame = layout.link {
                 let link = HoverLinkTextField(text: snapshot.provider)
                 link.onActivate = { [weak self] in self?.openProviderWebsite() }
                 // Match the prefix label's exact baseline and line box.
-                link.frame = NSRect(
-                    x: AppLanguage.usesSimplifiedChinese ? 75 : 87,
-                    y: linkRowY,
-                    width: AppLanguage.usesSimplifiedChinese ? 148 : 136,
-                    height: 17
-                )
+                link.frame = linkFrame
                 view.addSubview(link)
             }
         } else {
             // The following two rows form the left half of the quota display;
             // the amount spans both on right.
-            quotaDetail.frame = NSRect(x: horizontalInset, y: 47, width: 128, height: 18)
+            quotaDetail.frame = layout.quotaDetail
             let reset = makeOverviewLabel(snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter), font: .systemFont(ofSize: 13, weight: .regular))
             reset.textColor = .secondaryLabelColor
-            reset.frame = NSRect(x: horizontalInset, y: 28, width: 128, height: 17)
+            reset.frame = layout.reset ?? .zero
             // Visually center the large percentage across the combined height
             // of the two left-hand rows (equivalent to merged-cell centering).
-            amount.frame = NSRect(x: amountX, y: 18, width: amountWidth, height: 48)
+            amount.frame = layout.amount
             view.addSubview(reset)
         }
 
@@ -6313,129 +6296,143 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         index: Int
     ) -> NSMenuItem {
         let item = NSMenuItem()
-        let viewWidth: CGFloat = 340
-        let viewHeight: CGFloat = 118
-        let inset: CGFloat = 14
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: viewWidth, height: viewHeight))
-
-        let identity = makeOverviewLabel(
-            "\(index). \(card.provider)/\(card.model)",
-            font: .systemFont(ofSize: 14, weight: .semibold)
+        let category = card.data.category
+        let layout = OpenCodexCardLayout.frames(
+            for: category,
+            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
         )
-        identity.frame = NSRect(x: inset, y: 91, width: 238, height: 20)
+        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
 
-        let current = makeOverviewLabel(
-            card.isCurrent ? tr("当前", "Current") : "",
-            font: .systemFont(ofSize: 12, weight: .medium)
+        let titleText = "\(index). \(card.provider)/\(card.model)"
+            + (card.isCurrent ? tr(" · 当前", " · Current") : "")
+        let provider = makeOverviewLabel(
+            titleText,
+            font: .systemFont(ofSize: 15, weight: .semibold)
         )
-        current.textColor = .systemGreen
-        current.alignment = .right
-        current.frame = NSRect(x: 266, y: 92, width: 60, height: 18)
+        provider.frame = layout.title
 
-        let category: OpenCodexCardCategory
+        let updatedAt: Date?
         switch card.data {
-        case .official:
-            category = .quota
-        case .balance:
-            category = .balance
-        case .loading(let value), .unavailable(let value, _):
-            category = value
+        case .official(_, _, _, let date), .balance(_, _, _, let date):
+            updatedAt = date
+        case .loading, .unavailable:
+            updatedAt = nil
         }
+        let refreshTime = makeOverviewLabel(
+            updatedAt.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--",
+            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        )
+        refreshTime.textColor = .secondaryLabelColor
+        refreshTime.alignment = .right
+        refreshTime.frame = layout.refreshTime
 
         let primary: NSTextField
         let detail: NSTextField
-        let updated: NSTextField
-        switch card.data {
-        case .official(let remaining, let label, let reset, let updatedAt):
-            let progress = QuotaProgressView(percentage: remaining)
-            progress.frame = NSRect(x: inset, y: 63, width: 220, height: 5)
-            view.addSubview(progress)
+        let secondary: NSTextField
+        var progress: QuotaProgressView?
+        var websiteLink: HoverLinkTextField?
 
+        switch card.data {
+        case .official(let remaining, let label, let reset, _):
+            progress = QuotaProgressView(percentage: remaining)
+            progress?.frame = layout.progress ?? .zero
             primary = makeOverviewLabel(
                 "\(Int(remaining))%",
-                font: .monospacedDigitSystemFont(ofSize: 27, weight: .semibold)
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
             )
             primary.alignment = .right
-            primary.frame = NSRect(x: 238, y: 48, width: 88, height: 34)
-            detail = makeOverviewLabel(label, font: .systemFont(ofSize: 12, weight: .medium))
-            detail.frame = NSRect(x: inset, y: 38, width: 220, height: 18)
-            let resetText = reset.map {
-                tr("重置：\($0)", "Reset: \($0)")
-            } ?? tr("重置时间不可用", "Reset time unavailable")
-            updated = makeOverviewLabel(
-                "\(resetText) · \(Self.timeFormatter.string(from: updatedAt))",
-                font: .systemFont(ofSize: 11)
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                label,
+                font: .systemFont(ofSize: 13, weight: .medium)
             )
-            updated.textColor = .secondaryLabelColor
-            updated.frame = NSRect(x: inset, y: 14, width: 238, height: 17)
-        case .balance(let amount, let unit, let websiteURL, let updatedAt):
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                reset.map { tr("重置：\($0)", "Reset: \($0)") }
+                    ?? tr("重置时间不可用", "Reset time unavailable"),
+                font: .systemFont(ofSize: 13, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.reset ?? .zero
+        case .balance(let amount, let unit, let websiteURL, _):
             primary = makeOverviewLabel(
                 Self.formatBalanceSummary(amount, unit: unit),
-                font: .monospacedDigitSystemFont(ofSize: 24, weight: .semibold)
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
             )
             primary.alignment = .right
-            primary.frame = NSRect(x: 196, y: 47, width: 130, height: 34)
+            primary.frame = layout.amount
             detail = makeOverviewLabel(
-                tr("剩余余额 · \(unit)", "Remaining balance · \(unit)"),
-                font: .systemFont(ofSize: 12, weight: .medium)
+                tr("剩余额度", "Remaining Balance"),
+                font: .systemFont(ofSize: 13, weight: .medium)
             )
-            detail.frame = NSRect(x: inset, y: 52, width: 170, height: 18)
-            updated = makeOverviewLabel(
-                tr("更新：\(Self.timeFormatter.string(from: updatedAt))", "Updated: \(Self.timeFormatter.string(from: updatedAt))"),
-                font: .systemFont(ofSize: 11)
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                tr("官方链接：", "Official Link:"),
+                font: .systemFont(ofSize: 12, weight: .regular)
             )
-            updated.textColor = .secondaryLabelColor
-            updated.frame = NSRect(x: inset, y: 14, width: 238, height: 17)
-            if let websiteURL {
-                let link = HoverLinkTextField(text: tr("官方链接", "Official link"))
-                link.frame = NSRect(x: 250, y: 13, width: 76, height: 18)
-                link.alignment = .right
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.linkPrefix ?? .zero
+            if let websiteURL, let linkFrame = layout.link {
+                let link = HoverLinkTextField(text: card.provider)
+                link.frame = linkFrame
                 link.onActivate = { NSWorkspace.shared.open(websiteURL) }
-                view.addSubview(link)
+                websiteLink = link
             }
         case .loading:
-            primary = makeOverviewLabel("—", font: .monospacedDigitSystemFont(ofSize: 27, weight: .semibold))
+            primary = makeOverviewLabel(
+                "—",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
             primary.alignment = .right
-            primary.frame = NSRect(x: 238, y: 47, width: 88, height: 34)
+            primary.frame = layout.amount
             detail = makeOverviewLabel(
                 category == .quota
                     ? tr("正在读取额度…", "Reading quota…")
                     : tr("正在读取余额…", "Reading balance…"),
-                font: .systemFont(ofSize: 12, weight: .medium)
+                font: .systemFont(ofSize: 13, weight: .medium)
             )
-            detail.frame = NSRect(x: inset, y: 52, width: 210, height: 18)
-            updated = makeOverviewLabel(
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
                 tr("尚未获得真实数据", "No live data received yet"),
-                font: .systemFont(ofSize: 11)
+                font: .systemFont(ofSize: 13, weight: .regular)
             )
-            updated.textColor = .secondaryLabelColor
-            updated.frame = NSRect(x: inset, y: 14, width: 238, height: 17)
+            secondary.textColor = .secondaryLabelColor
+            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
         case .unavailable(_, let reason):
-            primary = makeOverviewLabel("—", font: .monospacedDigitSystemFont(ofSize: 27, weight: .semibold))
+            primary = makeOverviewLabel(
+                "—",
+                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+            )
             primary.alignment = .right
-            primary.frame = NSRect(x: 238, y: 47, width: 88, height: 34)
-            detail = makeOverviewLabel(category.unavailableTitle, font: .systemFont(ofSize: 12, weight: .medium))
-            detail.frame = NSRect(x: inset, y: 52, width: 210, height: 18)
-            updated = makeOverviewLabel(reason, font: .systemFont(ofSize: 11))
-            updated.textColor = .secondaryLabelColor
-            updated.lineBreakMode = .byTruncatingTail
-            updated.frame = NSRect(x: inset, y: 14, width: 238, height: 17)
+            primary.frame = layout.amount
+            detail = makeOverviewLabel(
+                category.unavailableTitle,
+                font: .systemFont(ofSize: 13, weight: .medium)
+            )
+            detail.frame = layout.quotaDetail
+            secondary = makeOverviewLabel(
+                reason,
+                font: .systemFont(ofSize: 12, weight: .regular)
+            )
+            secondary.textColor = .secondaryLabelColor
+            secondary.lineBreakMode = .byTruncatingTail
+            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
         }
 
-        let switchButton = NSButton(
-            title: card.isCurrent ? tr("当前", "Current") : tr("切换", "Switch"),
-            target: self,
-            action: #selector(switchOpenCodexCard(_:))
-        )
-        switchButton.bezelStyle = .roundRect
-        switchButton.controlSize = .small
-        switchButton.identifier = NSUserInterfaceItemIdentifier(card.selector)
-        switchButton.isEnabled = !card.isCurrent
+        [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
+        if let progress { view.addSubview(progress) }
+        if let websiteLink { view.addSubview(websiteLink) }
+
+        let preference = openCodexState?.state.preferences.first {
+            $0.selector == card.selector
+        }
+        item.target = self
+        item.action = #selector(switchOpenCodexPreference(_:))
+        item.representedObject = preference
+        item.state = card.isCurrent ? .on : .off
+        item.isEnabled = preference != nil
             && openCodexState?.state.managementAvailable == true
             && !openCodexSwitchInFlight
-        switchButton.frame = NSRect(x: 266, y: 10, width: 60, height: 22)
-
-        [identity, current, primary, detail, updated, switchButton].forEach(view.addSubview)
         item.view = view
         return item
     }

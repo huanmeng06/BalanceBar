@@ -125,6 +125,64 @@ struct OpenCodexModelCard: Equatable {
     let data: OpenCodexCardData
 }
 
+/// Frames shared by OpenCodex cards and the existing overview cards.
+/// Keeping these values in a pure helper makes the visual baseline testable
+/// without launching AppKit or the status menu.
+struct OpenCodexCardFrames: Equatable {
+    let cardSize: CGSize
+    let title: CGRect
+    let refreshTime: CGRect
+    let quotaDetail: CGRect
+    let reset: CGRect?
+    let amount: CGRect
+    let progress: CGRect?
+    let linkPrefix: CGRect?
+    let link: CGRect?
+}
+
+enum OpenCodexCardLayout {
+    static let cardWidth: CGFloat = 304
+    static let horizontalInset: CGFloat = 14
+    static let contentWidth = cardWidth - horizontalInset * 2
+    static let amountWidth: CGFloat = 141
+    static let amountX = cardWidth - horizontalInset - amountWidth
+    static let refreshTimeX = cardWidth - horizontalInset - 81
+
+    static func frames(
+        for category: OpenCodexCardCategory,
+        linkPrefixWidth: CGFloat = 62
+    ) -> OpenCodexCardFrames {
+        switch category {
+        case .quota:
+            return OpenCodexCardFrames(
+                cardSize: CGSize(width: cardWidth, height: 102),
+                title: CGRect(x: horizontalInset, y: 75, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: 76, width: 81, height: 17),
+                quotaDetail: CGRect(x: horizontalInset, y: 47, width: 128, height: 18),
+                reset: CGRect(x: horizontalInset, y: 28, width: 128, height: 17),
+                amount: CGRect(x: amountX, y: 18, width: amountWidth, height: 48),
+                progress: CGRect(x: horizontalInset, y: 8, width: contentWidth, height: 5),
+                linkPrefix: nil,
+                link: nil
+            )
+        case .balance:
+            let linkWidth: CGFloat = linkPrefixWidth == 62 ? 148 : 136
+            let linkX: CGFloat = horizontalInset + linkPrefixWidth - 1
+            return OpenCodexCardFrames(
+                cardSize: CGSize(width: cardWidth, height: 86),
+                title: CGRect(x: horizontalInset, y: 58, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: 59, width: 81, height: 17),
+                quotaDetail: CGRect(x: horizontalInset, y: 31, width: 128, height: 18),
+                reset: nil,
+                amount: CGRect(x: amountX, y: 5, width: amountWidth, height: 48),
+                progress: nil,
+                linkPrefix: CGRect(x: horizontalInset, y: 7, width: linkPrefixWidth, height: 17),
+                link: CGRect(x: linkX, y: 7, width: linkWidth, height: 17)
+            )
+        }
+    }
+}
+
 enum OpenCodexCardPlanner {
     static let maxCards = 5
 
@@ -193,6 +251,7 @@ enum OpenCodexCardPlanner {
                 && source.openCodexCandidate == nil
                 && source.query != nil
                 && secureRequestURL(for: source.query) != nil
+                && secureWebsiteURL(for: source) != nil
                 && hostsMatch(descriptor.baseURL, source: source)
         }
         let exactNameMatches = candidates.filter {
@@ -222,7 +281,8 @@ enum OpenCodexCardPlanner {
         _ descriptorURL: URL,
         source: ProviderSummarySource
     ) -> Bool {
-        guard let descriptorHost = normalizedHost(descriptorURL) else { return false }
+        guard isSecureHTTPSURL(descriptorURL),
+              let descriptorHost = normalizedHost(descriptorURL) else { return false }
         let queryHost = source.query.flatMap { URL(string: $0.url) }.flatMap(normalizedHost)
         let websiteHost = normalizedHost(source.websiteURL ?? source.query?.websiteURL)
         guard !isLoopbackHost(descriptorHost),
@@ -236,10 +296,26 @@ enum OpenCodexCardPlanner {
     private static func secureRequestURL(for query: BalanceQuery?) -> URL? {
         guard let query,
               let url = URL(string: query.url),
-              url.scheme?.lowercased() == "https",
-              url.user == nil,
-              url.password == nil else { return nil }
+              isSecureHTTPSURL(url) else { return nil }
         return url
+    }
+
+    private static func secureWebsiteURL(for source: ProviderSummarySource) -> URL? {
+        let url = source.websiteURL ?? source.query?.websiteURL
+        guard let url,
+              isSecureHTTPSURL(url),
+              let host = normalizedHost(url),
+              !isLoopbackHost(host) else { return nil }
+        return url
+    }
+
+    private static func isSecureHTTPSURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              let host = normalizedHost(url),
+              !isLoopbackHost(host),
+              url.user == nil,
+              url.password == nil else { return false }
+        return true
     }
 
     private static func normalizedHost(_ url: URL?) -> String? {
@@ -252,6 +328,8 @@ enum OpenCodexCardPlanner {
     private static func isLoopbackHost(_ host: String) -> Bool {
         host == "localhost"
             || host == "::1"
+            || host == "::"
+            || host == "0.0.0.0"
             || host == "127.0.0.1"
             || (host.hasPrefix("127.") && host.split(separator: ".").count == 4)
     }

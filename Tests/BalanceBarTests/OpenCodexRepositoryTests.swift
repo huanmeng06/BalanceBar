@@ -542,6 +542,52 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertTrue(reason.contains("余额") || reason.contains("balance"))
     }
 
+    func testCardPlannerRejectsNonHTTPSDescriptorOrWebsite() {
+        let httpsSource = relaySummarySource(name: "relay")
+        let httpDescriptor = OpenCodexProviderDescriptor(
+            id: "relay",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "http://relay.example.test/v1")!
+        )
+        let httpDescriptorState = makeCardState(
+            selectors: ["relay/model-a"],
+            descriptors: ["relay": httpDescriptor]
+        )
+        guard case .unavailable(.balance, _) = OpenCodexCardPlanner.plans(
+            state: httpDescriptorState,
+            sources: [httpsSource]
+        )[0].source else {
+            return XCTFail("a non-HTTPS upstream descriptor must not map to a balance source")
+        }
+
+        let secureDescriptor = OpenCodexProviderDescriptor(
+            id: "relay",
+            adapter: "openai-responses",
+            authMode: "key",
+            baseURL: URL(string: "https://relay.example.test/v1")!
+        )
+        let httpWebsiteSource = ProviderSummarySource(
+            id: "relay-source",
+            name: "relay",
+            isOfficial: false,
+            query: fixtureBalanceQuery(url: "https://relay.example.test/usage"),
+            officialAccessToken: nil,
+            openCodexCandidate: nil,
+            websiteURL: URL(string: "http://relay.example.test")!
+        )
+        let httpWebsiteState = makeCardState(
+            selectors: ["relay/model-a"],
+            descriptors: ["relay": secureDescriptor]
+        )
+        guard case .unavailable(.balance, _) = OpenCodexCardPlanner.plans(
+            state: httpWebsiteState,
+            sources: [httpWebsiteSource]
+        )[0].source else {
+            return XCTFail("an unsafe provider website must not produce a balance card")
+        }
+    }
+
     func testInjectedCardDataCoversSuccessFailureAndRecoveryWithoutSyntheticNumbers() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let state = makeCardState(
@@ -605,6 +651,34 @@ final class OpenCodexRepositoryTests: XCTestCase {
 
         let recoveredCards = OpenCodexCardPlanner.cards(plans: plans, data: successful)
         XCTAssertEqual(recoveredCards, successCards)
+    }
+
+    func testOpenCodexCardLayoutMatchesExistingOfficialAndBalanceOverviewFrames() {
+        let official = OpenCodexCardLayout.frames(for: .quota)
+        XCTAssertEqual(official.cardSize, CGSize(width: 304, height: 102))
+        XCTAssertEqual(official.title, CGRect(x: 14, y: 75, width: 189, height: 20))
+        XCTAssertEqual(official.refreshTime, CGRect(x: 209, y: 76, width: 81, height: 17))
+        XCTAssertEqual(official.quotaDetail, CGRect(x: 14, y: 47, width: 128, height: 18))
+        XCTAssertEqual(official.reset, CGRect(x: 14, y: 28, width: 128, height: 17))
+        XCTAssertEqual(official.amount, CGRect(x: 149, y: 18, width: 141, height: 48))
+        XCTAssertEqual(official.progress, CGRect(x: 14, y: 8, width: 276, height: 5))
+        XCTAssertNil(official.linkPrefix)
+        XCTAssertNil(official.link)
+
+        let balance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 62)
+        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 86))
+        XCTAssertEqual(balance.title, CGRect(x: 14, y: 58, width: 189, height: 20))
+        XCTAssertEqual(balance.refreshTime, CGRect(x: 209, y: 59, width: 81, height: 17))
+        XCTAssertEqual(balance.quotaDetail, CGRect(x: 14, y: 31, width: 128, height: 18))
+        XCTAssertNil(balance.reset)
+        XCTAssertEqual(balance.amount, CGRect(x: 149, y: 5, width: 141, height: 48))
+        XCTAssertNil(balance.progress)
+        XCTAssertEqual(balance.linkPrefix, CGRect(x: 14, y: 7, width: 62, height: 17))
+        XCTAssertEqual(balance.link, CGRect(x: 75, y: 7, width: 148, height: 17))
+
+        let englishBalance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 72)
+        XCTAssertEqual(englishBalance.linkPrefix, CGRect(x: 14, y: 7, width: 72, height: 17))
+        XCTAssertEqual(englishBalance.link, CGRect(x: 85, y: 7, width: 136, height: 17))
     }
 
     private func makeCardState(
