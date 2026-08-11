@@ -780,6 +780,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 link.frame = linkFrame
                 link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
                 view.addSubview(link)
+                link.installMenuTrackingArea(in: view)
             }
         } else {
             quotaDetail.frame = layout.quotaDetail
@@ -906,7 +907,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
         if let progress { view.addSubview(progress) }
-        if let websiteLink { view.addSubview(websiteLink) }
+        if let websiteLink {
+            view.addSubview(websiteLink)
+            websiteLink.installMenuTrackingArea(in: view)
+        }
         let preference = menuInput.openCodexState?.preferences.first { $0.selector == card.selector }
         item.target = self
         item.action = #selector(switchOpenCodexPreference(_:))

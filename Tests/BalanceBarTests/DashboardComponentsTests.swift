@@ -60,6 +60,8 @@ final class DashboardComponentsTests: XCTestCase {
         let link = HoverLinkTextField(text: "Provider")
         link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)
         link.layout()
+        let previousCursor = NSCursor.current
+        defer { previousCursor.set() }
         var activationCount = 0
         link.onActivate = { activationCount += 1 }
 
@@ -73,6 +75,8 @@ final class DashboardComponentsTests: XCTestCase {
         link.frame = NSRect(x: 0, y: 0, width: 220, height: 20)
         link.layout()
 
+        let previousCursor = NSCursor.current
+        defer { previousCursor.set() }
         XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.maxX)
 
         var activationCount = 0
@@ -100,6 +104,8 @@ final class DashboardComponentsTests: XCTestCase {
         link.frame = NSRect(x: 0, y: 0, width: 90, height: 20)
         link.layout()
 
+        let previousCursor = NSCursor.current
+        defer { previousCursor.set() }
         XCTAssertGreaterThan(link.visibleTextHitRect.width, 0)
         XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.maxX)
 
@@ -188,6 +194,87 @@ final class DashboardComponentsTests: XCTestCase {
         link.cursorUpdate(with: makeMouseEvent(type: .mouseMoved, location: link.visibleTextHitRect.center))
 
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+    }
+
+    func testMenuHostedLinkUsesHostMouseMovementWithoutExpandingActivation() {
+        let item = NSMenuItem()
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 20))
+        item.view = host
+
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = host.bounds
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+
+        XCTAssertEqual(host.trackingAreas.count, 1)
+        XCTAssertEqual(host.trackingAreas[0].rect, host.bounds)
+        XCTAssertTrue(host.trackingAreas[0].options.contains(.mouseMoved))
+        XCTAssertTrue(host.trackingAreas[0].options.contains(.cursorUpdate))
+
+        let previousCursor = NSCursor.current
+        defer { previousCursor.set() }
+        NSCursor.arrow.set()
+
+        var activationCount = 0
+        link.onActivate = { activationCount += 1 }
+        let blankPoint = NSPoint(
+            x: link.visibleTextHitRect.maxX
+                + (link.bounds.maxX - link.visibleTextHitRect.maxX) / 2,
+            y: link.visibleTextHitRect.midY
+        )
+
+        link.mouseMoved(with: makeMouseEvent(
+            type: .mouseMoved,
+            location: link.visibleTextHitRect.center
+        ))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+
+        link.mouseMoved(with: makeMouseEvent(
+            type: .mouseMoved,
+            location: blankPoint
+        ))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+
+        link.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: blankPoint
+        ))
+        XCTAssertEqual(activationCount, 0)
+
+        link.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: link.visibleTextHitRect.center
+        ))
+        XCTAssertEqual(activationCount, 1)
+    }
+
+    func testMenuHostedLinkTeardownRemovesHostTrackingAndRestoresArrow() {
+        let item = NSMenuItem()
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 160, height: 20))
+        item.view = host
+
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = host.bounds
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+
+        let previousCursor = NSCursor.current
+        defer { previousCursor.set() }
+        NSCursor.arrow.set()
+        link.mouseMoved(with: makeMouseEvent(
+            type: .mouseMoved,
+            location: link.visibleTextHitRect.center
+        ))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+
+        link.removeFromSuperview()
+        link.removeFromSuperview()
+
+        XCTAssertEqual(host.trackingAreas.count, 0)
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        item.view = nil
     }
 
     private func makeMouseEvent(

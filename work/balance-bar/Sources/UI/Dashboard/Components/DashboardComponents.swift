@@ -117,6 +117,8 @@ final class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     private(set) var visibleTextHitRect = NSRect.zero
     private var trackingAreaReference: NSTrackingArea?
+    private weak var menuTrackingHost: NSView?
+    private var menuTrackingAreaReference: NSTrackingArea?
     private var isHovered = false
     private var isApplyingStyle = false
 
@@ -197,6 +199,10 @@ final class HoverLinkTextField: NSTextField {
         setHovering(isPointInsideVisibleText(for: event))
     }
 
+    override func mouseMoved(with event: NSEvent) {
+        setHovering(isPointInsideVisibleText(for: event))
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard isPointInsideVisibleText(for: event) else {
             setHovering(false)
@@ -218,6 +224,24 @@ final class HoverLinkTextField: NSTextField {
         super.removeFromSuperview()
     }
 
+    /// Menu item views are tracked by NSMenu's modal event loop. Attach a
+    /// local tracking area to the item view so mouse movement continues to
+    /// update the cursor even when the normal cursor-update path is skipped.
+    /// The area is intentionally used only for cursor state; activation still
+    /// checks `visibleTextHitRect`.
+    func installMenuTrackingArea(in host: NSView) {
+        removeMenuTrackingArea()
+        menuTrackingHost = host
+        let area = NSTrackingArea(
+            rect: host.bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        host.addTrackingArea(area)
+        menuTrackingAreaReference = area
+    }
+
     private func installTrackingArea() {
         guard !visibleTextHitRect.isEmpty else { return }
         let area = NSTrackingArea(
@@ -228,6 +252,14 @@ final class HoverLinkTextField: NSTextField {
         )
         addTrackingArea(area)
         trackingAreaReference = area
+    }
+
+    private func removeMenuTrackingArea() {
+        if let menuTrackingHost, let menuTrackingAreaReference {
+            menuTrackingHost.removeTrackingArea(menuTrackingAreaReference)
+        }
+        menuTrackingHost = nil
+        menuTrackingAreaReference = nil
     }
 
     private func removeTrackingAreaReference() {
@@ -264,6 +296,7 @@ final class HoverLinkTextField: NSTextField {
 
     private func tearDownInteraction() {
         removeTrackingAreaReference()
+        removeMenuTrackingArea()
         if isHovered {
             isHovered = false
             applyStyle(text: stringValue, underlined: false)
