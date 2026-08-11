@@ -20,6 +20,9 @@ final class CodexActivityMonitor {
         "task_complete", "task_completed", "task_stopped", "task_failed", "task_cancelled",
         "turn_complete", "turn_completed", "turn_aborted", "turn_failed", "turn_cancelled"
     ]
+    private static let ongoingActivityTypes: Set<String> = [
+        "agent_reasoning", "reasoning", "function_call", "function_call_output"
+    ]
     private static let responseTerminalTypes: Set<String> = [
         "response.completed", "response.failed", "response.incomplete", "response.cancelled"
     ]
@@ -162,7 +165,7 @@ final class CodexActivityMonitor {
                 } else if Self.startTypes.contains(payloadType) {
                     running = true
                     terminalSeen = false
-                } else if payloadType == "agent_message", !terminalSeen {
+                } else if Self.ongoingActivityTypes.contains(payloadType), !terminalSeen {
                     running = true
                 }
             } else if topType == "response_item", let payload = object["payload"] as? [String: Any] {
@@ -172,7 +175,13 @@ final class CodexActivityMonitor {
                     terminalSeen = true
                 } else if payload["status"] as? String == "in_progress", !terminalSeen {
                     running = true
+                } else if let payloadType = payload["type"] as? String,
+                          Self.ongoingActivityTypes.contains(payloadType),
+                          !terminalSeen {
+                    running = true
                 }
+            } else if Self.ongoingActivityTypes.contains(topType), !terminalSeen {
+                running = true
             }
         }
         return running

@@ -4369,7 +4369,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if let codexIconImage {
                 menuBarIconView.setSourceImage(codexIconImage)
             }
-            if isCodexTaskRunning && animateCodexActivity {
+            if MenuBarActivityAnimationPolicy.shouldAnimate(
+                taskRunning: isCodexTaskRunning,
+                preferenceEnabled: animateCodexActivity
+            ) {
                 menuBarIconView.startRotating()
             } else {
                 menuBarIconView.stopRotating()
@@ -4379,7 +4382,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if let claudeIconImage {
                 menuBarIconView.setSourceImage(claudeIconImage)
             }
-            if isClaudeTaskRunning && animateCodexActivity {
+            if MenuBarActivityAnimationPolicy.shouldAnimate(
+                taskRunning: isClaudeTaskRunning,
+                preferenceEnabled: animateCodexActivity
+            ) {
                 claudeThinkingAnimator?.start()
             } else {
                 claudeThinkingAnimator?.stop()

@@ -32,8 +32,70 @@ final class CodexActivityMonitorTests: XCTestCase {
         XCTAssertTrue(makeMonitor().isTaskRunning(now: currentDate))
     }
 
+    func testLongRolloutTailDetectsOngoingReasoningAndToolActivityWithoutStart() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            String(repeating: "padding", count: 50_000),
+            eventMessage("model_switched"),
+            eventMessage("reconnected"),
+            eventMessage("agent_reasoning"),
+            responseItem(type: "reasoning"),
+            responseItem(type: "function_call"),
+            responseItem(type: "function_call_output")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertTrue(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "continuation activity in the tail must keep a long task active after its start scrolls out"
+        )
+    }
+
+    func testRecentAgentMessageWithoutExplicitActivityIsInactive() throws {
+        let sessionURL = try writeSession([
+            #"{"type":"event_msg","payload":{"type":"agent_message","message":"cached assistant output","phase":"commentary"}}"#
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testModelSwitchAndReconnectReasoningKeepsTaskActive() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("model_switched"),
+            eventMessage("reconnected"),
+            eventMessage("agent_reasoning")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertTrue(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "reasoning during a model switch/reconnect keeps the unfinished task active"
+        )
+    }
+
+    func testTerminalSuppressesTrailingReasoningAndToolActivity() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("task_complete"),
+            eventMessage("agent_reasoning"),
+            responseItem(type: "reasoning"),
+            responseItem(type: "function_call"),
+            responseItem(type: "function_call_output"),
+            #"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[]}}"#
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
     func testStaleUnterminatedRolloutIsInactive() throws {
-        let sessionURL = try writeSession([eventMessage("task_started")])
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("agent_reasoning"),
+            responseItem(type: "function_call_output")
+        ])
         try setSessionModificationDate(sessionURL, to: currentDate.addingTimeInterval(-601))
         try makeStateDatabase(rolloutPath: sessionURL.path, updatedAt: epoch - 601)
 
@@ -145,6 +207,59 @@ final class CodexActivityMonitorTests: XCTestCase {
         try makeStateDatabase(rolloutPath: sessionURL.path)
 
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testOfficialModelStartReasoningAndTerminal() throws {
+        let sessionURL = try writeSession([
+            eventMessage("user_message"),
+            eventMessage("agent_reasoning"),
+            responseItem(type: "reasoning"),
+            responseItem(type: "function_call"),
+            responseItem(type: "function_call_output"),
+            responseItem(phase: "final")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "the official-model terminal response must win over its preceding activity"
+        )
+
+        let activeSessionURL = try writeSession([
+            eventMessage("user_message"),
+            eventMessage("agent_reasoning")
+        ])
+        try updateStateDatabase(rolloutPath: activeSessionURL.path)
+        currentDate = currentDate.addingTimeInterval(1.1)
+
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+    }
+
+    func testMonitorResultDrivesRotatingMenuBarViewAndPreferencePolicy() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("agent_reasoning")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+        let imageView = RotatingTemplateImageView(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
+        imageView.setSourceImage(NSImage(size: NSSize(width: 16, height: 16)))
+
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+        XCTAssertTrue(MenuBarActivityAnimationPolicy.shouldAnimate(taskRunning: true, preferenceEnabled: true))
+        imageView.startRotating()
+        XCTAssertTrue(imageView.isRotating)
+
+        XCTAssertFalse(MenuBarActivityAnimationPolicy.shouldAnimate(taskRunning: true, preferenceEnabled: false))
+        imageView.stopRotating()
+        XCTAssertFalse(imageView.isRotating)
+
+        try appendSession([responseItem(phase: "final")], to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(1.1)
+        XCTAssertFalse(monitor.isTaskRunning(now: currentDate))
+        imageView.stopRotating()
+        XCTAssertFalse(imageView.isRotating)
     }
 
     func testTransitionToFinalThenNextPollIsInactive() throws {
@@ -260,6 +375,10 @@ final class CodexActivityMonitorTests: XCTestCase {
 
     private func responseItem(phase: String) -> String {
         "{\"type\":\"response_item\",\"payload\":{\"phase\":\"\(phase)\"}}"
+    }
+
+    private func responseItem(type: String) -> String {
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"\(type)\"}}"
     }
 
     private struct RolloutFixture {
