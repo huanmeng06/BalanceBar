@@ -18,6 +18,12 @@ struct MenuBarAnimationState: Equatable {
     }
 }
 
+enum MenuBarActivityAnimationPolicy {
+    static func shouldAnimate(taskRunning: Bool, preferenceEnabled: Bool) -> Bool {
+        taskRunning && preferenceEnabled
+    }
+}
+
 final class RotatingTemplateImageView: PassthroughImageView {
     private static let frameCount = 36
     private static let rotationDuration: TimeInterval = 1.15
@@ -26,6 +32,7 @@ final class RotatingTemplateImageView: PassthroughImageView {
     private var rotationTimer: Timer?
     private var animationState = MenuBarAnimationState()
     var onImageChanged: ((NSImage?) -> Void)?
+    var isRotating: Bool { rotationTimer != nil }
 
     func setSourceImage(_ image: NSImage) {
         if sourceImage !== image {
