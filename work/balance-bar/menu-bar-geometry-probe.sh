@@ -27,7 +27,7 @@ awk '
             exit 1
         }
     }
-' "$source_dir/BalanceBar.swift" > "$geometry_source"
+' "$source_dir/Sources/UI/MenuBar/MenuBarGeometry.swift" > "$geometry_source"
 
 {
     printf '%s\n' 'import AppKit'

@@ -424,7 +424,7 @@ private final class DashboardNavigationRowView: NSView {
     }
 }
 
-private final class QuotaProgressView: NSView {
+final class QuotaProgressView: NSView {
     let percentage: Double
 
     init(percentage: Double) {
@@ -457,7 +457,7 @@ private final class QuotaProgressView: NSView {
     }
 }
 
-private final class HoverLinkTextField: NSTextField {
+final class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     private var trackingAreaReference: NSTrackingArea?
     private var pointingCursorIsPushed = false
@@ -583,7 +583,7 @@ private struct DashboardScrollPosition {
     let bottomAnchorViewportY: CGFloat?
 }
 
-private enum DashboardLogging {
+enum DashboardLogging {
     static func number(_ value: CGFloat) -> String {
         String(format: "%.2f", value)
     }
@@ -741,21 +741,8 @@ private func migrateLegacyPreferencesIfNeeded() {
         localDomain: defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
     )
 }
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSTextFieldDelegate {
-    private var statusItem: NSStatusItem!
-    private let statusMenu = NSMenu()
-    private var statusItemAttachmentCheckScheduled = false
-    private var statusItemReanchorAttempts = 0
-    private var isStatusMenuTracking = false
-    private var statusMenuNeedsRebuild = false
-    private let menuBarIconView = RotatingTemplateImageView()
-    private let menuBarIconSlot = PassthroughView()
-    private let menuBarTextStack = MenuBarTextView()
-    private let menuBarContentStack = MenuBarContentView()
-    private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
-    private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
-    private var isMenuBarContentStackConfigured = false
-    private var lastMenuBarIconFrameDiagnostic: String?
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate {
+    private var statusItemController: StatusItemController!
     private let dashboardProviderLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…"))
     private let dashboardAmountLabel = NSTextField(labelWithString: "—")
     private let dashboardQuotaLabel = NSTextField(labelWithString: tr("等待额度信息", "Waiting for quota data"))
@@ -807,9 +794,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     )
     private let codexActivityMonitor = CodexActivityMonitor()
     private let claudeActivityMonitor = ClaudeCodeActivityMonitor()
-    private var codexIconImage: NSImage?
-    private var claudeIconImage: NSImage?
-    private var claudeThinkingAnimator: ClaudeThinkingAnimator?
     private var dashboard: NSWindow?
     private var dashboardMouseMonitor: Any?
     private var dashboardNavigationButtons: [DashboardSection: NSButton] = [:]
@@ -908,6 +892,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         self.officialQuotaClient = officialQuotaClient
         self.openCodexRepository = openCodexRepository
         super.init()
+        statusItemController = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: { [weak self] in
+                    self?.performManualRefresh(source: "menu")
+                },
+                openDashboard: { [weak self] in
+                    self?.openDashboard()
+                },
+                openChatGPT: { [weak self] in
+                    self?.openChatGPT()
+                },
+                openCCSwitch: { [weak self] in
+                    self?.openCCSwitch()
+                },
+                openOpenCodex: { [weak self] in
+                    self?.openOpenCodex()
+                },
+                quit: { NSApp.terminate(nil) },
+                switchProvider: { [weak self] providerID in
+                    self?.switchProvider(providerID)
+                },
+                switchOpenCodexPreference: { [weak self] preference in
+                    self?.performOpenCodexPreferenceSwitch(preference)
+                },
+                openProviderWebsite: { [weak self] in
+                    self?.openProviderWebsite()
+                },
+                openStatusLink: { url in
+                    NSWorkspace.shared.open(url)
+                },
+                iconChanged: { [weak self] image in
+                    guard let self else { return }
+                    self.dashboardMenuPreviewIcon.image = image
+                    self.dashboardMenuPreviewIcon.contentTintColor = .labelColor
+                }
+            )
+        )
+    }
+
+    private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
+        StatusItemController.MenuInput(
+            openCodexCards: openCodexCards,
+            openCodexState: openCodexState?.state,
+            openCodexSwitchInFlight: openCodexSwitchInFlight,
+            choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
+            quickSwitchSummaries: quickSwitchSummariesSnapshot(),
+            activeClient: activeClient,
+            statusLinks: statusLinks,
+            showQuickSwitchMenu: showQuickSwitchMenu,
+            showOpenChatGPTMenu: showOpenChatGPTMenu,
+            showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+            showStatusMenu: showStatusMenu,
+            currentOpenCodexDashboardAvailable: currentOpenCodexDashboardURL() != nil
+        )
+    }
+
+    private func quickSwitchSummariesSnapshot() -> [String: String] {
+        quickSwitchSummaryLock.lock()
+        defer { quickSwitchSummaryLock.unlock() }
+        return quickSwitchSummaries
+    }
+
+    private func makeStatusItemSettings() -> StatusItemController.MenuBarSettings {
+        StatusItemController.MenuBarSettings(
+            showIcon: showMenuBarIcon,
+            showAmount: showMenuBarAmount,
+            showReset: showMenuBarReset,
+            horizontalPadding: menuBarHorizontalPadding,
+            keepMenuOpenAfterRefresh: keepMenuOpenAfterRefresh
+        )
+    }
+
+    private func updateStatusItemActivity() {
+        statusItemController.updateActivity(
+            activeClient: activeClient,
+            codexTaskRunning: isCodexTaskRunning,
+            claudeTaskRunning: isClaudeTaskRunning,
+            animationEnabled: animateCodexActivity
+        )
+    }
+
+    private func updateStatusItem(for snapshot: Snapshot) {
+        statusItemController.update(
+            snapshot: snapshot,
+            refreshDate: refreshDate(for: snapshot),
+            menuInput: makeStatusItemMenuInput(),
+            settings: makeStatusItemSettings()
+        )
+        refreshDashboardMenuBarPage()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -920,8 +993,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         startAppearanceObserver()
         let regularPolicyApplied = NSApp.setActivationPolicy(.regular)
         showDashboard()
-        statusMenu.delegate = self
-        installStatusItem()
+        statusItemController.start(
+            snapshot: snapshot,
+            refreshDate: refreshDate(for: snapshot),
+            menuInput: makeStatusItemMenuInput(),
+            settings: makeStatusItemSettings()
+        )
+        updateStatusItemActivity()
         startDatabaseWatchers()
         startWorkspaceActivationObserver()
         let version = Bundle.main.object(
@@ -932,7 +1010,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             category: "lifecycle"
         )
         SwitchLog.write(
-            "status chain startup; activation_policy=\(String(describing: NSApp.activationPolicy())); regular_applied=\(regularPolicyApplied); status_visible=\(statusItem.isVisible); menu_bound=\(statusItem.menu === statusMenu); menu_items=\(statusMenu.items.count)",
+            "status chain startup; activation_policy=\(String(describing: NSApp.activationPolicy())); regular_applied=\(regularPolicyApplied); \(statusItemController.startupDiagnostic)",
             category: "ui.status-item"
         )
         SwitchLog.write(
@@ -959,6 +1037,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         timer?.invalidate()
         activityTimer?.invalidate()
         statusLinksScrollAnchorTimer?.invalidate()
+        statusItemController.teardown()
         if let dashboardMouseMonitor {
             NSEvent.removeMonitor(dashboardMouseMonitor)
         }
@@ -985,7 +1064,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         DispatchQueue.main.async {
             NSApp.setActivationPolicy(.accessory)
             SwitchLog.write(
-                "dashboard closed; activation_policy=\(String(describing: NSApp.activationPolicy())); status_visible=\(self.statusItem.isVisible)",
+                "dashboard closed; activation_policy=\(String(describing: NSApp.activationPolicy())); status_visible=\(self.statusItemController.isVisible)",
                 category: "ui.status-item"
             )
         }
@@ -995,36 +1074,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard let window = notification.object as? NSWindow, window === dashboard else { return }
         DispatchQueue.main.async { [weak self] in
             self?.clampDashboardScrollViewBounds()
-        }
-    }
-
-    func menuWillOpen(_ menu: NSMenu) {
-        guard menu === statusMenu else { return }
-        isStatusMenuTracking = true
-    }
-
-    func menuDidClose(_ menu: NSMenu) {
-        guard menu === statusMenu else { return }
-        isStatusMenuTracking = false
-        guard statusMenuNeedsRebuild else { return }
-        statusMenuNeedsRebuild = false
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.isStatusMenuTracking else { return }
-            let refreshDate = self.refreshDate(for: self.snapshot)
-            self.rebuildStatusMenu(for: self.snapshot, refreshDate: refreshDate)
-        }
-    }
-
-    @objc private func manualRefresh() {
-        performManualRefresh(source: "menu")
-
-        // A native NSMenu closes after invoking an item's action. Re-open the
-        // same status-item menu on the next run-loop turn so manual refresh
-        // keeps the balance panel visible while the new data is fetched.
-        if keepMenuOpenAfterRefresh {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                self?.statusItem.button?.performClick(nil)
-            }
         }
     }
 
@@ -1041,13 +1090,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         refreshQuickSwitchSummaries(force: true)
     }
 
-    @objc private func switchProvider(_ sender: NSMenuItem) {
-        guard let providerID = sender.representedObject as? String else { return }
+    private func switchProvider(_ providerID: String) {
         let appType = activeClient.appType
-        // The visible menu title also contains the cached balance. Keep the
+        // The menu-bar controller passes the stable Provider ID. Keep the
         // actual Provider name separate for logs and CC Switch synchronization.
         let providerName = ccSwitchRepository.loadChoices(appType: appType)
-            .first(where: { $0.id == providerID })?.name ?? sender.title
+            .first(where: { $0.id == providerID })?.name ?? providerID
         monitorQueue.async { [weak self] in
             guard let self else { return }
             let current = ccSwitchRepository.loadChoices(appType: appType)
@@ -1139,11 +1187,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 )))
             }
         }
-    }
-
-    @objc private func switchOpenCodexPreference(_ sender: NSMenuItem) {
-        guard let preference = sender.representedObject as? OpenCodexPreference else { return }
-        performOpenCodexPreferenceSwitch(preference)
     }
 
     private func performOpenCodexPreferenceSwitch(_ preference: OpenCodexPreference) {
@@ -1407,8 +1450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSWorkspace.shared.open(activeProviderWebsite)
     }
 
-    @objc private func openStatusLink(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
+    private func openStatusLink(_ url: URL) {
         NSWorkspace.shared.open(url)
     }
 
@@ -1679,11 +1721,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Do not rebuild the dashboard while a native SwiftUI TextField is
         // editing. The binding already contains the new value; rebuilding
         // here would discard focus, selection, and the insertion point.
-        if !isStatusMenuTracking {
-            rebuildStatusMenu(for: snapshot, refreshDate: refreshDate(for: snapshot))
-        } else {
-            statusMenuNeedsRebuild = true
-        }
+        statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
     private func addStatusLink() {
@@ -1844,9 +1882,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func dashboardSwitchProvider(_ sender: NSButton) {
         guard let providerID = sender.identifier?.rawValue else { return }
-        let item = NSMenuItem(title: sender.toolTip ?? "", action: nil, keyEquivalent: "")
-        item.representedObject = providerID
-        switchProvider(item)
+        switchProvider(providerID)
     }
 
     @objc private func dashboardProviderSearchChanged(_ sender: NSSearchField) {
@@ -3551,7 +3587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.11.9"
+        ) as? String ?? "0.11.10"
         let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
@@ -3875,7 +3911,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         dashboardMenuPreviewCapsuleTrailingConstraint?.constant =
             menuBarHorizontalPadding + dashboardMenuPreviewChromeInset
-        dashboardMenuPreviewIcon.image = menuBarIconView.image
+        dashboardMenuPreviewIcon.image = statusItemController.iconImage
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
         dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
         dashboardMenuPreviewText.layer?.setAffineTransform(.identity)
@@ -4023,150 +4059,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return root
     }
 
-    private func configureStatusItem() {
-        guard let button = statusItem.button else { return }
-        statusItem.isVisible = true
-        statusItem.length = 56
-        button.title = ""
-        button.attributedTitle = NSAttributedString(string: "")
-        button.image = nil
-        button.toolTip = "BalanceBar"
-
-        if let iconURL = Bundle.main.url(forResource: "CodexIcon", withExtension: "svg"),
-           let icon = NSImage(contentsOf: iconURL) {
-            icon.size = NSSize(width: 16, height: 16)
-            icon.isTemplate = true
-            codexIconImage = icon
-            menuBarIconView.setSourceImage(icon)
-        }
-        if let iconURL = Bundle.main.url(forResource: "Claude", withExtension: "svg"),
-           let icon = NSImage(contentsOf: iconURL) {
-            icon.size = NSSize(width: 16, height: 16)
-            icon.isTemplate = true
-            claudeIconImage = icon
-            if let thinkingURL = Bundle.main.url(
-                forResource: "ClaudeThinking",
-                withExtension: "svg"
-            ) {
-                claudeThinkingAnimator = ClaudeThinkingAnimator(
-                    imageView: menuBarIconView,
-                    staticImage: icon,
-                    animatedSVGURL: thinkingURL
-                )
-            }
-        }
-        menuBarIconView.onImageChanged = { [weak self] image in
-            guard let self else { return }
-            self.menuBarIconView.image = image
-            self.layoutStatusItem(for: self.snapshot)
-            if self.dashboard?.isVisible == true, self.dashboardSection == .menuBar {
-                self.dashboardMenuPreviewIcon.image = image
-                self.dashboardMenuPreviewIcon.contentTintColor = .labelColor
-            }
-        }
-        dashboardMenuPreviewIcon.image = menuBarIconView.image
-        dashboardMenuPreviewIcon.contentTintColor = .labelColor
-        menuBarIconView.imageScaling = .scaleProportionallyDown
-        menuBarIconView.contentTintColor = .labelColor
-        menuBarPrimaryLabel.font = MenuBarLayout.primaryFont
-        menuBarPrimaryLabel.textColor = .labelColor
-        menuBarPrimaryLabel.lineBreakMode = .byClipping
-        menuBarSecondaryLabel.font = MenuBarLayout.secondaryFont
-        menuBarSecondaryLabel.textColor = .labelColor
-        menuBarSecondaryLabel.lineBreakMode = .byClipping
-        configureMenuBarContentStackIfNeeded()
-        button.addSubview(menuBarContentStack)
-        layoutStatusItem(for: snapshot)
-        SwitchLog.write(
-            "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
-            category: "ui.status-item"
-        )
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self, let button = self.statusItem.button else { return }
-            let statusWindow = button.window
-            let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
-            let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
-            SwitchLog.write(
-                "status item presentation; visible=\(self.statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); title=\(button.title); attributed_title=\(button.attributedTitle.string); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
-                category: "ui.status-item"
-            )
-        }
-        scheduleStatusItemAttachmentCheck(reason: "initial registration")
-    }
-
-    private func installStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(
-            withLength: NSStatusItem.variableLength
-        )
-        statusItem.menu = statusMenu
-        configureStatusItem()
-    }
-
-    private func scheduleStatusItemAttachmentCheck(reason: String) {
-        guard !statusItemAttachmentCheckScheduled else { return }
-        statusItemAttachmentCheckScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            guard let self else { return }
-            self.statusItemAttachmentCheckScheduled = false
-            self.verifyStatusItemAttachment(reason: reason)
-        }
-    }
-
-    private func verifyStatusItemAttachment(reason: String) {
-        guard let item = statusItem, let button = item.button else {
-            SwitchLog.write(
-                "status item attachment failed; reason=missing item or button",
-                level: .error,
-                category: "ui.status-item"
-            )
-            return
-        }
-
-        let window = button.window
-        let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let screen = window?.screen
-        let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let attached = window.map { window in
-            guard let screen else { return false }
-            let frame = window.frame
-            let screenFrame = screen.frame
-            return window.isVisible
-                && frame.minX >= screenFrame.minX
-                && frame.maxX <= screenFrame.maxX
-                && frame.maxY >= screenFrame.maxY - 4
-                && frame.minY >= screenFrame.maxY - 48
-        } ?? false
-
-        SwitchLog.write(
-            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
-            level: attached ? .debug : .warning,
-            category: "ui.status-item",
-            throttleKey: "status-item-attachment-\(reason)",
-            minimumInterval: 0.5
-        )
-
-        guard !attached else {
-            statusItemReanchorAttempts = 0
-            return
-        }
-        guard statusItemReanchorAttempts < 3 else {
-            SwitchLog.write(
-                "status item attachment unresolved after retries; reason=\(reason); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
-                level: .error,
-                category: "ui.status-item"
-            )
-            return
-        }
-
-        statusItemReanchorAttempts += 1
-        let desiredLength = max(CGFloat(30), item.length)
-        NSStatusBar.system.removeStatusItem(item)
-        statusItem = NSStatusBar.system.statusItem(withLength: desiredLength)
-        statusItem.menu = statusMenu
-        configureStatusItem()
-        scheduleStatusItemAttachmentCheck(reason: "re-registered-\(statusItemReanchorAttempts)-\(reason)")
-    }
-
     private func configureRefreshTimers() {
         timer?.invalidate()
         activityTimer?.invalidate()
@@ -4286,7 +4178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             updateActiveUsageRefresh(running: running, wasRunning: wasRunning)
         }
         guard force || stateChanged else { return }
-        updateActivityIcon()
+        updateStatusItemActivity()
     }
 
     private func setClaudeTaskRunning(_ running: Bool, force: Bool = false) {
@@ -4300,7 +4192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             updateActiveUsageRefresh(running: running, wasRunning: wasRunning)
         }
         guard force || stateChanged else { return }
-        updateActivityIcon()
+        updateStatusItemActivity()
     }
 
     private func updateActiveUsageRefresh(running: Bool, wasRunning: Bool) {
@@ -4346,7 +4238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
-        updateActivityIcon()
+        updateStatusItemActivity()
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
@@ -4359,37 +4251,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         refreshQuickSwitchSummaries(force: true)
         if dashboard != nil {
             showDashboardSection(dashboardSection)
-        }
-    }
-
-    private func updateActivityIcon() {
-        switch activeClient {
-        case .codex:
-            claudeThinkingAnimator?.stop()
-            if let codexIconImage {
-                menuBarIconView.setSourceImage(codexIconImage)
-            }
-            if MenuBarActivityAnimationPolicy.shouldAnimate(
-                taskRunning: isCodexTaskRunning,
-                preferenceEnabled: animateCodexActivity
-            ) {
-                menuBarIconView.startRotating()
-            } else {
-                menuBarIconView.stopRotating()
-            }
-        case .claude:
-            menuBarIconView.stopRotating()
-            if let claudeIconImage {
-                menuBarIconView.setSourceImage(claudeIconImage)
-            }
-            if MenuBarActivityAnimationPolicy.shouldAnimate(
-                taskRunning: isClaudeTaskRunning,
-                preferenceEnabled: animateCodexActivity
-            ) {
-                claudeThinkingAnimator?.start()
-            } else {
-                claudeThinkingAnimator?.stop()
-            }
         }
     }
 
@@ -4419,152 +4280,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if knownIdentifiers.contains(identifier) { return true }
         return ["terminal", "iterm", "warp", "ghostty", "kitty", "alacritty", "wezterm"]
             .contains(where: { name.contains($0) })
-    }
-
-    private func configureMenuBarContentStackIfNeeded() {
-        guard !isMenuBarContentStackConfigured else { return }
-        isMenuBarContentStackConfigured = true
-
-        menuBarIconView.translatesAutoresizingMaskIntoConstraints = true
-
-        menuBarIconSlot.translatesAutoresizingMaskIntoConstraints = true
-        menuBarIconSlot.addSubview(menuBarIconView)
-        menuBarTextStack.addSubview(menuBarPrimaryLabel)
-        menuBarTextStack.addSubview(menuBarSecondaryLabel)
-        menuBarTextStack.wantsLayer = true
-        menuBarTextStack.layer?.setAffineTransform(.identity)
-        menuBarContentStack.addSubview(menuBarIconSlot)
-        menuBarContentStack.addSubview(menuBarTextStack)
-        menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
-    }
-
-    private func logMenuBarIconFrames(
-        snapshot: Snapshot,
-        button: NSStatusBarButton,
-        hasSecondary: Bool,
-        iconYOffset: CGFloat
-    ) {
-        guard showMenuBarIcon else { return }
-        let kind: String
-        switch snapshot.kind {
-        case .placeholder: kind = "placeholder"
-        case .official: kind = "official"
-        case .balance: kind = "balance"
-        case .openCodex: kind = "open-codex"
-        case .error: kind = "error"
-        }
-        let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
-        let slotInButton = menuBarIconSlot.convert(menuBarIconSlot.bounds, to: button)
-        let iconInButton = menuBarIconView.convert(menuBarIconView.bounds, to: button)
-        let iconInWindow = menuBarIconView.convert(menuBarIconView.bounds, to: nil)
-        let iconInScreen = button.window?.convertToScreen(iconInWindow)
-        let diagnostic = "menu bar icon frames; kind=\(kind); show_amount=\(showMenuBarAmount); has_secondary=\(hasSecondary); offset=\(DashboardLogging.number(iconYOffset)); flipped=button:\(button.isFlipped),stack:\(menuBarContentStack.isFlipped),slot:\(menuBarIconSlot.isFlipped),icon:\(menuBarIconView.isFlipped); button=\(DashboardLogging.rect(button.bounds)); stack_local=\(DashboardLogging.rect(menuBarContentStack.frame)); stack_button=\(DashboardLogging.rect(stackInButton)); slot_local=\(DashboardLogging.rect(menuBarIconSlot.frame)); slot_button=\(DashboardLogging.rect(slotInButton)); icon_local=\(DashboardLogging.rect(menuBarIconView.frame)); icon_button=\(DashboardLogging.rect(iconInButton)); icon_window=\(DashboardLogging.rect(iconInWindow)); icon_screen=\(iconInScreen.map { DashboardLogging.rect($0) } ?? "none"); center_button=\(DashboardLogging.number(iconInButton.midY)); center_window=\(DashboardLogging.number(iconInWindow.midY))"
-        guard diagnostic != lastMenuBarIconFrameDiagnostic else { return }
-        lastMenuBarIconFrameDiagnostic = diagnostic
-        SwitchLog.write(diagnostic, level: .debug, category: "ui.geometry")
-    }
-
-    private func layoutStatusItem(for snapshot: Snapshot) {
-        let effectiveSnapshot = menuBarSnapshot(for: snapshot)
-        guard let button = statusItem.button else { return }
-        let reservedSecondary = showMenuBarAmount && effectiveSnapshot.kind == .official
-            ? effectiveSnapshot.menuBarSecondary
-            : ""
-        let hasSecondary = showMenuBarAmount
-            && showMenuBarReset
-            && !reservedSecondary.isEmpty
-
-        menuBarPrimaryLabel.stringValue = showMenuBarAmount ? effectiveSnapshot.menuBarPrimary : ""
-        menuBarSecondaryLabel.stringValue = reservedSecondary
-        menuBarIconSlot.isHidden = !showMenuBarIcon
-        menuBarTextStack.isHidden = !showMenuBarAmount
-        let geometry = MenuBarLayout.geometry(
-            primarySize: menuBarPrimaryLabel.intrinsicContentSize,
-            secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
-            showIcon: showMenuBarIcon,
-            showAmount: showMenuBarAmount,
-            hasSecondary: hasSecondary,
-            isBalance: effectiveSnapshot.kind == .balance,
-        )
-        MenuBarLayout.applyTextLayout(
-            container: menuBarTextStack,
-            primary: menuBarPrimaryLabel,
-            secondary: menuBarSecondaryLabel,
-            geometry: geometry,
-            showAmount: showMenuBarAmount,
-            hasSecondary: hasSecondary
-        )
-
-        statusItem.length = max(
-            30,
-            ceil(geometry.contentWidth + (menuBarHorizontalPadding * 2))
-        )
-        button.layoutSubtreeIfNeeded()
-
-        let buttonWidth = button.bounds.width
-        let buttonHeight = button.bounds.height
-        let apiIconYOffset = showMenuBarIcon && showMenuBarAmount
-            ? MenuBarLayout.singleLineIconYOffset
-            : 0
-        let iconYOffset: CGFloat
-        if effectiveSnapshot.kind == .official, showMenuBarIcon {
-            let apiGeometry = MenuBarLayout.geometry(
-                primarySize: menuBarPrimaryLabel.intrinsicContentSize,
-                secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
-                showIcon: showMenuBarIcon,
-                showAmount: showMenuBarAmount,
-                hasSecondary: false,
-                isBalance: true,
-            )
-            // Keep the API frame fixed and solve only the official icon's
-            // local Y from the complete stack -> slot -> view coordinate path.
-            iconYOffset = geometry.iconViewYOffset(
-                alignedTo: apiGeometry,
-                buttonHeight: buttonHeight,
-                referenceIconViewYOffset: apiIconYOffset
-            )
-        } else if effectiveSnapshot.kind == .balance {
-            iconYOffset = apiIconYOffset
-        } else {
-            iconYOffset = 0
-        }
-        let frames = MenuBarLayout.frames(
-            buttonSize: NSSize(width: buttonWidth, height: buttonHeight),
-            geometry: geometry,
-            iconViewYOffset: iconYOffset
-        )
-        menuBarContentStack.frame = frames.content
-        menuBarIconSlot.frame = frames.iconSlot
-        menuBarIconView.frame = frames.icon
-        menuBarTextStack.frame = frames.text
-
-        // The optical adjustment is always applied from a clean transform
-        // after the current snapshot's frames have been assigned.
-        menuBarTextStack.layer?.setAffineTransform(.identity)
-        if effectiveSnapshot.kind == .balance,
-           showMenuBarIcon,
-           showMenuBarAmount {
-            menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -MenuBarLayout.singleLineTextYOffset
-            ))
-        }
-        logMenuBarIconFrames(
-            snapshot: effectiveSnapshot,
-            button: button,
-            hasSecondary: hasSecondary,
-            iconYOffset: iconYOffset
-        )
-        button.toolTip = effectiveSnapshot.menuBarToolTip
-        button.isHidden = false
-        button.isEnabled = true
-        statusItem.isVisible = true
-    }
-
-    private func updateStatusItem(for snapshot: Snapshot) {
-        layoutStatusItem(for: snapshot)
-        scheduleStatusItemAttachmentCheck(reason: "snapshot layout")
-        refreshDashboardMenuBarPage()
     }
 
     private func snapshotKindDiagnosticName(_ kind: Snapshot.Kind) -> String {
@@ -5396,14 +5111,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             minimumInterval: 1
         )
         updateStatusItem(for: snapshot)
-        if isStatusMenuTracking {
-            statusMenuNeedsRebuild = true
-        } else {
-            rebuildStatusMenu(
-                for: snapshot,
-                refreshDate: refreshDate(for: snapshot)
-            )
-        }
     }
 
     private func updateOpenCodexCard(
@@ -5684,44 +5391,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let names = Dictionary(uniqueKeysWithValues: ccSwitchRepository.loadChoices(
-                appType: self.activeClient.appType
-            ).map { ($0.id, $0.name) })
-            if self.isStatusMenuTracking {
-                self.statusMenuNeedsRebuild = true
-            } else if let submenu = self.statusMenu.items.first(where: {
-                $0.title == tr("快速切换", "Quick Switch")
-            })?.submenu {
-                for item in submenu.items {
-                    guard let id = item.representedObject as? String, let name = names[id] else { continue }
-                    self.applyQuickSwitchTitle(to: item, providerID: id, providerName: name)
-                }
-            }
+            self.statusItemController.updateMenu(input: self.makeStatusItemMenuInput())
             self.rebuildDashboardProviderList()
             self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
         }
-    }
-
-    private func quickSwitchTitle(providerID: String, providerName: String) -> String {
-        quickSwitchSummaryLock.lock()
-        let summary = quickSwitchSummaries[providerID]
-        quickSwitchSummaryLock.unlock()
-        return "\(providerName)\t\(summary ?? "…")"
-    }
-
-    private func applyQuickSwitchTitle(to item: NSMenuItem, providerID: String, providerName: String) {
-        let title = quickSwitchTitle(providerID: providerID, providerName: providerName)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: 170)]
-        paragraph.defaultTabInterval = 170
-        item.title = title
-        item.attributedTitle = NSAttributedString(
-            string: title,
-            attributes: [
-                .font: NSFont.menuFont(ofSize: 0),
-                .paragraphStyle: paragraph
-            ]
-        )
     }
 
     private static func formatBalanceSummary(_ amount: Double, unit: String) -> String {
@@ -6038,15 +5711,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         DispatchQueue.main.async {
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
-            self.updateStatusItem(for: next)
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
+            self.updateStatusItem(for: next)
             let refreshDate = self.refreshDate(for: next)
             self.updateDashboard(for: next, refreshDate: refreshDate)
-            if self.isStatusMenuTracking {
-                self.statusMenuNeedsRebuild = true
-            } else {
-                self.rebuildStatusMenu(for: next, refreshDate: refreshDate)
-            }
         }
     }
 
@@ -6055,462 +5723,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return snapshot.date
         }
         return lastSuccessfulRefresh ?? snapshot.date
-    }
-
-    private func rebuildStatusMenu(for snapshot: Snapshot, refreshDate: Date?) {
-        statusMenu.removeAllItems()
-        if snapshot.kind == .openCodex {
-            if openCodexCards.isEmpty {
-                statusMenu.addItem(makeOpenCodexEmptyMenuItem())
-            } else {
-                for (index, card) in openCodexCards.enumerated() {
-                    statusMenu.addItem(makeOpenCodexCardMenuItem(card))
-                    if index < openCodexCards.count - 1 {
-                        statusMenu.addItem(.separator())
-                    }
-                }
-            }
-        } else {
-            statusMenu.addItem(makeOverviewMenuItem(for: snapshot, refreshDate: refreshDate))
-        }
-        statusMenu.addItem(.separator())
-        if showQuickSwitchMenu {
-            statusMenu.addItem(makeQuickSwitchMenuItem())
-        }
-        statusMenu.addItem(
-            withTitle: tr("立即刷新", "Refresh Now"),
-            action: #selector(manualRefresh),
-            keyEquivalent: "r"
-        ).target = self
-        statusMenu.addItem(.separator())
-        statusMenu.addItem(
-            withTitle: tr("打开主窗口", "Open Main Window"),
-            action: #selector(openDashboard),
-            keyEquivalent: ""
-        ).target = self
-        if showOpenChatGPTMenu {
-            statusMenu.addItem(
-                withTitle: tr("打开 ChatGPT", "Open ChatGPT"),
-                action: #selector(openChatGPT),
-                keyEquivalent: ""
-            ).target = self
-        }
-        if showOpenCCSwitchMenu {
-            statusMenu.addItem(
-                withTitle: tr("打开 CC Switch", "Open CC Switch"),
-                action: #selector(openCCSwitch),
-                keyEquivalent: ""
-            ).target = self
-            if currentOpenCodexDashboardURL() != nil {
-                statusMenu.addItem(
-                    withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
-                    action: #selector(openOpenCodex),
-                    keyEquivalent: ""
-                ).target = self
-            }
-        }
-        if showStatusMenu {
-            statusMenu.addItem(makeStatusLinksMenuItem())
-        }
-        statusMenu.addItem(.separator())
-        statusMenu.addItem(
-            withTitle: tr("退出 BalanceBar", "Quit BalanceBar"),
-            action: #selector(quit),
-            keyEquivalent: "q"
-        ).target = self
-        let menuTitles = statusMenu.items.map { item in
-            item.title.isEmpty ? "<custom>" : item.title
-        }.joined(separator: "|")
-        let statusWindow = statusItem.button?.window
-        let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
-        let buttonTitle = statusItem.button?.title ?? ""
-        SwitchLog.write(
-            "status menu rendered; item_count=\(statusMenu.items.count); items=\(menuTitles); status_visible=\(statusItem.isVisible); button_window=\(statusWindow != nil); window_visible=\(statusWindow?.isVisible ?? false); image=\(statusItem.button?.image != nil); title=\(buttonTitle); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
-            level: .debug,
-            category: "ui.status-menu",
-            throttleKey: "status-menu-render",
-            minimumInterval: 1
-        )
-    }
-
-    private func makeStatusLinksMenuItem() -> NSMenuItem {
-        let parent = NSMenuItem(title: tr("查看状态", "View Status"), action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: tr("查看状态", "View Status"))
-        for link in statusLinks {
-            let title = link.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let address = link.url.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !title.isEmpty, let url = URL(string: address),
-                  let scheme = url.scheme?.lowercased(),
-                  ["http", "https"].contains(scheme) else { continue }
-            let item = NSMenuItem(
-                title: title,
-                action: #selector(openStatusLink(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = url
-            submenu.addItem(item)
-        }
-        if submenu.items.isEmpty {
-            let empty = NSMenuItem(
-                title: tr("尚未添加状态链接", "No status links configured"),
-                action: nil,
-                keyEquivalent: ""
-            )
-            empty.isEnabled = false
-            submenu.addItem(empty)
-        }
-        parent.submenu = submenu
-        return parent
-    }
-
-    private func makeQuickSwitchMenuItem() -> NSMenuItem {
-        let parent = NSMenuItem(title: tr("快速切换", "Quick Switch"), action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: tr("快速切换", "Quick Switch"))
-        submenu.minimumWidth = 210
-        let choices = ccSwitchRepository.loadChoices(appType: activeClient.appType)
-        let choiceSummary = choices.map {
-            "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
-        }.joined(separator: "|")
-        let menuChoices = QuickSwitchMenuModel.entries(from: choices)
-        if menuChoices.isEmpty {
-            let empty = NSMenuItem(title: tr("未找到 Codex 供应商", "No Codex Provider Found"), action: nil, keyEquivalent: "")
-            empty.isEnabled = false
-            submenu.addItem(empty)
-        } else {
-            for choice in menuChoices {
-                let item = NSMenuItem(
-                    title: "",
-                    action: #selector(switchProvider(_:)),
-                    keyEquivalent: ""
-                )
-                item.target = self
-                item.representedObject = choice.id
-                item.state = choice.isCurrent ? .on : .off
-                applyQuickSwitchTitle(to: item, providerID: choice.id, providerName: choice.name)
-                submenu.addItem(item)
-            }
-        }
-
-        SwitchLog.write(
-            "quick-switch menu built; app_type=\(activeClient.appType); choice_count=\(choices.count); submenu_item_count=\(submenu.items.count); choices=\(choiceSummary.isEmpty ? "<empty>" : choiceSummary); empty_state=\(choices.isEmpty)",
-            level: .debug,
-            category: "provider.menu",
-            throttleKey: "quick-switch-menu-\(activeClient.appType)",
-            minimumInterval: 1
-        )
-        parent.submenu = submenu
-        return parent
-    }
-
-    private func makeOverviewMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
-        if snapshot.kind == .error {
-            // The error card has its own layout: the full message wraps below
-            // the title row and the card height grows to fit it. The top-right
-            // refresh time is preserved in the same format as the other cards.
-            return makeOverviewErrorMenuItem(for: snapshot, refreshDate: refreshDate)
-        }
-        let item = NSMenuItem()
-        // The overview is deliberately a static card, not a selectable menu
-        // command. Custom labels keep it bright while the item stays disabled.
-        item.isEnabled = snapshot.kind == .balance && snapshot.websiteURL != nil
-        let isBalance = snapshot.kind == .balance
-        let layout = OpenCodexCardLayout.frames(
-            for: isBalance ? .balance : .quota,
-            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
-        )
-        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
-
-        let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
-        provider.frame = layout.title
-
-        if snapshot.kind == .official || snapshot.kind == .balance {
-            let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
-            let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
-            refreshTime.textColor = .secondaryLabelColor
-            refreshTime.alignment = .right
-            refreshTime.frame = layout.refreshTime
-            view.addSubview(refreshTime)
-        }
-
-        if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
-            let progress = QuotaProgressView(percentage: percentage)
-            // Keep the header clean. The progress bar belongs below the two
-            // quota-detail rows, in the otherwise empty space above actions.
-            progress.frame = progressFrame
-            view.addSubview(progress)
-        }
-
-        let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: .systemFont(ofSize: 13, weight: .medium))
-        let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-        amount.alignment = .right
-
-        if isBalance {
-            // A third-party balance has no percentage for a progress bar.
-            // Align the number with these two compact text rows instead.
-            // Preserve the previous spacing above these rows. Only the empty
-            // space below the link is reduced by the shorter card height.
-            quotaDetail.frame = layout.quotaDetail
-            amount.frame = layout.amount
-
-            // Center the shared link row between the balance row and divider.
-            let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
-            linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = layout.linkPrefix ?? .zero
-            view.addSubview(linkPrefix)
-
-            if snapshot.websiteURL != nil, let linkFrame = layout.link {
-                let link = HoverLinkTextField(text: snapshot.provider)
-                link.onActivate = { [weak self] in self?.openProviderWebsite() }
-                // Match the prefix label's exact baseline and line box.
-                link.frame = linkFrame
-                view.addSubview(link)
-            }
-        } else {
-            // The following two rows form the left half of the quota display;
-            // the amount spans both on right.
-            quotaDetail.frame = layout.quotaDetail
-            let reset = makeOverviewLabel(snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter), font: .systemFont(ofSize: 13, weight: .regular))
-            reset.textColor = .secondaryLabelColor
-            reset.frame = layout.reset ?? .zero
-            // Visually center the large percentage across the combined height
-            // of the two left-hand rows (equivalent to merged-cell centering).
-            amount.frame = layout.amount
-            view.addSubview(reset)
-        }
-
-        [provider, quotaDetail, amount].forEach(view.addSubview)
-        item.view = view
-        return item
-    }
-
-    private func makeOpenCodexEmptyMenuItem() -> NSMenuItem {
-        let item = NSMenuItem()
-        item.isEnabled = false
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 68))
-        let title = makeOverviewLabel(
-            tr("OpenCodex", "OpenCodex"),
-            font: .systemFont(ofSize: 15, weight: .semibold)
-        )
-        title.frame = NSRect(x: 14, y: 38, width: 220, height: 20)
-        let status: String
-        if let state = openCodexState?.state, !state.managementAvailable {
-            status = tr(
-                "OpenCodex 管理接口不可用",
-                "OpenCodex management API is unavailable"
-            )
-        } else if openCodexState?.state.preferenceDataAvailable == false {
-            status = tr(
-                "暂未读取到 OpenCodex 精选模型",
-                "OpenCodex chosen models are not available yet"
-            )
-        } else {
-            status = tr(
-                "没有配置 OpenCodex 精选模型",
-                "No OpenCodex chosen models are configured"
-            )
-        }
-        let detail = makeOverviewLabel(status, font: .systemFont(ofSize: 12))
-        detail.textColor = .secondaryLabelColor
-        detail.frame = NSRect(x: 14, y: 14, width: 312, height: 18)
-        [title, detail].forEach(view.addSubview)
-        item.view = view
-        return item
-    }
-
-    private func makeOpenCodexCardMenuItem(_ card: OpenCodexModelCard) -> NSMenuItem {
-        let item = NSMenuItem()
-        let category = card.data.category
-        let layout = OpenCodexCardLayout.frames(
-            for: category,
-            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
-        )
-        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
-
-        let titleText = OpenCodexCardPresentation.identity(for: card)
-            + (card.isCurrent ? tr(" · 当前", " · Current") : "")
-        let provider = makeOverviewLabel(
-            titleText,
-            font: .systemFont(ofSize: 15, weight: .semibold)
-        )
-        provider.frame = layout.title
-
-        let updatedAt: Date?
-        switch card.data {
-        case .official(_, _, _, let date), .balance(_, _, _, let date):
-            updatedAt = date
-        case .loading, .unavailable:
-            updatedAt = nil
-        }
-        let refreshTime = makeOverviewLabel(
-            updatedAt.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--",
-            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        )
-        refreshTime.textColor = .secondaryLabelColor
-        refreshTime.alignment = .right
-        refreshTime.frame = layout.refreshTime
-
-        let primary: NSTextField
-        let detail: NSTextField
-        let secondary: NSTextField
-        var progress: QuotaProgressView?
-        var websiteLink: HoverLinkTextField?
-
-        switch card.data {
-        case .official(let remaining, let label, let reset, _):
-            progress = QuotaProgressView(percentage: remaining)
-            progress?.frame = layout.progress ?? .zero
-            primary = makeOverviewLabel(
-                "\(Int(remaining))%",
-                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
-            )
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeOverviewLabel(
-                label,
-                font: .systemFont(ofSize: 13, weight: .medium)
-            )
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(
-                reset.map { tr("重置：\($0)", "Reset: \($0)") }
-                    ?? tr("重置时间不可用", "Reset time unavailable"),
-                font: .systemFont(ofSize: 13, weight: .regular)
-            )
-            secondary.textColor = .secondaryLabelColor
-            secondary.frame = layout.reset ?? .zero
-        case .balance(let amount, let unit, let websiteURL, _):
-            primary = makeOverviewLabel(
-                Self.formatBalanceSummary(amount, unit: unit),
-                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
-            )
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeOverviewLabel(
-                tr("剩余额度", "Remaining Balance"),
-                font: .systemFont(ofSize: 13, weight: .medium)
-            )
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(
-                tr("官方链接：", "Official Link:"),
-                font: .systemFont(ofSize: 12, weight: .regular)
-            )
-            secondary.textColor = .secondaryLabelColor
-            secondary.frame = layout.linkPrefix ?? .zero
-            if let websiteURL, let linkFrame = layout.link {
-                let link = HoverLinkTextField(text: card.provider)
-                link.frame = linkFrame
-                link.onActivate = { NSWorkspace.shared.open(websiteURL) }
-                websiteLink = link
-            }
-        case .loading:
-            primary = makeOverviewLabel(
-                "—",
-                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
-            )
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeOverviewLabel(
-                category == .quota
-                    ? tr("正在读取额度…", "Reading quota…")
-                    : tr("正在读取余额…", "Reading balance…"),
-                font: .systemFont(ofSize: 13, weight: .medium)
-            )
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(
-                tr("尚未获得真实数据", "No live data received yet"),
-                font: .systemFont(ofSize: 13, weight: .regular)
-            )
-            secondary.textColor = .secondaryLabelColor
-            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
-        case .unavailable(_, let reason):
-            primary = makeOverviewLabel(
-                "—",
-                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
-            )
-            primary.alignment = .right
-            primary.frame = layout.amount
-            detail = makeOverviewLabel(
-                category.unavailableTitle,
-                font: .systemFont(ofSize: 13, weight: .medium)
-            )
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(
-                reason,
-                font: .systemFont(ofSize: 12, weight: .regular)
-            )
-            secondary.textColor = .secondaryLabelColor
-            secondary.lineBreakMode = .byTruncatingTail
-            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
-        }
-
-        [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
-        if let progress { view.addSubview(progress) }
-        if let websiteLink { view.addSubview(websiteLink) }
-
-        let preference = openCodexState?.state.preferences.first {
-            $0.selector == card.selector
-        }
-        item.target = self
-        item.action = #selector(switchOpenCodexPreference(_:))
-        item.representedObject = preference
-        item.state = card.isCurrent ? .on : .off
-        item.isEnabled = preference != nil
-            && openCodexState?.state.managementAvailable == true
-            && !openCodexSwitchInFlight
-        item.view = view
-        return item
-    }
-
-    private func makeOverviewErrorMenuItem(for snapshot: Snapshot, refreshDate: Date?) -> NSMenuItem {
-        let item = NSMenuItem()
-        // Error cards are informational and stay non-interactive.
-        item.isEnabled = false
-        let message = snapshot.overviewReset(refreshDate: nil, formatter: Self.timeFormatter)
-        let frames = ErrorCardLayout.errorFrames(for: message)
-        let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
-
-        let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
-        provider.frame = frames.title
-        view.addSubview(provider)
-
-        // Keep the standard top-right refresh time (same format and position
-        // as the official/balance cards) so the error card still shows when
-        // it was last refreshed.
-        let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
-        let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
-            timeText,
-            showsCachedBalance: snapshot.hasCachedBalance
-        )
-        refreshTime.frame = frames.refreshTime
-        view.addSubview(refreshTime)
-
-        let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: ErrorCardLayout.quotaFont)
-        quotaDetail.frame = frames.quotaDetail
-        view.addSubview(quotaDetail)
-
-        let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: ErrorCardLayout.amountFont)
-        amount.alignment = .right
-        amount.frame = frames.amount
-        view.addSubview(amount)
-
-        let detail = ErrorCardLayout.makeDetailLabel(
-            frames.detailText,
-            textColor: snapshot.provider.isEmpty ? .secondaryLabelColor : .systemRed
-        )
-        detail.frame = frames.detail
-        view.addSubview(detail)
-
-        item.view = view
-        return item
-    }
-
-    private func makeOverviewLabel(_ text: String, font: NSFont) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = font
-        label.textColor = .labelColor
-        label.lineBreakMode = .byTruncatingTail
-        return label
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -6554,7 +5766,7 @@ enum BalanceBarMain {
 // The detail occupies the balance card's left column so the amount placeholder
 // can remain in the right column without overlap. Kept as a small pure helper
 // so the probe can verify wrapping and overlap headlessly.
-private enum ErrorCardLayout {
+enum ErrorCardLayout {
     static let cardWidth: CGFloat = 304
     static let horizontalInset: CGFloat = 14
     static let contentWidth: CGFloat = cardWidth - horizontalInset * 2
