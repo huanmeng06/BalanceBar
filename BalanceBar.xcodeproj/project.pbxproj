@@ -52,6 +52,8 @@
 		A10000000000000000000084 /* MenuBarGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000081 /* MenuBarGeometry.swift */; };
 		A10000000000000000000085 /* MenuBarAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000082 /* MenuBarAnimation.swift */; };
 		A10000000000000000000087 /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000088 /* StatusItemController.swift */; };
+		A10000000000000000000090 /* DashboardComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000091 /* DashboardComponents.swift */; };
+		A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000095 /* DashboardComponentsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -102,6 +104,8 @@
 		A10000000000000000000081 /* MenuBarGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarGeometry.swift; sourceTree = "<group>"; };
 		A10000000000000000000082 /* MenuBarAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAnimation.swift; sourceTree = "<group>"; };
 		A10000000000000000000088 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
+		A10000000000000000000091 /* DashboardComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardComponents.swift; sourceTree = "<group>"; };
+		A10000000000000000000095 /* DashboardComponentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardComponentsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -193,6 +197,7 @@
 			children = (
 				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
 				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
+				A10000000000000000000095 /* DashboardComponentsTests.swift */,
 				A1000000000000000000006F /* DashboardScrollClampingTests.swift */,
 				A10000000000000000000043 /* LocalizationTests.swift */,
 				A10000000000000000000047 /* AppPreferencesTests.swift */,
@@ -259,9 +264,28 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000086 /* MenuBar */,
+				A10000000000000000000092 /* Dashboard */,
 			);
 			name = UI;
 			path = "Sources/UI";
+			sourceTree = "<group>";
+		};
+		A10000000000000000000092 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000093 /* Components */,
+			);
+			name = Dashboard;
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000093 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000091 /* DashboardComponents.swift */,
+			);
+			name = Components;
+			path = Components;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000086 /* MenuBar */ = {
@@ -402,6 +426,7 @@
 				A10000000000000000000084 /* MenuBarGeometry.swift in Sources */,
 				A10000000000000000000085 /* MenuBarAnimation.swift in Sources */,
 				A10000000000000000000087 /* StatusItemController.swift in Sources */,
+				A10000000000000000000090 /* DashboardComponents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -411,6 +436,7 @@
 			files = (
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
 				A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */,
+				A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */,
 				A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */,
 				A10000000000000000000042 /* LocalizationTests.swift in Sources */,
 				A10000000000000000000046 /* AppPreferencesTests.swift in Sources */,
