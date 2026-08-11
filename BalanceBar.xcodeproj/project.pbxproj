@@ -51,6 +51,7 @@
 		A10000000000000000000083 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000080 /* MenuBarViews.swift */; };
 		A10000000000000000000084 /* MenuBarGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000081 /* MenuBarGeometry.swift */; };
 		A10000000000000000000085 /* MenuBarAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000082 /* MenuBarAnimation.swift */; };
+		A10000000000000000000087 /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000088 /* StatusItemController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -100,6 +101,7 @@
 		A10000000000000000000080 /* MenuBarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViews.swift; sourceTree = "<group>"; };
 		A10000000000000000000081 /* MenuBarGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarGeometry.swift; sourceTree = "<group>"; };
 		A10000000000000000000082 /* MenuBarAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAnimation.swift; sourceTree = "<group>"; };
+		A10000000000000000000088 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -268,6 +270,7 @@
 				A10000000000000000000080 /* MenuBarViews.swift */,
 				A10000000000000000000081 /* MenuBarGeometry.swift */,
 				A10000000000000000000082 /* MenuBarAnimation.swift */,
+				A10000000000000000000088 /* StatusItemController.swift */,
 			);
 			name = MenuBar;
 			path = MenuBar;
@@ -398,6 +401,7 @@
 				A10000000000000000000083 /* MenuBarViews.swift in Sources */,
 				A10000000000000000000084 /* MenuBarGeometry.swift in Sources */,
 				A10000000000000000000085 /* MenuBarAnimation.swift in Sources */,
+				A10000000000000000000087 /* StatusItemController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
