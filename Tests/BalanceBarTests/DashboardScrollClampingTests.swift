@@ -3,6 +3,120 @@ import XCTest
 @testable import BalanceBar
 
 final class DashboardScrollClampingTests: XCTestCase {
+    func testClipViewRejectsRepeatedTopAndBottomScrollProposals() {
+        let documentView = FlippedDashboardDocumentView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 300)
+        )
+        let clipView = DashboardClipView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 100)
+        )
+        clipView.documentView = documentView
+        clipView.layoutSubtreeIfNeeded()
+
+        let geometry = makeGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: clipView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        let topProposal = clipView.bounds.minY - 80
+        let bottomProposal = clipView.bounds.minY + geometry.maximumOffset + 80
+
+        for proposedY in [topProposal, bottomProposal, topProposal, bottomProposal] {
+            clipView.scroll(
+                to: NSPoint(x: clipView.bounds.minX, y: proposedY)
+            )
+            let visibleDocumentRect = clipView.convert(
+                clipView.bounds,
+                to: documentView
+            )
+            let visualOffset = geometry.visualOffset(for: visibleDocumentRect)
+            XCTAssertEqual(
+                visualOffset,
+                geometry.clampedVisualOffset(visualOffset),
+                accuracy: 0.0001
+            )
+        }
+
+        let bottomVisibleRect = clipView.convert(clipView.bounds, to: documentView)
+        XCTAssertEqual(geometry.visualOffset(for: bottomVisibleRect), geometry.maximumOffset)
+    }
+
+    func testClipViewClampsUnflippedDocumentScrollProposals() {
+        let documentView = NSView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 300)
+        )
+        let clipView = DashboardClipView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 100)
+        )
+        clipView.documentView = documentView
+        clipView.layoutSubtreeIfNeeded()
+
+        let geometry = makeGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: clipView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+
+        for proposedY in [
+            clipView.bounds.minY - 80,
+            clipView.bounds.minY + geometry.maximumOffset + 80
+        ] {
+            clipView.scroll(
+                to: NSPoint(x: clipView.bounds.minX, y: proposedY)
+            )
+            let visibleDocumentRect = clipView.convert(
+                clipView.bounds,
+                to: documentView
+            )
+            let visualOffset = geometry.visualOffset(for: visibleDocumentRect)
+            XCTAssertEqual(
+                visualOffset,
+                geometry.clampedVisualOffset(visualOffset),
+                accuracy: 0.0001
+            )
+        }
+    }
+
+    func testClipViewClampsDirectBoundsOriginWritesWithoutChangingLegalScroll() {
+        let documentView = FlippedDashboardDocumentView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 300)
+        )
+        let clipView = DashboardClipView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 100)
+        )
+        clipView.documentView = documentView
+        clipView.layoutSubtreeIfNeeded()
+
+        let geometry = makeGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: clipView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        let legalOffset = geometry.maximumOffset / 2
+        let legalBounds = clipView.bounds
+        let legalOriginY = legalBounds.minY + legalOffset
+
+        clipView.setBoundsOrigin(
+            NSPoint(x: legalBounds.minX, y: legalOriginY)
+        )
+        let legalVisibleRect = clipView.convert(clipView.bounds, to: documentView)
+        XCTAssertEqual(
+            geometry.visualOffset(for: legalVisibleRect),
+            legalOffset,
+            accuracy: 0.0001
+        )
+
+        clipView.setBoundsOrigin(
+            NSPoint(x: legalBounds.minX, y: legalOriginY + 500)
+        )
+        let bottomVisibleRect = clipView.convert(clipView.bounds, to: documentView)
+        XCTAssertEqual(
+            geometry.visualOffset(for: bottomVisibleRect),
+            geometry.maximumOffset,
+            accuracy: 0.0001
+        )
+    }
+
     func testShortDocumentHasNoVerticalOffset() {
         let geometry = makeGeometry(
             documentBounds: NSRect(x: 12, y: 40, width: 400, height: 180),
@@ -191,4 +305,8 @@ final class DashboardScrollClampingTests: XCTestCase {
             isDocumentFlipped: isDocumentFlipped
         )
     }
+}
+
+private final class FlippedDashboardDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }

@@ -116,7 +116,41 @@ func dashboardClampedContentBounds(
 /// A settings-page clip view that applies the same legal range to AppKit's
 /// own scrolling, resizing, and bounds-constraining paths.
 final class DashboardClipView: NSClipView {
+    private var isApplyingRigidBounds = false
+
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        rigidBounds(for: proposedBounds)
+    }
+
+    override func scroll(to newOrigin: NSPoint) {
+        guard !isApplyingRigidBounds else {
+            super.scroll(to: newOrigin)
+            return
+        }
+
+        var proposedBounds = bounds
+        proposedBounds.origin = newOrigin
+        let constrainedBounds = rigidBounds(for: proposedBounds)
+        isApplyingRigidBounds = true
+        super.scroll(to: constrainedBounds.origin)
+        isApplyingRigidBounds = false
+    }
+
+    override func setBoundsOrigin(_ newOrigin: NSPoint) {
+        guard !isApplyingRigidBounds else {
+            super.setBoundsOrigin(newOrigin)
+            return
+        }
+
+        var proposedBounds = bounds
+        proposedBounds.origin = newOrigin
+        let constrainedBounds = rigidBounds(for: proposedBounds)
+        isApplyingRigidBounds = true
+        super.setBoundsOrigin(constrainedBounds.origin)
+        isApplyingRigidBounds = false
+    }
+
+    private func rigidBounds(for proposedBounds: NSRect) -> NSRect {
         let constrainedBounds = super.constrainBoundsRect(proposedBounds)
         guard let documentView else { return constrainedBounds }
         return dashboardClampedContentBounds(
