@@ -12,6 +12,8 @@ private func codexFileIdentity(atPath path: String) -> (size: UInt64, modifiedAt
 
 final class CodexActivityMonitor {
     private static let activityWindow = 10 * 60
+    private static let activityTailBytes = 256 * 1024
+    private static let lifecycleLookbackBytes = 4 * 1024 * 1024
     private static let terminalPhases: Set<String> = ["final", "final_answer"]
     private static let startTypes: Set<String> = [
         "task_started", "task_start", "turn_started", "turn_start", "user_message"
@@ -25,6 +27,9 @@ final class CodexActivityMonitor {
     ]
     private static let responseTerminalTypes: Set<String> = [
         "response.completed", "response.failed", "response.incomplete", "response.cancelled"
+    ]
+    private static let responseTerminalStatuses: Set<String> = [
+        "completed", "failed", "cancelled", "canceled", "incomplete"
     ]
 
     private struct SessionCache {
@@ -136,55 +141,91 @@ final class CodexActivityMonitor {
     private func parseSession(path: String) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)),
               let size = try? handle.seekToEnd() else { return false }
-        let offset = size > 256 * 1024 ? size - 256 * 1024 : 0
-        try? handle.seek(toOffset: offset)
-        guard let data = try? handle.readToEnd() else { return false }
-        let text = String(decoding: data, as: UTF8.self)
+        let tailOffset = size > UInt64(Self.activityTailBytes)
+            ? size - UInt64(Self.activityTailBytes)
+            : 0
+        let historyOffset = tailOffset > UInt64(Self.lifecycleLookbackBytes)
+            ? tailOffset - UInt64(Self.lifecycleLookbackBytes)
+            : 0
+        try? handle.seek(toOffset: historyOffset)
+        let readLength = size - historyOffset
+        guard let data = try? handle.read(upToCount: Int(readLength)) else { return false }
         var running = false
         var terminalSeen = false
-        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard let lineData = String(line).data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  let topType = object["type"] as? String else { continue }
-            if Self.responseTerminalTypes.contains(topType) {
-                running = false
-                terminalSeen = true
-                continue
-            }
-            if topType == "event_msg", let payload = object["payload"] as? [String: Any],
-               let payloadType = payload["type"] as? String {
-                if payloadType == "agent_message",
-                   let phase = payload["phase"] as? String,
-                   Self.terminalPhases.contains(phase) {
-                    running = false
-                    terminalSeen = true
-                } else if Self.terminalTypes.contains(payloadType)
-                            || Self.responseTerminalTypes.contains(payloadType) {
-                    running = false
-                    terminalSeen = true
-                } else if Self.startTypes.contains(payloadType) {
-                    running = true
-                    terminalSeen = false
-                } else if Self.ongoingActivityTypes.contains(payloadType), !terminalSeen {
-                    running = true
-                }
-            } else if topType == "response_item", let payload = object["payload"] as? [String: Any] {
-                let phase = payload["phase"] as? String
-                if let phase, Self.terminalPhases.contains(phase) {
-                    running = false
-                    terminalSeen = true
-                } else if payload["status"] as? String == "in_progress", !terminalSeen {
-                    running = true
-                } else if let payloadType = payload["type"] as? String,
-                          Self.ongoingActivityTypes.contains(payloadType),
-                          !terminalSeen {
-                    running = true
-                }
-            } else if Self.ongoingActivityTypes.contains(topType), !terminalSeen {
-                running = true
-            }
+        var lineStart = 0
+        let bytes = Array(data)
+        for index in 0...bytes.count {
+            let isEndOfLine = index == bytes.count || bytes[index] == UInt8(ascii: "\n")
+            guard isEndOfLine else { continue }
+            let lineData = Data(bytes[lineStart..<index])
+            let absoluteLineStart = historyOffset + UInt64(lineStart)
+            consumeSessionLine(
+                lineData,
+                lifecycleOnly: absoluteLineStart < tailOffset,
+                running: &running,
+                terminalSeen: &terminalSeen
+            )
+            lineStart = index + 1
         }
         return running
+    }
+
+    private func consumeSessionLine(
+        _ lineData: Data,
+        lifecycleOnly: Bool,
+        running: inout Bool,
+        terminalSeen: inout Bool
+    ) {
+        guard let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+              let topType = object["type"] as? String else { return }
+        if Self.responseTerminalTypes.contains(topType) {
+            running = false
+            terminalSeen = true
+            return
+        }
+        if topType == "event_msg", let payload = object["payload"] as? [String: Any],
+           let payloadType = payload["type"] as? String {
+            if payloadType == "agent_message",
+               let phase = payload["phase"] as? String,
+               Self.terminalPhases.contains(phase) {
+                running = false
+                terminalSeen = true
+            } else if Self.terminalTypes.contains(payloadType)
+                        || Self.responseTerminalTypes.contains(payloadType) {
+                running = false
+                terminalSeen = true
+            } else if Self.startTypes.contains(payloadType) {
+                // A start before the activity tail only reopens the lifecycle
+                // context. It must not make arbitrary recent output active.
+                running = lifecycleOnly ? false : true
+                terminalSeen = false
+            } else if !lifecycleOnly,
+                      Self.ongoingActivityTypes.contains(payloadType),
+                      !terminalSeen {
+                running = true
+            }
+        } else if topType == "response_item", let payload = object["payload"] as? [String: Any] {
+            let phase = payload["phase"] as? String
+            let status = payload["status"] as? String
+            if let phase, Self.terminalPhases.contains(phase) {
+                running = false
+                terminalSeen = true
+            } else if let status, Self.responseTerminalStatuses.contains(status) {
+                running = false
+                terminalSeen = true
+            } else if !lifecycleOnly, status == "in_progress", !terminalSeen {
+                running = true
+            } else if !lifecycleOnly,
+                      let payloadType = payload["type"] as? String,
+                      Self.ongoingActivityTypes.contains(payloadType),
+                      !terminalSeen {
+                running = true
+            }
+        } else if !lifecycleOnly,
+                  Self.ongoingActivityTypes.contains(topType),
+                  !terminalSeen {
+            running = true
+        }
     }
 
     private func logsDatabaseIsRunning(now: Date) -> Bool {

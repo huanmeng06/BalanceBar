@@ -90,6 +90,67 @@ final class CodexActivityMonitorTests: XCTestCase {
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
     }
 
+    func testResponseItemCompletedStatusSuppressesTrailingActivity() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            responseItem(type: "reasoning"),
+            responseItem(type: "function_call"),
+            responseItem(type: "function_call_output"),
+            responseItem(status: "completed"),
+            responseItem(type: "reasoning"),
+            responseItem(type: "function_call_output")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "a completed response_item must remain terminal despite trailing activity"
+        )
+    }
+
+    func testAllResponseItemTerminalStatusesSuppressTrailingActivity() throws {
+        for status in ["completed", "failed", "cancelled", "canceled", "incomplete"] {
+            let directory = fixtureDirectory.appendingPathComponent(status, isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let sessionURL = try writeSession([
+                eventMessage("task_started"),
+                responseItem(type: "reasoning"),
+                responseItem(status: status),
+                responseItem(type: "function_call_output")
+            ], in: directory)
+            try makeStateDatabase(rolloutPath: sessionURL.path, in: directory)
+
+            XCTAssertFalse(
+                CodexActivityMonitor(codexDirectory: directory) { [weak self] in
+                    self?.currentDate ?? .distantPast
+                }.isTaskRunning(now: currentDate),
+                "response_item status=\(status) must be terminal"
+            )
+        }
+    }
+
+    func testTerminalBeforeLargeTrailingReasoningAndToolOutputRemainsInactive() throws {
+        let trailingReasoning = Array(
+            repeating: responseItem(type: "reasoning"),
+            count: 5_000
+        ).joined(separator: "\n")
+        XCTAssertGreaterThan(trailingReasoning.utf8.count, 256 * 1024)
+
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("task_complete"),
+            trailingReasoning,
+            responseItem(type: "function_call"),
+            responseItem(type: "function_call_output")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "a terminal marker before the activity tail must suppress all trailing activity"
+        )
+    }
+
     func testStaleUnterminatedRolloutIsInactive() throws {
         let sessionURL = try writeSession([
             eventMessage("task_started"),
@@ -349,8 +410,9 @@ final class CodexActivityMonitorTests: XCTestCase {
     }
 
     @discardableResult
-    private func writeSession(_ lines: [String]) throws -> URL {
-        let url = fixtureDirectory.appendingPathComponent("session-\(UUID().uuidString).jsonl")
+    private func writeSession(_ lines: [String], in directory: URL? = nil) throws -> URL {
+        let targetDirectory = directory ?? fixtureDirectory!
+        let url = targetDirectory.appendingPathComponent("session-\(UUID().uuidString).jsonl")
         let contents = lines.joined(separator: "\n") + "\n"
         try Data(contents.utf8).write(to: url)
         try setSessionModificationDate(url, to: currentDate)
@@ -381,17 +443,31 @@ final class CodexActivityMonitorTests: XCTestCase {
         "{\"type\":\"response_item\",\"payload\":{\"type\":\"\(type)\"}}"
     }
 
+    private func responseItem(status: String, type: String = "message") -> String {
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"\(type)\",\"status\":\"\(status)\"}}"
+    }
+
     private struct RolloutFixture {
         let path: String
         let updatedAt: Int64
     }
 
-    private func makeStateDatabase(rolloutPath: String, updatedAt: Int64? = nil) throws {
-        try makeStateDatabase(rollouts: [RolloutFixture(path: rolloutPath, updatedAt: updatedAt ?? epoch)])
+    private func makeStateDatabase(
+        rolloutPath: String,
+        updatedAt: Int64? = nil,
+        in directory: URL? = nil
+    ) throws {
+        try makeStateDatabase(
+            rollouts: [RolloutFixture(path: rolloutPath, updatedAt: updatedAt ?? epoch)],
+            in: directory
+        )
     }
 
-    private func makeStateDatabase(rollouts: [RolloutFixture]) throws {
-        try withDatabase(named: "state_1.sqlite") { database in
+    private func makeStateDatabase(
+        rollouts: [RolloutFixture],
+        in directory: URL? = nil
+    ) throws {
+        try withDatabase(named: "state_1.sqlite", in: directory) { database in
             try execute(database, sql: "CREATE TABLE threads (rollout_path TEXT, updated_at INTEGER, updated_at_ms INTEGER)")
             for rollout in rollouts {
                 try insertThread(database, rolloutPath: rollout.path, updatedAt: rollout.updatedAt)
@@ -456,9 +532,13 @@ final class CodexActivityMonitorTests: XCTestCase {
         }
     }
 
-    private func withDatabase<T>(named name: String, _ body: (OpaquePointer) throws -> T) throws -> T {
+    private func withDatabase<T>(
+        named name: String,
+        in directory: URL? = nil,
+        _ body: (OpaquePointer) throws -> T
+    ) throws -> T {
         var database: OpaquePointer?
-        let url = fixtureDirectory.appendingPathComponent(name)
+        let url = (directory ?? fixtureDirectory!).appendingPathComponent(name)
         let code = sqlite3_open_v2(
             url.path,
             &database,
