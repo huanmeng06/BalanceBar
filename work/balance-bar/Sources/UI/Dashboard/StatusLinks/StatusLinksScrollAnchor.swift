@@ -73,6 +73,7 @@ final class StatusLinksScrollAnchorController {
     private let sectionTitleProvider: () -> String
     private let linksCountProvider: () -> Int
     private let maintenanceTimer = StatusLinksScrollAnchorTimer()
+    private var maintenanceGeneration = 0
 
     init(
         dashboardProvider: @escaping () -> NSWindow?,
@@ -91,7 +92,12 @@ final class StatusLinksScrollAnchorController {
     }
 
     func stop() {
+        maintenanceGeneration &+= 1
         maintenanceTimer.stop()
+    }
+
+    deinit {
+        stop()
     }
 
     func logEditorGeometry(label: String) {
@@ -191,12 +197,14 @@ final class StatusLinksScrollAnchorController {
         operation: String
     ) {
         stop()
+        let generation = maintenanceGeneration
         SwitchLog.write(
             "scroll anchor maintenance started; action=\(operation); interval=0.0167s; distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom))",
             category: "ui.scroll"
         )
         maintenanceTimer.start { [weak self] in
-            self?.maintain(position)
+            guard let self, self.maintenanceGeneration == generation else { return }
+            self.maintain(position)
         }
         // Apply once immediately so the first layout pass does not wait for
         // the first timer tick before the viewport begins following the card.
@@ -265,8 +273,10 @@ final class StatusLinksScrollAnchorController {
         attempt: Int
     ) {
         let delay = attempt == 0 ? 0 : 0.06
+        let generation = maintenanceGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.applyRestore(position, attempt: attempt)
+            guard let self, self.maintenanceGeneration == generation else { return }
+            self.applyRestore(position, attempt: attempt)
         }
     }
 

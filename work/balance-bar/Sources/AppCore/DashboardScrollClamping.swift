@@ -117,9 +117,13 @@ func dashboardClampedContentBounds(
 /// own scrolling, resizing, and bounds-constraining paths.
 final class DashboardClipView: NSClipView {
     private var isApplyingRigidBounds = false
+    private let boundsOriginTolerance: CGFloat = 0.001
 
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
-        rigidBounds(for: proposedBounds)
+        guard !isApplyingRigidBounds else {
+            return super.constrainBoundsRect(proposedBounds)
+        }
+        return rigidBounds(for: proposedBounds)
     }
 
     override func scroll(to newOrigin: NSPoint) {
@@ -131,9 +135,10 @@ final class DashboardClipView: NSClipView {
         var proposedBounds = bounds
         proposedBounds.origin = newOrigin
         let constrainedBounds = rigidBounds(for: proposedBounds)
+        guard needsBoundsOriginUpdate(constrainedBounds.origin) else { return }
         isApplyingRigidBounds = true
+        defer { isApplyingRigidBounds = false }
         super.scroll(to: constrainedBounds.origin)
-        isApplyingRigidBounds = false
     }
 
     override func setBoundsOrigin(_ newOrigin: NSPoint) {
@@ -145,9 +150,10 @@ final class DashboardClipView: NSClipView {
         var proposedBounds = bounds
         proposedBounds.origin = newOrigin
         let constrainedBounds = rigidBounds(for: proposedBounds)
+        guard needsBoundsOriginUpdate(constrainedBounds.origin) else { return }
         isApplyingRigidBounds = true
+        defer { isApplyingRigidBounds = false }
         super.setBoundsOrigin(constrainedBounds.origin)
-        isApplyingRigidBounds = false
     }
 
     private func rigidBounds(for proposedBounds: NSRect) -> NSRect {
@@ -158,5 +164,10 @@ final class DashboardClipView: NSClipView {
             contentView: self,
             documentView: documentView
         )
+    }
+
+    private func needsBoundsOriginUpdate(_ proposedOrigin: NSPoint) -> Bool {
+        abs(bounds.origin.x - proposedOrigin.x) > boundsOriginTolerance ||
+            abs(bounds.origin.y - proposedOrigin.y) > boundsOriginTolerance
     }
 }

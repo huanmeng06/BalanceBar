@@ -560,6 +560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow, window === dashboard else { return }
+        statusLinksScrollAnchorController.stop()
         DispatchQueue.main.async {
             NSApp.setActivationPolicy(.accessory)
             SwitchLog.write(
