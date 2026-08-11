@@ -1223,6 +1223,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
+    private func dashboardStatusLinkEnabledChanged(index: Int, enabled: Bool) {
+        guard index >= 0, index < statusLinks.count else { return }
+        var links = statusLinks
+        links[index].enabled = enabled
+        statusLinks = links
+        SwitchLog.write(
+            "status link enabled state changed; index=\(index); enabled=\(enabled)",
+            category: "configuration"
+        )
+        // The row binding already owns the visible switch state. Refresh only
+        // the menu consumer so editing a row never rebuilds the SwiftUI host.
+        statusItemController.updateMenu(input: makeStatusItemMenuInput())
+    }
+
     private func addStatusLink() {
         let operation = "add"
         SwitchLog.write(
@@ -1235,7 +1249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             operation: operation
         )
         var links = statusLinks
-        links.append(StatusLink(title: "", url: ""))
+        links.append(StatusLink(title: "", url: "", enabled: true))
         statusLinks = links
         SwitchLog.write(
             "status link model updated; action=add; count=\(links.count); page=\(dashboardSection.title)",
@@ -2341,6 +2355,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             },
             onRemove: { [weak self] index in
                 self?.removeStatusLink(at: index)
+            },
+            onEnabledChange: { [weak self] index, enabled in
+                self?.dashboardStatusLinkEnabledChanged(index: index, enabled: enabled)
             },
             onReset: { [weak self] in
                 self?.resetStatusLinks()

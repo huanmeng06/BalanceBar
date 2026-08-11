@@ -96,7 +96,12 @@ final class AppPreferences {
                 if copy.url == "https://" { copy.url = "" }
                 return copy
             }
-            if normalized != links, let data = try? JSONEncoder().encode(normalized) { defaults.set(data, forKey: "statusLinks") }
+            if let normalizedData = try? JSONEncoder().encode(normalized),
+               normalizedData != data {
+                // Re-encode legacy records too: StatusLink's missing enabled
+                // field decodes to true, then becomes durable on first read.
+                defaults.set(normalizedData, forKey: "statusLinks")
+            }
             return normalized
         }
         set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: "statusLinks") } }

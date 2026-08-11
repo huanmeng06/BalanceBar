@@ -44,6 +44,82 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(resetCount, 1)
     }
 
+    func testEditorModelTracksNumbersSelectionAndSelectedRowRemoval() {
+        var removedIndices: [Int] = []
+        var enabledChanges: [(Int, Bool)] = []
+        let model = StatusLinksEditorModel(
+            links: [
+                StatusLink(title: "One", url: "https://one.example"),
+                StatusLink(title: "Two", url: "https://two.example"),
+                StatusLink(title: "Three", url: "https://three.example")
+            ],
+            onChange: { _, _, _ in },
+            onAdd: {},
+            onRemove: { removedIndices.append($0) },
+            onEnabledChange: { enabledChanges.append(($0, $1)) },
+            onReset: {}
+        )
+
+        XCTAssertEqual(model.rowNumbers, [1, 2, 3])
+        XCTAssertNil(model.selectedIndex)
+        XCTAssertFalse(model.canRemoveSelected)
+
+        model.select(index: 1)
+        XCTAssertTrue(model.canRemoveSelected)
+        model.setEnabled(index: 1, enabled: false)
+        XCTAssertEqual(enabledChanges.map(\.1), [false])
+        XCTAssertFalse(model.links[1].enabled)
+
+        model.removeSelected()
+        XCTAssertEqual(removedIndices, [1])
+        XCTAssertEqual(model.selectedIndex, 1)
+
+        model.updateLinks([
+            StatusLink(title: "One", url: "https://one.example"),
+            StatusLink(title: "Three", url: "https://three.example")
+        ])
+        XCTAssertEqual(model.rowNumbers, [1, 2])
+        XCTAssertEqual(model.selectedIndex, 1)
+
+        model.select(index: 0)
+        model.add()
+        XCTAssertEqual(model.selectedIndex, 2)
+        XCTAssertFalse(model.canRemoveSelected)
+        model.updateLinks([
+            StatusLink(title: "One", url: "https://one.example"),
+            StatusLink(title: "Three", url: "https://three.example"),
+            StatusLink(title: "", url: "")
+        ])
+        XCTAssertTrue(model.canRemoveSelected)
+        model.removeSelected()
+        XCTAssertEqual(removedIndices, [1, 2])
+    }
+
+    func testDisabledStatusLinksAreExcludedFromConsumption() {
+        let links = [
+            StatusLink(title: "Enabled", url: "https://enabled.example"),
+            StatusLink(title: "Disabled", url: "https://disabled.example", enabled: false)
+        ]
+
+        XCTAssertEqual(
+            StatusLink.enabledLinks(from: links).map(\.title),
+            ["Enabled"]
+        )
+    }
+
+    func testAnimationPolicyHonorsReduceMotion() {
+        XCTAssertTrue(StatusLinksAnimationPolicy.shouldAnimate(requested: true, reduceMotion: false))
+        XCTAssertFalse(StatusLinksAnimationPolicy.shouldAnimate(requested: true, reduceMotion: true))
+        XCTAssertEqual(
+            StatusLinksAnimationPolicy.duration(requested: true, reduceMotion: true),
+            0
+        )
+        XCTAssertEqual(
+            StatusLinksAnimationPolicy.duration(requested: true, reduceMotion: false),
+            StatusLinksAnimationPolicy.normalDuration
+        )
+    }
+
     func testHostingViewTracksRowCountHeightAndIdempotentTeardown() {
         let initialLinks = [
             StatusLink(title: "One", url: "https://one.example"),
@@ -58,7 +134,7 @@ final class StatusLinksTests: XCTestCase {
         )
 
         XCTAssertEqual(editor.rowCount, 2)
-        XCTAssertEqual(editor.layoutHeight, 182, accuracy: 0.001)
+        XCTAssertEqual(editor.layoutHeight, 181, accuracy: 0.001)
         XCTAssertFalse(editor.isTornDown)
 
         let shorterLinks = [StatusLink(title: "Only", url: "https://only.example")]
@@ -69,11 +145,11 @@ final class StatusLinksTests: XCTestCase {
 
         XCTAssertEqual(completionCount, 1)
         XCTAssertEqual(editor.rowCount, 1)
-        XCTAssertEqual(editor.layoutHeight, 147, accuracy: 0.001)
+        XCTAssertEqual(editor.layoutHeight, 139, accuracy: 0.001)
 
         editor.updateLinks([], animated: false)
         XCTAssertEqual(editor.rowCount, 0)
-        XCTAssertEqual(editor.layoutHeight, 112, accuracy: 0.001)
+        XCTAssertEqual(editor.layoutHeight, 97, accuracy: 0.001)
 
         editor.teardown()
         editor.teardown()

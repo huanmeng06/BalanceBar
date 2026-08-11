@@ -146,6 +146,42 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode([StatusLink].self, from: stored).first?.url, "")
     }
 
+    func testLegacyStatusLinksDefaultToEnabledAndAreMigratedOnRead() throws {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let legacyData = Data(
+            #"[{"title":"First","url":"https://first.example"},{"title":"Second","url":"https://second.example"}]"#.utf8
+        )
+        defaults.set(legacyData, forKey: "statusLinks")
+
+        XCTAssertEqual(
+            preferences.statusLinks,
+            [
+                StatusLink(title: "First", url: "https://first.example"),
+                StatusLink(title: "Second", url: "https://second.example")
+            ]
+        )
+        let migratedData = try XCTUnwrap(defaults.data(forKey: "statusLinks"))
+        let migrated = try JSONDecoder().decode([StatusLink].self, from: migratedData)
+        XCTAssertEqual(migrated.map(\.enabled), [true, true])
+        XCTAssertNotEqual(migratedData, legacyData)
+    }
+
+    func testStatusLinkEnabledStatePersistsAcrossRoundTrip() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let links = [
+            StatusLink(title: "Enabled", url: "https://enabled.example"),
+            StatusLink(title: "Disabled", url: "https://disabled.example", enabled: false)
+        ]
+
+        preferences.statusLinks = links
+        XCTAssertEqual(preferences.statusLinks, links)
+
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.statusLinks, links)
+    }
+
     func testDefaultStatusLinksStayIndependentFromPersistedCustomLinks() throws {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
