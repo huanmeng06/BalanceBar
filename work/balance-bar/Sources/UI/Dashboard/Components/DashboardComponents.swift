@@ -116,7 +116,7 @@ final class QuotaProgressView: NSView {
 final class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     private var trackingAreaReference: NSTrackingArea?
-    private var pointingCursorIsPushed = false
+    private var isHovered = false
 
     init(text: String) {
         super.init(frame: .zero)
@@ -132,40 +132,30 @@ final class HoverLinkTextField: NSTextField {
     required init?(coder: NSCoder) { nil }
 
     override func updateTrackingAreas() {
+        removeTrackingAreaReference()
         super.updateTrackingAreas()
-        if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
         let area = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
         addTrackingArea(area)
         trackingAreaReference = area
+        synchronizeHoverStateWithMouseLocation()
     }
 
     override func resetCursorRects() {
+        super.resetCursorRects()
         addCursorRect(bounds, cursor: .pointingHand)
     }
 
     override func mouseEntered(with event: NSEvent) {
-        applyStyle(text: stringValue, underlined: true)
-        if !pointingCursorIsPushed {
-            NSCursor.pointingHand.push()
-            pointingCursorIsPushed = true
-        }
+        setHovering(true)
     }
 
     override func mouseExited(with event: NSEvent) {
-        applyStyle(text: stringValue, underlined: false)
-        if pointingCursorIsPushed {
-            NSCursor.pop()
-            pointingCursorIsPushed = false
-        }
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        NSCursor.pointingHand.set()
+        setHovering(false)
     }
 
     override func cursorUpdate(with event: NSEvent) {
@@ -177,8 +167,58 @@ final class HoverLinkTextField: NSTextField {
         onActivate?()
     }
 
-    deinit {
-        if pointingCursorIsPushed { NSCursor.pop() }
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            tearDownInteraction()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func removeFromSuperview() {
+        tearDownInteraction()
+        super.removeFromSuperview()
+    }
+
+    private func removeTrackingAreaReference() {
+        if let trackingAreaReference {
+            removeTrackingArea(trackingAreaReference)
+            self.trackingAreaReference = nil
+        }
+    }
+
+    private func setHovering(_ hovered: Bool) {
+        guard isHovered != hovered else {
+            if hovered {
+                NSCursor.pointingHand.set()
+            }
+            return
+        }
+        isHovered = hovered
+        applyStyle(text: stringValue, underlined: hovered)
+        if hovered {
+            NSCursor.pointingHand.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+    }
+
+    private func synchronizeHoverStateWithMouseLocation() {
+        guard let window else { return }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if bounds.contains(point) {
+            setHovering(true)
+        } else if isHovered {
+            setHovering(false)
+        }
+    }
+
+    private func tearDownInteraction() {
+        removeTrackingAreaReference()
+        if isHovered {
+            isHovered = false
+            applyStyle(text: stringValue, underlined: false)
+        }
+        NSCursor.arrow.set()
     }
 
     private func applyStyle(text: String, underlined: Bool) {

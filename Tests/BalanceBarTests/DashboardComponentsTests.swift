@@ -79,4 +79,70 @@ final class DashboardComponentsTests: XCTestCase {
 
         XCTAssertEqual(activationCount, 1)
     }
+
+    func testHoverLinkRebuildsOneCursorTrackingArea() {
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)
+
+        link.updateTrackingAreas()
+        XCTAssertEqual(link.trackingAreas.count, 1)
+        XCTAssertTrue(link.trackingAreas[0].options.contains(.cursorUpdate))
+        XCTAssertTrue(link.trackingAreas[0].options.contains(.activeAlways))
+
+        link.updateTrackingAreas()
+        XCTAssertEqual(link.trackingAreas.count, 1)
+    }
+
+    func testHoverLinkRemovalClearsHoverStyleAndTrackingArea() {
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)
+        link.updateTrackingAreas()
+
+        guard let event = NSEvent.mouseEvent(
+            with: .mouseMoved,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 0,
+            pressure: 0
+        ) else {
+            return XCTFail("Expected to create a mouse event")
+        }
+
+        link.mouseEntered(with: event)
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+        link.removeFromSuperview()
+
+        XCTAssertEqual(link.trackingAreas.count, 0)
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+    }
+
+    func testHoverLinkCursorUpdateUsesPointingHandWithoutClick() {
+        let link = HoverLinkTextField(text: "Provider")
+        guard let event = NSEvent.mouseEvent(
+            with: .mouseMoved,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 0,
+            pressure: 0
+        ) else {
+            return XCTFail("Expected to create a mouse event")
+        }
+
+        let previousCursor = NSCursor.current
+        defer { previousCursor.set() }
+        NSCursor.arrow.set()
+
+        link.cursorUpdate(with: event)
+
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+    }
 }
