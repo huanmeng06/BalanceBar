@@ -409,13 +409,3 @@ enum DashboardSection: Int, CaseIterable {
         }
     }
 }
-
-struct DashboardScrollPosition {
-    let operation: String
-    let visibleDocumentOffset: CGFloat
-    let contentOriginY: CGFloat
-    let distanceFromBottom: CGFloat
-    let previousMaximumOffset: CGFloat
-    let bottomAnchorView: NSView?
-    let bottomAnchorViewportY: CGFloat?
-}
