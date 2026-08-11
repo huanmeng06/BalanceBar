@@ -656,7 +656,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeStatusLinksMenuItem() -> NSMenuItem {
         let parent = NSMenuItem(title: tr("查看状态", "View Status"), action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: tr("查看状态", "View Status"))
-        for link in StatusLink.enabledLinks(from: menuInput.statusLinks) {
+        for link in menuInput.statusLinks {
             let title = link.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let address = link.url.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty, let url = URL(string: address),
