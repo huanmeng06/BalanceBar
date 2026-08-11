@@ -54,6 +54,9 @@
 		A10000000000000000000087 /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000088 /* StatusItemController.swift */; };
 		A10000000000000000000090 /* DashboardComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000091 /* DashboardComponents.swift */; };
 		A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000095 /* DashboardComponentsTests.swift */; };
+		A10000000000000000000096 /* StatusLinksEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000097 /* StatusLinksEditor.swift */; };
+		A10000000000000000000098 /* StatusLinksScrollAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000099 /* StatusLinksScrollAnchor.swift */; };
+		A1000000000000000000009A /* StatusLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009B /* StatusLinksTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -106,6 +109,9 @@
 		A10000000000000000000088 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
 		A10000000000000000000091 /* DashboardComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardComponents.swift; sourceTree = "<group>"; };
 		A10000000000000000000095 /* DashboardComponentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardComponentsTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000097 /* StatusLinksEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksEditor.swift; sourceTree = "<group>"; };
+		A10000000000000000000099 /* StatusLinksScrollAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksScrollAnchor.swift; sourceTree = "<group>"; };
+		A1000000000000000000009B /* StatusLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -199,6 +205,7 @@
 				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
 				A10000000000000000000095 /* DashboardComponentsTests.swift */,
 				A1000000000000000000006F /* DashboardScrollClampingTests.swift */,
+				A1000000000000000000009B /* StatusLinksTests.swift */,
 				A10000000000000000000043 /* LocalizationTests.swift */,
 				A10000000000000000000047 /* AppPreferencesTests.swift */,
 				A10000000000000000000053 /* DomainModelsTests.swift */,
@@ -274,6 +281,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000093 /* Components */,
+				A1000000000000000000009C /* StatusLinks */,
 			);
 			name = Dashboard;
 			path = Dashboard;
@@ -286,6 +294,16 @@
 			);
 			name = Components;
 			path = Components;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000009C /* StatusLinks */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000097 /* StatusLinksEditor.swift */,
+				A10000000000000000000099 /* StatusLinksScrollAnchor.swift */,
+			);
+			name = StatusLinks;
+			path = StatusLinks;
 			sourceTree = "<group>";
 		};
 		A10000000000000000000086 /* MenuBar */ = {
@@ -427,6 +445,8 @@
 				A10000000000000000000085 /* MenuBarAnimation.swift in Sources */,
 				A10000000000000000000087 /* StatusItemController.swift in Sources */,
 				A10000000000000000000090 /* DashboardComponents.swift in Sources */,
+				A10000000000000000000096 /* StatusLinksEditor.swift in Sources */,
+				A10000000000000000000098 /* StatusLinksScrollAnchor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -438,6 +458,7 @@
 				A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */,
 				A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */,
 				A1000000000000000000006E /* DashboardScrollClampingTests.swift in Sources */,
+				A1000000000000000000009A /* StatusLinksTests.swift in Sources */,
 				A10000000000000000000042 /* LocalizationTests.swift in Sources */,
 				A10000000000000000000046 /* AppPreferencesTests.swift in Sources */,
 				A1000000000000000000004D /* DomainModelsTests.swift in Sources */,

@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import SwiftUI
 
 struct DashboardWindowDragRegion {
     let bounds: NSRect
@@ -74,273 +73,6 @@ enum DashboardWindowDragPolicy {
             dragView.bottomAnchor.constraint(equalTo: contentRoot.bottomAnchor)
         ])
         return dragView
-    }
-}
-
-private enum StatusLinkField {
-    case title
-    case url
-}
-
-/// A native SwiftUI text field kept at its natural single-line height and
-/// centered by the fixed-height outer container. The system rounded-border
-/// style owns the background, border, focus ring, and appearance adaptation.
-private struct StatusTextField: View {
-    @Binding var text: String
-    let placeholder: String
-
-    var body: some View {
-        HStack(spacing: 0) {
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 28,
-            maxHeight: 28,
-            alignment: .center
-        )
-    }
-}
-
-private final class StatusLinksEditorModel: ObservableObject {
-    @Published var links: [StatusLink]
-    let onChange: (Int, StatusLinkField, String) -> Void
-    let onAdd: () -> Void
-    let onRemove: (Int) -> Void
-    let onReset: () -> Void
-
-    init(
-        links: [StatusLink],
-        onChange: @escaping (Int, StatusLinkField, String) -> Void,
-        onAdd: @escaping () -> Void,
-        onRemove: @escaping (Int) -> Void,
-        onReset: @escaping () -> Void
-    ) {
-        self.links = links
-        self.onChange = onChange
-        self.onAdd = onAdd
-        self.onRemove = onRemove
-        self.onReset = onReset
-    }
-}
-
-private struct StatusLinksEditorSwiftUI: View {
-    @ObservedObject var model: StatusLinksEditorModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 0) {
-                Text(tr("状态链接", "Status Links"))
-                    .font(.system(size: 13, weight: .medium))
-                Spacer(minLength: 12)
-                Button(tr("恢复默认", "Restore Defaults"), action: model.onReset)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .font(.system(size: 12))
-            }
-            .frame(height: 24)
-
-            HStack(spacing: 8) {
-                Text(tr("名称", "Name"))
-                    .frame(width: 160, alignment: .leading)
-                Text(tr("网址", "URL"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Color.clear.frame(width: 24, height: 1)
-            }
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.tertiary)
-            .frame(height: 20, alignment: .center)
-
-            ForEach(model.links.indices, id: \.self) { index in
-                HStack(spacing: 8) {
-                    StatusTextField(
-                        text: $model.links[index].title,
-                        placeholder: tr("显示名称", "Display name")
-                    )
-                    .frame(width: 160)
-                    .onChange(of: model.links[index].title) { _, value in
-                        model.onChange(index, .title, value)
-                    }
-
-                    StatusTextField(
-                        text: $model.links[index].url,
-                        placeholder: "https://"
-                    )
-                    .frame(maxWidth: .infinity)
-                    .onChange(of: model.links[index].url) { _, value in
-                        model.onChange(index, .url, value)
-                    }
-
-                    Button {
-                        model.onRemove(index)
-                    } label: {
-                        Image(systemName: "minus.circle")
-                            .font(.system(size: 16))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 28)
-                }
-                .frame(height: 35)
-            }
-
-            Color.clear.frame(height: 8)
-
-            Button(action: model.onAdd) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 17))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color(nsColor: .controlAccentColor))
-            .frame(width: 32, height: 28, alignment: .leading)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        // NSHostingView fills the animated AppKit height. Keep the SwiftUI
-        // content pinned to the top of that host so its title row does not
-        // recenter for a frame while the row count changes.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-}
-
-/// AppKit only hosts the SwiftUI editor and controls its stable outer height.
-/// No AppKit text field, cell, or field editor is involved in status-link rows.
-private final class StatusLinksHostingView: NSView {
-    private let model: StatusLinksEditorModel
-    private let hostingView: NSHostingView<StatusLinksEditorSwiftUI>
-    private var heightConstraint: NSLayoutConstraint?
-    private var links: [StatusLink]
-
-    var rowCount: Int { links.count }
-    var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
-
-    init(
-        links: [StatusLink],
-        onChange: @escaping (Int, StatusLinkField, String) -> Void,
-        onAdd: @escaping () -> Void,
-        onRemove: @escaping (Int) -> Void,
-        onReset: @escaping () -> Void
-    ) {
-        self.links = links
-        let model = StatusLinksEditorModel(
-            links: links,
-            onChange: onChange,
-            onAdd: onAdd,
-            onRemove: onRemove,
-            onReset: onReset
-        )
-        self.model = model
-        self.hostingView = NSHostingView(
-            rootView: StatusLinksEditorSwiftUI(model: model)
-        )
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(hostingView)
-        NSLayoutConstraint.activate([
-            hostingView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            hostingView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hostingView.topAnchor.constraint(equalTo: topAnchor),
-            hostingView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        let heightConstraint = heightAnchor.constraint(equalToConstant: layoutHeight)
-        heightConstraint.isActive = true
-        self.heightConstraint = heightConstraint
-        SwitchLog.write(
-            "status-link editor runtime; implementation=SwiftUI.TextField; rows=\(links.count); host=\(String(reflecting: type(of: hostingView)))",
-            level: .debug,
-            category: "ui.geometry"
-        )
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    func updateLinks(
-        _ newLinks: [StatusLink],
-        animated: Bool,
-        revealAddedRowsAtCompletion: Bool = false,
-        completion: (() -> Void)? = nil
-    ) {
-        let deferAddedRows = revealAddedRowsAtCompletion && newLinks.count > links.count
-        links = newLinks
-        // Deletion already has the desired motion: the removed row vanishes
-        // first and the card then collapses. For an addition, play that same
-        // geometry in reverse by expanding an empty 35pt slot first and only
-        // revealing the new SwiftUI row once the expansion has settled.
-        if !deferAddedRows {
-            model.links = newLinks
-        }
-        let targetHeight = layoutHeight
-        let applyHeight = {
-            self.heightConstraint?.constant = targetHeight
-            self.synchronizeAncestorCardHeight()
-            self.needsLayout = true
-            self.superview?.needsLayout = true
-            if deferAddedRows {
-                self.superview?.layoutSubtreeIfNeeded()
-                self.model.links = newLinks
-            }
-            completion?()
-        }
-        if animated {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.20
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
-                self.heightConstraint?.animator().constant = targetHeight
-                self.synchronizeAncestorCardHeight(animated: true)
-                self.superview?.layoutSubtreeIfNeeded()
-            } completionHandler: {
-                applyHeight()
-            }
-        } else {
-            applyHeight()
-        }
-    }
-
-    func logGeometry(label: String) {
-        let card = (superview as? NSStackView)?.superview
-        SwitchLog.write(
-            "status-link geometry; label=\(label); rows=\(links.count); editor_frame=\(DashboardLogging.rect(frame)); card_frame=\(card.map { DashboardLogging.rect($0.frame) } ?? "none")",
-            category: "ui.geometry"
-        )
-    }
-
-    private func ancestorCardInfo() -> (NSView, NSLayoutConstraint, CGFloat)? {
-        guard let rowsStack = superview as? NSStackView,
-              let card = rowsStack.superview else { return nil }
-        let requiredHeight = max(1, ceil(rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
-            if row === self {
-                return total + layoutHeight
-            }
-            let explicit = row.constraints.first {
-                ($0.firstItem as? NSView) === row &&
-                    $0.firstAttribute == .height &&
-                    $0.relation == .equal
-            }?.constant
-            return total + max(1, explicit ?? row.fittingSize.height)
-        }))
-        let constraint = card.constraints.first {
-            ($0.firstItem as? NSView) === card &&
-                $0.firstAttribute == .height &&
-                $0.relation == .equal
-        } ?? card.heightAnchor.constraint(equalToConstant: requiredHeight)
-        if !constraint.isActive { constraint.isActive = true }
-        return (card, constraint, requiredHeight)
-    }
-
-    private func synchronizeAncestorCardHeight(animated: Bool = false) {
-        guard let info = ancestorCardInfo() else { return }
-        if animated {
-            info.1.animator().constant = info.2
-        } else {
-            info.1.constant = info.2
-        }
-        info.0.needsLayout = true
     }
 }
 
@@ -560,12 +292,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     private var dashboardNavigationButtons: [DashboardSection: NSButton] = [:]
     private var dashboardNavigationRows: [DashboardSection: DashboardNavigationRowView] = [:]
     private var dashboardProviderButtons: [String: NSButton] = [:]
-    private var statusLinksHostingView: StatusLinksHostingView?
+    private var statusLinksEditorHostingView: StatusLinksEditorHostingView?
+    private lazy var statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
+        dashboardProvider: { [weak self] in self?.dashboard },
+        contentHostProvider: { [weak self] in self?.dashboardContentHost },
+        sectionTitleProvider: { [weak self] in self?.dashboardSection.title ?? "" },
+        linksCountProvider: { [weak self] in self?.statusLinks.count ?? 0 }
+    )
     private var dashboardSection: DashboardSection = .general
     private var dashboardSelectedProviderID: String?
     private var timer: Timer?
     private var activityTimer: Timer?
-    private var statusLinksScrollAnchorTimer: Timer?
     private var workspaceActivationObserver: NSObjectProtocol?
     private var appearanceObserver: NSObjectProtocol?
     private var databaseWatchers: [DispatchSourceFileSystemObject] = []
@@ -797,7 +534,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         activityTimer?.invalidate()
-        statusLinksScrollAnchorTimer?.invalidate()
+        statusLinksScrollAnchorController.stop()
+        statusLinksEditorHostingView?.teardown()
         statusItemController.teardown()
         if let dashboardMouseMonitor {
             NSEvent.removeMonitor(dashboardMouseMonitor)
@@ -1491,11 +1229,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             "status-link button clicked; action=add; page=\(dashboardSection.title)",
             category: "ui.button"
         )
-        if let page = dashboardContentHost.subviews.first,
-           let editor = firstStatusLinksEditor(in: page) {
-            editor.logGeometry(label: "before add")
-        }
-        let scrollPosition = dashboardScrollPosition(captureLabel: "before add", operation: operation)
+        statusLinksScrollAnchorController.logEditorGeometry(label: "before add")
+        let scrollPosition = statusLinksScrollAnchorController.capture(
+            captureLabel: "before add",
+            operation: operation
+        )
         var links = statusLinks
         links.append(StatusLink(title: "", url: ""))
         statusLinks = links
@@ -1506,7 +1244,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
         render(snapshot)
         if dashboardSection == .menu {
-            if !refreshStatusLinksEditorInPlace(scrollPosition: scrollPosition, operation: operation) {
+            if !statusLinksScrollAnchorController.refreshEditorInPlace(
+                links: statusLinks,
+                scrollPosition: scrollPosition,
+                operation: operation
+            ) {
                 SwitchLog.write(
                     "status-link editor unavailable; action=add; fallback=page-rebuild; page=\(dashboardSection.title)",
                     level: .warning,
@@ -1529,11 +1271,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             "status-link button clicked; action=remove; page=\(dashboardSection.title); index=\(index)",
             category: "ui.button"
         )
-        if let page = dashboardContentHost.subviews.first,
-           let editor = firstStatusLinksEditor(in: page) {
-            editor.logGeometry(label: "before remove")
-        }
-        let scrollPosition = dashboardScrollPosition(captureLabel: "before remove", operation: operation)
+        statusLinksScrollAnchorController.logEditorGeometry(label: "before remove")
+        let scrollPosition = statusLinksScrollAnchorController.capture(
+            captureLabel: "before remove",
+            operation: operation
+        )
         var links = statusLinks
         guard index >= 0, index < links.count else {
             SwitchLog.write(
@@ -1552,7 +1294,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
         render(snapshot)
         if dashboardSection == .menu {
-            if !refreshStatusLinksEditorInPlace(scrollPosition: scrollPosition, operation: operation) {
+            if !statusLinksScrollAnchorController.refreshEditorInPlace(
+                links: statusLinks,
+                scrollPosition: scrollPosition,
+                operation: operation
+            ) {
                 SwitchLog.write(
                     "status-link editor unavailable; action=remove; fallback=page-rebuild; page=\(dashboardSection.title)",
                     level: .warning,
@@ -1584,11 +1330,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             return
         }
 
-        if let page = dashboardContentHost.subviews.first,
-           let editor = firstStatusLinksEditor(in: page) {
-            editor.logGeometry(label: "before reset")
-        }
-        let scrollPosition = dashboardScrollPosition(captureLabel: "before reset", operation: operation)
+        statusLinksScrollAnchorController.logEditorGeometry(label: "before reset")
+        let scrollPosition = statusLinksScrollAnchorController.capture(
+            captureLabel: "before reset",
+            operation: operation
+        )
         statusLinks = defaultStatusLinks
         SwitchLog.write(
             "status link model reset; action=reset; count=\(defaultStatusLinks.count); page=\(dashboardSection.title)",
@@ -1599,7 +1345,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             category: "configuration"
         )
         render(snapshot)
-        if !refreshStatusLinksEditorInPlace(scrollPosition: scrollPosition, operation: operation) {
+        if !statusLinksScrollAnchorController.refreshEditorInPlace(
+            links: statusLinks,
+            scrollPosition: scrollPosition,
+            operation: operation
+        ) {
             SwitchLog.write(
                 "status-link reset editor unavailable; fallback=page-rebuild; page=\(dashboardSection.title)",
                 level: .warning,
@@ -2118,7 +1868,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
 
     private func showDashboardSection(
         _ section: DashboardSection,
-        restoringScrollPosition scrollPosition: DashboardScrollPosition? = nil
+        restoringScrollPosition scrollPosition: StatusLinksScrollPosition? = nil
     ) {
         dashboardSection = section
         dashboardSelectedProviderID = nil
@@ -2131,7 +1881,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             dashboardNavigationRows[$0.key]?.isSelected = isCurrent
         }
         rebuildDashboardProviderList()
-        statusLinksHostingView = nil
+        statusLinksScrollAnchorController.stop()
+        statusLinksEditorHostingView?.teardown()
+        statusLinksEditorHostingView = nil
         dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
 
         let page: NSView
@@ -2151,492 +1903,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             // The new document view needs one layout pass before its maximum
             // scroll offset is known. Restore asynchronously so adding a row
             // keeps the user's current viewport instead of jumping to the top.
-            restoreDashboardScrollPosition(scrollPosition, attempt: 0)
+            statusLinksScrollAnchorController.restore(scrollPosition, attempt: 0)
         }
-    }
-
-    private func firstScrollView(in view: NSView) -> NSScrollView? {
-        if let scrollView = view as? NSScrollView { return scrollView }
-        for child in view.subviews {
-            if let scrollView = firstScrollView(in: child) { return scrollView }
-        }
-        return nil
-    }
-
-    private func firstStatusLinksEditor(in view: NSView) -> StatusLinksHostingView? {
-        if let editor = view as? StatusLinksHostingView { return editor }
-        for child in view.subviews {
-            if let editor = firstStatusLinksEditor(in: child) { return editor }
-        }
-        return nil
-    }
-
-    private func statusLinksBottomAnchor(
-        in page: NSView,
-        scrollView: NSScrollView
-    ) -> (view: NSView, viewportY: CGFloat)? {
-        guard let editor = firstStatusLinksEditor(in: page),
-              let rowsStack = editor.superview as? NSStackView,
-              let card = rowsStack.superview else {
-            return nil
-        }
-        let edgeY = card.isFlipped ? card.bounds.maxY : card.bounds.minY
-        let point = card.convert(
-            NSPoint(x: card.bounds.midX, y: edgeY),
-            to: scrollView.contentView
-        )
-        return (card, point.y)
-    }
-
-    private func statusLinksBottomAnchorPoint(in view: NSView) -> NSPoint {
-        let edgeY = view.isFlipped ? view.bounds.maxY : view.bounds.minY
-        return NSPoint(x: view.bounds.midX, y: edgeY)
-    }
-
-    private func refreshStatusLinksEditorInPlace(
-        scrollPosition: DashboardScrollPosition?,
-        operation: String
-    ) -> Bool {
-        guard let page = dashboardContentHost.subviews.first,
-              let editor = firstStatusLinksEditor(in: page)
-        else {
-            SwitchLog.write(
-                "in-place status-link refresh failed; action=\(operation); reason=editor-not-found; host_subviews=\(dashboardContentHost.subviews.count)",
-                level: .warning,
-                category: "ui.layout"
-            )
-            return false
-        }
-        SwitchLog.write(
-            "in-place status-link refresh started; action=\(operation); old_rows=\(editor.rowCount); new_rows=\(statusLinks.count); editor_frame=\(DashboardLogging.rect(editor.frame))",
-            category: "ui.layout"
-        )
-        if let scrollPosition {
-            startDashboardScrollAnchorMaintenance(scrollPosition, operation: operation)
-        } else {
-            stopDashboardScrollAnchorMaintenance()
-        }
-        editor.updateLinks(
-            statusLinks,
-            animated: true,
-            revealAddedRowsAtCompletion: operation == "add"
-        ) { [weak self, weak page, weak editor] in
-            guard let self, let page, let editor else { return }
-            self.stopDashboardScrollAnchorMaintenance()
-            page.layoutSubtreeIfNeeded()
-            editor.superview?.layoutSubtreeIfNeeded()
-            self.clampDashboardScrollViewBounds()
-            SwitchLog.write(
-                "in-place status-link refresh animation completed; action=\(operation); rows=\(editor.rowCount); editor_frame=\(DashboardLogging.rect(editor.frame)); page_frame=\(DashboardLogging.rect(page.frame))",
-                category: "ui.layout"
-            )
-            editor.logGeometry(label: "after \(operation) animation")
-            if let scrollPosition {
-                self.restoreDashboardScrollPosition(scrollPosition, attempt: 0)
-            } else {
-                SwitchLog.write(
-                    "in-place status-link refresh has no scroll position; action=\(operation)",
-                    level: .warning,
-                    category: "ui.scroll"
-                )
-            }
-            self.scheduleDashboardScrollLog(label: "after \(operation) animation")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                self?.logDashboardScrollState(label: "after \(operation) settled")
-                editor.logGeometry(label: "after \(operation) settled")
-            }
-        }
-        // The height constraint starts animating synchronously above. Correct
-        // the clip view once more before returning to the run loop so the
-        // first layout pass cannot expose a one-frame jump before the timer
-        // gets its first tick.
-        if let scrollPosition {
-            maintainDashboardScrollAnchor(scrollPosition)
-        }
-        // Capture one state during the transition so the log distinguishes a
-        // smooth layout animation from a late, discrete jump.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-            self?.logDashboardScrollState(label: "during \(operation) animation")
-        }
-        return true
     }
 
     private func clampDashboardScrollViewBounds() {
-        guard let page = dashboardContentHost.subviews.first,
-              let scrollView = firstScrollView(in: page),
-              let documentView = scrollView.documentView else {
-            return
-        }
-        page.layoutSubtreeIfNeeded()
-        scrollView.layoutSubtreeIfNeeded()
-        setDashboardScrollBounds(
-            scrollView.contentView.bounds,
-            scrollView: scrollView,
-            documentView: documentView
-        )
-    }
-
-    private func startDashboardScrollAnchorMaintenance(
-        _ position: DashboardScrollPosition,
-        operation: String
-    ) {
-        stopDashboardScrollAnchorMaintenance()
-        SwitchLog.write(
-            "scroll anchor maintenance started; action=\(operation); interval=0.0167s; distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom))",
-            category: "ui.scroll"
-        )
-        let anchorTimer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            self?.maintainDashboardScrollAnchor(position)
-        }
-        statusLinksScrollAnchorTimer = anchorTimer
-        RunLoop.main.add(anchorTimer, forMode: .common)
-        // Apply once immediately so the first layout pass does not wait for
-        // the first timer tick before the viewport begins following the card.
-        maintainDashboardScrollAnchor(position)
-    }
-
-    private func stopDashboardScrollAnchorMaintenance() {
-        statusLinksScrollAnchorTimer?.invalidate()
-        statusLinksScrollAnchorTimer = nil
-    }
-
-    private func maintainDashboardScrollAnchor(_ position: DashboardScrollPosition) {
-        guard let page = dashboardContentHost.subviews.first,
-              let scrollView = firstScrollView(in: page),
-              let documentView = scrollView.documentView else {
-            return
-        }
-
-        dashboard?.displayIfNeeded()
-        dashboardContentHost.layoutSubtreeIfNeeded()
-        page.layoutSubtreeIfNeeded()
-        scrollView.layoutSubtreeIfNeeded()
-
-        let contentView = scrollView.contentView
-        // A removal shrinks the document from the bottom. Restore the clip
-        // view through the shared visual-offset clamp so the new document
-        // range, rather than the old coordinate origin, decides the result.
-        if position.operation != "add" {
-            let geometry = dashboardScrollGeometry(
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            let targetVisualOffset = geometry.clampedVisualOffset(
-                geometry.maximumOffset - max(0, position.distanceFromBottom)
-            )
-            let targetContentOriginY = dashboardScrollContentOrigin(
-                scrollView: scrollView,
-                documentView: documentView,
-                visualOffset: targetVisualOffset
-            )
-            var bounds = contentView.bounds
-            guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
-            bounds.origin.y = targetContentOriginY
-            setDashboardScrollBounds(
-                bounds,
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            return
-        }
-
-        if let anchorView = position.bottomAnchorView,
-           let targetViewportY = position.bottomAnchorViewportY,
-           anchorView === page || anchorView.isDescendant(of: page) {
-            let currentViewportY = anchorView.convert(
-                statusLinksBottomAnchorPoint(in: anchorView),
-                to: contentView
-            ).y
-            let correction = currentViewportY - targetViewportY
-            guard abs(correction) > 0.01 else { return }
-            var bounds = contentView.bounds
-            // Changing the clip-view bounds origin translates the document in
-            // the viewport. Correct by the exact amount the red card edge
-            // moved, so the edge stays visually fixed throughout the height
-            // animation instead of letting the blue top edge win by default.
-            bounds.origin.y += correction
-            setDashboardScrollBounds(
-                bounds,
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            return
-        }
-
-        var bounds = contentView.bounds
-        let targetContentOriginY = dashboardScrollContentOrigin(
-            scrollView: scrollView,
-            documentView: documentView,
-            visualOffset: position.visibleDocumentOffset
-        )
-        guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
-        bounds.origin.y = targetContentOriginY
-        setDashboardScrollBounds(
-            bounds,
-            scrollView: scrollView,
-            documentView: documentView
-        )
-    }
-
-    private func dashboardScrollGeometry(
-        scrollView: NSScrollView,
-        documentView: NSView
-    ) -> DashboardScrollGeometry {
-        DashboardScrollGeometry(
-            documentBounds: documentView.bounds,
-            viewportHeight: scrollView.contentView.bounds.height,
-            isDocumentFlipped: documentView.isFlipped
-        )
-    }
-
-    private func setDashboardScrollBounds(
-        _ proposedBounds: NSRect,
-        scrollView: NSScrollView,
-        documentView: NSView
-    ) {
-        let contentView = scrollView.contentView
-        contentView.bounds = dashboardClampedContentBounds(
-            proposedBounds: proposedBounds,
-            contentView: contentView,
-            documentView: documentView
-        )
-        scrollView.reflectScrolledClipView(contentView)
-    }
-
-    private func dashboardScrollContentOrigin(
-        scrollView: NSScrollView,
-        documentView: NSView,
-        visualOffset: CGFloat
-    ) -> CGFloat {
-        let geometry = dashboardScrollGeometry(
-            scrollView: scrollView,
-            documentView: documentView
-        )
-        let targetDocumentRect = geometry.visibleDocumentRect(
-            forVisualOffset: visualOffset
-        )
-        let targetDocumentY = geometry.contentOriginDocumentY(
-            for: targetDocumentRect,
-            contentViewIsFlipped: scrollView.contentView.isFlipped
-        )
-        return documentView.convert(
-            NSPoint(
-                x: documentView.bounds.minX,
-                y: targetDocumentY
-            ),
-            to: scrollView.contentView
-        ).y
-    }
-
-    private func dashboardScrollPosition(
-        captureLabel: String,
-        operation: String
-    ) -> DashboardScrollPosition? {
-        guard let page = dashboardContentHost.subviews.first,
-              let scrollView = firstScrollView(in: page),
-              let documentView = scrollView.documentView
-        else {
-            SwitchLog.write(
-                "scroll position capture failed; label=\(captureLabel); action=\(operation); page=\(dashboardSection.title); reason=scroll-view-not-found",
-                level: .warning,
-                category: "ui.scroll"
-            )
-            return nil
-        }
-        page.layoutSubtreeIfNeeded()
-        scrollView.layoutSubtreeIfNeeded()
-        let geometry = dashboardScrollGeometry(
-            scrollView: scrollView,
-            documentView: documentView
-        )
-        let visibleDocumentRect = scrollView.contentView.convert(
-            scrollView.contentView.bounds,
-            to: documentView
-        )
-        let visibleDocumentOffset = geometry.clampedVisualOffset(
-            for: visibleDocumentRect
-        )
-        let bottomAnchor = statusLinksBottomAnchor(
-            in: page,
-            scrollView: scrollView
-        )
-        let bottomAnchorIsVisible = bottomAnchor.map { anchor in
-            let bounds = scrollView.contentView.bounds
-            return anchor.viewportY >= bounds.minY - 1
-                && anchor.viewportY <= bounds.maxY + 1
-        } ?? false
-        let activeBottomAnchor = bottomAnchorIsVisible ? bottomAnchor : nil
-        let position = DashboardScrollPosition(
-            operation: operation,
-            visibleDocumentOffset: visibleDocumentOffset,
-            contentOriginY: scrollView.contentView.bounds.origin.y,
-            distanceFromBottom: max(0, geometry.maximumOffset - visibleDocumentOffset),
-            previousMaximumOffset: geometry.maximumOffset,
-            bottomAnchorView: activeBottomAnchor?.view,
-            bottomAnchorViewportY: activeBottomAnchor?.viewportY
-        )
-        SwitchLog.write(
-            "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOffset=\(DashboardLogging.number(visibleDocumentOffset)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(geometry.maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
-            category: "ui.scroll"
-        )
-        return position
-    }
-
-    private func restoreDashboardScrollPosition(
-        _ position: DashboardScrollPosition,
-        attempt: Int
-    ) {
-        let delay = attempt == 0 ? 0 : 0.06
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            self.applyDashboardScrollPosition(position, attempt: attempt)
-        }
-    }
-
-    private func applyDashboardScrollPosition(
-        _ position: DashboardScrollPosition,
-        attempt: Int
-    ) {
-        guard let page = dashboardContentHost.subviews.first,
-              let scrollView = firstScrollView(in: page),
-              let documentView = scrollView.documentView
-        else {
-            SwitchLog.write(
-                "scroll restore aborted; action=\(position.operation); attempt=\(attempt); reason=scroll-view-not-found",
-                level: .warning,
-                category: "ui.scroll"
-            )
-            return
-        }
-        SwitchLog.write(
-            "scroll restore begin; action=\(position.operation); attempt=\(attempt); target_visibleDocumentOffset=\(DashboardLogging.number(position.visibleDocumentOffset)); captured_contentOriginY=\(DashboardLogging.number(position.contentOriginY)); target_distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(position.previousMaximumOffset)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
-            category: "ui.scroll"
-        )
-        dashboard?.displayIfNeeded()
-        dashboardContentHost.layoutSubtreeIfNeeded()
-        page.layoutSubtreeIfNeeded()
-        scrollView.layoutSubtreeIfNeeded()
-        if position.operation != "add" {
-            let geometry = dashboardScrollGeometry(
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            let targetVisualOffset = geometry.clampedVisualOffset(
-                geometry.maximumOffset - max(0, position.distanceFromBottom)
-            )
-            let targetContentOriginY = dashboardScrollContentOrigin(
-                scrollView: scrollView,
-                documentView: documentView,
-                visualOffset: targetVisualOffset
-            )
-            var bounds = scrollView.contentView.bounds
-            let correction = targetContentOriginY - bounds.origin.y
-            bounds.origin.y = targetContentOriginY
-            setDashboardScrollBounds(
-                bounds,
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            SwitchLog.write(
-                "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=document-distance; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
-                category: "ui.scroll"
-            )
-            if attempt < 2 {
-                restoreDashboardScrollPosition(position, attempt: attempt + 1)
-            }
-            return
-        }
-
-        if let anchorView = position.bottomAnchorView,
-           let targetViewportY = position.bottomAnchorViewportY,
-           anchorView === page || anchorView.isDescendant(of: page) {
-            let currentViewportY = anchorView.convert(
-                statusLinksBottomAnchorPoint(in: anchorView),
-                to: scrollView.contentView
-            ).y
-            let correction = currentViewportY - targetViewportY
-            if abs(correction) > 0.01 {
-                var bounds = scrollView.contentView.bounds
-                bounds.origin.y += correction
-                setDashboardScrollBounds(
-                    bounds,
-                    scrollView: scrollView,
-                    documentView: documentView
-                )
-            }
-            SwitchLog.write(
-                "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=card-bottom; target_viewportY=\(DashboardLogging.number(targetViewportY)); actual_viewportY=\(DashboardLogging.number(currentViewportY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
-                category: "ui.scroll"
-            )
-            if attempt < 2 {
-                restoreDashboardScrollPosition(position, attempt: attempt + 1)
-            }
-            return
-        }
-
-        var bounds = scrollView.contentView.bounds
-        let targetContentOriginY = dashboardScrollContentOrigin(
-            scrollView: scrollView,
-            documentView: documentView,
-            visualOffset: position.visibleDocumentOffset
-        )
-        let correction = targetContentOriginY - bounds.origin.y
-        bounds.origin.y = targetContentOriginY
-        setDashboardScrollBounds(
-            bounds,
-            scrollView: scrollView,
-            documentView: documentView
-        )
-        SwitchLog.write(
-            "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=visible-document-offset; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
-            category: "ui.scroll"
-        )
-
-        // A second pass handles the case where Auto Layout updates the
-        // document frame immediately after the first bounds assignment.
-        if attempt < 2 {
-            restoreDashboardScrollPosition(position, attempt: attempt + 1)
-        }
-    }
-
-    private func dashboardScrollMetrics(
-        scrollView: NSScrollView,
-        documentView: NSView
-    ) -> String {
-        let contentView = scrollView.contentView
-        let bounds = contentView.bounds
-        let viewportRect = contentView.convert(bounds, to: documentView)
-        let geometry = dashboardScrollGeometry(
-            scrollView: scrollView,
-            documentView: documentView
-        )
-        let visualOffset = geometry.clampedVisualOffset(for: viewportRect)
-        return "page=\(dashboardSection.title); links=\(statusLinks.count); content_originY=\(DashboardLogging.number(bounds.origin.y)); content_height=\(DashboardLogging.number(bounds.height)); document_frame=\(DashboardLogging.rect(documentView.frame)); document_bounds=\(DashboardLogging.rect(documentView.bounds)); viewport_document=\(DashboardLogging.rect(viewportRect)); visual_offset=\(DashboardLogging.number(visualOffset)); maxOffset=\(DashboardLogging.number(geometry.maximumOffset))"
-    }
-
-    private func logDashboardScrollState(label: String) {
-        guard let page = dashboardContentHost.subviews.first,
-              let scrollView = firstScrollView(in: page),
-              let documentView = scrollView.documentView else {
-            SwitchLog.write(
-                "scroll state; label=\(label); page=\(dashboardSection.title); reason=scroll-view-not-found",
-                level: .warning,
-                category: "ui.scroll"
-            )
-            return
-        }
-        page.layoutSubtreeIfNeeded()
-        scrollView.layoutSubtreeIfNeeded()
-        SwitchLog.write(
-            "scroll state; label=\(label); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
-            category: "ui.scroll"
-        )
-    }
-
-    private func scheduleDashboardScrollLog(label: String) {
-        DispatchQueue.main.async { [weak self] in
-            self?.logDashboardScrollState(label: label)
-        }
+        statusLinksScrollAnchorController.clampDashboardScrollViewBounds()
     }
 
     private func rebuildDashboardProviderList() {
@@ -2832,7 +2104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
                     $0.relation == .equal
             }?.constant
             let fittingHeight: CGFloat
-            if let editor = row as? StatusLinksHostingView {
+            if let editor = row as? StatusLinksEditorHostingView {
                 fittingHeight = editor.layoutHeight
             } else {
                 fittingHeight = row.fittingSize.height
@@ -2851,7 +2123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         section.alignment = .leading
         section.spacing = 11
         card.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
-        if let editor = rows.first(where: { $0 is StatusLinksHostingView }) as? StatusLinksHostingView {
+        if let editor = rows.first(where: { $0 is StatusLinksEditorHostingView }) as? StatusLinksEditorHostingView {
             DispatchQueue.main.async { [weak editor] in
                 editor?.logGeometry(label: "initial")
             }
@@ -3059,7 +2331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     }
 
     private func makeStatusLinksEditor() -> NSView {
-        let editor = StatusLinksHostingView(
+        let editor = StatusLinksEditorHostingView(
             links: statusLinks,
             onChange: { [weak self] index, field, value in
                 self?.dashboardStatusLinkChanged(index: index, field: field, value: value)
@@ -3074,7 +2346,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
                 self?.resetStatusLinks()
             }
         )
-        statusLinksHostingView = editor
+        statusLinksEditorHostingView = editor
         return editor
     }
 
@@ -3348,7 +2620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.11.13"
+        ) as? String ?? "0.11.14"
         let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
