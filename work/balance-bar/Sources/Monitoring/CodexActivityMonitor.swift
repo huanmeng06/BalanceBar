@@ -26,8 +26,11 @@ final class CodexActivityMonitor {
         "compacted", "context_compacted"
     ]
     private static let ongoingActivityTypes: Set<String> = [
-        "agent_reasoning", "reasoning", "function_call", "function_call_output"
+        "agent_reasoning", "reasoning", "function_call", "function_call_output",
+        "custom_tool_call", "custom_tool_call_output",
+        "tool_search_call", "tool_search_output"
     ]
+    private static let terminalResponseItemTypes: Set<String> = ["message"]
     private static let responseTerminalTypes: Set<String> = [
         "response.completed", "response.failed", "response.incomplete", "response.cancelled"
     ]
@@ -106,8 +109,10 @@ final class CodexActivityMonitor {
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 150)
         // Codex stores updated_at as Unix seconds and updated_at_ms as Unix
-        // milliseconds. Filter before LIMIT so a stale row cannot occupy one
-        // of the 24 candidates and poison an otherwise idle startup.
+        // milliseconds. Filter before reading rollout files so stale rows
+        // cannot poison an otherwise idle startup. Do not cap the result set:
+        // activity is aggregated across tasks, and an older running task must
+        // remain visible after a newer task is stopped.
         let updatedAt = "coalesce(nullif(updated_at_ms, 0), updated_at * 1000)"
         let cutoff = Int64((now.timeIntervalSince1970 - TimeInterval(Self.activityWindow)) * 1000)
         let sql = """
@@ -116,7 +121,6 @@ final class CodexActivityMonitor {
         WHERE rollout_path <> ''
           AND \(updatedAt) >= ?
         ORDER BY \(updatedAt) DESC
-        LIMIT 24
         """
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
@@ -228,7 +232,9 @@ final class CodexActivityMonitor {
             } else if let phase, Self.terminalPhases.contains(phase) {
                 running = false
                 terminalSeen = true
-            } else if let status, Self.responseTerminalStatuses.contains(status) {
+            } else if let status,
+                      Self.responseTerminalStatuses.contains(status),
+                      payloadType == nil || Self.terminalResponseItemTypes.contains(payloadType ?? "") {
                 running = false
                 terminalSeen = true
             } else if !lifecycleOnly, status == "in_progress", !terminalSeen {

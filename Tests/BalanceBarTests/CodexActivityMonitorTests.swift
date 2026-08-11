@@ -108,6 +108,57 @@ final class CodexActivityMonitorTests: XCTestCase {
         )
     }
 
+    func testCompletedCustomToolCallKeepsTaskRunningUntilFinalResponse() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("agent_reasoning")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try appendSession([
+            responseItem(type: "custom_tool_call", status: "completed")
+        ], to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(0.1)
+        XCTAssertTrue(
+            monitor.isTaskRunning(now: currentDate),
+            "completion of one custom tool call must not end the containing task"
+        )
+
+        try appendSession([
+            responseItem(type: "custom_tool_call_output")
+        ], to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(0.1)
+        XCTAssertTrue(
+            monitor.isTaskRunning(now: currentDate),
+            "custom tool output must keep the task active after the call completes"
+        )
+
+        try appendSession([responseItem(phase: "final")], to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(0.1)
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "the genuine final response must still stop activity"
+        )
+    }
+
+    func testCustomToolActivityAfterTerminalDoesNotReopenTask() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            responseItem(phase: "final"),
+            responseItem(type: "custom_tool_call", status: "completed"),
+            responseItem(type: "custom_tool_call_output")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "tool items trailing a genuine terminal response must remain inactive"
+        )
+    }
+
     func testAllResponseItemTerminalStatusesSuppressTrailingActivity() throws {
         for status in ["completed", "failed", "cancelled", "canceled", "incomplete"] {
             let directory = fixtureDirectory.appendingPathComponent(status, isDirectory: true)
@@ -190,6 +241,33 @@ final class CodexActivityMonitorTests: XCTestCase {
         try makeStateDatabase(rollouts: rollouts)
 
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testActiveOlderRolloutIsNotHiddenByNewerStoppedRollouts() throws {
+        var rollouts: [RolloutFixture] = []
+        for index in 0..<24 {
+            let sessionURL = try writeSession([
+                eventMessage("task_started"),
+                eventMessage("task_stopped")
+            ])
+            rollouts.append(
+                RolloutFixture(path: sessionURL.path, updatedAt: epoch - Int64(index + 1))
+            )
+        }
+
+        let activeSessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("agent_reasoning")
+        ])
+        rollouts.append(
+            RolloutFixture(path: activeSessionURL.path, updatedAt: epoch - 60)
+        )
+        try makeStateDatabase(rollouts: rollouts)
+
+        XCTAssertTrue(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "an active task must keep the aggregate state running even when 24 newer stopped tasks exist"
+        )
     }
 
     func testIdleLaunchWithRecentlyCompletedLogIsInactive() throws {
@@ -498,6 +576,10 @@ final class CodexActivityMonitorTests: XCTestCase {
 
     private func responseItem(type: String) -> String {
         "{\"type\":\"response_item\",\"payload\":{\"type\":\"\(type)\"}}"
+    }
+
+    private func responseItem(type: String, status: String) -> String {
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"\(type)\",\"status\":\"\(status)\"}}"
     }
 
     private func responseItem(status: String, type: String = "message") -> String {
