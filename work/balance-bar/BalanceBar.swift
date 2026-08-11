@@ -3587,7 +3587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.11.10"
+        ) as? String ?? "0.11.11"
         let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
