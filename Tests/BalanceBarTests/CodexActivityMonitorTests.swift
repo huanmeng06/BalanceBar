@@ -270,6 +270,59 @@ final class CodexActivityMonitorTests: XCTestCase {
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
     }
 
+    func testContextCompactionReopensActivityAfterFinalAnswer() throws {
+        let sessionURL = try writeSession([
+            responseItem(phase: "final_answer"),
+            topLevelEvent("compacted"),
+            topLevelEvent("world_state"),
+            topLevelEvent("turn_context"),
+            topLevelEvent("context_compacted"),
+            eventMessage("agent_reasoning"),
+            responseItem(type: "reasoning"),
+            eventMessage("function_call"),
+            responseItem(type: "function_call_output")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertTrue(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "explicit reasoning and tool activity after context compaction must reopen the task"
+        )
+    }
+
+    func testContextCompactionWithoutExplicitActivityRemainsInactive() throws {
+        let sessionURL = try writeSession([
+            responseItem(phase: "final_answer"),
+            topLevelEvent("compacted"),
+            topLevelEvent("world_state"),
+            topLevelEvent("turn_context"),
+            eventMessage("context_compacted"),
+            eventMessage("agent_message")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "context compaction and ordinary commentary must not be treated as activity"
+        )
+    }
+
+    func testTerminalAfterContextCompactionStillSuppressesTrailingActivity() throws {
+        let sessionURL = try writeSession([
+            responseItem(phase: "final_answer"),
+            topLevelEvent("context_compacted"),
+            responseItem(type: "reasoning"),
+            eventMessage("task_complete"),
+            responseItem(type: "function_call_output")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertFalse(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "a genuine terminal event after compaction must suppress later trailing activity"
+        )
+    }
+
     func testOfficialModelStartReasoningAndTerminal() throws {
         let sessionURL = try writeSession([
             eventMessage("user_message"),
@@ -433,6 +486,10 @@ final class CodexActivityMonitorTests: XCTestCase {
 
     private func eventMessage(_ type: String) -> String {
         "{\"type\":\"event_msg\",\"payload\":{\"type\":\"\(type)\"}}"
+    }
+
+    private func topLevelEvent(_ type: String) -> String {
+        "{\"type\":\"\(type)\"}"
     }
 
     private func responseItem(phase: String) -> String {

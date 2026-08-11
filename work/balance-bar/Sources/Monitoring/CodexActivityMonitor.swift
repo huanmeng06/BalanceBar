@@ -22,6 +22,9 @@ final class CodexActivityMonitor {
         "task_complete", "task_completed", "task_stopped", "task_failed", "task_cancelled",
         "turn_complete", "turn_completed", "turn_aborted", "turn_failed", "turn_cancelled"
     ]
+    private static let contextCompactionTypes: Set<String> = [
+        "compacted", "context_compacted"
+    ]
     private static let ongoingActivityTypes: Set<String> = [
         "agent_reasoning", "reasoning", "function_call", "function_call_output"
     ]
@@ -178,6 +181,14 @@ final class CodexActivityMonitor {
     ) {
         guard let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
               let topType = object["type"] as? String else { return }
+        if Self.contextCompactionTypes.contains(topType) {
+            // Context compaction continues the same task after a prior
+            // final_answer marker. It is a lifecycle boundary, not activity
+            // itself; wait for explicit reasoning or tool activity to reopen.
+            running = false
+            terminalSeen = false
+            return
+        }
         if Self.responseTerminalTypes.contains(topType) {
             running = false
             terminalSeen = true
@@ -185,7 +196,10 @@ final class CodexActivityMonitor {
         }
         if topType == "event_msg", let payload = object["payload"] as? [String: Any],
            let payloadType = payload["type"] as? String {
-            if payloadType == "agent_message",
+            if Self.contextCompactionTypes.contains(payloadType) {
+                running = false
+                terminalSeen = false
+            } else if payloadType == "agent_message",
                let phase = payload["phase"] as? String,
                Self.terminalPhases.contains(phase) {
                 running = false
@@ -207,7 +221,11 @@ final class CodexActivityMonitor {
         } else if topType == "response_item", let payload = object["payload"] as? [String: Any] {
             let phase = payload["phase"] as? String
             let status = payload["status"] as? String
-            if let phase, Self.terminalPhases.contains(phase) {
+            let payloadType = payload["type"] as? String
+            if let payloadType, Self.contextCompactionTypes.contains(payloadType) {
+                running = false
+                terminalSeen = false
+            } else if let phase, Self.terminalPhases.contains(phase) {
                 running = false
                 terminalSeen = true
             } else if let status, Self.responseTerminalStatuses.contains(status) {
@@ -216,7 +234,7 @@ final class CodexActivityMonitor {
             } else if !lifecycleOnly, status == "in_progress", !terminalSeen {
                 running = true
             } else if !lifecycleOnly,
-                      let payloadType = payload["type"] as? String,
+                      let payloadType,
                       Self.ongoingActivityTypes.contains(payloadType),
                       !terminalSeen {
                 running = true
