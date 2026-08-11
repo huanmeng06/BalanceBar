@@ -115,8 +115,26 @@ final class QuotaProgressView: NSView {
 
 final class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
+    private(set) var visibleTextHitRect = NSRect.zero
     private var trackingAreaReference: NSTrackingArea?
     private var isHovered = false
+    private var isApplyingStyle = false
+
+    override var stringValue: String {
+        didSet {
+            guard !isApplyingStyle else { return }
+            applyStyle(text: stringValue, underlined: isHovered)
+            updateVisibleTextHitRect()
+        }
+    }
+
+    override var font: NSFont? {
+        didSet {
+            guard !isApplyingStyle else { return }
+            applyStyle(text: stringValue, underlined: isHovered)
+            updateVisibleTextHitRect()
+        }
+    }
 
     init(text: String) {
         super.init(frame: .zero)
@@ -127,31 +145,48 @@ final class HoverLinkTextField: NSTextField {
         lineBreakMode = .byTruncatingTail
         font = .systemFont(ofSize: 12, weight: .medium)
         applyStyle(text: text, underlined: false)
+        updateVisibleTextHitRect()
     }
 
     required init?(coder: NSCoder) { nil }
 
+    override func layout() {
+        super.layout()
+        updateVisibleTextHitRect()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateVisibleTextHitRect()
+    }
+
+    override func setBoundsSize(_ newSize: NSSize) {
+        super.setBoundsSize(newSize)
+        updateVisibleTextHitRect()
+    }
+
+    override func setBoundsOrigin(_ newOrigin: NSPoint) {
+        super.setBoundsOrigin(newOrigin)
+        updateVisibleTextHitRect()
+    }
+
     override func updateTrackingAreas() {
         removeTrackingAreaReference()
         super.updateTrackingAreas()
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingAreaReference = area
+        updateVisibleTextHitRect()
+        installTrackingArea()
         synchronizeHoverStateWithMouseLocation()
     }
 
     override func resetCursorRects() {
         super.resetCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
+        updateVisibleTextHitRect()
+        guard !visibleTextHitRect.isEmpty else { return }
+        addCursorRect(visibleTextHitRect, cursor: .pointingHand)
     }
 
     override func mouseEntered(with event: NSEvent) {
-        setHovering(true)
+        setHovering(isPointInsideVisibleText(for: event))
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -159,10 +194,14 @@ final class HoverLinkTextField: NSTextField {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        NSCursor.pointingHand.set()
+        setHovering(isPointInsideVisibleText(for: event))
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard isPointInsideVisibleText(for: event) else {
+            setHovering(false)
+            return
+        }
         NSCursor.pointingHand.set()
         onActivate?()
     }
@@ -177,6 +216,18 @@ final class HoverLinkTextField: NSTextField {
     override func removeFromSuperview() {
         tearDownInteraction()
         super.removeFromSuperview()
+    }
+
+    private func installTrackingArea() {
+        guard !visibleTextHitRect.isEmpty else { return }
+        let area = NSTrackingArea(
+            rect: visibleTextHitRect,
+            options: [.mouseEnteredAndExited, .cursorUpdate, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingAreaReference = area
     }
 
     private func removeTrackingAreaReference() {
@@ -203,13 +254,12 @@ final class HoverLinkTextField: NSTextField {
     }
 
     private func synchronizeHoverStateWithMouseLocation() {
-        guard let window else { return }
-        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        if bounds.contains(point) {
-            setHovering(true)
-        } else if isHovered {
-            setHovering(false)
+        guard let window else {
+            if isHovered { setHovering(false) }
+            return
         }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        setHovering(visibleTextHitRect.contains(point))
     }
 
     private func tearDownInteraction() {
@@ -221,13 +271,104 @@ final class HoverLinkTextField: NSTextField {
         NSCursor.arrow.set()
     }
 
+    private func isPointInsideVisibleText(for event: NSEvent) -> Bool {
+        let point: NSPoint
+        if window != nil {
+            point = convert(event.locationInWindow, from: nil)
+        } else {
+            point = event.locationInWindow
+        }
+        return visibleTextHitRect.contains(point)
+    }
+
+    private func updateVisibleTextHitRect() {
+        let previousRect = visibleTextHitRect
+        visibleTextHitRect = calculateVisibleTextHitRect()
+        guard previousRect != visibleTextHitRect else { return }
+
+        window?.invalidateCursorRects(for: self)
+        guard trackingAreaReference != nil else { return }
+        removeTrackingAreaReference()
+        installTrackingArea()
+        synchronizeHoverStateWithMouseLocation()
+    }
+
+    private func calculateVisibleTextHitRect() -> NSRect {
+        guard !bounds.isEmpty,
+              let cell,
+              !attributedStringValue.string.isEmpty
+        else {
+            return .zero
+        }
+
+        let titleRect = cell.titleRect(forBounds: bounds)
+        guard !titleRect.isEmpty else { return .zero }
+
+        let textStorage = NSTextStorage(attributedString: layoutAttributedString())
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: titleRect.size)
+        textContainer.lineFragmentPadding = 0
+        textContainer.lineBreakMode = cell.lineBreakMode
+        textContainer.maximumNumberOfLines = 1
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let laidGlyphRange = layoutManager.glyphRange(for: textContainer)
+        guard laidGlyphRange.length > 0 else { return .zero }
+
+        let visibleGlyphRange: NSRange
+        let truncatedGlyphRange = layoutManager.truncatedGlyphRange(
+            inLineFragmentForGlyphAt: laidGlyphRange.location
+        )
+        if truncatedGlyphRange.location == NSNotFound {
+            visibleGlyphRange = laidGlyphRange
+        } else {
+            visibleGlyphRange = NSRange(
+                location: laidGlyphRange.location,
+                length: max(0, truncatedGlyphRange.location - laidGlyphRange.location)
+            )
+        }
+
+        let glyphRect = layoutManager.boundingRect(forGlyphRange: visibleGlyphRange, in: textContainer)
+        guard !glyphRect.isEmpty else { return .zero }
+
+        let glyphHitRect = NSRect(
+            x: titleRect.minX + glyphRect.minX,
+            y: titleRect.minY + glyphRect.minY,
+            width: glyphRect.width,
+            height: glyphRect.height
+        )
+        return glyphHitRect
+            .insetBy(dx: -2, dy: -2)
+            .intersection(bounds)
+    }
+
+    private func layoutAttributedString() -> NSAttributedString {
+        let attributedString = NSMutableAttributedString(attributedString: attributedStringValue)
+        guard attributedString.length > 0 else { return attributedString }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = cell?.alignment ?? alignment
+        paragraphStyle.lineBreakMode = cell?.lineBreakMode ?? lineBreakMode
+        attributedString.addAttribute(
+            .paragraphStyle,
+            value: paragraphStyle,
+            range: NSRange(location: 0, length: attributedString.length)
+        )
+        return attributedString
+    }
+
     private func applyStyle(text: String, underlined: Bool) {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font ?? NSFont.systemFont(ofSize: 12),
             .foregroundColor: NSColor.linkColor
         ]
         if underlined { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        isApplyingStyle = true
         attributedStringValue = NSAttributedString(string: text, attributes: attributes)
+        isApplyingStyle = false
+        updateVisibleTextHitRect()
     }
 }
 

@@ -58,26 +58,79 @@ final class DashboardComponentsTests: XCTestCase {
 
     func testHoverLinkInvokesActivationCallbackOnMouseDown() {
         let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)
+        link.layout()
         var activationCount = 0
         link.onActivate = { activationCount += 1 }
 
-        guard let event = NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            eventNumber: 0,
-            clickCount: 1,
-            pressure: 1
-        ) else {
-            return XCTFail("Expected to create a mouse event")
-        }
-
-        link.mouseDown(with: event)
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: link.visibleTextHitRect.center))
 
         XCTAssertEqual(activationCount, 1)
+    }
+
+    func testHoverLinkActivatesOnlyInsideVisibleTextHitRect() {
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 0, y: 0, width: 220, height: 20)
+        link.layout()
+
+        XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.maxX)
+
+        var activationCount = 0
+        link.onActivate = { activationCount += 1 }
+        for x in [
+            link.visibleTextHitRect.minX + 1,
+            link.visibleTextHitRect.midX,
+            link.visibleTextHitRect.maxX - 1
+        ] {
+            link.mouseDown(with: makeMouseEvent(
+                type: .leftMouseDown,
+                location: NSPoint(x: x, y: link.visibleTextHitRect.midY)
+            ))
+        }
+        link.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: link.visibleTextHitRect.maxX + 20, y: link.visibleTextHitRect.midY)
+        ))
+
+        XCTAssertEqual(activationCount, 3)
+    }
+
+    func testHoverLinkTruncationUsesOnlyVisibleRenderedText() {
+        let link = HoverLinkTextField(text: "A very long provider name that must truncate")
+        link.frame = NSRect(x: 0, y: 0, width: 90, height: 20)
+        link.layout()
+
+        XCTAssertGreaterThan(link.visibleTextHitRect.width, 0)
+        XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.maxX)
+
+        var activationCount = 0
+        link.onActivate = { activationCount += 1 }
+        link.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: NSPoint(x: link.visibleTextHitRect.maxX + 6, y: link.visibleTextHitRect.midY)
+        ))
+
+        XCTAssertEqual(activationCount, 0)
+    }
+
+    func testHoverLinkBlankAreaUsesArrowCursorAndDoesNotUnderline() {
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 0, y: 0, width: 220, height: 20)
+        link.layout()
+
+        let previousCursor = NSCursor.current
+        defer { previousCursor.set() }
+        NSCursor.arrow.set()
+
+        let blankEvent = makeMouseEvent(
+            type: .mouseMoved,
+            location: NSPoint(x: link.visibleTextHitRect.maxX + 20, y: link.visibleTextHitRect.midY)
+        )
+        link.cursorUpdate(with: blankEvent)
+        link.mouseEntered(with: blankEvent)
+
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
     }
 
     func testHoverLinkRebuildsOneCursorTrackingArea() {
@@ -86,8 +139,10 @@ final class DashboardComponentsTests: XCTestCase {
 
         link.updateTrackingAreas()
         XCTAssertEqual(link.trackingAreas.count, 1)
+        XCTAssertEqual(link.trackingAreas[0].rect, link.visibleTextHitRect)
         XCTAssertTrue(link.trackingAreas[0].options.contains(.cursorUpdate))
         XCTAssertTrue(link.trackingAreas[0].options.contains(.activeAlways))
+        XCTAssertFalse(link.trackingAreas[0].options.contains(.inVisibleRect))
 
         link.updateTrackingAreas()
         XCTAssertEqual(link.trackingAreas.count, 1)
@@ -123,26 +178,41 @@ final class DashboardComponentsTests: XCTestCase {
 
     func testHoverLinkCursorUpdateUsesPointingHandWithoutClick() {
         let link = HoverLinkTextField(text: "Provider")
-        guard let event = NSEvent.mouseEvent(
-            with: .mouseMoved,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            eventNumber: 0,
-            clickCount: 0,
-            pressure: 0
-        ) else {
-            return XCTFail("Expected to create a mouse event")
-        }
+        link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)
+        link.layout()
 
         let previousCursor = NSCursor.current
         defer { previousCursor.set() }
         NSCursor.arrow.set()
 
-        link.cursorUpdate(with: event)
+        link.cursorUpdate(with: makeMouseEvent(type: .mouseMoved, location: link.visibleTextHitRect.center))
 
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+    }
+
+    private func makeMouseEvent(
+        type: NSEvent.EventType,
+        location: NSPoint
+    ) -> NSEvent {
+        guard let event = NSEvent.mouseEvent(
+            with: type,
+            location: location,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: type == .leftMouseDown ? 1 : 0,
+            pressure: type == .leftMouseDown ? 1 : 0
+        ) else {
+            fatalError("Expected to create a mouse event")
+        }
+        return event
+    }
+}
+
+private extension NSRect {
+    var center: NSPoint {
+        NSPoint(x: midX, y: midY)
     }
 }
