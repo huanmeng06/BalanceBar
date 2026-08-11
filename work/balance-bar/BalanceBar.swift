@@ -85,95 +85,6 @@ enum DashboardWindowDragPolicy {
     }
 }
 
-private final class PassthroughTextField: NSTextField {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
-private class PassthroughImageView: NSImageView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
-private final class PassthroughView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
-private final class MenuBarContentView: NSView {
-    override var isFlipped: Bool { true }
-}
-
-private final class MenuBarTextView: NSView {
-    override var isFlipped: Bool { true }
-
-    var layoutSize: NSSize = NSSize(width: 32, height: 18) {
-        didSet { invalidateIntrinsicContentSize() }
-    }
-
-    override var intrinsicContentSize: NSSize { layoutSize }
-}
-
-struct MenuBarGeometry {
-    let iconWidth: CGFloat
-    let gap: CGFloat
-    let textWidth: CGFloat
-    let primaryHeight: CGFloat
-    let secondaryHeight: CGFloat
-    let textHeight: CGFloat
-    let contentWidth: CGFloat
-    let contentHeight: CGFloat
-
-    init(
-        primarySize: NSSize,
-        secondarySize: NSSize,
-        showIcon: Bool,
-        showAmount: Bool,
-        hasSecondary: Bool,
-        isBalance: Bool,
-        iconSlotWidth: CGFloat,
-        iconTextSpacing: CGFloat,
-        textRowSpacing: CGFloat,
-        textWidthSlack: CGFloat,
-        singleLineHeight: CGFloat
-    ) {
-        iconWidth = showIcon ? iconSlotWidth : 0
-        gap = showIcon && showAmount ? iconTextSpacing : 0
-        textWidth = showAmount
-            ? ceil(max(primarySize.width, secondarySize.width)) + textWidthSlack
-            : 0
-        primaryHeight = showAmount ? ceil(primarySize.height) : 0
-        secondaryHeight = hasSecondary ? ceil(secondarySize.height) : 0
-        textHeight = primaryHeight + (hasSecondary ? textRowSpacing + secondaryHeight : 0)
-        contentWidth = iconWidth + gap + textWidth
-        contentHeight = isBalance && showAmount
-            ? singleLineHeight
-            : ceil(max(iconWidth, textHeight))
-    }
-
-    func iconCenterYInFlippedButton(
-        buttonHeight: CGFloat,
-        iconViewYOffset: CGFloat
-    ) -> CGFloat {
-        let contentY = floor((buttonHeight - contentHeight) / 2)
-        let slotYFromTop = floor(max(0, (contentHeight - iconWidth) / 2))
-        // The status button and content stack are flipped while the icon slot
-        // is not. Positive local icon Y therefore decreases button-space Y.
-        return contentY + slotYFromTop - iconViewYOffset + (iconWidth / 2)
-    }
-
-    func iconViewYOffset(
-        alignedTo reference: MenuBarGeometry,
-        buttonHeight: CGFloat,
-        referenceIconViewYOffset: CGFloat
-    ) -> CGFloat {
-        iconCenterYInFlippedButton(
-            buttonHeight: buttonHeight,
-            iconViewYOffset: 0
-        ) - reference.iconCenterYInFlippedButton(
-            buttonHeight: buttonHeight,
-            iconViewYOffset: referenceIconViewYOffset
-        )
-    }
-}
-
 private enum StatusLinkField {
     case title
     case url
@@ -513,194 +424,6 @@ private final class DashboardNavigationRowView: NSView {
     }
 }
 
-private final class RotatingTemplateImageView: PassthroughImageView {
-    private static let frameCount = 36
-    private static let rotationDuration: TimeInterval = 1.15
-    private var sourceImage: NSImage?
-    private var rotationFrames: [NSImage] = []
-    private var rotationTimer: Timer?
-    private var frameIndex = 0
-    var onImageChanged: ((NSImage?) -> Void)?
-
-    func setSourceImage(_ image: NSImage) {
-        if sourceImage !== image {
-            rotationFrames = Self.makeRotationFrames(from: image)
-        }
-        sourceImage = image
-        self.image = image
-        onImageChanged?(image)
-    }
-
-    func displayImage(_ image: NSImage) {
-        self.image = image
-        onImageChanged?(image)
-    }
-
-    func startRotating() {
-        guard rotationTimer == nil, !rotationFrames.isEmpty else { return }
-        frameIndex = 0
-        let interval = Self.rotationDuration / Double(Self.frameCount)
-        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            self?.advanceRotation()
-        }
-        timer.tolerance = 0.002
-        rotationTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    func stopRotating() {
-        let wasRotating = rotationTimer != nil
-        rotationTimer?.invalidate()
-        rotationTimer = nil
-        frameIndex = 0
-        image = sourceImage
-        if wasRotating { onImageChanged?(sourceImage) }
-    }
-
-    private func advanceRotation() {
-        guard !rotationFrames.isEmpty else { return }
-        frameIndex = (frameIndex + 1) % rotationFrames.count
-        let frame = rotationFrames[frameIndex]
-        image = frame
-        onImageChanged?(frame)
-    }
-
-    private static func makeRotationFrames(from sourceImage: NSImage) -> [NSImage] {
-        (0..<frameCount).map { index in
-            let angle = -(2 * .pi * CGFloat(index) / CGFloat(frameCount))
-            let frame = NSImage(size: sourceImage.size, flipped: false) { rect in
-                NSGraphicsContext.current?.imageInterpolation = .high
-                let transform = NSAffineTransform()
-                transform.translateX(by: rect.midX, yBy: rect.midY)
-                transform.rotate(byRadians: angle)
-                transform.translateX(by: -rect.midX, yBy: -rect.midY)
-                transform.concat()
-                sourceImage.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
-                return true
-            }
-            frame.isTemplate = true
-            return frame
-        }
-    }
-
-    deinit {
-        rotationTimer?.invalidate()
-    }
-}
-
-private final class ClaudeThinkingAnimator {
-    private weak var imageView: RotatingTemplateImageView?
-    private let staticImage: NSImage
-    private let frames: [NSImage]
-    private let frameDuration: TimeInterval
-    private let outputSize: NSSize
-    private var timer: Timer?
-    private var frameIndex = 0
-
-    init?(
-        imageView: RotatingTemplateImageView,
-        staticImage: NSImage,
-        animatedSVGURL: URL,
-        frameDuration: TimeInterval = 0.09,
-        outputSize: NSSize = NSSize(width: 16, height: 16)
-    ) {
-        guard
-            let svg = try? String(contentsOf: animatedSVGURL, encoding: .utf8),
-            let frames = Self.makeFrames(from: svg),
-            frames.count == 9
-        else {
-            return nil
-        }
-        self.imageView = imageView
-        self.staticImage = staticImage
-        self.frames = frames.map { source in
-            let output = NSImage(size: outputSize, flipped: false) { rect in
-                source.draw(
-                    in: rect.insetBy(dx: 0.3, dy: 0.3),
-                    from: .zero,
-                    operation: .sourceOver,
-                    fraction: 1,
-                    respectFlipped: true,
-                    hints: [.interpolation: NSImageInterpolation.high]
-                )
-                return true
-            }
-            output.isTemplate = true
-            output.size = outputSize
-            return output
-        }
-        self.frameDuration = frameDuration
-        self.outputSize = outputSize
-    }
-
-    func start() {
-        guard timer == nil else { return }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-            stop()
-            return
-        }
-        frameIndex = 0
-        render(frameIndex)
-        let timer = Timer(timeInterval: frameDuration, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.frameIndex = (self.frameIndex + 1) % self.frames.count
-            self.render(self.frameIndex)
-        }
-        self.timer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-        frameIndex = 0
-        imageView?.setSourceImage(staticImage)
-    }
-
-    private func render(_ index: Int) {
-        imageView?.displayImage(frames[min(max(index, 0), frames.count - 1)])
-    }
-
-    private static func makeFrames(from animatedSVG: String) -> [NSImage]? {
-        guard
-            let animationRegex = try? NSRegularExpression(
-                pattern: #"<animateTransform\b[^>]*/>"#
-            ),
-            let viewBoxRegex = try? NSRegularExpression(
-                pattern: #"viewBox="0 0 100 100""#
-            )
-        else {
-            return nil
-        }
-        let fullRange = NSRange(animatedSVG.startIndex..., in: animatedSVG)
-        let staticSVG = animationRegex.stringByReplacingMatches(
-            in: animatedSVG,
-            range: fullRange,
-            withTemplate: ""
-        )
-        return (0..<9).compactMap { index in
-            let range = NSRange(staticSVG.startIndex..., in: staticSVG)
-            let frameSVG = viewBoxRegex.stringByReplacingMatches(
-                in: staticSVG,
-                range: range,
-                withTemplate: #"viewBox="0 \#(index * 100) 100 100""#
-            )
-            guard
-                let data = frameSVG.data(using: .utf8),
-                let image = NSImage(data: data)
-            else {
-                return nil
-            }
-            image.size = NSSize(width: 100, height: 100)
-            return image
-        }
-    }
-
-    deinit {
-        timer?.invalidate()
-    }
-}
-
 private final class QuotaProgressView: NSView {
     let percentage: Double
 
@@ -1019,23 +742,6 @@ private func migrateLegacyPreferencesIfNeeded() {
     )
 }
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSTextFieldDelegate {
-    private static let menuBarPrimaryFont = NSFont.monospacedDigitSystemFont(
-        ofSize: 13,
-        weight: .semibold
-    )
-    private static let menuBarSecondaryFont = NSFont.monospacedDigitSystemFont(
-        ofSize: 10,
-        weight: .medium
-    )
-    private static let menuBarIconSlotWidth: CGFloat = 18
-    private static let menuBarIconTextSpacing: CGFloat = 6
-    private static let menuBarTextRowSpacing: CGFloat = -2
-    private static let menuBarTextWidthSlack: CGFloat = 5
-    // Fixed API single-line baseline. Keep these independent from the
-    // official two-line layout so provider switches cannot alter the result.
-    private static let menuBarSingleLineHeight: CGFloat = 18
-    private static let menuBarSingleLineTextYOffset: CGFloat = 0.25
-    private static let menuBarSingleLineIconYOffset: CGFloat = 0.25
     private var statusItem: NSStatusItem!
     private let statusMenu = NSMenu()
     private var statusItemAttachmentCheckScheduled = false
@@ -3845,7 +3551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.11.7"
+        ) as? String ?? "0.11.8"
         let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
         let version = NSTextField(labelWithString: tr(
             "版本 \(appVersion)",
@@ -4027,11 +3733,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewIcon.imageScaling = .scaleProportionallyDown
         dashboardMenuPreviewIcon.translatesAutoresizingMaskIntoConstraints = false
         dashboardMenuPreviewIcon.wantsLayer = true
-        dashboardMenuPreviewIcon.widthAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
-        dashboardMenuPreviewIcon.heightAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
-        dashboardMenuPreviewPrimary.font = Self.menuBarPrimaryFont
+        dashboardMenuPreviewIcon.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
+        dashboardMenuPreviewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
+        dashboardMenuPreviewPrimary.font = MenuBarLayout.primaryFont
         dashboardMenuPreviewPrimary.textColor = .labelColor
-        dashboardMenuPreviewSecondary.font = Self.menuBarSecondaryFont
+        dashboardMenuPreviewSecondary.font = MenuBarLayout.secondaryFont
         dashboardMenuPreviewSecondary.textColor = .labelColor
         let previewText = dashboardMenuPreviewText
         previewText.addSubview(dashboardMenuPreviewPrimary)
@@ -4044,8 +3750,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewTextWidthConstraint = previewTextWidth
         let previewIconSlot = dashboardMenuPreviewIconSlot
         previewIconSlot.translatesAutoresizingMaskIntoConstraints = false
-        previewIconSlot.widthAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
-        previewIconSlot.heightAnchor.constraint(equalToConstant: Self.menuBarIconSlotWidth).isActive = true
+        previewIconSlot.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
+        previewIconSlot.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewIconSlot.addSubview(dashboardMenuPreviewIcon)
         NSLayoutConstraint.activate([
             dashboardMenuPreviewIcon.centerXAnchor.constraint(equalTo: previewIconSlot.centerXAnchor),
@@ -4054,7 +3760,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let previewRow = NSStackView(views: [previewIconSlot, previewText])
         previewRow.orientation = .horizontal
         previewRow.alignment = .centerY
-        previewRow.spacing = Self.menuBarIconTextSpacing
+        previewRow.spacing = MenuBarLayout.iconTextSpacing
         previewRow.translatesAutoresizingMaskIntoConstraints = false
         dashboardMenuPreviewCapsule.wantsLayer = true
         dashboardMenuPreviewCapsule.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -4147,20 +3853,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             && showMenuBarReset
             && effectiveMenuBarSnapshot.kind == .official
             && !dashboardMenuPreviewSecondary.stringValue.isEmpty
-        let geometry = MenuBarGeometry(
+        let geometry = MenuBarLayout.geometry(
             primarySize: dashboardMenuPreviewPrimary.intrinsicContentSize,
             secondarySize: dashboardMenuPreviewSecondary.intrinsicContentSize,
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
             isBalance: effectiveMenuBarSnapshot.kind == .balance,
-            iconSlotWidth: Self.menuBarIconSlotWidth,
-            iconTextSpacing: Self.menuBarIconTextSpacing,
-            textRowSpacing: Self.menuBarTextRowSpacing,
-            textWidthSlack: Self.menuBarTextWidthSlack,
-            singleLineHeight: Self.menuBarSingleLineHeight
         )
-        applyMenuBarTextLayout(
+        MenuBarLayout.applyTextLayout(
             container: dashboardMenuPreviewText,
             primary: dashboardMenuPreviewPrimary,
             secondary: dashboardMenuPreviewSecondary,
@@ -4183,11 +3884,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
            showMenuBarAmount {
             dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
-                y: -Self.menuBarSingleLineIconYOffset
+                y: -MenuBarLayout.singleLineIconYOffset
             ))
             dashboardMenuPreviewText.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
-                y: -Self.menuBarSingleLineTextYOffset
+                y: -MenuBarLayout.singleLineTextYOffset
             ))
         }
     }
@@ -4367,10 +4068,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         dashboardMenuPreviewIcon.contentTintColor = .labelColor
         menuBarIconView.imageScaling = .scaleProportionallyDown
         menuBarIconView.contentTintColor = .labelColor
-        menuBarPrimaryLabel.font = Self.menuBarPrimaryFont
+        menuBarPrimaryLabel.font = MenuBarLayout.primaryFont
         menuBarPrimaryLabel.textColor = .labelColor
         menuBarPrimaryLabel.lineBreakMode = .byClipping
-        menuBarSecondaryLabel.font = Self.menuBarSecondaryFont
+        menuBarSecondaryLabel.font = MenuBarLayout.secondaryFont
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
         configureMenuBarContentStackIfNeeded()
@@ -4714,36 +4415,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .contains(where: { name.contains($0) })
     }
 
-    private func applyMenuBarTextLayout(
-        container: MenuBarTextView,
-        primary: NSTextField,
-        secondary: NSTextField,
-        geometry: MenuBarGeometry,
-        showAmount: Bool,
-        hasSecondary: Bool
-    ) {
-        container.layoutSize = NSSize(
-            width: geometry.textWidth,
-            height: geometry.textHeight
-        )
-        primary.isHidden = !showAmount
-        primary.frame = NSRect(
-            x: 0,
-            y: 0,
-            width: geometry.textWidth,
-            height: geometry.primaryHeight
-        )
-        secondary.isHidden = !hasSecondary
-        secondary.frame = hasSecondary
-            ? NSRect(
-                x: 0,
-                y: geometry.primaryHeight + Self.menuBarTextRowSpacing,
-                width: geometry.textWidth,
-                height: geometry.secondaryHeight
-            )
-            : .zero
-    }
-
     private func configureMenuBarContentStackIfNeeded() {
         guard !isMenuBarContentStackConfigured else { return }
         isMenuBarContentStackConfigured = true
@@ -4801,20 +4472,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menuBarSecondaryLabel.stringValue = reservedSecondary
         menuBarIconSlot.isHidden = !showMenuBarIcon
         menuBarTextStack.isHidden = !showMenuBarAmount
-        let geometry = MenuBarGeometry(
+        let geometry = MenuBarLayout.geometry(
             primarySize: menuBarPrimaryLabel.intrinsicContentSize,
             secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
             showIcon: showMenuBarIcon,
             showAmount: showMenuBarAmount,
             hasSecondary: hasSecondary,
             isBalance: effectiveSnapshot.kind == .balance,
-            iconSlotWidth: Self.menuBarIconSlotWidth,
-            iconTextSpacing: Self.menuBarIconTextSpacing,
-            textRowSpacing: Self.menuBarTextRowSpacing,
-            textWidthSlack: Self.menuBarTextWidthSlack,
-            singleLineHeight: Self.menuBarSingleLineHeight
         )
-        applyMenuBarTextLayout(
+        MenuBarLayout.applyTextLayout(
             container: menuBarTextStack,
             primary: menuBarPrimaryLabel,
             secondary: menuBarSecondaryLabel,
@@ -4831,36 +4497,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
-        menuBarContentStack.frame = NSRect(
-            x: floor(max(0, (buttonWidth - geometry.contentWidth) / 2)),
-            y: floor((buttonHeight - geometry.contentHeight) / 2),
-            width: geometry.contentWidth,
-            height: geometry.contentHeight
-        )
-
-        menuBarIconSlot.frame = NSRect(
-            x: 0,
-            y: floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2)),
-            width: geometry.iconWidth,
-            height: geometry.iconWidth
-        )
         let apiIconYOffset = showMenuBarIcon && showMenuBarAmount
-            ? Self.menuBarSingleLineIconYOffset
+            ? MenuBarLayout.singleLineIconYOffset
             : 0
         let iconYOffset: CGFloat
         if effectiveSnapshot.kind == .official, showMenuBarIcon {
-            let apiGeometry = MenuBarGeometry(
+            let apiGeometry = MenuBarLayout.geometry(
                 primarySize: menuBarPrimaryLabel.intrinsicContentSize,
                 secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
                 showIcon: showMenuBarIcon,
                 showAmount: showMenuBarAmount,
                 hasSecondary: false,
                 isBalance: true,
-                iconSlotWidth: Self.menuBarIconSlotWidth,
-                iconTextSpacing: Self.menuBarIconTextSpacing,
-                textRowSpacing: Self.menuBarTextRowSpacing,
-                textWidthSlack: Self.menuBarTextWidthSlack,
-                singleLineHeight: Self.menuBarSingleLineHeight
             )
             // Keep the API frame fixed and solve only the official icon's
             // local Y from the complete stack -> slot -> view coordinate path.
@@ -4874,18 +4522,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         } else {
             iconYOffset = 0
         }
-        menuBarIconView.frame = NSRect(
-            x: 0,
-            y: iconYOffset,
-            width: menuBarIconSlot.bounds.width,
-            height: menuBarIconSlot.bounds.height
+        let frames = MenuBarLayout.frames(
+            buttonSize: NSSize(width: buttonWidth, height: buttonHeight),
+            geometry: geometry,
+            iconViewYOffset: iconYOffset
         )
-        menuBarTextStack.frame = NSRect(
-            x: geometry.iconWidth + geometry.gap,
-            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2)),
-            width: geometry.textWidth,
-            height: geometry.textHeight
-        )
+        menuBarContentStack.frame = frames.content
+        menuBarIconSlot.frame = frames.iconSlot
+        menuBarIconView.frame = frames.icon
+        menuBarTextStack.frame = frames.text
 
         // The optical adjustment is always applied from a clean transform
         // after the current snapshot's frames have been assigned.
@@ -4895,7 +4540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
            showMenuBarAmount {
             menuBarTextStack.layer?.setAffineTransform(CGAffineTransform(
                 translationX: 0,
-                y: -Self.menuBarSingleLineTextYOffset
+                y: -MenuBarLayout.singleLineTextYOffset
             ))
         }
         logMenuBarIconFrames(
