@@ -345,6 +345,86 @@ final class DashboardComponentsTests: XCTestCase {
         window.contentView = nil
     }
 
+    func testMenuHostedLinkReactivatesAfterPopupDetachAndReattach() {
+        let menu = NSMenu(title: "Issue 104 reopen")
+        let item = NSMenuItem()
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+        item.view = host
+        menu.addItem(item)
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        var callbackInstallationCount = 0
+        var secondOpenTrackingAreaCount = 0
+        var secondOpenCursorIsHand = false
+        var secondOpenIsUnderlined = false
+        host.onMenuWindowChanged = { window in
+            guard let window else { return }
+            bridge.install(on: window)
+            bridge.register(host)
+            bridge.beginMenuTracking()
+            callbackInstallationCount += 1
+        }
+
+        let previousCursor = NSCursor.current
+        defer {
+            bridge.tearDown()
+            previousCursor.set()
+            menu.removeAllItems()
+        }
+
+        for openNumber in 1...2 {
+            var hostAttached = false
+            let probeTimer = Timer(
+                timeInterval: 0.02,
+                repeats: false
+            ) { _ in
+                guard let window = host.window else {
+                    menu.cancelTracking()
+                    return
+                }
+                hostAttached = true
+                if openNumber == 2 {
+                    secondOpenTrackingAreaCount = host.trackingAreas.count
+                    let hostPoint = host.convert(link.visibleTextHitRect.center, from: link)
+                    let windowPoint = host.window?.contentView.map {
+                        host.convert(hostPoint, to: $0)
+                    } ?? hostPoint
+                    NSCursor.arrow.set()
+                    bridge.mouseMoved(with: self.makeMouseEvent(
+                        type: .mouseMoved,
+                        location: windowPoint
+                    ))
+                    secondOpenCursorIsHand = NSCursor.current.isEqual(NSCursor.pointingHand)
+                    secondOpenIsUnderlined = link.attributedStringValue.attribute(
+                        .underlineStyle,
+                        at: 0,
+                        effectiveRange: nil
+                    ) != nil
+                }
+                menu.cancelTracking()
+            }
+            RunLoop.main.add(probeTimer, forMode: .eventTracking)
+
+            menu.popUp(
+                positioning: nil,
+                at: NSPoint(x: 0, y: 0),
+                in: nil
+            )
+
+            XCTAssertTrue(hostAttached, "menu open \(openNumber) did not attach the item view")
+        }
+
+        XCTAssertGreaterThanOrEqual(callbackInstallationCount, 2)
+        XCTAssertEqual(secondOpenTrackingAreaCount, 3)
+        XCTAssertTrue(secondOpenCursorIsHand)
+        XCTAssertTrue(secondOpenIsUnderlined)
+    }
+
     func testMenuHostedLinkUsesTheActualNSMenuPopupWindowTrackingLoop() {
         let menu = NSMenu(title: "Issue 104")
         let item = NSMenuItem()

@@ -708,7 +708,7 @@ final class HoverLinkTextField: NSTextField {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil {
-            tearDownInteraction()
+            tearDownWindowInteraction()
         }
         super.viewWillMove(toWindow: newWindow)
     }
@@ -808,6 +808,19 @@ final class HoverLinkTextField: NSTextField {
     private func tearDownInteraction() {
         removeTrackingAreaReference()
         removeMenuTrackingArea()
+        clearHoverStyleAndCursor()
+    }
+
+    /// A menu item view is detached from its transient popup window when the
+    /// menu closes, but the same NSMenuItem.view can be reused on the next
+    /// open. Keep the logical menu-link/host relationship alive across that
+    /// window-only lifecycle; remove it only when the link leaves its host.
+    private func tearDownWindowInteraction() {
+        removeTrackingAreaReference()
+        clearHoverStyleAndCursor()
+    }
+
+    private func clearHoverStyleAndCursor() {
         if isHovered {
             isHovered = false
             applyStyle(text: stringValue, underlined: false)
