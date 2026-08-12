@@ -361,70 +361,62 @@ final class DashboardComponentsTests: XCTestCase {
                 Date(timeIntervalSince1970: 0)
             )
         )
-        guard let host = menu.items.first?.view as? MenuItemContentView,
-              let link = firstHoverLink(in: host)
-        else {
-            return XCTFail("Expected the real Provider link from StatusItemController")
-        }
-        link.layout()
-        XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.maxX)
-
-        let firstWindow = makeMenuHostWindow(sizedFor: host)
-        let secondWindow = makeMenuHostWindow(sizedFor: host)
-        let thirdWindow = makeMenuHostWindow(sizedFor: host)
         let previousCursor = NSCursor.current
         var menuIsOpen = false
+        var windows = [NSWindow]()
         defer {
             if menuIsOpen {
                 controller.testingMenuDidClose()
-                controller.testingFinishMenuCloseRebuild()
             }
             previousCursor.set()
-            [firstWindow, secondWindow, thirdWindow].forEach {
+            windows.forEach {
                 $0.orderOut(nil)
                 $0.contentView = nil
             }
             menu.removeAllItems()
         }
 
-        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
-        let blankPoint = host.convert(
-            NSPoint(
-                x: link.visibleTextHitRect.maxX
-                    + (link.bounds.maxX - link.visibleTextHitRect.maxX) / 2,
-                y: link.visibleTextHitRect.midY
-            ),
-            from: link
-        )
-
         // Scenario A: the pointer stays on the visible glyph through close
-        // and reopen. The real menuDidClose path must not leave its next
-        // menu-hosted instance stale.
+        // and reopen. The real menuWillOpen path must replace any item view
+        // that AppKit detached with a fresh Provider-link host.
         controller.testingMenuWillOpen()
         menuIsOpen = true
-        firstWindow.contentView = host
+        guard let firstHost = menu.items.first?.view as? MenuItemContentView,
+              let firstLink = firstHoverLink(in: firstHost)
+        else {
+            return XCTFail("Expected the real Provider link from StatusItemController")
+        }
+        firstLink.layout()
+        XCTAssertLessThan(firstLink.visibleTextHitRect.maxX, firstLink.bounds.maxX)
+        let firstWindow = makeMenuHostWindow(sizedFor: firstHost)
+        windows.append(firstWindow)
+        let visiblePoint = firstHost.convert(firstLink.visibleTextHitRect.center, from: firstLink)
+        firstWindow.contentView = firstHost
         XCTAssertEqual(controller.testingMenuCursorBridgeCount, 1)
         XCTAssertEqual(controller.testingRegisteredMenuHostCount(in: firstWindow), 1)
-        XCTAssertEqual(host.trackingAreas.filter { $0.owner as AnyObject === host }.count, 3)
+        XCTAssertEqual(firstHost.trackingAreas.filter { $0.owner as AnyObject === firstHost }.count, 3)
         XCTAssertTrue(controller.testingSynchronizeMenuCursor(in: firstWindow, at: visiblePoint))
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
-        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertNotNil(firstLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
 
+        // AppKit can detach NSMenuItem.view before the delegate's
+        // menuDidClose callback. Preserve that production order here.
+        firstWindow.contentView = nil
         controller.testingMenuDidClose()
         menuIsOpen = false
         XCTAssertEqual(controller.testingMenuCursorBridgeCount, 0)
-        firstWindow.contentView = nil
-        controller.testingFinishMenuCloseRebuild()
-        guard let reopenedHost = menu.items.first?.view as? MenuItemContentView,
-              let reopenedLink = firstHoverLink(in: reopenedHost)
-        else {
-            return XCTFail("Expected StatusItemController to rebuild the real Provider link after close")
-        }
-        XCTAssertFalse(reopenedHost === host)
-        XCTAssertFalse(reopenedLink === link)
 
         controller.testingMenuWillOpen()
         menuIsOpen = true
+        guard let reopenedHost = menu.items.first?.view as? MenuItemContentView,
+              let reopenedLink = firstHoverLink(in: reopenedHost)
+        else {
+            return XCTFail("Expected StatusItemController to rebuild the real Provider link on reopen")
+        }
+        XCTAssertFalse(reopenedHost === firstHost)
+        XCTAssertFalse(reopenedLink === firstLink)
+        let secondWindow = makeMenuHostWindow(sizedFor: reopenedHost)
+        windows.append(secondWindow)
         secondWindow.contentView = reopenedHost
         XCTAssertEqual(controller.testingMenuCursorBridgeCount, 1)
         XCTAssertEqual(controller.testingRegisteredMenuHostCount(in: secondWindow), 1)
@@ -447,18 +439,21 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(controller.testingSynchronizeMenuCursor(in: secondWindow, at: reopenedBlankPoint))
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
         XCTAssertNil(reopenedLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        secondWindow.contentView = nil
         controller.testingMenuDidClose()
         menuIsOpen = false
-        secondWindow.contentView = nil
-        controller.testingFinishMenuCloseRebuild()
 
         controller.testingMenuWillOpen()
         menuIsOpen = true
         guard let thirdHost = menu.items.first?.view as? MenuItemContentView,
               let thirdLink = firstHoverLink(in: thirdHost)
         else {
-            return XCTFail("Expected a freshly rebuilt Provider link after the second close")
+            return XCTFail("Expected a freshly rebuilt Provider link after the second reopen")
         }
+        XCTAssertFalse(thirdHost === reopenedHost)
+        XCTAssertFalse(thirdLink === reopenedLink)
+        let thirdWindow = makeMenuHostWindow(sizedFor: thirdHost)
+        windows.append(thirdWindow)
         thirdWindow.contentView = thirdHost
         XCTAssertEqual(controller.testingMenuCursorBridgeCount, 1)
         XCTAssertEqual(controller.testingRegisteredMenuHostCount(in: thirdWindow), 1)

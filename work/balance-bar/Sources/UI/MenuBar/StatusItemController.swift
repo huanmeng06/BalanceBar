@@ -45,7 +45,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
-    private var statusMenuRebuildAfterCloseScheduled = false
     private var menuCursorTrackingBridges: [ObjectIdentifier: MenuWindowCursorTrackingBridge] = [:]
     private var menuTrackingPreparationTimer: Timer?
     private let menuBarIconView = RotatingTemplateImageView()
@@ -127,7 +126,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemAttachmentCheckScheduled = false
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
-        statusMenuRebuildAfterCloseScheduled = false
         isStatusMenuTracking = false
         endMenuTrackingPreparation()
         tearDownMenuCursorTracking()
@@ -178,11 +176,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
-        // The close continuation normally runs before the next input event,
-        // but a very fast reopen can arrive first. Finish the same rebuild
-        // synchronously while the menu is still closed so this presentation
-        // also receives a fresh custom item view.
-        rebuildStatusMenuAfterCloseIfNeeded()
+        // NSMenu may reuse an NSMenuItem.view after its transient popup
+        // window closes, even when AppKit has discarded the view's private
+        // cursor-tracking state. Construct the custom items at the start of
+        // every presentation instead of relying on a close-time async task.
+        // This runs before NSMenu attaches the item views for this tracking
+        // loop, so each open receives fresh precise-glyph tracking areas.
+        statusMenuNeedsRebuild = false
+        rebuildStatusMenu()
         isStatusMenuTracking = true
         prepareMenuViewsForTracking(menu)
         beginMenuTrackingPreparation(for: menu)
@@ -208,31 +209,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         isStatusMenuTracking = false
         endMenuTrackingPreparation()
         tearDownMenuCursorTracking()
-        scheduleStatusMenuRebuildAfterClose()
-    }
-
-    /// AppKit may retain an `NSMenuItem.view` after dismissing the menu while
-    /// dropping the private cursor/tracking state associated with that view.
-    /// Rebuild only after the menu tracking loop has ended, so each subsequent
-    /// presentation starts with a newly constructed card and precise glyph
-    /// tracking areas rather than a detached view carrying stale AppKit state.
-    private func scheduleStatusMenuRebuildAfterClose() {
-        guard !statusMenuRebuildAfterCloseScheduled else { return }
-        statusMenuRebuildAfterCloseScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            self?.rebuildStatusMenuAfterCloseIfNeeded()
-        }
-    }
-
-    private func rebuildStatusMenuAfterCloseIfNeeded() {
-        guard statusMenuRebuildAfterCloseScheduled else { return }
-        statusMenuRebuildAfterCloseScheduled = false
-        guard !isStatusMenuTracking else {
-            statusMenuNeedsRebuild = true
-            return
-        }
-        statusMenuNeedsRebuild = false
-        rebuildStatusMenu()
     }
 
     private func rebuildOrDeferMenu() {
@@ -375,14 +351,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func testingMenuDidClose() {
         menuDidClose(statusMenu)
-    }
-
-    /// Executes the same main-queue continuation that production schedules
-    /// after `menuDidClose`, without making a unit test depend on timing of a
-    /// nested AppKit menu tracking loop.
-    func testingFinishMenuCloseRebuild() {
-        guard statusMenuRebuildAfterCloseScheduled else { return }
-        rebuildStatusMenuAfterCloseIfNeeded()
     }
 
     func testingSynchronizeMenuCursor(
