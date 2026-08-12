@@ -345,212 +345,150 @@ final class DashboardComponentsTests: XCTestCase {
         window.contentView = nil
     }
 
-    func testMenuHostedLinkReactivatesAfterMenuItemViewDetachAndReattach() {
-        let menu = NSMenu(title: "Issue 104 reopen")
-        let item = NSMenuItem()
-        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
-        let link = HoverLinkTextField(text: "Provider")
-        link.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
-        host.addSubview(link)
-        link.layout()
-        link.installMenuTrackingArea(in: host)
-        item.view = host
-        menu.addItem(item)
-
-        let bridge = MenuWindowCursorTrackingBridge()
-        let firstWindow = NSWindow(
-            contentRect: NSRect(x: 120, y: 140, width: 240, height: 28),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        let secondWindow = NSWindow(
-            contentRect: NSRect(x: 420, y: 140, width: 240, height: 28),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-
-        let previousCursor = NSCursor.current
-        defer {
-            bridge.tearDown(resynchronizingOrdinaryLinks: false)
-            previousCursor.set()
-            firstWindow.orderOut(nil)
-            secondWindow.orderOut(nil)
-            firstWindow.contentView = nil
-            secondWindow.contentView = nil
-            menu.removeAllItems()
-        }
-
-        for window in [firstWindow, secondWindow] {
-            window.contentView = host
-            window.orderFrontRegardless()
-            window.displayIfNeeded()
-            host.prepareForMenuTracking()
-            bridge.install(on: window)
-            bridge.register(host)
-            bridge.beginMenuTracking()
-
-            let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
-            NSCursor.arrow.set()
-            bridge.mouseMoved(with: makeMouseEvent(
-                type: .mouseMoved,
-                location: visiblePoint
-            ))
-            XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
-            XCTAssertNotNil(link.attributedStringValue.attribute(
-                .underlineStyle,
-                at: 0,
-                effectiveRange: nil
-            ))
-
-            bridge.tearDown()
-            window.contentView = nil
-        }
-
-        XCTAssertEqual(host.trackingAreas.count, 3)
-        XCTAssertNil(link.attributedStringValue.attribute(
-            .underlineStyle,
-            at: 0,
-            effectiveRange: nil
-        ))
-    }
-
-    func testMenuCloseResynchronizesIndependentDashboardLink() {
-        let dashboardWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 260, height: 40),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        let dashboardContent = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 40))
-        dashboardWindow.contentView = dashboardContent
-        let dashboardLink = HoverLinkTextField(text: "Provider")
-        dashboardLink.frame = NSRect(x: 28, y: 10, width: 170, height: 20)
-        dashboardContent.addSubview(dashboardLink)
-        dashboardLink.layout()
-
-        let visiblePointInWindow = dashboardContent.convert(
-            dashboardLink.visibleTextHitRect.center,
-            from: dashboardLink
-        )
-        dashboardWindow.setFrameOrigin(NSPoint(
-            x: 120,
-            y: 140
-        ))
-        dashboardWindow.orderFrontRegardless()
-        dashboardWindow.displayIfNeeded()
-        dashboardLink.updateTrackingAreas()
-
-        let menu = NSMenu(title: "Issue 104 Dashboard teardown")
-        let item = NSMenuItem()
-        let menuHost = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
-        let menuLink = HoverLinkTextField(text: "Provider")
-        menuLink.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
-        menuHost.addSubview(menuLink)
-        menuLink.layout()
-        menuLink.installMenuTrackingArea(in: menuHost)
-        item.view = menuHost
-        menu.addItem(item)
-
-        let bridge = MenuWindowCursorTrackingBridge()
-        menuHost.onMenuWindowChanged = { window in
-            guard let window else { return }
-            bridge.install(on: window)
-            bridge.register(menuHost)
-            bridge.beginMenuTracking()
-        }
-
-        let previousCursor = NSCursor.current
-        defer {
-            bridge.tearDown(resynchronizingOrdinaryLinks: false)
-            dashboardWindow.orderOut(nil)
-            dashboardWindow.contentView = nil
-            previousCursor.set()
-            menu.removeAllItems()
-        }
-
-        let visibleDashboardPoint = visiblePointInWindow
-        NSCursor.arrow.set()
-        dashboardLink.mouseMoved(with: makeMouseEvent(
-            type: .mouseMoved,
-            location: visibleDashboardPoint
-        ))
-        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
-        XCTAssertNotNil(dashboardLink.attributedStringValue.attribute(
-            .underlineStyle,
-            at: 0,
-            effectiveRange: nil
-        ))
-
-        let menuWindow = NSWindow(
-            contentRect: NSRect(x: 420, y: 140, width: 240, height: 28),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        menuWindow.contentView = menuHost
-        menuWindow.orderFrontRegardless()
-        menuWindow.displayIfNeeded()
-        menuHost.prepareForMenuTracking()
-        bridge.install(on: menuWindow)
-        bridge.register(menuHost)
-        bridge.beginMenuTracking()
-
-        // This is the production menuDidClose-equivalent cleanup. The
-        // Dashboard window remains visible while the menu item view is attached
-        // to a separate transient menu window.
-        dashboardLink.mouseExited(with: makeMouseEvent(
-            type: .mouseMoved,
-            location: visibleDashboardPoint
-        ))
-        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
-        XCTAssertNil(dashboardLink.attributedStringValue.attribute(
-            .underlineStyle,
-            at: 0,
-            effectiveRange: nil
-        ))
-        bridge.tearDown(
-            ordinaryLinkScreenPoint: dashboardWindow.convertPoint(
-                toScreen: visiblePointInWindow
+    func testStatusItemControllerReactivatesRealProviderLinkAcrossMenuCloseAndReopen() {
+        var providerWebsiteActivationCount = 0
+        let controller = StatusItemController(
+            actions: makeStatusItemActions(
+                openProviderWebsite: { providerWebsiteActivationCount += 1 }
             )
         )
-
-        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
-        XCTAssertNotNil(dashboardLink.attributedStringValue.attribute(
-            .underlineStyle,
-            at: 0,
-            effectiveRange: nil
-        ))
-
-        let blankPoint = dashboardContent.convert(
-            NSPoint(
-                x: dashboardLink.visibleTextHitRect.maxX
-                    + (dashboardLink.bounds.maxX - dashboardLink.visibleTextHitRect.maxX) / 2,
-                y: dashboardLink.visibleTextHitRect.midY
-            ),
-            from: dashboardLink
+        let menu = controller.testingStatusMenu(
+            for: .balance(
+                "Provider",
+                42,
+                "USD",
+                URL(string: "https://example.com"),
+                Date(timeIntervalSince1970: 0)
+            )
         )
-        var activationCount = 0
-        dashboardLink.onActivate = { activationCount += 1 }
-        NSCursor.pointingHand.set()
-        dashboardLink.mouseMoved(with: makeMouseEvent(
-            type: .mouseMoved,
-            location: blankPoint
-        ))
+        guard let host = menu.items.first?.view as? MenuItemContentView,
+              let link = firstHoverLink(in: host)
+        else {
+            return XCTFail("Expected the real Provider link from StatusItemController")
+        }
+        link.layout()
+        XCTAssertLessThan(link.visibleTextHitRect.maxX, link.bounds.maxX)
+
+        let firstWindow = makeMenuHostWindow(sizedFor: host)
+        let secondWindow = makeMenuHostWindow(sizedFor: host)
+        let thirdWindow = makeMenuHostWindow(sizedFor: host)
+        let previousCursor = NSCursor.current
+        var menuIsOpen = false
+        defer {
+            if menuIsOpen {
+                controller.testingMenuDidClose()
+                controller.testingFinishMenuCloseRebuild()
+            }
+            previousCursor.set()
+            [firstWindow, secondWindow, thirdWindow].forEach {
+                $0.orderOut(nil)
+                $0.contentView = nil
+            }
+            menu.removeAllItems()
+        }
+
+        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
+        let blankPoint = host.convert(
+            NSPoint(
+                x: link.visibleTextHitRect.maxX
+                    + (link.bounds.maxX - link.visibleTextHitRect.maxX) / 2,
+                y: link.visibleTextHitRect.midY
+            ),
+            from: link
+        )
+
+        // Scenario A: the pointer stays on the visible glyph through close
+        // and reopen. The real menuDidClose path must not leave its next
+        // menu-hosted instance stale.
+        controller.testingMenuWillOpen()
+        menuIsOpen = true
+        firstWindow.contentView = host
+        XCTAssertEqual(controller.testingMenuCursorBridgeCount, 1)
+        XCTAssertEqual(controller.testingRegisteredMenuHostCount(in: firstWindow), 1)
+        XCTAssertEqual(host.trackingAreas.filter { $0.owner as AnyObject === host }.count, 3)
+        XCTAssertTrue(controller.testingSynchronizeMenuCursor(in: firstWindow, at: visiblePoint))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+        controller.testingMenuDidClose()
+        menuIsOpen = false
+        XCTAssertEqual(controller.testingMenuCursorBridgeCount, 0)
+        firstWindow.contentView = nil
+        controller.testingFinishMenuCloseRebuild()
+        guard let reopenedHost = menu.items.first?.view as? MenuItemContentView,
+              let reopenedLink = firstHoverLink(in: reopenedHost)
+        else {
+            return XCTFail("Expected StatusItemController to rebuild the real Provider link after close")
+        }
+        XCTAssertFalse(reopenedHost === host)
+        XCTAssertFalse(reopenedLink === link)
+
+        controller.testingMenuWillOpen()
+        menuIsOpen = true
+        secondWindow.contentView = reopenedHost
+        XCTAssertEqual(controller.testingMenuCursorBridgeCount, 1)
+        XCTAssertEqual(controller.testingRegisteredMenuHostCount(in: secondWindow), 1)
+        XCTAssertEqual(reopenedHost.trackingAreas.filter { $0.owner as AnyObject === reopenedHost }.count, 3)
+        let reopenedVisiblePoint = reopenedHost.convert(reopenedLink.visibleTextHitRect.center, from: reopenedLink)
+        XCTAssertTrue(controller.testingSynchronizeMenuCursor(in: secondWindow, at: reopenedVisiblePoint))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        XCTAssertNotNil(reopenedLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+        // Scenario B: the menu closes while the pointer is outside the glyph,
+        // then the user moves onto the glyph after a later reopen.
+        let reopenedBlankPoint = reopenedHost.convert(
+            NSPoint(
+                x: reopenedLink.visibleTextHitRect.maxX
+                    + (reopenedLink.bounds.maxX - reopenedLink.visibleTextHitRect.maxX) / 2,
+                y: reopenedLink.visibleTextHitRect.midY
+            ),
+            from: reopenedLink
+        )
+        XCTAssertTrue(controller.testingSynchronizeMenuCursor(in: secondWindow, at: reopenedBlankPoint))
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
-        XCTAssertNil(dashboardLink.attributedStringValue.attribute(
-            .underlineStyle,
-            at: 0,
-            effectiveRange: nil
-        ))
-        dashboardLink.mouseDown(with: makeMouseEvent(
+        XCTAssertNil(reopenedLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        controller.testingMenuDidClose()
+        menuIsOpen = false
+        secondWindow.contentView = nil
+        controller.testingFinishMenuCloseRebuild()
+
+        controller.testingMenuWillOpen()
+        menuIsOpen = true
+        guard let thirdHost = menu.items.first?.view as? MenuItemContentView,
+              let thirdLink = firstHoverLink(in: thirdHost)
+        else {
+            return XCTFail("Expected a freshly rebuilt Provider link after the second close")
+        }
+        thirdWindow.contentView = thirdHost
+        XCTAssertEqual(controller.testingMenuCursorBridgeCount, 1)
+        XCTAssertEqual(controller.testingRegisteredMenuHostCount(in: thirdWindow), 1)
+        let thirdVisiblePoint = thirdHost.convert(thirdLink.visibleTextHitRect.center, from: thirdLink)
+        let thirdBlankPoint = thirdHost.convert(
+            NSPoint(
+                x: thirdLink.visibleTextHitRect.maxX
+                    + (thirdLink.bounds.maxX - thirdLink.visibleTextHitRect.maxX) / 2,
+                y: thirdLink.visibleTextHitRect.midY
+            ),
+            from: thirdLink
+        )
+        XCTAssertTrue(controller.testingSynchronizeMenuCursor(in: thirdWindow, at: thirdBlankPoint))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertNil(thirdLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+        thirdLink.mouseDown(with: makeMouseEvent(
             type: .leftMouseDown,
-            location: blankPoint
+            location: thirdBlankPoint
         ))
-        XCTAssertEqual(activationCount, 0)
-        menuWindow.orderOut(nil)
-        menuWindow.contentView = nil
+        XCTAssertEqual(providerWebsiteActivationCount, 0)
+
+        XCTAssertTrue(controller.testingSynchronizeMenuCursor(in: thirdWindow, at: thirdVisiblePoint))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        XCTAssertNotNil(thirdLink.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        thirdLink.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: thirdVisiblePoint
+        ))
+        XCTAssertEqual(providerWebsiteActivationCount, 1)
     }
 
     func testMenuHostedLinkUsesNSMenuItemViewLifecycleWithoutUnboundedPopup() {
@@ -606,6 +544,41 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertNil(host.window)
         bridge.tearDown()
         XCTAssertEqual(host.trackingAreas.count, 3)
+
+        // Reattach the same NSMenuItem.view instance. AppKit can reuse the
+        // view rather than asking StatusItemController to build a new one;
+        // the host must reinstall its precise glyph tracking in that path too.
+        let reopenedWindow = NSWindow(
+            contentRect: NSRect(x: 720, y: 220, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer {
+            reopenedWindow.orderOut(nil)
+            reopenedWindow.contentView = nil
+        }
+        reopenedWindow.contentView = host
+        host.prepareForMenuTracking()
+        bridge.install(on: reopenedWindow)
+        bridge.register(host)
+
+        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
+        let blankPoint = host.convert(
+            NSPoint(
+                x: link.visibleTextHitRect.maxX
+                    + (link.bounds.maxX - link.visibleTextHitRect.maxX) / 2,
+                y: link.visibleTextHitRect.midY
+            ),
+            from: link
+        )
+        NSCursor.arrow.set()
+        bridge.synchronizeCursor(at: visiblePoint)
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        bridge.synchronizeCursor(at: blankPoint)
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
     }
 
     func testMenuWindowCursorBridgeRoutesVisibleGlyphAndBlankArea() {
@@ -896,6 +869,52 @@ final class DashboardComponentsTests: XCTestCase {
             fatalError("Expected to create a mouse event")
         }
         return event
+    }
+
+    private func makeStatusItemActions(
+        openProviderWebsite: @escaping () -> Void = {}
+    ) -> StatusItemController.Actions {
+        StatusItemController.Actions(
+            manualRefresh: {},
+            openDashboard: {},
+            openChatGPT: {},
+            openCCSwitch: {},
+            openOpenCodex: {},
+            quit: {},
+            switchProvider: { _ in },
+            switchOpenCodexPreference: { _ in },
+            openProviderWebsite: openProviderWebsite,
+            openStatusLink: { _ in },
+            iconChanged: { _ in }
+        )
+    }
+
+    private func firstHoverLink(in view: NSView) -> HoverLinkTextField? {
+        for subview in view.subviews {
+            if let link = subview as? HoverLinkTextField {
+                return link
+            }
+            if let link = firstHoverLink(in: subview) {
+                return link
+            }
+        }
+        return nil
+    }
+
+    private func makeMenuHostWindow(sizedFor host: NSView) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(
+                x: 120,
+                y: 140,
+                width: max(1, host.frame.width),
+                height: max(1, host.frame.height)
+            ),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.orderFrontRegardless()
+        return window
     }
 
 }

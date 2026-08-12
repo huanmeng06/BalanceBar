@@ -45,7 +45,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
+    private var statusMenuRebuildAfterCloseScheduled = false
     private var menuCursorTrackingBridges: [ObjectIdentifier: MenuWindowCursorTrackingBridge] = [:]
+    private var menuTrackingPreparationTimer: Timer?
     private let menuBarIconView = RotatingTemplateImageView()
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
@@ -125,7 +127,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemAttachmentCheckScheduled = false
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
+        statusMenuRebuildAfterCloseScheduled = false
         isStatusMenuTracking = false
+        endMenuTrackingPreparation()
         tearDownMenuCursorTracking()
         lastMenuBarIconFrameDiagnostic = nil
         menuBarIconView.stopRotating()
@@ -174,8 +178,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        // The close continuation normally runs before the next input event,
+        // but a very fast reopen can arrive first. Finish the same rebuild
+        // synchronously while the menu is still closed so this presentation
+        // also receives a fresh custom item view.
+        rebuildStatusMenuAfterCloseIfNeeded()
         isStatusMenuTracking = true
         prepareMenuViewsForTracking(menu)
+        beginMenuTrackingPreparation(for: menu)
         DispatchQueue.main.async { [weak self, weak menu] in
             guard let self, let menu, self.isStatusMenuTracking else { return }
             self.prepareMenuViewsForTracking(menu)
@@ -196,13 +206,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = false
+        endMenuTrackingPreparation()
         tearDownMenuCursorTracking()
-        guard statusMenuNeedsRebuild else { return }
-        statusMenuNeedsRebuild = false
+        scheduleStatusMenuRebuildAfterClose()
+    }
+
+    /// AppKit may retain an `NSMenuItem.view` after dismissing the menu while
+    /// dropping the private cursor/tracking state associated with that view.
+    /// Rebuild only after the menu tracking loop has ended, so each subsequent
+    /// presentation starts with a newly constructed card and precise glyph
+    /// tracking areas rather than a detached view carrying stale AppKit state.
+    private func scheduleStatusMenuRebuildAfterClose() {
+        guard !statusMenuRebuildAfterCloseScheduled else { return }
+        statusMenuRebuildAfterCloseScheduled = true
         DispatchQueue.main.async { [weak self] in
-            guard let self, !self.isStatusMenuTracking else { return }
-            self.rebuildStatusMenu()
+            self?.rebuildStatusMenuAfterCloseIfNeeded()
         }
+    }
+
+    private func rebuildStatusMenuAfterCloseIfNeeded() {
+        guard statusMenuRebuildAfterCloseScheduled else { return }
+        statusMenuRebuildAfterCloseScheduled = false
+        guard !isStatusMenuTracking else {
+            statusMenuNeedsRebuild = true
+            return
+        }
+        statusMenuNeedsRebuild = false
+        rebuildStatusMenu()
     }
 
     private func rebuildOrDeferMenu() {
@@ -212,6 +242,43 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             rebuildStatusMenu()
         }
+    }
+
+    /// NSMenu attaches custom NSMenuItem views after its delegate receives
+    /// `menuWillOpen`. Keep checking in the menu's own tracking mode until
+    /// every Provider-link host has a transient menu window, so every open
+    /// (including a reopen after detach) gets a bridge without relying on a
+    /// later highlight or mouse event.
+    private func beginMenuTrackingPreparation(for menu: NSMenu) {
+        endMenuTrackingPreparation()
+        let timer = Timer(timeInterval: 0.01, repeats: true) { [weak self, weak menu] timer in
+            guard let self,
+                  let menu,
+                  self.isStatusMenuTracking,
+                  menu === self.statusMenu
+            else {
+                timer.invalidate()
+                return
+            }
+            self.prepareMenuViewsForTracking(menu)
+        }
+        menuTrackingPreparationTimer = timer
+        RunLoop.main.add(timer, forMode: .eventTracking)
+    }
+
+    private func endMenuTrackingPreparation() {
+        menuTrackingPreparationTimer?.invalidate()
+        menuTrackingPreparationTimer = nil
+    }
+
+    /// `NSMenuItem.view` attachment happens after `menuWillOpen` on some
+    /// AppKit paths. This callback is the direct production notification for
+    /// that late attach; prepare the new host immediately instead of waiting
+    /// for a highlight or mouse event.
+    private func menuHostDidMoveToWindow(_ host: MenuItemContentView, window: NSWindow?) {
+        guard isStatusMenuTracking, let window else { return }
+        let bridge = installMenuCursorTrackingBridge(on: window)
+        bridge.register(host)
     }
 
     private func prepareMenuViewsForTracking(_ menu: NSMenu) {
@@ -291,6 +358,47 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             bridge.tearDown()
         }
         menuCursorTrackingBridges.removeAll()
+    }
+
+    // MARK: - Deterministic production-lifecycle test hooks
+
+    func testingStatusMenu(for snapshot: Snapshot, refreshDate: Date = Date()) -> NSMenu {
+        self.snapshot = snapshot
+        self.refreshDate = refreshDate
+        rebuildStatusMenu()
+        return statusMenu
+    }
+
+    func testingMenuWillOpen() {
+        menuWillOpen(statusMenu)
+    }
+
+    func testingMenuDidClose() {
+        menuDidClose(statusMenu)
+    }
+
+    /// Executes the same main-queue continuation that production schedules
+    /// after `menuDidClose`, without making a unit test depend on timing of a
+    /// nested AppKit menu tracking loop.
+    func testingFinishMenuCloseRebuild() {
+        guard statusMenuRebuildAfterCloseScheduled else { return }
+        rebuildStatusMenuAfterCloseIfNeeded()
+    }
+
+    func testingSynchronizeMenuCursor(
+        in window: NSWindow,
+        at windowPoint: NSPoint
+    ) -> Bool {
+        menuCursorTrackingBridges[ObjectIdentifier(window)]?
+            .synchronizeCursor(at: windowPoint) ?? false
+    }
+
+    var testingMenuCursorBridgeCount: Int {
+        menuCursorTrackingBridges.count
+    }
+
+    func testingRegisteredMenuHostCount(in window: NSWindow) -> Int {
+        menuCursorTrackingBridges[ObjectIdentifier(window)]?.registeredHostCount ?? 0
     }
 
     private func configureStatusItem() {
@@ -847,9 +955,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let view = MenuItemContentView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.onMenuWindowChanged = { [weak self, weak view] window in
-            guard let self, let view, self.isStatusMenuTracking, let window else { return }
-            let bridge = self.installMenuCursorTrackingBridge(on: window)
-            bridge.register(view)
+            guard let self, let view else { return }
+            self.menuHostDidMoveToWindow(view, window: window)
         }
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
@@ -936,9 +1043,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let view = MenuItemContentView(frame: NSRect(origin: .zero, size: layout.cardSize))
         view.onMenuWindowChanged = { [weak self, weak view] window in
-            guard let self, let view, self.isStatusMenuTracking, let window else { return }
-            let bridge = self.installMenuCursorTrackingBridge(on: window)
-            bridge.register(view)
+            guard let self, let view else { return }
+            self.menuHostDidMoveToWindow(view, window: window)
         }
         let titleText = OpenCodexCardPresentation.identity(for: card)
             + (card.isCurrent ? tr(" · 当前", " · Current") : "")
