@@ -425,6 +425,141 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(secondOpenIsUnderlined)
     }
 
+    func testMenuCloseResynchronizesIndependentDashboardLink() {
+        let dashboardWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 260, height: 40),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let dashboardContent = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 40))
+        dashboardWindow.contentView = dashboardContent
+        let dashboardLink = HoverLinkTextField(text: "Provider")
+        dashboardLink.frame = NSRect(x: 28, y: 10, width: 170, height: 20)
+        dashboardContent.addSubview(dashboardLink)
+        dashboardLink.layout()
+
+        let mouseScreenPoint = NSEvent.mouseLocation
+        let visiblePointInWindow = dashboardContent.convert(
+            dashboardLink.visibleTextHitRect.center,
+            from: dashboardLink
+        )
+        dashboardWindow.setFrameOrigin(NSPoint(
+            x: mouseScreenPoint.x - visiblePointInWindow.x,
+            y: mouseScreenPoint.y - visiblePointInWindow.y
+        ))
+        dashboardWindow.orderFrontRegardless()
+        dashboardWindow.displayIfNeeded()
+        dashboardLink.updateTrackingAreas()
+
+        let menu = NSMenu(title: "Issue 104 Dashboard teardown")
+        let item = NSMenuItem()
+        let menuHost = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
+        let menuLink = HoverLinkTextField(text: "Provider")
+        menuLink.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
+        menuHost.addSubview(menuLink)
+        menuLink.layout()
+        menuLink.installMenuTrackingArea(in: menuHost)
+        item.view = menuHost
+        menu.addItem(item)
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        menuHost.onMenuWindowChanged = { window in
+            guard let window else { return }
+            bridge.install(on: window)
+            bridge.register(menuHost)
+            bridge.beginMenuTracking()
+        }
+
+        let previousCursor = NSCursor.current
+        defer {
+            bridge.tearDown()
+            dashboardWindow.orderOut(nil)
+            dashboardWindow.contentView = nil
+            previousCursor.set()
+            menu.removeAllItems()
+        }
+
+        let visibleDashboardPoint = visiblePointInWindow
+        NSCursor.arrow.set()
+        dashboardLink.mouseMoved(with: makeMouseEvent(
+            type: .mouseMoved,
+            location: visibleDashboardPoint
+        ))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        XCTAssertNotNil(dashboardLink.attributedStringValue.attribute(
+            .underlineStyle,
+            at: 0,
+            effectiveRange: nil
+        ))
+
+        var menuHostAttached = false
+        let probeTimer = Timer(timeInterval: 0.02, repeats: false) { _ in
+            guard menuHost.window != nil else {
+                menu.cancelTracking()
+                return
+            }
+            menuHostAttached = true
+            menu.cancelTracking()
+        }
+        RunLoop.main.add(probeTimer, forMode: .eventTracking)
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: 0, y: 0),
+            in: nil
+        )
+        XCTAssertTrue(menuHostAttached)
+
+        // This is the production menuDidClose-equivalent cleanup. The pointer
+        // never leaves the still-visible Dashboard glyph while the menu's
+        // nested tracking loop is active.
+        dashboardLink.mouseExited(with: makeMouseEvent(
+            type: .mouseMoved,
+            location: visibleDashboardPoint
+        ))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertNil(dashboardLink.attributedStringValue.attribute(
+            .underlineStyle,
+            at: 0,
+            effectiveRange: nil
+        ))
+        bridge.tearDown()
+
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        XCTAssertNotNil(dashboardLink.attributedStringValue.attribute(
+            .underlineStyle,
+            at: 0,
+            effectiveRange: nil
+        ))
+
+        let blankPoint = dashboardContent.convert(
+            NSPoint(
+                x: dashboardLink.visibleTextHitRect.maxX
+                    + (dashboardLink.bounds.maxX - dashboardLink.visibleTextHitRect.maxX) / 2,
+                y: dashboardLink.visibleTextHitRect.midY
+            ),
+            from: dashboardLink
+        )
+        var activationCount = 0
+        dashboardLink.onActivate = { activationCount += 1 }
+        NSCursor.pointingHand.set()
+        dashboardLink.mouseMoved(with: makeMouseEvent(
+            type: .mouseMoved,
+            location: blankPoint
+        ))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertNil(dashboardLink.attributedStringValue.attribute(
+            .underlineStyle,
+            at: 0,
+            effectiveRange: nil
+        ))
+        dashboardLink.mouseDown(with: makeMouseEvent(
+            type: .leftMouseDown,
+            location: blankPoint
+        ))
+        XCTAssertEqual(activationCount, 0)
+    }
+
     func testMenuHostedLinkUsesTheActualNSMenuPopupWindowTrackingLoop() {
         let menu = NSMenu(title: "Issue 104")
         let item = NSMenuItem()
