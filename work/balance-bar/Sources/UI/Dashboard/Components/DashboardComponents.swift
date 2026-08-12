@@ -370,7 +370,10 @@ final class MenuWindowCursorTrackingBridge: NSResponder {
         registeredHosts.add(host)
     }
 
-    func tearDown(resynchronizingOrdinaryLinks: Bool = true) {
+    func tearDown(
+        resynchronizingOrdinaryLinks: Bool = true,
+        ordinaryLinkScreenPoint: NSPoint? = nil
+    ) {
         cursorReassertionGeneration += 1
         menuTrackingTimer?.invalidate()
         menuTrackingTimer = nil
@@ -398,7 +401,9 @@ final class MenuWindowCursorTrackingBridge: NSResponder {
         acceptedMouseMovedEvents = nil
         registeredHosts.removeAllObjects()
         if resynchronizingOrdinaryLinks {
-            HoverLinkTextField.resynchronizeOrdinaryLinksAfterMenuTracking()
+            HoverLinkTextField.resynchronizeOrdinaryLinksAfterMenuTracking(
+                at: ordinaryLinkScreenPoint
+            )
         }
     }
 
@@ -790,13 +795,14 @@ final class HoverLinkTextField: NSTextField {
     /// tracking loop. The hit test remains the exact visible rendered glyph;
     /// this only gives AppKit a deterministic lifecycle point to reevaluate
     /// the pointer when no new cursorUpdate or mouseEntered event is emitted.
-    static func resynchronizeOrdinaryLinksAfterMenuTracking() {
+    static func resynchronizeOrdinaryLinksAfterMenuTracking(at screenPoint: NSPoint? = nil) {
         ordinaryLinkResynchronizationGeneration += 1
         let generation = ordinaryLinkResynchronizationGeneration
-        synchronizeOrdinaryLinksWithMouseLocation()
+        let targetScreenPoint = screenPoint ?? NSEvent.mouseLocation
+        synchronizeOrdinaryLinks(at: targetScreenPoint)
         DispatchQueue.main.async {
             guard ordinaryLinkResynchronizationGeneration == generation else { return }
-            synchronizeOrdinaryLinksWithMouseLocation()
+            synchronizeOrdinaryLinks(at: targetScreenPoint)
         }
     }
 
@@ -862,8 +868,7 @@ final class HoverLinkTextField: NSTextField {
         Self.ordinaryLinks.add(self)
     }
 
-    private static func synchronizeOrdinaryLinksWithMouseLocation() {
-        let screenPoint = NSEvent.mouseLocation
+    private static func synchronizeOrdinaryLinks(at screenPoint: NSPoint) {
         let ordinaryLinks = ordinaryLinks.allObjects
         let hoveredLink = ordinaryLinks.last { $0.isPointerInsideVisibleText(atScreenPoint: screenPoint) }
 

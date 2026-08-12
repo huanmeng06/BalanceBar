@@ -345,7 +345,7 @@ final class DashboardComponentsTests: XCTestCase {
         window.contentView = nil
     }
 
-    func testMenuHostedLinkReactivatesAfterPopupDetachAndReattach() {
+    func testMenuHostedLinkReactivatesAfterMenuItemViewDetachAndReattach() {
         let menu = NSMenu(title: "Issue 104 reopen")
         let item = NSMenuItem()
         let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
@@ -358,71 +358,62 @@ final class DashboardComponentsTests: XCTestCase {
         menu.addItem(item)
 
         let bridge = MenuWindowCursorTrackingBridge()
-        var callbackInstallationCount = 0
-        var secondOpenTrackingAreaCount = 0
-        var secondOpenCursorIsHand = false
-        var secondOpenIsUnderlined = false
-        host.onMenuWindowChanged = { window in
-            guard let window else { return }
-            bridge.install(on: window)
-            bridge.register(host)
-            bridge.beginMenuTracking()
-            callbackInstallationCount += 1
-        }
+        let firstWindow = NSWindow(
+            contentRect: NSRect(x: 120, y: 140, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let secondWindow = NSWindow(
+            contentRect: NSRect(x: 420, y: 140, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
 
         let previousCursor = NSCursor.current
         defer {
-            bridge.tearDown()
+            bridge.tearDown(resynchronizingOrdinaryLinks: false)
             previousCursor.set()
+            firstWindow.orderOut(nil)
+            secondWindow.orderOut(nil)
+            firstWindow.contentView = nil
+            secondWindow.contentView = nil
             menu.removeAllItems()
         }
 
-        for openNumber in 1...2 {
-            var hostAttached = false
-            let probeTimer = Timer(
-                timeInterval: 0.02,
-                repeats: false
-            ) { _ in
-                guard let window = host.window else {
-                    menu.cancelTracking()
-                    return
-                }
-                hostAttached = true
-                if openNumber == 2 {
-                    secondOpenTrackingAreaCount = host.trackingAreas.count
-                    let hostPoint = host.convert(link.visibleTextHitRect.center, from: link)
-                    let windowPoint = host.window?.contentView.map {
-                        host.convert(hostPoint, to: $0)
-                    } ?? hostPoint
-                    NSCursor.arrow.set()
-                    bridge.mouseMoved(with: self.makeMouseEvent(
-                        type: .mouseMoved,
-                        location: windowPoint
-                    ))
-                    secondOpenCursorIsHand = NSCursor.current.isEqual(NSCursor.pointingHand)
-                    secondOpenIsUnderlined = link.attributedStringValue.attribute(
-                        .underlineStyle,
-                        at: 0,
-                        effectiveRange: nil
-                    ) != nil
-                }
-                menu.cancelTracking()
-            }
-            RunLoop.main.add(probeTimer, forMode: .eventTracking)
+        for window in [firstWindow, secondWindow] {
+            window.contentView = host
+            window.orderFrontRegardless()
+            window.displayIfNeeded()
+            host.prepareForMenuTracking()
+            bridge.install(on: window)
+            bridge.register(host)
+            bridge.beginMenuTracking()
 
-            menu.popUp(
-                positioning: nil,
-                at: NSPoint(x: 0, y: 0),
-                in: nil
-            )
+            let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
+            NSCursor.arrow.set()
+            bridge.mouseMoved(with: makeMouseEvent(
+                type: .mouseMoved,
+                location: visiblePoint
+            ))
+            XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+            XCTAssertNotNil(link.attributedStringValue.attribute(
+                .underlineStyle,
+                at: 0,
+                effectiveRange: nil
+            ))
 
-            XCTAssertTrue(hostAttached, "menu open \(openNumber) did not attach the item view")
+            bridge.tearDown()
+            window.contentView = nil
         }
 
-        XCTAssertGreaterThanOrEqual(callbackInstallationCount, 2)
-        XCTAssertEqual(secondOpenTrackingAreaCount, 3)
-        XCTAssertTrue(secondOpenCursorIsHand)
-        XCTAssertTrue(secondOpenIsUnderlined)
+        XCTAssertEqual(host.trackingAreas.count, 3)
+        XCTAssertNil(link.attributedStringValue.attribute(
+            .underlineStyle,
+            at: 0,
+            effectiveRange: nil
+        ))
     }
 
     func testMenuCloseResynchronizesIndependentDashboardLink() {
@@ -439,14 +430,13 @@ final class DashboardComponentsTests: XCTestCase {
         dashboardContent.addSubview(dashboardLink)
         dashboardLink.layout()
 
-        let mouseScreenPoint = NSEvent.mouseLocation
         let visiblePointInWindow = dashboardContent.convert(
             dashboardLink.visibleTextHitRect.center,
             from: dashboardLink
         )
         dashboardWindow.setFrameOrigin(NSPoint(
-            x: mouseScreenPoint.x - visiblePointInWindow.x,
-            y: mouseScreenPoint.y - visiblePointInWindow.y
+            x: 120,
+            y: 140
         ))
         dashboardWindow.orderFrontRegardless()
         dashboardWindow.displayIfNeeded()
@@ -473,7 +463,7 @@ final class DashboardComponentsTests: XCTestCase {
 
         let previousCursor = NSCursor.current
         defer {
-            bridge.tearDown()
+            bridge.tearDown(resynchronizingOrdinaryLinks: false)
             dashboardWindow.orderOut(nil)
             dashboardWindow.contentView = nil
             previousCursor.set()
@@ -493,26 +483,23 @@ final class DashboardComponentsTests: XCTestCase {
             effectiveRange: nil
         ))
 
-        var menuHostAttached = false
-        let probeTimer = Timer(timeInterval: 0.02, repeats: false) { _ in
-            guard menuHost.window != nil else {
-                menu.cancelTracking()
-                return
-            }
-            menuHostAttached = true
-            menu.cancelTracking()
-        }
-        RunLoop.main.add(probeTimer, forMode: .eventTracking)
-        menu.popUp(
-            positioning: nil,
-            at: NSPoint(x: 0, y: 0),
-            in: nil
+        let menuWindow = NSWindow(
+            contentRect: NSRect(x: 420, y: 140, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
         )
-        XCTAssertTrue(menuHostAttached)
+        menuWindow.contentView = menuHost
+        menuWindow.orderFrontRegardless()
+        menuWindow.displayIfNeeded()
+        menuHost.prepareForMenuTracking()
+        bridge.install(on: menuWindow)
+        bridge.register(menuHost)
+        bridge.beginMenuTracking()
 
-        // This is the production menuDidClose-equivalent cleanup. The pointer
-        // never leaves the still-visible Dashboard glyph while the menu's
-        // nested tracking loop is active.
+        // This is the production menuDidClose-equivalent cleanup. The
+        // Dashboard window remains visible while the menu item view is attached
+        // to a separate transient menu window.
         dashboardLink.mouseExited(with: makeMouseEvent(
             type: .mouseMoved,
             location: visibleDashboardPoint
@@ -523,7 +510,11 @@ final class DashboardComponentsTests: XCTestCase {
             at: 0,
             effectiveRange: nil
         ))
-        bridge.tearDown()
+        bridge.tearDown(
+            ordinaryLinkScreenPoint: dashboardWindow.convertPoint(
+                toScreen: visiblePointInWindow
+            )
+        )
 
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
         XCTAssertNotNil(dashboardLink.attributedStringValue.attribute(
@@ -558,9 +549,11 @@ final class DashboardComponentsTests: XCTestCase {
             location: blankPoint
         ))
         XCTAssertEqual(activationCount, 0)
+        menuWindow.orderOut(nil)
+        menuWindow.contentView = nil
     }
 
-    func testMenuHostedLinkUsesTheActualNSMenuPopupWindowTrackingLoop() {
+    func testMenuHostedLinkUsesNSMenuItemViewLifecycleWithoutUnboundedPopup() {
         let menu = NSMenu(title: "Issue 104")
         let item = NSMenuItem()
         let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
@@ -573,50 +566,46 @@ final class DashboardComponentsTests: XCTestCase {
         menu.addItem(item)
 
         let bridge = MenuWindowCursorTrackingBridge()
-        var callbackInstalledBridge = false
-        host.onMenuWindowChanged = { window in
-            guard let window else { return }
-            bridge.install(on: window)
-            bridge.register(host)
-            bridge.beginMenuTracking()
-            callbackInstalledBridge = true
-        }
+        let menuWindow = NSWindow(
+            contentRect: NSRect(x: 420, y: 220, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
 
         let previousCursor = NSCursor.current
         defer {
             bridge.tearDown()
             previousCursor.set()
+            menuWindow.orderOut(nil)
+            menuWindow.contentView = nil
             menu.removeAllItems()
         }
 
-        var hostAttached = false
-        var bridgeInstalled = false
-        var trackingAreaCount = 0
-        let probeTimer = Timer(
-            timeInterval: 0.02,
-            repeats: false
-        ) { _ in
-            guard let window = host.window else {
-                menu.cancelTracking()
-                return
-            }
-            hostAttached = true
-            bridgeInstalled = window.acceptsMouseMovedEvents
-            trackingAreaCount = host.trackingAreas.count
-            menu.cancelTracking()
-        }
-        RunLoop.main.add(probeTimer, forMode: .eventTracking)
-
-        menu.popUp(
-            positioning: nil,
-            at: NSPoint(x: 0, y: 0),
-            in: nil
+        XCTAssertTrue(menu.items.contains { $0 === item })
+        menuWindow.contentView = host
+        XCTAssertTrue(host.window === menuWindow)
+        XCTAssertTrue(menuWindow.acceptsMouseMovedEvents)
+        host.prepareForMenuTracking()
+        bridge.install(on: menuWindow)
+        bridge.register(host)
+        bridge.beginMenuTracking()
+        XCTAssertEqual(
+            host.trackingAreas.filter {
+                $0.owner as AnyObject === host
+            }.count,
+            3
         )
-
-        XCTAssertTrue(hostAttached)
-        XCTAssertTrue(bridgeInstalled)
-        XCTAssertTrue(callbackInstalledBridge)
-        XCTAssertEqual(trackingAreaCount, 3)
+        XCTAssertEqual(
+            host.trackingAreas.filter {
+                $0.owner as AnyObject === bridge
+            }.count,
+            2
+        )
+        menuWindow.contentView = nil
+        XCTAssertNil(host.window)
+        bridge.tearDown()
+        XCTAssertEqual(host.trackingAreas.count, 3)
     }
 
     func testMenuWindowCursorBridgeRoutesVisibleGlyphAndBlankArea() {
