@@ -45,6 +45,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
+    private var menuCursorTrackingBridges: [ObjectIdentifier: MenuWindowCursorTrackingBridge] = [:]
     private let menuBarIconView = RotatingTemplateImageView()
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
@@ -125,6 +126,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
+        tearDownMenuCursorTracking()
         lastMenuBarIconFrameDiagnostic = nil
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
@@ -173,11 +175,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
+        prepareMenuViewsForTracking(menu)
+        DispatchQueue.main.async { [weak self, weak menu] in
+            guard let self, let menu, self.isStatusMenuTracking else { return }
+            self.prepareMenuViewsForTracking(menu)
+        }
+    }
+
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        guard isStatusMenuTracking else { return }
+        prepareMenuViewsForTracking(menu)
+        if let view = item?.view, let window = view.window {
+            let bridge = installMenuCursorTrackingBridge(on: window)
+            if let host = view as? MenuItemContentView {
+                bridge.register(host)
+            }
+        }
     }
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = false
+        tearDownMenuCursorTracking()
         guard statusMenuNeedsRebuild else { return }
         statusMenuNeedsRebuild = false
         DispatchQueue.main.async { [weak self] in
@@ -193,6 +212,85 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             rebuildStatusMenu()
         }
+    }
+
+    private func prepareMenuViewsForTracking(_ menu: NSMenu) {
+        var windows = [NSWindow]()
+        var windowIDs = Set<ObjectIdentifier>()
+        var hostsByWindow: [ObjectIdentifier: [MenuItemContentView]] = [:]
+
+        for item in menu.items {
+            if let view = item.view, let host = view as? MenuItemContentView {
+                host.prepareForMenuTracking()
+                if let window = view.window, windowIDs.insert(ObjectIdentifier(window)).inserted {
+                    windows.append(window)
+                }
+                if let window = view.window {
+                    hostsByWindow[ObjectIdentifier(window), default: []].append(host)
+                }
+            }
+            if let submenu = item.submenu {
+                collectMenuViews(
+                    in: submenu,
+                    into: &windows,
+                    ids: &windowIDs,
+                    hostsByWindow: &hostsByWindow
+                )
+            }
+        }
+        for window in windows {
+            let bridge = installMenuCursorTrackingBridge(on: window)
+            for host in hostsByWindow[ObjectIdentifier(window)] ?? [] {
+                bridge.register(host)
+            }
+        }
+    }
+
+    private func collectMenuViews(
+        in menu: NSMenu,
+        into windows: inout [NSWindow],
+        ids: inout Set<ObjectIdentifier>,
+        hostsByWindow: inout [ObjectIdentifier: [MenuItemContentView]]
+    ) {
+        for item in menu.items {
+            if let view = item.view, let host = view as? MenuItemContentView {
+                host.prepareForMenuTracking()
+                if let window = view.window, ids.insert(ObjectIdentifier(window)).inserted {
+                    windows.append(window)
+                }
+                if let window = view.window {
+                    hostsByWindow[ObjectIdentifier(window), default: []].append(host)
+                }
+            }
+            if let submenu = item.submenu {
+                collectMenuViews(
+                    in: submenu,
+                    into: &windows,
+                    ids: &ids,
+                    hostsByWindow: &hostsByWindow
+                )
+            }
+        }
+    }
+
+    @discardableResult
+    private func installMenuCursorTrackingBridge(on window: NSWindow) -> MenuWindowCursorTrackingBridge {
+        let identifier = ObjectIdentifier(window)
+        let bridge = menuCursorTrackingBridges[identifier] ?? {
+            let bridge = MenuWindowCursorTrackingBridge()
+            menuCursorTrackingBridges[identifier] = bridge
+            return bridge
+        }()
+        bridge.install(on: window)
+        bridge.beginMenuTracking()
+        return bridge
+    }
+
+    private func tearDownMenuCursorTracking() {
+        for bridge in menuCursorTrackingBridges.values {
+            bridge.tearDown()
+        }
+        menuCursorTrackingBridges.removeAll()
     }
 
     private func configureStatusItem() {
@@ -747,10 +845,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
         )
-        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        let view = MenuItemContentView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        view.onMenuWindowChanged = { [weak self, weak view] window in
+            guard let self, let view, self.isStatusMenuTracking, let window else { return }
+            let bridge = self.installMenuCursorTrackingBridge(on: window)
+            bridge.register(view)
+        }
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
 
+        var overviewLink: HoverLinkTextField?
         if snapshot.kind == .official || snapshot.kind == .balance {
             let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
             let refreshTime = makeOverviewLabel(timeText, font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
@@ -779,8 +883,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let link = HoverLinkTextField(text: snapshot.provider)
                 link.frame = linkFrame
                 link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
-                view.addSubview(link)
-                link.installMenuTrackingArea(in: view)
+                overviewLink = link
             }
         } else {
             quotaDetail.frame = layout.quotaDetail
@@ -791,6 +894,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(reset)
         }
         [provider, quotaDetail, amount].forEach(view.addSubview)
+        if let overviewLink {
+            view.addSubview(overviewLink)
+            overviewLink.installMenuTrackingArea(in: view)
+        }
         item.view = view
         return item
     }
@@ -827,7 +934,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             for: category,
             linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
         )
-        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        let view = MenuItemContentView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        view.onMenuWindowChanged = { [weak self, weak view] window in
+            guard let self, let view, self.isStatusMenuTracking, let window else { return }
+            let bridge = self.installMenuCursorTrackingBridge(on: window)
+            bridge.register(view)
+        }
         let titleText = OpenCodexCardPresentation.identity(for: card)
             + (card.isCurrent ? tr(" · 当前", " · Current") : "")
         let provider = makeOverviewLabel(titleText, font: .systemFont(ofSize: 15, weight: .semibold))

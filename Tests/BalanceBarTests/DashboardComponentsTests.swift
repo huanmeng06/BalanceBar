@@ -198,19 +198,36 @@ final class DashboardComponentsTests: XCTestCase {
 
     func testMenuHostedLinkUsesHostMouseMovementWithoutExpandingActivation() {
         let item = NSMenuItem()
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 20))
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 220, height: 20))
         item.view = host
 
         let link = HoverLinkTextField(text: "Provider")
-        link.frame = host.bounds
+        link.frame = NSRect(x: 30, y: 0, width: 160, height: 20)
         host.addSubview(link)
         link.layout()
         link.installMenuTrackingArea(in: host)
+        link.updateTrackingAreas()
 
-        XCTAssertEqual(host.trackingAreas.count, 1)
-        XCTAssertEqual(host.trackingAreas[0].rect, host.bounds)
-        XCTAssertTrue(host.trackingAreas[0].options.contains(.mouseMoved))
-        XCTAssertTrue(host.trackingAreas[0].options.contains(.cursorUpdate))
+        XCTAssertEqual(host.trackingAreas.count, 3)
+        guard let mouseArea = host.trackingAreas.first(where: { $0.options.contains(.mouseMoved) }),
+              let mouseEntryArea = host.trackingAreas.first(where: { $0.options.contains(.mouseEnteredAndExited) }),
+              let cursorArea = host.trackingAreas.first(where: { $0.options.contains(.cursorUpdate) })
+        else {
+            return XCTFail("Expected separate mouse, entry, and cursor tracking areas")
+        }
+        XCTAssertEqual(
+            mouseArea.rect,
+            host.convert(link.visibleTextHitRect, from: link)
+        )
+        XCTAssertTrue(mouseArea.options.contains(.activeAlways))
+        XCTAssertFalse(mouseArea.options.contains(.mouseEnteredAndExited))
+        XCTAssertFalse(mouseArea.options.contains(.cursorUpdate))
+        XCTAssertTrue(mouseEntryArea.options.contains(.activeAlways))
+        XCTAssertFalse(mouseEntryArea.options.contains(.mouseMoved))
+        XCTAssertFalse(mouseEntryArea.options.contains(.cursorUpdate))
+        XCTAssertTrue(cursorArea.options.contains(.activeAlways))
+        XCTAssertFalse(cursorArea.options.contains(.activeInKeyWindow))
+        XCTAssertEqual(link.trackingAreas.count, 0)
 
         let previousCursor = NSCursor.current
         defer { previousCursor.set() }
@@ -218,19 +235,32 @@ final class DashboardComponentsTests: XCTestCase {
 
         var activationCount = 0
         link.onActivate = { activationCount += 1 }
+        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
         let blankPoint = NSPoint(
-            x: link.visibleTextHitRect.maxX
-                + (link.bounds.maxX - link.visibleTextHitRect.maxX) / 2,
-            y: link.visibleTextHitRect.midY
+            x: host.convert(
+                NSPoint(
+                    x: link.visibleTextHitRect.maxX
+                        + (link.bounds.maxX - link.visibleTextHitRect.maxX) / 2,
+                    y: link.visibleTextHitRect.midY
+                ),
+                from: link
+            ).x,
+            y: visiblePoint.y
         )
 
-        link.mouseMoved(with: makeMouseEvent(
+        host.mouseMoved(with: makeMouseEvent(
             type: .mouseMoved,
-            location: link.visibleTextHitRect.center
+            location: visiblePoint
         ))
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
 
-        link.mouseMoved(with: makeMouseEvent(
+        host.cursorUpdate(with: makeMouseEvent(
+            type: .mouseMoved,
+            location: visiblePoint
+        ))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+
+        host.mouseMoved(with: makeMouseEvent(
             type: .mouseMoved,
             location: blankPoint
         ))
@@ -251,11 +281,11 @@ final class DashboardComponentsTests: XCTestCase {
 
     func testMenuHostedLinkTeardownRemovesHostTrackingAndRestoresArrow() {
         let item = NSMenuItem()
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: 160, height: 20))
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 160, height: 20))
         item.view = host
 
         let link = HoverLinkTextField(text: "Provider")
-        link.frame = host.bounds
+        link.frame = NSRect(x: 20, y: 0, width: 120, height: 20)
         host.addSubview(link)
         link.layout()
         link.installMenuTrackingArea(in: host)
@@ -263,9 +293,9 @@ final class DashboardComponentsTests: XCTestCase {
         let previousCursor = NSCursor.current
         defer { previousCursor.set() }
         NSCursor.arrow.set()
-        link.mouseMoved(with: makeMouseEvent(
+        host.mouseMoved(with: makeMouseEvent(
             type: .mouseMoved,
-            location: link.visibleTextHitRect.center
+            location: host.convert(link.visibleTextHitRect.center, from: link)
         ))
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
 
@@ -277,16 +307,383 @@ final class DashboardComponentsTests: XCTestCase {
         item.view = nil
     }
 
+    func testMenuHostedLinkEnablesMouseMovedEventsForItsMenuWindow() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 220, height: 20),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
+        )
+        window.acceptsMouseMovedEvents = false
+
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 220, height: 20))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 30, y: 0, width: 160, height: 20)
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+
+        XCTAssertEqual(host.trackingAreas.count, 3)
+        window.contentView = host
+
+        XCTAssertTrue(window.acceptsMouseMovedEvents)
+        XCTAssertEqual(host.trackingAreas.count, 3)
+        guard let mouseArea = host.trackingAreas.first(where: { $0.options.contains(.mouseMoved) }) else {
+            return XCTFail("Expected a mouse tracking area after attaching the menu view")
+        }
+        XCTAssertEqual(
+            mouseArea.rect,
+            host.convert(link.visibleTextHitRect, from: link)
+        )
+
+        host.prepareForMenuTracking()
+        XCTAssertEqual(host.trackingAreas.count, 3)
+        XCTAssertTrue(window.acceptsMouseMovedEvents)
+
+        link.removeFromSuperview()
+        XCTAssertFalse(window.acceptsMouseMovedEvents)
+        window.contentView = nil
+    }
+
+    func testMenuHostedLinkUsesTheActualNSMenuPopupWindowTrackingLoop() {
+        let menu = NSMenu(title: "Issue 104")
+        let item = NSMenuItem()
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+        item.view = host
+        menu.addItem(item)
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        var callbackInstalledBridge = false
+        host.onMenuWindowChanged = { window in
+            guard let window else { return }
+            bridge.install(on: window)
+            bridge.register(host)
+            bridge.beginMenuTracking()
+            callbackInstalledBridge = true
+        }
+
+        let previousCursor = NSCursor.current
+        defer {
+            bridge.tearDown()
+            previousCursor.set()
+            menu.removeAllItems()
+        }
+
+        var hostAttached = false
+        var bridgeInstalled = false
+        var trackingAreaCount = 0
+        let probeTimer = Timer(
+            timeInterval: 0.02,
+            repeats: false
+        ) { _ in
+            guard let window = host.window else {
+                menu.cancelTracking()
+                return
+            }
+            hostAttached = true
+            bridgeInstalled = window.acceptsMouseMovedEvents
+            trackingAreaCount = host.trackingAreas.count
+            menu.cancelTracking()
+        }
+        RunLoop.main.add(probeTimer, forMode: .eventTracking)
+
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: 0, y: 0),
+            in: nil
+        )
+
+        XCTAssertTrue(hostAttached)
+        XCTAssertTrue(bridgeInstalled)
+        XCTAssertTrue(callbackInstalledBridge)
+        XCTAssertEqual(trackingAreaCount, 3)
+    }
+
+    func testMenuWindowCursorBridgeRoutesVisibleGlyphAndBlankArea() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
+        )
+        window.acceptsMouseMovedEvents = false
+
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+        window.contentView = host
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        bridge.install(on: window)
+        bridge.beginMenuTracking()
+
+        XCTAssertTrue(window.acceptsMouseMovedEvents)
+        guard let bridgeMouseArea = host.trackingAreas.first(where: {
+            $0.owner as AnyObject === bridge
+                && $0.options.contains(.mouseMoved)
+        }), let bridgeCursorArea = host.trackingAreas.first(where: {
+            $0.owner as AnyObject === bridge
+                && $0.options.contains(.cursorUpdate)
+        }) else {
+            return XCTFail("Expected separate content-view mouse and cursor bridge tracking areas")
+        }
+        XCTAssertTrue(bridgeMouseArea.options.contains(.mouseEnteredAndExited))
+        XCTAssertTrue(bridgeMouseArea.options.contains(.activeAlways))
+        XCTAssertFalse(bridgeMouseArea.options.contains(.cursorUpdate))
+        XCTAssertTrue(bridgeCursorArea.options.contains(.activeAlways))
+        XCTAssertFalse(bridgeCursorArea.options.contains(.activeInKeyWindow))
+        XCTAssertFalse(bridgeCursorArea.options.contains(.mouseMoved))
+        XCTAssertEqual(bridgeMouseArea.rect, host.bounds)
+        XCTAssertEqual(bridgeCursorArea.rect, host.bounds)
+
+        let previousCursor = NSCursor.current
+        defer {
+            bridge.tearDown()
+            previousCursor.set()
+            window.contentView = nil
+        }
+        NSCursor.arrow.set()
+
+        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
+        let blankPoint = host.convert(
+            NSPoint(
+                x: link.visibleTextHitRect.maxX
+                    + (link.bounds.maxX - link.visibleTextHitRect.maxX) / 2,
+                y: link.visibleTextHitRect.midY
+            ),
+            from: link
+        )
+
+        bridge.mouseMoved(with: makeMouseEvent(type: .mouseMoved, location: visiblePoint))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+
+        bridge.cursorUpdate(with: makeMouseEvent(type: .mouseMoved, location: blankPoint))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+
+        bridge.tearDown()
+        XCTAssertFalse(window.acceptsMouseMovedEvents)
+    }
+
+    func testMenuWindowCursorBridgeReassertsCursorAfterMenuDispatch() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.acceptsMouseMovedEvents = false
+
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
+        host.addSubview(link)
+        link.layout()
+        window.contentView = host
+        link.installMenuTrackingArea(in: host)
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        bridge.install(on: window)
+
+        let previousCursor = NSCursor.current
+        defer {
+            bridge.tearDown()
+            previousCursor.set()
+            window.contentView = nil
+        }
+
+        NSCursor.arrow.set()
+
+        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
+        bridge.handleMenuMouseMoved(
+            with: makeMouseEvent(type: .mouseMoved, location: visiblePoint)
+        )
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+
+        // Simulate NSMenu restoring its default cursor after dispatching the
+        // movement event. The bridge must win on the event-tracking turn.
+        NSCursor.arrow.set()
+        bridge.reassertMenuCursorState()
+
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+    }
+
+    func testMenuWindowCursorBridgeReassertsCursorInMenuTrackingRunLoopMode() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.acceptsMouseMovedEvents = false
+
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
+        host.addSubview(link)
+        link.layout()
+        window.contentView = host
+        link.installMenuTrackingArea(in: host)
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        bridge.install(on: window)
+
+        let previousCursor = NSCursor.current
+        defer {
+            bridge.tearDown()
+            previousCursor.set()
+            window.contentView = nil
+        }
+
+        NSCursor.arrow.set()
+        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
+        let screenPoint = NSEvent.mouseLocation
+        window.setFrameOrigin(
+            NSPoint(
+                x: screenPoint.x - visiblePoint.x,
+                y: screenPoint.y - visiblePoint.y
+            )
+        )
+        bridge.handleMenuMouseMoved(
+            with: makeMouseEvent(type: .mouseMoved, location: visiblePoint)
+        )
+
+        // Simulate NSMenu restoring its default cursor before the tracking
+        // run-loop gets to the bridge's deferred reassertion.
+        NSCursor.arrow.set()
+        bridge.reassertMenuCursorState()
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        NSCursor.arrow.set()
+        let runLoopWakeup = Timer(
+            timeInterval: 0.001,
+            repeats: false
+        ) { _ in }
+        RunLoop.main.add(runLoopWakeup, forMode: .eventTracking)
+        _ = RunLoop.main.run(
+            mode: .eventTracking,
+            before: Date(timeIntervalSinceNow: 0.05)
+        )
+
+        // The real menu window is under the pointer, so its cursor-rect
+        // rebuild must preserve the visible-glyph hand cursor as well.
+        window.resetCursorRects()
+        host.resetCursorRects()
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+    }
+
+    func testMenuWindowCursorBridgeSamplesActualScreenMouseLocation() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 28),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 28))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 32, y: 4, width: 170, height: 20)
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+        window.contentView = host
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        bridge.install(on: window)
+        bridge.register(host)
+
+        let previousCursor = NSCursor.current
+        defer {
+            bridge.tearDown()
+            previousCursor.set()
+            window.contentView = nil
+        }
+
+        let visiblePoint = host.convert(link.visibleTextHitRect.center, from: link)
+        let mouseScreenPoint = NSEvent.mouseLocation
+        window.setFrameOrigin(
+            NSPoint(
+                x: mouseScreenPoint.x - visiblePoint.x,
+                y: mouseScreenPoint.y - visiblePoint.y
+            )
+        )
+        NSCursor.arrow.set()
+        bridge.refreshMenuCursorState()
+
+        XCTAssertTrue(
+            NSCursor.current.isEqual(NSCursor.pointingHand),
+            "cursor=\(NSCursor.current); window=\(window.frame); screen=\(mouseScreenPoint); "
+                + "windowPoint=\(window.convertPoint(fromScreen: mouseScreenPoint)); "
+                + "visible=\(visiblePoint); host=\(host.convert(visiblePoint, to: nil)); "
+                + "hostBounds=\(host.bounds)"
+        )
+    }
+
+    func testMenuWindowCursorBridgeTeardownRestoresWindowState() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 180, height: 24),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
+        )
+        window.acceptsMouseMovedEvents = false
+        let contentView = NSView(frame: window.frame)
+        window.contentView = contentView
+
+        let bridge = MenuWindowCursorTrackingBridge()
+        bridge.install(on: window)
+        XCTAssertEqual(contentView.trackingAreas.count, 2)
+        XCTAssertTrue(window.acceptsMouseMovedEvents)
+
+        bridge.tearDown()
+
+        XCTAssertEqual(contentView.trackingAreas.count, 0)
+        XCTAssertFalse(window.acceptsMouseMovedEvents)
+        window.contentView = nil
+    }
+
+    func testMenuHostedLinkRebuildsPreciseHostTrackingWhenTextGeometryChanges() {
+        let host = MenuItemContentView(frame: NSRect(x: 0, y: 0, width: 240, height: 20))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 40, y: 0, width: 180, height: 20)
+        host.addSubview(link)
+        link.layout()
+        link.installMenuTrackingArea(in: host)
+
+        guard let initialMouseArea = host.trackingAreas.first(where: { $0.options.contains(.mouseMoved) }) else {
+            return XCTFail("Expected a mouse tracking area")
+        }
+        let initialRect = initialMouseArea.rect
+        link.frame = NSRect(x: 12, y: 0, width: 90, height: 20)
+        link.layout()
+
+        XCTAssertEqual(host.trackingAreas.count, 3)
+        guard let mouseArea = host.trackingAreas.first(where: { $0.options.contains(.mouseMoved) }) else {
+            return XCTFail("Expected a mouse tracking area")
+        }
+        XCTAssertEqual(
+            mouseArea.rect,
+            host.convert(link.visibleTextHitRect, from: link)
+        )
+        XCTAssertNotEqual(mouseArea.rect, initialRect)
+    }
+
     private func makeMouseEvent(
         type: NSEvent.EventType,
-        location: NSPoint
+        location: NSPoint,
+        windowNumber: Int = 0
     ) -> NSEvent {
         guard let event = NSEvent.mouseEvent(
             with: type,
             location: location,
             modifierFlags: [],
             timestamp: 0,
-            windowNumber: 0,
+            windowNumber: windowNumber,
             context: nil,
             eventNumber: 0,
             clickCount: type == .leftMouseDown ? 1 : 0,
@@ -296,6 +693,7 @@ final class DashboardComponentsTests: XCTestCase {
         }
         return event
     }
+
 }
 
 private extension NSRect {

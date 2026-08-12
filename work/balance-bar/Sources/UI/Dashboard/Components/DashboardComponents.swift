@@ -113,12 +113,498 @@ final class QuotaProgressView: NSView {
     }
 }
 
+final class MenuItemContentView: NSView {
+    var onMenuWindowChanged: ((NSWindow?) -> Void)?
+
+    private weak var menuLink: HoverLinkTextField?
+    private weak var menuWindow: NSWindow?
+    private var menuWindowAcceptedMouseMovedEvents: Bool?
+    private var mouseTrackingAreaReference: NSTrackingArea?
+    private var mouseEntryTrackingAreaReference: NSTrackingArea?
+    private var cursorTrackingAreaReference: NSTrackingArea?
+
+    func installMenuLink(_ link: HoverLinkTextField) {
+        removeMenuTrackingAreas()
+        menuLink = link
+        installMenuTrackingAreas()
+        enableMenuWindowMouseMovedEventsIfNeeded()
+        window?.invalidateCursorRects(for: self)
+    }
+
+    func refreshMenuLinkTrackingArea() {
+        guard menuLink != nil else { return }
+        removeMenuTrackingAreas()
+        installMenuTrackingAreas()
+        enableMenuWindowMouseMovedEventsIfNeeded()
+        window?.invalidateCursorRects(for: self)
+    }
+
+    func prepareForMenuTracking() {
+        guard menuLink != nil else { return }
+        updateTrackingAreas()
+        enableMenuWindowMouseMovedEventsIfNeeded()
+        window?.invalidateCursorRects(for: self)
+        onMenuWindowChanged?(window)
+    }
+
+    func removeMenuLink(_ link: HoverLinkTextField) {
+        guard menuLink === link else { return }
+        menuLink = nil
+        removeMenuTrackingAreas()
+        restoreMenuWindowMouseMovedEvents()
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func updateTrackingAreas() {
+        removeMenuTrackingAreas()
+        super.updateTrackingAreas()
+        installMenuTrackingAreas()
+    }
+
+    override func viewDidMoveToWindow() {
+        if let menuWindow, menuWindow !== window {
+            restoreMenuWindowMouseMovedEvents()
+        }
+        super.viewDidMoveToWindow()
+        if menuLink != nil {
+            updateTrackingAreas()
+        }
+        enableMenuWindowMouseMovedEventsIfNeeded()
+        window?.invalidateCursorRects(for: self)
+        onMenuWindowChanged?(window)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let menuLink else { return }
+        let cursorRect = convert(menuLink.visibleTextHitRect, from: menuLink)
+        guard !cursorRect.isEmpty else { return }
+        addCursorRect(cursorRect, cursor: .pointingHand)
+        if let window {
+            let screenPoint = NSEvent.mouseLocation
+            let windowPoint = window.convertPoint(fromScreen: screenPoint)
+            menuLink.handleMenuMouseMoved(at: convert(windowPoint, from: nil), in: self)
+        } else {
+            menuLink.reassertMenuCursor()
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        menuLink?.handleMenuMouseEntered(with: event, in: self)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        menuLink?.handleMenuExited()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        menuLink?.handleMenuMouseMoved(with: event, in: self)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        menuLink?.handleMenuCursorUpdate(with: event, in: self)
+    }
+
+    func handlesMenuMouseEvent(_ event: NSEvent) -> Bool {
+        guard let window else {
+            return self.window == nil && bounds.contains(event.locationInWindow)
+        }
+        guard event.window == nil || event.window === window else { return false }
+        return bounds.contains(convert(event.locationInWindow, from: nil))
+    }
+
+    func updateMenuCursor(with event: NSEvent) -> Bool {
+        guard menuLink != nil else { return false }
+        guard handlesMenuMouseEvent(event) else {
+            clearMenuCursor()
+            return false
+        }
+        menuLink?.handleMenuMouseMoved(with: event, in: self)
+        return true
+    }
+
+    func updateMenuCursor(at windowPoint: NSPoint, in menuWindow: NSWindow? = nil) -> Bool {
+        guard let menuLink else { return false }
+        let hostWindowPoint: NSPoint
+        if let menuWindow, let hostWindow = window, hostWindow !== menuWindow {
+            let screenPoint = menuWindow.convertPoint(toScreen: windowPoint)
+            hostWindowPoint = hostWindow.convertPoint(fromScreen: screenPoint)
+        } else {
+            hostWindowPoint = windowPoint
+        }
+        let hostPoint = convert(hostWindowPoint, from: nil)
+        guard bounds.contains(hostPoint) else {
+            clearMenuCursor()
+            return false
+        }
+        menuLink.handleMenuMouseMoved(at: hostPoint, in: self)
+        return true
+    }
+
+    func clearMenuCursor() {
+        menuLink?.handleMenuExited()
+        menuLink?.reassertMenuCursor()
+    }
+
+    func finishMenuTracking() {
+        menuLink?.handleMenuExited()
+        restoreMenuWindowMouseMovedEvents()
+        window?.invalidateCursorRects(for: self)
+    }
+
+    func clearMenuCursorState() {
+        clearMenuCursor()
+    }
+
+    func reassertMenuCursor() {
+        menuLink?.reassertMenuCursor()
+    }
+
+    private func installMenuTrackingAreas() {
+        guard let menuLink else { return }
+        let trackingRect = convert(menuLink.visibleTextHitRect, from: menuLink)
+        guard !trackingRect.isEmpty else { return }
+        let mouseArea = NSTrackingArea(
+            rect: trackingRect,
+            options: [.mouseMoved, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(mouseArea)
+        mouseTrackingAreaReference = mouseArea
+
+        let mouseEntryArea = NSTrackingArea(
+            rect: trackingRect,
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(mouseEntryArea)
+        mouseEntryTrackingAreaReference = mouseEntryArea
+
+        let cursorArea = NSTrackingArea(
+            rect: trackingRect,
+            options: [.cursorUpdate, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(cursorArea)
+        cursorTrackingAreaReference = cursorArea
+    }
+
+    private func removeMenuTrackingAreas() {
+        if let mouseTrackingAreaReference {
+            removeTrackingArea(mouseTrackingAreaReference)
+            self.mouseTrackingAreaReference = nil
+        }
+        if let mouseEntryTrackingAreaReference {
+            removeTrackingArea(mouseEntryTrackingAreaReference)
+            self.mouseEntryTrackingAreaReference = nil
+        }
+        if let cursorTrackingAreaReference {
+            removeTrackingArea(cursorTrackingAreaReference)
+            self.cursorTrackingAreaReference = nil
+        }
+    }
+
+    private func enableMenuWindowMouseMovedEventsIfNeeded() {
+        guard menuLink != nil, let window else { return }
+        if menuWindow !== window {
+            restoreMenuWindowMouseMovedEvents()
+            menuWindow = window
+            menuWindowAcceptedMouseMovedEvents = window.acceptsMouseMovedEvents
+        }
+        window.acceptsMouseMovedEvents = true
+    }
+
+    private func restoreMenuWindowMouseMovedEvents() {
+        guard let menuWindow else { return }
+        if let menuWindowAcceptedMouseMovedEvents {
+            menuWindow.acceptsMouseMovedEvents = menuWindowAcceptedMouseMovedEvents
+        }
+        self.menuWindow = nil
+        menuWindowAcceptedMouseMovedEvents = nil
+    }
+}
+
+/// NSMenu can keep mouse movement inside its private tracking loop instead of
+/// delivering it to an NSMenuItem.view. A tracking area on the actual menu
+/// window gives cursor updates a stable AppKit-owned path without observing
+/// application events or changing the menu's hit regions.
+final class MenuWindowCursorTrackingBridge: NSResponder {
+    private weak var menuWindow: NSWindow?
+    private weak var contentView: NSView?
+    private var mouseTrackingAreaReference: NSTrackingArea?
+    private var cursorTrackingAreaReference: NSTrackingArea?
+    private var acceptedMouseMovedEvents: Bool?
+    private weak var activeHost: MenuItemContentView?
+    private let registeredHosts = NSHashTable<MenuItemContentView>.weakObjects()
+    private var cursorReassertionGeneration = 0
+    private var menuTrackingTimer: Timer?
+
+    func install(on window: NSWindow) {
+        guard let contentView = window.contentView else { return }
+
+        if menuWindow !== window || self.contentView !== contentView {
+            tearDown()
+            menuWindow = window
+            self.contentView = contentView
+            acceptedMouseMovedEvents = window.acceptsMouseMovedEvents
+        }
+
+        installTrackingArea(on: contentView)
+        window.acceptsMouseMovedEvents = true
+        window.invalidateCursorRects(for: contentView)
+    }
+
+    func refresh() {
+        guard let menuWindow else { return }
+        install(on: menuWindow)
+    }
+
+    func register(_ host: MenuItemContentView) {
+        registeredHosts.add(host)
+    }
+
+    func tearDown() {
+        cursorReassertionGeneration += 1
+        menuTrackingTimer?.invalidate()
+        menuTrackingTimer = nil
+        if let contentView {
+            if let mouseTrackingAreaReference {
+                contentView.removeTrackingArea(mouseTrackingAreaReference)
+            }
+            if let cursorTrackingAreaReference {
+                contentView.removeTrackingArea(cursorTrackingAreaReference)
+            }
+        }
+        mouseTrackingAreaReference = nil
+        cursorTrackingAreaReference = nil
+        activeHost?.clearMenuCursor()
+        activeHost = nil
+
+        if let menuWindow, let acceptedMouseMovedEvents {
+            menuWindow.acceptsMouseMovedEvents = acceptedMouseMovedEvents
+        }
+        if let contentView {
+            finishMenuTracking(in: contentView)
+        }
+        menuWindow = nil
+        contentView = nil
+        acceptedMouseMovedEvents = nil
+        registeredHosts.removeAllObjects()
+    }
+
+    /// Keep cursor state synchronized while NSMenu owns its nested event loop.
+    /// Some menu windows do not forward mouseMoved to NSMenuItem.view, so the
+    /// bridge also samples the real menu-window pointer location in the same
+    /// event-tracking run-loop mode.
+    func beginMenuTracking() {
+        guard menuTrackingTimer == nil else { return }
+        let timer = Timer(
+            timeInterval: 0.01,
+            repeats: true
+        ) { [weak self] _ in
+            self?.refreshCursorForCurrentMouseLocation()
+        }
+        menuTrackingTimer = timer
+        RunLoop.main.add(timer, forMode: .eventTracking)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        updateCursor(for: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        clearCursor()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateCursor(for: event)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        updateCursor(for: event)
+    }
+
+    func handleMenuMouseMoved(with event: NSEvent) {
+        updateCursor(for: event)
+    }
+
+    func refreshMenuCursorState() {
+        refreshCursorForCurrentMouseLocation()
+    }
+
+    func clearMenuCursorState() {
+        clearCursor()
+    }
+
+    func reassertMenuCursorState() {
+        if let activeHost {
+            activeHost.reassertMenuCursor()
+        } else {
+            NSCursor.arrow.set()
+        }
+    }
+
+    private func installTrackingArea(on contentView: NSView) {
+        if let mouseTrackingAreaReference {
+            contentView.removeTrackingArea(mouseTrackingAreaReference)
+        }
+        if let cursorTrackingAreaReference {
+            contentView.removeTrackingArea(cursorTrackingAreaReference)
+        }
+        let mouseArea = NSTrackingArea(
+            rect: contentView.bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        contentView.addTrackingArea(mouseArea)
+        mouseTrackingAreaReference = mouseArea
+
+        // Menu windows are transient and are not guaranteed to be key windows
+        // while NSMenu owns its tracking loop. Keep cursor updates active for
+        // the menu window itself, just like the movement tracking area.
+        let cursorArea = NSTrackingArea(
+            rect: contentView.bounds,
+            options: [.cursorUpdate, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        contentView.addTrackingArea(cursorArea)
+        cursorTrackingAreaReference = cursorArea
+    }
+
+    private func updateCursor(for event: NSEvent) {
+        guard let menuWindow, let contentView,
+              event.window == nil || event.window === menuWindow
+        else {
+            clearCursor()
+            return
+        }
+
+        updateCursor(at: event.locationInWindow, contentView: contentView)
+    }
+
+    private func refreshCursorForCurrentMouseLocation() {
+        guard let menuWindow, let contentView else { return }
+        let windowPoint = menuWindow.convertPoint(fromScreen: NSEvent.mouseLocation)
+        updateCursor(
+            at: windowPoint,
+            contentView: contentView
+        )
+        reassertMenuCursorState()
+    }
+
+    private func updateCursor(
+        at windowPoint: NSPoint,
+        contentView: NSView
+    ) {
+        let nextHost = findMenuHost(
+            in: contentView,
+            windowPoint: windowPoint
+        )
+        if activeHost !== nextHost {
+            activeHost?.clearMenuCursor()
+            activeHost = nextHost
+        }
+
+        guard let nextHost, let menuWindow else {
+            clearCursor()
+            return
+        }
+        guard nextHost.updateMenuCursor(at: windowPoint, in: menuWindow) else {
+            clearCursor()
+            return
+        }
+        reassertCursorAfterMenuEvent()
+    }
+
+    private func clearCursor() {
+        activeHost?.clearMenuCursor()
+        activeHost = nil
+        NSCursor.arrow.set()
+        reassertCursorAfterMenuEvent()
+    }
+
+    /// NSMenu's event-tracking loop can restore its default arrow after a
+    /// mouse event has reached the application. Reassert the cursor in that
+    /// same run-loop mode after the event finishes, while retaining the exact
+    /// glyph hit-test from the menu host.
+    private func reassertCursorAfterMenuEvent() {
+        cursorReassertionGeneration += 1
+        let generation = cursorReassertionGeneration
+        let reassertionTimer = Timer(
+            timeInterval: 0.001,
+            repeats: false
+        ) { [weak self] _ in
+            guard let self, self.cursorReassertionGeneration == generation else { return }
+            self.reassertMenuCursorState()
+        }
+        RunLoop.main.add(reassertionTimer, forMode: .eventTracking)
+    }
+
+    private func finishMenuTracking(in view: NSView) {
+        for subview in view.subviews {
+            finishMenuTracking(in: subview)
+        }
+        (view as? MenuItemContentView)?.finishMenuTracking()
+    }
+
+    private func findMenuHost(in view: NSView, windowPoint: NSPoint) -> MenuItemContentView? {
+        guard let menuWindow else { return nil }
+        let screenPoint = menuWindow.convertPoint(toScreen: windowPoint)
+        for host in registeredHosts.allObjects.reversed() {
+            guard host.window === menuWindow,
+                  host.bounds.contains(hostPoint(for: screenPoint, in: host))
+            else { continue }
+            return host
+        }
+
+        for subview in view.subviews.reversed() {
+            if let host = findMenuHost(in: subview, screenPoint: screenPoint) {
+                return host
+            }
+        }
+        if let host = view as? MenuItemContentView,
+           host.window === menuWindow,
+           host.bounds.contains(hostPoint(for: screenPoint, in: host)) {
+            return host
+        }
+        return nil
+    }
+
+    private func findMenuHost(in view: NSView, screenPoint: NSPoint) -> MenuItemContentView? {
+        for subview in view.subviews.reversed() {
+            if let host = findMenuHost(in: subview, screenPoint: screenPoint) {
+                return host
+            }
+        }
+        guard let menuWindow,
+              let host = view as? MenuItemContentView,
+              host.window === menuWindow,
+              host.bounds.contains(hostPoint(for: screenPoint, in: host))
+        else {
+            return nil
+        }
+        return host
+    }
+
+    private func hostPoint(for screenPoint: NSPoint, in host: MenuItemContentView) -> NSPoint {
+        guard let hostWindow = host.window else {
+            return host.convert(screenPoint, from: nil)
+        }
+        let hostWindowPoint = hostWindow.convertPoint(fromScreen: screenPoint)
+        return host.convert(hostWindowPoint, from: nil)
+    }
+}
+
 final class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     private(set) var visibleTextHitRect = NSRect.zero
     private var trackingAreaReference: NSTrackingArea?
-    private weak var menuTrackingHost: NSView?
-    private var menuTrackingAreaReference: NSTrackingArea?
+    private weak var menuTrackingHost: MenuItemContentView?
     private var isHovered = false
     private var isApplyingStyle = false
 
@@ -162,6 +648,11 @@ final class HoverLinkTextField: NSTextField {
         updateVisibleTextHitRect()
     }
 
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        updateVisibleTextHitRect()
+    }
+
     override func setBoundsSize(_ newSize: NSSize) {
         super.setBoundsSize(newSize)
         updateVisibleTextHitRect()
@@ -176,12 +667,15 @@ final class HoverLinkTextField: NSTextField {
         removeTrackingAreaReference()
         super.updateTrackingAreas()
         updateVisibleTextHitRect()
-        installTrackingArea()
+        if menuTrackingHost == nil {
+            installTrackingArea()
+        }
         synchronizeHoverStateWithMouseLocation()
     }
 
     override func resetCursorRects() {
         super.resetCursorRects()
+        guard menuTrackingHost == nil else { return }
         updateVisibleTextHitRect()
         guard !visibleTextHitRect.isEmpty else { return }
         addCursorRect(visibleTextHitRect, cursor: .pointingHand)
@@ -231,15 +725,33 @@ final class HoverLinkTextField: NSTextField {
     /// checks `visibleTextHitRect`.
     func installMenuTrackingArea(in host: NSView) {
         removeMenuTrackingArea()
+        guard let host = host as? MenuItemContentView else { return }
         menuTrackingHost = host
-        let area = NSTrackingArea(
-            rect: host.bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways],
-            owner: self,
-            userInfo: nil
-        )
-        host.addTrackingArea(area)
-        menuTrackingAreaReference = area
+        host.installMenuLink(self)
+    }
+
+    func handleMenuMouseEntered(with event: NSEvent, in host: NSView) {
+        setHovering(isPointInsideVisibleText(for: event, in: host))
+    }
+
+    func handleMenuMouseMoved(with event: NSEvent, in host: NSView) {
+        setHovering(isPointInsideVisibleText(for: event, in: host))
+    }
+
+    func handleMenuMouseMoved(at hostPoint: NSPoint, in host: NSView) {
+        setHovering(isPointInsideVisibleText(at: hostPoint, in: host))
+    }
+
+    func handleMenuCursorUpdate(with event: NSEvent, in host: NSView) {
+        setHovering(isPointInsideVisibleText(for: event, in: host))
+    }
+
+    func handleMenuExited() {
+        setHovering(false)
+    }
+
+    func reassertMenuCursor() {
+        (isHovered ? NSCursor.pointingHand : NSCursor.arrow).set()
     }
 
     private func installTrackingArea() {
@@ -255,11 +767,10 @@ final class HoverLinkTextField: NSTextField {
     }
 
     private func removeMenuTrackingArea() {
-        if let menuTrackingHost, let menuTrackingAreaReference {
-            menuTrackingHost.removeTrackingArea(menuTrackingAreaReference)
+        if let menuTrackingHost {
+            menuTrackingHost.removeMenuLink(self)
         }
         menuTrackingHost = nil
-        menuTrackingAreaReference = nil
     }
 
     private func removeTrackingAreaReference() {
@@ -304,9 +815,17 @@ final class HoverLinkTextField: NSTextField {
         NSCursor.arrow.set()
     }
 
-    private func isPointInsideVisibleText(for event: NSEvent) -> Bool {
+    private func isPointInsideVisibleText(for event: NSEvent, in host: NSView? = nil) -> Bool {
         let point: NSPoint
-        if window != nil {
+        if let host {
+            let hostPoint: NSPoint
+            if host.window != nil {
+                hostPoint = host.convert(event.locationInWindow, from: nil)
+            } else {
+                hostPoint = event.locationInWindow
+            }
+            point = convert(hostPoint, from: host)
+        } else if window != nil {
             point = convert(event.locationInWindow, from: nil)
         } else {
             point = event.locationInWindow
@@ -314,10 +833,20 @@ final class HoverLinkTextField: NSTextField {
         return visibleTextHitRect.contains(point)
     }
 
+    private func isPointInsideVisibleText(at hostPoint: NSPoint, in host: NSView) -> Bool {
+        visibleTextHitRect.contains(convert(hostPoint, from: host))
+    }
+
     private func updateVisibleTextHitRect() {
         let previousRect = visibleTextHitRect
         visibleTextHitRect = calculateVisibleTextHitRect()
-        guard previousRect != visibleTextHitRect else { return }
+        if let menuTrackingHost {
+            menuTrackingHost.refreshMenuLinkTrackingArea()
+            menuTrackingHost.window?.invalidateCursorRects(for: menuTrackingHost)
+        }
+        guard previousRect != visibleTextHitRect else {
+            return
+        }
 
         window?.invalidateCursorRects(for: self)
         guard trackingAreaReference != nil else { return }
