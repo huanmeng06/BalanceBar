@@ -99,3 +99,120 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertEqual(closeCount, 0)
     }
 }
+
+@MainActor
+final class DashboardProductionPathRegressionTests: XCTestCase {
+    func testMenuPageKeepsStatusLinksEditorWhenMenuDisplayIsDisabled() {
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: "showStatusMenu")
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: "showStatusMenu")
+            } else {
+                defaults.removeObject(forKey: "showStatusMenu")
+            }
+        }
+        defaults.set(false, forKey: "showStatusMenu")
+
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26.db"))
+        )
+        let page = appDelegate.dashboardPageForTesting(.menu)
+
+        XCTAssertNotNil(findStatusLinksEditor(in: page))
+    }
+
+    func testOpenCodexMenuItemActivatesOnceForSelectedAndUnselectedStates() throws {
+        for openCodexIsCurrent in [true, false] {
+            var activationCount = 0
+            let controller = StatusItemController(
+                actions: StatusItemController.Actions(
+                    manualRefresh: {},
+                    openDashboard: {},
+                    openChatGPT: {},
+                    openCCSwitch: {},
+                    openOpenCodex: { activationCount += 1 },
+                    quit: {},
+                    switchProvider: { _ in },
+                    switchOpenCodexPreference: { _ in },
+                    openProviderWebsite: {},
+                    openStatusLink: { _ in },
+                    iconChanged: { _ in }
+                )
+            )
+            defer { controller.teardown() }
+
+            let choices = [
+                ProviderChoice(
+                    id: "opencodex",
+                    name: "OpenCodex",
+                    isCurrent: openCodexIsCurrent
+                ),
+                ProviderChoice(
+                    id: "other",
+                    name: "Other Provider",
+                    isCurrent: !openCodexIsCurrent
+                )
+            ]
+            controller.start(
+                snapshot: .placeholder,
+                refreshDate: nil,
+                menuInput: StatusItemController.MenuInput(
+                    openCodexCards: [],
+                    openCodexState: nil,
+                    openCodexSwitchInFlight: false,
+                    choices: choices,
+                    quickSwitchSummaries: [:],
+                    activeClient: .claude,
+                    statusLinks: [
+                        StatusLink(title: "Status", url: "https://status.example")
+                    ],
+                    showQuickSwitchMenu: true,
+                    showOpenChatGPTMenu: true,
+                    showOpenCCSwitchMenu: true,
+                    showStatusMenu: true
+                ),
+                settings: StatusItemController.MenuBarSettings(
+                    showIcon: true,
+                    showAmount: true,
+                    showReset: true,
+                    horizontalPadding: 6,
+                    keepMenuOpenAfterRefresh: true
+                )
+            )
+
+            let openItem = try XCTUnwrap(
+                controller.menuItemsForTesting.first {
+                    $0.title.contains("OpenCodex")
+                }
+            )
+            XCTAssertTrue(openItem.isEnabled)
+            let target = try XCTUnwrap(openItem.target as? NSObject)
+            _ = target.perform(openItem.action, with: openItem)
+            XCTAssertEqual(activationCount, 1)
+            XCTAssertEqual(
+                controller.menuItemsForTesting.filter { $0.title.contains("OpenCodex") }.count,
+                1
+            )
+
+            let statusMenuItem = try XCTUnwrap(
+                controller.menuItemsForTesting.first {
+                    $0.title == "查看状态" || $0.title == "View Status"
+                }
+            )
+            XCTAssertEqual(statusMenuItem.submenu?.items.map(\.title), ["Status"])
+        }
+    }
+
+    private func findStatusLinksEditor(in view: NSView) -> StatusLinksEditorHostingView? {
+        if let editor = view as? StatusLinksEditorHostingView {
+            return editor
+        }
+        for child in view.subviews {
+            if let editor = findStatusLinksEditor(in: child) {
+                return editor
+            }
+        }
+        return nil
+    }
+}

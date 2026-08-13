@@ -404,8 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
-            showStatusMenu: showStatusMenu,
-            currentOpenCodexDashboardAvailable: currentOpenCodexDashboardURL() != nil
+            showStatusMenu: showStatusMenu
         )
     }
 
@@ -819,7 +818,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     @objc private func openOpenCodex() {
-        guard let resolution = currentOpenCodexDashboardResolution() else { return }
+        let resolution = openCodexDashboardLaunchResolution()
         SwitchLog.write(
             "OpenCodex Dashboard launch requested; source=\(String(describing: resolution.source)); port=\(resolution.port); path=\(resolution.url.path); fragment=\(resolution.url.fragment ?? "none")",
             category: "open-codex.dashboard"
@@ -827,26 +826,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSWorkspace.shared.open(resolution.url)
     }
 
-    private func currentOpenCodexDashboardURL() -> URL? {
-        currentOpenCodexDashboardResolution()?.url
-    }
-
     private func currentOpenCodexDashboardResolution() -> OpenCodexDashboardResolution? {
-        guard activeClient == .codex,
-              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType) else {
-            return nil
-        }
-        let runtimeCandidate: OpenCodexEndpointCandidate?
-        if let entry = openCodexState, entry.providerID == current.id {
-            runtimeCandidate = entry.state.candidate
-        } else {
-            runtimeCandidate = nil
-        }
-        guard current.openCodexCandidate != nil || runtimeCandidate != nil else { return nil }
+        guard let runtimeCandidate = openCodexDashboardCandidate() else { return nil }
         return OpenCodexDashboardResolver.resolve(
             manualPort: openCodexDashboardMode.effectiveManualPort,
             runtimeCandidate: runtimeCandidate
         )
+    }
+
+    private func openCodexDashboardLaunchResolution() -> OpenCodexDashboardResolution {
+        OpenCodexDashboardResolver.resolve(
+            manualPort: openCodexDashboardMode.effectiveManualPort,
+            runtimeCandidate: openCodexDashboardCandidate()
+        )
+    }
+
+    private func openCodexDashboardCandidate() -> OpenCodexEndpointCandidate? {
+        let codexAppType = AssistantClient.codex.appType
+        let currentCodex = ccSwitchRepository.loadCurrent(appType: codexAppType)
+        if activeClient == .codex,
+           let currentCodex,
+           let entry = openCodexState,
+           entry.providerID == currentCodex.id {
+            return entry.state.candidate
+        }
+        if let candidate = currentCodex?.openCodexCandidate {
+            return candidate
+        }
+        return ccSwitchRepository.loadSummarySources(appType: codexAppType)
+            .compactMap(\.openCodexCandidate)
+            .first
     }
 
     @objc private func openChatGPT() {
@@ -1490,6 +1499,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    // Keeps the production page factory directly testable without launching
+    // the application or replacing the page with a test-only view.
+    func dashboardPageForTesting(_ section: DashboardSection) -> NSView {
+        makeDashboardPage(for: section)
+    }
+
     private func showDashboard() {
         dashboardWindowController.open()
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
@@ -1990,20 +2005,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 control: openCC
             )
         ]
-        if showStatusMenu {
-            projectRows.append(makeSettingsRow(
-                tr("查看状态", "View Status"),
-                subtitle: tr("显示可自定义的服务状态链接", "Show customizable service status links"),
-                control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
-            ))
-            projectRows.append(makeStatusLinksEditor())
-        } else {
-            projectRows.append(makeSettingsRow(
-                tr("查看状态", "View Status"),
-                subtitle: tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
-                control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
-            ))
-        }
+        projectRows.append(makeSettingsRow(
+            tr("查看状态", "View Status"),
+            subtitle: showStatusMenu
+                ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
+                : tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
+            control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
+        ))
+        // Keep the editor reachable from Dashboard even when the menu display
+        // toggle is off. The toggle controls menu consumption only; editing
+        // and persistence of the configured links remain available here.
+        projectRows.append(makeStatusLinksEditor())
         let projects = makeSettingsSection(tr("打开项目", "Open Project"), rows: projectRows)
         return makeSettingsPage([items, projects])
     }

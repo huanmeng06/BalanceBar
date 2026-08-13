@@ -36,7 +36,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showOpenChatGPTMenu: Bool
         let showOpenCCSwitchMenu: Bool
         let showStatusMenu: Bool
-        let currentOpenCodexDashboardAvailable: Bool
     }
 
     private var statusItem: NSStatusItem?
@@ -69,8 +68,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         showQuickSwitchMenu: true,
         showOpenChatGPTMenu: true,
         showOpenCCSwitchMenu: true,
-        showStatusMenu: true,
-        currentOpenCodexDashboardAvailable: false
+        showStatusMenu: true
     )
     private var settings = MenuBarSettings(
         showIcon: true,
@@ -89,6 +87,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var isMenuTracking: Bool { isStatusMenuTracking }
     var iconImage: NSImage? { menuBarIconView.image }
+
+    // Exposes the controller's actual menu for headless production-path tests.
+    // The application still owns and renders this same NSMenu instance.
+    var menuItemsForTesting: [NSMenuItem] { statusMenu.items }
 
     var startupDiagnostic: String {
         let statusWindow = statusItem?.button?.window
@@ -620,13 +622,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 action: #selector(openCCSwitch),
                 keyEquivalent: ""
             ).target = self
-            if menuInput.currentOpenCodexDashboardAvailable {
-                statusMenu.addItem(
-                    withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
-                    action: #selector(openOpenCodex),
-                    keyEquivalent: ""
-                ).target = self
-            }
+            statusMenu.addItem(
+                withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
+                action: #selector(openOpenCodex),
+                keyEquivalent: ""
+            ).target = self
         }
         if menuInput.showStatusMenu {
             statusMenu.addItem(makeStatusLinksMenuItem())
