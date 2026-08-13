@@ -198,7 +198,12 @@ final class StatusLinksEditorHostingView: NSView {
             rootView: StatusLinksEditorView(model: model)
         )
         super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        clipsToBounds = true
         translatesAutoresizingMaskIntoConstraints = false
+        hostingView.wantsLayer = true
+        hostingView.layer?.masksToBounds = true
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hostingView)
         NSLayoutConstraint.activate([
@@ -272,6 +277,7 @@ final class StatusLinksEditorHostingView: NSView {
         let apply = { [weak self] in
             guard let self else { return }
             self.isHidden = !visible
+            self.alphaValue = visible ? 1 : 0
             self.heightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
             self.needsLayout = true
@@ -279,6 +285,7 @@ final class StatusLinksEditorHostingView: NSView {
         }
         if animated {
             if visible {
+                self.alphaValue = 0
                 self.isHidden = false
             }
             if let info = ancestorCardInfo(editorHeight: targetHeight) {
@@ -287,6 +294,7 @@ final class StatusLinksEditorHostingView: NSView {
                     context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                     context.allowsImplicitAnimation = true
                     self.heightConstraint?.animator().constant = targetHeight
+                    self.animator().alphaValue = visible ? 1 : 0
                     info.1.animator().constant = info.2
                     self.superview?.layoutSubtreeIfNeeded()
                 } completionHandler: {
@@ -301,6 +309,7 @@ final class StatusLinksEditorHostingView: NSView {
             }
         } else {
             self.isHidden = !visible
+            self.alphaValue = visible ? 1 : 0
             apply()
         }
     }

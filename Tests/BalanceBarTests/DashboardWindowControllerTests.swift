@@ -273,6 +273,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         let hiddenPage = try XCTUnwrap(menuPage(in: window))
         layoutDescendants(of: window.contentView!)
+        XCTAssertEqual(findStatusLinksEditors(in: hiddenPage).count, 1)
         let hiddenEditor = try XCTUnwrap(findStatusLinksEditor(in: hiddenPage))
         XCTAssertFalse(hiddenEditor.isVisible)
         XCTAssertTrue(hiddenEditor === visibleEditor, "Toggle must not recreate the hosting view")
@@ -294,6 +295,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         let restoredPage = try XCTUnwrap(menuPage(in: window))
         layoutDescendants(of: window.contentView!)
+        XCTAssertEqual(findStatusLinksEditors(in: restoredPage).count, 1)
         let restoredEditor = try XCTUnwrap(findStatusLinksEditor(in: restoredPage))
         XCTAssertTrue(restoredEditor.isVisible)
         XCTAssertTrue(restoredEditor === visibleEditor, "Toggle must not recreate the hosting view")
@@ -305,6 +307,85 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             from: try XCTUnwrap(defaults.data(forKey: "statusLinks"))
         )
         XCTAssertEqual(persistedAfterRestore, customLinks)
+    }
+
+    func testRapidStatusMenuTogglesKeepSingleHostingViewAndStableFinalFrames() throws {
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: "showStatusMenu")
+        let previousLinks = defaults.object(forKey: "statusLinks")
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: "showStatusMenu")
+            } else {
+                defaults.removeObject(forKey: "showStatusMenu")
+            }
+            if let previousLinks {
+                defaults.set(previousLinks, forKey: "statusLinks")
+            } else {
+                defaults.removeObject(forKey: "statusLinks")
+            }
+        }
+
+        let customLinks = [
+            StatusLink(title: "Status A", url: "https://status-a.example"),
+            StatusLink(title: "Status B", url: "https://status-b.example")
+        ]
+        defaults.set(true, forKey: "showStatusMenu")
+        defaults.set(try JSONEncoder().encode(customLinks), forKey: "statusLinks")
+
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-rapid.db"))
+        )
+        defer { appDelegate.teardownDashboardForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        layoutDescendants(of: window.contentView!)
+
+        let editor = try XCTUnwrap(findStatusLinksEditor(in: try XCTUnwrap(menuPage(in: window))))
+        for index in 0..<6 {
+            let shouldShow = index % 2 == 0
+            let toggle = try XCTUnwrap(
+                firstControl(of: window.contentView!, as: NSSwitch.self) {
+                    $0.identifier?.rawValue == "showStatusMenu"
+                }
+            )
+            toggle.state = shouldShow ? .on : .off
+            _ = NSApp.sendAction(toggle.action!, to: toggle.target, from: toggle)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+
+            let page = try XCTUnwrap(menuPage(in: window))
+            let editors = findStatusLinksEditors(in: page)
+            XCTAssertEqual(editors.count, 1, "Rapid toggles must keep exactly one editor")
+            XCTAssertTrue(editors.first === editor, "Rapid toggles must not recreate the hosting view")
+            XCTAssertEqual(editors.first?.subviews.count, 1)
+            XCTAssertEqual(editors.first?.isVisible, shouldShow)
+        }
+
+        let finalToggle = try XCTUnwrap(
+            firstControl(of: window.contentView!, as: NSSwitch.self) {
+                $0.identifier?.rawValue == "showStatusMenu"
+            }
+        )
+        finalToggle.state = .on
+        _ = NSApp.sendAction(finalToggle.action!, to: finalToggle.target, from: finalToggle)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        layoutDescendants(of: window.contentView!)
+        let visibleEditor = try XCTUnwrap(findStatusLinksEditor(in: try XCTUnwrap(menuPage(in: window))))
+        XCTAssertTrue(visibleEditor.isVisible)
+        XCTAssertEqual(visibleEditor.alphaValue, 1, accuracy: 0.01)
+        XCTAssertEqual(visibleEditor.frame.height, visibleEditor.layoutHeight, accuracy: 1)
+        XCTAssertEqual(visibleEditor.rowCount, customLinks.count)
+
+        finalToggle.state = .off
+        _ = NSApp.sendAction(finalToggle.action!, to: finalToggle.target, from: finalToggle)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        layoutDescendants(of: window.contentView!)
+        let hiddenEditor = try XCTUnwrap(findStatusLinksEditor(in: try XCTUnwrap(menuPage(in: window))))
+        XCTAssertFalse(hiddenEditor.isVisible)
+        XCTAssertEqual(hiddenEditor.frame.height, 0, accuracy: 1)
+        XCTAssertEqual(hiddenEditor.alphaValue, 0, accuracy: 0.01)
+        XCTAssertEqual(hiddenEditor.rowCount, customLinks.count)
     }
 
     func testStatusMenuEntryFollowsShowStatusMenuPreferenceInMainMenu() {
@@ -482,6 +563,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    private func findStatusLinksEditors(in view: NSView) -> [StatusLinksEditorHostingView] {
+        var result: [StatusLinksEditorHostingView] = []
+        if let editor = view as? StatusLinksEditorHostingView {
+            result.append(editor)
+        }
+        for child in view.subviews {
+            result.append(contentsOf: findStatusLinksEditors(in: child))
+        }
+        return result
     }
 
     private func layoutDescendants(of view: NSView) {
