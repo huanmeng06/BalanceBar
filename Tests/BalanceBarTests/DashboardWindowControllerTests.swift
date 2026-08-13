@@ -127,7 +127,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         defer { appDelegate.teardownDashboardForTesting() }
         let page = appDelegate.dashboardPageForTesting(.menu)
 
-        XCTAssertNil(findStatusLinksEditor(in: page))
+        let editor = findStatusLinksEditor(in: page)
+        XCTAssertNotNil(editor, "The Status Links editor stays in the page so it can animate in place")
+        XCTAssertFalse(editor?.isVisible ?? true)
     }
 
     func testMenuPageLaysOutReachableStatusLinksEditorWhenMenuDisplayIsEnabled() throws {
@@ -269,7 +271,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         toggleOff.state = .off
         _ = NSApp.sendAction(toggleOff.action!, to: toggleOff.target, from: toggleOff)
         RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        XCTAssertNil(findStatusLinksEditor(in: try XCTUnwrap(menuPage(in: window))))
+        let hiddenPage = try XCTUnwrap(menuPage(in: window))
+        layoutDescendants(of: window.contentView!)
+        let hiddenEditor = try XCTUnwrap(findStatusLinksEditor(in: hiddenPage))
+        XCTAssertFalse(hiddenEditor.isVisible)
+        XCTAssertTrue(hiddenEditor === visibleEditor, "Toggle must not recreate the hosting view")
+        XCTAssertEqual(hiddenEditor.subviews.count, 1)
         XCTAssertFalse(defaults.bool(forKey: "showStatusMenu"))
         let persistedAfterHide = try JSONDecoder().decode(
             [StatusLink].self,
@@ -285,9 +292,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         toggleOn.state = .on
         _ = NSApp.sendAction(toggleOn.action!, to: toggleOn.target, from: toggleOn)
         RunLoop.current.run(until: Date().addingTimeInterval(0.35))
-        let restoredEditor = try XCTUnwrap(findStatusLinksEditor(in: try XCTUnwrap(menuPage(in: window))))
+        let restoredPage = try XCTUnwrap(menuPage(in: window))
+        layoutDescendants(of: window.contentView!)
+        let restoredEditor = try XCTUnwrap(findStatusLinksEditor(in: restoredPage))
+        XCTAssertTrue(restoredEditor.isVisible)
+        XCTAssertTrue(restoredEditor === visibleEditor, "Toggle must not recreate the hosting view")
+        XCTAssertEqual(restoredEditor.subviews.count, 1)
         XCTAssertEqual(restoredEditor.rowCount, customLinks.count)
-        XCTAssertFalse(restoredEditor.isHidden)
+        XCTAssertEqual(restoredEditor.frame.height, restoredEditor.layoutHeight, accuracy: 1)
         let persistedAfterRestore = try JSONDecoder().decode(
             [StatusLink].self,
             from: try XCTUnwrap(defaults.data(forKey: "statusLinks"))

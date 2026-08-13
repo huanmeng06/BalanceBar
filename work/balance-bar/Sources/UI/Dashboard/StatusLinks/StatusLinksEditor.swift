@@ -174,6 +174,9 @@ final class StatusLinksEditorHostingView: NSView {
 
     var rowCount: Int { links.count }
     var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
+    var isVisible: Bool {
+        !isHidden && (heightConstraint?.constant ?? 0) > 0
+    }
 
     init(
         links: [StatusLink],
@@ -263,6 +266,45 @@ final class StatusLinksEditorHostingView: NSView {
         }
     }
 
+    func setVisible(_ visible: Bool, animated: Bool) {
+        guard !isTornDown else { return }
+        let targetHeight: CGFloat = visible ? layoutHeight : 0
+        let apply = { [weak self] in
+            guard let self else { return }
+            self.isHidden = !visible
+            self.heightConstraint?.constant = targetHeight
+            self.synchronizeAncestorCardHeight()
+            self.needsLayout = true
+            self.superview?.needsLayout = true
+        }
+        if animated {
+            if visible {
+                self.isHidden = false
+            }
+            if let info = ancestorCardInfo(editorHeight: targetHeight) {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.22
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    context.allowsImplicitAnimation = true
+                    self.heightConstraint?.animator().constant = targetHeight
+                    info.1.animator().constant = info.2
+                    self.superview?.layoutSubtreeIfNeeded()
+                } completionHandler: {
+                    if !visible {
+                        self.isHidden = true
+                    }
+                    apply()
+                }
+            } else {
+                self.isHidden = !visible
+                apply()
+            }
+        } else {
+            self.isHidden = !visible
+            apply()
+        }
+    }
+
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
@@ -283,12 +325,18 @@ final class StatusLinksEditorHostingView: NSView {
         teardown()
     }
 
-    private func ancestorCardInfo() -> (NSView, NSLayoutConstraint, CGFloat)? {
+    private func ancestorCardInfo(
+        editorHeight: CGFloat? = nil
+    ) -> (NSView, NSLayoutConstraint, CGFloat)? {
         guard let rowsStack = superview as? NSStackView,
               let card = rowsStack.superview else { return nil }
         let requiredHeight = max(1, ceil(rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
+            guard !row.isHidden else { return total }
+            if row is NSBox {
+                return total + 1
+            }
             if row === self {
-                return total + layoutHeight
+                return total + max(0, editorHeight ?? heightConstraint?.constant ?? layoutHeight)
             }
             let explicit = row.constraints.first {
                 ($0.firstItem as? NSView) === row &&
@@ -306,8 +354,11 @@ final class StatusLinksEditorHostingView: NSView {
         return (card, constraint, requiredHeight)
     }
 
-    private func synchronizeAncestorCardHeight(animated: Bool = false) {
-        guard let info = ancestorCardInfo() else { return }
+    private func synchronizeAncestorCardHeight(
+        animated: Bool = false,
+        editorHeight: CGFloat? = nil
+    ) {
+        guard let info = ancestorCardInfo(editorHeight: editorHeight) else { return }
         if animated {
             info.1.animator().constant = info.2
         } else {

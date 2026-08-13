@@ -218,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var dashboardSelectedProviderID: String? { dashboardWindowController.selectedProviderID }
     private var dashboardProviderButtons: [String: NSButton] = [:]
     private var statusLinksEditorHostingView: StatusLinksEditorHostingView?
+    private var dashboardStatusMenuSubtitleLabel: NSTextField?
     private lazy var statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
         dashboardProvider: { [weak self] in self?.dashboard },
         contentHostProvider: { [weak self] in self?.dashboardContentHost },
@@ -330,6 +331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.statusLinksScrollAnchorController.stop()
                     self.statusLinksEditorHostingView?.teardown()
                     self.statusLinksEditorHostingView = nil
+                    self.dashboardStatusMenuSubtitleLabel = nil
                 },
                 didShowPage: { [weak self] in
                     guard let self else { return }
@@ -948,13 +950,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showStatusMenu = sender.state == .on
             render(snapshot)
             if dashboardSection == .menu {
-                // Let NSSwitch finish its native transition before replacing
-                // the page. Rebuilding synchronously makes the control look
-                // like it jumps instead of sliding smoothly.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-                    guard let self, self.dashboardSection == .menu else { return }
-                    self.showDashboardSection(.menu)
-                }
+                updateDashboardStatusMenuVisibility(animated: true)
             }
         case "keepMenuOpenAfterRefresh":
             keepMenuOpenAfterRefresh = sender.state == .on
@@ -1656,6 +1652,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func makeSettingsSection(
         _ title: String,
         rows: [NSView],
+        separatorIndices: Set<Int>? = nil,
         onLayoutCreated: ((NSStackView, NSLayoutConstraint, [NSView]) -> Void)? = nil
     ) -> NSView {
         let heading = NSTextField(labelWithString: title)
@@ -1701,7 +1698,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         for (index, row) in rows.enumerated() {
             rowsStack.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
-            if index < rows.count - 1 {
+            let hasFollowingRow = index < rows.count - 1
+            let shouldInsertSeparator = hasFollowingRow && (separatorIndices?.contains(index) ?? true)
+            if shouldInsertSeparator {
                 let separator = NSBox()
                 separator.boxType = .separator
                 separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
@@ -1729,7 +1728,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
             return partial + max(1, explicitHeight ?? fittingHeight)
         }
-        let separatorHeight = CGFloat(max(0, visibleRows.count - 1))
+        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count)
         let cardHeightConstraint = card.heightAnchor.constraint(
             equalToConstant: max(1, ceil(rowsHeight + separatorHeight))
         )
@@ -1948,7 +1947,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         return makeSettingsPage([system, refreshing, app])
     }
 
-    private func makeStatusLinksEditor() -> NSView {
+    private func makeStatusLinksEditor() -> StatusLinksEditorHostingView {
         let editor = StatusLinksEditorHostingView(
             links: statusLinks,
             onChange: { [weak self] index, field, value in
@@ -1966,6 +1965,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         statusLinksEditorHostingView = editor
         return editor
+    }
+
+    private func updateDashboardStatusMenuVisibility(animated: Bool) {
+        dashboardStatusMenuSubtitleLabel?.stringValue = showStatusMenu
+            ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
+            : tr("在菜单栏中显示状态链接", "Show status links in the menu bar")
+        if !showStatusMenu {
+            statusLinksScrollAnchorController.stop()
+        }
+        statusLinksEditorHostingView?.setVisible(showStatusMenu, animated: animated)
+        statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
     private func makeMenuDashboardPage() -> NSView {
@@ -2015,21 +2025,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 control: openCC
             )
         ]
+        let statusSubtitle = NSTextField(wrappingLabelWithString: showStatusMenu
+            ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
+            : tr("在菜单栏中显示状态链接", "Show status links in the menu bar")
+        )
+        dashboardStatusMenuSubtitleLabel = statusSubtitle
         projectRows.append(makeSettingsRow(
             tr("查看状态", "View Status"),
             subtitle: showStatusMenu
                 ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
                 : tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
+            subtitleLabel: statusSubtitle,
             control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
         ))
-        // The toggle controls both the menu-bar View Status entry and the
-        // Dashboard editor. Hiding the editor removes it from the production
-        // page immediately; the stored links remain untouched so re-enabling
-        // restores the exact same configured rows.
-        if showStatusMenu {
-            projectRows.append(makeStatusLinksEditor())
-        }
-        let projects = makeSettingsSection(tr("打开项目", "Open Project"), rows: projectRows)
+        // Keep one editor instance in the page for both states so toggling
+        // animates its height in place instead of rebuilding the whole page.
+        // The stored links remain untouched while hidden.
+        let editor = makeStatusLinksEditor()
+        editor.setVisible(showStatusMenu, animated: false)
+        projectRows.append(editor)
+        let projects = makeSettingsSection(
+            tr("打开项目", "Open Project"),
+            rows: projectRows,
+            // Keep the Status Links editor visually attached to the View
+            // Status row so toggling never has to detach/reattach a separator.
+            separatorIndices: [0, 1, 2]
+        )
         return makeSettingsPage([items, projects])
     }
 
