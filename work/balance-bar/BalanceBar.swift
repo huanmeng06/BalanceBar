@@ -1505,6 +1505,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         makeDashboardPage(for: section)
     }
 
+    func dashboardWindowForTesting(showing section: DashboardSection) -> NSWindow? {
+        dashboardWindowController.open()
+        dashboardWindowController.showSection(section)
+        return dashboardWindowController.window
+    }
+
+    func teardownDashboardForTesting() {
+        dashboardWindowController.teardown()
+    }
+
     private func showDashboard() {
         dashboardWindowController.open()
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))

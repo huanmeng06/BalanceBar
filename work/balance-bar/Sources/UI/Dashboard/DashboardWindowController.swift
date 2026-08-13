@@ -210,7 +210,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         selectedProviderID = nil
         window?.title = section.title
         updateNavigationSelection(selectedSection: section)
-        replacePage(with: actions.makeSectionPage(section))
+        replacePage {
+            actions.makeSectionPage(section)
+        }
     }
 
     func showProvider(_ providerID: String) {
@@ -220,7 +222,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         selectedProviderID = providerID
         window?.title = choice.name
         updateNavigationSelection(selectedSection: nil)
-        replacePage(with: actions.makeProviderPage(choice))
+        replacePage {
+            actions.makeProviderPage(choice)
+        }
     }
 
     func teardown() {
@@ -254,9 +258,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         actions.didResize()
     }
 
-    private func replacePage(with page: NSView) {
+    private func replacePage(makePage: () -> NSView) {
         actions.prepareForPageReplacement()
         contentHost.subviews.forEach { $0.removeFromSuperview() }
+        let page = makePage()
         page.frame = contentHost.bounds
         page.autoresizingMask = [.width, .height]
         contentHost.addSubview(page)

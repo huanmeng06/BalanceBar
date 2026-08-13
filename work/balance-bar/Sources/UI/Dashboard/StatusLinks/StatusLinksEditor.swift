@@ -12,6 +12,7 @@ enum StatusLinkField: Equatable {
 struct StatusTextField: View {
     @Binding var text: String
     let placeholder: String
+    let accessibilityIdentifier: String
 
     var body: some View {
         HStack(spacing: 0) {
@@ -20,6 +21,7 @@ struct StatusTextField: View {
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier(accessibilityIdentifier)
         }
         .frame(
             maxWidth: .infinity,
@@ -84,11 +86,13 @@ struct StatusLinksEditorView: View {
             HStack(spacing: 0) {
                 Text(tr("状态链接", "Status Links"))
                     .font(.system(size: 13, weight: .medium))
+                    .accessibilityIdentifier("statusLinks.title")
                 Spacer(minLength: 12)
                 Button(tr("恢复默认", "Restore Defaults"), action: model.reset)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .font(.system(size: 12))
+                    .accessibilityIdentifier("statusLinks.reset")
             }
             .frame(height: 24)
 
@@ -107,7 +111,8 @@ struct StatusLinksEditorView: View {
                 HStack(spacing: 8) {
                     StatusTextField(
                         text: $model.links[index].title,
-                        placeholder: tr("显示名称", "Display name")
+                        placeholder: tr("显示名称", "Display name"),
+                        accessibilityIdentifier: "statusLinks.name.\(index)"
                     )
                     .frame(width: 160)
                     .onChange(of: model.links[index].title) { _, value in
@@ -116,7 +121,8 @@ struct StatusLinksEditorView: View {
 
                     StatusTextField(
                         text: $model.links[index].url,
-                        placeholder: "https://"
+                        placeholder: "https://",
+                        accessibilityIdentifier: "statusLinks.url.\(index)"
                     )
                     .frame(maxWidth: .infinity)
                     .onChange(of: model.links[index].url) { _, value in
@@ -132,6 +138,7 @@ struct StatusLinksEditorView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 28)
+                    .accessibilityIdentifier("statusLinks.remove.\(index)")
                 }
                 .frame(height: 35)
             }
@@ -145,6 +152,7 @@ struct StatusLinksEditorView: View {
             .buttonStyle(.plain)
             .foregroundStyle(Color(nsColor: .controlAccentColor))
             .frame(width: 32, height: 28, alignment: .leading)
+            .accessibilityIdentifier("statusLinks.add")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

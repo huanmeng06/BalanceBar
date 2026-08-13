@@ -122,6 +122,106 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNotNil(findStatusLinksEditor(in: page))
     }
 
+    func testMenuPageLaysOutReachableStatusLinksEditorForBothMenuVisibilityStates() throws {
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: "showStatusMenu")
+        let previousLinks = defaults.object(forKey: "statusLinks")
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: "showStatusMenu")
+            } else {
+                defaults.removeObject(forKey: "showStatusMenu")
+            }
+            if let previousLinks {
+                defaults.set(previousLinks, forKey: "statusLinks")
+            } else {
+                defaults.removeObject(forKey: "statusLinks")
+            }
+        }
+
+        for showStatusMenu in [false, true] {
+            defaults.set(showStatusMenu, forKey: "showStatusMenu")
+            defaults.removeObject(forKey: "statusLinks")
+            let appDelegate = AppDelegate(
+                repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-layout.db"))
+            )
+            defer { appDelegate.teardownDashboardForTesting() }
+            let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+            window.layoutIfNeeded()
+            window.displayIfNeeded()
+            let page = try XCTUnwrap(
+                window.contentView?.subviews
+                    .flatMap { $0.subviews }
+                    .first { $0.subviews.contains(where: { $0 is NSScrollView }) }
+            )
+            layoutDescendants(of: window.contentView!)
+
+            let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
+            let documentView = try XCTUnwrap(scrollView.documentView)
+            let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
+            let card = try XCTUnwrap(
+                ancestors(of: editor).first { $0.layer?.cornerRadius == 18 }
+            )
+
+            XCTAssertFalse(editor.isHidden, "Status Links editor is hidden for showStatusMenu=\(showStatusMenu)")
+            XCTAssertGreaterThan(editor.frame.width, 0)
+            XCTAssertEqual(editor.frame.height, editor.layoutHeight, accuracy: 1)
+            XCTAssertEqual(editor.subviews.count, 1, "Status Links host was torn down after page creation")
+            let hostingView = try XCTUnwrap(editor.subviews.first)
+            XCTAssertGreaterThan(hostingView.frame.width, 0)
+            XCTAssertGreaterThan(hostingView.frame.height, 0)
+
+            let editorRectInCard = editor.convert(editor.bounds, to: card)
+            XCTAssertTrue(
+                card.bounds.insetBy(dx: -1, dy: -1).contains(editorRectInCard),
+                "Status Links editor is clipped by its card for showStatusMenu=\(showStatusMenu): editor=\(editorRectInCard), card=\(card.bounds)"
+            )
+
+            let editorRectInDocument = editor.convert(editor.bounds, to: documentView)
+            XCTAssertTrue(
+                documentView.bounds.insetBy(dx: -1, dy: -1).contains(editorRectInDocument),
+                "Status Links editor is outside the scroll document for showStatusMenu=\(showStatusMenu): editor=\(editorRectInDocument), document=\(documentView.bounds)"
+            )
+            XCTAssertGreaterThan(
+                documentView.bounds.height,
+                scrollView.contentView.bounds.height,
+                "Status Links editor must be reachable by scrolling for showStatusMenu=\(showStatusMenu)"
+            )
+
+            let expectedIdentifiers = [
+                "statusLinks.title",
+                "statusLinks.reset",
+                "statusLinks.add"
+            ] + (0..<editor.rowCount).flatMap { index in
+                [
+                    "statusLinks.name.\(index)",
+                    "statusLinks.url.\(index)",
+                    "statusLinks.remove.\(index)"
+                ]
+            }
+            let accessibilityElements = accessibilityDescendants(of: hostingView)
+            let cardFrameOnScreen = window.convertToScreen(card.convert(card.bounds, to: nil))
+            for identifier in expectedIdentifiers {
+                let matches = accessibilityElements.filter {
+                    $0.accessibilityIdentifier?() == identifier
+                }
+                XCTAssertEqual(
+                    matches.count,
+                    1,
+                    "Expected one real Status Links control with identifier \(identifier) for showStatusMenu=\(showStatusMenu)"
+                )
+                let control: NSAccessibilityElementProtocol = try XCTUnwrap(matches.first)
+                let controlFrame = control.accessibilityFrame()
+                XCTAssertGreaterThan(controlFrame.width, 0, identifier)
+                XCTAssertGreaterThan(controlFrame.height, 0, identifier)
+                XCTAssertTrue(
+                    cardFrameOnScreen.insetBy(dx: -1, dy: -1).contains(controlFrame),
+                    "\(identifier) is clipped by the Status Links card"
+                )
+            }
+        }
+    }
+
     func testOpenCodexMenuItemActivatesOnceForSelectedAndUnselectedStates() throws {
         for openCodexIsCurrent in [true, false] {
             var activationCount = 0
@@ -214,5 +314,41 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    private func layoutDescendants(of view: NSView) {
+        view.layoutSubtreeIfNeeded()
+        for child in view.subviews {
+            layoutDescendants(of: child)
+        }
+    }
+
+    private func firstDescendant<T: NSView>(of view: NSView, as type: T.Type) -> T? {
+        for child in view.subviews {
+            if let match = child as? T {
+                return match
+            }
+            if let match = firstDescendant(of: child, as: type) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func ancestors(of view: NSView) -> [NSView] {
+        var result: [NSView] = []
+        var current = view.superview
+        while let ancestor = current {
+            result.append(ancestor)
+            current = ancestor.superview
+        }
+        return result
+    }
+
+    private func accessibilityDescendants(of view: NSView) -> [NSAccessibilityElementProtocol] {
+        let children = (view.accessibilityChildren() ?? []).compactMap {
+            $0 as? NSAccessibilityElementProtocol
+        }
+        return children + view.subviews.flatMap(accessibilityDescendants(of:))
     }
 }
