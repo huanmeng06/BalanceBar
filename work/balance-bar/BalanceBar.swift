@@ -2022,10 +2022,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 : tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
             control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
         ))
-        // Keep the editor reachable from Dashboard even when the menu display
-        // toggle is off. The toggle controls menu consumption only; editing
-        // and persistence of the configured links remain available here.
-        projectRows.append(makeStatusLinksEditor())
+        // The toggle controls both the menu-bar View Status entry and the
+        // Dashboard editor. Hiding the editor removes it from the production
+        // page immediately; the stored links remain untouched so re-enabling
+        // restores the exact same configured rows.
+        if showStatusMenu {
+            projectRows.append(makeStatusLinksEditor())
+        }
         let projects = makeSettingsSection(tr("打开项目", "Open Project"), rows: projectRows)
         return makeSettingsPage([items, projects])
     }
