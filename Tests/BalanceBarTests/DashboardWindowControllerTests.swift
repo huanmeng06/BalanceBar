@@ -662,7 +662,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         of view: NSView,
         requiring identifiers: Set<String>
     ) -> [NSAccessibilityElementProtocol] {
-        let deadline = Date().addingTimeInterval(1)
+        // SwiftUI's NSHostingView accessibility tree can take several main
+        // run-loop turns to materialize on Xcode 16.4 CI.
+        let deadline = Date().addingTimeInterval(5)
         var elements: [NSAccessibilityElementProtocol] = []
         repeat {
             view.window?.displayIfNeeded()
