@@ -238,7 +238,6 @@ final class StatusLinksEditorHostingView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         hostingView.wantsLayer = true
         hostingView.layer?.masksToBounds = true
-        hostingView.setAccessibilityIdentifier("statusLinks.title")
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hostingView)
         NSLayoutConstraint.activate([

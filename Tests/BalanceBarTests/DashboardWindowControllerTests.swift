@@ -194,7 +194,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         let expectedIdentifiers = [
-            "statusLinks.title",
             "statusLinks.reset",
             "statusLinks.add"
         ] + (0..<editor.rowCount).flatMap { index in
@@ -635,13 +634,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     private func accessibilityDescendants(of view: NSView) -> [NSAccessibilityElementProtocol] {
-        let root = view.accessibilityIdentifier().isEmpty
-            ? []
-            : [view as NSAccessibilityElementProtocol]
         let children = (view.accessibilityChildren() ?? []).compactMap {
             $0 as? NSAccessibilityElementProtocol
         }
-        return root + children
+        return children
             + children.flatMap(accessibilityDescendants(of:))
             + view.subviews.flatMap(accessibilityDescendants(of:))
     }
