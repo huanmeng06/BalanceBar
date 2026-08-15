@@ -103,7 +103,6 @@ struct StatusLinksEditorView: View {
             HStack(spacing: 0) {
                 Text(tr("状态链接", "Status Links"))
                     .font(.system(size: 13, weight: .medium))
-                    .accessibilityIdentifier("statusLinks.title")
                 Spacer(minLength: 12)
                 Button(tr("恢复默认", "Restore Defaults"), action: model.reset)
                     .buttonStyle(.bordered)
@@ -112,6 +111,9 @@ struct StatusLinksEditorView: View {
                     .accessibilityIdentifier("statusLinks.reset")
             }
             .frame(height: 24)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(tr("状态链接", "Status Links"))
+            .accessibilityIdentifier("statusLinks.title")
 
             HStack(spacing: 8) {
                 Text(tr("名称", "Name"))
