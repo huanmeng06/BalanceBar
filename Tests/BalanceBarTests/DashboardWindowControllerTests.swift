@@ -360,6 +360,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertTrue(editors.first === editor, "Rapid toggles must not recreate the hosting view")
             XCTAssertEqual(editors.first?.subviews.count, 1)
             XCTAssertEqual(editors.first?.isVisible, shouldShow)
+            XCTAssertTrue(
+                editors.first?.hostedContentIsWithinRevealBounds ?? false,
+                "The hosted editor must stay inside its own reveal bounds during every toggle frame"
+            )
         }
 
         let finalToggle = try XCTUnwrap(
@@ -376,6 +380,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(visibleEditor.alphaValue, 1, accuracy: 0.01)
         XCTAssertEqual(visibleEditor.frame.height, visibleEditor.layoutHeight, accuracy: 1)
         XCTAssertEqual(visibleEditor.rowCount, customLinks.count)
+        XCTAssertTrue(visibleEditor.hostedContentIsWithinRevealBounds)
 
         finalToggle.state = .off
         _ = NSApp.sendAction(finalToggle.action!, to: finalToggle.target, from: finalToggle)
@@ -386,6 +391,27 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(hiddenEditor.frame.height, 0, accuracy: 1)
         XCTAssertEqual(hiddenEditor.alphaValue, 0, accuracy: 0.01)
         XCTAssertEqual(hiddenEditor.rowCount, customLinks.count)
+
+        finalToggle.state = .on
+        let statusRow = try XCTUnwrap(finalToggle.superview)
+        let editorCard = try XCTUnwrap(
+            ancestors(of: hiddenEditor).first { $0.layer?.cornerRadius == 18 }
+        )
+        _ = NSApp.sendAction(finalToggle.action!, to: finalToggle.target, from: finalToggle)
+        for _ in 0..<6 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.03))
+            layoutDescendants(of: window.contentView!)
+            let editorRect = hiddenEditor.convert(hiddenEditor.bounds, to: editorCard)
+            let statusRowRect = statusRow.convert(statusRow.bounds, to: editorCard)
+            XCTAssertFalse(
+                editorRect.intersects(statusRowRect),
+                "The editor must never animate through the View Status sibling row"
+            )
+            XCTAssertTrue(
+                hiddenEditor.hostedContentIsWithinRevealBounds,
+                "The SwiftUI content must remain within the editor reveal boundary"
+            )
+        }
     }
 
     func testStatusMenuEntryFollowsShowStatusMenuPreferenceInMainMenu() {

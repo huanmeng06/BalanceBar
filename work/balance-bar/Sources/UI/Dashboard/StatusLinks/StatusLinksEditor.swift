@@ -170,12 +170,21 @@ final class StatusLinksEditorHostingView: NSView {
     private let hostingView: NSHostingView<StatusLinksEditorView>
     private var heightConstraint: NSLayoutConstraint?
     private var links: [StatusLink]
+    private var visibilityGeneration = 0
     private(set) var isTornDown = false
 
     var rowCount: Int { links.count }
     var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
     var isVisible: Bool {
-        !isHidden && (heightConstraint?.constant ?? 0) > 0
+        (heightConstraint?.constant ?? 0) > 0 && alphaValue > 0
+    }
+
+    /// The hosted SwiftUI hierarchy is always bounded by this view before it
+    /// becomes visible. This makes the reveal independent of stack layout
+    /// interpolation and prevents content from crossing preceding rows.
+    var hostedContentIsWithinRevealBounds: Bool {
+        let hostedBounds = convert(hostingView.bounds, from: hostingView)
+        return bounds.insetBy(dx: -0.5, dy: -0.5).contains(hostedBounds)
     }
 
     init(
@@ -273,44 +282,44 @@ final class StatusLinksEditorHostingView: NSView {
 
     func setVisible(_ visible: Bool, animated: Bool) {
         guard !isTornDown else { return }
+        visibilityGeneration += 1
+        let generation = visibilityGeneration
         let targetHeight: CGFloat = visible ? layoutHeight : 0
-        let apply = { [weak self] in
+        let applyLayout = { [weak self] in
             guard let self else { return }
-            self.isHidden = !visible
-            self.alphaValue = visible ? 1 : 0
             self.heightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
             self.needsLayout = true
             self.superview?.needsLayout = true
+            self.superview?.layoutSubtreeIfNeeded()
         }
-        if animated {
-            if visible {
-                self.alphaValue = 0
-                self.isHidden = false
+        guard animated else {
+            alphaValue = visible ? 1 : 0
+            applyLayout()
+            return
+        }
+
+        if visible {
+            // Establish the final frame first. Only opacity is animated, so
+            // the editor never travels through the rows above it.
+            alphaValue = 0
+            applyLayout()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                self.animator().alphaValue = 1
             }
-            if let info = ancestorCardInfo(editorHeight: targetHeight) {
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.22
-                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                    context.allowsImplicitAnimation = true
-                    self.heightConstraint?.animator().constant = targetHeight
-                    self.animator().alphaValue = visible ? 1 : 0
-                    info.1.animator().constant = info.2
-                    self.superview?.layoutSubtreeIfNeeded()
-                } completionHandler: {
-                    if !visible {
-                        self.isHidden = true
-                    }
-                    apply()
-                }
-            } else {
-                self.isHidden = !visible
-                apply()
-            }
-        } else {
-            self.isHidden = !visible
-            self.alphaValue = visible ? 1 : 0
-            apply()
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.14
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            self.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self, self.visibilityGeneration == generation else { return }
+            self.alphaValue = 0
+            applyLayout()
         }
     }
 
