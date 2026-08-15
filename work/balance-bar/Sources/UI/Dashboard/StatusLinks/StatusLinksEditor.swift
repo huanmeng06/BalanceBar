@@ -111,9 +111,6 @@ struct StatusLinksEditorView: View {
                     .accessibilityIdentifier("statusLinks.reset")
             }
             .frame(height: 24)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(tr("状态链接", "Status Links"))
-            .accessibilityIdentifier("statusLinks.title")
 
             HStack(spacing: 8) {
                 Text(tr("名称", "Name"))
