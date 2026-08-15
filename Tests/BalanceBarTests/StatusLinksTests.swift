@@ -101,6 +101,59 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertNil(releasedEditor)
     }
 
+    func testAddedRowReservesThenRevealsOneSlotWithoutRecreatingTheHostingView() {
+        let initialLinks = [StatusLink(title: "One", url: "https://one.example")]
+        let addedLinks = initialLinks + [StatusLink(title: "Two", url: "https://two.example")]
+        let editor = StatusLinksEditorHostingView(
+            links: initialLinks,
+            onChange: { _, _, _ in },
+            onAdd: {},
+            onRemove: { _ in },
+            onReset: {}
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 320),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let contentView = NSView()
+        window.contentView = contentView
+        contentView.addSubview(editor)
+        NSLayoutConstraint.activate([
+            editor.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            editor.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            editor.topAnchor.constraint(equalTo: contentView.topAnchor)
+        ])
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        defer { window.orderOut(nil) }
+        let hostingView = editor.subviews.first
+
+        editor.updateLinks(addedLinks, animated: true, revealAddedRowsAtCompletion: true)
+
+        XCTAssertEqual(editor.rowCount, 2)
+        XCTAssertEqual(editor.renderedRowCount, 1)
+        XCTAssertTrue(editor.hasReservedAddedRowSlot)
+        XCTAssertTrue(editor.subviews.first === hostingView)
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.30))
+        XCTAssertEqual(editor.renderedRowCount, 2)
+        XCTAssertFalse(editor.hasReservedAddedRowSlot)
+        XCTAssertTrue(editor.subviews.first === hostingView)
+
+        editor.updateLinks(initialLinks, animated: true)
+        editor.setVisible(false, animated: true)
+        editor.setVisible(true, animated: true)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.30))
+
+        XCTAssertEqual(editor.rowCount, 1)
+        XCTAssertEqual(editor.renderedRowCount, 1)
+        XCTAssertTrue(editor.isVisible)
+        XCTAssertEqual(editor.subviews.count, 1)
+        XCTAssertTrue(editor.subviews.first === hostingView)
+    }
+
     func testScrollAnchorPreservesDistanceFromBottomAndRigidBounds() {
         let geometry = DashboardScrollGeometry(
             documentBounds: NSRect(x: 0, y: 20, width: 400, height: 500),

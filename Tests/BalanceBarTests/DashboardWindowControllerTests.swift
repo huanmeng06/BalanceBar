@@ -204,7 +204,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 "statusLinks.remove.\(index)"
             ]
         }
-        let accessibilityElements = accessibilityDescendants(of: hostingView)
+        let accessibilityElements = accessibilityDescendantsEventually(
+            of: hostingView,
+            requiring: Set(expectedIdentifiers)
+        )
         let cardFrameOnScreen = window.convertToScreen(card.convert(card.bounds, to: nil))
         for identifier in expectedIdentifiers {
             let matches = accessibilityElements.filter {
@@ -636,6 +639,25 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             $0 as? NSAccessibilityElementProtocol
         }
         return children + view.subviews.flatMap(accessibilityDescendants(of:))
+    }
+
+    private func accessibilityDescendantsEventually(
+        of view: NSView,
+        requiring identifiers: Set<String>
+    ) -> [NSAccessibilityElementProtocol] {
+        let deadline = Date().addingTimeInterval(1)
+        var elements: [NSAccessibilityElementProtocol] = []
+        repeat {
+            view.window?.displayIfNeeded()
+            view.layoutSubtreeIfNeeded()
+            elements = accessibilityDescendants(of: view)
+            let available = Set(elements.compactMap { $0.accessibilityIdentifier?() })
+            if identifiers.isSubset(of: available) {
+                return elements
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        } while Date() < deadline
+        return elements
     }
 
     private func menuPage(in window: NSWindow) -> NSView? {

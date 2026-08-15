@@ -113,4 +113,8 @@ do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
 done
 
+printf 'build-balancebar: ad-hoc signing complete bundle\n'
+codesign --force --deep --sign - "$app_bundle"
+codesign --verify --deep --strict "$app_bundle"
+
 printf 'build-balancebar: created %s (Bundle ID %s)\n' "$app_bundle" "$bundle_identifier"

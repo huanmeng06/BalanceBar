@@ -34,6 +34,8 @@ struct StatusTextField: View {
 
 final class StatusLinksEditorModel: ObservableObject {
     @Published var links: [StatusLink]
+    @Published var reservesAddedRowSlot = false
+    @Published var revealingAddedRowIndex: Int?
     let onChange: (Int, StatusLinkField, String) -> Void
     let onAdd: () -> Void
     let onRemove: (Int) -> Void
@@ -75,6 +77,21 @@ final class StatusLinksEditorModel: ObservableObject {
 
     func reset() {
         onReset()
+    }
+
+    func reserveAddedRowSlot() {
+        reservesAddedRowSlot = true
+    }
+
+    func revealAddedRow(_ newLinks: [StatusLink]) {
+        links = newLinks
+        reservesAddedRowSlot = false
+        revealingAddedRowIndex = newLinks.indices.last
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                self.revealingAddedRowIndex = nil
+            }
+        }
     }
 }
 
@@ -141,6 +158,11 @@ struct StatusLinksEditorView: View {
                     .accessibilityIdentifier("statusLinks.remove.\(index)")
                 }
                 .frame(height: 35)
+                .opacity(model.revealingAddedRowIndex == index ? 0 : 1)
+            }
+
+            if model.reservesAddedRowSlot {
+                Color.clear.frame(height: 35)
             }
 
             Color.clear.frame(height: 8)
@@ -156,6 +178,7 @@ struct StatusLinksEditorView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .animation(.easeInOut(duration: 0.16), value: model.revealingAddedRowIndex)
         // NSHostingView fills the animated AppKit height. Keep the SwiftUI
         // content pinned to the top of that host so its title row does not
         // recenter for a frame while the row count changes.
@@ -178,6 +201,9 @@ final class StatusLinksEditorHostingView: NSView {
     var isVisible: Bool {
         (heightConstraint?.constant ?? 0) > 0 && alphaValue > 0
     }
+
+    var renderedRowCount: Int { model.links.count }
+    var hasReservedAddedRowSlot: Bool { model.reservesAddedRowSlot }
 
     /// The hosted SwiftUI hierarchy is always bounded by this view before it
     /// becomes visible. This makes the reveal independent of stack layout
@@ -249,18 +275,20 @@ final class StatusLinksEditorHostingView: NSView {
         // first and the card then collapses. For an addition, play that same
         // geometry in reverse by expanding an empty 35pt slot first and only
         // revealing the new SwiftUI row once the expansion has settled.
-        if !deferAddedRows {
+        if deferAddedRows {
+            model.reserveAddedRowSlot()
+        } else {
             model.links = newLinks
         }
         let targetHeight = layoutHeight
         let applyHeight = {
             self.heightConstraint?.constant = targetHeight
-            self.synchronizeAncestorCardHeight()
+            self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
             self.needsLayout = true
             self.superview?.needsLayout = true
             if deferAddedRows {
                 self.superview?.layoutSubtreeIfNeeded()
-                self.model.links = newLinks
+                self.model.revealAddedRow(newLinks)
             }
             completion?()
         }
@@ -270,7 +298,7 @@ final class StatusLinksEditorHostingView: NSView {
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 context.allowsImplicitAnimation = true
                 self.heightConstraint?.animator().constant = targetHeight
-                self.synchronizeAncestorCardHeight(animated: true)
+                self.synchronizeAncestorCardHeight(animated: true, editorHeight: targetHeight)
                 self.superview?.layoutSubtreeIfNeeded()
             } completionHandler: {
                 applyHeight()
