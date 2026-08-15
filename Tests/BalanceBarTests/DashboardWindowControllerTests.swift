@@ -634,7 +634,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     private func accessibilityDescendants(of view: NSView) -> [NSAccessibilityElementProtocol] {
-        let children = (view.accessibilityChildren() ?? []).compactMap {
+        let rawChildren = view.accessibilityChildren()
+            ?? (view.accessibilityAttributeValue(.children) as? [Any])
+            ?? []
+        let children = rawChildren.compactMap {
             $0 as? NSAccessibilityElementProtocol
         }
         return children
@@ -647,8 +650,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     ) -> [NSAccessibilityElementProtocol] {
         guard let object = element as? NSObject,
               object.responds(to: Selector(("accessibilityChildren"))),
-              let children = object.perform(Selector(("accessibilityChildren")))?
-                .takeUnretainedValue() as? [Any]
+              let children = (object.perform(Selector(("accessibilityChildren")))?
+                .takeUnretainedValue() as? [Any])
+                ?? (object.value(forKey: "accessibilityChildren") as? [Any])
         else {
             return []
         }
