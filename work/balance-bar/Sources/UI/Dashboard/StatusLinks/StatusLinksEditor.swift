@@ -238,6 +238,9 @@ final class StatusLinksEditorHostingView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         hostingView.wantsLayer = true
         hostingView.layer?.masksToBounds = true
+        // Keep the host as a transparent AX container so SwiftUI's native
+        // controls remain discoverable on Xcode 16.4 as well as newer SDKs.
+        hostingView.setAccessibilityElement(false)
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hostingView)
         NSLayoutConstraint.activate([
