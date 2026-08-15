@@ -635,10 +635,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     private func accessibilityDescendants(of view: NSView) -> [NSAccessibilityElementProtocol] {
+        let root = view.accessibilityIdentifier() == nil
+            ? []
+            : [view as NSAccessibilityElementProtocol]
         let children = (view.accessibilityChildren() ?? []).compactMap {
             $0 as? NSAccessibilityElementProtocol
         }
-        return children
+        return root + children
             + children.flatMap(accessibilityDescendants(of:))
             + view.subviews.flatMap(accessibilityDescendants(of:))
     }

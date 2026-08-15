@@ -102,6 +102,13 @@ final class StatusLinksTests: XCTestCase {
     }
 
     func testAddedRowReservesThenRevealsOneSlotWithoutRecreatingTheHostingView() {
+        func waitForAnimation(_ condition: @escaping () -> Bool) {
+            let deadline = Date().addingTimeInterval(1)
+            while !condition() && Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            }
+        }
+
         let initialLinks = [StatusLink(title: "One", url: "https://one.example")]
         let addedLinks = initialLinks + [StatusLink(title: "Two", url: "https://two.example")]
         let editor = StatusLinksEditorHostingView(
@@ -137,7 +144,9 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(editor.hasReservedAddedRowSlot)
         XCTAssertTrue(editor.subviews.first === hostingView)
 
-        RunLoop.current.run(until: Date().addingTimeInterval(0.30))
+        waitForAnimation {
+            editor.renderedRowCount == 2 && !editor.hasReservedAddedRowSlot
+        }
         XCTAssertEqual(editor.renderedRowCount, 2)
         XCTAssertFalse(editor.hasReservedAddedRowSlot)
         XCTAssertTrue(editor.subviews.first === hostingView)
@@ -145,7 +154,9 @@ final class StatusLinksTests: XCTestCase {
         editor.updateLinks(initialLinks, animated: true)
         editor.setVisible(false, animated: true)
         editor.setVisible(true, animated: true)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.30))
+        waitForAnimation {
+            editor.rowCount == 1 && editor.renderedRowCount == 1 && editor.isVisible
+        }
 
         XCTAssertEqual(editor.rowCount, 1)
         XCTAssertEqual(editor.renderedRowCount, 1)
