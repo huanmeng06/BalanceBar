@@ -622,12 +622,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 action: #selector(openCCSwitch),
                 keyEquivalent: ""
             ).target = self
-            statusMenu.addItem(
-                withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
-                action: #selector(openOpenCodex),
-                keyEquivalent: ""
-            ).target = self
         }
+        statusMenu.addItem(
+            withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
+            action: #selector(openOpenCodex),
+            keyEquivalent: ""
+        ).target = self
         if menuInput.showStatusMenu {
             statusMenu.addItem(makeStatusLinksMenuItem())
         }
