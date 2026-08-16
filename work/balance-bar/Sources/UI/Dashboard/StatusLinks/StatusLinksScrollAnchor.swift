@@ -16,12 +16,9 @@ struct StatusLinksScrollPosition {
     let previousMaximumOffset: CGFloat
     let bottomAnchorView: StatusLinksWeakViewReference?
     let bottomAnchorViewportY: CGFloat?
-    let capturedAt: Date
 }
 
 enum StatusLinksScrollAnchor {
-    static let addAnimationDuration: TimeInterval = 0.20
-
     static func visualOffsetPreservingDistanceFromBottom(
         _ distanceFromBottom: CGFloat,
         geometry: DashboardScrollGeometry
@@ -40,17 +37,6 @@ enum StatusLinksScrollAnchor {
             && viewportY <= bounds.maxY + tolerance
     }
 
-    static func visualOffsetFollowingAddToBottom(
-        _ position: StatusLinksScrollPosition,
-        geometry: DashboardScrollGeometry,
-        now: Date = Date()
-    ) -> CGFloat {
-        let elapsed = max(0, now.timeIntervalSince(position.capturedAt))
-        let progress = min(1, elapsed / addAnimationDuration)
-        let target = position.visibleDocumentOffset
-            + (geometry.maximumOffset - position.visibleDocumentOffset) * progress
-        return geometry.clampedVisualOffset(target)
-    }
 }
 
 final class StatusLinksScrollAnchorTimer {
@@ -270,8 +256,7 @@ final class StatusLinksScrollAnchorController {
             bottomAnchorView: activeBottomAnchor.map {
                 StatusLinksWeakViewReference($0.view)
             },
-            bottomAnchorViewportY: activeBottomAnchor?.viewportY,
-            capturedAt: Date()
+            bottomAnchorViewportY: activeBottomAnchor?.viewportY
         )
         SwitchLog.write(
             "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOffset=\(DashboardLogging.number(visibleDocumentOffset)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(geometry.maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
@@ -352,8 +337,9 @@ final class StatusLinksScrollAnchorController {
                 scrollView: scrollView,
                 documentView: documentView
             )
-            let targetVisualOffset = StatusLinksScrollAnchor
-                .visualOffsetFollowingAddToBottom(position, geometry: geometry)
+            let targetVisualOffset = geometry.clampedVisualOffset(
+                position.visibleDocumentOffset
+            )
             let targetContentOriginY = dashboardScrollContentOrigin(
                 scrollView: scrollView,
                 documentView: documentView,
@@ -467,7 +453,9 @@ final class StatusLinksScrollAnchorController {
             let targetContentOriginY = dashboardScrollContentOrigin(
                 scrollView: scrollView,
                 documentView: documentView,
-                visualOffset: geometry.maximumOffset
+                visualOffset: geometry.clampedVisualOffset(
+                    position.visibleDocumentOffset
+                )
             )
             var bounds = scrollView.contentView.bounds
             bounds.origin.y = targetContentOriginY
@@ -477,9 +465,12 @@ final class StatusLinksScrollAnchorController {
                 documentView: documentView
             )
             SwitchLog.write(
-                "scroll restore applied; action=add; anchor=document-bottom; actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+                "scroll restore applied; action=add; anchor=visible-document-offset; actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
                 category: "ui.scroll"
             )
+            if attempt < 2 {
+                restore(position, attempt: attempt + 1)
+            }
             return
         }
         if position.operation != "add" {

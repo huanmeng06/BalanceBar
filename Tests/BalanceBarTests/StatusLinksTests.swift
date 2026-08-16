@@ -259,7 +259,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(editor.subviews.first === hostingView)
     }
 
-    func testAddedRowSmoothlyFollowsViewportToDocumentBottomDuringInsertion() {
+    func testAddedRowKeepsViewportAnchoredDuringInsertion() {
         let initialLinks = [StatusLink(title: "One", url: "https://one.example")]
         let addedLinks = initialLinks + [StatusLink(title: "Two", url: "https://two.example")]
         let window = NSWindow(
@@ -330,7 +330,6 @@ final class StatusLinksTests: XCTestCase {
         )
         let position = controller.capture(captureLabel: "before add", operation: "add")
         let initialViewportOffset = scrollView.contentView.bounds.origin.y
-        var sampledOffsets: [CGFloat] = [initialViewportOffset]
 
         XCTAssertTrue(controller.refreshEditorInPlace(
             links: addedLinks,
@@ -342,7 +341,11 @@ final class StatusLinksTests: XCTestCase {
         while Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))
             window.layoutIfNeeded()
-            sampledOffsets.append(scrollView.contentView.bounds.origin.y)
+            XCTAssertEqual(
+                scrollView.contentView.bounds.origin.y,
+                initialViewportOffset,
+                accuracy: 0.5
+            )
             XCTAssertEqual(editor.hostedContentTopInset, 0, accuracy: 0.5)
         }
 
@@ -351,12 +354,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(editor.hasReservedAddedRowSlot)
         XCTAssertEqual(card.frame.height, 62 + editor.layoutHeight, accuracy: 0.5)
         XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
-        XCTAssertEqual(scrollView.contentView.bounds.origin.y, 620, accuracy: 0.5)
-        XCTAssertGreaterThan(scrollView.contentView.bounds.origin.y, initialViewportOffset + 400)
-        for (previous, current) in zip(sampledOffsets, sampledOffsets.dropFirst()) {
-            XCTAssertGreaterThanOrEqual(current, previous - 0.5)
-            XCTAssertLessThanOrEqual(current - previous, 100)
-        }
+        XCTAssertEqual(scrollView.contentView.bounds.origin.y, initialViewportOffset, accuracy: 0.5)
     }
 
     func testScrollAnchorPreservesDistanceFromBottomAndRigidBounds() {
@@ -432,8 +430,7 @@ final class StatusLinksTests: XCTestCase {
             distanceFromBottom: 60,
             previousMaximumOffset: 120,
             bottomAnchorView: nil,
-            bottomAnchorViewportY: nil,
-            capturedAt: Date()
+            bottomAnchorViewportY: nil
         )
         weak var releasedController: StatusLinksScrollAnchorController?
 
