@@ -368,12 +368,8 @@ final class StatusLinksEditorHostingView: NSView {
             model.links = newLinks
         }
         let targetHeight = layoutHeight
-        var didApplyHeight = false
         let applyHeight = {
-            guard self.linkUpdateGeneration == updateGeneration,
-                  !didApplyHeight
-            else { return }
-            didApplyHeight = true
+            guard self.linkUpdateGeneration == updateGeneration else { return }
             self.heightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
             // Keep the hosted old rows at their fixed top-aligned height
@@ -393,19 +389,10 @@ final class StatusLinksEditorHostingView: NSView {
                 context.duration = 0.20
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 context.allowsImplicitAnimation = true
-                // Update model geometry immediately so the scroll document
-                // knows its final bottom from the first animation frame;
-                // AppKit animates the resulting layout presentation.
-                self.heightConstraint?.constant = targetHeight
-                self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
+                self.heightConstraint?.animator().constant = targetHeight
+                self.synchronizeAncestorCardHeight(animated: true, editorHeight: targetHeight)
                 self.superview?.layoutSubtreeIfNeeded()
             } completionHandler: {
-                applyHeight()
-            }
-            // AppKit can defer a constraint-animation completion when a
-            // window is mid-layout. Keep one generation-scoped fallback so
-            // the local row reveal and scroll-follow settle on schedule.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.21) {
                 applyHeight()
             }
         } else {
