@@ -199,7 +199,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
-    func testProductionMenuAddKeepsDashboardAndOrdinaryRowsAnchored() throws {
+    func testProductionMenuAddSmoothlyFollowsStatusLinksToDocumentBottom() throws {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")
         let previousLinks = defaults.object(forKey: "statusLinks")
@@ -235,10 +235,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let documentView = try XCTUnwrap(scrollView.documentView)
         let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
         let card = try XCTUnwrap(ancestors(of: editor).first { $0.layer?.cornerRadius == 18 })
-        let rowsStack = try XCTUnwrap(editor.superview as? NSStackView)
-        let editorIndex = try XCTUnwrap(rowsStack.arrangedSubviews.firstIndex { $0 === editor })
-        XCTAssertGreaterThan(editorIndex, 0)
-        let ordinaryRow = rowsStack.arrangedSubviews[editorIndex - 1]
 
         let geometry = DashboardScrollGeometry(
             documentBounds: documentView.bounds,
@@ -275,10 +271,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let y = card.isFlipped ? card.bounds.minY : card.bounds.maxY
             return card.convert(NSPoint(x: card.bounds.minX, y: y), to: scrollView.contentView).y
         }
-        func viewportY(of view: NSView) -> CGFloat {
-            let y = view.isFlipped ? view.bounds.minY : view.bounds.maxY
-            return view.convert(NSPoint(x: view.bounds.minX, y: y), to: scrollView.contentView).y
-        }
 
         let initialOffset = visibleOffset()
         let initialTitleY = try XCTUnwrap(editor.viewportAnchorY(
@@ -286,8 +278,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             in: scrollView.contentView
         ))
         let initialDocumentHeight = documentView.bounds.height
-        let initialCardTop = cardTop()
-        let initialOrdinaryRowY = viewportY(of: ordinaryRow)
+        var sampledOffsets: [CGFloat] = [initialOffset]
+        var sampledTitleY: [CGFloat] = [initialTitleY]
+        var sampledCardTop: [CGFloat] = [cardTop()]
 
         appDelegate.addStatusLinkForTesting()
 
@@ -296,20 +289,35 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.016))
             window.layoutIfNeeded()
             window.displayIfNeeded()
-            XCTAssertEqual(visibleOffset(), initialOffset, accuracy: 0.5)
-            XCTAssertEqual(cardTop(), initialCardTop, accuracy: 0.5)
-            XCTAssertEqual(viewportY(of: ordinaryRow), initialOrdinaryRowY, accuracy: 0.5)
-            XCTAssertEqual(try XCTUnwrap(editor.viewportAnchorY(
+            sampledOffsets.append(visibleOffset())
+            sampledCardTop.append(cardTop())
+            sampledTitleY.append(try XCTUnwrap(editor.viewportAnchorY(
                 identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor"),
                 in: scrollView.contentView
-            )), initialTitleY, accuracy: 0.5)
+            )))
         }
 
         XCTAssertEqual(editor.rowCount, 3)
         XCTAssertEqual(editor.renderedRowCount, 3)
         XCTAssertGreaterThan(documentView.bounds.height, initialDocumentHeight)
         XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
-        XCTAssertEqual(visibleOffset(), initialOffset, accuracy: 0.5)
+        let finalGeometry = DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        XCTAssertEqual(visibleOffset(), finalGeometry.maximumOffset, accuracy: 0.5)
+        XCTAssertGreaterThan(visibleOffset(), initialOffset + 20)
+        for (previous, current) in zip(sampledOffsets, sampledOffsets.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(current, previous - 0.5)
+            XCTAssertLessThanOrEqual(current - previous, 10)
+        }
+        for (previous, current) in zip(sampledTitleY, sampledTitleY.dropFirst()) {
+            XCTAssertLessThanOrEqual(abs(current - previous), 10)
+        }
+        for (previous, current) in zip(sampledCardTop, sampledCardTop.dropFirst()) {
+            XCTAssertLessThanOrEqual(abs(current - previous), 10)
+        }
     }
 
     func testStatusMenuToggleUpdatesDashboardImmediatelyAndPreservesConfiguredLinks() throws {
