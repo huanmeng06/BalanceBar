@@ -150,11 +150,7 @@ final class StatusLinksScrollAnchorController {
             if let scrollPosition {
                 self.restore(scrollPosition, attempt: 0)
             } else {
-                SwitchLog.write(
-                    "in-place status-link refresh has no scroll position; action=\(operation)",
-                    level: .warning,
-                    category: "ui.scroll"
-                )
+                self.clampDashboardScrollViewBounds()
             }
             self.scheduleScrollLog(label: "after \(operation) animation")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -364,7 +360,11 @@ final class StatusLinksScrollAnchorController {
             return
         }
 
-        if let anchorView = position.bottomAnchorView?.view,
+        // Growing at the bottom must retain the exact document offset that
+        // was visible before the add. A card-bottom anchor instead follows
+        // the growing edge and visibly moves the title/header upward.
+        if position.operation != "add",
+           let anchorView = position.bottomAnchorView?.view,
            let targetViewportY = position.bottomAnchorViewportY,
            anchorView === page || anchorView.isDescendant(of: page) {
             let currentViewportY = anchorView.convert(
@@ -458,7 +458,8 @@ final class StatusLinksScrollAnchorController {
             return
         }
 
-        if let anchorView = position.bottomAnchorView?.view,
+        if position.operation != "add",
+           let anchorView = position.bottomAnchorView?.view,
            let targetViewportY = position.bottomAnchorViewportY,
            anchorView === page || anchorView.isDescendant(of: page) {
             let currentViewportY = anchorView.convert(

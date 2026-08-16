@@ -6,12 +6,29 @@ enum StatusLinkField: Equatable {
     case url
 }
 
+/// An inert AppKit marker gives regression tests the frame of the actual
+/// SwiftUI title/header content without adding another hosting view.
+private struct StatusLinksGeometryAnchor: NSViewRepresentable {
+    let identifier: NSUserInterfaceItemIdentifier
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        view.identifier = identifier
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.identifier = identifier
+    }
+}
+
 /// A native SwiftUI text field kept at its natural single-line height and
 /// centered by the fixed-height outer container. The system rounded-border
 /// style owns the background, border, focus ring, and appearance adaptation.
 struct StatusTextField: View {
     @Binding var text: String
     let placeholder: String
+    let accessibilityIdentifier: String
 
     var body: some View {
         HStack(spacing: 0) {
@@ -20,6 +37,7 @@ struct StatusTextField: View {
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier(accessibilityIdentifier)
         }
         .frame(
             maxWidth: .infinity,
@@ -32,10 +50,14 @@ struct StatusTextField: View {
 
 final class StatusLinksEditorModel: ObservableObject {
     @Published var links: [StatusLink]
+    @Published var reservesAddedRowSlot = false
+    @Published var revealingAddedRowIndex: Int?
+    @Published private(set) var isAddInFlight = false
     let onChange: (Int, StatusLinkField, String) -> Void
     let onAdd: () -> Void
     let onRemove: (Int) -> Void
     let onReset: () -> Void
+    private var revealGeneration = 0
 
     init(
         links: [StatusLink],
@@ -63,6 +85,8 @@ final class StatusLinksEditorModel: ObservableObject {
     }
 
     func add() {
+        guard !isAddInFlight else { return }
+        isAddInFlight = true
         onAdd()
     }
 
@@ -73,6 +97,35 @@ final class StatusLinksEditorModel: ObservableObject {
 
     func reset() {
         onReset()
+    }
+
+    func reserveAddedRowSlot() {
+        reservesAddedRowSlot = true
+    }
+
+    func cancelAddInsertion() {
+        revealGeneration &+= 1
+        isAddInFlight = false
+        reservesAddedRowSlot = false
+        revealingAddedRowIndex = nil
+    }
+
+    func revealAddedRow(_ newLinks: [StatusLink]) {
+        revealGeneration &+= 1
+        let generation = revealGeneration
+        links = newLinks
+        reservesAddedRowSlot = false
+        revealingAddedRowIndex = newLinks.indices.last
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.revealGeneration == generation else { return }
+            withAnimation(.easeInOut(duration: 0.16)) {
+                self.revealingAddedRowIndex = nil
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                guard let self, self.revealGeneration == generation else { return }
+                self.isAddInFlight = false
+            }
+        }
     }
 }
 
@@ -89,8 +142,10 @@ struct StatusLinksEditorView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .font(.system(size: 12))
+                    .accessibilityIdentifier("statusLinks.reset")
             }
             .frame(height: 24)
+            .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor")))
 
             HStack(spacing: 8) {
                 Text(tr("名称", "Name"))
@@ -102,12 +157,14 @@ struct StatusLinksEditorView: View {
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.tertiary)
             .frame(height: 20, alignment: .center)
+            .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor")))
 
             ForEach(model.links.indices, id: \.self) { index in
                 HStack(spacing: 8) {
                     StatusTextField(
                         text: $model.links[index].title,
-                        placeholder: tr("显示名称", "Display name")
+                        placeholder: tr("显示名称", "Display name"),
+                        accessibilityIdentifier: "statusLinks.name.\(index)"
                     )
                     .frame(width: 160)
                     .onChange(of: model.links[index].title) { _, value in
@@ -116,7 +173,8 @@ struct StatusLinksEditorView: View {
 
                     StatusTextField(
                         text: $model.links[index].url,
-                        placeholder: "https://"
+                        placeholder: "https://",
+                        accessibilityIdentifier: "statusLinks.url.\(index)"
                     )
                     .frame(maxWidth: .infinity)
                     .onChange(of: model.links[index].url) { _, value in
@@ -132,8 +190,18 @@ struct StatusLinksEditorView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 28)
+                    .accessibilityIdentifier("statusLinks.remove.\(index)")
                 }
                 .frame(height: 35)
+                .opacity(model.revealingAddedRowIndex == index ? 0 : 1)
+                .animation(
+                    .easeInOut(duration: 0.16),
+                    value: model.revealingAddedRowIndex == index
+                )
+            }
+
+            if model.reservesAddedRowSlot {
+                Color.clear.frame(height: 35)
             }
 
             Color.clear.frame(height: 8)
@@ -145,12 +213,16 @@ struct StatusLinksEditorView: View {
             .buttonStyle(.plain)
             .foregroundStyle(Color(nsColor: .controlAccentColor))
             .frame(width: 32, height: 28, alignment: .leading)
+            .disabled(model.isAddInFlight)
+            .accessibilityIdentifier("statusLinks.add")
+
+            // Consume only surplus host height below the controls. This pins
+            // title, headers, and existing rows to the visual top while the
+            // outer AppKit reveal interpolates its height.
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        // NSHostingView fills the animated AppKit height. Keep the SwiftUI
-        // content pinned to the top of that host so its title row does not
-        // recenter for a frame while the row count changes.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -161,11 +233,45 @@ final class StatusLinksEditorHostingView: NSView {
     private let model: StatusLinksEditorModel
     private let hostingView: NSHostingView<StatusLinksEditorView>
     private var heightConstraint: NSLayoutConstraint?
+    private var hostingHeightConstraint: NSLayoutConstraint?
     private var links: [StatusLink]
+    private var visibilityGeneration = 0
+    private var linkUpdateGeneration = 0
     private(set) var isTornDown = false
 
     var rowCount: Int { links.count }
     var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
+    var isVisible: Bool {
+        (heightConstraint?.constant ?? 0) > 0 && alphaValue > 0
+    }
+
+    var renderedRowCount: Int { model.links.count }
+    var hasReservedAddedRowSlot: Bool { model.reservesAddedRowSlot }
+    var isAddInFlight: Bool { model.isAddInFlight }
+    var hostedContentTopInset: CGFloat {
+        bounds.maxY - convert(hostingView.bounds, from: hostingView).maxY
+    }
+
+    func viewportAnchorY(
+        identifier: NSUserInterfaceItemIdentifier,
+        in viewport: NSView
+    ) -> CGFloat? {
+        guard let anchor = findDescendant(with: identifier, in: hostingView) else {
+            return nil
+        }
+        return anchor.convert(
+            NSPoint(x: anchor.bounds.minX, y: anchor.bounds.maxY),
+            to: viewport
+        ).y
+    }
+
+    /// The hosted SwiftUI hierarchy is always bounded by this view before it
+    /// becomes visible. This makes the reveal independent of stack layout
+    /// interpolation and prevents content from crossing preceding rows.
+    var hostedContentIsWithinRevealBounds: Bool {
+        let hostedBounds = convert(hostingView.bounds, from: hostingView)
+        return bounds.insetBy(dx: -0.5, dy: -0.5).contains(hostedBounds)
+    }
 
     init(
         links: [StatusLink],
@@ -186,16 +292,29 @@ final class StatusLinksEditorHostingView: NSView {
         self.hostingView = NSHostingView(
             rootView: StatusLinksEditorView(model: model)
         )
+        // The surrounding constraints own the host size throughout the row
+        // reveal. Do not let NSHostingView negotiate an intrinsic size while
+        // that height is interpolating, which can recenter the SwiftUI root.
+        self.hostingView.sizingOptions = []
         super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        clipsToBounds = true
         translatesAutoresizingMaskIntoConstraints = false
+        hostingView.wantsLayer = true
+        hostingView.layer?.masksToBounds = true
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hostingView)
         NSLayoutConstraint.activate([
             hostingView.leadingAnchor.constraint(equalTo: leadingAnchor),
             hostingView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hostingView.topAnchor.constraint(equalTo: topAnchor),
-            hostingView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            hostingView.topAnchor.constraint(equalTo: topAnchor)
         ])
+        let hostingHeightConstraint = hostingView.heightAnchor.constraint(
+            equalToConstant: layoutHeight
+        )
+        hostingHeightConstraint.isActive = true
+        self.hostingHeightConstraint = hostingHeightConstraint
         let heightConstraint = heightAnchor.constraint(equalToConstant: layoutHeight)
         heightConstraint.isActive = true
         self.heightConstraint = heightConstraint
@@ -208,6 +327,19 @@ final class StatusLinksEditorHostingView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    private func findDescendant(
+        with identifier: NSUserInterfaceItemIdentifier,
+        in view: NSView
+    ) -> NSView? {
+        if view.identifier == identifier { return view }
+        for child in view.subviews {
+            if let match = findDescendant(with: identifier, in: child) {
+                return match
+            }
+        }
+        return nil
+    }
+
     func updateLinks(
         _ newLinks: [StatusLink],
         animated: Bool,
@@ -218,24 +350,37 @@ final class StatusLinksEditorHostingView: NSView {
             completion?()
             return
         }
+        linkUpdateGeneration &+= 1
+        let updateGeneration = linkUpdateGeneration
         let deferAddedRows = revealAddedRowsAtCompletion && newLinks.count > links.count
         links = newLinks
         // Deletion already has the desired motion: the removed row vanishes
         // first and the card then collapses. For an addition, play that same
         // geometry in reverse by expanding an empty 35pt slot first and only
         // revealing the new SwiftUI row once the expansion has settled.
-        if !deferAddedRows {
+        if deferAddedRows {
+            // The outer AppKit editor supplies the expanding 35pt slot. Keep
+            // the sole SwiftUI host on its old rows until that expansion has
+            // settled so changing its intrinsic content cannot displace the
+            // title/header mid-animation.
+        } else {
+            model.cancelAddInsertion()
             model.links = newLinks
         }
         let targetHeight = layoutHeight
         let applyHeight = {
+            guard self.linkUpdateGeneration == updateGeneration else { return }
             self.heightConstraint?.constant = targetHeight
-            self.synchronizeAncestorCardHeight()
+            self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
+            // Keep the hosted old rows at their fixed top-aligned height
+            // during the empty-slot expansion. Once the outer reveal reaches
+            // its final size, grow this sole host and reveal the new row.
+            self.hostingHeightConstraint?.constant = targetHeight
             self.needsLayout = true
             self.superview?.needsLayout = true
             if deferAddedRows {
                 self.superview?.layoutSubtreeIfNeeded()
-                self.model.links = newLinks
+                self.model.revealAddedRow(newLinks)
             }
             completion?()
         }
@@ -245,7 +390,7 @@ final class StatusLinksEditorHostingView: NSView {
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 context.allowsImplicitAnimation = true
                 self.heightConstraint?.animator().constant = targetHeight
-                self.synchronizeAncestorCardHeight(animated: true)
+                self.synchronizeAncestorCardHeight(animated: true, editorHeight: targetHeight)
                 self.superview?.layoutSubtreeIfNeeded()
             } completionHandler: {
                 applyHeight()
@@ -255,11 +400,57 @@ final class StatusLinksEditorHostingView: NSView {
         }
     }
 
+    func setVisible(_ visible: Bool, animated: Bool) {
+        guard !isTornDown else { return }
+        visibilityGeneration += 1
+        let generation = visibilityGeneration
+        let targetHeight: CGFloat = visible ? layoutHeight : 0
+        let applyLayout = { [weak self] in
+            guard let self else { return }
+            self.heightConstraint?.constant = targetHeight
+            self.hostingHeightConstraint?.constant = targetHeight
+            self.synchronizeAncestorCardHeight()
+            self.needsLayout = true
+            self.superview?.needsLayout = true
+            self.superview?.layoutSubtreeIfNeeded()
+        }
+        guard animated else {
+            alphaValue = visible ? 1 : 0
+            applyLayout()
+            return
+        }
+
+        if visible {
+            // Establish the final frame first. Only opacity is animated, so
+            // the editor never travels through the rows above it.
+            alphaValue = 0
+            applyLayout()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                self.animator().alphaValue = 1
+            }
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.14
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            self.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self, self.visibilityGeneration == generation else { return }
+            self.alphaValue = 0
+            applyLayout()
+        }
+    }
+
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
         heightConstraint?.isActive = false
         heightConstraint = nil
+        hostingHeightConstraint?.isActive = false
+        hostingHeightConstraint = nil
         hostingView.removeFromSuperview()
     }
 
@@ -275,12 +466,18 @@ final class StatusLinksEditorHostingView: NSView {
         teardown()
     }
 
-    private func ancestorCardInfo() -> (NSView, NSLayoutConstraint, CGFloat)? {
+    private func ancestorCardInfo(
+        editorHeight: CGFloat? = nil
+    ) -> (NSView, NSLayoutConstraint, CGFloat)? {
         guard let rowsStack = superview as? NSStackView,
               let card = rowsStack.superview else { return nil }
         let requiredHeight = max(1, ceil(rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
+            guard !row.isHidden else { return total }
+            if row is NSBox {
+                return total + 1
+            }
             if row === self {
-                return total + layoutHeight
+                return total + max(0, editorHeight ?? heightConstraint?.constant ?? layoutHeight)
             }
             let explicit = row.constraints.first {
                 ($0.firstItem as? NSView) === row &&
@@ -298,8 +495,11 @@ final class StatusLinksEditorHostingView: NSView {
         return (card, constraint, requiredHeight)
     }
 
-    private func synchronizeAncestorCardHeight(animated: Bool = false) {
-        guard let info = ancestorCardInfo() else { return }
+    private func synchronizeAncestorCardHeight(
+        animated: Bool = false,
+        editorHeight: CGFloat? = nil
+    ) {
+        guard let info = ancestorCardInfo(editorHeight: editorHeight) else { return }
         if animated {
             info.1.animator().constant = info.2
         } else {

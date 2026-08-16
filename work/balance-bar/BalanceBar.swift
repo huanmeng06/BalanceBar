@@ -1,81 +1,6 @@
 import AppKit
 import Foundation
 
-struct DashboardWindowDragRegion {
-    let bounds: NSRect
-    let titlebarHeight: CGFloat
-    let excludedRects: [NSRect]
-
-    var frame: NSRect {
-        let height = min(max(0, titlebarHeight), bounds.height)
-        return NSRect(
-            x: bounds.minX,
-            y: bounds.maxY - height,
-            width: bounds.width,
-            height: height
-        )
-    }
-
-    func contains(_ point: NSPoint) -> Bool {
-        guard frame.height > 0,
-              NSPointInRect(point, frame),
-              !excludedRects.contains(where: { NSPointInRect(point, $0) })
-        else { return false }
-        return true
-    }
-}
-
-final class DashboardContentRootView: NSVisualEffectView {
-    override var mouseDownCanMoveWindow: Bool { false }
-}
-
-final class DashboardTitlebarDragView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard !isHidden,
-              alphaValue > 0,
-              let window,
-              !window.styleMask.contains(.fullScreen)
-        else { return nil }
-
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        let region = DashboardWindowDragRegion(
-            bounds: bounds,
-            titlebarHeight: titlebarHeight,
-            excludedRects: standardWindowButtonRects(in: window)
-        )
-        return region.contains(point) ? self : nil
-    }
-
-    private func standardWindowButtonRects(in window: NSWindow) -> [NSRect] {
-        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { type in
-            guard let button = window.standardWindowButton(type), !button.isHidden else {
-                return nil
-            }
-            return convert(button.bounds, from: button)
-        }
-    }
-}
-
-enum DashboardWindowDragPolicy {
-    @discardableResult
-    static func install(in window: NSWindow, contentRoot: NSView) -> DashboardTitlebarDragView {
-        window.isMovableByWindowBackground = false
-
-        let dragView = DashboardTitlebarDragView()
-        dragView.translatesAutoresizingMaskIntoConstraints = false
-        contentRoot.addSubview(dragView)
-        NSLayoutConstraint.activate([
-            dragView.leadingAnchor.constraint(equalTo: contentRoot.leadingAnchor),
-            dragView.trailingAnchor.constraint(equalTo: contentRoot.trailingAnchor),
-            dragView.topAnchor.constraint(equalTo: contentRoot.topAnchor),
-            dragView.bottomAnchor.constraint(equalTo: contentRoot.bottomAnchor)
-        ])
-        return dragView
-    }
-}
-
 enum DashboardLogging {
     static func number(_ value: CGFloat) -> String {
         String(format: "%.2f", value)
@@ -234,7 +159,7 @@ private func migrateLegacyPreferencesIfNeeded() {
         localDomain: defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
     )
 }
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var statusItemController: StatusItemController!
     private let dashboardProviderLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…"))
     private let dashboardAmountLabel = NSTextField(labelWithString: "—")
@@ -245,7 +170,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     private let dashboardCurrentProviderSubtitle = NSTextField(wrappingLabelWithString: "")
     private let dashboardProvidersStack = NSStackView()
     private let dashboardProgressHost = NSView()
-    private let dashboardContentHost = NSView()
     private let dashboardLogView = NSTextView()
     private let dashboardMenuPreviewIcon = PassthroughImageView()
     private let dashboardMenuPreviewIconSlot = NSView()
@@ -287,24 +211,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     )
     private let codexActivityMonitor = CodexActivityMonitor()
     private let claudeActivityMonitor = ClaudeCodeActivityMonitor()
-    private var dashboard: NSWindow?
-    private var dashboardMouseMonitor: Any?
-    private var dashboardNavigationButtons: [DashboardSection: NSButton] = [:]
-    private var dashboardNavigationRows: [DashboardSection: DashboardNavigationRowView] = [:]
+    private var dashboardWindowController: DashboardWindowController!
+    private var dashboard: NSWindow? { dashboardWindowController?.window }
+    private var dashboardContentHost: NSView { dashboardWindowController.contentHost }
+    private var dashboardSection: DashboardSection { dashboardWindowController.section }
+    private var dashboardSelectedProviderID: String? { dashboardWindowController.selectedProviderID }
     private var dashboardProviderButtons: [String: NSButton] = [:]
     private var statusLinksEditorHostingView: StatusLinksEditorHostingView?
+    private var dashboardStatusMenuSubtitleLabel: NSTextField?
     private lazy var statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
         dashboardProvider: { [weak self] in self?.dashboard },
         contentHostProvider: { [weak self] in self?.dashboardContentHost },
         sectionTitleProvider: { [weak self] in self?.dashboardSection.title ?? "" },
         linksCountProvider: { [weak self] in self?.statusLinks.count ?? 0 }
     )
-    private var dashboardSection: DashboardSection = .general
-    private var dashboardSelectedProviderID: String?
     private var timer: Timer?
     private var activityTimer: Timer?
     private var workspaceActivationObserver: NSObjectProtocol?
-    private var appearanceObserver: NSObjectProtocol?
     private var databaseWatchers: [DispatchSourceFileSystemObject] = []
     private var syncWorkItem: DispatchWorkItem?
     private var lastSuccessfulRefresh: Date?
@@ -390,6 +313,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         self.officialQuotaClient = officialQuotaClient
         self.openCodexRepository = openCodexRepository
         super.init()
+        dashboardWindowController = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { [weak self] section in
+                    self?.makeDashboardPage(for: section) ?? NSView()
+                },
+                makeProviderPage: { [weak self] choice in
+                    self?.makeProviderDashboardPage(choice) ?? NSView()
+                },
+                providerChoices: { [weak self] in
+                    self?.ccSwitchRepository.loadChoices(
+                        appType: self?.activeClient.appType ?? AssistantClient.codex.appType
+                    ) ?? []
+                },
+                prepareForPageReplacement: { [weak self] in
+                    guard let self else { return }
+                    self.statusLinksScrollAnchorController.stop()
+                    self.statusLinksEditorHostingView?.teardown()
+                    self.statusLinksEditorHostingView = nil
+                    self.dashboardStatusMenuSubtitleLabel = nil
+                },
+                didShowPage: { [weak self] in
+                    guard let self else { return }
+                    self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
+                },
+                didClose: { [weak self] in
+                    guard let self else { return }
+                    self.statusLinksScrollAnchorController.stop()
+                    DispatchQueue.main.async {
+                        NSApp.setActivationPolicy(.accessory)
+                        SwitchLog.write(
+                            "dashboard closed; activation_policy=\(String(describing: NSApp.activationPolicy())); status_visible=\(self.statusItemController.isVisible)",
+                            category: "ui.status-item"
+                        )
+                    }
+                },
+                didResize: { [weak self] in
+                    DispatchQueue.main.async { [weak self] in
+                        self?.clampDashboardScrollViewBounds()
+                    }
+                }
+            )
+        )
         statusItemController = StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: { [weak self] in
@@ -441,8 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
-            showStatusMenu: showStatusMenu,
-            currentOpenCodexDashboardAvailable: currentOpenCodexDashboardURL() != nil
+            showStatusMenu: showStatusMenu
         )
     }
 
@@ -488,7 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         }
         configureApplicationMenu()
         NSApp.appearance = nil
-        startAppearanceObserver()
+        dashboardWindowController.start()
         let regularPolicyApplied = NSApp.setActivationPolicy(.regular)
         showDashboard()
         statusItemController.start(
@@ -537,14 +501,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         statusLinksScrollAnchorController.stop()
         statusLinksEditorHostingView?.teardown()
         statusItemController.teardown()
-        if let dashboardMouseMonitor {
-            NSEvent.removeMonitor(dashboardMouseMonitor)
-        }
+        dashboardWindowController.teardown()
         if let workspaceActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
-        }
-        if let appearanceObserver {
-            DistributedNotificationCenter.default().removeObserver(appearanceObserver)
         }
         databaseWatchers.forEach { $0.cancel() }
     }
@@ -556,25 +515,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { openDashboard() }
         return true
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === dashboard else { return }
-        statusLinksScrollAnchorController.stop()
-        DispatchQueue.main.async {
-            NSApp.setActivationPolicy(.accessory)
-            SwitchLog.write(
-                "dashboard closed; activation_policy=\(String(describing: NSApp.activationPolicy())); status_visible=\(self.statusItemController.isVisible)",
-                category: "ui.status-item"
-            )
-        }
-    }
-
-    func windowDidResize(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window === dashboard else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.clampDashboardScrollViewBounds()
-        }
     }
 
     @objc private func dashboardManualRefresh() {
@@ -880,7 +820,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     }
 
     @objc private func openOpenCodex() {
-        guard let resolution = currentOpenCodexDashboardResolution() else { return }
+        let resolution = openCodexDashboardLaunchResolution()
         SwitchLog.write(
             "OpenCodex Dashboard launch requested; source=\(String(describing: resolution.source)); port=\(resolution.port); path=\(resolution.url.path); fragment=\(resolution.url.fragment ?? "none")",
             category: "open-codex.dashboard"
@@ -888,26 +828,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         NSWorkspace.shared.open(resolution.url)
     }
 
-    private func currentOpenCodexDashboardURL() -> URL? {
-        currentOpenCodexDashboardResolution()?.url
-    }
-
     private func currentOpenCodexDashboardResolution() -> OpenCodexDashboardResolution? {
-        guard activeClient == .codex,
-              let current = ccSwitchRepository.loadCurrent(appType: activeClient.appType) else {
-            return nil
-        }
-        let runtimeCandidate: OpenCodexEndpointCandidate?
-        if let entry = openCodexState, entry.providerID == current.id {
-            runtimeCandidate = entry.state.candidate
-        } else {
-            runtimeCandidate = nil
-        }
-        guard current.openCodexCandidate != nil || runtimeCandidate != nil else { return nil }
+        guard let runtimeCandidate = openCodexDashboardCandidate() else { return nil }
         return OpenCodexDashboardResolver.resolve(
             manualPort: openCodexDashboardMode.effectiveManualPort,
             runtimeCandidate: runtimeCandidate
         )
+    }
+
+    private func openCodexDashboardLaunchResolution() -> OpenCodexDashboardResolution {
+        OpenCodexDashboardResolver.resolve(
+            manualPort: openCodexDashboardMode.effectiveManualPort,
+            runtimeCandidate: openCodexDashboardCandidate()
+        )
+    }
+
+    private func openCodexDashboardCandidate() -> OpenCodexEndpointCandidate? {
+        let codexAppType = AssistantClient.codex.appType
+        let currentCodex = ccSwitchRepository.loadCurrent(appType: codexAppType)
+        if activeClient == .codex,
+           let currentCodex,
+           let entry = openCodexState,
+           entry.providerID == currentCodex.id {
+            return entry.state.candidate
+        }
+        if let candidate = currentCodex?.openCodexCandidate {
+            return candidate
+        }
+        return ccSwitchRepository.loadSummarySources(appType: codexAppType)
+            .compactMap(\.openCodexCandidate)
+            .first
     }
 
     @objc private func openChatGPT() {
@@ -952,11 +902,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
 
     private func openStatusLink(_ url: URL) {
         NSWorkspace.shared.open(url)
-    }
-
-    @objc private func selectDashboardSection(_ sender: NSButton) {
-        guard let section = DashboardSection(rawValue: sender.tag) else { return }
-        showDashboardSection(section)
     }
 
     private func makeDashboardSwitch(identifier: String, isOn: Bool) -> NSSwitch {
@@ -1005,13 +950,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             showStatusMenu = sender.state == .on
             render(snapshot)
             if dashboardSection == .menu {
-                // Let NSSwitch finish its native transition before replacing
-                // the page. Rebuilding synchronously makes the control look
-                // like it jumps instead of sliding smoothly.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-                    guard let self, self.dashboardSection == .menu else { return }
-                    self.showDashboardSection(.menu)
-                }
+                updateDashboardStatusMenuVisibility(animated: true)
             }
         case "keepMenuOpenAfterRefresh":
             keepMenuOpenAfterRefresh = sender.state == .on
@@ -1542,363 +1481,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     }
 
     @objc private func openDashboard() {
-        NSApp.setActivationPolicy(.regular)
-        if let dashboard {
-            dashboard.makeKeyAndOrderFront(nil)
-            updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        showDashboard()
+        dashboardWindowController.open()
+        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
-    private func startAppearanceObserver() {
-        appearanceObserver = DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Let AppKit publish the new effective appearance before resolving
-            // the small number of CALayer-backed adaptive colors.
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.dashboard?.appearance = nil
-                self.rebuildDashboardForAppearanceChange()
-            }
+    private func makeDashboardPage(for section: DashboardSection) -> NSView {
+        switch section {
+        case .general: return makeGeneralDashboardPage()
+        case .menuBar: return makeMenuBarDashboardPage()
+        case .menu: return makeMenuDashboardPage()
+        case .advanced: return makeAdvancedDashboardPage()
+        case .about: return makeAboutDashboardPage()
         }
     }
 
-    private func rebuildDashboardForAppearanceChange() {
-        guard let window = dashboard else { return }
-        let selectedSection = dashboardSection
-        let selectedProviderID = dashboardSelectedProviderID
-        installDashboardLayout(in: window)
-        if let selectedProviderID,
-           ccSwitchRepository.loadChoices(appType: activeClient.appType)
-               .contains(where: { $0.id == selectedProviderID }) {
-            showDashboardProvider(selectedProviderID)
-        } else {
-            showDashboardSection(selectedSection)
-        }
-        window.displayIfNeeded()
+    // Keeps the production page factory directly testable without launching
+    // the application or replacing the page with a test-only view.
+    func dashboardPageForTesting(_ section: DashboardSection) -> NSView {
+        makeDashboardPage(for: section)
+    }
+
+    func dashboardWindowForTesting(showing section: DashboardSection) -> NSWindow? {
+        dashboardWindowController.open()
+        dashboardWindowController.showSection(section)
+        return dashboardWindowController.window
+    }
+
+    func addStatusLinkForTesting() {
+        addStatusLink()
+    }
+
+    func teardownDashboardForTesting() {
+        dashboardWindowController.teardown()
     }
 
     private func showDashboard() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = DashboardSection.general.title
-        window.minSize = NSSize(width: 800, height: 540)
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
-        let dashboardToolbar = NSToolbar(identifier: NSToolbar.Identifier("BalanceBarDashboardToolbar"))
-        dashboardToolbar.displayMode = .iconOnly
-        dashboardToolbar.allowsUserCustomization = false
-        dashboardToolbar.autosavesConfiguration = false
-        window.toolbar = dashboardToolbar
-        window.toolbarStyle = .unified
-        window.backgroundColor = .clear
-        window.isOpaque = false
-        window.hasShadow = true
-        window.appearance = nil
-        window.center()
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-
-        // Keep the complete standard titlebar button group enabled so AppKit
-        // owns the native colors, hover glyphs, pressed state, and zoom action.
-        window.standardWindowButton(.zoomButton)?.isEnabled = true
-        installDashboardLayout(in: window)
-        dashboard = window
-        installDashboardMouseMonitor()
-        showDashboardSection(.general)
-        window.makeKeyAndOrderFront(nil)
+        dashboardWindowController.open()
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    private func installDashboardMouseMonitor() {
-        guard dashboardMouseMonitor == nil else { return }
-        dashboardMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) {
-            [weak self] event in
-            self?.finishDashboardEditingIfClickIsOutsideInput(event)
-            return event
-        }
-    }
-
-    private func finishDashboardEditingIfClickIsOutsideInput(_ event: NSEvent) {
-        guard let dashboard,
-              event.window === dashboard,
-              let hitView = dashboard.contentView?.hitTest(event.locationInWindow)
-        else { return }
-
-        // Keep the field active when the user clicks inside another editable
-        // text control. Clicking labels, cards, buttons, or blank space should
-        // commit the current editor before the click is handled normally.
-        var view: NSView? = hitView
-        while let current = view {
-            if let textField = current as? NSTextField, textField.isEditable {
-                return
-            }
-            view = current.superview
-        }
-        guard dashboard.firstResponder != nil else { return }
-        dashboard.makeFirstResponder(nil)
-    }
-
-    private func installDashboardLayout(in window: NSWindow) {
-        let root = DashboardContentRootView(frame: window.contentView?.bounds ?? .zero)
-        root.material = .underWindowBackground
-        root.blendingMode = .behindWindow
-        root.state = .active
-        root.autoresizingMask = [.width, .height]
-        root.wantsLayer = true
-        root.layer?.cornerRadius = 16
-        root.layer?.masksToBounds = true
-        root.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor.white.withAlphaComponent(0.08),
-            dark: NSColor.black.withAlphaComponent(0.14)
-        ).cgColor
-
-        dashboardContentHost.removeFromSuperview()
-        dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
-        let sidebar = makeDashboardSidebar(titlebarHeight: titlebarHeight)
-        let contentSurface = NSView()
-        contentSurface.wantsLayer = true
-        contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
-            dark: NSColor.black.withAlphaComponent(0.20)
-        ).cgColor
-        contentSurface.translatesAutoresizingMaskIntoConstraints = false
-        sidebar.translatesAutoresizingMaskIntoConstraints = false
-        dashboardContentHost.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(contentSurface)
-        root.addSubview(sidebar)
-        root.addSubview(dashboardContentHost)
-        NSLayoutConstraint.activate([
-            contentSurface.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            contentSurface.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            contentSurface.topAnchor.constraint(equalTo: root.topAnchor),
-            contentSurface.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 216),
-            dashboardContentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
-            dashboardContentHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            dashboardContentHost.topAnchor.constraint(equalTo: root.topAnchor),
-            dashboardContentHost.bottomAnchor.constraint(equalTo: root.bottomAnchor)
-        ])
-
-        window.contentView = root
-        DashboardWindowDragPolicy.install(in: window, contentRoot: root)
     }
 
     private func rebuildDashboardForLanguageChange() {
-        guard let window = dashboard else { return }
-        let selectedSection = dashboardSection
-        let selectedProviderID = dashboardSelectedProviderID
-        installDashboardLayout(in: window)
-        if let selectedProviderID,
-           ccSwitchRepository.loadChoices(appType: activeClient.appType)
-               .contains(where: { $0.id == selectedProviderID }) {
-            showDashboardProvider(selectedProviderID)
-        } else {
-            showDashboardSection(selectedSection)
-        }
-    }
-
-    private func makeGlassEffectView(contentView: NSView, cornerRadius: CGFloat) -> NSView? {
-        guard #available(macOS 26.0, *),
-              let glassViewClass = NSClassFromString("NSGlassEffectView") as? NSView.Type else {
-            return nil
-        }
-        // Resolve this macOS 26 class dynamically so older SDKs can compile the source.
-        let glassView = glassViewClass.init(frame: .zero)
-        glassView.setValue(0, forKey: "style") // NSGlassEffectViewStyleRegular
-        glassView.setValue(cornerRadius, forKey: "cornerRadius")
-        glassView.setValue(contentView, forKey: "contentView")
-        return glassView
-    }
-
-    private func makeDashboardSidebar(titlebarHeight: CGFloat) -> NSView {
-        let sidebar = NSView()
-        let panelShadow = NSView()
-        panelShadow.wantsLayer = true
-        panelShadow.layer?.cornerRadius = 22
-        panelShadow.layer?.shadowColor = NSColor.black.cgColor
-        panelShadow.layer?.shadowOpacity = dashboardUsesDarkAppearance ? 0.18 : 0.08
-        panelShadow.layer?.shadowRadius = 10
-        panelShadow.layer?.shadowOffset = NSSize(width: 0, height: -2)
-        panelShadow.layer?.masksToBounds = false
-        panelShadow.translatesAutoresizingMaskIntoConstraints = false
-        sidebar.addSubview(panelShadow)
-
-        let sidebarContent = NSView()
-        let panel: NSView
-        if let glassPanel = makeGlassEffectView(contentView: sidebarContent, cornerRadius: 22) {
-            panel = glassPanel
-        } else {
-            let visualEffectPanel = NSVisualEffectView()
-            visualEffectPanel.material = .sidebar
-            visualEffectPanel.blendingMode = .withinWindow
-            visualEffectPanel.state = .active
-            visualEffectPanel.wantsLayer = true
-            visualEffectPanel.layer?.cornerRadius = 22
-            visualEffectPanel.layer?.masksToBounds = true
-            sidebarContent.translatesAutoresizingMaskIntoConstraints = false
-            visualEffectPanel.addSubview(sidebarContent)
-            NSLayoutConstraint.activate([
-                sidebarContent.topAnchor.constraint(equalTo: visualEffectPanel.topAnchor),
-                sidebarContent.leadingAnchor.constraint(equalTo: visualEffectPanel.leadingAnchor),
-                sidebarContent.trailingAnchor.constraint(equalTo: visualEffectPanel.trailingAnchor),
-                sidebarContent.bottomAnchor.constraint(equalTo: visualEffectPanel.bottomAnchor)
-            ])
-            panel = visualEffectPanel
-        }
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        panelShadow.addSubview(panel)
-
-        let navigation = NSStackView()
-        navigation.orientation = .vertical
-        navigation.alignment = .leading
-        navigation.spacing = 2
-        dashboardNavigationButtons.removeAll()
-        dashboardNavigationRows.removeAll()
-
-        navigation.addArrangedSubview(makeDashboardNavigationRow(for: .general))
-        navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
-
-        let appearanceLabel = makeDashboardSidebarGroupTitle(tr("外观", "Appearance"))
-        navigation.addArrangedSubview(appearanceLabel)
-        navigation.addArrangedSubview(makeDashboardNavigationRow(for: .menuBar))
-        navigation.addArrangedSubview(makeDashboardNavigationRow(for: .menu))
-        navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
-
-        let systemLabel = makeDashboardSidebarGroupTitle(tr("系统", "System"))
-        navigation.addArrangedSubview(systemLabel)
-        navigation.addArrangedSubview(makeDashboardNavigationRow(for: .advanced))
-        navigation.addArrangedSubview(makeDashboardNavigationRow(for: .about))
-
-        navigation.translatesAutoresizingMaskIntoConstraints = false
-        sidebarContent.addSubview(navigation)
-        let panelInset: CGFloat = 8
-        let navigationTopInset = max(0, titlebarHeight + 14 - panelInset)
-        NSLayoutConstraint.activate([
-            panelShadow.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: panelInset),
-            panelShadow.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: panelInset),
-            panelShadow.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -panelInset),
-            panelShadow.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -panelInset),
-            panel.topAnchor.constraint(equalTo: panelShadow.topAnchor),
-            panel.leadingAnchor.constraint(equalTo: panelShadow.leadingAnchor),
-            panel.trailingAnchor.constraint(equalTo: panelShadow.trailingAnchor),
-            panel.bottomAnchor.constraint(equalTo: panelShadow.bottomAnchor),
-            navigation.topAnchor.constraint(equalTo: sidebarContent.topAnchor, constant: navigationTopInset),
-            navigation.leadingAnchor.constraint(equalTo: sidebarContent.leadingAnchor, constant: 14),
-            navigation.trailingAnchor.constraint(equalTo: sidebarContent.trailingAnchor, constant: -14)
-        ])
-        return sidebar
-    }
-
-    private func makeDashboardSidebarGroupTitle(_ title: String) -> NSTextField {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 11, weight: .medium)
-        label.textColor = .tertiaryLabelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.heightAnchor.constraint(equalToConstant: 16).isActive = true
-        return label
-    }
-
-    private func makeDashboardNavigationRow(for section: DashboardSection) -> NSView {
-        let row = DashboardNavigationRowView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.wantsLayer = true
-        row.layer?.cornerRadius = 10
-        row.layer?.backgroundColor = NSColor.clear.cgColor
-        row.widthAnchor.constraint(equalToConstant: 168).isActive = true
-        row.heightAnchor.constraint(equalToConstant: 32).isActive = true
-
-        let button = NSButton(title: "", target: self, action: #selector(selectDashboardSection(_:)))
-        button.setButtonType(.pushOnPushOff)
-        button.isBordered = false
-        button.bezelStyle = .regularSquare
-        button.contentTintColor = .clear
-        button.tag = section.rawValue
-        button.focusRingType = .none
-        button.toolTip = section.title
-        button.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(button)
-        NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            button.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-            button.topAnchor.constraint(equalTo: row.topAnchor),
-            button.bottomAnchor.constraint(equalTo: row.bottomAnchor)
-        ])
-
-        let icon = PassthroughImageView()
-        icon.image = NSImage(systemSymbolName: section.symbolName, accessibilityDescription: section.title)
-        icon.contentTintColor = .labelColor
-        icon.imageScaling = .scaleProportionallyDown
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        let label = PassthroughTextField(labelWithString: section.title)
-        label.font = .systemFont(ofSize: 14, weight: .semibold)
-        label.textColor = .labelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(icon)
-        row.addSubview(label)
-        row.iconView = icon
-        row.titleLabel = label
-        NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
-            icon.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 15),
-            icon.heightAnchor.constraint(equalToConstant: 15),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            label.centerYAnchor.constraint(equalTo: row.centerYAnchor)
-        ])
-        dashboardNavigationButtons[section] = button
-        dashboardNavigationRows[section] = row
-        row.updateAppearance(animated: false)
-        return row
+        dashboardWindowController.rebuild()
     }
 
     private func showDashboardSection(
         _ section: DashboardSection,
         restoringScrollPosition scrollPosition: StatusLinksScrollPosition? = nil
     ) {
-        dashboardSection = section
-        dashboardSelectedProviderID = nil
-        dashboard?.title = section.title
-        dashboardNavigationButtons.forEach {
-            let isCurrent = $0.key == section
-            $0.value.state = isCurrent ? .on : .off
-            $0.value.isBordered = false
-            $0.value.contentTintColor = .clear
-            dashboardNavigationRows[$0.key]?.isSelected = isCurrent
-        }
+        dashboardWindowController.showSection(section)
         rebuildDashboardProviderList()
-        statusLinksScrollAnchorController.stop()
-        statusLinksEditorHostingView?.teardown()
-        statusLinksEditorHostingView = nil
-        dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-
-        let page: NSView
-        switch section {
-        case .general: page = makeGeneralDashboardPage()
-        case .menuBar: page = makeMenuBarDashboardPage()
-        case .menu: page = makeMenuDashboardPage()
-        case .advanced: page = makeAdvancedDashboardPage()
-        case .about: page = makeAboutDashboardPage()
-        }
-        page.frame = dashboardContentHost.bounds
-            page.autoresizingMask = [.width, .height]
-        dashboardContentHost.addSubview(page)
-        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
 
         if let scrollPosition {
             // The new document view needs one layout pass before its maximum
@@ -1963,22 +1594,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     }
 
     private func showDashboardProvider(_ providerID: String) {
-        guard let choice = ccSwitchRepository.loadChoices(appType: activeClient.appType)
-            .first(where: { $0.id == providerID }) else { return }
-        dashboardSelectedProviderID = providerID
-        dashboard?.title = choice.name
-        dashboardNavigationButtons.values.forEach {
-            $0.state = .off
-            $0.isBordered = false
-            $0.contentTintColor = .labelColor
-        }
+        dashboardWindowController.showProvider(providerID)
         rebuildDashboardProviderList()
-        dashboardContentHost.subviews.forEach { $0.removeFromSuperview() }
-        let page = makeProviderDashboardPage(choice)
-        page.frame = dashboardContentHost.bounds
-        page.autoresizingMask = [.width, .height]
-        dashboardContentHost.addSubview(page)
-        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
     private func makeSettingsPage(_ sections: [NSView]) -> NSView {
@@ -2039,6 +1656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     private func makeSettingsSection(
         _ title: String,
         rows: [NSView],
+        separatorIndices: Set<Int>? = nil,
         onLayoutCreated: ((NSStackView, NSLayoutConstraint, [NSView]) -> Void)? = nil
     ) -> NSView {
         let heading = NSTextField(labelWithString: title)
@@ -2084,7 +1702,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         for (index, row) in rows.enumerated() {
             rowsStack.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
-            if index < rows.count - 1 {
+            let hasFollowingRow = index < rows.count - 1
+            let shouldInsertSeparator = hasFollowingRow && (separatorIndices?.contains(index) ?? true)
+            if shouldInsertSeparator {
                 let separator = NSBox()
                 separator.boxType = .separator
                 separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
@@ -2112,7 +1732,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             }
             return partial + max(1, explicitHeight ?? fittingHeight)
         }
-        let separatorHeight = CGFloat(max(0, visibleRows.count - 1))
+        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count)
         let cardHeightConstraint = card.heightAnchor.constraint(
             equalToConstant: max(1, ceil(rowsHeight + separatorHeight))
         )
@@ -2331,7 +1951,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         return makeSettingsPage([system, refreshing, app])
     }
 
-    private func makeStatusLinksEditor() -> NSView {
+    private func makeStatusLinksEditor() -> StatusLinksEditorHostingView {
         let editor = StatusLinksEditorHostingView(
             links: statusLinks,
             onChange: { [weak self] index, field, value in
@@ -2349,6 +1969,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         )
         statusLinksEditorHostingView = editor
         return editor
+    }
+
+    private func updateDashboardStatusMenuVisibility(animated: Bool) {
+        dashboardStatusMenuSubtitleLabel?.stringValue = showStatusMenu
+            ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
+            : tr("在菜单栏中显示状态链接", "Show status links in the menu bar")
+        if !showStatusMenu {
+            statusLinksScrollAnchorController.stop()
+        }
+        statusLinksEditorHostingView?.setVisible(showStatusMenu, animated: animated)
+        statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
     private func makeMenuDashboardPage() -> NSView {
@@ -2398,21 +2029,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
                 control: openCC
             )
         ]
-        if showStatusMenu {
-            projectRows.append(makeSettingsRow(
-                tr("查看状态", "View Status"),
-                subtitle: tr("显示可自定义的服务状态链接", "Show customizable service status links"),
-                control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
-            ))
-            projectRows.append(makeStatusLinksEditor())
-        } else {
-            projectRows.append(makeSettingsRow(
-                tr("查看状态", "View Status"),
-                subtitle: tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
-                control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
-            ))
-        }
-        let projects = makeSettingsSection(tr("打开项目", "Open Project"), rows: projectRows)
+        let statusSubtitle = NSTextField(wrappingLabelWithString: showStatusMenu
+            ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
+            : tr("在菜单栏中显示状态链接", "Show status links in the menu bar")
+        )
+        dashboardStatusMenuSubtitleLabel = statusSubtitle
+        projectRows.append(makeSettingsRow(
+            tr("查看状态", "View Status"),
+            subtitle: showStatusMenu
+                ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
+                : tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
+            subtitleLabel: statusSubtitle,
+            control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
+        ))
+        // Keep one editor instance in the page for both states so toggling
+        // animates its height in place instead of rebuilding the whole page.
+        // The stored links remain untouched while hidden.
+        let editor = makeStatusLinksEditor()
+        editor.setVisible(showStatusMenu, animated: false)
+        projectRows.append(editor)
+        let projects = makeSettingsSection(
+            tr("打开项目", "Open Project"),
+            rows: projectRows,
+            // Keep the Status Links editor visually attached to the View
+            // Status row so toggling never has to detach/reattach a separator.
+            separatorIndices: [0, 1, 2]
+        )
         return makeSettingsPage([items, projects])
     }
 
@@ -2771,7 +2413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     private func makeMenuBarDashboardPage() -> NSView {
         let previewContent = NSView()
         let preview: NSView
-        if let glassPreview = makeGlassEffectView(contentView: previewContent, cornerRadius: 7) {
+        if let glassPreview = makeDashboardGlassEffectView(contentView: previewContent, cornerRadius: 7) {
             preview = glassPreview
         } else {
             let visualEffectPreview = NSVisualEffectView()
