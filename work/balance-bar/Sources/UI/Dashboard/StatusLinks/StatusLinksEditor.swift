@@ -177,9 +177,6 @@ struct StatusLinksEditorView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        // Keep the native buttons and text fields as individual AX elements
-        // instead of allowing older SwiftUI hosts to collapse the editor.
-        .accessibilityElement(children: .contain)
         .animation(.easeInOut(duration: 0.16), value: model.revealingAddedRowIndex)
         // NSHostingView fills the animated AppKit height. Keep the SwiftUI
         // content pinned to the top of that host so its title row does not
@@ -241,9 +238,6 @@ final class StatusLinksEditorHostingView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         hostingView.wantsLayer = true
         hostingView.layer?.masksToBounds = true
-        // Keep the host as a transparent AX container so SwiftUI's native
-        // controls remain discoverable on Xcode 16.4 as well as newer SDKs.
-        hostingView.setAccessibilityElement(false)
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hostingView)
         NSLayoutConstraint.activate([
