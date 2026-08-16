@@ -176,6 +176,10 @@ struct StatusLinksEditorView: View {
                 }
                 .frame(height: 35)
                 .opacity(model.revealingAddedRowIndex == index ? 0 : 1)
+                .animation(
+                    .easeInOut(duration: 0.16),
+                    value: model.revealingAddedRowIndex == index
+                )
             }
 
             if model.reservesAddedRowSlot {
@@ -196,7 +200,6 @@ struct StatusLinksEditorView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .animation(.easeInOut(duration: 0.16), value: model.revealingAddedRowIndex)
         // NSHostingView fills the animated AppKit height. Keep the SwiftUI
         // content pinned to the top of that host so its title row does not
         // recenter for a frame while the row count changes.
@@ -224,6 +227,9 @@ final class StatusLinksEditorHostingView: NSView {
     var renderedRowCount: Int { model.links.count }
     var hasReservedAddedRowSlot: Bool { model.reservesAddedRowSlot }
     var isAddInFlight: Bool { model.isAddInFlight }
+    var hostedContentTopInset: CGFloat {
+        bounds.maxY - convert(hostingView.bounds, from: hostingView).maxY
+    }
 
     /// The hosted SwiftUI hierarchy is always bounded by this view before it
     /// becomes visible. This makes the reveal independent of stack layout

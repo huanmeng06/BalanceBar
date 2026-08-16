@@ -2,6 +2,10 @@ import AppKit
 import XCTest
 @testable import BalanceBar
 
+private final class StatusLinksFlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 @MainActor
 final class StatusLinksTests: XCTestCase {
     func testEditorModelDeliversEditAddRemoveAndResetCallbacks() {
@@ -253,6 +257,117 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
         XCTAssertEqual(editor.subviews.count, 1)
         XCTAssertTrue(editor.subviews.first === hostingView)
+    }
+
+    func testAddedRowKeepsCardEditorAndViewportAnchorsFixedDuringInsertion() {
+        let initialLinks = [StatusLink(title: "One", url: "https://one.example")]
+        let addedLinks = initialLinks + [StatusLink(title: "Two", url: "https://two.example")]
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 280),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let page = StatusLinksFlippedView()
+        let scrollView = NSScrollView()
+        let documentView = StatusLinksFlippedView(frame: NSRect(x: 0, y: 0, width: 480, height: 900))
+        let card = StatusLinksFlippedView()
+        let rowsStack = NSStackView()
+        let viewStatusRow = NSView()
+        let editor = StatusLinksEditorHostingView(
+            links: initialLinks,
+            onChange: { _, _, _ in },
+            onAdd: { },
+            onRemove: { _ in },
+            onReset: { }
+        )
+
+        page.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        card.translatesAutoresizingMaskIntoConstraints = false
+        rowsStack.translatesAutoresizingMaskIntoConstraints = false
+        viewStatusRow.translatesAutoresizingMaskIntoConstraints = false
+        viewStatusRow.heightAnchor.constraint(equalToConstant: 62).isActive = true
+        rowsStack.orientation = .vertical
+        rowsStack.alignment = .leading
+        rowsStack.distribution = .fill
+        rowsStack.spacing = 0
+
+        window.contentView = page
+        page.addSubview(scrollView)
+        scrollView.documentView = documentView
+        documentView.addSubview(card)
+        card.addSubview(rowsStack)
+        rowsStack.addArrangedSubview(viewStatusRow)
+        rowsStack.addArrangedSubview(editor)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: page.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: page.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: page.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: page.bottomAnchor),
+            card.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 20),
+            card.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 180),
+            card.widthAnchor.constraint(equalToConstant: 440),
+            card.heightAnchor.constraint(equalToConstant: 62 + editor.layoutHeight),
+            rowsStack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            rowsStack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            rowsStack.topAnchor.constraint(equalTo: card.topAnchor),
+            rowsStack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            viewStatusRow.widthAnchor.constraint(equalTo: rowsStack.widthAnchor),
+            editor.widthAnchor.constraint(equalTo: rowsStack.widthAnchor)
+        ])
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        defer { window.orderOut(nil) }
+
+        scrollView.contentView.bounds.origin.y = 100
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        let controller = StatusLinksScrollAnchorController(
+            dashboardProvider: { window },
+            contentHostProvider: { page },
+            sectionTitleProvider: { "Menu" },
+            linksCountProvider: { addedLinks.count }
+        )
+        let position = controller.capture(captureLabel: "before add", operation: "add")
+        let initialCardTop = card.convert(
+            NSPoint(x: card.bounds.minX, y: card.bounds.minY),
+            to: scrollView.contentView
+        ).y
+        let initialEditorTop = editor.convert(
+            NSPoint(x: editor.bounds.minX, y: editor.bounds.maxY),
+            to: scrollView.contentView
+        ).y
+        let initialViewportOffset = scrollView.contentView.bounds.origin.y
+
+        XCTAssertTrue(controller.refreshEditorInPlace(
+            links: addedLinks,
+            scrollPosition: position,
+            operation: "add"
+        ))
+
+        let deadline = Date().addingTimeInterval(0.3)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            window.layoutIfNeeded()
+            let cardTop = card.convert(
+                NSPoint(x: card.bounds.minX, y: card.bounds.minY),
+                to: scrollView.contentView
+            ).y
+            let editorTop = editor.convert(
+                NSPoint(x: editor.bounds.minX, y: editor.bounds.maxY),
+                to: scrollView.contentView
+            ).y
+            XCTAssertEqual(cardTop, initialCardTop, accuracy: 0.5)
+            XCTAssertEqual(editorTop, initialEditorTop, accuracy: 0.5)
+            XCTAssertEqual(scrollView.contentView.bounds.origin.y, initialViewportOffset, accuracy: 0.5)
+            XCTAssertEqual(editor.hostedContentTopInset, 0, accuracy: 0.5)
+        }
+
+        XCTAssertEqual(editor.rowCount, 2)
+        XCTAssertEqual(editor.renderedRowCount, 2)
+        XCTAssertFalse(editor.hasReservedAddedRowSlot)
+        XCTAssertEqual(card.frame.height, 62 + editor.layoutHeight, accuracy: 0.5)
+        XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
     }
 
     func testScrollAnchorPreservesDistanceFromBottomAndRigidBounds() {

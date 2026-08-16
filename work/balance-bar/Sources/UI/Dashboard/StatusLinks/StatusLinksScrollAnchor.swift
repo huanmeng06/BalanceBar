@@ -127,7 +127,7 @@ final class StatusLinksScrollAnchorController {
             "in-place status-link refresh started; action=\(operation); old_rows=\(editor.rowCount); new_rows=\(links.count); editor_frame=\(DashboardLogging.rect(editor.frame))",
             category: "ui.layout"
         )
-        if let scrollPosition {
+        if let scrollPosition, operation != "add" {
             startMaintenance(scrollPosition, operation: operation)
         } else {
             stop()
@@ -147,12 +147,11 @@ final class StatusLinksScrollAnchorController {
                 category: "ui.layout"
             )
             editor.logGeometry(label: "after \(operation) animation")
-            if let scrollPosition {
+            if let scrollPosition, operation != "add" {
                 self.restore(scrollPosition, attempt: 0)
             } else {
                 SwitchLog.write(
-                    "in-place status-link refresh has no scroll position; action=\(operation)",
-                    level: .warning,
+                    "in-place status-link refresh preserves viewport offset; action=\(operation)",
                     category: "ui.scroll"
                 )
             }
@@ -166,7 +165,7 @@ final class StatusLinksScrollAnchorController {
         // the clip view once more before returning to the run loop so the
         // first layout pass cannot expose a one-frame jump before the timer
         // gets its first tick.
-        if let scrollPosition {
+        if let scrollPosition, operation != "add" {
             maintain(scrollPosition)
         }
         // Capture one state during the transition so the log distinguishes a
