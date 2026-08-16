@@ -6,6 +6,22 @@ enum StatusLinkField: Equatable {
     case url
 }
 
+/// An inert AppKit marker gives regression tests the frame of the actual
+/// SwiftUI title/header content without adding another hosting view.
+private struct StatusLinksGeometryAnchor: NSViewRepresentable {
+    let identifier: NSUserInterfaceItemIdentifier
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        view.identifier = identifier
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.identifier = identifier
+    }
+}
+
 /// A native SwiftUI text field kept at its natural single-line height and
 /// centered by the fixed-height outer container. The system rounded-border
 /// style owns the background, border, focus ring, and appearance adaptation.
@@ -129,6 +145,7 @@ struct StatusLinksEditorView: View {
                     .accessibilityIdentifier("statusLinks.reset")
             }
             .frame(height: 24)
+            .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor")))
 
             HStack(spacing: 8) {
                 Text(tr("名称", "Name"))
@@ -140,6 +157,7 @@ struct StatusLinksEditorView: View {
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(.tertiary)
             .frame(height: 20, alignment: .center)
+            .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor")))
 
             ForEach(model.links.indices, id: \.self) { index in
                 HStack(spacing: 8) {
@@ -197,12 +215,14 @@ struct StatusLinksEditorView: View {
             .frame(width: 32, height: 28, alignment: .leading)
             .disabled(model.isAddInFlight)
             .accessibilityIdentifier("statusLinks.add")
+
+            // Consume only surplus host height below the controls. This pins
+            // title, headers, and existing rows to the visual top while the
+            // outer AppKit reveal interpolates its height.
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        // NSHostingView fills the animated AppKit height. Keep the SwiftUI
-        // content pinned to the top of that host so its title row does not
-        // recenter for a frame while the row count changes.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -213,6 +233,7 @@ final class StatusLinksEditorHostingView: NSView {
     private let model: StatusLinksEditorModel
     private let hostingView: NSHostingView<StatusLinksEditorView>
     private var heightConstraint: NSLayoutConstraint?
+    private var hostingHeightConstraint: NSLayoutConstraint?
     private var links: [StatusLink]
     private var visibilityGeneration = 0
     private var linkUpdateGeneration = 0
@@ -229,6 +250,19 @@ final class StatusLinksEditorHostingView: NSView {
     var isAddInFlight: Bool { model.isAddInFlight }
     var hostedContentTopInset: CGFloat {
         bounds.maxY - convert(hostingView.bounds, from: hostingView).maxY
+    }
+
+    func viewportAnchorY(
+        identifier: NSUserInterfaceItemIdentifier,
+        in viewport: NSView
+    ) -> CGFloat? {
+        guard let anchor = findDescendant(with: identifier, in: hostingView) else {
+            return nil
+        }
+        return anchor.convert(
+            NSPoint(x: anchor.bounds.minX, y: anchor.bounds.maxY),
+            to: viewport
+        ).y
     }
 
     /// The hosted SwiftUI hierarchy is always bounded by this view before it
@@ -258,6 +292,10 @@ final class StatusLinksEditorHostingView: NSView {
         self.hostingView = NSHostingView(
             rootView: StatusLinksEditorView(model: model)
         )
+        // The surrounding constraints own the host size throughout the row
+        // reveal. Do not let NSHostingView negotiate an intrinsic size while
+        // that height is interpolating, which can recenter the SwiftUI root.
+        self.hostingView.sizingOptions = []
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = true
@@ -270,9 +308,13 @@ final class StatusLinksEditorHostingView: NSView {
         NSLayoutConstraint.activate([
             hostingView.leadingAnchor.constraint(equalTo: leadingAnchor),
             hostingView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hostingView.topAnchor.constraint(equalTo: topAnchor),
-            hostingView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            hostingView.topAnchor.constraint(equalTo: topAnchor)
         ])
+        let hostingHeightConstraint = hostingView.heightAnchor.constraint(
+            equalToConstant: layoutHeight
+        )
+        hostingHeightConstraint.isActive = true
+        self.hostingHeightConstraint = hostingHeightConstraint
         let heightConstraint = heightAnchor.constraint(equalToConstant: layoutHeight)
         heightConstraint.isActive = true
         self.heightConstraint = heightConstraint
@@ -284,6 +326,19 @@ final class StatusLinksEditorHostingView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func findDescendant(
+        with identifier: NSUserInterfaceItemIdentifier,
+        in view: NSView
+    ) -> NSView? {
+        if view.identifier == identifier { return view }
+        for child in view.subviews {
+            if let match = findDescendant(with: identifier, in: child) {
+                return match
+            }
+        }
+        return nil
+    }
 
     func updateLinks(
         _ newLinks: [StatusLink],
@@ -304,7 +359,10 @@ final class StatusLinksEditorHostingView: NSView {
         // geometry in reverse by expanding an empty 35pt slot first and only
         // revealing the new SwiftUI row once the expansion has settled.
         if deferAddedRows {
-            model.reserveAddedRowSlot()
+            // The outer AppKit editor supplies the expanding 35pt slot. Keep
+            // the sole SwiftUI host on its old rows until that expansion has
+            // settled so changing its intrinsic content cannot displace the
+            // title/header mid-animation.
         } else {
             model.cancelAddInsertion()
             model.links = newLinks
@@ -314,6 +372,10 @@ final class StatusLinksEditorHostingView: NSView {
             guard self.linkUpdateGeneration == updateGeneration else { return }
             self.heightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
+            // Keep the hosted old rows at their fixed top-aligned height
+            // during the empty-slot expansion. Once the outer reveal reaches
+            // its final size, grow this sole host and reveal the new row.
+            self.hostingHeightConstraint?.constant = targetHeight
             self.needsLayout = true
             self.superview?.needsLayout = true
             if deferAddedRows {
@@ -346,6 +408,7 @@ final class StatusLinksEditorHostingView: NSView {
         let applyLayout = { [weak self] in
             guard let self else { return }
             self.heightConstraint?.constant = targetHeight
+            self.hostingHeightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
             self.needsLayout = true
             self.superview?.needsLayout = true
@@ -386,6 +449,8 @@ final class StatusLinksEditorHostingView: NSView {
         isTornDown = true
         heightConstraint?.isActive = false
         heightConstraint = nil
+        hostingHeightConstraint?.isActive = false
+        hostingHeightConstraint = nil
         hostingView.removeFromSuperview()
     }
 

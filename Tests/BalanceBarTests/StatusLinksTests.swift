@@ -175,7 +175,7 @@ final class StatusLinksTests: XCTestCase {
 
         XCTAssertEqual(editor.rowCount, 2)
         XCTAssertEqual(editor.renderedRowCount, 1)
-        XCTAssertTrue(editor.hasReservedAddedRowSlot)
+        XCTAssertFalse(editor.hasReservedAddedRowSlot)
         XCTAssertTrue(editor.subviews.first === hostingView)
 
         waitForAnimation {
@@ -238,15 +238,15 @@ final class StatusLinksTests: XCTestCase {
         editor.updateLinks(second, animated: true, revealAddedRowsAtCompletion: true)
         XCTAssertEqual(editor.rowCount, 2)
         XCTAssertEqual(editor.renderedRowCount, 1)
-        XCTAssertTrue(editor.hasReservedAddedRowSlot)
+        XCTAssertFalse(editor.hasReservedAddedRowSlot)
         XCTAssertTrue(editor.subviews.first === hostingView)
 
         // A second update supersedes the first completion. It must not reveal
-        // an intermediate row or create a second reserved slot.
+        // an intermediate row or create a second expanding slot.
         editor.updateLinks(third, animated: true, revealAddedRowsAtCompletion: true)
         XCTAssertEqual(editor.rowCount, 3)
         XCTAssertEqual(editor.renderedRowCount, 1)
-        XCTAssertTrue(editor.hasReservedAddedRowSlot)
+        XCTAssertFalse(editor.hasReservedAddedRowSlot)
         XCTAssertTrue(editor.subviews.first === hostingView)
 
         waitForAnimation {

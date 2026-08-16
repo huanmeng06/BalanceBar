@@ -199,6 +199,128 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testProductionMenuAddKeepsVisibleStatusLinksAnchorsFixedAtDocumentBottom() throws {
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: "showStatusMenu")
+        let previousLinks = defaults.object(forKey: "statusLinks")
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: "showStatusMenu")
+            } else {
+                defaults.removeObject(forKey: "showStatusMenu")
+            }
+            if let previousLinks {
+                defaults.set(previousLinks, forKey: "statusLinks")
+            } else {
+                defaults.removeObject(forKey: "statusLinks")
+            }
+        }
+
+        defaults.set(true, forKey: "showStatusMenu")
+        defaults.set([
+            ["title": "One", "url": "https://one.example"],
+            ["title": "Two", "url": "https://two.example"]
+        ], forKey: "statusLinks")
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-add-anchor.db"))
+        )
+        defer { appDelegate.teardownDashboardForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        window.setContentSize(NSSize(width: 800, height: 540))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let page = try XCTUnwrap(menuPage(in: window))
+        layoutDescendants(of: page)
+        let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
+        let documentView = try XCTUnwrap(scrollView.documentView)
+        let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
+        let card = try XCTUnwrap(ancestors(of: editor).first { $0.layer?.cornerRadius == 18 })
+
+        let geometry = DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        XCTAssertGreaterThan(geometry.maximumOffset, 0)
+        let bottomRect = geometry.visibleDocumentRect(
+            forVisualOffset: max(0, geometry.maximumOffset - 1)
+        )
+        let documentY = geometry.contentOriginDocumentY(
+            for: bottomRect,
+            contentViewIsFlipped: scrollView.contentView.isFlipped
+        )
+        let contentOriginY = documentView.convert(
+            NSPoint(x: documentView.bounds.minX, y: documentY),
+            to: scrollView.contentView
+        ).y
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: contentOriginY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        func visibleOffset() -> CGFloat {
+            let current = DashboardScrollGeometry(
+                documentBounds: documentView.bounds,
+                viewportHeight: scrollView.contentView.bounds.height,
+                isDocumentFlipped: documentView.isFlipped
+            )
+            return current.clampedVisualOffset(for: scrollView.contentView.convert(
+                scrollView.contentView.bounds,
+                to: documentView
+            ))
+        }
+        func cardTop() -> CGFloat {
+            let y = card.isFlipped ? card.bounds.minY : card.bounds.maxY
+            return card.convert(NSPoint(x: card.bounds.minX, y: y), to: scrollView.contentView).y
+        }
+
+        let initialOffset = visibleOffset()
+        let initialTitleY = try XCTUnwrap(editor.viewportAnchorY(
+            identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor"),
+            in: scrollView.contentView
+        ))
+        let initialHeaderY = try XCTUnwrap(editor.viewportAnchorY(
+            identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor"),
+            in: scrollView.contentView
+        ))
+        let initialCardTop = cardTop()
+        let initialEditorTop = editor.convert(
+            NSPoint(x: editor.bounds.minX, y: editor.isFlipped ? editor.bounds.minY : editor.bounds.maxY),
+            to: scrollView.contentView
+        ).y
+        let initialDocumentHeight = documentView.bounds.height
+
+        appDelegate.addStatusLinkForTesting()
+
+        let deadline = Date().addingTimeInterval(0.34)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.016))
+            window.layoutIfNeeded()
+            window.displayIfNeeded()
+            XCTAssertEqual(visibleOffset(), initialOffset, accuracy: 0.5)
+            XCTAssertEqual(cardTop(), initialCardTop, accuracy: 0.5)
+            XCTAssertEqual(
+                editor.convert(
+                    NSPoint(x: editor.bounds.minX, y: editor.isFlipped ? editor.bounds.minY : editor.bounds.maxY),
+                    to: scrollView.contentView
+                ).y,
+                initialEditorTop,
+                accuracy: 0.5
+            )
+            XCTAssertEqual(try XCTUnwrap(editor.viewportAnchorY(
+                identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor"),
+                in: scrollView.contentView
+            )), initialTitleY, accuracy: 0.5)
+            XCTAssertEqual(try XCTUnwrap(editor.viewportAnchorY(
+                identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor"),
+                in: scrollView.contentView
+            )), initialHeaderY, accuracy: 0.5)
+        }
+
+        XCTAssertEqual(editor.rowCount, 3)
+        XCTAssertEqual(editor.renderedRowCount, 3)
+        XCTAssertGreaterThan(documentView.bounds.height, initialDocumentHeight)
+        XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
+    }
+
     func testStatusMenuToggleUpdatesDashboardImmediatelyAndPreservesConfiguredLinks() throws {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")

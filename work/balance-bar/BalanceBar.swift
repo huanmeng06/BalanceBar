@@ -1507,6 +1507,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         return dashboardWindowController.window
     }
 
+    func addStatusLinkForTesting() {
+        addStatusLink()
+    }
+
     func teardownDashboardForTesting() {
         dashboardWindowController.teardown()
     }

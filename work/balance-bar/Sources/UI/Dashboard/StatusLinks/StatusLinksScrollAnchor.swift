@@ -127,7 +127,7 @@ final class StatusLinksScrollAnchorController {
             "in-place status-link refresh started; action=\(operation); old_rows=\(editor.rowCount); new_rows=\(links.count); editor_frame=\(DashboardLogging.rect(editor.frame))",
             category: "ui.layout"
         )
-        if let scrollPosition, operation != "add" {
+        if let scrollPosition {
             startMaintenance(scrollPosition, operation: operation)
         } else {
             stop()
@@ -147,13 +147,10 @@ final class StatusLinksScrollAnchorController {
                 category: "ui.layout"
             )
             editor.logGeometry(label: "after \(operation) animation")
-            if let scrollPosition, operation != "add" {
+            if let scrollPosition {
                 self.restore(scrollPosition, attempt: 0)
             } else {
-                SwitchLog.write(
-                    "in-place status-link refresh preserves viewport offset; action=\(operation)",
-                    category: "ui.scroll"
-                )
+                self.clampDashboardScrollViewBounds()
             }
             self.scheduleScrollLog(label: "after \(operation) animation")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -165,7 +162,7 @@ final class StatusLinksScrollAnchorController {
         // the clip view once more before returning to the run loop so the
         // first layout pass cannot expose a one-frame jump before the timer
         // gets its first tick.
-        if let scrollPosition, operation != "add" {
+        if let scrollPosition {
             maintain(scrollPosition)
         }
         // Capture one state during the transition so the log distinguishes a
@@ -363,7 +360,11 @@ final class StatusLinksScrollAnchorController {
             return
         }
 
-        if let anchorView = position.bottomAnchorView?.view,
+        // Growing at the bottom must retain the exact document offset that
+        // was visible before the add. A card-bottom anchor instead follows
+        // the growing edge and visibly moves the title/header upward.
+        if position.operation != "add",
+           let anchorView = position.bottomAnchorView?.view,
            let targetViewportY = position.bottomAnchorViewportY,
            anchorView === page || anchorView.isDescendant(of: page) {
             let currentViewportY = anchorView.convert(
@@ -457,7 +458,8 @@ final class StatusLinksScrollAnchorController {
             return
         }
 
-        if let anchorView = position.bottomAnchorView?.view,
+        if position.operation != "add",
+           let anchorView = position.bottomAnchorView?.view,
            let targetViewportY = position.bottomAnchorViewportY,
            anchorView === page || anchorView.isDescendant(of: page) {
             let currentViewportY = anchorView.convert(
