@@ -16,9 +16,12 @@ struct StatusLinksScrollPosition {
     let previousMaximumOffset: CGFloat
     let bottomAnchorView: StatusLinksWeakViewReference?
     let bottomAnchorViewportY: CGFloat?
+    let capturedAt: Date
 }
 
 enum StatusLinksScrollAnchor {
+    static let addAnimationDuration: TimeInterval = 0.20
+
     static func visualOffsetPreservingDistanceFromBottom(
         _ distanceFromBottom: CGFloat,
         geometry: DashboardScrollGeometry
@@ -35,6 +38,18 @@ enum StatusLinksScrollAnchor {
     ) -> Bool {
         viewportY >= bounds.minY - tolerance
             && viewportY <= bounds.maxY + tolerance
+    }
+
+    static func visualOffsetFollowingAddToBottom(
+        _ position: StatusLinksScrollPosition,
+        geometry: DashboardScrollGeometry,
+        now: Date = Date()
+    ) -> CGFloat {
+        let elapsed = max(0, now.timeIntervalSince(position.capturedAt))
+        let progress = min(1, elapsed / addAnimationDuration)
+        let target = position.visibleDocumentOffset
+            + (geometry.maximumOffset - position.visibleDocumentOffset) * progress
+        return geometry.clampedVisualOffset(target)
     }
 }
 
@@ -255,7 +270,8 @@ final class StatusLinksScrollAnchorController {
             bottomAnchorView: activeBottomAnchor.map {
                 StatusLinksWeakViewReference($0.view)
             },
-            bottomAnchorViewportY: activeBottomAnchor?.viewportY
+            bottomAnchorViewportY: activeBottomAnchor?.viewportY,
+            capturedAt: Date()
         )
         SwitchLog.write(
             "scroll position captured; label=\(captureLabel); action=\(operation); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView)); visibleDocumentOffset=\(DashboardLogging.number(visibleDocumentOffset)); contentOriginY=\(DashboardLogging.number(position.contentOriginY)); distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom)); previousMaximumOffset=\(DashboardLogging.number(geometry.maximumOffset)); bottom_anchor=\(activeBottomAnchor.map { DashboardLogging.number($0.viewportY) } ?? "inactive")",
@@ -331,6 +347,28 @@ final class StatusLinksScrollAnchorController {
         scrollView.layoutSubtreeIfNeeded()
 
         let contentView = scrollView.contentView
+        if position.operation == "add" {
+            let geometry = dashboardScrollGeometry(
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            let targetVisualOffset = StatusLinksScrollAnchor
+                .visualOffsetFollowingAddToBottom(position, geometry: geometry)
+            let targetContentOriginY = dashboardScrollContentOrigin(
+                scrollView: scrollView,
+                documentView: documentView,
+                visualOffset: targetVisualOffset
+            )
+            var bounds = contentView.bounds
+            guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
+            bounds.origin.y = targetContentOriginY
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            return
+        }
         // A removal shrinks the document from the bottom. Restore the clip
         // view through the shared visual-offset clamp so the new document
         // range, rather than the old coordinate origin, decides the result.
@@ -360,11 +398,7 @@ final class StatusLinksScrollAnchorController {
             return
         }
 
-        // Growing at the bottom must retain the exact document offset that
-        // was visible before the add. A card-bottom anchor instead follows
-        // the growing edge and visibly moves the title/header upward.
-        if position.operation != "add",
-           let anchorView = position.bottomAnchorView?.view,
+        if let anchorView = position.bottomAnchorView?.view,
            let targetViewportY = position.bottomAnchorViewportY,
            anchorView === page || anchorView.isDescendant(of: page) {
             let currentViewportY = anchorView.convert(
@@ -425,6 +459,29 @@ final class StatusLinksScrollAnchorController {
         contentHostProvider()?.layoutSubtreeIfNeeded()
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
+        if position.operation == "add" {
+            let geometry = dashboardScrollGeometry(
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            let targetContentOriginY = dashboardScrollContentOrigin(
+                scrollView: scrollView,
+                documentView: documentView,
+                visualOffset: geometry.maximumOffset
+            )
+            var bounds = scrollView.contentView.bounds
+            bounds.origin.y = targetContentOriginY
+            setDashboardScrollBounds(
+                bounds,
+                scrollView: scrollView,
+                documentView: documentView
+            )
+            SwitchLog.write(
+                "scroll restore applied; action=add; anchor=document-bottom; actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
+                category: "ui.scroll"
+            )
+            return
+        }
         if position.operation != "add" {
             let geometry = dashboardScrollGeometry(
                 scrollView: scrollView,
@@ -458,8 +515,7 @@ final class StatusLinksScrollAnchorController {
             return
         }
 
-        if position.operation != "add",
-           let anchorView = position.bottomAnchorView?.view,
+        if let anchorView = position.bottomAnchorView?.view,
            let targetViewportY = position.bottomAnchorViewportY,
            anchorView === page || anchorView.isDescendant(of: page) {
             let currentViewportY = anchorView.convert(

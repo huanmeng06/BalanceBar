@@ -199,7 +199,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
-    func testProductionMenuAddKeepsVisibleStatusLinksAnchorsFixedAtDocumentBottom() throws {
+    func testProductionMenuAddSmoothlyFollowsStatusLinksToDocumentBottom() throws {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")
         let previousLinks = defaults.object(forKey: "statusLinks")
@@ -277,16 +277,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor"),
             in: scrollView.contentView
         ))
-        let initialHeaderY = try XCTUnwrap(editor.viewportAnchorY(
-            identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor"),
-            in: scrollView.contentView
-        ))
-        let initialCardTop = cardTop()
-        let initialEditorTop = editor.convert(
-            NSPoint(x: editor.bounds.minX, y: editor.isFlipped ? editor.bounds.minY : editor.bounds.maxY),
-            to: scrollView.contentView
-        ).y
         let initialDocumentHeight = documentView.bounds.height
+        var sampledOffsets: [CGFloat] = [initialOffset]
+        var sampledTitleY: [CGFloat] = [initialTitleY]
+        var sampledCardTop: [CGFloat] = [cardTop()]
 
         appDelegate.addStatusLinkForTesting()
 
@@ -295,30 +289,35 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.016))
             window.layoutIfNeeded()
             window.displayIfNeeded()
-            XCTAssertEqual(visibleOffset(), initialOffset, accuracy: 0.5)
-            XCTAssertEqual(cardTop(), initialCardTop, accuracy: 0.5)
-            XCTAssertEqual(
-                editor.convert(
-                    NSPoint(x: editor.bounds.minX, y: editor.isFlipped ? editor.bounds.minY : editor.bounds.maxY),
-                    to: scrollView.contentView
-                ).y,
-                initialEditorTop,
-                accuracy: 0.5
-            )
-            XCTAssertEqual(try XCTUnwrap(editor.viewportAnchorY(
+            sampledOffsets.append(visibleOffset())
+            sampledCardTop.append(cardTop())
+            sampledTitleY.append(try XCTUnwrap(editor.viewportAnchorY(
                 identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor"),
                 in: scrollView.contentView
-            )), initialTitleY, accuracy: 0.5)
-            XCTAssertEqual(try XCTUnwrap(editor.viewportAnchorY(
-                identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor"),
-                in: scrollView.contentView
-            )), initialHeaderY, accuracy: 0.5)
+            )))
         }
 
         XCTAssertEqual(editor.rowCount, 3)
         XCTAssertEqual(editor.renderedRowCount, 3)
         XCTAssertGreaterThan(documentView.bounds.height, initialDocumentHeight)
         XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
+        let finalGeometry = DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: scrollView.contentView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        XCTAssertEqual(visibleOffset(), finalGeometry.maximumOffset, accuracy: 0.5)
+        XCTAssertGreaterThan(visibleOffset(), initialOffset + 20)
+        for (previous, current) in zip(sampledOffsets, sampledOffsets.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(current, previous - 0.5)
+            XCTAssertLessThanOrEqual(current - previous, 10)
+        }
+        for (previous, current) in zip(sampledTitleY, sampledTitleY.dropFirst()) {
+            XCTAssertLessThanOrEqual(abs(current - previous), 10)
+        }
+        for (previous, current) in zip(sampledCardTop, sampledCardTop.dropFirst()) {
+            XCTAssertLessThanOrEqual(abs(current - previous), 10)
+        }
     }
 
     func testStatusMenuToggleUpdatesDashboardImmediatelyAndPreservesConfiguredLinks() throws {
