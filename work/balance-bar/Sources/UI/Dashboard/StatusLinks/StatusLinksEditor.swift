@@ -36,10 +36,12 @@ final class StatusLinksEditorModel: ObservableObject {
     @Published var links: [StatusLink]
     @Published var reservesAddedRowSlot = false
     @Published var revealingAddedRowIndex: Int?
+    @Published private(set) var isAddInFlight = false
     let onChange: (Int, StatusLinkField, String) -> Void
     let onAdd: () -> Void
     let onRemove: (Int) -> Void
     let onReset: () -> Void
+    private var revealGeneration = 0
 
     init(
         links: [StatusLink],
@@ -67,6 +69,8 @@ final class StatusLinksEditorModel: ObservableObject {
     }
 
     func add() {
+        guard !isAddInFlight else { return }
+        isAddInFlight = true
         onAdd()
     }
 
@@ -83,13 +87,27 @@ final class StatusLinksEditorModel: ObservableObject {
         reservesAddedRowSlot = true
     }
 
+    func cancelAddInsertion() {
+        revealGeneration &+= 1
+        isAddInFlight = false
+        reservesAddedRowSlot = false
+        revealingAddedRowIndex = nil
+    }
+
     func revealAddedRow(_ newLinks: [StatusLink]) {
+        revealGeneration &+= 1
+        let generation = revealGeneration
         links = newLinks
         reservesAddedRowSlot = false
         revealingAddedRowIndex = newLinks.indices.last
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.revealGeneration == generation else { return }
             withAnimation(.easeInOut(duration: 0.16)) {
                 self.revealingAddedRowIndex = nil
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                guard let self, self.revealGeneration == generation else { return }
+                self.isAddInFlight = false
             }
         }
     }
@@ -173,6 +191,7 @@ struct StatusLinksEditorView: View {
             .buttonStyle(.plain)
             .foregroundStyle(Color(nsColor: .controlAccentColor))
             .frame(width: 32, height: 28, alignment: .leading)
+            .disabled(model.isAddInFlight)
             .accessibilityIdentifier("statusLinks.add")
         }
         .padding(.horizontal, 20)
@@ -193,6 +212,7 @@ final class StatusLinksEditorHostingView: NSView {
     private var heightConstraint: NSLayoutConstraint?
     private var links: [StatusLink]
     private var visibilityGeneration = 0
+    private var linkUpdateGeneration = 0
     private(set) var isTornDown = false
 
     var rowCount: Int { links.count }
@@ -203,6 +223,7 @@ final class StatusLinksEditorHostingView: NSView {
 
     var renderedRowCount: Int { model.links.count }
     var hasReservedAddedRowSlot: Bool { model.reservesAddedRowSlot }
+    var isAddInFlight: Bool { model.isAddInFlight }
 
     /// The hosted SwiftUI hierarchy is always bounded by this view before it
     /// becomes visible. This makes the reveal independent of stack layout
@@ -268,6 +289,8 @@ final class StatusLinksEditorHostingView: NSView {
             completion?()
             return
         }
+        linkUpdateGeneration &+= 1
+        let updateGeneration = linkUpdateGeneration
         let deferAddedRows = revealAddedRowsAtCompletion && newLinks.count > links.count
         links = newLinks
         // Deletion already has the desired motion: the removed row vanishes
@@ -277,10 +300,12 @@ final class StatusLinksEditorHostingView: NSView {
         if deferAddedRows {
             model.reserveAddedRowSlot()
         } else {
+            model.cancelAddInsertion()
             model.links = newLinks
         }
         let targetHeight = layoutHeight
         let applyHeight = {
+            guard self.linkUpdateGeneration == updateGeneration else { return }
             self.heightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
             self.needsLayout = true

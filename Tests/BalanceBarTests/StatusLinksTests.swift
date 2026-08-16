@@ -44,6 +44,36 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(resetCount, 1)
     }
 
+    func testEditorModelGatesRapidAddsUntilRevealSettles() {
+        var addCount = 0
+        let model = StatusLinksEditorModel(
+            links: [StatusLink(title: "One", url: "https://one.example")],
+            onChange: { _, _, _ in },
+            onAdd: { addCount += 1 },
+            onRemove: { _ in },
+            onReset: { }
+        )
+
+        model.add()
+        model.add()
+        model.add()
+
+        XCTAssertEqual(addCount, 1)
+        XCTAssertTrue(model.isAddInFlight)
+
+        model.revealAddedRow([
+            StatusLink(title: "One", url: "https://one.example"),
+            StatusLink(title: "Two", url: "https://two.example")
+        ])
+        XCTAssertFalse(model.reservesAddedRowSlot)
+        XCTAssertEqual(model.links.count, 2)
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertFalse(model.isAddInFlight)
+        model.add()
+        XCTAssertEqual(addCount, 2)
+    }
+
     func testHostingViewTracksRowCountHeightAndIdempotentTeardown() {
         let initialLinks = [
             StatusLink(title: "One", url: "https://one.example"),
@@ -161,6 +191,66 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(editor.rowCount, 1)
         XCTAssertEqual(editor.renderedRowCount, 1)
         XCTAssertTrue(editor.isVisible)
+        XCTAssertEqual(editor.subviews.count, 1)
+        XCTAssertTrue(editor.subviews.first === hostingView)
+    }
+
+    func testRapidAddedRowUpdatesKeepOneReservedSlotAndIgnoreStaleCompletion() {
+        func waitForAnimation(_ condition: @escaping () -> Bool) {
+            let deadline = Date().addingTimeInterval(1)
+            while !condition() && Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            }
+        }
+
+        let first = [StatusLink(title: "One", url: "https://one.example")]
+        let second = first + [StatusLink(title: "Two", url: "https://two.example")]
+        let third = second + [StatusLink(title: "Three", url: "https://three.example")]
+        let editor = StatusLinksEditorHostingView(
+            links: first,
+            onChange: { _, _, _ in },
+            onAdd: { },
+            onRemove: { _ in },
+            onReset: { }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let contentView = NSView()
+        window.contentView = contentView
+        contentView.addSubview(editor)
+        NSLayoutConstraint.activate([
+            editor.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            editor.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            editor.topAnchor.constraint(equalTo: contentView.topAnchor)
+        ])
+        window.layoutIfNeeded()
+        defer { window.orderOut(nil) }
+
+        let hostingView = editor.subviews.first
+        editor.updateLinks(second, animated: true, revealAddedRowsAtCompletion: true)
+        XCTAssertEqual(editor.rowCount, 2)
+        XCTAssertEqual(editor.renderedRowCount, 1)
+        XCTAssertTrue(editor.hasReservedAddedRowSlot)
+        XCTAssertTrue(editor.subviews.first === hostingView)
+
+        // A second update supersedes the first completion. It must not reveal
+        // an intermediate row or create a second reserved slot.
+        editor.updateLinks(third, animated: true, revealAddedRowsAtCompletion: true)
+        XCTAssertEqual(editor.rowCount, 3)
+        XCTAssertEqual(editor.renderedRowCount, 1)
+        XCTAssertTrue(editor.hasReservedAddedRowSlot)
+        XCTAssertTrue(editor.subviews.first === hostingView)
+
+        waitForAnimation {
+            editor.renderedRowCount == 3 && !editor.hasReservedAddedRowSlot
+        }
+        XCTAssertEqual(editor.renderedRowCount, 3)
+        XCTAssertFalse(editor.hasReservedAddedRowSlot)
+        XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
         XCTAssertEqual(editor.subviews.count, 1)
         XCTAssertTrue(editor.subviews.first === hostingView)
     }
