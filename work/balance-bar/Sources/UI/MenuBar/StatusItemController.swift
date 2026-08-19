@@ -35,6 +35,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showQuickSwitchMenu: Bool
         let showOpenChatGPTMenu: Bool
         let showOpenCCSwitchMenu: Bool
+        let showOpenCodexMenu: Bool
         let showStatusMenu: Bool
     }
 
@@ -68,6 +69,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         showQuickSwitchMenu: true,
         showOpenChatGPTMenu: true,
         showOpenCCSwitchMenu: true,
+        showOpenCodexMenu: true,
         showStatusMenu: true
     )
     private var settings = MenuBarSettings(
@@ -623,11 +625,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 keyEquivalent: ""
             ).target = self
         }
-        statusMenu.addItem(
-            withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
-            action: #selector(openOpenCodex),
-            keyEquivalent: ""
-        ).target = self
+        if menuInput.showOpenCodexMenu {
+            statusMenu.addItem(
+                withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
+                action: #selector(openOpenCodex),
+                keyEquivalent: ""
+            ).target = self
+        }
         if menuInput.showStatusMenu {
             statusMenu.addItem(makeStatusLinksMenuItem())
         }

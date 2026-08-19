@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection"]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection"]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -282,6 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var postCodexRefreshDuration: TimeInterval { get { preferences.postCodexRefreshDuration } set { preferences.postCodexRefreshDuration = newValue } }
     private var showQuickSwitchMenu: Bool { get { preferences.showQuickSwitchMenu } set { preferences.showQuickSwitchMenu = newValue } }
     private var showOpenCCSwitchMenu: Bool { get { preferences.showOpenCCSwitchMenu } set { preferences.showOpenCCSwitchMenu = newValue } }
+    private var showOpenCodexMenu: Bool { get { preferences.showOpenCodexMenu } set { preferences.showOpenCodexMenu = newValue } }
     private var showOpenChatGPTMenu: Bool { get { preferences.showOpenChatGPTMenu } set { preferences.showOpenChatGPTMenu = newValue } }
     private var showStatusMenu: Bool { get { preferences.showStatusMenu } set { preferences.showStatusMenu = newValue } }
     private var statusLinks: [StatusLink] { get { preferences.statusLinks } set { preferences.statusLinks = newValue } }
@@ -406,6 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+            showOpenCodexMenu: showOpenCodexMenu,
             showStatusMenu: showStatusMenu
         )
     }
@@ -942,6 +944,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             render(snapshot)
         case "showOpenCCSwitchMenu":
             showOpenCCSwitchMenu = sender.state == .on
+            render(snapshot)
+        case "showOpenCodexMenu":
+            showOpenCodexMenu = sender.state == .on
             render(snapshot)
         case "showOpenChatGPTMenu":
             showOpenChatGPTMenu = sender.state == .on
@@ -1991,6 +1996,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             identifier: "showOpenCCSwitchMenu",
             isOn: showOpenCCSwitchMenu
         )
+        let openCodex = makeDashboardSwitch(
+            identifier: AppPreferences.showOpenCodexMenuKey,
+            isOn: showOpenCodexMenu
+        )
         let keepOpen = makeDashboardSwitch(
             identifier: "keepMenuOpenAfterRefresh",
             isOn: keepMenuOpenAfterRefresh
@@ -2027,6 +2036,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 tr("打开 CC Switch", "Open CC Switch"),
                 subtitle: tr("显示 CC Switch 启动项", "Show the CC Switch launch item"),
                 control: openCC
+            ),
+            makeSettingsRow(
+                tr("打开 OpenCodex", "Open OpenCodex"),
+                subtitle: tr("显示 OpenCodex 启动项", "Show the OpenCodex launch item"),
+                control: openCodex
             )
         ]
         let statusSubtitle = NSTextField(wrappingLabelWithString: showStatusMenu
@@ -2053,7 +2067,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             rows: projectRows,
             // Keep the Status Links editor visually attached to the View
             // Status row so toggling never has to detach/reattach a separator.
-            separatorIndices: [0, 1, 2]
+            separatorIndices: [0, 1, 2, 3]
         )
         return makeSettingsPage([items, projects])
     }
