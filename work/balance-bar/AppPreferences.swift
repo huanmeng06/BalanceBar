@@ -1,6 +1,7 @@
 import Foundation
 
 final class AppPreferences {
+    static let showOpenCodexMenuKey = "showOpenCodexMenu"
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
     static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -40,6 +41,10 @@ final class AppPreferences {
     }
     var showQuickSwitchMenu: Bool { get { bool("showQuickSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showQuickSwitchMenu") } }
     var showOpenCCSwitchMenu: Bool { get { bool("showOpenCCSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenCCSwitchMenu") } }
+    var showOpenCodexMenu: Bool {
+        get { bool(Self.showOpenCodexMenuKey, default: true) }
+        set { defaults.set(newValue, forKey: Self.showOpenCodexMenuKey) }
+    }
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }
     var showStatusMenu: Bool { get { bool("showStatusMenu", default: true) } set { defaults.set(newValue, forKey: "showStatusMenu") } }
     var keepMenuOpenAfterRefresh: Bool { get { bool("keepMenuOpenAfterRefresh", default: true) } set { defaults.set(newValue, forKey: "keepMenuOpenAfterRefresh") } }

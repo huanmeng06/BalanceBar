@@ -509,6 +509,54 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
     }
 
+    func testMenuPageHasOnePersistentOpenCodexSwitchIndependentFromCCSwitch() throws {
+        let defaults = UserDefaults.standard
+        let previousOpenCodexValue = defaults.object(forKey: AppPreferences.showOpenCodexMenuKey)
+        let previousCCSwitchValue = defaults.object(forKey: "showOpenCCSwitchMenu")
+        defer {
+            if let previousOpenCodexValue {
+                defaults.set(previousOpenCodexValue, forKey: AppPreferences.showOpenCodexMenuKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.showOpenCodexMenuKey)
+            }
+            if let previousCCSwitchValue {
+                defaults.set(previousCCSwitchValue, forKey: "showOpenCCSwitchMenu")
+            } else {
+                defaults.removeObject(forKey: "showOpenCCSwitchMenu")
+            }
+        }
+
+        defaults.set(true, forKey: AppPreferences.showOpenCodexMenuKey)
+        defaults.set(true, forKey: "showOpenCCSwitchMenu")
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-109-menu.db"))
+        )
+        defer { appDelegate.teardownDashboardForTesting() }
+
+        let page = appDelegate.dashboardPageForTesting(.menu)
+        layoutDescendants(of: page)
+        let openCodexSwitches = allControls(of: page, as: NSSwitch.self).filter {
+            $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
+        }
+        XCTAssertEqual(openCodexSwitches.count, 1)
+        let openCodexSwitch = try XCTUnwrap(openCodexSwitches.first)
+        XCTAssertEqual(openCodexSwitch.state, .on)
+
+        openCodexSwitch.state = .off
+        let target = try XCTUnwrap(openCodexSwitch.target as? NSObject)
+        _ = target.perform(openCodexSwitch.action, with: openCodexSwitch)
+        XCTAssertFalse(AppPreferences(defaults: defaults).showOpenCodexMenu)
+        XCTAssertTrue(AppPreferences(defaults: defaults).showOpenCCSwitchMenu)
+
+        let reopenedPage = appDelegate.dashboardPageForTesting(.menu)
+        layoutDescendants(of: reopenedPage)
+        let reloadedOpenCodexSwitches = allControls(of: reopenedPage, as: NSSwitch.self).filter {
+            $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
+        }
+        XCTAssertEqual(reloadedOpenCodexSwitches.count, 1)
+        XCTAssertEqual(reloadedOpenCodexSwitches.first?.state, .off)
+    }
+
     func testStatusMenuEntryFollowsShowStatusMenuPreferenceInMainMenu() {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(
@@ -547,6 +595,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
             showStatusMenu: false
         )
         controller.start(
@@ -574,6 +623,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
             showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
             showStatusMenu: true
         )
         controller.updateMenu(input: visibleInput)
@@ -592,92 +642,99 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
-    func testOpenCodexMenuItemStaysAvailableWithoutCCSwitchAndActivatesOnceForSelectedAndUnselectedStates() throws {
+    func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
         for openCodexIsCurrent in [true, false] {
-            for showOpenCCSwitchMenu in [true, false] {
-                var activationCount = 0
-                let controller = StatusItemController(
-                    actions: StatusItemController.Actions(
-                        manualRefresh: {},
-                        openDashboard: {},
-                        openChatGPT: {},
-                        openCCSwitch: {},
-                        openOpenCodex: { activationCount += 1 },
-                        quit: {},
-                        switchProvider: { _ in },
-                        switchOpenCodexPreference: { _ in },
-                        openProviderWebsite: {},
-                        openStatusLink: { _ in },
-                        iconChanged: { _ in }
+            for showOpenCodexMenu in [true, false] {
+                for showOpenCCSwitchMenu in [true, false] {
+                    var activationCount = 0
+                    let controller = StatusItemController(
+                        actions: StatusItemController.Actions(
+                            manualRefresh: {},
+                            openDashboard: {},
+                            openChatGPT: {},
+                            openCCSwitch: {},
+                            openOpenCodex: { activationCount += 1 },
+                            quit: {},
+                            switchProvider: { _ in },
+                            switchOpenCodexPreference: { _ in },
+                            openProviderWebsite: {},
+                            openStatusLink: { _ in },
+                            iconChanged: { _ in }
+                        )
                     )
-                )
-                defer { controller.teardown() }
+                    defer { controller.teardown() }
 
-                let choices = [
-                    ProviderChoice(
-                        id: "opencodex",
-                        name: "OpenCodex",
-                        isCurrent: openCodexIsCurrent
-                    ),
-                    ProviderChoice(
-                        id: "other",
-                        name: "Other Provider",
-                        isCurrent: !openCodexIsCurrent
+                    let choices = [
+                        ProviderChoice(
+                            id: "opencodex",
+                            name: "OpenCodex",
+                            isCurrent: openCodexIsCurrent
+                        ),
+                        ProviderChoice(
+                            id: "other",
+                            name: "Other Provider",
+                            isCurrent: !openCodexIsCurrent
+                        )
+                    ]
+                    controller.start(
+                        snapshot: .placeholder,
+                        refreshDate: nil,
+                        menuInput: StatusItemController.MenuInput(
+                            openCodexCards: [],
+                            openCodexState: nil,
+                            openCodexSwitchInFlight: false,
+                            choices: choices,
+                            quickSwitchSummaries: [:],
+                            activeClient: .claude,
+                            statusLinks: [
+                                StatusLink(title: "Status", url: "https://status.example")
+                            ],
+                            showQuickSwitchMenu: true,
+                            showOpenChatGPTMenu: true,
+                            showOpenCCSwitchMenu: showOpenCCSwitchMenu,
+                            showOpenCodexMenu: showOpenCodexMenu,
+                            showStatusMenu: true
+                        ),
+                        settings: StatusItemController.MenuBarSettings(
+                            showIcon: true,
+                            showAmount: true,
+                            showReset: true,
+                            horizontalPadding: 6,
+                            keepMenuOpenAfterRefresh: true
+                        )
                     )
-                ]
-                controller.start(
-                    snapshot: .placeholder,
-                    refreshDate: nil,
-                    menuInput: StatusItemController.MenuInput(
-                        openCodexCards: [],
-                        openCodexState: nil,
-                        openCodexSwitchInFlight: false,
-                        choices: choices,
-                        quickSwitchSummaries: [:],
-                        activeClient: .claude,
-                        statusLinks: [
-                            StatusLink(title: "Status", url: "https://status.example")
-                        ],
-                        showQuickSwitchMenu: true,
-                        showOpenChatGPTMenu: true,
-                        showOpenCCSwitchMenu: showOpenCCSwitchMenu,
-                        showStatusMenu: true
-                    ),
-                    settings: StatusItemController.MenuBarSettings(
-                        showIcon: true,
-                        showAmount: true,
-                        showReset: true,
-                        horizontalPadding: 6,
-                        keepMenuOpenAfterRefresh: true
-                    )
-                )
 
-                let openItem = try XCTUnwrap(
-                    controller.menuItemsForTesting.first {
-                        $0.title.contains("OpenCodex")
+                    XCTAssertEqual(
+                        controller.menuItemsForTesting.filter { $0.title.contains("OpenCodex") }.count,
+                        showOpenCodexMenu ? 1 : 0
+                    )
+                    if showOpenCodexMenu {
+                        let openItem = try XCTUnwrap(
+                            controller.menuItemsForTesting.first {
+                                $0.title.contains("OpenCodex")
+                            }
+                        )
+                        XCTAssertTrue(openItem.isEnabled)
+                        let target = try XCTUnwrap(openItem.target as? NSObject)
+                        _ = target.perform(openItem.action, with: openItem)
+                        XCTAssertEqual(activationCount, 1)
+                    } else {
+                        XCTAssertEqual(activationCount, 0)
                     }
-                )
-                XCTAssertTrue(openItem.isEnabled)
-                let target = try XCTUnwrap(openItem.target as? NSObject)
-                _ = target.perform(openItem.action, with: openItem)
-                XCTAssertEqual(activationCount, 1)
-                XCTAssertEqual(
-                    controller.menuItemsForTesting.filter { $0.title.contains("OpenCodex") }.count,
-                    1
-                )
-                XCTAssertEqual(
-                    controller.menuItemsForTesting.contains {
-                        $0.title == "打开 CC Switch" || $0.title == "Open CC Switch"
-                    },
-                    showOpenCCSwitchMenu
-                )
+                    XCTAssertEqual(
+                        controller.menuItemsForTesting.contains {
+                            $0.title == "打开 CC Switch" || $0.title == "Open CC Switch"
+                        },
+                        showOpenCCSwitchMenu
+                    )
 
-                let statusMenuItem = try XCTUnwrap(
-                    controller.menuItemsForTesting.first {
-                        $0.title == "查看状态" || $0.title == "View Status"
-                    }
-                )
-                XCTAssertEqual(statusMenuItem.submenu?.items.map(\.title), ["Status"])
+                    let statusMenuItem = try XCTUnwrap(
+                        controller.menuItemsForTesting.first {
+                            $0.title == "查看状态" || $0.title == "View Status"
+                        }
+                    )
+                    XCTAssertEqual(statusMenuItem.submenu?.items.map(\.title), ["Status"])
+                }
             }
         }
     }
@@ -754,5 +811,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         }
         return nil
+    }
+
+    private func allControls<T: NSView>(of view: NSView, as type: T.Type) -> [T] {
+        var matches: [T] = []
+        for child in view.subviews {
+            if let match = child as? T {
+                matches.append(match)
+            }
+            matches.append(contentsOf: allControls(of: child, as: type))
+        }
+        return matches
     }
 }

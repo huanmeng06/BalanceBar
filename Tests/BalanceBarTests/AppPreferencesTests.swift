@@ -29,6 +29,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.animateCodexActivity)
         XCTAssertTrue(preferences.showQuickSwitchMenu)
         XCTAssertTrue(preferences.showOpenCCSwitchMenu)
+        XCTAssertTrue(preferences.showOpenCodexMenu)
         XCTAssertTrue(preferences.showOpenChatGPTMenu)
         XCTAssertTrue(preferences.showStatusMenu)
         XCTAssertTrue(preferences.keepMenuOpenAfterRefresh)
@@ -38,6 +39,7 @@ final class AppPreferencesTests: XCTestCase {
         preferences.animateCodexActivity = false
         preferences.showQuickSwitchMenu = false
         preferences.showOpenCCSwitchMenu = false
+        preferences.showOpenCodexMenu = false
         preferences.showOpenChatGPTMenu = false
         preferences.showStatusMenu = false
         preferences.keepMenuOpenAfterRefresh = false
@@ -47,6 +49,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.animateCodexActivity)
         XCTAssertFalse(preferences.showQuickSwitchMenu)
         XCTAssertFalse(preferences.showOpenCCSwitchMenu)
+        XCTAssertFalse(preferences.showOpenCodexMenu)
         XCTAssertFalse(preferences.showOpenChatGPTMenu)
         XCTAssertFalse(preferences.showStatusMenu)
         XCTAssertFalse(preferences.keepMenuOpenAfterRefresh)
@@ -187,12 +190,14 @@ final class AppPreferencesTests: XCTestCase {
         let source = [
             "showMenuBarIcon": false,
             "activityPollInterval": 4.0,
+            AppPreferences.showOpenCodexMenuKey: false,
             AppPreferences.openCodexDashboardPortOverrideKey: 23456,
             AppPreferences.openCodexDashboardAutomaticDetectionKey: false
         ] as [String: Any]
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: source, localDomain: [:])
         XCTAssertFalse(preferences.showMenuBarIcon)
         XCTAssertEqual(preferences.activityPollInterval, 4)
+        XCTAssertFalse(preferences.showOpenCodexMenu)
         XCTAssertEqual(preferences.openCodexDashboardPortOverride, 23456)
         XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
         defaults.set(true, forKey: "showMenuBarIcon")
