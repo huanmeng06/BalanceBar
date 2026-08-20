@@ -9,6 +9,7 @@ final class DashboardScrollClampingTests: XCTestCase {
 
         XCTAssertTrue(scrollView.contentView is NSClipView)
         XCTAssertFalse(scrollView.contentView is DashboardClipView)
+        XCTAssertTrue(page is DashboardSettingsPageView)
         XCTAssertTrue(scrollView.documentView is DashboardSettingsDocumentView)
         XCTAssertTrue(scrollView.documentView?.isFlipped == true)
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
@@ -65,6 +66,58 @@ final class DashboardScrollClampingTests: XCTestCase {
         let bottomVisible = tall.contentView.convert(tall.contentView.bounds, to: document)
         XCTAssertLessThanOrEqual(bottomVisible.maxY, document.bounds.maxY + 1)
         XCTAssertGreaterThanOrEqual(bottomVisible.minY, document.bounds.minY - 1)
+    }
+
+    func testReplacingAScrolledPageResetsTheFreshPageToNativeTop() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 280),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let host = NSView(frame: window.contentView?.bounds ?? .zero)
+        window.contentView = host
+
+        let firstSection = NSView()
+        firstSection.translatesAutoresizingMaskIntoConstraints = false
+        firstSection.heightAnchor.constraint(equalToConstant: 760).isActive = true
+        let firstPage = DashboardSettingsComponents.makeSettingsPage([firstSection])
+        firstPage.frame = host.bounds
+        firstPage.autoresizingMask = [.width, .height]
+        host.addSubview(firstPage)
+        window.layoutIfNeeded()
+
+        let firstScrollView = try XCTUnwrap(firstDescendant(of: firstPage, as: NSScrollView.self))
+        let firstDocument = try XCTUnwrap(firstScrollView.documentView)
+        let firstGeometry = DashboardScrollGeometry(
+            documentBounds: firstDocument.bounds,
+            viewportHeight: firstScrollView.contentView.bounds.height,
+            isDocumentFlipped: firstDocument.isFlipped
+        )
+        let bottomRect = firstGeometry.visibleDocumentRect(forVisualOffset: firstGeometry.maximumOffset)
+        let bottomDocumentY = firstGeometry.contentOriginDocumentY(
+            for: bottomRect,
+            contentViewIsFlipped: firstScrollView.contentView.isFlipped
+        )
+        let bottomContentY = firstDocument.convert(
+            NSPoint(x: firstDocument.bounds.minX, y: bottomDocumentY),
+            to: firstScrollView.contentView
+        ).y
+        firstScrollView.contentView.scroll(to: NSPoint(x: 0, y: bottomContentY))
+        firstScrollView.reflectScrolledClipView(firstScrollView.contentView)
+
+        firstPage.removeFromSuperview()
+        let secondSection = NSView()
+        secondSection.translatesAutoresizingMaskIntoConstraints = false
+        secondSection.heightAnchor.constraint(equalToConstant: 760).isActive = true
+        let secondPage = DashboardSettingsComponents.makeSettingsPage([secondSection])
+        secondPage.frame = host.bounds
+        secondPage.autoresizingMask = [.width, .height]
+        host.addSubview(secondPage)
+        window.layoutIfNeeded()
+
+        let secondScrollView = try XCTUnwrap(firstDescendant(of: secondPage, as: NSScrollView.self))
+        XCTAssertEqual(documentOffset(secondScrollView), 0, accuracy: 1)
     }
 
     func testThreeRapidNativeSwipesPreserveLegalOriginsWithoutCustomOscillation() {

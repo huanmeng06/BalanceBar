@@ -623,7 +623,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
 
-        for section in [DashboardSection.menuBar, .advanced] {
+        for section in [DashboardSection.general, .menuBar, .advanced] {
             let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(section)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
@@ -651,9 +651,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
 
             XCTAssertTrue(documentView.isFlipped)
             XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
-            XCTAssertGreaterThanOrEqual(
+            XCTAssertEqual(
                 pageStack.frame.minY,
-                documentView.bounds.minY + 61
+                documentView.bounds.minY + 62,
+                accuracy: 1
             )
             XCTAssertLessThanOrEqual(
                 visibleRect.maxY,

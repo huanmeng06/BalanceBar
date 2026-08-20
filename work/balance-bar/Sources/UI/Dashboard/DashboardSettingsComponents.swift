@@ -12,7 +12,7 @@ enum DashboardSettingsComponents {
     }
 
     static func makeSettingsPage(_ sections: [NSView]) -> NSView {
-        let root = NSView()
+        let root = DashboardSettingsPageView()
         let scrollView = NSScrollView()
         scrollView.contentView = NSClipView()
         scrollView.drawsBackground = false
@@ -273,6 +273,55 @@ enum DashboardSettingsComponents {
             target: target,
             action: action
         )
+    }
+}
+
+/// Owns only the one-time native starting position for a newly mounted
+/// settings page. Ordinary user scrolling remains entirely AppKit-owned.
+final class DashboardSettingsPageView: NSView {
+    private var didEstablishInitialTopOrigin = false
+    private var isEstablishingInitialTopOrigin = false
+
+    override func layout() {
+        super.layout()
+        guard !didEstablishInitialTopOrigin,
+              !isEstablishingInitialTopOrigin,
+              let scrollView = subviews.first(where: { $0 is NSScrollView }) as? NSScrollView,
+              let documentView = scrollView.documentView,
+              scrollView.contentView.bounds.width > 0,
+              scrollView.contentView.bounds.height > 0,
+              documentView.bounds.width > 0,
+              documentView.bounds.height > 0 else {
+            return
+        }
+
+        isEstablishingInitialTopOrigin = true
+        defer { isEstablishingInitialTopOrigin = false }
+
+        let contentView = scrollView.contentView
+        let geometry = DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: contentView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        let topVisibleDocumentRect = geometry.visibleDocumentRect(forVisualOffset: 0)
+        let topDocumentY = geometry.contentOriginDocumentY(
+            for: topVisibleDocumentRect,
+            contentViewIsFlipped: contentView.isFlipped
+        )
+        let topContentY = documentView.convert(
+            NSPoint(x: documentView.bounds.minX, y: topDocumentY),
+            to: contentView
+        ).y
+
+        contentView.scroll(to: NSPoint(x: contentView.bounds.minX, y: topContentY))
+        scrollView.reflectScrolledClipView(contentView)
+        DashboardScrollTrace.marker(
+            "settings-initial-top-origin",
+            source: "DashboardSettingsPageView",
+            flags: "one-shot=true; visualOffset=0"
+        )
+        didEstablishInitialTopOrigin = true
     }
 }
 
