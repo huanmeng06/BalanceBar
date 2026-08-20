@@ -248,6 +248,7 @@ final class DashboardClipView: NSClipView {
     private let edgeLatchReleaseDistance: CGFloat = 8
 
     var onUserBoundsMovement: (() -> Void)?
+    var isAnchorMaintenanceActive = false
 
     func applyProgrammaticBoundsOrigin(_ origin: NSPoint) {
         trace(
@@ -257,6 +258,10 @@ final class DashboardClipView: NSClipView {
             resultOriginY: origin.y,
             flags: "suppressed-user-callback"
         )
+        // Status Links maintenance is the authoritative writer during an
+        // add/remove animation. It must be able to move a card-bottom anchor
+        // even when the preceding user scroll reached an endpoint.
+        edgeLatch = nil
         isApplyingProgrammaticBounds = true
         defer { isApplyingProgrammaticBounds = false }
         super.setBoundsOrigin(origin)
@@ -328,8 +333,14 @@ final class DashboardClipView: NSClipView {
         )
         let visibleDocumentRect = convert(constrainedBounds, to: documentView)
         let proposedVisualOffset = geometry.visualOffset(for: visibleDocumentRect)
-        updateEdgeLatch(for: proposedVisualOffset, geometry: geometry)
-        let latchedVisualOffset = edgeLatch.flatMap { latch in
+        if isAnchorMaintenanceActive {
+            edgeLatch = nil
+        } else {
+            updateEdgeLatch(for: proposedVisualOffset, geometry: geometry)
+        }
+        let latchedVisualOffset = isAnchorMaintenanceActive
+            ? nil
+            : edgeLatch.flatMap { latch in
             guard geometry.maximumOffset > 0 else { return CGFloat(0) }
             switch latch {
             case .top:
@@ -342,7 +353,8 @@ final class DashboardClipView: NSClipView {
                     : nil
             }
         }
-        if latchedVisualOffset == nil,
+        if !isAnchorMaintenanceActive,
+           latchedVisualOffset == nil,
            edgeLatch != nil,
            !isApplyingProgrammaticBounds {
             edgeLatch = nil
