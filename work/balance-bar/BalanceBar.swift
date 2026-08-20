@@ -161,18 +161,6 @@ private func migrateLegacyPreferencesIfNeeded() {
 }
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var statusItemController: StatusItemController!
-    private let dashboardProviderLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…"))
-    private let dashboardAmountLabel = NSTextField(labelWithString: "—")
-    private let dashboardQuotaLabel = NSTextField(labelWithString: tr("等待额度信息", "Waiting for quota data"))
-    private let dashboardResetLabel = NSTextField(labelWithString: "")
-    private let dashboardRefreshLabel = NSTextField(labelWithString: "--:--:--")
-    private let dashboardStatusLabel = NSTextField(labelWithString: tr("正在连接 CC Switch", "Connecting to CC Switch"))
-    private let dashboardCurrentProviderSubtitle = NSTextField(wrappingLabelWithString: "")
-    private let dashboardProvidersStack = NSStackView()
-    private let dashboardProgressHost = NSView()
-    private let dashboardProviderSearch = NSSearchField()
-    private let dashboardProviderList = NSStackView()
-    private let dashboardProviderCountLabel = NSTextField(labelWithString: "")
     private let monitorQueue = DispatchQueue(label: "local.balancebar.monitor")
     private let activityMonitorQueue = DispatchQueue(
         label: "local.balancebar.activity-monitor",
@@ -185,7 +173,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var dashboardContentHost: NSView { dashboardWindowController.contentHost }
     private var dashboardSection: DashboardSection { dashboardWindowController.section }
     private var dashboardSelectedProviderID: String? { dashboardWindowController.selectedProviderID }
-    private var dashboardProviderButtons: [String: NSButton] = [:]
     private lazy var statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
         dashboardProvider: { [weak self] in self?.dashboard },
         contentHostProvider: { [weak self] in self?.dashboardContentHost },
@@ -198,6 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var databaseWatchers: [DispatchSourceFileSystemObject] = []
     private var syncWorkItem: DispatchWorkItem?
     private var lastSuccessfulRefresh: Date?
+    private var dashboardProviderPageRevision: UInt64 = 0
     private var lastProviderID: String?
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
@@ -239,6 +227,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let openCodexRepository: OpenCodexRepository
     private let balanceAPIClient = BalanceAPIClient()
     private let preferences = AppPreferences()
+    private lazy var dashboardProviderPages = DashboardProviderPages(
+        actions: DashboardProviderPageActions(
+            onRefresh: { [weak self] in
+                self?.performManualRefresh(source: "dashboard")
+            },
+            onSwitchProvider: { [weak self] providerID in
+                self?.switchProvider(providerID)
+            },
+            onOpenProvider: { [weak self] providerID in
+                self?.dashboardWindowController.showProvider(providerID)
+            },
+            onSelectProvider: { [weak self] providerID in
+                self?.showDashboardProvider(providerID)
+            },
+            isSortAlphabetically: { [weak self] in
+                self?.sortProvidersAlphabetically ?? false
+            },
+            setSortAlphabetically: { [weak self] enabled in
+                self?.sortProvidersAlphabetically = enabled
+            }
+        )
+    )
     private lazy var dashboardPreferencePages = DashboardPreferencePages(
         preferences: preferences,
         devBundleIdentifier: devBundleIdentifier,
@@ -320,7 +330,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self?.makeDashboardPage(for: section) ?? NSView()
                 },
                 makeProviderPage: { [weak self] choice in
-                    self?.makeProviderDashboardPage(choice) ?? NSView()
+                    guard let self else { return NSView() }
+                    return self.dashboardProviderPages.makeProviderPage(
+                        choice: choice,
+                        input: self.makeDashboardProviderPageInput()
+                    )
                 },
                 providerChoices: { [weak self] in
                     self?.ccSwitchRepository.loadChoices(
@@ -504,6 +518,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         timer?.invalidate()
         activityTimer?.invalidate()
         statusLinksScrollAnchorController.stop()
+        dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
         statusItemController.teardown()
         dashboardWindowController.teardown()
@@ -1148,26 +1163,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateStatusItem(for: snapshot)
     }
 
-    @objc private func dashboardSwitchProvider(_ sender: NSButton) {
-        guard let providerID = sender.identifier?.rawValue else { return }
-        switchProvider(providerID)
-    }
-
-    @objc private func dashboardProviderSearchChanged(_ sender: NSSearchField) {
-        rebuildDashboardProviderList()
-    }
-
-    @objc private func dashboardSortProviders(_ sender: NSButton) {
-        sortProvidersAlphabetically.toggle()
-        sender.contentTintColor = sortProvidersAlphabetically ? .controlAccentColor : .secondaryLabelColor
-        rebuildDashboardProviderList()
-    }
-
-    @objc private func dashboardSelectProvider(_ sender: NSButton) {
-        guard let providerID = sender.identifier?.rawValue else { return }
-        showDashboardProvider(providerID)
-    }
-
     @objc private func openDashboard() {
         dashboardWindowController.open()
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
@@ -1205,6 +1200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func teardownDashboardForTesting() {
+        dashboardProviderPages.teardown()
         dashboardWindowController.teardown()
     }
 
@@ -1222,7 +1218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         restoringScrollPosition scrollPosition: StatusLinksScrollPosition? = nil
     ) {
         dashboardWindowController.showSection(section)
-        rebuildDashboardProviderList()
+        dashboardProviderPages.refreshProviderList(input: makeDashboardProviderPageInput())
         if let scrollPosition {
             statusLinksScrollAnchorController.restore(scrollPosition, attempt: 0)
         }
@@ -1232,57 +1228,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         statusLinksScrollAnchorController.clampDashboardScrollViewBounds()
     }
 
-    private func rebuildDashboardProviderList() {
-        guard dashboard != nil else { return }
-        for child in dashboardProviderList.arrangedSubviews {
-            dashboardProviderList.removeArrangedSubview(child)
-            child.removeFromSuperview()
-        }
-        dashboardProviderButtons.removeAll()
-        let query = dashboardProviderSearch.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        var choices = ccSwitchRepository.loadChoices(appType: activeClient.appType).filter {
-            query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)
-        }
-        if sortProvidersAlphabetically {
-            choices.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        }
-        dashboardProviderCountLabel.stringValue = tr(
-            "\(ccSwitchRepository.loadChoices(appType: activeClient.appType).count) 个",
-            "\(ccSwitchRepository.loadChoices(appType: activeClient.appType).count)"
-        )
-        for choice in choices {
-            let button = NSButton(title: choice.name, target: self, action: #selector(dashboardSelectProvider(_:)))
-            button.setButtonType(.pushOnPushOff)
-            button.bezelStyle = .recessed
-            let isSelected = dashboardSelectedProviderID == choice.id
-            button.isBordered = isSelected
-            button.state = isSelected ? .on : .off
-            button.alignment = .left
-            button.imagePosition = .imageLeading
-            button.font = .systemFont(ofSize: 13, weight: choice.isCurrent ? .semibold : .regular)
-            button.contentTintColor = isSelected ? .controlAccentColor : (choice.isCurrent ? .labelColor : .secondaryLabelColor)
-            button.focusRingType = .none
-            button.identifier = NSUserInterfaceItemIdentifier(choice.id)
-            button.toolTip = choice.isCurrent
-                ? tr("当前供应商", "Current Provider")
-                : tr("查看 \(choice.name)", "View \(choice.name)")
-            if let iconURL = Bundle.main.url(forResource: "CodexIcon", withExtension: "svg"),
-               let image = NSImage(contentsOf: iconURL) {
-                image.size = NSSize(width: 16, height: 16)
-                image.isTemplate = true
-                button.image = image
-            }
-            button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: 228).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 34).isActive = true
-            dashboardProviderButtons[choice.id] = button
-            dashboardProviderList.addArrangedSubview(button)
-        }
-    }
-
     private func showDashboardProvider(_ providerID: String) {
         dashboardWindowController.showProvider(providerID)
-        rebuildDashboardProviderList()
+        dashboardProviderPages.refreshProviderList(input: makeDashboardProviderPageInput())
     }
 
     private func makeStatusLinksEditor() -> StatusLinksEditorHostingView {
@@ -1297,112 +1245,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func makeProviderDashboardPage(_ choice: ProviderChoice) -> NSView {
-        dashboardProviderLabel.stringValue = choice.name
-        dashboardProviderLabel.font = .systemFont(ofSize: 20, weight: .semibold)
-        let status = NSTextField(labelWithString: choice.isCurrent
-            ? tr("当前供应商", "Current Provider")
-            : tr("可用供应商", "Available Provider"))
-        status.font = .systemFont(ofSize: 12, weight: .medium)
-        status.textColor = choice.isCurrent ? .systemGreen : .secondaryLabelColor
-        let heading = NSStackView(views: [dashboardProviderLabel, status])
-        heading.orientation = .vertical
-        heading.alignment = .leading
-        heading.spacing = 3
+    private func makeDashboardProviderPageInput(
+        snapshot: Snapshot? = nil,
+        refreshDate: Date? = nil,
+        useLastSuccessfulRefresh: Bool = true,
+        revision: UInt64? = nil
+    ) -> DashboardProviderPageInput {
         quickSwitchSummaryLock.lock()
-        let cachedSummary = quickSwitchSummaries[choice.id]
+        let summaries = quickSwitchSummaries
         quickSwitchSummaryLock.unlock()
-        dashboardAmountLabel.stringValue = choice.isCurrent
-            ? snapshot.overviewLargeAmount
-            : (cachedSummary ?? tr("正在读取…", "Loading…"))
-        dashboardAmountLabel.font = .monospacedDigitSystemFont(ofSize: 34, weight: .semibold)
-        dashboardQuotaLabel.stringValue = tr("剩余额度", "Remaining Balance")
-        dashboardResetLabel.stringValue = choice.isCurrent
-            ? snapshot.overviewReset(refreshDate: lastSuccessfulRefresh, formatter: Self.timeFormatter)
-            : tr("选择为当前供应商后显示详细重置时间", "Select this Provider to display detailed reset information")
-        let usage = DashboardSettingsComponents.makeSettingsSection(tr("用量", "Usage"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("剩余额度", "Remaining Balance"),
-                subtitle: dashboardResetLabel.stringValue,
-                control: dashboardAmountLabel,
-                minimumHeight: 76
-            )
-        ])
-        let action: NSButton
-        if choice.isCurrent {
-            action = NSButton(title: tr("立即刷新", "Refresh Now"), target: self, action: #selector(dashboardManualRefresh))
-        } else {
-            action = NSButton(title: tr("切换到此供应商", "Switch to This Provider"), target: self, action: #selector(dashboardSwitchProvider(_:)))
-            action.identifier = NSUserInterfaceItemIdentifier(choice.id)
-            action.toolTip = choice.name
-        }
-        let connection = DashboardSettingsComponents.makeSettingsSection("CC Switch", rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("同步状态", "Sync Status"),
-                subtitle: choice.isCurrent ? tr("正在跟随此供应商", "Following this Provider") : tr("当前未使用此供应商", "This Provider is not currently active"),
-                control: action
-            )
-        ])
-        return DashboardSettingsComponents.makeSettingsPage([heading, usage, connection])
-    }
-
-    private func makeOverviewDashboardPage() -> NSView {
-        let root = NSView()
-        let header = DashboardSettingsComponents.makePageHeader(
-            tr("概览", "Overview"),
-            subtitle: tr("当前余额、同步状态和 Codex 供应商", "Current balance, sync status, and Codex Provider")
+        return DashboardProviderPageInput(
+            choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
+            selectedProviderID: dashboardSelectedProviderID,
+            snapshot: snapshot ?? self.snapshot,
+            quickSwitchSummaries: summaries,
+            refreshDate: useLastSuccessfulRefresh ? lastSuccessfulRefresh : refreshDate,
+            revision: revision ?? dashboardProviderPageRevision
         )
-        dashboardProviderLabel.font = .systemFont(ofSize: 16, weight: .semibold)
-        dashboardProviderLabel.lineBreakMode = .byTruncatingTail
-        dashboardRefreshLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        dashboardRefreshLabel.textColor = .secondaryLabelColor
-        dashboardRefreshLabel.alignment = .right
-        let providerRow = NSStackView(views: [dashboardProviderLabel, NSView(), dashboardRefreshLabel])
-        providerRow.orientation = .horizontal
-        providerRow.alignment = .centerY
-        dashboardQuotaLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        dashboardResetLabel.font = .systemFont(ofSize: 13)
-        dashboardResetLabel.textColor = .secondaryLabelColor
-        let quotaStack = NSStackView(views: [dashboardQuotaLabel, dashboardResetLabel])
-        quotaStack.orientation = .vertical
-        quotaStack.alignment = .leading
-        quotaStack.spacing = 5
-        dashboardAmountLabel.font = .monospacedDigitSystemFont(ofSize: 42, weight: .semibold)
-        dashboardAmountLabel.alignment = .right
-        let quotaRow = NSStackView(views: [quotaStack, NSView(), dashboardAmountLabel])
-        quotaRow.orientation = .horizontal
-        quotaRow.alignment = .centerY
-        dashboardProgressHost.translatesAutoresizingMaskIntoConstraints = false
-        dashboardProgressHost.heightAnchor.constraint(equalToConstant: 6).isActive = true
-        dashboardStatusLabel.font = .systemFont(ofSize: 12)
-        dashboardStatusLabel.textColor = .secondaryLabelColor
-        let separator = NSBox()
-        separator.boxType = .separator
-        let providersTitle = NSTextField(labelWithString: tr("供应商", "Providers"))
-        providersTitle.font = .systemFont(ofSize: 14, weight: .semibold)
-        dashboardProvidersStack.orientation = .vertical
-        dashboardProvidersStack.alignment = .leading
-        dashboardProvidersStack.spacing = 0
-        let stack = NSStackView(views: [header, providerRow, quotaRow, dashboardProgressHost, dashboardStatusLabel, separator, providersTitle, dashboardProvidersStack])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 14
-        stack.setCustomSpacing(24, after: header)
-        stack.setCustomSpacing(7, after: dashboardProgressHost)
-        stack.setCustomSpacing(18, after: separator)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: root.topAnchor, constant: 30),
-            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 32),
-            stack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -32),
-            providerRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            quotaRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            dashboardProgressHost.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            dashboardProvidersStack.widthAnchor.constraint(equalTo: stack.widthAnchor)
-        ])
-        return root
     }
 
     private func refreshDashboardMenuBarPage() {
@@ -1696,101 +1555,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func updateDashboard(for snapshot: Snapshot, refreshDate: Date?) {
         guard dashboard?.isVisible == true else { return }
-        if let currentName = ccSwitchRepository.loadChoices(appType: activeClient.appType)
-            .first(where: { $0.isCurrent })?.name {
-            updateDashboardCurrentProvider(currentName)
-        }
-        if let selectedID = dashboardSelectedProviderID,
-           let choice = ccSwitchRepository.loadChoices(appType: activeClient.appType)
-               .first(where: { $0.id == selectedID }) {
-            dashboardProviderLabel.stringValue = choice.name
-            if choice.isCurrent {
-                dashboardAmountLabel.stringValue = snapshot.overviewLargeAmount
-                dashboardResetLabel.stringValue = snapshot.overviewReset(
-                    refreshDate: refreshDate,
-                    formatter: Self.timeFormatter
-                )
-            } else {
-                quickSwitchSummaryLock.lock()
-                let cached = quickSwitchSummaries[selectedID]
-                quickSwitchSummaryLock.unlock()
-                dashboardAmountLabel.stringValue = cached ?? tr("正在读取…", "Loading…")
-                dashboardResetLabel.stringValue = tr(
-                    "选择为当前供应商后显示详细重置时间",
-                    "Select this Provider to display detailed reset information"
-                )
-            }
-        }
-        rebuildDashboardProviderList()
+        dashboardProviderPageRevision &+= 1
+        dashboardProviderPages.refreshOverview(
+            input: makeDashboardProviderPageInput(
+                snapshot: snapshot,
+                refreshDate: refreshDate,
+                useLastSuccessfulRefresh: false,
+                revision: dashboardProviderPageRevision
+            )
+        )
         refreshDashboardMenuBarPage()
         refreshDashboardOpenCodexSettings()
     }
 
     private func updateDashboardCurrentProvider(_ name: String) {
-        dashboardCurrentProviderSubtitle.stringValue = tr(
-            "当前供应商：\(name)",
-            "Current Provider: \(name)"
-        )
-    }
-
-    private func refreshDashboardProviderRows() {
-        guard dashboard != nil else { return }
-        for child in dashboardProvidersStack.arrangedSubviews {
-            dashboardProvidersStack.removeArrangedSubview(child)
-            child.removeFromSuperview()
-        }
-
-        let choices = ccSwitchRepository.loadChoices(appType: activeClient.appType)
-        if choices.isEmpty {
-            let empty = NSTextField(labelWithString: tr("未找到 Codex 供应商", "No Codex Provider Found"))
-            empty.textColor = .secondaryLabelColor
-            dashboardProvidersStack.addArrangedSubview(empty)
-            return
-        }
-
-        quickSwitchSummaryLock.lock()
-        let summaries = quickSwitchSummaries
-        quickSwitchSummaryLock.unlock()
-        for (index, choice) in choices.enumerated() {
-            let name = NSTextField(labelWithString: choice.name)
-            name.font = .systemFont(ofSize: 13, weight: choice.isCurrent ? .semibold : .regular)
-            name.lineBreakMode = .byTruncatingTail
-            let summary = NSTextField(labelWithString: summaries[choice.id] ?? tr("正在读取…", "Loading…"))
-            summary.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-            summary.textColor = .secondaryLabelColor
-            summary.alignment = .right
-            summary.translatesAutoresizingMaskIntoConstraints = false
-            summary.widthAnchor.constraint(equalToConstant: 112).isActive = true
-            let spacer = NSView()
-            let action = NSButton(
-                title: choice.isCurrent ? tr("当前", "Current") : tr("切换", "Switch"),
-                target: self,
-                action: #selector(dashboardSwitchProvider(_:))
-            )
-            action.bezelStyle = .roundRect
-            action.controlSize = .small
-            action.isEnabled = !choice.isCurrent
-            action.identifier = NSUserInterfaceItemIdentifier(choice.id)
-            action.toolTip = choice.name
-            action.translatesAutoresizingMaskIntoConstraints = false
-            action.widthAnchor.constraint(equalToConstant: 58).isActive = true
-            let row = NSStackView(views: [name, spacer, summary, action])
-            row.orientation = .horizontal
-            row.alignment = .centerY
-            row.spacing = 10
-            row.translatesAutoresizingMaskIntoConstraints = false
-            row.heightAnchor.constraint(equalToConstant: 34).isActive = true
-            dashboardProvidersStack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: dashboardProvidersStack.widthAnchor).isActive = true
-
-            if index < choices.count - 1 {
-                let separator = NSBox()
-                separator.boxType = .separator
-                separator.translatesAutoresizingMaskIntoConstraints = false
-                separator.widthAnchor.constraint(equalTo: dashboardProvidersStack.widthAnchor).isActive = true
-                dashboardProvidersStack.addArrangedSubview(separator)
-            }
-        }
+        dashboardProviderPages.updateCurrentProvider(name)
     }
 
     private func refresh(reason: BalanceRefreshReason) {
@@ -2757,7 +2536,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.statusItemController.updateMenu(input: self.makeStatusItemMenuInput())
-            self.rebuildDashboardProviderList()
             self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
         }
     }
