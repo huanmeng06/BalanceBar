@@ -660,7 +660,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
 
             XCTAssertTrue(documentView.isFlipped)
-            XCTAssertGreaterThanOrEqual(viewportFrameInPage.minY, page.bounds.minY + 27)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
             XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
             XCTAssertEqual(
                 pageStack.frame.minY,
@@ -714,10 +714,11 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
             let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
             XCTAssertTrue(document.isFlipped)
-            XCTAssertGreaterThanOrEqual(
-                viewportFrameInPage.minY,
-                page.bounds.minY + 27,
-                "Settings scroll viewport lost its non-document top inset for \(section)"
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                52,
+                accuracy: 1,
+                "Settings scroll viewport lost its measured non-document top inset for \(section)"
             )
             XCTAssertEqual(
                 visible.minY,

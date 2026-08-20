@@ -51,7 +51,9 @@ enum DashboardSettingsComponents {
         documentView.addSubview(stack)
         root.addSubview(viewportContainer)
         viewportContainer.addSubview(scrollView)
-        let viewportTopInset: CGFloat = 28
+        // Match the measured titlebar/content-host breathing room without
+        // making that space part of the scrollable document.
+        let viewportTopInset: CGFloat = 52
         let viewportBottomInset: CGFloat = 28
         NSLayoutConstraint.activate([
             viewportContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
