@@ -77,6 +77,34 @@ final class DashboardWindowControllerTests: XCTestCase {
         controller.teardown()
     }
 
+    func testNavigationCanReplacePagesRepeatedlyAfterEachSidebarSelection() {
+        var selectedSections: [DashboardSection] = []
+        let controller = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { section in
+                    selectedSections.append(section)
+                    return NSView()
+                },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        for section in DashboardSection.allCases {
+            controller.showSection(section)
+        }
+
+        XCTAssertEqual(selectedSections, [.general] + DashboardSection.allCases)
+        XCTAssertEqual(controller.section, .about)
+        XCTAssertNil(controller.selectedProviderID)
+    }
+
     func testTeardownIsIdempotentAndStopsWindowDelegateOwnership() {
         var closeCount = 0
         let controller = DashboardWindowController(

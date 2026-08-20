@@ -473,7 +473,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSApp.appearance = nil
         dashboardWindowController.start()
         let regularPolicyApplied = NSApp.setActivationPolicy(.regular)
-        showDashboard()
         statusItemController.start(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
@@ -481,6 +480,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             settings: makeStatusItemSettings()
         )
         updateStatusItemActivity()
+        showDashboard()
         startDatabaseWatchers()
         startWorkspaceActivationObserver()
         let version = Bundle.main.object(
