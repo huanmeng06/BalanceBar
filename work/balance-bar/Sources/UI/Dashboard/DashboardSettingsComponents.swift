@@ -289,7 +289,7 @@ final class DashboardSettingsPageView: NSView {
         guard !didEstablishInitialTopOrigin,
               !isEstablishingInitialTopOrigin,
               let scrollView = subviews.first(where: { $0 is NSScrollView }) as? NSScrollView,
-              let documentView = scrollView.documentView as? DashboardSettingsDocumentView,
+              let documentView = scrollView.documentView,
               scrollView.contentView.bounds.width > 0,
               scrollView.contentView.bounds.height > 0,
               documentView.bounds.width > 0,
@@ -301,27 +301,20 @@ final class DashboardSettingsPageView: NSView {
         defer { isEstablishingInitialTopOrigin = false }
 
         let contentView = scrollView.contentView
-        let geometry = DashboardScrollGeometry(
-            documentBounds: documentView.bounds,
-            viewportHeight: contentView.bounds.height,
-            isDocumentFlipped: documentView.isFlipped
-        )
-        let topVisibleDocumentRect = geometry.visibleDocumentRect(forVisualOffset: 0)
-        let topDocumentY = geometry.contentOriginDocumentY(
-            for: topVisibleDocumentRect,
-            contentViewIsFlipped: contentView.isFlipped
-        )
-        let topContentY = documentView.convert(
-            NSPoint(x: documentView.bounds.minX, y: topDocumentY),
-            to: contentView
-        ).y
-
-        contentView.scroll(to: NSPoint(x: contentView.bounds.minX, y: topContentY))
+        // The document is flipped, but the clip view is not. Converting the
+        // document's visual minY into the clip coordinate system therefore
+        // produces the opposite endpoint. Native clip origins are expressed
+        // in the clip view's superview coordinate system: the flipped
+        // document's frame minY is the visual top origin.
+        contentView.scroll(to: NSPoint(
+            x: documentView.frame.minX,
+            y: documentView.frame.minY
+        ))
         scrollView.reflectScrolledClipView(contentView)
         DashboardScrollTrace.marker(
             "settings-initial-top-origin",
             source: "DashboardSettingsPageView",
-            flags: "one-shot=true; visualOffset=0"
+            flags: "one-shot=true; coordinate=flipped-document-frame-min"
         )
         didEstablishInitialTopOrigin = true
     }

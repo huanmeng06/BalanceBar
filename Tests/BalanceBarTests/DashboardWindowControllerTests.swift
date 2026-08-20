@@ -644,8 +644,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let pageStack = try XCTUnwrap(
                 firstDescendant(of: documentView, as: NSStackView.self)
             )
+            let firstSection = try XCTUnwrap(pageStack.arrangedSubviews.first)
+            let firstHeading = try XCTUnwrap(
+                firstDescendant(of: firstSection, as: NSTextField.self)
+            )
             let visibleRect = scrollView.contentView.convert(
                 scrollView.contentView.bounds,
+                to: documentView
+            )
+            let firstHeadingRect = firstHeading.convert(
+                firstHeading.bounds,
                 to: documentView
             )
 
@@ -659,6 +667,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertLessThanOrEqual(
                 visibleRect.maxY,
                 documentView.bounds.maxY + 1
+            )
+            XCTAssertTrue(
+                visibleRect.intersects(firstHeadingRect),
+                "First heading is not visible on initial mount for \(section): visible=\(visibleRect), heading=\(firstHeadingRect)"
             )
         }
     }
@@ -687,9 +699,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 to: document
             )
             let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
+            let firstSection = try XCTUnwrap(stack.arrangedSubviews.first)
+            let firstHeading = try XCTUnwrap(
+                firstDescendant(of: firstSection, as: NSTextField.self)
+            )
+            let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
             XCTAssertTrue(document.isFlipped)
             XCTAssertEqual(visible.minY, document.bounds.minY, accuracy: 1)
             XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
+            XCTAssertTrue(
+                visible.intersects(firstHeadingRect),
+                "Replaced \(section) first heading is not visible: visible=\(visible), heading=\(firstHeadingRect)"
+            )
         }
     }
 

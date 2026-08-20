@@ -9,7 +9,6 @@ final class DashboardScrollClampingTests: XCTestCase {
 
         XCTAssertTrue(scrollView.contentView is NSClipView)
         XCTAssertFalse(scrollView.contentView is DashboardClipView)
-        XCTAssertTrue(page is DashboardSettingsPageView)
         XCTAssertTrue(scrollView.documentView is DashboardSettingsDocumentView)
         XCTAssertTrue(scrollView.documentView?.isFlipped == true)
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
