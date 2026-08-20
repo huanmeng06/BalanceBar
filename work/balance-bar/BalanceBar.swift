@@ -159,7 +159,11 @@ private func migrateLegacyPreferencesIfNeeded() {
         localDomain: defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
     )
 }
-final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
+/// Owns the already-migrated runtime modules and their explicit coordination.
+/// `AppDelegate` below is intentionally only the NSApplication composition
+/// boundary; this type keeps the provider/network/activity implementation out
+/// of that boundary while preserving the existing behavior and callbacks.
+final class BalanceBarApplicationCoordinator: NSObject, NSTextFieldDelegate {
     private var statusItemController: StatusItemController!
     private let monitorQueue = DispatchQueue(label: "local.balancebar.monitor")
     private let activityMonitorQueue = DispatchQueue(
@@ -219,6 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var isClaudeTaskRunning = false
     private var isClaudeProcessAvailable = false
     private var isActivityCheckInFlight = false
+    private var lifecycle = ApplicationLifecycleState()
+    private var databaseWatchersStarted = false
     private var lastCodexUsageRefresh: Date?
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
@@ -454,6 +460,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard lifecycle.beginStart() else { return }
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -503,9 +510,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        guard lifecycle.beginTerminate() else { return }
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         activityTimer?.invalidate()
+        syncWorkItem?.cancel()
         statusLinksScrollAnchorController.stop()
         dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
@@ -515,6 +524,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
         }
         databaseWatchers.forEach { $0.cancel() }
+        databaseWatchers.removeAll()
+        databaseWatchersStarted = false
+        workspaceActivationObserver = nil
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -1211,6 +1223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardWindowController.teardown()
     }
 
+    var lifecycleStatsForTesting: ApplicationLifecycleStats {
+        lifecycle.stats
+    }
+
     private func showDashboard() {
         dashboardWindowController.open()
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
@@ -1301,6 +1317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func startWorkspaceActivationObserver() {
+        guard workspaceActivationObserver == nil else { return }
         workspaceActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
@@ -2407,6 +2424,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func startDatabaseWatchers() {
+        guard !databaseWatchersStarted else { return }
+        databaseWatchersStarted = true
         // SQLite commits usually update the WAL file; watching both the main DB
         // and its WAL gives near-instant provider-switch detection.
         let databasePath = ccSwitchRepository.databaseURL.path
@@ -2864,6 +2883,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         formatter.dateFormat = "HH:mm:ss"
         return formatter
     }()
+}
+
+struct ApplicationLifecycleStats: Equatable {
+    let startCount: Int
+    let terminateCount: Int
+}
+
+/// Small, main-thread-owned lifecycle gate used by the composition root.
+/// Keeping the gate independent makes the single-install/single-teardown
+/// contract testable without starting AppKit's event loop.
+final class ApplicationLifecycleState {
+    private(set) var hasStarted = false
+    private(set) var hasTerminated = false
+    private(set) var startCount = 0
+    private(set) var terminateCount = 0
+
+    var stats: ApplicationLifecycleStats {
+        ApplicationLifecycleStats(
+            startCount: startCount,
+            terminateCount: terminateCount
+        )
+    }
+
+    func beginStart() -> Bool {
+        guard !hasStarted, !hasTerminated else { return false }
+        hasStarted = true
+        startCount += 1
+        return true
+    }
+
+    func beginTerminate() -> Bool {
+        guard hasStarted, !hasTerminated else { return false }
+        hasTerminated = true
+        terminateCount += 1
+        return true
+    }
+}
+
+/// The application composition root. It owns the application delegate
+/// lifecycle and constructs exactly one runtime coordinator for the process;
+/// database, network, activity-monitor, and Dashboard page implementations stay
+/// behind that module boundary.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let composition: BalanceBarApplicationCoordinator
+
+    init(
+        repository: CCSwitchRepository = CCSwitchRepository(),
+        officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
+        openCodexRepository: OpenCodexRepository = OpenCodexRepository()
+    ) {
+        composition = BalanceBarApplicationCoordinator(
+            repository: repository,
+            officialQuotaClient: officialQuotaClient,
+            openCodexRepository: openCodexRepository
+        )
+        super.init()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        composition.applicationDidFinishLaunching(notification)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        composition.applicationWillTerminate(notification)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        composition.applicationShouldTerminateAfterLastWindowClosed(sender)
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        composition.applicationShouldHandleReopen(sender, hasVisibleWindows: flag)
+    }
+
+    func dashboardPageForTesting(_ section: DashboardSection) -> NSView {
+        composition.dashboardPageForTesting(section)
+    }
+
+    func dashboardWindowForTesting(showing section: DashboardSection) -> NSWindow? {
+        composition.dashboardWindowForTesting(showing: section)
+    }
+
+    func addStatusLinkForTesting() {
+        composition.addStatusLinkForTesting()
+    }
+
+    func teardownDashboardForTesting() {
+        composition.teardownDashboardForTesting()
+    }
+
+    var lifecycleStatsForTesting: ApplicationLifecycleStats {
+        composition.lifecycleStatsForTesting
+    }
 }
 
 @main
