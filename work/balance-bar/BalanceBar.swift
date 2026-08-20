@@ -186,6 +186,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var syncWorkItem: DispatchWorkItem?
     private var lastSuccessfulRefresh: Date?
     private var dashboardProviderPageRevision: UInt64 = 0
+    private var applicationLifecycleGeneration: UInt64 = 0
+    private var applicationIsReady = false
     private var lastProviderID: String?
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
@@ -465,6 +467,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applicationLifecycleGeneration &+= 1
+        applicationIsReady = true
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -473,7 +477,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSApp.appearance = nil
         dashboardWindowController.start()
         let regularPolicyApplied = NSApp.setActivationPolicy(.regular)
-        showDashboard()
         statusItemController.start(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
@@ -481,14 +484,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             settings: makeStatusItemSettings()
         )
         updateStatusItemActivity()
+        showDashboard()
         startDatabaseWatchers()
         startWorkspaceActivationObserver()
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "unknown"
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "unknown"
         SwitchLog.write(
-            "session started; version=\(version); bundle_id=\(bundleIdentifier); bundle_path=\(Bundle.main.bundlePath); pid=\(ProcessInfo.processInfo.processIdentifier); os=\(ProcessInfo.processInfo.operatingSystemVersionString); database=\(ccSwitchRepository.databaseURL.path)",
+            "session started; version=\(version); os=\(ProcessInfo.processInfo.operatingSystemVersionString); database=\(ccSwitchRepository.databaseURL.path)",
             category: "lifecycle"
         )
         SwitchLog.write(
@@ -504,7 +507,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "database watchers started; count=\(databaseWatchers.count)",
             category: "database"
         )
-        refresh(reason: .initial)
+        let lifecycleGeneration = applicationLifecycleGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.applicationIsReady,
+                  self.applicationLifecycleGeneration == lifecycleGeneration else { return }
+            self.refresh(reason: .initial)
+        }
         refreshQuickSwitchSummaries(force: true)
         refreshQuickSwitchSummaries(force: true, for: .claude)
         prefetchCurrentBalance(for: .claude)
@@ -515,6 +524,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        applicationIsReady = false
+        applicationLifecycleGeneration &+= 1
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         activityTimer?.invalidate()
@@ -2873,7 +2884,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func render(_ next: Snapshot) {
-        DispatchQueue.main.async {
+        let lifecycleGeneration = applicationLifecycleGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.applicationIsReady,
+                  self.applicationLifecycleGeneration == lifecycleGeneration,
+                  self.statusItemController != nil else { return }
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }

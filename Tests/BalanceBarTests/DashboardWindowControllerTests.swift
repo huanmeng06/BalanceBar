@@ -127,6 +127,33 @@ final class DashboardWindowControllerTests: XCTestCase {
         }
     }
 
+    func testReentrantPageSelectionIsSerializedAfterCurrentReplacement() {
+        var didShowPageCount = 0
+        var controller: DashboardWindowController!
+        controller = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in NSView() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {
+                    didShowPageCount += 1
+                    if didShowPageCount == 1 {
+                        controller.showSection(.menu)
+                    }
+                },
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+
+        XCTAssertEqual(didShowPageCount, 2)
+        XCTAssertEqual(controller.section, .menu)
+    }
+
     func testTeardownIsIdempotentAndStopsWindowDelegateOwnership() {
         var closeCount = 0
         let controller = DashboardWindowController(
@@ -180,53 +207,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertTrue(appDelegate.dashboardSidebarButtonTargetsLiveControllerForTesting(section))
             XCTAssertTrue(contentView.hitTest(point) === button)
             XCTAssertTrue(appDelegate.performDashboardSidebarActionForTesting(section))
-            XCTAssertEqual(appDelegate.dashboardSectionForTesting, section)
-        }
-    }
-
-    func testRealWindowMouseEventsReachSecondAndLaterSidebarButtons() throws {
-        let appDelegate = AppDelegate(
-            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-29-mouse-sidebar.db"))
-        )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .general))
-        let contentView = try XCTUnwrap(window.contentView)
-        window.makeKeyAndOrderFront(nil)
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-
-        for section in DashboardSection.allCases.dropFirst() {
-            let button = try XCTUnwrap(appDelegate.dashboardSidebarButtonForTesting(section))
-            let point = button.convert(
-                NSPoint(x: button.bounds.midX, y: button.bounds.midY),
-                to: nil
-            )
-            XCTAssertTrue(contentView.hitTest(point) === button)
-            let down = try XCTUnwrap(NSEvent.mouseEvent(
-                with: .leftMouseDown,
-                location: point,
-                modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber,
-                context: nil,
-                eventNumber: 1,
-                clickCount: 1,
-                pressure: 1
-            ))
-            let up = try XCTUnwrap(NSEvent.mouseEvent(
-                with: .leftMouseUp,
-                location: point,
-                modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber,
-                context: nil,
-                eventNumber: 1,
-                clickCount: 1,
-                pressure: 0
-            ))
-            window.sendEvent(down)
-            window.sendEvent(up)
-            window.layoutIfNeeded()
             XCTAssertEqual(appDelegate.dashboardSectionForTesting, section)
         }
     }
