@@ -90,10 +90,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var isMenuTracking: Bool { isStatusMenuTracking }
     var iconImage: NSImage? { menuBarIconView.image }
 
-    var menuBarPresentationForTesting: (primary: String, secondary: String) {
-        (menuBarPrimaryLabel.stringValue, menuBarSecondaryLabel.stringValue)
-    }
-
     // Exposes the controller's actual menu for headless production-path tests.
     // The application still owns and renders this same NSMenu instance.
     var menuItemsForTesting: [NSMenuItem] { statusMenu.items }

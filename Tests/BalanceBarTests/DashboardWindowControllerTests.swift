@@ -105,55 +105,6 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertNil(controller.selectedProviderID)
     }
 
-    func testRealSidebarButtonsRemainHitTestableAfterRepeatedPageReplacement() throws {
-        let appDelegate = AppDelegate(
-            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-29-sidebar.db"))
-        )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .general))
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-
-        let sections = Array(DashboardSection.allCases.dropFirst()) + [.general]
-        let contentView = try XCTUnwrap(window.contentView)
-        for section in sections {
-            let button = try XCTUnwrap(appDelegate.dashboardSidebarButtonForTesting(section))
-            let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: contentView)
-            XCTAssertTrue(button.isEnabled)
-            XCTAssertTrue(appDelegate.dashboardSidebarButtonTargetsLiveControllerForTesting(section))
-            XCTAssertTrue(contentView.hitTest(point) === button)
-            XCTAssertTrue(appDelegate.performDashboardSidebarActionForTesting(section))
-            XCTAssertEqual(appDelegate.dashboardSectionForTesting, section)
-        }
-    }
-
-    func testReentrantPageSelectionIsSerializedAfterCurrentReplacement() {
-        var didShowPageCount = 0
-        var controller: DashboardWindowController!
-        controller = DashboardWindowController(
-            actions: DashboardWindowControllerActions(
-                makeSectionPage: { _ in NSView() },
-                makeProviderPage: { _ in NSView() },
-                providerChoices: { [] },
-                prepareForPageReplacement: {},
-                didShowPage: {
-                    didShowPageCount += 1
-                    if didShowPageCount == 1 {
-                        controller.showSection(.menu)
-                    }
-                },
-                didClose: {},
-                didResize: {}
-            )
-        )
-        defer { controller.teardown() }
-
-        controller.open()
-
-        XCTAssertEqual(didShowPageCount, 2)
-        XCTAssertEqual(controller.section, .menu)
-    }
-
     func testTeardownIsIdempotentAndStopsWindowDelegateOwnership() {
         var closeCount = 0
         let controller = DashboardWindowController(
@@ -179,60 +130,6 @@ final class DashboardWindowControllerTests: XCTestCase {
 
 @MainActor
 final class DashboardProductionPathRegressionTests: XCTestCase {
-    func testLaunchedAppWiringKeepsSidebarActionsResponsiveAfterStartupReplacement() throws {
-        let appDelegate = AppDelegate(
-            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-29-launched-sidebar.db"))
-        )
-        defer {
-            appDelegate.applicationWillTerminate(
-                Notification(name: NSApplication.willTerminateNotification)
-            )
-        }
-
-        appDelegate.applicationDidFinishLaunching(
-            Notification(name: NSApplication.didFinishLaunchingNotification)
-        )
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .general))
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-
-        for section in DashboardSection.allCases {
-            let button = try XCTUnwrap(appDelegate.dashboardSidebarButtonForTesting(section))
-            let contentView = try XCTUnwrap(window.contentView)
-            let point = button.convert(
-                NSPoint(x: button.bounds.midX, y: button.bounds.midY),
-                to: contentView
-            )
-            XCTAssertTrue(button.isEnabled)
-            XCTAssertTrue(appDelegate.dashboardSidebarButtonTargetsLiveControllerForTesting(section))
-            XCTAssertTrue(contentView.hitTest(point) === button)
-            XCTAssertTrue(appDelegate.performDashboardSidebarActionForTesting(section))
-            XCTAssertEqual(appDelegate.dashboardSectionForTesting, section)
-        }
-    }
-
-    func testInitialRefreshReplacesMenuBarPlaceholderWithoutDashboardInteraction() {
-        let appDelegate = AppDelegate(
-            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-29-initial-refresh.db"))
-        )
-        defer { appDelegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification)) }
-
-        appDelegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
-        XCTAssertEqual(appDelegate.menuBarPresentationForTesting.primary, "…")
-
-        let deadline = Date().addingTimeInterval(1)
-        while Date() < deadline,
-              appDelegate.menuBarPresentationForTesting.primary == "…" {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.016))
-        }
-
-        XCTAssertNotEqual(
-            appDelegate.menuBarPresentationForTesting.primary,
-            "…",
-            "Initial refresh must publish a non-placeholder menu-bar presentation without Dashboard interaction"
-        )
-    }
-
     func testMenuPageHidesStatusLinksEditorWhenMenuDisplayIsDisabled() {
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")

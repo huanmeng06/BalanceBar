@@ -113,8 +113,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var isTornDown = false
-    private var pageReplacementInProgress = false
-    private var queuedPageReplacement: (() -> NSView)?
 
     init(actions: DashboardWindowControllerActions) {
         self.actions = actions
@@ -213,7 +211,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window?.title = section.title
         updateNavigationSelection(selectedSection: section)
         replacePage {
-            self.actions.makeSectionPage(section)
+            actions.makeSectionPage(section)
         }
     }
 
@@ -225,26 +223,13 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window?.title = choice.name
         updateNavigationSelection(selectedSection: nil)
         replacePage {
-            self.actions.makeProviderPage(choice)
+            actions.makeProviderPage(choice)
         }
-    }
-
-    @discardableResult
-    func performNavigationActionForTesting(_ section: DashboardSection) -> Bool {
-        guard !isTornDown, let button = navigationButtons[section] else { return false }
-        button.performClick(nil)
-        return self.section == section
-    }
-
-    func navigationButtonForTesting(_ section: DashboardSection) -> NSButton? {
-        navigationButtons[section]
     }
 
     func teardown() {
         guard !isTornDown else { return }
         isTornDown = true
-        queuedPageReplacement = nil
-        pageReplacementInProgress = false
 
         if let mouseMonitor {
             NSEvent.removeMonitor(mouseMonitor)
@@ -273,18 +258,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         actions.didResize()
     }
 
-    private func replacePage(makePage: @escaping () -> NSView) {
-        guard !isTornDown else { return }
-        if pageReplacementInProgress {
-            // A page callback may synchronously request another section while
-            // AppKit is still laying out the current page. Keep only the
-            // newest request and apply it after the current transaction.
-            queuedPageReplacement = makePage
-            return
-        }
-
-        pageReplacementInProgress = true
-        self.actions.prepareForPageReplacement()
+    private func replacePage(makePage: () -> NSView) {
+        actions.prepareForPageReplacement()
         contentHost.subviews.forEach { $0.removeFromSuperview() }
         let page = makePage()
         page.frame = contentHost.bounds
@@ -295,13 +270,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // the page (notably on Xcode 16.4 CI).
         contentHost.layoutSubtreeIfNeeded()
         window?.displayIfNeeded()
-        self.actions.didShowPage()
-        pageReplacementInProgress = false
-
-        if let queuedPageReplacement {
-            self.queuedPageReplacement = nil
-            replacePage(makePage: queuedPageReplacement)
-        }
+        actions.didShowPage()
     }
 
     private func updateNavigationSelection(selectedSection: DashboardSection?) {
