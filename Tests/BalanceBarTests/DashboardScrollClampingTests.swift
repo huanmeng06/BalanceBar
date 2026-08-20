@@ -11,6 +11,9 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertFalse(scrollView.contentView is DashboardClipView)
         XCTAssertTrue(scrollView.documentView is DashboardSettingsDocumentView)
         XCTAssertTrue(scrollView.documentView?.isFlipped == true)
+        XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
         XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
 
@@ -101,6 +104,7 @@ final class DashboardScrollClampingTests: XCTestCase {
         firstPage.autoresizingMask = [.width, .height]
         host.addSubview(firstPage)
         window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
 
         let firstScrollView = try XCTUnwrap(firstDescendant(of: firstPage, as: NSScrollView.self))
         let firstDocument = try XCTUnwrap(firstScrollView.documentView)
@@ -130,6 +134,7 @@ final class DashboardScrollClampingTests: XCTestCase {
         secondPage.autoresizingMask = [.width, .height]
         host.addSubview(secondPage)
         window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
 
         let secondScrollView = try XCTUnwrap(firstDescendant(of: secondPage, as: NSScrollView.self))
         XCTAssertEqual(documentOffset(secondScrollView), 0, accuracy: 1)
@@ -242,6 +247,7 @@ final class DashboardScrollClampingTests: XCTestCase {
         window.layoutIfNeeded()
         let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
         scrollView.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
         return (window, scrollView)
     }
 

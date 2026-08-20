@@ -37,6 +37,9 @@ final class DashboardLogsPage {
         scroll.hasHorizontalScroller = true
         scroll.verticalScrollElasticity = .none
         scroll.horizontalScrollElasticity = .none
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scroll.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         scroll.autohidesScrollers = true
         scroll.drawsBackground = true
         scroll.backgroundColor = logView.backgroundColor
@@ -88,6 +91,9 @@ final class DashboardLogsPage {
         scroll.hasVerticalScroller = true
         scroll.verticalScrollElasticity = .none
         scroll.horizontalScrollElasticity = .none
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scroll.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         scroll.documentView = logView
 
         [header, buttons, scroll].forEach {

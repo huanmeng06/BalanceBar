@@ -20,6 +20,13 @@ enum DashboardSettingsComponents {
         scrollView.hasHorizontalScroller = false
         scrollView.verticalScrollElasticity = .none
         scrollView.horizontalScrollElasticity = .none
+        // Do not inherit a window/titlebar content inset when a fresh page is
+        // mounted. AppKit still owns all user bounds and momentum behavior;
+        // this only makes the scroll host's legal top coincide with its
+        // document's top edge across window creation and page replacement.
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         // Keep the scrollbar discoverable on dense settings pages. The
         // document is taller than the viewport when the status-link editor is
         // present, so hiding the scroller makes the add control look missing.
@@ -278,52 +285,15 @@ enum DashboardSettingsComponents {
     }
 }
 
-/// Owns only the one-time native starting position for a newly mounted
-/// settings page. Ordinary user scrolling remains entirely AppKit-owned.
-final class DashboardSettingsPageView: NSView {
-    private var didEstablishInitialTopOrigin = false
-    private var isEstablishingInitialTopOrigin = false
-
-    override func layout() {
-        super.layout()
-        guard !didEstablishInitialTopOrigin,
-              !isEstablishingInitialTopOrigin,
-              let scrollView = subviews.first(where: { $0 is NSScrollView }) as? NSScrollView,
-              let documentView = scrollView.documentView,
-              scrollView.contentView.bounds.width > 0,
-              scrollView.contentView.bounds.height > 0,
-              documentView.bounds.width > 0,
-              documentView.bounds.height > 0 else {
-            return
-        }
-
-        isEstablishingInitialTopOrigin = true
-        defer { isEstablishingInitialTopOrigin = false }
-
-        let contentView = scrollView.contentView
-        // The document is flipped, but the clip view is not. Converting the
-        // document's visual minY into the clip coordinate system therefore
-        // produces the opposite endpoint. Native clip origins are expressed
-        // in the clip view's superview coordinate system: the flipped
-        // document's frame minY is the visual top origin.
-        contentView.scroll(to: NSPoint(
-            x: documentView.frame.minX,
-            y: documentView.frame.minY
-        ))
-        scrollView.reflectScrolledClipView(contentView)
-        DashboardScrollTrace.marker(
-            "settings-initial-top-origin",
-            source: "DashboardSettingsPageView",
-            flags: "one-shot=true; coordinate=flipped-document-frame-min"
-        )
-        didEstablishInitialTopOrigin = true
-    }
+/// Settings documents use a top-origin coordinate system. NSScrollView remains
+/// the only user-scroll bounds owner.
+final class DashboardSettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }
 
-/// Settings documents use AppKit's native top-origin convention. With a
-/// flipped document, the top inset is the legal visual start and a short page
-/// naturally has no vertical range; NSScrollView remains the only user-scroll
-/// bounds owner.
-final class DashboardSettingsDocumentView: NSView {
+/// Hosts a settings scroll view in a top-origin coordinate system. The class
+/// only supplies AppKit's coordinate convention; it does not write bounds or
+/// participate in user scrolling.
+final class DashboardSettingsPageView: NSView {
     override var isFlipped: Bool { true }
 }

@@ -634,6 +634,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             window.contentView = page
             window.layoutIfNeeded()
             layoutDescendants(of: page)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
             defer { window.orderOut(nil) }
 
             let scrollView = try XCTUnwrap(
@@ -688,6 +689,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             appDelegate.dashboardCompositionForTesting.showSection(section)
             window.displayIfNeeded()
             layoutDescendants(of: window.contentView!)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
 
             let scrollView = try XCTUnwrap(
                 firstDescendant(of: window.contentView!, as: NSScrollView.self),
@@ -705,12 +707,86 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
             XCTAssertTrue(document.isFlipped)
-            XCTAssertEqual(visible.minY, document.bounds.minY, accuracy: 1)
+            XCTAssertEqual(
+                visible.minY,
+                document.bounds.minY,
+                accuracy: 1,
+                "Initial visible origin mismatch for \(section): visible=\(visible), document=\(document.bounds), clipBounds=\(scrollView.contentView.bounds), contentInsets=\(scrollView.contentInsets)"
+            )
             XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
             XCTAssertTrue(
                 visible.intersects(firstHeadingRect),
                 "Replaced \(section) first heading is not visible: visible=\(visible), heading=\(firstHeadingRect)"
             )
+        }
+    }
+
+    func testProductionSettingsScrollHostsKeepNativeElasticityAndLegalEndpointFrames() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-30-endpoint.db"))
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
+        )
+
+        for section in [DashboardSection.general, .menuBar, .advanced] {
+            appDelegate.dashboardCompositionForTesting.showSection(section)
+            window.displayIfNeeded()
+            layoutDescendants(of: window.contentView!)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: window.contentView!, as: NSScrollView.self),
+                "Missing settings scroll view for \(section)"
+            )
+            let contentView = scrollView.contentView
+            let document = try XCTUnwrap(scrollView.documentView)
+            let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
+            let firstHeading = try XCTUnwrap(
+                firstDescendant(of: stack.arrangedSubviews.first!, as: NSTextField.self)
+            )
+            let geometry = DashboardScrollGeometry(
+                documentBounds: document.bounds,
+                viewportHeight: contentView.bounds.height,
+                isDocumentFlipped: document.isFlipped
+            )
+
+            XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
+            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
+            XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
+            XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
+            XCTAssertTrue(document.isFlipped)
+
+            let proposals = geometry.maximumOffset > 1
+                ? [CGFloat(0), geometry.maximumOffset, geometry.maximumOffset * 0.72, geometry.maximumOffset, CGFloat(0)]
+                : [CGFloat(0)]
+            for proposal in proposals {
+                let targetRect = geometry.visibleDocumentRect(forVisualOffset: proposal)
+                let targetDocumentY = geometry.contentOriginDocumentY(
+                    for: targetRect,
+                    contentViewIsFlipped: contentView.isFlipped
+                )
+                let targetContentY = document.convert(
+                    NSPoint(x: document.bounds.minX, y: targetDocumentY),
+                    to: contentView
+                ).y
+                contentView.scroll(to: NSPoint(x: contentView.bounds.minX, y: targetContentY))
+                scrollView.reflectScrolledClipView(contentView)
+
+                let visible = contentView.convert(contentView.bounds, to: document)
+                let actual = geometry.visualOffset(for: visible)
+                XCTAssertEqual(actual, proposal, accuracy: 1, "Native endpoint replay moved \(section) unexpectedly")
+                XCTAssertGreaterThanOrEqual(visible.minY, document.bounds.minY - 1)
+                XCTAssertLessThanOrEqual(visible.maxY, document.bounds.maxY + 1)
+            }
+
+            let visibleAtTop = contentView.convert(contentView.bounds, to: document)
+            let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
+            XCTAssertEqual(geometry.clampedVisualOffset(for: visibleAtTop), 0, accuracy: 1)
+            XCTAssertTrue(visibleAtTop.intersects(firstHeadingRect))
+            XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
         }
     }
 
