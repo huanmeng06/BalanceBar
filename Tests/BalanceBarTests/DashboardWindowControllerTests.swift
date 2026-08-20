@@ -758,6 +758,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             )
             let contentView = scrollView.contentView
             let document = try XCTUnwrap(scrollView.documentView)
+            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
             let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
             let firstHeading = try XCTUnwrap(
                 firstDescendant(of: stack.arrangedSubviews.first!, as: NSTextField.self)
@@ -774,10 +776,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
             XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
             XCTAssertTrue(document.isFlipped)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(viewportFrameInPage.maxY, page.bounds.maxY, accuracy: 1)
 
             let proposals = geometry.maximumOffset > 1
                 ? [CGFloat(0), geometry.maximumOffset, geometry.maximumOffset * 0.72, geometry.maximumOffset, CGFloat(0)]
                 : [CGFloat(0)]
+            var bottomVisible: NSRect?
             for proposal in proposals {
                 let targetRect = geometry.visibleDocumentRect(forVisualOffset: proposal)
                 let targetDocumentY = geometry.contentOriginDocumentY(
@@ -796,10 +801,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 XCTAssertEqual(actual, proposal, accuracy: 1, "Native endpoint replay moved \(section) unexpectedly")
                 XCTAssertGreaterThanOrEqual(visible.minY, document.bounds.minY - 1)
                 XCTAssertLessThanOrEqual(visible.maxY, document.bounds.maxY + 1)
+                if abs(proposal - geometry.maximumOffset) < 0.001 {
+                    bottomVisible = visible
+                }
             }
 
             let visibleAtTop = contentView.convert(contentView.bounds, to: document)
             let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
+            let visibleAtBottom = try XCTUnwrap(bottomVisible)
+            XCTAssertEqual(visibleAtBottom.maxY, document.bounds.maxY, accuracy: 1)
             XCTAssertEqual(geometry.clampedVisualOffset(for: visibleAtTop), 0, accuracy: 1)
             XCTAssertTrue(visibleAtTop.intersects(firstHeadingRect))
             XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
