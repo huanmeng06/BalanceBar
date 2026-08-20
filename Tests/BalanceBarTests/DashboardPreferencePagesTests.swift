@@ -151,15 +151,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
             guard let portLabel = labels.first(where: { $0.stringValue == expectedPortText }) else {
                 return XCTFail("Expected current port label \(expectedPortText)")
             }
+            let expectedAutomaticTitle = language == .simplifiedChinese
+                ? "自动检测端口"
+                : "Detect Port Automatically"
+            guard let automaticTitle = labels.first(where: { $0.stringValue == expectedAutomaticTitle }) else {
+                return XCTFail("Expected automatic detection title \(expectedAutomaticTitle)")
+            }
+            XCTAssertFalse(automaticTitle.isEditable)
+            XCTAssertFalse(automaticTitle.isSelectable)
             XCTAssertFalse(portLabel.isEditable)
             XCTAssertFalse(portLabel.isSelectable)
             XCTAssertEqual(
                 nonEmptyTextFields(in: portLabel.superview?.superview),
-                [expectedPortText]
+                [expectedAutomaticTitle, expectedPortText]
             )
 
-            XCTAssertFalse(labels.contains { $0.stringValue == "自动检测端口" })
-            XCTAssertFalse(labels.contains { $0.stringValue == "Detect Port Automatically" })
             XCTAssertFalse(labels.contains { $0.stringValue.contains("手动端口只用于") })
             XCTAssertFalse(labels.contains { $0.stringValue.contains("The manual port only") })
             XCTAssertFalse(labels.contains { $0.stringValue.contains("/#dashboard") })

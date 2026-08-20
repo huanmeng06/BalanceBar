@@ -58,10 +58,12 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             manualPort: input.mode.effectiveManualPort,
             runtimeCandidate: nil
         )
-        let statusLabel = NSTextField(labelWithString: tr(
+        let statusLabel = NSTextField(wrappingLabelWithString: tr(
             "当前端口：\(initialResolution.port)",
             "Current port: \(initialResolution.port)"
         ))
+        statusLabel.font = .systemFont(ofSize: 12)
+        statusLabel.textColor = .secondaryLabelColor
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         let automaticSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "openCodexAutomaticDetection",
@@ -70,10 +72,11 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
         let automaticRow = DashboardSettingsComponents.makeSettingsRow(
-            statusLabel.stringValue,
-            titleLabel: statusLabel,
+            tr("自动检测端口", "Detect Port Automatically"),
+            subtitle: statusLabel.stringValue,
+            subtitleLabel: statusLabel,
             control: automaticSwitch,
-            minimumHeight: 62
+            minimumHeight: 86
         )
 
         let portField = NSTextField()
