@@ -142,6 +142,108 @@ final class DashboardProviderPagesTests: XCTestCase {
         XCTAssertFalse(coordinator.refreshMountedPage(input: input))
         XCTAssertNil(refreshButton.target)
     }
+
+    func testDetailResetSubtitleIsMountedAndUpdatesWithNewerRefresh() throws {
+        let actions = DashboardProviderPageActions(
+            onRefresh: {}, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in },
+            isSortAlphabetically: { false }, setSortAlphabetically: { _ in }
+        )
+        let coordinator = DashboardProviderPageCoordinator(actions: actions)
+        let choice = ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        let initial = DashboardProviderPageInput(
+            choices: [choice], selectedProviderID: choice.id,
+            snapshot: .official("Current", 75, "7-day", "initial-reset", Date()),
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 1
+        )
+        let page = coordinator.makeDetailPage(choice: choice, input: initial)
+        XCTAssertTrue(try XCTUnwrap(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("initial-reset") }).isHidden == false)
+
+        let newer = DashboardProviderPageInput(
+            choices: [choice], selectedProviderID: choice.id,
+            snapshot: .official("Current", 65, "7-day", "new-reset", Date()),
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+        )
+        XCTAssertTrue(coordinator.refreshMountedPage(input: newer))
+        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("new-reset") })
+        XCTAssertNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("initial-reset") })
+    }
+
+    func testDetailDisappearanceClearsVisibleStateAndActions() throws {
+        let actions = DashboardProviderPageActions(
+            onRefresh: {}, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in },
+            isSortAlphabetically: { false }, setSortAlphabetically: { _ in }
+        )
+        let coordinator = DashboardProviderPageCoordinator(actions: actions)
+        let choice = ProviderChoice(id: "gone", name: "Gone Provider", isCurrent: true)
+        let input = DashboardProviderPageInput(
+            choices: [choice], selectedProviderID: choice.id,
+            snapshot: .official("Gone Provider", 75, "7-day", "old-reset", Date()),
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 1
+        )
+        let page = coordinator.makeDetailPage(choice: choice, input: input)
+        let updated = DashboardProviderPageInput(
+            choices: [], selectedProviderID: nil, snapshot: .placeholder,
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+        )
+        XCTAssertTrue(coordinator.refreshMountedPage(input: updated))
+        XCTAssertNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "Gone Provider" })
+        XCTAssertNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("old-reset") })
+        let action = try XCTUnwrap(descendants(of: page, as: NSButton.self).first)
+        XCTAssertFalse(action.isEnabled)
+        XCTAssertNil(action.target)
+        XCTAssertTrue(action.title.contains("不可用") || action.title.contains("Unavailable"))
+    }
+
+    func testDetailCurrentTransitionUpdatesBadgeAndActionSemantics() throws {
+        let actions = DashboardProviderPageActions(
+            onRefresh: {}, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in },
+            isSortAlphabetically: { false }, setSortAlphabetically: { _ in }
+        )
+        let coordinator = DashboardProviderPageCoordinator(actions: actions)
+        let other = ProviderChoice(id: "other", name: "Other", isCurrent: false)
+        let initial = DashboardProviderPageInput(
+            choices: [other], selectedProviderID: other.id, snapshot: .placeholder,
+            quickSwitchSummaries: [other.id: "$1.00"], refreshDate: nil, revision: 1
+        )
+        let page = coordinator.makeDetailPage(choice: other, input: initial)
+        let initialAction = try XCTUnwrap(descendants(of: page, as: NSButton.self).first)
+        XCTAssertTrue(initialAction.isEnabled)
+        XCTAssertNotNil(initialAction.identifier)
+        XCTAssertTrue(initialAction.title.contains("切换") || initialAction.title.contains("Switch"))
+
+        let current = ProviderChoice(id: other.id, name: "Other", isCurrent: true)
+        let updated = DashboardProviderPageInput(
+            choices: [current], selectedProviderID: current.id,
+            snapshot: .official("Other", 80, "7-day", "reset", Date()),
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+        )
+        XCTAssertTrue(coordinator.refreshMountedPage(input: updated))
+        XCTAssertTrue(initialAction.isEnabled)
+        XCTAssertNil(initialAction.identifier)
+        XCTAssertTrue(initialAction.title.contains("刷新") || initialAction.title.contains("Refresh"))
+        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("当前供应商") || $0.stringValue.contains("Current Provider") })
+    }
+
+    func testOverviewDisappearanceClearsEveryCurrentField() throws {
+        let actions = DashboardProviderPageActions(
+            onRefresh: {}, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in },
+            isSortAlphabetically: { false }, setSortAlphabetically: { _ in }
+        )
+        let coordinator = DashboardProviderPageCoordinator(actions: actions)
+        let choice = ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        let page = coordinator.makeOverviewPage(input: DashboardProviderPageInput(
+            choices: [choice], selectedProviderID: choice.id,
+            snapshot: .official("Current", 90, "7-day", "overview-reset", Date()),
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 1
+        ))
+        XCTAssertTrue(coordinator.refreshMountedPage(input: DashboardProviderPageInput(
+            choices: [], selectedProviderID: nil, snapshot: .placeholder,
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2
+        )))
+        XCTAssertNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "Current" })
+        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "—" })
+        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("Current Provider unavailable") || $0.stringValue.contains("当前供应商不可用") })
+    }
 }
 
 private func descendants<T: NSView>(of root: NSView, as type: T.Type) -> [T] {
