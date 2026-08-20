@@ -363,6 +363,67 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertTrue(kinds.contains("window-resize"))
     }
 
+    func testCapturedAppKitEndpointSettlingSequenceLatchesBottomWithoutOscillation() {
+        DashboardScrollTrace.reset()
+        let documentView = NSView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 807)
+        )
+        let clipView = DashboardClipView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 620)
+        )
+        let scrollView = NSScrollView(frame: clipView.frame)
+        scrollView.contentView = clipView
+        scrollView.documentView = documentView
+        scrollView.layoutSubtreeIfNeeded()
+
+        let geometry = makeGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: clipView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        XCTAssertEqual(geometry.maximumOffset, 187, accuracy: 0.0001)
+
+        // These values are the sanitized order captured in the real debug
+        // session: AppKit first reaches -187, then proposes legal origins
+        // 183..186 while settling back toward the same bottom endpoint.
+        let capturedOrigins: [CGFloat] = [
+            -183, -219, -184, -211, -184, -204, -185, -200,
+            -185, -196, -186, -194, -186, -192, -186, -191,
+            -186, -190, -186, -189, -186, -188, -186, -188
+        ]
+        var edgeProposal = clipView.bounds
+        edgeProposal.origin.y = -geometry.maximumOffset
+        _ = clipView.constrainBoundsRect(edgeProposal)
+
+        let legacyVisualOffsets = capturedOrigins.map { originY in
+            min(max(-originY, 0), geometry.maximumOffset)
+        }
+        XCTAssertTrue(
+            zip(legacyVisualOffsets, legacyVisualOffsets.dropFirst()).contains {
+                abs($0 - $1) > 0.5
+            },
+            "Captured order must reproduce the pre-latch endpoint oscillation"
+        )
+
+        for originY in capturedOrigins {
+            clipView.scroll(
+                to: NSPoint(x: clipView.bounds.minX, y: originY)
+            )
+            let visibleRect = clipView.convert(clipView.bounds, to: documentView)
+            XCTAssertEqual(
+                geometry.visualOffset(for: visibleRect),
+                geometry.maximumOffset,
+                accuracy: 0.0001
+            )
+        }
+
+        XCTAssertTrue(
+            DashboardScrollTrace.snapshot().contains {
+                $0.kind == "edge-latch" && $0.flags.contains("edge=bottom")
+            }
+        )
+    }
+
     func testShortDocumentHasNoVerticalOffset() {
         let geometry = makeGeometry(
             documentBounds: NSRect(x: 12, y: 40, width: 400, height: 180),

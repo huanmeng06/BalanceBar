@@ -192,7 +192,8 @@ struct DashboardScrollGeometry {
 func dashboardClampedContentBounds(
     proposedBounds: NSRect,
     contentView: NSClipView,
-    documentView: NSView
+    documentView: NSView,
+    forcedVisualOffset: CGFloat? = nil
 ) -> NSRect {
     guard proposedBounds.height.isFinite else { return proposedBounds }
 
@@ -203,7 +204,9 @@ func dashboardClampedContentBounds(
     )
     let visibleDocumentRect = contentView.convert(proposedBounds, to: documentView)
     let proposedVisualOffset = geometry.visualOffset(for: visibleDocumentRect)
-    let clampedVisualOffset = geometry.clampedVisualOffset(proposedVisualOffset)
+    let clampedVisualOffset = forcedVisualOffset.map {
+        geometry.clampedVisualOffset($0)
+    } ?? geometry.clampedVisualOffset(proposedVisualOffset)
 
     // Keep AppKit's legal, non-edge proposal in its original coordinate
     // system. Only edge-equivalent or out-of-range proposals need a
@@ -234,8 +237,15 @@ func dashboardClampedContentBounds(
 /// A settings-page clip view that applies the same legal range to AppKit's
 /// own scrolling, resizing, and bounds-constraining paths.
 final class DashboardClipView: NSClipView {
+    private enum EdgeLatch: String {
+        case top
+        case bottom
+    }
+
     private var isApplyingRigidBounds = false
     private var isApplyingProgrammaticBounds = false
+    private var edgeLatch: EdgeLatch?
+    private let edgeLatchReleaseDistance: CGFloat = 8
 
     var onUserBoundsMovement: (() -> Void)?
 
@@ -311,10 +321,37 @@ final class DashboardClipView: NSClipView {
     private func rigidBounds(for proposedBounds: NSRect) -> NSRect {
         let constrainedBounds = super.constrainBoundsRect(proposedBounds)
         guard let documentView else { return constrainedBounds }
+        let geometry = DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: constrainedBounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        let visibleDocumentRect = convert(constrainedBounds, to: documentView)
+        let proposedVisualOffset = geometry.visualOffset(for: visibleDocumentRect)
+        updateEdgeLatch(for: proposedVisualOffset, geometry: geometry)
+        let latchedVisualOffset = edgeLatch.flatMap { latch in
+            guard geometry.maximumOffset > 0 else { return CGFloat(0) }
+            switch latch {
+            case .top:
+                return proposedVisualOffset <= edgeLatchReleaseDistance
+                    ? CGFloat(0)
+                    : nil
+            case .bottom:
+                return proposedVisualOffset >= geometry.maximumOffset - edgeLatchReleaseDistance
+                    ? geometry.maximumOffset
+                    : nil
+            }
+        }
+        if latchedVisualOffset == nil,
+           edgeLatch != nil,
+           !isApplyingProgrammaticBounds {
+            edgeLatch = nil
+        }
         return dashboardClampedContentBounds(
             proposedBounds: constrainedBounds,
             contentView: self,
-            documentView: documentView
+            documentView: documentView,
+            forcedVisualOffset: latchedVisualOffset
         )
     }
 
@@ -332,6 +369,36 @@ final class DashboardClipView: NSClipView {
             return
         }
         onUserBoundsMovement?()
+    }
+
+    private func updateEdgeLatch(
+        for proposedVisualOffset: CGFloat,
+        geometry: DashboardScrollGeometry
+    ) {
+        guard !isApplyingProgrammaticBounds,
+              proposedVisualOffset.isFinite,
+              geometry.maximumOffset > 0 else {
+            return
+        }
+        let nextLatch: EdgeLatch?
+        if proposedVisualOffset <= 0 {
+            nextLatch = .top
+        } else if proposedVisualOffset >= geometry.maximumOffset {
+            nextLatch = .bottom
+        } else {
+            nextLatch = edgeLatch
+        }
+        guard nextLatch != edgeLatch else { return }
+        edgeLatch = nextLatch
+        DashboardScrollTrace.record(
+            kind: "edge-latch",
+            source: "appkit",
+            visualOffset: proposedVisualOffset,
+            legalMaximum: geometry.maximumOffset,
+            documentHeight: geometry.documentBounds.height,
+            viewportHeight: geometry.viewportHeight,
+            flags: "edge=\(nextLatch?.rawValue ?? "released"); release_distance=\(DashboardLogging.number(edgeLatchReleaseDistance))"
+        )
     }
 
     private func trace(
