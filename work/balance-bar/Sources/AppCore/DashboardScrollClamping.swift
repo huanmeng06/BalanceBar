@@ -1,5 +1,27 @@
 import AppKit
 
+enum DashboardScrollClampingPolicy {
+    // AppKit can produce fractional origins on adjacent frames while a clip
+    // view is settling at an edge. Treat that small interval as one edge so
+    // the clamp cannot alternate between the edge and a near-edge origin.
+    static let edgeTolerance: CGFloat = 0.5
+    static let boundsOriginTolerance: CGFloat = 0.001
+
+    static func clampedVisualOffset(
+        _ proposedOffset: CGFloat,
+        maximumOffset: CGFloat
+    ) -> CGFloat {
+        guard proposedOffset.isFinite else { return 0 }
+        let maximumOffset = max(0, maximumOffset)
+        guard maximumOffset > 0 else { return 0 }
+        if proposedOffset <= edgeTolerance { return 0 }
+        if proposedOffset >= maximumOffset - edgeTolerance {
+            return maximumOffset
+        }
+        return min(max(0, proposedOffset), maximumOffset)
+    }
+}
+
 /// Describes the vertical geometry of a document inside a clip view.
 ///
 /// `visualOffset` is measured from the document's visual top edge. Keeping
@@ -25,8 +47,10 @@ struct DashboardScrollGeometry {
     }
 
     func clampedVisualOffset(_ proposedOffset: CGFloat) -> CGFloat {
-        guard proposedOffset.isFinite else { return 0 }
-        return min(max(0, proposedOffset), maximumOffset)
+        DashboardScrollClampingPolicy.clampedVisualOffset(
+            proposedOffset,
+            maximumOffset: maximumOffset
+        )
     }
 
     func visualOffset(for visibleDocumentRect: NSRect) -> CGFloat {
@@ -95,8 +119,19 @@ func dashboardClampedContentBounds(
         isDocumentFlipped: documentView.isFlipped
     )
     let visibleDocumentRect = contentView.convert(proposedBounds, to: documentView)
+    let proposedVisualOffset = geometry.visualOffset(for: visibleDocumentRect)
+    let clampedVisualOffset = geometry.clampedVisualOffset(proposedVisualOffset)
+
+    // Keep AppKit's legal, non-edge proposal in its original coordinate
+    // system. Only edge-equivalent or out-of-range proposals need a
+    // conversion back to a rigid edge origin.
+    if proposedVisualOffset.isFinite,
+       proposedVisualOffset == clampedVisualOffset {
+        return proposedBounds
+    }
+
     let legalDocumentRect = geometry.visibleDocumentRect(
-        forVisualOffset: geometry.clampedVisualOffset(for: visibleDocumentRect)
+        forVisualOffset: clampedVisualOffset
     )
     let legalDocumentY = geometry.contentOriginDocumentY(
         for: legalDocumentRect,
@@ -117,7 +152,15 @@ func dashboardClampedContentBounds(
 /// own scrolling, resizing, and bounds-constraining paths.
 final class DashboardClipView: NSClipView {
     private var isApplyingRigidBounds = false
-    private let boundsOriginTolerance: CGFloat = 0.001
+    private var isApplyingProgrammaticBounds = false
+
+    var onUserBoundsMovement: (() -> Void)?
+
+    func applyProgrammaticBoundsOrigin(_ origin: NSPoint) {
+        isApplyingProgrammaticBounds = true
+        defer { isApplyingProgrammaticBounds = false }
+        super.setBoundsOrigin(origin)
+    }
 
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         guard !isApplyingRigidBounds else {
@@ -127,6 +170,7 @@ final class DashboardClipView: NSClipView {
     }
 
     override func scroll(to newOrigin: NSPoint) {
+        notifyUserBoundsMovementIfNeeded(newOrigin)
         guard !isApplyingRigidBounds else {
             super.scroll(to: newOrigin)
             return
@@ -167,7 +211,18 @@ final class DashboardClipView: NSClipView {
     }
 
     private func needsBoundsOriginUpdate(_ proposedOrigin: NSPoint) -> Bool {
-        abs(bounds.origin.x - proposedOrigin.x) > boundsOriginTolerance ||
-            abs(bounds.origin.y - proposedOrigin.y) > boundsOriginTolerance
+        abs(bounds.origin.x - proposedOrigin.x) >
+            DashboardScrollClampingPolicy.boundsOriginTolerance ||
+            abs(bounds.origin.y - proposedOrigin.y) >
+            DashboardScrollClampingPolicy.boundsOriginTolerance
+    }
+
+    private func notifyUserBoundsMovementIfNeeded(_ proposedOrigin: NSPoint) {
+        guard !isApplyingRigidBounds,
+              !isApplyingProgrammaticBounds,
+              needsBoundsOriginUpdate(proposedOrigin) else {
+            return
+        }
+        onUserBoundsMovement?()
     }
 }

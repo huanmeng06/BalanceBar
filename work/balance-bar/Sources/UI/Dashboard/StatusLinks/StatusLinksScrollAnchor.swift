@@ -74,6 +74,7 @@ final class StatusLinksScrollAnchorController {
     private let linksCountProvider: () -> Int
     private let maintenanceTimer = StatusLinksScrollAnchorTimer()
     private var maintenanceGeneration = 0
+    private weak var observedClipView: DashboardClipView?
 
     init(
         dashboardProvider: @escaping () -> NSWindow?,
@@ -94,6 +95,8 @@ final class StatusLinksScrollAnchorController {
     func stop() {
         maintenanceGeneration &+= 1
         maintenanceTimer.stop()
+        observedClipView?.onUserBoundsMovement = nil
+        observedClipView = nil
     }
 
     deinit {
@@ -193,6 +196,7 @@ final class StatusLinksScrollAnchorController {
         operation: String
     ) {
         stop()
+        installUserBoundsMovementHandler()
         let generation = maintenanceGeneration
         SwitchLog.write(
             "scroll anchor maintenance started; action=\(operation); interval=0.0167s; distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom))",
@@ -278,6 +282,23 @@ final class StatusLinksScrollAnchorController {
 
     private var currentPage: NSView? {
         contentHostProvider()?.subviews.first
+    }
+
+    private func installUserBoundsMovementHandler() {
+        guard let page = currentPage,
+              let scrollView = firstScrollView(in: page),
+              let clipView = scrollView.contentView as? DashboardClipView else {
+            return
+        }
+        observedClipView = clipView
+        clipView.onUserBoundsMovement = { [weak self] in
+            guard let self, self.maintenanceTimer.isRunning else { return }
+            SwitchLog.write(
+                "scroll anchor maintenance cancelled; reason=user-bounds-movement",
+                category: "ui.scroll"
+            )
+            self.stop()
+        }
     }
 
     private func firstScrollView(in view: NSView) -> NSScrollView? {
@@ -528,11 +549,16 @@ final class StatusLinksScrollAnchorController {
         documentView: NSView
     ) {
         let contentView = scrollView.contentView
-        contentView.bounds = dashboardClampedContentBounds(
+        let clampedBounds = dashboardClampedContentBounds(
             proposedBounds: proposedBounds,
             contentView: contentView,
             documentView: documentView
         )
+        if let clipView = contentView as? DashboardClipView {
+            clipView.applyProgrammaticBoundsOrigin(clampedBounds.origin)
+        } else {
+            contentView.bounds = clampedBounds
+        }
         scrollView.reflectScrolledClipView(contentView)
     }
 
