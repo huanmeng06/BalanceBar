@@ -89,8 +89,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     func testAboutPageGitHubEntryIsCenteredAccessibleAndOpensOnce() throws {
         var openedURLs: [URL] = []
+        let resourceBundle = Bundle(for: DashboardAboutGitHubButton.self)
         let page = DashboardAboutPage.make(
-            bundle: .main,
+            bundle: resourceBundle,
             devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
             openURL: { url in
                 openedURLs.append(url)
@@ -106,6 +107,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         XCTAssertEqual(rowCenter, page.bounds.midX, accuracy: 0.5)
         XCTAssertNotNil(button.image)
+        XCTAssertNotNil(resourceBundle.url(forResource: "GitHub", withExtension: "svg"))
         XCTAssertEqual(button.destinationURL, DashboardAboutPage.githubRepositoryURL)
         let accessibilityLabel = button.accessibilityLabel()
         XCTAssertTrue(accessibilityLabel == "GitHub 项目" || accessibilityLabel == "GitHub repository")

@@ -37,8 +37,11 @@ enum DashboardAboutPage {
             "A CC Switch-based menu bar balance viewer"
         ))
         detail.textColor = .secondaryLabelColor
+        let githubIcon = bundle.url(forResource: "GitHub", withExtension: "svg")
+            .flatMap(NSImage.init(contentsOf:))
         let githubButton = DashboardAboutGitHubButton(
             destinationURL: githubRepositoryURL,
+            icon: githubIcon,
             openURL: openURL
         )
         githubButton.identifier = NSUserInterfaceItemIdentifier("about.githubButton")
@@ -66,15 +69,17 @@ final class DashboardAboutGitHubButton: NSButton {
     let destinationURL: URL
     private let openURL: (URL) -> Bool
 
-    init(destinationURL: URL, openURL: @escaping (URL) -> Bool) {
+    init(destinationURL: URL, icon: NSImage?, openURL: @escaping (URL) -> Bool) {
         self.destinationURL = destinationURL
         self.openURL = openURL
         super.init(frame: .zero)
 
-        image = DashboardAboutGitHubButton.makeGitHubIcon()
+        image = icon
+        image?.isTemplate = true
         imagePosition = .imageOnly
         imageScaling = .scaleProportionallyDown
         image?.accessibilityDescription = DashboardAboutPage.githubAccessibilityLabel
+        contentTintColor = .labelColor
         isBordered = true
         bezelStyle = .texturedRounded
         showsBorderOnlyWhileMouseInside = true
@@ -96,38 +101,5 @@ final class DashboardAboutGitHubButton: NSButton {
 
     @objc private func activate(_ sender: Any?) {
         _ = openURL(destinationURL)
-    }
-
-    private static func makeGitHubIcon() -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18))
-        image.isTemplate = true
-        image.accessibilityDescription = DashboardAboutPage.githubAccessibilityLabel
-        image.lockFocus()
-
-        let bounds = NSRect(x: 2, y: 2, width: 14, height: 14)
-        NSColor.black.setFill()
-        NSBezierPath(ovalIn: bounds).fill()
-
-        let leftEar = NSBezierPath()
-        leftEar.move(to: NSPoint(x: 3.2, y: 13.4))
-        leftEar.line(to: NSPoint(x: 4.1, y: 17.5))
-        leftEar.line(to: NSPoint(x: 7.1, y: 14.9))
-        leftEar.close()
-        leftEar.fill()
-
-        let rightEar = NSBezierPath()
-        rightEar.move(to: NSPoint(x: 14.8, y: 13.4))
-        rightEar.line(to: NSPoint(x: 13.9, y: 17.5))
-        rightEar.line(to: NSPoint(x: 10.9, y: 14.9))
-        rightEar.close()
-        rightEar.fill()
-
-        NSGraphicsContext.current?.compositingOperation = .clear
-        NSColor.clear.setFill()
-        NSBezierPath(ovalIn: NSRect(x: 5.4, y: 7.1, width: 2.1, height: 2.1)).fill()
-        NSBezierPath(ovalIn: NSRect(x: 10.5, y: 7.1, width: 2.1, height: 2.1)).fill()
-        NSGraphicsContext.current?.compositingOperation = .sourceOver
-        image.unlockFocus()
-        return image
     }
 }
