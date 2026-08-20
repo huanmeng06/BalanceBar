@@ -13,6 +13,8 @@ enum DashboardSettingsComponents {
 
     static func makeSettingsPage(_ sections: [NSView]) -> NSView {
         let root = DashboardSettingsPageView()
+        let viewportContainer = NSView()
+        viewportContainer.translatesAutoresizingMaskIntoConstraints = false
         let scrollView = NSScrollView()
         scrollView.contentView = NSClipView()
         scrollView.drawsBackground = false
@@ -47,12 +49,19 @@ enum DashboardSettingsComponents {
         stack.setContentHuggingPriority(.required, for: .vertical)
         stack.setContentCompressionResistancePriority(.required, for: .vertical)
         documentView.addSubview(stack)
-        root.addSubview(scrollView)
+        root.addSubview(viewportContainer)
+        viewportContainer.addSubview(scrollView)
+        let viewportTopInset: CGFloat = 28
+        let viewportBottomInset: CGFloat = 28
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: root.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            viewportContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            viewportContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            viewportContainer.topAnchor.constraint(equalTo: root.topAnchor, constant: viewportTopInset),
+            viewportContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -viewportBottomInset),
+            scrollView.leadingAnchor.constraint(equalTo: viewportContainer.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: viewportContainer.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: viewportContainer.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: viewportContainer.bottomAnchor),
             documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
             documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
             documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),

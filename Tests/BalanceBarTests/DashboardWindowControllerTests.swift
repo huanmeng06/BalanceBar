@@ -657,8 +657,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 firstHeading.bounds,
                 to: documentView
             )
+            let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
 
             XCTAssertTrue(documentView.isFlipped)
+            XCTAssertGreaterThanOrEqual(viewportFrameInPage.minY, page.bounds.minY + 27)
             XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
             XCTAssertEqual(
                 pageStack.frame.minY,
@@ -673,6 +675,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 visibleRect.intersects(firstHeadingRect),
                 "First heading is not visible on initial mount for \(section): visible=\(visibleRect), heading=\(firstHeadingRect)"
             )
+            let headingInPage = firstHeading.convert(firstHeading.bounds, to: page)
+            XCTAssertGreaterThanOrEqual(headingInPage.minY, viewportFrameInPage.minY - 1)
+            XCTAssertLessThanOrEqual(headingInPage.maxY, viewportFrameInPage.maxY + 1)
         }
     }
 
@@ -706,7 +711,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 firstDescendant(of: firstSection, as: NSTextField.self)
             )
             let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
+            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
             XCTAssertTrue(document.isFlipped)
+            XCTAssertGreaterThanOrEqual(
+                viewportFrameInPage.minY,
+                page.bounds.minY + 27,
+                "Settings scroll viewport lost its non-document top inset for \(section)"
+            )
             XCTAssertEqual(
                 visible.minY,
                 document.bounds.minY,
@@ -718,6 +730,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 visible.intersects(firstHeadingRect),
                 "Replaced \(section) first heading is not visible: visible=\(visible), heading=\(firstHeadingRect)"
             )
+            let headingInPage = firstHeading.convert(firstHeading.bounds, to: page)
+            XCTAssertGreaterThanOrEqual(headingInPage.minY, viewportFrameInPage.minY - 1)
+            XCTAssertLessThanOrEqual(headingInPage.maxY, viewportFrameInPage.maxY + 1)
         }
     }
 
@@ -1068,9 +1083,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     private func menuPage(in window: NSWindow) -> NSView? {
-        window.contentView?.subviews
+        guard let contentView = window.contentView else { return nil }
+        func containsScrollView(_ view: NSView) -> Bool {
+            if view is NSScrollView { return true }
+            return view.subviews.contains(where: containsScrollView)
+        }
+        return contentView.subviews
             .flatMap { $0.subviews }
-            .first { $0.subviews.contains(where: { $0 is NSScrollView }) }
+            .first(where: containsScrollView)
     }
 
     private func firstControl<T: NSView>(
