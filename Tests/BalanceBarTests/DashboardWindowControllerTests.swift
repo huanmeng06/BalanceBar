@@ -617,6 +617,51 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
     }
 
+    func testMenuBarAndAdvancedFirstMountStartAtNativeTopWithoutBlankRegion() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-30-top-blank.db"))
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+
+        for section in [DashboardSection.menuBar, .advanced] {
+            let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(section)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            window.layoutIfNeeded()
+            layoutDescendants(of: page)
+            defer { window.orderOut(nil) }
+
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: page, as: NSScrollView.self),
+                "Missing settings scroll view for \(section)"
+            )
+            let documentView = try XCTUnwrap(scrollView.documentView)
+            let pageStack = try XCTUnwrap(
+                firstDescendant(of: documentView, as: NSStackView.self)
+            )
+            let visibleRect = scrollView.contentView.convert(
+                scrollView.contentView.bounds,
+                to: documentView
+            )
+
+            XCTAssertTrue(documentView.isFlipped)
+            XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
+            XCTAssertGreaterThanOrEqual(
+                pageStack.frame.minY,
+                documentView.bounds.minY + 61
+            )
+            XCTAssertLessThanOrEqual(
+                visibleRect.maxY,
+                documentView.bounds.maxY + 1
+            )
+        }
+    }
+
     func testDashboardSettingsFactoryPreservesNativeControlValuesAndActions() throws {
         final class ActionTarget: NSObject {
             var switchActionCount = 0

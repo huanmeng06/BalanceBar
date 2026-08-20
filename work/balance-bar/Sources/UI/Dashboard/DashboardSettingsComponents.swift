@@ -28,7 +28,7 @@ enum DashboardSettingsComponents {
         scrollView.borderType = .noBorder
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        let documentView = NSView()
+        let documentView = DashboardSettingsDocumentView()
         documentView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
 
@@ -274,4 +274,12 @@ enum DashboardSettingsComponents {
             action: action
         )
     }
+}
+
+/// Settings documents use AppKit's native top-origin convention. With a
+/// flipped document, the top inset is the legal visual start and a short page
+/// naturally has no vertical range; NSScrollView remains the only user-scroll
+/// bounds owner.
+final class DashboardSettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }

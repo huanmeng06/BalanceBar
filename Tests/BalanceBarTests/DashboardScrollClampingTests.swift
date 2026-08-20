@@ -9,6 +9,8 @@ final class DashboardScrollClampingTests: XCTestCase {
 
         XCTAssertTrue(scrollView.contentView is NSClipView)
         XCTAssertFalse(scrollView.contentView is DashboardClipView)
+        XCTAssertTrue(scrollView.documentView is DashboardSettingsDocumentView)
+        XCTAssertTrue(scrollView.documentView?.isFlipped == true)
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
         XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
 
@@ -24,6 +26,45 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertFalse(clipSource.contains("override func setBoundsOrigin"))
         XCTAssertFalse(clipSource.contains("override func constrainBoundsRect"))
         XCTAssertFalse(clipSource.contains("reflectScrolledClipView"))
+    }
+
+    func testSettingsDocumentStartsAtNativeTopForShortAndTallPages() throws {
+        let shortFixture = try makeSettingsPage(sectionHeight: 80, viewportHeight: 280)
+        let short = shortFixture.scrollView
+        XCTAssertEqual(short.documentView!.bounds.height, short.contentView.bounds.height, accuracy: 1)
+        XCTAssertEqual(documentOffset(short), 0, accuracy: 1)
+
+        let tallFixture = try makeSettingsPage(sectionHeight: 760, viewportHeight: 280)
+        let tall = tallFixture.scrollView
+        XCTAssertGreaterThan(tall.documentView!.bounds.height, tall.contentView.bounds.height)
+        XCTAssertEqual(documentOffset(tall), 0, accuracy: 1)
+
+        let document = try XCTUnwrap(tall.documentView)
+        let topVisible = tall.contentView.convert(tall.contentView.bounds, to: document)
+        XCTAssertEqual(topVisible.minY, document.bounds.minY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(topVisible.maxY, document.bounds.minY)
+
+        let geometry = DashboardScrollGeometry(
+            documentBounds: document.bounds,
+            viewportHeight: tall.contentView.bounds.height,
+            isDocumentFlipped: document.isFlipped
+        )
+        let bottomVisibleDocumentRect = geometry.visibleDocumentRect(
+            forVisualOffset: geometry.maximumOffset
+        )
+        let bottomDocumentY = geometry.contentOriginDocumentY(
+            for: bottomVisibleDocumentRect,
+            contentViewIsFlipped: tall.contentView.isFlipped
+        )
+        let bottomContentY = document.convert(
+            NSPoint(x: document.bounds.minX, y: bottomDocumentY),
+            to: tall.contentView
+        ).y
+        tall.contentView.scroll(to: NSPoint(x: tall.contentView.bounds.minX, y: bottomContentY))
+        tall.reflectScrolledClipView(tall.contentView)
+        let bottomVisible = tall.contentView.convert(tall.contentView.bounds, to: document)
+        XCTAssertLessThanOrEqual(bottomVisible.maxY, document.bounds.maxY + 1)
+        XCTAssertGreaterThanOrEqual(bottomVisible.minY, document.bounds.minY - 1)
     }
 
     func testThreeRapidNativeSwipesPreserveLegalOriginsWithoutCustomOscillation() {
@@ -113,6 +154,33 @@ final class DashboardScrollClampingTests: XCTestCase {
             if let match = firstDescendant(of: child, as: type) { return match }
         }
         return nil
+    }
+
+    private func makeSettingsPage(
+        sectionHeight: CGFloat,
+        viewportHeight: CGFloat
+    ) throws -> (window: NSWindow, scrollView: NSScrollView) {
+        let section = NSView()
+        section.translatesAutoresizingMaskIntoConstraints = false
+        section.heightAnchor.constraint(equalToConstant: sectionHeight).isActive = true
+        let page = DashboardSettingsComponents.makeSettingsPage([section])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: viewportHeight),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        window.layoutIfNeeded()
+        let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
+        scrollView.layoutSubtreeIfNeeded()
+        return (window, scrollView)
+    }
+
+    private func documentOffset(_ scrollView: NSScrollView) -> CGFloat {
+        let document = scrollView.documentView!
+        let visible = scrollView.contentView.convert(scrollView.contentView.bounds, to: document)
+        return visible.minY - document.bounds.minY
     }
 }
 
