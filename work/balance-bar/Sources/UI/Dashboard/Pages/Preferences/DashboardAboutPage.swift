@@ -67,6 +67,7 @@ enum DashboardAboutPage {
 
 final class DashboardAboutGitHubButton: NSButton {
     static let controlSize: CGFloat = 28
+    static let iconSize: CGFloat = 18
     let destinationURL: URL
     private let openURL: (URL) -> Bool
     private var trackingAreaReference: NSTrackingArea?
@@ -83,6 +84,7 @@ final class DashboardAboutGitHubButton: NSButton {
         super.init(frame: .zero)
 
         image = icon
+        image?.size = NSSize(width: Self.iconSize, height: Self.iconSize)
         image?.isTemplate = true
         imagePosition = .imageOnly
         imageScaling = .scaleProportionallyDown
