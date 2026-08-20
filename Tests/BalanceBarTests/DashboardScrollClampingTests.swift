@@ -363,18 +363,16 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertTrue(kinds.contains("window-resize"))
     }
 
-    func testCapturedAppKitEndpointSettlingSequenceLatchesBottomWithoutOscillation() {
+    func testCapturedAppKitEndpointSettlingSequencePreservesLegalOrigins() {
         DashboardScrollTrace.reset()
-        let documentView = NSView(
+        let documentView = FlippedDashboardDocumentView(
             frame: NSRect(x: 0, y: 0, width: 400, height: 807)
         )
         let clipView = DashboardClipView(
             frame: NSRect(x: 0, y: 0, width: 400, height: 620)
         )
-        let scrollView = NSScrollView(frame: clipView.frame)
-        scrollView.contentView = clipView
-        scrollView.documentView = documentView
-        scrollView.layoutSubtreeIfNeeded()
+        clipView.documentView = documentView
+        clipView.layoutSubtreeIfNeeded()
 
         let geometry = makeGeometry(
             documentBounds: documentView.bounds,
@@ -383,26 +381,16 @@ final class DashboardScrollClampingTests: XCTestCase {
         )
         XCTAssertEqual(geometry.maximumOffset, 187, accuracy: 0.0001)
 
-        // These values are the sanitized order captured in the real debug
-        // session: AppKit first reaches -187, then proposes legal origins
-        // 183..186 while settling back toward the same bottom endpoint.
+        // These values are the sanitized visual-offset order captured in the
+        // real debug session: AppKit first reaches 187, then proposes legal
+        // origins 183..186 while settling back toward the same endpoint.
         let capturedOrigins: [CGFloat] = [
-            -183, -219, -184, -211, -184, -204, -185, -200,
-            -185, -196, -186, -194, -186, -192, -186, -191,
-            -186, -190, -186, -189, -186, -188, -186, -188
+            183, 219, 184, 211, 184, 204, 185, 200,
+            185, 196, 186, 194, 186, 192, 186, 191,
+            186, 190, 186, 189, 186, 188, 186, 188
         ]
-        var edgeProposal = clipView.bounds
-        edgeProposal.origin.y = -geometry.maximumOffset
-        _ = clipView.constrainBoundsRect(edgeProposal)
-
-        let legacyVisualOffsets = capturedOrigins.map { originY in
-            min(max(-originY, 0), geometry.maximumOffset)
-        }
-        XCTAssertTrue(
-            zip(legacyVisualOffsets, legacyVisualOffsets.dropFirst()).contains {
-                abs($0 - $1) > 0.5
-            },
-            "Captured order must reproduce the pre-latch endpoint oscillation"
+        clipView.scroll(
+            to: NSPoint(x: clipView.bounds.minX, y: geometry.maximumOffset)
         )
 
         for originY in capturedOrigins {
@@ -412,16 +400,10 @@ final class DashboardScrollClampingTests: XCTestCase {
             let visibleRect = clipView.convert(clipView.bounds, to: documentView)
             XCTAssertEqual(
                 geometry.visualOffset(for: visibleRect),
-                geometry.maximumOffset,
+                min(max(originY, 0), geometry.maximumOffset),
                 accuracy: 0.0001
             )
         }
-
-        XCTAssertTrue(
-            DashboardScrollTrace.snapshot().contains {
-                $0.kind == "edge-latch" && $0.flags.contains("edge=bottom")
-            }
-        )
     }
 
     func testShortDocumentHasNoVerticalOffset() {

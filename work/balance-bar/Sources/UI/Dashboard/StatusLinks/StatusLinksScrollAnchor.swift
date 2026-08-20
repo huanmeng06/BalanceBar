@@ -96,7 +96,6 @@ final class StatusLinksScrollAnchorController {
     func stop() {
         maintenanceGeneration &+= 1
         maintenanceTimer.stop()
-        observedClipView?.isAnchorMaintenanceActive = false
         observedClipView?.onUserBoundsMovement = nil
         observedClipView = nil
     }
@@ -300,7 +299,6 @@ final class StatusLinksScrollAnchorController {
             return
         }
         observedClipView = clipView
-        clipView.isAnchorMaintenanceActive = true
         clipView.onUserBoundsMovement = { [weak self] in
             guard let self, self.maintenanceTimer.isRunning else { return }
             SwitchLog.write(
