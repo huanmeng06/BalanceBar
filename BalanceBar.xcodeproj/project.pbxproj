@@ -68,6 +68,8 @@
 		A100000000000000000000BA /* DashboardMenuPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BB /* DashboardMenuPage.swift */; };
 		A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BD /* DashboardPreferencePageRelay.swift */; };
 		A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BF /* DashboardPreferencePages.swift */; };
+		A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000C5 /* DashboardProviderPages.swift */; };
+		A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000C9 /* DashboardProviderPagesTests.swift */; };
 		A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -135,6 +137,8 @@
 		A100000000000000000000BB /* DashboardMenuPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuPage.swift; sourceTree = "<group>"; };
 		A100000000000000000000BD /* DashboardPreferencePageRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePageRelay.swift; sourceTree = "<group>"; };
 		A100000000000000000000BF /* DashboardPreferencePages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePages.swift; sourceTree = "<group>"; };
+		A100000000000000000000C5 /* DashboardProviderPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProviderPages.swift; sourceTree = "<group>"; };
+		A100000000000000000000C9 /* DashboardProviderPagesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProviderPagesTests.swift; sourceTree = "<group>"; };
 		A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePagesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -243,6 +247,7 @@
 				A10000000000000000000077 /* CodexActivityMonitorTests.swift */,
 				A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */,
 				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
+				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -310,6 +315,7 @@
 				A1000000000000000000009E /* DashboardWindowController.swift */,
 				A10000000000000000000093 /* Components */,
 				A100000000000000000000C0 /* Preferences */,
+				A100000000000000000000C7 /* Providers */,
 				A1000000000000000000009C /* StatusLinks */,
 			);
 			name = Dashboard;
@@ -330,6 +336,15 @@
 			);
 			name = Preferences;
 			path = "Pages/Preferences";
+			sourceTree = "<group>";
+		};
+		A100000000000000000000C7 /* Providers */ = {
+			isa = PBXGroup;
+			children = (
+				A100000000000000000000C5 /* DashboardProviderPages.swift */,
+			);
+			name = Providers;
+			path = "Pages/Providers";
 			sourceTree = "<group>";
 		};
 		A10000000000000000000093 /* Components */ = {
@@ -502,6 +517,7 @@
 				A100000000000000000000BA /* DashboardMenuPage.swift in Sources */,
 				A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */,
 				A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */,
+				A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -527,6 +543,7 @@
 				A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */,
 				A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */,
 				A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */,
+				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
