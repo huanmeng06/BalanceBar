@@ -186,6 +186,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var syncWorkItem: DispatchWorkItem?
     private var lastSuccessfulRefresh: Date?
     private var dashboardProviderPageRevision: UInt64 = 0
+    private var applicationLifecycleGeneration: UInt64 = 0
+    private var applicationIsReady = false
     private var lastProviderID: String?
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
@@ -465,6 +467,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applicationLifecycleGeneration &+= 1
+        applicationIsReady = true
         if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -503,7 +507,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "database watchers started; count=\(databaseWatchers.count)",
             category: "database"
         )
-        refresh(reason: .initial)
+        let lifecycleGeneration = applicationLifecycleGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.applicationIsReady,
+                  self.applicationLifecycleGeneration == lifecycleGeneration else { return }
+            self.refresh(reason: .initial)
+        }
         refreshQuickSwitchSummaries(force: true)
         refreshQuickSwitchSummaries(force: true, for: .claude)
         prefetchCurrentBalance(for: .claude)
@@ -514,6 +524,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        applicationIsReady = false
+        applicationLifecycleGeneration &+= 1
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         activityTimer?.invalidate()
@@ -1193,6 +1205,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardWindowController.open()
         dashboardWindowController.showSection(section)
         return dashboardWindowController.window
+    }
+
+    @discardableResult
+    func performDashboardSidebarActionForTesting(_ section: DashboardSection) -> Bool {
+        dashboardWindowController.performNavigationActionForTesting(section)
+    }
+
+    func dashboardSidebarButtonForTesting(_ section: DashboardSection) -> NSButton? {
+        dashboardWindowController.navigationButtonForTesting(section)
+    }
+
+    func dashboardSidebarButtonTargetsLiveControllerForTesting(_ section: DashboardSection) -> Bool {
+        dashboardWindowController.navigationButtonForTesting(section)?.target === dashboardWindowController
+    }
+
+    var dashboardSectionForTesting: DashboardSection {
+        dashboardSection
+    }
+
+    var menuBarPresentationForTesting: (primary: String, secondary: String) {
+        statusItemController.menuBarPresentationForTesting
     }
 
     func addStatusLinkForTesting() {
@@ -2851,7 +2884,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func render(_ next: Snapshot) {
-        DispatchQueue.main.async {
+        let lifecycleGeneration = applicationLifecycleGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.applicationIsReady,
+                  self.applicationLifecycleGeneration == lifecycleGeneration,
+                  self.statusItemController != nil else { return }
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
