@@ -402,6 +402,7 @@ final class DashboardProviderPageCoordinator {
     private let actions: DashboardProviderPageActions
     private weak var mountedPage: DashboardProviderMountedPage?
     private var mountedMount: DashboardProviderPageMount?
+    private var revisionGate = DashboardProviderRevisionGate()
     private var isTornDown = false
 
     init(actions: DashboardProviderPageActions) {
@@ -412,6 +413,7 @@ final class DashboardProviderPageCoordinator {
         guard !isTornDown else { return NSView() }
         unmount()
         let page = DashboardProviderDetailPage(choice: choice, input: input, actions: actions)
+        revisionGate = DashboardProviderRevisionGate()
         return mount(page)
     }
 
@@ -419,6 +421,7 @@ final class DashboardProviderPageCoordinator {
         guard !isTornDown else { return NSView() }
         unmount()
         let page = DashboardProviderOverviewPage(input: input, actions: actions)
+        revisionGate = DashboardProviderRevisionGate()
         return mount(page)
     }
 
@@ -427,6 +430,7 @@ final class DashboardProviderPageCoordinator {
         guard !isTornDown,
               let page = mountedPage,
               mountedMount == page.mount else { return false }
+        guard revisionGate.accepts(input.revision) else { return false }
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in
                 _ = self?.refreshMountedPage(input: input)

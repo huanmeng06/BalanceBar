@@ -125,6 +125,16 @@ final class DashboardProviderPagesTests: XCTestCase {
             descendants(of: page, as: NSButton.self).first { $0.title.contains("刷新") || $0.title.contains("Refresh") }
         )
         XCTAssertTrue(coordinator.refreshMountedPage(input: input))
+        let newerInput = DashboardProviderPageInput(
+            choices: [choice],
+            selectedProviderID: choice.id,
+            snapshot: .placeholder,
+            quickSwitchSummaries: [:],
+            refreshDate: nil,
+            revision: 2
+        )
+        XCTAssertTrue(coordinator.refreshMountedPage(input: newerInput))
+        XCTAssertFalse(coordinator.refreshMountedPage(input: input))
         refreshButton.performClick(nil)
         XCTAssertEqual(refreshCount, 1)
 
