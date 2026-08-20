@@ -55,3 +55,8 @@ xcodebuild -project BalanceBar.xcodeproj -scheme BalanceBar -configuration Debug
 ```
 
 The Xcode-built app is written under the supplied DerivedData path at `Build/Products/Debug/BalanceBar.app`. The existing `./work/balance-bar/build.sh` flow remains the CLI build and packaging entry point.
+
+## Architecture and development
+
+- [Architecture map and dependency rules](docs/architecture.md)
+- [Development, build, test, CI, and manual-testing workflow](docs/development.md)
