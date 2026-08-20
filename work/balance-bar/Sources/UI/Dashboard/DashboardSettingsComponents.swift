@@ -46,6 +46,11 @@ enum DashboardSettingsComponents {
         stack.alignment = .leading
         stack.spacing = 28
         stack.translatesAutoresizingMaskIntoConstraints = false
+        // Horizontal width belongs to the scroll document, not to whichever
+        // arranged section happens to have the widest intrinsic content. This
+        // keeps a page stable when rows are hidden or revealed in place.
+        stack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        stack.setContentCompressionResistancePriority(.required, for: .horizontal)
         stack.setContentHuggingPriority(.required, for: .vertical)
         stack.setContentCompressionResistancePriority(.required, for: .vertical)
         documentView.addSubview(stack)
@@ -82,6 +87,8 @@ enum DashboardSettingsComponents {
         ])
         for section in sections {
             section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            section.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            section.setContentCompressionResistancePriority(.required, for: .horizontal)
         }
         return root
     }
@@ -119,6 +126,8 @@ enum DashboardSettingsComponents {
         rowsStack.distribution = .fill
         rowsStack.spacing = 0
         rowsStack.translatesAutoresizingMaskIntoConstraints = false
+        rowsStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        rowsStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         rowsStack.setContentHuggingPriority(.required, for: .vertical)
         // The card has an explicit height that changes when rows are added or
         // removed. Let the stack follow that constraint instead of preserving
@@ -171,6 +180,8 @@ enum DashboardSettingsComponents {
         section.orientation = .vertical
         section.alignment = .leading
         section.spacing = 11
+        section.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        section.setContentCompressionResistancePriority(.required, for: .horizontal)
         card.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
         return section
     }

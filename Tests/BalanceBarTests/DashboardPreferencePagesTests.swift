@@ -237,12 +237,69 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testOpenCodexRowsKeepStableWidthsAcrossLiveAutomaticDetectionToggle() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.OpenCodex.Width.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.openCodexDashboardAutomaticDetection = true
+        preferences.openCodexDashboardPortOverride = nil
+        let relay = DashboardPreferencePageRelay()
+        let controller = DashboardAdvancedPage()
+        let resolution = OpenCodexDashboardResolver.resolve(
+            manualPort: nil,
+            runtimeCandidate: nil
+        )
+        let page = controller.make(.init(
+            preferences: preferences,
+            mode: OpenCodexDashboardMode(automaticDetection: true, manualPort: nil),
+            currentResolution: resolution,
+            runtimeCandidate: nil,
+            relay: relay,
+            logViewer: NSView(),
+            onModeChanged: { _ in },
+            onClamp: {}
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 900, height: 700)
+
+        page.layoutSubtreeIfNeeded()
+        let automaticWidths = rowWidths(in: page)
+        controller.handleAutomaticDetection(false)
+        page.layoutSubtreeIfNeeded()
+        let manualWidths = rowWidths(in: page)
+        controller.handleAutomaticDetection(true)
+        page.layoutSubtreeIfNeeded()
+        let restoredWidths = rowWidths(in: page)
+
+        XCTAssertEqual(automaticWidths.count, 3)
+        XCTAssertEqual(manualWidths.count, 3)
+        XCTAssertEqual(restoredWidths.count, 3)
+        for index in automaticWidths.indices {
+            XCTAssertEqual(manualWidths[index], automaticWidths[index], accuracy: 0.5)
+            XCTAssertEqual(restoredWidths[index], automaticWidths[index], accuracy: 0.5)
+        }
+    }
+
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
     }
 
     private func view(withIdentifier identifier: String, in view: NSView) -> NSView? {
         descendants(of: view).first { $0.identifier?.rawValue == identifier }
+    }
+
+    private func rowWidths(in page: NSView) -> [CGFloat] {
+        [
+            "openCodexAutomaticDetectionRow",
+            "openCodexManualPortRow",
+            "openCodexDashboardRow"
+        ].compactMap { view(withIdentifier: $0, in: page)?.frame.width }
     }
 
     private func nonEmptyTextFields(in view: NSView?) -> [String] {
