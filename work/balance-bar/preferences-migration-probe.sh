@@ -8,7 +8,7 @@ probe_binary="$probe_dir/preferences-migration-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
 {
-    printf '%s\n' 'import Foundation'
+    printf '%s\n' 'import Foundation' 'enum AppPreferences { static let showOpenCodexMenuKey = "showOpenCodexMenu" }'
     awk '
         /^struct PreferencesMigrationPlan \{/ { capture = 1 }
         /^private func migrateLegacyPreferencesIfNeeded/ { exit }

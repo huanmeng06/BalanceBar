@@ -124,8 +124,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let page = appDelegate.dashboardPageForTesting(.menu)
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
 
         let editor = findStatusLinksEditor(in: page)
         XCTAssertNotNil(editor, "The Status Links editor stays in the page so it can animate in place")
@@ -154,8 +154,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-layout.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.layoutIfNeeded()
         window.displayIfNeeded()
         let page = try XCTUnwrap(menuPage(in: window))
@@ -224,8 +224,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-add-anchor.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.setContentSize(NSSize(width: 800, height: 540))
         window.layoutIfNeeded()
         window.displayIfNeeded()
@@ -288,7 +288,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         ).y
         let initialDocumentHeight = documentView.bounds.height
 
-        appDelegate.addStatusLinkForTesting()
+        appDelegate.dashboardCompositionForTesting.addStatusLinkForTesting()
 
         let deadline = Date().addingTimeInterval(0.34)
         while Date() < deadline {
@@ -348,8 +348,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-toggle.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.layoutIfNeeded()
         window.displayIfNeeded()
         layoutDescendants(of: window.contentView!)
@@ -431,8 +431,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-rapid.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.layoutIfNeeded()
         window.displayIfNeeded()
         layoutDescendants(of: window.contentView!)
@@ -531,9 +531,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-109-menu.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
 
-        let page = appDelegate.dashboardPageForTesting(.menu)
+        let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
         layoutDescendants(of: page)
         let openCodexSwitches = allControls(of: page, as: NSSwitch.self).filter {
             $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
@@ -548,7 +548,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(AppPreferences(defaults: defaults).showOpenCodexMenu)
         XCTAssertTrue(AppPreferences(defaults: defaults).showOpenCCSwitchMenu)
 
-        let reopenedPage = appDelegate.dashboardPageForTesting(.menu)
+        let reopenedPage = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
         layoutDescendants(of: reopenedPage)
         let reloadedOpenCodexSwitches = allControls(of: reopenedPage, as: NSSwitch.self).filter {
             $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
@@ -558,13 +558,23 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     func testProductionSettingsPagesPreserveSectionRowGeometryAndNativeActions() throws {
+        let defaults = UserDefaults.standard
+        let previousStatusMenu = defaults.object(forKey: "showStatusMenu")
+        defaults.set(true, forKey: "showStatusMenu")
+        defer {
+            if let previousStatusMenu {
+                defaults.set(previousStatusMenu, forKey: "showStatusMenu")
+            } else {
+                defaults.removeObject(forKey: "showStatusMenu")
+            }
+        }
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-27-pages.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
 
         for section in [DashboardSection.general, .menuBar, .menu, .advanced] {
-            let page = appDelegate.dashboardPageForTesting(section)
+            let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(section)
             layoutDescendants(of: page)
 
             let scrollView = try XCTUnwrap(
