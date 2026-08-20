@@ -75,6 +75,7 @@ final class StatusLinksScrollAnchorController {
     private let maintenanceTimer = StatusLinksScrollAnchorTimer()
     private var maintenanceGeneration = 0
     private weak var observedClipView: DashboardClipView?
+    private var lastObservedDocumentHeight: CGFloat?
 
     init(
         dashboardProvider: @escaping () -> NSWindow?,
@@ -184,6 +185,8 @@ final class StatusLinksScrollAnchorController {
         }
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
+        traceLayoutIfNeeded(documentView, source: "anchor-clamp")
+        DashboardScrollTrace.marker("anchor-clamp", source: "StatusLinks")
         setDashboardScrollBounds(
             scrollView.contentView.bounds,
             scrollView: scrollView,
@@ -197,6 +200,11 @@ final class StatusLinksScrollAnchorController {
     ) {
         stop()
         installUserBoundsMovementHandler()
+        DashboardScrollTrace.marker(
+            "anchor-maintenance-start",
+            source: "StatusLinks",
+            flags: "operation=\(operation)"
+        )
         let generation = maintenanceGeneration
         SwitchLog.write(
             "scroll anchor maintenance started; action=\(operation); interval=0.0167s; distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom))",
@@ -350,6 +358,12 @@ final class StatusLinksScrollAnchorController {
         contentHostProvider()?.layoutSubtreeIfNeeded()
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
+        traceLayoutIfNeeded(documentView, source: "anchor-maintain")
+        DashboardScrollTrace.marker(
+            "anchor-maintain",
+            source: "StatusLinks",
+            flags: "operation=\(position.operation)"
+        )
 
         let contentView = scrollView.contentView
         // A removal shrinks the document from the bottom. Restore the clip
@@ -446,6 +460,12 @@ final class StatusLinksScrollAnchorController {
         contentHostProvider()?.layoutSubtreeIfNeeded()
         page.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
+        traceLayoutIfNeeded(documentView, source: "anchor-restore")
+        DashboardScrollTrace.marker(
+            "anchor-restore",
+            source: "StatusLinks",
+            flags: "operation=\(position.operation); attempt=\(attempt)"
+        )
         if position.operation != "add" {
             let geometry = dashboardScrollGeometry(
                 scrollView: scrollView,
@@ -549,6 +569,11 @@ final class StatusLinksScrollAnchorController {
         documentView: NSView
     ) {
         let contentView = scrollView.contentView
+        DashboardScrollTrace.marker(
+            "anchor-clamp-write",
+            source: "StatusLinks",
+            flags: "programmatic=true"
+        )
         let clampedBounds = dashboardClampedContentBounds(
             proposedBounds: proposedBounds,
             contentView: contentView,
@@ -559,6 +584,20 @@ final class StatusLinksScrollAnchorController {
         } else {
             contentView.bounds = clampedBounds
         }
+        let geometry = dashboardScrollGeometry(
+            scrollView: scrollView,
+            documentView: documentView
+        )
+        let visibleRect = contentView.convert(contentView.bounds, to: documentView)
+        DashboardScrollTrace.record(
+            kind: "reflect-scrolled-clip-view",
+            source: "StatusLinks",
+            resultOriginY: contentView.bounds.origin.y,
+            visualOffset: geometry.visualOffset(for: visibleRect),
+            legalMaximum: geometry.maximumOffset,
+            documentHeight: documentView.bounds.height,
+            viewportHeight: contentView.bounds.height
+        )
         scrollView.reflectScrolledClipView(contentView)
     }
 
@@ -600,6 +639,25 @@ final class StatusLinksScrollAnchorController {
         )
         let visualOffset = geometry.clampedVisualOffset(for: viewportRect)
         return "page=\(sectionTitleProvider()); links=\(linksCountProvider()); content_originY=\(DashboardLogging.number(bounds.origin.y)); content_height=\(DashboardLogging.number(bounds.height)); document_frame=\(DashboardLogging.rect(documentView.frame)); document_bounds=\(DashboardLogging.rect(documentView.bounds)); viewport_document=\(DashboardLogging.rect(viewportRect)); visual_offset=\(DashboardLogging.number(visualOffset)); maxOffset=\(DashboardLogging.number(geometry.maximumOffset))"
+    }
+
+    private func traceLayoutIfNeeded(_ documentView: NSView, source: String) {
+        let height = documentView.bounds.height
+        guard let previousHeight = lastObservedDocumentHeight else {
+            lastObservedDocumentHeight = height
+            return
+        }
+        guard abs(previousHeight - height) >
+                DashboardScrollClampingPolicy.boundsOriginTolerance else {
+            return
+        }
+        lastObservedDocumentHeight = height
+        DashboardScrollTrace.record(
+            kind: "document-height-change",
+            source: source,
+            documentHeight: height,
+            flags: "previous=\(DashboardLogging.number(previousHeight))"
+        )
     }
 
     private func logScrollState(label: String) {

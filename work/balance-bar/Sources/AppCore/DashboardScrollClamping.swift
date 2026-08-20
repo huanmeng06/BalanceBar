@@ -1,5 +1,88 @@
 import AppKit
 
+struct DashboardScrollTraceEvent: Equatable {
+    let sequence: Int
+    let kind: String
+    let source: String
+    let proposedOriginY: CGFloat?
+    let resultOriginY: CGFloat?
+    let visualOffset: CGFloat?
+    let legalMaximum: CGFloat?
+    let documentHeight: CGFloat?
+    let viewportHeight: CGFloat?
+    let flags: String
+}
+
+enum DashboardScrollTrace {
+    static let capacity = 256
+    private static let persistencePreferenceKey = "debugDashboardScrollTrace"
+
+    private static var sequence = 0
+    private static var events: [DashboardScrollTraceEvent] = []
+
+    static func reset() {
+        sequence = 0
+        events.removeAll(keepingCapacity: true)
+    }
+
+    static func snapshot() -> [DashboardScrollTraceEvent] {
+        events
+    }
+
+    static func record(
+        kind: String,
+        source: String,
+        proposedOriginY: CGFloat? = nil,
+        resultOriginY: CGFloat? = nil,
+        visualOffset: CGFloat? = nil,
+        legalMaximum: CGFloat? = nil,
+        documentHeight: CGFloat? = nil,
+        viewportHeight: CGFloat? = nil,
+        flags: String = ""
+    ) {
+        sequence += 1
+        let event = DashboardScrollTraceEvent(
+            sequence: sequence,
+            kind: kind,
+            source: source,
+            proposedOriginY: proposedOriginY,
+            resultOriginY: resultOriginY,
+            visualOffset: visualOffset,
+            legalMaximum: legalMaximum,
+            documentHeight: documentHeight,
+            viewportHeight: viewportHeight,
+            flags: flags
+        )
+        events.append(event)
+        if events.count > capacity {
+            events.removeFirst(events.count - capacity)
+        }
+
+        // The persisted diagnostic is opt-in so tracing cannot add a disk
+        // write per scroll frame. The in-memory ring is always bounded and
+        // keeps the exact order available to production-style replay tests.
+        guard UserDefaults.standard.bool(forKey: persistencePreferenceKey) else {
+            return
+        }
+        SwitchLog.write(
+            "dashboard-scroll-trace; seq=\(sequence); kind=\(kind); source=\(source); proposed_y=\(format(proposedOriginY)); result_y=\(format(resultOriginY)); visual=\(format(visualOffset)); max=\(format(legalMaximum)); document_h=\(format(documentHeight)); viewport_h=\(format(viewportHeight)); flags=\(flags)",
+            category: "ui.scroll.trace"
+        )
+    }
+
+    static func marker(
+        _ kind: String,
+        source: String,
+        flags: String = ""
+    ) {
+        record(kind: kind, source: source, flags: flags)
+    }
+
+    private static func format(_ value: CGFloat?) -> String {
+        value.map(DashboardLogging.number) ?? "na"
+    }
+}
+
 enum DashboardScrollClampingPolicy {
     // AppKit can produce fractional origins on adjacent frames while a clip
     // view is settling at an edge. Treat that small interval as one edge so
@@ -157,6 +240,13 @@ final class DashboardClipView: NSClipView {
     var onUserBoundsMovement: (() -> Void)?
 
     func applyProgrammaticBoundsOrigin(_ origin: NSPoint) {
+        trace(
+            kind: "programmatic-write",
+            source: "anchor",
+            proposedBounds: bounds,
+            resultOriginY: origin.y,
+            flags: "suppressed-user-callback"
+        )
         isApplyingProgrammaticBounds = true
         defer { isApplyingProgrammaticBounds = false }
         super.setBoundsOrigin(origin)
@@ -166,37 +256,55 @@ final class DashboardClipView: NSClipView {
         guard !isApplyingRigidBounds else {
             return super.constrainBoundsRect(proposedBounds)
         }
-        return rigidBounds(for: proposedBounds)
+        let constrainedBounds = rigidBounds(for: proposedBounds)
+        trace(
+            kind: "constrain-result",
+            source: "appkit",
+            proposedBounds: proposedBounds,
+            resultOriginY: constrainedBounds.origin.y
+        )
+        return constrainedBounds
     }
 
     override func scroll(to newOrigin: NSPoint) {
         notifyUserBoundsMovementIfNeeded(newOrigin)
-        guard !isApplyingRigidBounds else {
-            super.scroll(to: newOrigin)
-            return
-        }
-
         var proposedBounds = bounds
         proposedBounds.origin = newOrigin
-        let constrainedBounds = rigidBounds(for: proposedBounds)
-        guard needsBoundsOriginUpdate(constrainedBounds.origin) else { return }
-        isApplyingRigidBounds = true
-        defer { isApplyingRigidBounds = false }
-        super.scroll(to: constrainedBounds.origin)
+        writeRigidBounds(proposedBounds, source: "scroll(to:)")
     }
 
     override func setBoundsOrigin(_ newOrigin: NSPoint) {
+        notifyUserBoundsMovementIfNeeded(newOrigin)
+        var proposedBounds = bounds
+        proposedBounds.origin = newOrigin
+        writeRigidBounds(proposedBounds, source: "setBoundsOrigin")
+    }
+
+    private func writeRigidBounds(
+        _ proposedBounds: NSRect,
+        source: String
+    ) {
         guard !isApplyingRigidBounds else {
-            super.setBoundsOrigin(newOrigin)
+            super.setBoundsOrigin(proposedBounds.origin)
             return
         }
 
-        var proposedBounds = bounds
-        proposedBounds.origin = newOrigin
         let constrainedBounds = rigidBounds(for: proposedBounds)
+        trace(
+            kind: "edge-writer",
+            source: source,
+            proposedBounds: proposedBounds,
+            resultOriginY: constrainedBounds.origin.y,
+            flags: needsBoundsOriginUpdate(constrainedBounds.origin)
+                ? "write"
+                : "idempotent-no-write"
+        )
         guard needsBoundsOriginUpdate(constrainedBounds.origin) else { return }
         isApplyingRigidBounds = true
         defer { isApplyingRigidBounds = false }
+        // One writer is used for both AppKit entry paths. Calling the
+        // superclass bounds primitive avoids a second scroll proposal from
+        // re-entering the clamp during the same event.
         super.setBoundsOrigin(constrainedBounds.origin)
     }
 
@@ -224,5 +332,46 @@ final class DashboardClipView: NSClipView {
             return
         }
         onUserBoundsMovement?()
+    }
+
+    private func trace(
+        kind: String,
+        source: String,
+        proposedBounds: NSRect,
+        resultOriginY: CGFloat,
+        flags: String = ""
+    ) {
+        guard let documentView else {
+            DashboardScrollTrace.record(
+                kind: kind,
+                source: source,
+                proposedOriginY: proposedBounds.origin.y,
+                resultOriginY: resultOriginY,
+                flags: flags
+            )
+            return
+        }
+        let geometry = DashboardScrollGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: proposedBounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        let proposedVisibleRect = convert(proposedBounds, to: documentView)
+        let resultBounds = NSRect(
+            origin: NSPoint(x: proposedBounds.origin.x, y: resultOriginY),
+            size: proposedBounds.size
+        )
+        let resultVisibleRect = convert(resultBounds, to: documentView)
+        DashboardScrollTrace.record(
+            kind: kind,
+            source: source,
+            proposedOriginY: proposedBounds.origin.y,
+            resultOriginY: resultOriginY,
+            visualOffset: geometry.visualOffset(for: resultVisibleRect),
+            legalMaximum: geometry.maximumOffset,
+            documentHeight: documentView.bounds.height,
+            viewportHeight: proposedBounds.height,
+            flags: "proposed_visual=\(DashboardLogging.number(geometry.visualOffset(for: proposedVisibleRect))); \(flags)"
+        )
     }
 }

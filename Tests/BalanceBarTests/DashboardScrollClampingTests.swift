@@ -255,6 +255,114 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(clipView.bounds.origin.y, directOffset, accuracy: 0.0001)
     }
 
+    func testCapturedProductionEventOrderReplaysWithoutEndpointOscillation() {
+        DashboardScrollTrace.reset()
+        let documentView = FlippedDashboardDocumentView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 300)
+        )
+        let clipView = DashboardClipView(
+            frame: NSRect(x: 0, y: 0, width: 400, height: 100)
+        )
+        let scrollView = NSScrollView(frame: clipView.frame)
+        scrollView.contentView = clipView
+        scrollView.documentView = documentView
+        scrollView.layoutSubtreeIfNeeded()
+
+        let geometry = makeGeometry(
+            documentBounds: documentView.bounds,
+            viewportHeight: clipView.bounds.height,
+            isDocumentFlipped: documentView.isFlipped
+        )
+        enum ReplayStep {
+            case scroll(CGFloat)
+            case directBounds(CGFloat)
+            case constrain(CGFloat)
+            case reflect
+            case anchorMaintain
+            case anchorRestore
+            case anchorClamp
+            case resize
+        }
+        let steps: [ReplayStep] = [
+            .anchorMaintain,
+            .scroll(0.41),
+            .directBounds(-0.37),
+            .constrain(0.28),
+            .reflect,
+            .anchorRestore,
+            .scroll(geometry.maximumOffset - 0.42),
+            .directBounds(geometry.maximumOffset + 0.36),
+            .constrain(geometry.maximumOffset - 0.24),
+            .anchorClamp,
+            .reflect,
+            .resize,
+            .scroll(0.33),
+            .directBounds(-0.31),
+            .scroll(geometry.maximumOffset + 0.29)
+        ]
+
+        var visualOffsets: [CGFloat] = []
+        for step in steps {
+            switch step {
+            case let .scroll(originY):
+                clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: originY))
+            case let .directBounds(originY):
+                clipView.setBoundsOrigin(
+                    NSPoint(x: clipView.bounds.minX, y: originY)
+                )
+            case let .constrain(originY):
+                var proposed = clipView.bounds
+                proposed.origin.y = originY
+                _ = clipView.constrainBoundsRect(proposed)
+            case .reflect:
+                DashboardScrollTrace.marker("reflect-replay", source: "replay")
+                scrollView.reflectScrolledClipView(clipView)
+            case .anchorMaintain:
+                DashboardScrollTrace.marker("anchor-maintain", source: "replay")
+            case .anchorRestore:
+                DashboardScrollTrace.marker("anchor-restore", source: "replay")
+            case .anchorClamp:
+                DashboardScrollTrace.marker("anchor-clamp", source: "replay")
+            case .resize:
+                DashboardScrollTrace.marker("window-resize", source: "replay")
+            }
+
+            let visibleRect = clipView.convert(clipView.bounds, to: documentView)
+            let visualOffset = geometry.visualOffset(for: visibleRect)
+            visualOffsets.append(visualOffset)
+            XCTAssertEqual(
+                visualOffset,
+                geometry.clampedVisualOffset(visualOffset),
+                accuracy: 0.0001
+            )
+        }
+
+        XCTAssertEqual(visualOffsets[1], 0, accuracy: 0.0001)
+        XCTAssertEqual(visualOffsets[2], 0, accuracy: 0.0001)
+        XCTAssertEqual(visualOffsets[6], geometry.maximumOffset, accuracy: 0.0001)
+        XCTAssertEqual(visualOffsets[7], geometry.maximumOffset, accuracy: 0.0001)
+        XCTAssertEqual(visualOffsets[12], 0, accuracy: 0.0001)
+        XCTAssertEqual(visualOffsets[14], geometry.maximumOffset, accuracy: 0.0001)
+
+        let trace = DashboardScrollTrace.snapshot()
+        XCTAssertLessThanOrEqual(trace.count, DashboardScrollTrace.capacity)
+        for event in trace {
+            if let visualOffset = event.visualOffset,
+               let legalMaximum = event.legalMaximum {
+                XCTAssertGreaterThanOrEqual(visualOffset, -0.0001)
+                XCTAssertLessThanOrEqual(visualOffset, legalMaximum + 0.0001)
+            }
+        }
+        let kinds = Set(trace.map(\.kind))
+        XCTAssertTrue(kinds.contains("constrain-result"))
+        XCTAssertTrue(kinds.contains("edge-writer"))
+        XCTAssertTrue(kinds.contains("reflect-replay"))
+        XCTAssertTrue(kinds.contains("anchor-maintain"))
+        XCTAssertTrue(kinds.contains("anchor-restore"))
+        XCTAssertTrue(kinds.contains("anchor-clamp"))
+        XCTAssertTrue(kinds.contains("window-resize"))
+    }
+
     func testShortDocumentHasNoVerticalOffset() {
         let geometry = makeGeometry(
             documentBounds: NSRect(x: 12, y: 40, width: 400, height: 180),

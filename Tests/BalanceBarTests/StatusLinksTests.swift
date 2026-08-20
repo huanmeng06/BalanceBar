@@ -477,13 +477,23 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(controller.isMaintainingAnchor)
 
         let userOriginY = clipView.bounds.origin.y + 40
-        clipView.scroll(
-            to: NSPoint(x: clipView.bounds.minX, y: userOriginY)
+        clipView.setBoundsOrigin(
+            NSPoint(x: clipView.bounds.minX, y: userOriginY)
         )
         XCTAssertFalse(controller.isMaintainingAnchor)
 
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(clipView.bounds.origin.y, userOriginY, accuracy: 0.0001)
+
+        controller.startMaintenance(position, operation: "remove")
+        XCTAssertTrue(controller.isMaintainingAnchor)
+        let secondUserOriginY = clipView.bounds.origin.y + 40
+        clipView.scroll(
+            to: NSPoint(x: clipView.bounds.minX, y: secondUserOriginY)
+        )
+        XCTAssertFalse(controller.isMaintainingAnchor)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(clipView.bounds.origin.y, secondUserOriginY, accuracy: 0.0001)
     }
 
     func testScrollAnchorControllerStopsTimerAndReleasesAfterTeardown() {
