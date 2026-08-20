@@ -267,15 +267,51 @@ final class DashboardPreferencePagesTests: XCTestCase {
             onClamp: {}
         ))
         page.frame = NSRect(x: 0, y: 0, width: 900, height: 700)
+        let window = NSWindow(
+            contentRect: page.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentView = page
 
-        page.layoutSubtreeIfNeeded()
+        guard let manualRow = view(withIdentifier: "openCodexManualPortRow", in: page),
+              let dashboardRow = view(withIdentifier: "openCodexDashboardRow", in: page) else {
+            return XCTFail("Expected manual and Dashboard rows")
+        }
+        let manualHeight = equalHeightConstraint(in: manualRow)
+        let manualPadding = verticalLabelPadding(in: manualRow)
+        let dashboardHeight = equalHeightConstraint(in: dashboardRow)
+
+        window.layoutIfNeeded()
         assertOpenCodexRowsUseAutomaticWidth(in: page)
+        assertUnchangedOpenCodexRowGeometry(
+            manualRow: manualRow,
+            dashboardRow: dashboardRow,
+            manualHeight: manualHeight,
+            manualPadding: manualPadding,
+            dashboardHeight: dashboardHeight
+        )
         controller.handleAutomaticDetection(false)
-        page.layoutSubtreeIfNeeded()
+        window.layoutIfNeeded()
         assertOpenCodexRowsUseAutomaticWidth(in: page)
+        assertUnchangedOpenCodexRowGeometry(
+            manualRow: manualRow,
+            dashboardRow: dashboardRow,
+            manualHeight: manualHeight,
+            manualPadding: manualPadding,
+            dashboardHeight: dashboardHeight
+        )
         controller.handleAutomaticDetection(true)
-        page.layoutSubtreeIfNeeded()
+        window.layoutIfNeeded()
         assertOpenCodexRowsUseAutomaticWidth(in: page)
+        assertUnchangedOpenCodexRowGeometry(
+            manualRow: manualRow,
+            dashboardRow: dashboardRow,
+            manualHeight: manualHeight,
+            manualPadding: manualPadding,
+            dashboardHeight: dashboardHeight
+        )
     }
 
     private func descendants(of view: NSView) -> [NSView] {
@@ -312,6 +348,20 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     ((constraint.firstItem as? NSView) === first && (constraint.secondItem as? NSView) === second ||
                         (constraint.firstItem as? NSView) === second && (constraint.secondItem as? NSView) === first)
             }
+    }
+
+    private func assertUnchangedOpenCodexRowGeometry(
+        manualRow: NSView,
+        dashboardRow: NSView,
+        manualHeight: CGFloat?,
+        manualPadding: CGFloat?,
+        dashboardHeight: CGFloat?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(equalHeightConstraint(in: manualRow), manualHeight, file: file, line: line)
+        XCTAssertEqual(verticalLabelPadding(in: manualRow), manualPadding, file: file, line: line)
+        XCTAssertEqual(equalHeightConstraint(in: dashboardRow), dashboardHeight, file: file, line: line)
     }
 
     private func nonEmptyTextFields(in view: NSView?) -> [String] {
