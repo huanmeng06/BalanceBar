@@ -108,11 +108,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(rowCenter, page.bounds.midX, accuracy: 0.5)
         XCTAssertNotNil(button.image)
         XCTAssertNotNil(resourceBundle.url(forResource: "GitHub", withExtension: "svg"))
+        XCTAssertFalse(button.isBordered)
+        XCTAssertEqual(button.bezelStyle, .regularSquare)
+        XCTAssertEqual(button.bounds.width, button.bounds.height, accuracy: 0.5)
+        XCTAssertEqual(button.circularBackgroundFrameForTesting.width, button.circularBackgroundFrameForTesting.height, accuracy: 0.5)
+        XCTAssertEqual(button.circularBackgroundFrameForTesting.midX, button.bounds.midX, accuracy: 0.5)
+        XCTAssertEqual(button.circularBackgroundFrameForTesting.midY, button.bounds.midY, accuracy: 0.5)
         XCTAssertEqual(button.destinationURL, DashboardAboutPage.githubRepositoryURL)
         let accessibilityLabel = button.accessibilityLabel()
         XCTAssertTrue(accessibilityLabel == "GitHub 项目" || accessibilityLabel == "GitHub repository")
 
-        button.performClick(nil)
+        XCTAssertTrue(button.target === button)
+        XCTAssertEqual(button.action, #selector(DashboardAboutGitHubButton.activate(_:)))
+        button.activate(nil)
 
         XCTAssertEqual(openedURLs, [DashboardAboutPage.githubRepositoryURL])
     }

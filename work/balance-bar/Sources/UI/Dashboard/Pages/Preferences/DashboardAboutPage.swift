@@ -66,8 +66,16 @@ enum DashboardAboutPage {
 }
 
 final class DashboardAboutGitHubButton: NSButton {
+    static let controlSize: CGFloat = 28
     let destinationURL: URL
     private let openURL: (URL) -> Bool
+    private var trackingAreaReference: NSTrackingArea?
+    private var isHovering = false
+    private var isPressing = false
+
+    var circularBackgroundFrameForTesting: NSRect {
+        Self.circularBackgroundFrame(in: bounds)
+    }
 
     init(destinationURL: URL, icon: NSImage?, openURL: @escaping (URL) -> Bool) {
         self.destinationURL = destinationURL
@@ -80,10 +88,9 @@ final class DashboardAboutGitHubButton: NSButton {
         imageScaling = .scaleProportionallyDown
         image?.accessibilityDescription = DashboardAboutPage.githubAccessibilityLabel
         contentTintColor = .labelColor
-        isBordered = true
-        bezelStyle = .texturedRounded
-        showsBorderOnlyWhileMouseInside = true
-        focusRingType = .exterior
+        isBordered = false
+        bezelStyle = .regularSquare
+        focusRingType = .none
         setButtonType(.momentaryPushIn)
         isContinuous = false
         toolTip = DashboardAboutPage.githubAccessibilityLabel
@@ -91,15 +98,91 @@ final class DashboardAboutGitHubButton: NSButton {
         setAccessibilityLabel(DashboardAboutPage.githubAccessibilityLabel)
         setAccessibilityHelp(tr("打开 BalanceBar GitHub 项目", "Open the BalanceBar GitHub repository"))
         target = self
-        action = #selector(activate(_:))
+        action = #selector(DashboardAboutGitHubButton.activate(_:))
         translatesAutoresizingMaskIntoConstraints = false
-        widthAnchor.constraint(equalToConstant: 28).isActive = true
-        heightAnchor.constraint(equalToConstant: 28).isActive = true
+        widthAnchor.constraint(equalToConstant: Self.controlSize).isActive = true
+        heightAnchor.constraint(equalToConstant: Self.controlSize).isActive = true
     }
 
     required init?(coder: NSCoder) { nil }
 
-    @objc private func activate(_ sender: Any?) {
+    override func updateTrackingAreas() {
+        if let trackingAreaReference {
+            removeTrackingArea(trackingAreaReference)
+        }
+        super.updateTrackingAreas()
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        trackingAreaReference = trackingArea
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isPressing = true
+        needsDisplay = true
+        super.mouseDown(with: event)
+        isPressing = false
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let circleFrame = Self.circularBackgroundFrame(in: bounds)
+        let hasFocus = window?.firstResponder === self
+        if isHovering || isPressing || hasFocus {
+            let path = NSBezierPath(ovalIn: circleFrame)
+            NSGraphicsContext.saveGraphicsState()
+            if isHovering || isPressing {
+                let shadow = NSShadow()
+                shadow.shadowColor = NSColor.black.withAlphaComponent(0.16)
+                shadow.shadowBlurRadius = 4
+                shadow.shadowOffset = NSSize(width: 0, height: -1)
+                shadow.set()
+            }
+            let fillColor = isPressing
+                ? NSColor.controlAccentColor.withAlphaComponent(0.20)
+                : NSColor.controlAccentColor.withAlphaComponent(0.12)
+            fillColor.setFill()
+            path.fill()
+            if hasFocus {
+                NSColor.keyboardFocusIndicatorColor.setStroke()
+                path.lineWidth = 2
+                path.stroke()
+            }
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        super.draw(dirtyRect)
+    }
+
+    static func circularBackgroundFrame(in bounds: NSRect) -> NSRect {
+        let diameter = min(bounds.width, bounds.height)
+        return NSRect(
+            x: bounds.midX - diameter / 2,
+            y: bounds.midY - diameter / 2,
+            width: diameter,
+            height: diameter
+        ).insetBy(dx: 1, dy: 1)
+    }
+
+    @objc func activate(_ sender: Any?) {
         _ = openURL(destinationURL)
     }
 }
