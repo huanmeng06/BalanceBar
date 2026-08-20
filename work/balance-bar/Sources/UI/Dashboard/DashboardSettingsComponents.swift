@@ -181,7 +181,8 @@ enum DashboardSettingsComponents {
         subtitle: String? = nil,
         subtitleLabel: NSTextField? = nil,
         control: NSView? = nil,
-        minimumHeight: CGFloat = 58
+        minimumHeight: CGFloat = 58,
+        verticalPadding: CGFloat = 11
     ) -> NSView {
         let row = NSView()
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -207,11 +208,12 @@ enum DashboardSettingsComponents {
         }
         labels.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(labels)
+        let padding = max(0, verticalPadding)
         var constraints = [
             labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
             labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 11),
-            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -11)
+            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
+            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding)
         ]
         if let control {
             control.translatesAutoresizingMaskIntoConstraints = false

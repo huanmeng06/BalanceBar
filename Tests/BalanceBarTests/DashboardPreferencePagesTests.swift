@@ -165,6 +165,29 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 nonEmptyTextFields(in: portLabel.superview?.superview),
                 [expectedAutomaticTitle, expectedPortText]
             )
+            XCTAssertEqual(
+                equalHeightConstraint(in: portLabel.superview?.superview),
+                DashboardAdvancedPageLayout.compactTwoLineRowHeight
+            )
+            XCTAssertEqual(
+                verticalLabelPadding(in: portLabel.superview?.superview),
+                DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
+            )
+
+            let expectedManualTitle = language == .simplifiedChinese
+                ? "手动输入端口号"
+                : "Enter Port Manually"
+            guard let manualTitle = labels.first(where: { $0.stringValue == expectedManualTitle }) else {
+                return XCTFail("Expected manual port title \(expectedManualTitle)")
+            }
+            XCTAssertEqual(
+                equalHeightConstraint(in: manualTitle.superview?.superview),
+                DashboardAdvancedPageLayout.compactTwoLineRowHeight
+            )
+            XCTAssertEqual(
+                verticalLabelPadding(in: manualTitle.superview?.superview),
+                DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
+            )
 
             XCTAssertFalse(labels.contains { $0.stringValue.contains("手动端口只用于") })
             XCTAssertFalse(labels.contains { $0.stringValue.contains("The manual port only") })
@@ -177,6 +200,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 nonEmptyTextFields(in: dashboardTitle.superview?.superview),
                 [expectedDashboardTitle]
             )
+            XCTAssertEqual(equalHeightConstraint(in: dashboardTitle.superview?.superview), 62)
 
             guard let openButton = buttons.first(where: { $0.title == expectedButtonTitle }) else {
                 return XCTFail("Expected Dashboard button \(expectedButtonTitle)")
@@ -184,6 +208,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(openButton.isEnabled)
             relay.openOpenCodex(openButton)
             XCTAssertEqual(activationCount, 1)
+
+            let unchangedTwoLineRow = DashboardSettingsComponents.makeSettingsRow(
+                "Unchanged",
+                subtitle: "Other settings keep the default row geometry"
+            )
+            XCTAssertEqual(equalHeightConstraint(in: unchangedTwoLineRow), 62)
         }
     }
 
@@ -197,5 +227,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .compactMap { $0 as? NSTextField }
             .map(\.stringValue)
             .filter { !$0.isEmpty }
+    }
+
+    private func equalHeightConstraint(in view: NSView?) -> CGFloat? {
+        view?.constraints.first {
+            $0.firstAttribute == .height && $0.relation == .equal
+        }?.constant
+    }
+
+    private func verticalLabelPadding(in row: NSView?) -> CGFloat? {
+        guard let row,
+              let labels = row.subviews.first(where: { $0 is NSStackView }) else {
+            return nil
+        }
+        let top = row.constraints.first {
+            ($0.firstItem as? NSView) === labels && $0.firstAttribute == .top
+        }?.constant
+        let bottom = row.constraints.first {
+            ($0.firstItem as? NSView) === labels && $0.firstAttribute == .bottom
+        }?.constant
+        guard let top, let bottom, abs(top + bottom) < 0.001 else { return nil }
+        return top
     }
 }

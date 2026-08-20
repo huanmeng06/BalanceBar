@@ -1,5 +1,11 @@
 import AppKit
 
+enum DashboardAdvancedPageLayout {
+    static let compactTwoLineRowHeight: CGFloat = 66
+    static let compactTwoLineRowVerticalPadding: CGFloat = 8
+    static let invalidPortRowHeight: CGFloat = 112
+}
+
 final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
     struct Input {
         let preferences: AppPreferences
@@ -76,7 +82,8 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             subtitle: statusLabel.stringValue,
             subtitleLabel: statusLabel,
             control: automaticSwitch,
-            minimumHeight: 86
+            minimumHeight: DashboardAdvancedPageLayout.compactTwoLineRowHeight,
+            verticalPadding: DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
         )
 
         let portField = NSTextField()
@@ -160,7 +167,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         portInputHasError = false
         portErrorLabel?.stringValue = ""
         portErrorLabel?.isHidden = true
-        manualPortHeightConstraint?.constant = 86
+        manualPortHeightConstraint?.constant = DashboardAdvancedPageLayout.compactTwoLineRowHeight
         updateModeUI()
         SwitchLog.write(
             "OpenCodex Dashboard detection mode changed; mode=\(enabled ? "automatic" : "manual")",
@@ -205,7 +212,9 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
     private func makeManualPortRow(portField: NSTextField, errorLabel: NSTextField) -> NSView {
         let row = NSView()
         row.translatesAutoresizingMaskIntoConstraints = false
-        let heightConstraint = row.heightAnchor.constraint(equalToConstant: 86)
+        let heightConstraint = row.heightAnchor.constraint(
+            equalToConstant: DashboardAdvancedPageLayout.compactTwoLineRowHeight
+        )
         heightConstraint.isActive = true
         manualPortHeightConstraint = heightConstraint
         let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually"))
@@ -232,8 +241,14 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         NSLayoutConstraint.activate([
             labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
             labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 11),
-            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -11),
+            labels.topAnchor.constraint(
+                greaterThanOrEqualTo: row.topAnchor,
+                constant: DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
+            ),
+            labels.bottomAnchor.constraint(
+                lessThanOrEqualTo: row.bottomAnchor,
+                constant: -DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
+            ),
             portField.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
             portField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             labels.trailingAnchor.constraint(lessThanOrEqualTo: portField.leadingAnchor, constant: -20)
@@ -300,7 +315,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         case .success(let port):
             portInputHasError = false
             portErrorLabel?.isHidden = true
-            manualPortHeightConstraint?.constant = 86
+            manualPortHeightConstraint?.constant = DashboardAdvancedPageLayout.compactTwoLineRowHeight
             state.mode = OpenCodexDashboardMode(automaticDetection: port == nil, manualPort: port)
             onModeChanged?(state.mode)
             portErrorLabel?.stringValue = ""
@@ -316,7 +331,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
                 "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
                 "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
             )
-            manualPortHeightConstraint?.constant = 112
+            manualPortHeightConstraint?.constant = DashboardAdvancedPageLayout.invalidPortRowHeight
             updateCardLayout()
         }
     }
