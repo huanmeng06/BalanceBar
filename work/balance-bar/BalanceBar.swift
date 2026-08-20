@@ -170,37 +170,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let dashboardCurrentProviderSubtitle = NSTextField(wrappingLabelWithString: "")
     private let dashboardProvidersStack = NSStackView()
     private let dashboardProgressHost = NSView()
-    private let dashboardLogView = NSTextView()
-    private let dashboardMenuPreviewIcon = PassthroughImageView()
-    private let dashboardMenuPreviewIconSlot = NSView()
-    private let dashboardMenuPreviewText = MenuBarTextView()
-    private let dashboardMenuPreviewPrimary = NSTextField(labelWithString: "…")
-    private let dashboardMenuPreviewSecondary = NSTextField(labelWithString: "")
-    private let dashboardMenuPreviewCapsule = NSView()
-    private weak var dashboardMenuBarIconSwitch: NSSwitch?
-    private weak var dashboardMenuBarAmountSwitch: NSSwitch?
-    private weak var openCodexAutomaticDetectionSwitch: NSSwitch?
-    private weak var openCodexPortField: NSTextField?
-    private weak var openCodexManualPortRow: NSView?
-    private weak var openCodexManualPortRowHeightConstraint: NSLayoutConstraint?
-    private weak var openCodexPortStatusLabel: NSTextField?
-    private weak var openCodexPortErrorLabel: NSTextField?
-    private weak var openCodexOpenButton: NSButton?
-    private weak var openCodexSettingsRowsStack: NSStackView?
-    private weak var openCodexSettingsCardHeightConstraint: NSLayoutConstraint?
-    private var openCodexSettingsSeparators: [NSView] = []
-    private var openCodexDashboardInteractionState = OpenCodexDashboardInteractionState(
-        mode: OpenCodexDashboardMode(automaticDetection: true, manualPort: nil)
-    )
-    private var openCodexDashboardLastResolvedPort: Int {
-        get { openCodexDashboardInteractionState.lastResolvedPort }
-        set { openCodexDashboardInteractionState.updateResolvedPort(newValue) }
-    }
-    private var isEndingOpenCodexPortEditing = false
-    private var dashboardMenuPreviewCapsuleLeadingConstraint: NSLayoutConstraint?
-    private var dashboardMenuPreviewCapsuleTrailingConstraint: NSLayoutConstraint?
-    private var dashboardMenuPreviewTextWidthConstraint: NSLayoutConstraint?
-    private let dashboardMenuPreviewChromeInset: CGFloat = 10
     private let dashboardProviderSearch = NSSearchField()
     private let dashboardProviderList = NSStackView()
     private let dashboardProviderCountLabel = NSTextField(labelWithString: "")
@@ -217,8 +186,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var dashboardSection: DashboardSection { dashboardWindowController.section }
     private var dashboardSelectedProviderID: String? { dashboardWindowController.selectedProviderID }
     private var dashboardProviderButtons: [String: NSButton] = [:]
-    private var statusLinksEditorHostingView: StatusLinksEditorHostingView?
-    private var dashboardStatusMenuSubtitleLabel: NSTextField?
     private lazy var statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
         dashboardProvider: { [weak self] in self?.dashboard },
         contentHostProvider: { [weak self] in self?.dashboardContentHost },
@@ -257,7 +224,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var confirmedOpenCodexCandidates: [String: OpenCodexEndpointCandidate] = [:]
     private var confirmedOpenCodexStates: [String: OpenCodexRuntimeState] = [:]
     private var openCodexSwitchInFlight = false
-    private var openCodexPortInputHasError = false
     private var snapshot = Snapshot.placeholder
     private var activeProviderWebsite: URL?
     private var activeClient: AssistantClient = .codex
@@ -273,6 +239,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let openCodexRepository: OpenCodexRepository
     private let balanceAPIClient = BalanceAPIClient()
     private let preferences = AppPreferences()
+    private lazy var dashboardPreferencePages = DashboardPreferencePages(
+        preferences: preferences,
+        devBundleIdentifier: devBundleIdentifier,
+        actions: DashboardPreferencePageActions(
+            onToggle: { [weak self] identifier, enabled in
+                self?.handleDashboardToggle(identifier: identifier, enabled: enabled)
+            },
+            onInterval: { [weak self] identifier, value in
+                self?.handleDashboardInterval(identifier: identifier, value: value)
+            },
+            onLanguage: { [weak self] language in
+                self?.applyLanguage(language)
+            },
+            onOpenCCSwitch: { [weak self] in
+                self?.openCCSwitch()
+            },
+            onManualRefresh: { [weak self] in
+                self?.performManualRefresh(source: "dashboard")
+            },
+            onOpenOpenCodex: { [weak self] in
+                self?.openOpenCodex()
+            },
+            makeStatusLinksEditor: { [weak self] in
+                self?.makeStatusLinksEditor() ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+            },
+            onOpenCodexModeChanged: { [weak self] mode in
+                self?.openCodexDashboardAutomaticDetection = mode.automaticDetection
+                self?.openCodexDashboardPortOverride = mode.manualPort
+            },
+            onClamp: { [weak self] in
+                self?.clampDashboardScrollViewBounds()
+            }
+        )
+    )
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
     private var showMenuBarAmount: Bool { get { preferences.showMenuBarAmount } set { preferences.showMenuBarAmount = newValue } }
@@ -330,9 +330,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 prepareForPageReplacement: { [weak self] in
                     guard let self else { return }
                     self.statusLinksScrollAnchorController.stop()
-                    self.statusLinksEditorHostingView?.teardown()
-                    self.statusLinksEditorHostingView = nil
-                    self.dashboardStatusMenuSubtitleLabel = nil
+                    self.dashboardPreferencePages.teardown()
                 },
                 didShowPage: { [weak self] in
                     guard let self else { return }
@@ -388,8 +386,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 iconChanged: { [weak self] image in
                     guard let self else { return }
-                    self.dashboardMenuPreviewIcon.image = image
-                    self.dashboardMenuPreviewIcon.contentTintColor = .labelColor
+                    self.dashboardPreferencePages.refreshMenuBar(
+                        snapshot: self.snapshot,
+                        menuBarSnapshot: { [weak self] snapshot in
+                            self?.menuBarSnapshot(for: snapshot) ?? snapshot
+                        },
+                        iconImage: image
+                    )
                 }
             )
         )
@@ -501,7 +504,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         timer?.invalidate()
         activityTimer?.invalidate()
         statusLinksScrollAnchorController.stop()
-        statusLinksEditorHostingView?.teardown()
+        dashboardPreferencePages.teardown()
         statusItemController.teardown()
         dashboardWindowController.teardown()
         if let workspaceActivationObserver {
@@ -704,14 +707,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSApp.terminate(nil)
     }
 
-    @objc private func dashboardLanguageChanged(_ sender: NSPopUpButton) {
-        guard let rawValue = sender.selectedItem?.representedObject as? String,
-              let language = AppLanguage(rawValue: rawValue) else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.applyLanguage(language)
-        }
-    }
-
     private func applyLanguage(_ language: AppLanguage) {
         SwitchLog.write(
             "language changed; value=\(language.rawValue)",
@@ -906,233 +901,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    @objc private func dashboardToggleChanged(_ sender: NSSwitch) {
+    private func handleDashboardToggle(identifier: String, enabled: Bool) {
         SwitchLog.write(
-            "preference changed; key=\(sender.identifier?.rawValue ?? "unknown"); enabled=\(sender.state == .on)",
+            "preference changed; key=\(identifier); enabled=\(enabled)",
             category: "configuration"
         )
-        switch sender.identifier?.rawValue {
+        switch identifier {
         case "showMenuBarIcon":
-            if sender.state == .off && !showMenuBarAmount {
-                sender.state = .on
+            if !enabled && !showMenuBarAmount {
+                dashboardPreferencePages.restoreRequiredMenuBarToggle(identifier: identifier)
+                return
             }
-            showMenuBarIcon = sender.state == .on
+            showMenuBarIcon = enabled
             updateStatusItem(for: snapshot)
             refreshDashboardMenuBarPage()
         case "showMenuBarAmount":
-            if sender.state == .off && !showMenuBarIcon {
-                sender.state = .on
+            if !enabled && !showMenuBarIcon {
+                dashboardPreferencePages.restoreRequiredMenuBarToggle(identifier: identifier)
+                return
             }
-            showMenuBarAmount = sender.state == .on
+            showMenuBarAmount = enabled
             updateStatusItem(for: snapshot)
             refreshDashboardMenuBarPage()
         case "showMenuBarReset":
-            showMenuBarReset = sender.state == .on
+            showMenuBarReset = enabled
             updateStatusItem(for: snapshot)
             refreshDashboardMenuBarPage()
         case "showQuickSwitchMenu":
-            showQuickSwitchMenu = sender.state == .on
+            showQuickSwitchMenu = enabled
             render(snapshot)
         case "showOpenCCSwitchMenu":
-            showOpenCCSwitchMenu = sender.state == .on
+            showOpenCCSwitchMenu = enabled
             render(snapshot)
         case "showOpenCodexMenu":
-            showOpenCodexMenu = sender.state == .on
+            showOpenCodexMenu = enabled
             render(snapshot)
         case "showOpenChatGPTMenu":
-            showOpenChatGPTMenu = sender.state == .on
+            showOpenChatGPTMenu = enabled
             render(snapshot)
         case "showStatusMenu":
-            showStatusMenu = sender.state == .on
+            showStatusMenu = enabled
             render(snapshot)
             if dashboardSection == .menu {
-                updateDashboardStatusMenuVisibility(animated: true)
+                dashboardPreferencePages.updateMenuStatusVisibility(enabled, animated: true)
             }
         case "keepMenuOpenAfterRefresh":
-            keepMenuOpenAfterRefresh = sender.state == .on
+            keepMenuOpenAfterRefresh = enabled
         case "animateCodexActivity":
-            animateCodexActivity = sender.state == .on
+            animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)
         case "openCodexAutomaticDetection":
-            let enabled = sender.state == .on
-            // End the native field editor before hiding its row. In particular,
-            // do not let an invalid in-progress edit re-enter the preference
-            // path while the switch is being applied.
-            endOpenCodexPortEditingForModeSwitch()
-            setOpenCodexDashboardAutomaticDetection(enabled)
-            openCodexPortInputHasError = false
-            openCodexPortErrorLabel?.stringValue = ""
-            openCodexPortErrorLabel?.isHidden = true
-            openCodexManualPortRowHeightConstraint?.constant = 86
-            updateOpenCodexDashboardModeUI()
-            SwitchLog.write(
-                "OpenCodex Dashboard detection mode changed; mode=\(enabled ? "automatic" : "manual")",
-                category: "configuration"
-            )
+            dashboardPreferencePages.handleAutomaticDetection(enabled)
         default:
             break
         }
-    }
-
-    private func setOpenCodexDashboardAutomaticDetection(_ enabled: Bool) {
-        openCodexDashboardInteractionState.mode = openCodexDashboardMode
-        openCodexDashboardInteractionState.updateResolvedPort(openCodexDashboardLastResolvedPort)
-        openCodexDashboardInteractionState.setAutomaticDetection(enabled)
-        let nextMode = openCodexDashboardInteractionState.mode
-        openCodexDashboardAutomaticDetection = nextMode.automaticDetection
-        openCodexDashboardPortOverride = nextMode.manualPort
-    }
-
-    private func endOpenCodexPortEditingForModeSwitch() {
-        guard let field = openCodexPortField,
-              field.currentEditor() != nil else { return }
-        openCodexDashboardInteractionState.markPortEditorActive(true)
-        isEndingOpenCodexPortEditing = true
-        _ = field.abortEditing()
-        _ = dashboard?.makeFirstResponder(nil)
-        isEndingOpenCodexPortEditing = false
-        openCodexDashboardInteractionState.markPortEditorActive(false)
-    }
-
-    private func updateOpenCodexDashboardModeUI() {
-        guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
-
-        let mode = openCodexDashboardMode
-        openCodexAutomaticDetectionSwitch?.state = mode.automaticDetection ? .on : .off
-        openCodexManualPortRow?.isHidden = !mode.showsManualPortInput
-        if openCodexSettingsSeparators.count >= 2 {
-            // When the manual row is hidden, keep only the separator between
-            // the automatic row and the independent open action.
-            openCodexSettingsSeparators[0].isHidden = !mode.showsManualPortInput
-            openCodexSettingsSeparators[1].isHidden = false
-        }
-
-        let resolution = OpenCodexDashboardResolver.resolve(
-            manualPort: mode.effectiveManualPort,
-            runtimeCandidate: openCodexState?.state.candidate
-        )
-        applyOpenCodexDashboardResolution(resolution, canOpen: nil)
-        updateOpenCodexDashboardCardLayout()
-    }
-
-    private func updateOpenCodexDashboardCardLayout() {
-        guard let rowsStack = openCodexSettingsRowsStack,
-              let cardHeightConstraint = openCodexSettingsCardHeightConstraint else { return }
-
-        rowsStack.layoutSubtreeIfNeeded()
-        let visibleRows = rowsStack.arrangedSubviews.filter {
-            !($0 is NSBox) && !$0.isHidden
-        }
-        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
-            let explicitHeight = row.constraints.first {
-                ($0.firstItem as? NSView) === row &&
-                    $0.firstAttribute == .height &&
-                    $0.relation == .equal
-            }?.constant
-            return partial + max(1, explicitHeight ?? row.fittingSize.height)
-        }
-        let separatorHeight = openCodexSettingsSeparators
-            .filter { !$0.isHidden }
-            .reduce(CGFloat(0)) { partial, separator in
-                partial + max(1, separator.fittingSize.height)
-            }
-        cardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
-        dashboardContentHost.layoutSubtreeIfNeeded()
-        clampDashboardScrollViewBounds()
-    }
-
-    private func applyOpenCodexDashboardResolution(
-        _ resolution: OpenCodexDashboardResolution,
-        canOpen: Bool?
-    ) {
-        openCodexDashboardInteractionState.mode = openCodexDashboardMode
-        openCodexDashboardLastResolvedPort = resolution.port
-        let isEditing = openCodexPortField?.currentEditor() != nil
-        if !isEditing, !openCodexPortInputHasError {
-            openCodexPortField?.stringValue = String(
-                openCodexDashboardMode.manualPort ?? resolution.port
-            )
-        }
-        if let canOpen {
-            openCodexOpenButton?.isEnabled = canOpen
-        }
-
-        let currentPort = tr(
-            "当前端口：\(resolution.port)",
-            "Current port: \(resolution.port)"
-        )
-        switch resolution.source {
-        case .manual:
-            openCodexPortStatusLabel?.stringValue = tr(
-                "\(currentPort)\n手动端口只用于打开本机 Dashboard；不会修改 OpenCodex 配置",
-                "\(currentPort)\nThe manual port only opens the local Dashboard; it does not modify OpenCodex configuration"
-            )
-        case .runtime:
-            openCodexPortStatusLabel?.stringValue = tr(
-                "\(currentPort)\n已自动检测 OpenCodex runtime 端口",
-                "\(currentPort)\nOpenCodex runtime port detected automatically"
-            )
-        case .fallback:
-            openCodexPortStatusLabel?.stringValue = tr(
-                "\(currentPort)\n尚未自动检测；将使用默认端口 10100",
-                "\(currentPort)\nNot detected yet; the default port 10100 will be used"
-            )
-        }
-    }
-
-    @objc private func openCodexDashboardPortChanged(_ sender: NSTextField) {
-        guard !isEndingOpenCodexPortEditing else { return }
-        switch OpenCodexDashboardPortInput.parse(sender.stringValue) {
-        case .success(let port):
-            openCodexPortInputHasError = false
-            openCodexPortErrorLabel?.isHidden = true
-            openCodexManualPortRowHeightConstraint?.constant = 86
-            openCodexDashboardPortOverride = port
-            openCodexDashboardAutomaticDetection = port == nil
-            openCodexAutomaticDetectionSwitch?.state = port == nil ? .on : .off
-            openCodexPortErrorLabel?.stringValue = ""
-            SwitchLog.write(
-                "OpenCodex Dashboard port preference changed; mode=\(port == nil ? "automatic" : "manual")",
-                category: "configuration"
-            )
-            updateOpenCodexDashboardModeUI()
-        case .failure:
-            openCodexPortInputHasError = true
-            openCodexPortErrorLabel?.isHidden = false
-            openCodexPortErrorLabel?.stringValue = tr(
-                "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
-                "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
-            )
-            openCodexManualPortRowHeightConstraint?.constant = 112
-            updateOpenCodexDashboardCardLayout()
-        }
-    }
-
-    func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField,
-              field === openCodexPortField,
-              !isEndingOpenCodexPortEditing else { return }
-        openCodexDashboardPortChanged(field)
-    }
-
-    private func refreshDashboardOpenCodexSettings() {
-        guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
-
-        let currentResolution = currentOpenCodexDashboardResolution()
-        let resolution = currentResolution ?? OpenCodexDashboardResolver.resolve(
-            manualPort: openCodexDashboardMode.effectiveManualPort,
-            runtimeCandidate: nil
-        )
-        let canOpen = currentResolution != nil
-        applyOpenCodexDashboardResolution(resolution, canOpen: canOpen)
-        let showsManualPortInput = openCodexDashboardMode.showsManualPortInput
-        openCodexAutomaticDetectionSwitch?.state = showsManualPortInput ? .off : .on
-        openCodexManualPortRow?.isHidden = !showsManualPortInput
-        if openCodexSettingsSeparators.count >= 2 {
-            openCodexSettingsSeparators[0].isHidden = !showsManualPortInput
-            openCodexSettingsSeparators[1].isHidden = false
-        }
-        updateOpenCodexDashboardCardLayout()
     }
 
     private func dashboardStatusLinkChanged(
@@ -1295,24 +1117,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    @objc private func dashboardIntervalChanged(_ sender: NSPopUpButton) {
-        guard let value = sender.selectedItem?.representedObject as? NSNumber else { return }
+    private func handleDashboardInterval(identifier: String, value: TimeInterval) {
         SwitchLog.write(
-            "interval changed; key=\(sender.identifier?.rawValue ?? "unknown"); value=\(value.doubleValue)s",
+            "interval changed; key=\(identifier); value=\(value)s",
             category: "configuration"
         )
         var refreshTimers = false
-        switch sender.identifier?.rawValue {
+        switch identifier {
         case "activityPollInterval":
-            activityPollInterval = value.doubleValue
+            activityPollInterval = value
             refreshTimers = true
         case "codexUsageRefreshInterval":
-            codexUsageRefreshInterval = value.doubleValue
+            codexUsageRefreshInterval = value
         case "postCodexRefreshDuration":
-            postCodexRefreshDuration = value.doubleValue
+            postCodexRefreshDuration = value
             if !isCodexTaskRunning, postCodexRefreshDeadline != nil {
-                postCodexRefreshDeadline = value.doubleValue > 0
-                    ? Date().addingTimeInterval(value.doubleValue)
+                postCodexRefreshDeadline = value > 0
+                    ? Date().addingTimeInterval(value)
                     : nil
             }
         default: return
@@ -1347,152 +1168,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         showDashboardProvider(providerID)
     }
 
-    @objc private func refreshDashboardLog() {
-        let text = SwitchLog.recentText() ?? tr("暂无日志", "No logs yet")
-        dashboardLogView.textStorage?.setAttributedString(
-            styledDashboardLog(text)
-        )
-        resizeDashboardLogDocument()
-        DispatchQueue.main.async { [weak self] in
-            self?.resizeDashboardLogDocument()
-        }
-        dashboardLogView.scrollToEndOfDocument(nil)
-    }
-
-    private func resizeDashboardLogDocument() {
-        guard let textContainer = dashboardLogView.textContainer,
-              let layoutManager = dashboardLogView.layoutManager
-        else { return }
-        layoutManager.ensureLayout(for: textContainer)
-        let used = layoutManager.usedRect(for: textContainer)
-        let viewport = dashboardLogView.enclosingScrollView?.contentSize
-            ?? .zero
-        let inset = dashboardLogView.textContainerInset
-        dashboardLogView.setFrameSize(NSSize(
-            width: max(
-                viewport.width,
-                ceil(used.width + (inset.width * 2) + 12)
-            ),
-            height: max(
-                viewport.height,
-                ceil(used.height + (inset.height * 2))
-            )
-        ))
-    }
-
-    private func vscodeColor(_ hex: UInt32) -> NSColor {
-        let red = CGFloat((hex >> 16) & 0xFF) / CGFloat(255)
-        let green = CGFloat((hex >> 8) & 0xFF) / CGFloat(255)
-        let blue = CGFloat(hex & 0xFF) / CGFloat(255)
-        return NSColor(
-            srgbRed: red,
-            green: green,
-            blue: blue,
-            alpha: 1
-        )
-    }
-
-    private func styledDashboardLog(_ text: String) -> NSAttributedString {
-        let foreground = vscodeColor(0xD4D4D4)
-        let timestamp = vscodeColor(0x9DA5B4)
-        let debug = vscodeColor(0xDCDCAA)
-        let info = vscodeColor(0x23D18B)
-        let warning = vscodeColor(0xF9F1A5)
-        let error = vscodeColor(0xF14C4C)
-        let number = vscodeColor(0x4FC1FF)
-        let baseFont = NSFont.monospacedSystemFont(
-            ofSize: 10.5,
-            weight: .regular
-        )
-        let emphasizedFont = NSFont.monospacedSystemFont(
-            ofSize: 10.5,
-            weight: .semibold
-        )
-        let output = NSMutableAttributedString(
-            string: text,
-            attributes: [
-                .font: baseFont,
-                .foregroundColor: foreground
-            ]
-        )
-        let fullRange = NSRange(location: 0, length: output.length)
-
-        func colorMatches(
-            _ pattern: String,
-            color: NSColor,
-            emphasized: Bool = false
-        ) {
-            guard let expression = try? NSRegularExpression(pattern: pattern)
-            else { return }
-            expression.enumerateMatches(
-                in: text,
-                range: fullRange
-            ) { match, _, _ in
-                guard let range = match?.range, range.location != NSNotFound
-                else { return }
-                output.addAttributes([
-                    .foregroundColor: color,
-                    .font: emphasized ? emphasizedFont : baseFont
-                ], range: range)
-            }
-        }
-
-        // Highlight semantic values, not every run of digits. This avoids
-        // fragmenting versions, UUIDs and mixed build identifiers into many
-        // unrelated blue patches.
-        colorMatches(#"(?<=[\$¥])-?\d+(?:\.\d+)?"#, color: number)
-        colorMatches(#"(?<![\w.])-?\d+(?:\.\d+)?(?=%)"#, color: number)
-        colorMatches(
-            #"(?<==)-?\d+(?:\.\d+)?(?=(?:%|ms|s|m|h|d)?(?:[;,\s\)]|$))"#,
-            color: number
-        )
-        colorMatches(#"(?m)^\[[^\]\n]+\]"#, color: timestamp)
-        colorMatches(#"\[DEBUG\]"#, color: debug, emphasized: true)
-        colorMatches(#"\[INFO\]"#, color: info, emphasized: true)
-        colorMatches(#"\[WARN\]"#, color: warning, emphasized: true)
-        colorMatches(#"\[ERROR\]"#, color: error, emphasized: true)
-
-        if let categoryExpression = try? NSRegularExpression(
-            pattern: #"(?m)^\[[^\]\n]+\] \[(?:DEBUG|INFO|WARN|ERROR)\] (\[[^\]\n]+\])"#
-        ) {
-            categoryExpression.enumerateMatches(
-                in: text,
-                range: fullRange
-            ) { match, _, _ in
-                guard let range = match?.range(at: 1),
-                      range.location != NSNotFound
-                else { return }
-                output.addAttribute(
-                    .foregroundColor,
-                    value: foreground,
-                    range: range
-                )
-            }
-        }
-        return output
-    }
-
-    @objc private func revealDashboardLog() {
-        NSWorkspace.shared.activateFileViewerSelecting([SwitchLog.fileURL])
-    }
-
     @objc private func openDashboard() {
         dashboardWindowController.open()
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
     private func makeDashboardPage(for section: DashboardSection) -> NSView {
-        switch section {
-        case .general: return makeGeneralDashboardPage()
-        case .menuBar: return makeMenuBarDashboardPage()
-        case .menu: return makeMenuDashboardPage()
-        case .advanced: return makeAdvancedDashboardPage()
-        case .about: return makeAboutDashboardPage()
-        }
+        let currentName = ccSwitchRepository.loadChoices(appType: activeClient.appType)
+            .first(where: { $0.isCurrent })?.name ?? tr("未找到", "Not Found")
+        return dashboardPreferencePages.makePage(
+            for: section,
+            currentProviderName: currentName,
+            providerPollInterval: providerPollInterval,
+            snapshot: snapshot,
+            menuBarSnapshot: { [weak self] snapshot in
+                self?.menuBarSnapshot(for: snapshot) ?? snapshot
+            },
+            iconImage: statusItemController?.iconImage,
+            currentOpenCodexResolution: currentOpenCodexDashboardResolution(),
+            runtimeCandidate: openCodexState?.state.candidate
+        )
     }
 
-    // Keeps the production page factory directly testable without launching
-    // the application or replacing the page with a test-only view.
     func dashboardPageForTesting(_ section: DashboardSection) -> NSView {
         makeDashboardPage(for: section)
     }
@@ -1526,11 +1223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         dashboardWindowController.showSection(section)
         rebuildDashboardProviderList()
-
         if let scrollPosition {
-            // The new document view needs one layout pass before its maximum
-            // scroll offset is known. Restore asynchronously so adding a row
-            // keeps the user's current viewport instead of jumping to the top.
             statusLinksScrollAnchorController.restore(scrollPosition, attempt: 0)
         }
     }
@@ -1546,7 +1239,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             child.removeFromSuperview()
         }
         dashboardProviderButtons.removeAll()
-
         let query = dashboardProviderSearch.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         var choices = ccSwitchRepository.loadChoices(appType: activeClient.appType).filter {
             query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)
@@ -1558,7 +1250,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "\(ccSwitchRepository.loadChoices(appType: activeClient.appType).count) 个",
             "\(ccSwitchRepository.loadChoices(appType: activeClient.appType).count)"
         )
-
         for choice in choices {
             let button = NSButton(title: choice.name, target: self, action: #selector(dashboardSelectProvider(_:)))
             button.setButtonType(.pushOnPushOff)
@@ -1594,530 +1285,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         rebuildDashboardProviderList()
     }
 
-    private func makeOpenCodexManualPortRow(
-        portField: NSTextField,
-        errorLabel: NSTextField
-    ) -> NSView {
-        let row = NSView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        let heightConstraint = row.heightAnchor.constraint(equalToConstant: 86)
-        heightConstraint.isActive = true
-        openCodexManualPortRowHeightConstraint = heightConstraint
-
-        let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually"))
-        title.font = .systemFont(ofSize: 14, weight: .semibold)
-        let detail = NSTextField(wrappingLabelWithString: tr(
-            "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
-            "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
-        ))
-        detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .secondaryLabelColor
-        errorLabel.font = .systemFont(ofSize: 12)
-        errorLabel.textColor = .systemRed
-        errorLabel.isEditable = false
-        errorLabel.isSelectable = false
-        errorLabel.isHidden = true
-
-        let labels = NSStackView(views: [title, detail, errorLabel])
-        labels.orientation = .vertical
-        labels.alignment = .leading
-        labels.spacing = 2
-        labels.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(labels)
-
-        portField.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(portField)
-        NSLayoutConstraint.activate([
-            labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
-            labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 11),
-            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -11),
-            portField.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
-            portField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            labels.trailingAnchor.constraint(lessThanOrEqualTo: portField.leadingAnchor, constant: -20)
-        ])
-        return row
-    }
-
-    private func makeGeneralDashboardPage() -> NSView {
-        let openButton = NSButton(title: tr("打开 CC Switch", "Open CC Switch"), target: self, action: #selector(openCCSwitch))
-        let currentName = ccSwitchRepository.loadChoices(appType: activeClient.appType)
-            .first(where: { $0.isCurrent })?.name ?? tr("未找到", "Not Found")
-        let currentProviderText = tr(
-            "当前供应商：\(currentName)",
-            "Current Provider: \(currentName)"
-        )
-        let system = DashboardSettingsComponents.makeSettingsSection(tr("系统", "System"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                "CC Switch",
-                subtitle: currentProviderText,
-                subtitleLabel: dashboardCurrentProviderSubtitle,
-                control: openButton
-            )
-        ])
-
-        let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: [
-                (1, tr("每 1 秒", "Every 1 sec")),
-                (2, tr("每 2 秒", "Every 2 sec")),
-                (3, tr("每 3 秒", "Every 3 sec")),
-                (5, tr("每 5 秒", "Every 5 sec")),
-                (10, tr("每 10 秒", "Every 10 sec"))
-            ],
-            selected: codexUsageRefreshInterval,
-            identifier: "codexUsageRefreshInterval",
-            target: self,
-            action: #selector(dashboardIntervalChanged(_:))
-        )
-        let trailingRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: [
-                (0, tr("不继续", "Off")),
-                (6, tr("持续 6 秒", "For 6 sec")),
-                (12, tr("持续 12 秒", "For 12 sec")),
-                (30, tr("持续 30 秒", "For 30 sec"))
-            ],
-            selected: postCodexRefreshDuration,
-            identifier: "postCodexRefreshDuration",
-            target: self,
-            action: #selector(dashboardIntervalChanged(_:))
-        )
-        let runningLabel = NSTextField(labelWithString: tr("运行中", "Running"))
-        let trailingLabel = NSTextField(labelWithString: tr("结束后", "After"))
-        [runningLabel, trailingLabel].forEach {
-            $0.font = .systemFont(ofSize: 11)
-            $0.textColor = .secondaryLabelColor
-            $0.alignment = .right
-            $0.translatesAutoresizingMaskIntoConstraints = false
-            $0.widthAnchor.constraint(equalToConstant: 48).isActive = true
-        }
-        [activeRefreshPopup, trailingRefreshPopup].forEach {
-            $0.translatesAutoresizingMaskIntoConstraints = false
-            $0.widthAnchor.constraint(equalToConstant: 108).isActive = true
-        }
-        let runningControls = NSStackView(views: [
-            runningLabel, activeRefreshPopup
-        ])
-        runningControls.orientation = .horizontal
-        runningControls.alignment = .centerY
-        runningControls.spacing = 7
-        let trailingControls = NSStackView(views: [
-            trailingLabel, trailingRefreshPopup
-        ])
-        trailingControls.orientation = .horizontal
-        trailingControls.alignment = .centerY
-        trailingControls.spacing = 7
-        let activeRefreshControls = NSStackView(views: [
-            runningControls, trailingControls
-        ])
-        activeRefreshControls.orientation = .vertical
-        activeRefreshControls.alignment = .trailing
-        activeRefreshControls.spacing = 5
-        let refreshButton = NSButton(title: tr("立即刷新", "Refresh Now"), target: self, action: #selector(dashboardManualRefresh))
-        let refreshing = DashboardSettingsComponents.makeSettingsSection(tr("刷新", "Refresh"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("任务期间余量更新频率", "Balance Updates During Tasks"),
-                subtitle: tr(
-                    "Agent 运行时请求当前供应商的余量",
-                    "Requests the current Provider's balance while an Agent is running"
-                ),
-                control: activeRefreshControls,
-                minimumHeight: 76
-            ),
-            DashboardSettingsComponents.makeSettingsRow(tr("余额数据", "Balance Data"), subtitle: tr("立即重新读取当前供应商", "Reload the current Provider now"), control: refreshButton)
-        ])
-
-        let languagePopup = DashboardSettingsComponents.makePopUpButton(
-            items: AppLanguage.allCases.map {
-                DashboardSettingsComponents.PopUpItem(
-                    title: $0.localizedTitle,
-                    representedObject: $0.rawValue
-                )
-            },
-            selectedIndex: AppLanguage.allCases.firstIndex(of: AppLanguage.selected),
-            target: self,
-            action: #selector(dashboardLanguageChanged(_:))
-        )
-        let app = DashboardSettingsComponents.makeSettingsSection(tr("应用", "Application"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("语言", "Language"),
-                subtitle: tr("更改后立即应用到整个界面", "Changes apply to the entire interface immediately"),
-                control: languagePopup
-            ),
-        ])
-        return DashboardSettingsComponents.makeSettingsPage([system, refreshing, app])
-    }
-
     private func makeStatusLinksEditor() -> StatusLinksEditorHostingView {
-        let editor = StatusLinksEditorHostingView(
+        StatusLinksEditorHostingView(
             links: statusLinks,
             onChange: { [weak self] index, field, value in
                 self?.dashboardStatusLinkChanged(index: index, field: field, value: value)
             },
-            onAdd: { [weak self] in
-                self?.addStatusLink()
-            },
-            onRemove: { [weak self] index in
-                self?.removeStatusLink(at: index)
-            },
-            onReset: { [weak self] in
-                self?.resetStatusLinks()
-            }
+            onAdd: { [weak self] in self?.addStatusLink() },
+            onRemove: { [weak self] index in self?.removeStatusLink(at: index) },
+            onReset: { [weak self] in self?.resetStatusLinks() }
         )
-        statusLinksEditorHostingView = editor
-        return editor
-    }
-
-    private func updateDashboardStatusMenuVisibility(animated: Bool) {
-        dashboardStatusMenuSubtitleLabel?.stringValue = showStatusMenu
-            ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
-            : tr("在菜单栏中显示状态链接", "Show status links in the menu bar")
-        if !showStatusMenu {
-            statusLinksScrollAnchorController.stop()
-        }
-        statusLinksEditorHostingView?.setVisible(showStatusMenu, animated: animated)
-        statusItemController.updateMenu(input: makeStatusItemMenuInput())
-    }
-
-    private func makeMenuDashboardPage() -> NSView {
-        let quickSwitch = DashboardSettingsComponents.makeSwitch(
-            identifier: "showQuickSwitchMenu",
-            isOn: showQuickSwitchMenu,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let openCC = DashboardSettingsComponents.makeSwitch(
-            identifier: "showOpenCCSwitchMenu",
-            isOn: showOpenCCSwitchMenu,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let openCodex = DashboardSettingsComponents.makeSwitch(
-            identifier: AppPreferences.showOpenCodexMenuKey,
-            isOn: showOpenCodexMenu,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let keepOpen = DashboardSettingsComponents.makeSwitch(
-            identifier: "keepMenuOpenAfterRefresh",
-            isOn: keepMenuOpenAfterRefresh,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-
-        let items = DashboardSettingsComponents.makeSettingsSection(tr("展开菜单", "Dropdown Menu"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(tr("快速切换", "Quick Switch"), subtitle: tr("显示 CC Switch 供应商子菜单", "Show the CC Switch Provider submenu"), control: quickSwitch),
-            DashboardSettingsComponents.makeSettingsRow(tr("刷新后保持展开", "Keep Open After Refresh"), subtitle: tr("点击立即刷新后重新打开菜单", "Reopen the menu after Refresh Now"), control: keepOpen)
-        ])
-        let openMainWindow = DashboardSettingsComponents.makeSwitch(
-            identifier: "showOpenDashboardMenu",
-            isOn: true,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        openMainWindow.isEnabled = false
-        openMainWindow.toolTip = tr(
-            "打开主窗口入口始终显示",
-            "The Open Main Window item is always shown"
-        )
-
-        var projectRows: [NSView] = [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("打开主窗口", "Open Main Window"),
-                control: openMainWindow
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("打开 ChatGPT", "Open ChatGPT"),
-                subtitle: tr("显示 ChatGPT 启动项", "Show the ChatGPT launch item"),
-                control: DashboardSettingsComponents.makeSwitch(
-                    identifier: "showOpenChatGPTMenu",
-                    isOn: showOpenChatGPTMenu,
-                    target: self,
-                    action: #selector(dashboardToggleChanged(_:))
-                )
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("打开 CC Switch", "Open CC Switch"),
-                subtitle: tr("显示 CC Switch 启动项", "Show the CC Switch launch item"),
-                control: openCC
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("打开 OpenCodex", "Open OpenCodex"),
-                subtitle: tr("显示 OpenCodex 启动项", "Show the OpenCodex launch item"),
-                control: openCodex
-            )
-        ]
-        let statusSubtitle = NSTextField(wrappingLabelWithString: showStatusMenu
-            ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
-            : tr("在菜单栏中显示状态链接", "Show status links in the menu bar")
-        )
-        dashboardStatusMenuSubtitleLabel = statusSubtitle
-        projectRows.append(DashboardSettingsComponents.makeSettingsRow(
-            tr("查看状态", "View Status"),
-            subtitle: showStatusMenu
-                ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
-                : tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
-            subtitleLabel: statusSubtitle,
-            control: DashboardSettingsComponents.makeSwitch(
-                identifier: "showStatusMenu",
-                isOn: showStatusMenu,
-                target: self,
-                action: #selector(dashboardToggleChanged(_:))
-            )
-        ))
-        // Keep one editor instance in the page for both states so toggling
-        // animates its height in place instead of rebuilding the whole page.
-        // The stored links remain untouched while hidden.
-        let editor = makeStatusLinksEditor()
-        editor.setVisible(showStatusMenu, animated: false)
-        projectRows.append(editor)
-        let projects = DashboardSettingsComponents.makeSettingsSection(
-            tr("打开项目", "Open Project"),
-            rows: projectRows,
-            // Keep the Status Links editor visually attached to the View
-            // Status row so toggling never has to detach/reattach a separator.
-            separatorIndices: [0, 1, 2, 3],
-            rowHeight: { row in
-                (row as? StatusLinksEditorHostingView)?.layoutHeight
-            }
-        )
-        DispatchQueue.main.async { [weak editor] in
-            editor?.logGeometry(label: "initial")
-        }
-        return DashboardSettingsComponents.makeSettingsPage([items, projects])
-    }
-
-    private func makeDashboardLogViewer() -> NSView {
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.heightAnchor.constraint(equalToConstant: 190).isActive = true
-
-        dashboardLogView.isEditable = false
-        dashboardLogView.isSelectable = true
-        dashboardLogView.isRichText = true
-        dashboardLogView.font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
-        let vscodeForeground = vscodeColor(0xD4D4D4)
-        let vscodeBackground = vscodeColor(0x1E1E1E)
-        let vscodeSelection = vscodeColor(0x264F78)
-        dashboardLogView.textColor = vscodeForeground
-        dashboardLogView.backgroundColor = vscodeBackground
-        dashboardLogView.drawsBackground = true
-        let selectionAttributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: NSColor.white,
-            .backgroundColor: vscodeSelection
-        ]
-        dashboardLogView.selectedTextAttributes = selectionAttributes
-        dashboardLogView.isVerticallyResizable = true
-        dashboardLogView.isHorizontallyResizable = true
-        dashboardLogView.autoresizingMask = []
-        dashboardLogView.minSize = .zero
-        dashboardLogView.maxSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        dashboardLogView.textContainerInset = NSSize(width: 8, height: 8)
-        dashboardLogView.textContainer?.widthTracksTextView = false
-        dashboardLogView.textContainer?.containerSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-
-        let scroll = NSScrollView()
-        scroll.documentView = dashboardLogView
-        scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = true
-        scroll.verticalScrollElasticity = .none
-        scroll.horizontalScrollElasticity = .none
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = true
-        scroll.backgroundColor = dashboardLogView.backgroundColor
-        scroll.borderType = .noBorder
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(scroll)
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
-            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
-            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-            scroll.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
-        ])
-        refreshDashboardLog()
-        return container
-    }
-
-    private func makeAdvancedDashboardPage() -> NSView {
-        openCodexPortInputHasError = false
-        openCodexAutomaticDetectionSwitch = nil
-        openCodexPortField = nil
-        openCodexManualPortRow = nil
-        openCodexManualPortRowHeightConstraint = nil
-        openCodexPortStatusLabel = nil
-        openCodexPortErrorLabel = nil
-        openCodexOpenButton = nil
-        openCodexSettingsRowsStack = nil
-        openCodexSettingsCardHeightConstraint = nil
-        openCodexSettingsSeparators = []
-        openCodexDashboardInteractionState.mode = openCodexDashboardMode
-        openCodexDashboardInteractionState.markPortEditorActive(false)
-        let animation = DashboardSettingsComponents.makeSwitch(
-            identifier: "animateCodexActivity",
-            isOn: animateCodexActivity,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let activity = DashboardSettingsComponents.makeSettingsSection(tr("任务状态", "Task Status"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("任务运行时播放图标动画", "Animate Icon While a Task Is Running"),
-                control: animation
-            )
-        ])
-
-        let automaticDetection = openCodexDashboardAutomaticDetection
-        let currentResolution = currentOpenCodexDashboardResolution()
-        let initialResolution = currentResolution
-            ?? OpenCodexDashboardResolver.resolve(
-                manualPort: openCodexDashboardMode.effectiveManualPort,
-                runtimeCandidate: nil
-            )
-        let statusLabel = NSTextField(wrappingLabelWithString: tr("正在解析…", "Resolving…"))
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let automaticSwitch = DashboardSettingsComponents.makeSwitch(
-            identifier: "openCodexAutomaticDetection",
-            isOn: automaticDetection,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let automaticRow = DashboardSettingsComponents.makeSettingsRow(
-            tr("自动检测端口", "Detect Port Automatically"),
-            subtitle: tr(
-                "使用已验证的 OpenCodex runtime 端口；未检测时使用 10100",
-                "Use the verified OpenCodex runtime port; use 10100 until one is detected"
-            ),
-            subtitleLabel: statusLabel,
-            control: automaticSwitch,
-            minimumHeight: 86
-        )
-
-        let portField = NSTextField()
-        portField.stringValue = String(
-            openCodexDashboardMode.manualPort ?? initialResolution.port
-        )
-        portField.placeholderString = "10100"
-        portField.alignment = .right
-        portField.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        portField.isEditable = true
-        portField.isSelectable = true
-        portField.delegate = self
-        portField.widthAnchor.constraint(equalToConstant: 112).isActive = true
-
-        let errorLabel = NSTextField(wrappingLabelWithString: "")
-        errorLabel.translatesAutoresizingMaskIntoConstraints = false
-        errorLabel.isHidden = true
-
-        let manualPortRow = makeOpenCodexManualPortRow(
-            portField: portField,
-            errorLabel: errorLabel
-        )
-        manualPortRow.isHidden = automaticDetection
-
-        let openButton = NSButton(
-            title: tr("打开 OpenCodex", "Open OpenCodex"),
-            target: self,
-            action: #selector(openOpenCodex)
-        )
-        openButton.isEnabled = currentResolution != nil
-        openCodexAutomaticDetectionSwitch = automaticSwitch
-        openCodexPortField = portField
-        openCodexManualPortRow = manualPortRow
-        openCodexPortStatusLabel = statusLabel
-        openCodexPortErrorLabel = errorLabel
-        openCodexOpenButton = openButton
-        let openButtonRow = DashboardSettingsComponents.makeSettingsRow(
-            tr("OpenCodex Dashboard", "OpenCodex Dashboard"),
-            subtitle: tr(
-                "使用当前解析到的本机地址；固定打开 /#dashboard",
-                "Uses the resolved local address and always opens /#dashboard"
-            ),
-            control: openButton,
-            minimumHeight: 78
-        )
-
-        let openCodex = DashboardSettingsComponents.makeSettingsSection(
-            tr("OpenCodex", "OpenCodex"),
-            rows: [automaticRow, manualPortRow, openButtonRow],
-            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-                guard let self else { return }
-                self.openCodexSettingsRowsStack = rowsStack
-                self.openCodexSettingsCardHeightConstraint = cardHeightConstraint
-                self.openCodexSettingsSeparators = separators
-                if automaticDetection, !separators.isEmpty {
-                    separators[0].isHidden = true
-                }
-            }
-        )
-        openCodexDashboardLastResolvedPort = initialResolution.port
-        applyOpenCodexDashboardResolution(
-            initialResolution,
-            canOpen: currentResolution != nil
-        )
-
-        let refreshLog = NSButton(title: tr("重新载入", "Reload"), target: self, action: #selector(refreshDashboardLog))
-        let revealLog = NSButton(title: tr("在 Finder 中显示", "Show in Finder"), target: self, action: #selector(revealDashboardLog))
-        let logButtons = NSStackView(views: [refreshLog, revealLog])
-        logButtons.orientation = .horizontal
-        logButtons.spacing = 8
-        let logs = DashboardSettingsComponents.makeSettingsSection(tr("诊断", "Diagnostics"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("调试日志", "Debug Log"),
-                subtitle: tr(
-                    "记录运行状态与错误",
-                    "Records runtime status and errors"
-                ),
-                control: logButtons
-            ),
-            makeDashboardLogViewer()
-        ])
-        return DashboardSettingsComponents.makeSettingsPage([activity, openCodex, logs])
-    }
-
-    private func makeAboutDashboardPage() -> NSView {
-        let root = NSView()
-        let icon = NSImageView()
-        if let iconURL = Bundle.main.url(forResource: "BalanceBar", withExtension: "icns") {
-            icon.image = NSImage(contentsOf: iconURL)
-        }
-        icon.imageScaling = .scaleProportionallyDown
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 72).isActive = true
-        icon.heightAnchor.constraint(equalToConstant: 72).isActive = true
-        let name = NSTextField(labelWithString: "BalanceBar")
-        name.font = .systemFont(ofSize: 22, weight: .semibold)
-        let appVersion = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "0.11.14"
-        let isDevBuild = Bundle.main.bundleIdentifier == devBundleIdentifier
-        let version = NSTextField(labelWithString: tr(
-            "版本 \(appVersion)",
-            "Version \(appVersion)"
-        ) + (isDevBuild ? " · Dev" : ""))
-        version.textColor = .secondaryLabelColor
-        let detail = NSTextField(labelWithString: tr(
-            "基于 CC Switch 的菜单栏余量查看工具",
-            "A CC Switch-based menu bar balance viewer"
-        ))
-        detail.textColor = .secondaryLabelColor
-        let stack = NSStackView(views: [icon, name, version, detail])
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 8
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            stack.topAnchor.constraint(equalTo: root.topAnchor, constant: 92)
-        ])
-        return root
     }
 
     private func makeProviderDashboardPage(_ choice: ProviderChoice) -> NSView {
@@ -2132,20 +1309,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         heading.orientation = .vertical
         heading.alignment = .leading
         heading.spacing = 3
-
         quickSwitchSummaryLock.lock()
         let cachedSummary = quickSwitchSummaries[choice.id]
         quickSwitchSummaryLock.unlock()
-        dashboardAmountLabel.stringValue = choice.isCurrent ? snapshot.overviewLargeAmount : (cachedSummary ?? tr("正在读取…", "Loading…"))
+        dashboardAmountLabel.stringValue = choice.isCurrent
+            ? snapshot.overviewLargeAmount
+            : (cachedSummary ?? tr("正在读取…", "Loading…"))
         dashboardAmountLabel.font = .monospacedDigitSystemFont(ofSize: 34, weight: .semibold)
         dashboardQuotaLabel.stringValue = tr("剩余额度", "Remaining Balance")
         dashboardResetLabel.stringValue = choice.isCurrent
             ? snapshot.overviewReset(refreshDate: lastSuccessfulRefresh, formatter: Self.timeFormatter)
             : tr("选择为当前供应商后显示详细重置时间", "Select this Provider to display detailed reset information")
         let usage = DashboardSettingsComponents.makeSettingsSection(tr("用量", "Usage"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(tr("剩余额度", "Remaining Balance"), subtitle: dashboardResetLabel.stringValue, control: dashboardAmountLabel, minimumHeight: 76)
+            DashboardSettingsComponents.makeSettingsRow(
+                tr("剩余额度", "Remaining Balance"),
+                subtitle: dashboardResetLabel.stringValue,
+                control: dashboardAmountLabel,
+                minimumHeight: 76
+            )
         ])
-
         let action: NSButton
         if choice.isCurrent {
             action = NSButton(title: tr("立即刷新", "Refresh Now"), target: self, action: #selector(dashboardManualRefresh))
@@ -2155,27 +1337,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             action.toolTip = choice.name
         }
         let connection = DashboardSettingsComponents.makeSettingsSection("CC Switch", rows: [
-            DashboardSettingsComponents.makeSettingsRow(tr("同步状态", "Sync Status"), subtitle: choice.isCurrent
-                ? tr("正在跟随此供应商", "Following this Provider")
-                : tr("当前未使用此供应商", "This Provider is not currently active"), control: action)
+            DashboardSettingsComponents.makeSettingsRow(
+                tr("同步状态", "Sync Status"),
+                subtitle: choice.isCurrent ? tr("正在跟随此供应商", "Following this Provider") : tr("当前未使用此供应商", "This Provider is not currently active"),
+                control: action
+            )
         ])
         return DashboardSettingsComponents.makeSettingsPage([heading, usage, connection])
     }
 
     private func makeOverviewDashboardPage() -> NSView {
         let root = NSView()
-        let header = DashboardSettingsComponents.makePageHeader(tr("概览", "Overview"), subtitle: tr("当前余额、同步状态和 Codex 供应商", "Current balance, sync status, and Codex Provider"))
-
+        let header = DashboardSettingsComponents.makePageHeader(
+            tr("概览", "Overview"),
+            subtitle: tr("当前余额、同步状态和 Codex 供应商", "Current balance, sync status, and Codex Provider")
+        )
         dashboardProviderLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         dashboardProviderLabel.lineBreakMode = .byTruncatingTail
         dashboardRefreshLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         dashboardRefreshLabel.textColor = .secondaryLabelColor
         dashboardRefreshLabel.alignment = .right
-        let providerSpacer = NSView()
-        let providerRow = NSStackView(views: [dashboardProviderLabel, providerSpacer, dashboardRefreshLabel])
+        let providerRow = NSStackView(views: [dashboardProviderLabel, NSView(), dashboardRefreshLabel])
         providerRow.orientation = .horizontal
         providerRow.alignment = .centerY
-
         dashboardQuotaLabel.font = .systemFont(ofSize: 13, weight: .medium)
         dashboardResetLabel.font = .systemFont(ofSize: 13)
         dashboardResetLabel.textColor = .secondaryLabelColor
@@ -2183,19 +1367,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         quotaStack.orientation = .vertical
         quotaStack.alignment = .leading
         quotaStack.spacing = 5
-
         dashboardAmountLabel.font = .monospacedDigitSystemFont(ofSize: 42, weight: .semibold)
         dashboardAmountLabel.alignment = .right
-        let quotaSpacer = NSView()
-        let quotaRow = NSStackView(views: [quotaStack, quotaSpacer, dashboardAmountLabel])
+        let quotaRow = NSStackView(views: [quotaStack, NSView(), dashboardAmountLabel])
         quotaRow.orientation = .horizontal
         quotaRow.alignment = .centerY
-
         dashboardProgressHost.translatesAutoresizingMaskIntoConstraints = false
         dashboardProgressHost.heightAnchor.constraint(equalToConstant: 6).isActive = true
         dashboardStatusLabel.font = .systemFont(ofSize: 12)
         dashboardStatusLabel.textColor = .secondaryLabelColor
-
         let separator = NSBox()
         separator.boxType = .separator
         let providersTitle = NSTextField(labelWithString: tr("供应商", "Providers"))
@@ -2203,11 +1383,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardProvidersStack.orientation = .vertical
         dashboardProvidersStack.alignment = .leading
         dashboardProvidersStack.spacing = 0
-
-        let stack = NSStackView(views: [
-            header, providerRow, quotaRow, dashboardProgressHost,
-            dashboardStatusLabel, separator, providersTitle, dashboardProvidersStack
-        ])
+        let stack = NSStackView(views: [header, providerRow, quotaRow, dashboardProgressHost, dashboardStatusLabel, separator, providersTitle, dashboardProvidersStack])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
@@ -2229,324 +1405,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         return root
     }
 
-    private func makeMenuBarDashboardPage() -> NSView {
-        let previewContent = NSView()
-        let preview: NSView
-        if let glassPreview = makeDashboardGlassEffectView(contentView: previewContent, cornerRadius: 7) {
-            preview = glassPreview
-        } else {
-            let visualEffectPreview = NSVisualEffectView()
-            visualEffectPreview.material = .menu
-            visualEffectPreview.state = .active
-            visualEffectPreview.wantsLayer = true
-            visualEffectPreview.layer?.cornerRadius = 7
-            visualEffectPreview.layer?.backgroundColor = dashboardAdaptiveColor(
-                light: NSColor.white.withAlphaComponent(0.64),
-                dark: NSColor.black.withAlphaComponent(0.18)
-            ).cgColor
-            visualEffectPreview.layer?.borderColor = dashboardAdaptiveColor(
-                light: NSColor.white.withAlphaComponent(0.72),
-                dark: NSColor.white.withAlphaComponent(0.08)
-            ).cgColor
-            visualEffectPreview.layer?.borderWidth = 0.5
-            previewContent.translatesAutoresizingMaskIntoConstraints = false
-            visualEffectPreview.addSubview(previewContent)
-            NSLayoutConstraint.activate([
-                previewContent.topAnchor.constraint(equalTo: visualEffectPreview.topAnchor),
-                previewContent.leadingAnchor.constraint(equalTo: visualEffectPreview.leadingAnchor),
-                previewContent.trailingAnchor.constraint(equalTo: visualEffectPreview.trailingAnchor),
-                previewContent.bottomAnchor.constraint(equalTo: visualEffectPreview.bottomAnchor)
-            ])
-            preview = visualEffectPreview
-        }
-        preview.translatesAutoresizingMaskIntoConstraints = false
-        preview.widthAnchor.constraint(equalToConstant: 190).isActive = true
-        dashboardMenuPreviewIcon.imageScaling = .scaleProportionallyDown
-        dashboardMenuPreviewIcon.translatesAutoresizingMaskIntoConstraints = false
-        dashboardMenuPreviewIcon.wantsLayer = true
-        dashboardMenuPreviewIcon.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
-        dashboardMenuPreviewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
-        dashboardMenuPreviewPrimary.font = MenuBarLayout.primaryFont
-        dashboardMenuPreviewPrimary.textColor = .labelColor
-        dashboardMenuPreviewSecondary.font = MenuBarLayout.secondaryFont
-        dashboardMenuPreviewSecondary.textColor = .labelColor
-        let previewText = dashboardMenuPreviewText
-        previewText.addSubview(dashboardMenuPreviewPrimary)
-        previewText.addSubview(dashboardMenuPreviewSecondary)
-        previewText.wantsLayer = true
-        previewText.layer?.setAffineTransform(.identity)
-        let previewTextWidth = previewText.widthAnchor.constraint(equalToConstant: 32)
-        previewTextWidth.priority = .defaultHigh
-        previewTextWidth.isActive = true
-        dashboardMenuPreviewTextWidthConstraint = previewTextWidth
-        let previewIconSlot = dashboardMenuPreviewIconSlot
-        previewIconSlot.translatesAutoresizingMaskIntoConstraints = false
-        previewIconSlot.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
-        previewIconSlot.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
-        previewIconSlot.addSubview(dashboardMenuPreviewIcon)
-        NSLayoutConstraint.activate([
-            dashboardMenuPreviewIcon.centerXAnchor.constraint(equalTo: previewIconSlot.centerXAnchor),
-            dashboardMenuPreviewIcon.centerYAnchor.constraint(equalTo: previewIconSlot.centerYAnchor)
-        ])
-        let previewRow = NSStackView(views: [previewIconSlot, previewText])
-        previewRow.orientation = .horizontal
-        previewRow.alignment = .centerY
-        previewRow.spacing = MenuBarLayout.iconTextSpacing
-        previewRow.translatesAutoresizingMaskIntoConstraints = false
-        dashboardMenuPreviewCapsule.wantsLayer = true
-        dashboardMenuPreviewCapsule.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor.black.withAlphaComponent(0.08),
-            dark: NSColor.white.withAlphaComponent(0.12)
-        ).cgColor
-        dashboardMenuPreviewCapsule.layer?.borderColor = dashboardAdaptiveColor(
-            light: NSColor.black.withAlphaComponent(0.10),
-            dark: NSColor.white.withAlphaComponent(0.08)
-        ).cgColor
-        dashboardMenuPreviewCapsule.layer?.borderWidth = 0.5
-        dashboardMenuPreviewCapsule.layer?.cornerRadius = 12
-        dashboardMenuPreviewCapsule.layer?.masksToBounds = true
-        dashboardMenuPreviewCapsule.isHidden = true
-        dashboardMenuPreviewCapsule.translatesAutoresizingMaskIntoConstraints = false
-        previewContent.addSubview(dashboardMenuPreviewCapsule)
-        previewContent.addSubview(previewRow)
-        let capsuleLeading = dashboardMenuPreviewCapsule.leadingAnchor.constraint(
-            equalTo: previewRow.leadingAnchor,
-            constant: -(menuBarHorizontalPadding + dashboardMenuPreviewChromeInset)
-        )
-        let capsuleTrailing = dashboardMenuPreviewCapsule.trailingAnchor.constraint(
-            equalTo: previewRow.trailingAnchor,
-            constant: menuBarHorizontalPadding + dashboardMenuPreviewChromeInset
-        )
-        dashboardMenuPreviewCapsuleLeadingConstraint = capsuleLeading
-        dashboardMenuPreviewCapsuleTrailingConstraint = capsuleTrailing
-        NSLayoutConstraint.activate([
-            previewRow.centerXAnchor.constraint(equalTo: previewContent.centerXAnchor),
-            previewRow.centerYAnchor.constraint(equalTo: previewContent.centerYAnchor),
-            previewRow.leadingAnchor.constraint(greaterThanOrEqualTo: previewContent.leadingAnchor, constant: 14),
-            previewRow.trailingAnchor.constraint(lessThanOrEqualTo: previewContent.trailingAnchor, constant: -14),
-            capsuleLeading,
-            capsuleTrailing,
-            dashboardMenuPreviewCapsule.leadingAnchor.constraint(greaterThanOrEqualTo: previewContent.leadingAnchor, constant: 6),
-            dashboardMenuPreviewCapsule.trailingAnchor.constraint(lessThanOrEqualTo: previewContent.trailingAnchor, constant: -6),
-            dashboardMenuPreviewCapsule.topAnchor.constraint(equalTo: previewRow.topAnchor, constant: -3),
-            dashboardMenuPreviewCapsule.bottomAnchor.constraint(equalTo: previewRow.bottomAnchor, constant: 3),
-            preview.heightAnchor.constraint(equalToConstant: 42)
-        ])
-        let iconToggle = DashboardSettingsComponents.makeSwitch(
-            identifier: "showMenuBarIcon",
-            isOn: showMenuBarIcon,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let amountToggle = DashboardSettingsComponents.makeSwitch(
-            identifier: "showMenuBarAmount",
-            isOn: showMenuBarAmount,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let resetToggle = DashboardSettingsComponents.makeSwitch(
-            identifier: "showMenuBarReset",
-            isOn: showMenuBarReset,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        dashboardMenuBarIconSwitch = iconToggle
-        dashboardMenuBarAmountSwitch = amountToggle
-        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("当前布局", "Current Layout"),
-                subtitle: tr(
-                    "菜单栏会随供应商数据实时更新",
-                    "The menu bar updates with Provider data in real time"
-                ),
-                control: preview,
-                minimumHeight: 66
-            )
-        ])
-        let displaySection = DashboardSettingsComponents.makeSettingsSection(tr("显示项目", "Display Items"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(tr("Agent 图标", "Agent Icon"), subtitle: tr("显示当前任务运行状态", "Shows the current task status"), control: iconToggle),
-            DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance"), control: amountToggle),
-            DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available"), control: resetToggle)
-        ])
-        refreshDashboardMenuBarPage()
-        return DashboardSettingsComponents.makeSettingsPage([previewSection, displaySection])
-    }
-
     private func refreshDashboardMenuBarPage() {
         guard dashboard?.isVisible == true, dashboardSection == .menuBar else { return }
-        dashboardMenuPreviewIconSlot.isHidden = !showMenuBarIcon
-        dashboardMenuPreviewText.isHidden = !showMenuBarAmount
-        // Keep at least one visible status-item component. Disabling the last
-        // active switch avoids instantly reversing an NSSwitch animation,
-        // which can otherwise leave overlapping on/off layers on vibrancy.
-        dashboardMenuBarIconSwitch?.isEnabled = showMenuBarAmount
-        dashboardMenuBarAmountSwitch?.isEnabled = showMenuBarIcon
-        let effectiveMenuBarSnapshot = menuBarSnapshot(for: snapshot)
-        dashboardMenuPreviewPrimary.stringValue = showMenuBarAmount ? effectiveMenuBarSnapshot.menuBarPrimary : ""
-        dashboardMenuPreviewSecondary.stringValue = effectiveMenuBarSnapshot.kind == .official
-            ? effectiveMenuBarSnapshot.menuBarSecondary
-            : ""
-        let hasSecondary = showMenuBarAmount
-            && showMenuBarReset
-            && effectiveMenuBarSnapshot.kind == .official
-            && !dashboardMenuPreviewSecondary.stringValue.isEmpty
-        let geometry = MenuBarLayout.geometry(
-            primarySize: dashboardMenuPreviewPrimary.intrinsicContentSize,
-            secondarySize: dashboardMenuPreviewSecondary.intrinsicContentSize,
-            showIcon: showMenuBarIcon,
-            showAmount: showMenuBarAmount,
-            hasSecondary: hasSecondary,
-            isBalance: effectiveMenuBarSnapshot.kind == .balance,
+        dashboardPreferencePages.refreshMenuBar(
+            snapshot: snapshot,
+            menuBarSnapshot: { [weak self] snapshot in
+                self?.menuBarSnapshot(for: snapshot) ?? snapshot
+            },
+            iconImage: statusItemController?.iconImage
         )
-        MenuBarLayout.applyTextLayout(
-            container: dashboardMenuPreviewText,
-            primary: dashboardMenuPreviewPrimary,
-            secondary: dashboardMenuPreviewSecondary,
-            geometry: geometry,
-            showAmount: showMenuBarAmount,
-            hasSecondary: hasSecondary
-        )
-        dashboardMenuPreviewTextWidthConstraint?.constant = geometry.textWidth
-        dashboardMenuPreviewCapsuleLeadingConstraint?.constant = -(
-            menuBarHorizontalPadding + dashboardMenuPreviewChromeInset
-        )
-        dashboardMenuPreviewCapsuleTrailingConstraint?.constant =
-            menuBarHorizontalPadding + dashboardMenuPreviewChromeInset
-        dashboardMenuPreviewIcon.image = statusItemController.iconImage
-        dashboardMenuPreviewIcon.contentTintColor = .labelColor
-        dashboardMenuPreviewIcon.layer?.setAffineTransform(.identity)
-        dashboardMenuPreviewText.layer?.setAffineTransform(.identity)
-        if effectiveMenuBarSnapshot.kind == .balance,
-           showMenuBarIcon,
-           showMenuBarAmount {
-            dashboardMenuPreviewIcon.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -MenuBarLayout.singleLineIconYOffset
-            ))
-            dashboardMenuPreviewText.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -MenuBarLayout.singleLineTextYOffset
-            ))
-        }
     }
 
-    private func makeRefreshDashboardPage() -> NSView {
-        let root = NSView()
-        let header = DashboardSettingsComponents.makePageHeader(tr("刷新设置", "Refresh Settings"), subtitle: tr("文件监听始终开启，轮询用于防止遗漏系统事件", "File monitoring is always active; polling prevents missed system events"))
-        let pollingTitle = NSTextField(labelWithString: tr("CC Switch 轮询兜底", "CC Switch Fallback Polling"))
-        pollingTitle.font = .systemFont(ofSize: 13, weight: .medium)
-        let pollingPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: [(1, tr("每 1 秒", "Every 1 sec")), (3, tr("每 3 秒", "Every 3 sec")), (5, tr("每 5 秒", "Every 5 sec")), (10, tr("每 10 秒", "Every 10 sec"))],
-            selected: providerPollInterval,
-            identifier: "providerPollInterval",
-            target: self,
-            action: #selector(dashboardIntervalChanged(_:))
+    private func refreshDashboardOpenCodexSettings() {
+        guard dashboard?.isVisible == true, dashboardSection == .advanced else { return }
+        dashboardPreferencePages.refreshAdvanced(
+            currentOpenCodexResolution: currentOpenCodexDashboardResolution(),
+            runtimeCandidate: openCodexState?.state.candidate
         )
-        let pollingSpacer = NSView()
-        let pollingRow = NSStackView(views: [pollingTitle, pollingSpacer, pollingPopup])
-        pollingRow.orientation = .horizontal
-        pollingRow.alignment = .centerY
-
-        let activityTitle = NSTextField(labelWithString: tr("Codex 任务状态检测", "Codex Task Status Detection"))
-        activityTitle.font = .systemFont(ofSize: 13, weight: .medium)
-        let activityPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: [(0.25, tr("0.25 秒", "0.25 sec")), (0.5, tr("0.5 秒", "0.5 sec")), (1, tr("1 秒", "1 sec"))],
-            selected: activityPollInterval,
-            identifier: "activityPollInterval",
-            target: self,
-            action: #selector(dashboardIntervalChanged(_:))
-        )
-        let activitySpacer = NSView()
-        let activityRow = NSStackView(views: [activityTitle, activitySpacer, activityPopup])
-        activityRow.orientation = .horizontal
-        activityRow.alignment = .centerY
-
-        let animationToggle = DashboardSettingsComponents.makeSwitch(
-            identifier: "animateCodexActivity",
-            isOn: animateCodexActivity,
-            target: self,
-            action: #selector(dashboardToggleChanged(_:))
-        )
-        let animationTitle = NSTextField(labelWithString: tr(
-            "Codex 有任务运行时旋转菜单栏图标",
-            "Rotate the menu bar icon while a Codex task is running"
-        ))
-        let animationSpacer = NSView()
-        let animationRow = NSStackView(views: [
-            animationTitle, animationSpacer, animationToggle
-        ])
-        animationRow.orientation = .horizontal
-        animationRow.alignment = .centerY
-        let note = NSTextField(wrappingLabelWithString: tr(
-            "供应商变化仍由 CC Switch 数据库事件即时触发；这里的秒数只是没有收到事件时的后备检查频率。",
-            "Provider changes are still triggered immediately by CC Switch database events; this interval is only the fallback check frequency."
-        ))
-        note.font = .systemFont(ofSize: 12)
-        note.textColor = .secondaryLabelColor
-
-        let stack = NSStackView(views: [header, pollingRow, activityRow, animationRow, note])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 18
-        stack.setCustomSpacing(30, after: header)
-        stack.setCustomSpacing(24, after: activityRow)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: root.topAnchor, constant: 30),
-            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 32),
-            stack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -32),
-            pollingRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            activityRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            note.widthAnchor.constraint(equalTo: stack.widthAnchor)
-        ])
-        return root
-    }
-
-    private func makeLogsDashboardPage() -> NSView {
-        let root = NSView()
-        let header = DashboardSettingsComponents.makePageHeader(tr("日志", "Logs"), subtitle: tr("供应商切换、同步和失败原因", "Provider switching, synchronization, and failure details"))
-        let refreshButton = NSButton(title: tr("刷新", "Refresh"), target: self, action: #selector(refreshDashboardLog))
-        refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: tr("刷新", "Refresh"))
-        let revealButton = NSButton(title: tr("在 Finder 中显示", "Show in Finder"), target: self, action: #selector(revealDashboardLog))
-        revealButton.image = NSImage(systemSymbolName: "folder", accessibilityDescription: tr("在 Finder 中显示", "Show in Finder"))
-        let buttonSpacer = NSView()
-        let buttons = NSStackView(views: [refreshButton, revealButton, buttonSpacer])
-        buttons.orientation = .horizontal
-        buttons.spacing = 8
-
-        dashboardLogView.isEditable = false
-        dashboardLogView.isSelectable = true
-        dashboardLogView.isVerticallyResizable = true
-        dashboardLogView.isHorizontallyResizable = false
-        dashboardLogView.autoresizingMask = [.width]
-        dashboardLogView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        dashboardLogView.textContainerInset = NSSize(width: 10, height: 10)
-        dashboardLogView.textContainer?.widthTracksTextView = true
-        let scroll = NSScrollView()
-        scroll.borderType = .bezelBorder
-        scroll.hasVerticalScroller = true
-        scroll.verticalScrollElasticity = .none
-        scroll.horizontalScrollElasticity = .none
-        scroll.documentView = dashboardLogView
-
-        [header, buttons, scroll].forEach {
-            $0.translatesAutoresizingMaskIntoConstraints = false
-            root.addSubview($0)
-        }
-        NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 30),
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 32),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -32),
-            buttons.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 24),
-            buttons.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            buttons.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: buttons.bottomAnchor, constant: 12),
-            scroll.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -28)
-        ])
-        return root
     }
 
     private func configureRefreshTimers() {
