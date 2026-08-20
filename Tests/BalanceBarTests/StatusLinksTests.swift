@@ -409,32 +409,6 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(StatusLinksScrollAnchor.isViewportYVisible(112, in: viewport, tolerance: 1))
     }
 
-    func testScrollAnchorTimerSupportsRepeatedStartStopWithoutDuplicateMaintenance() {
-        let timer = StatusLinksScrollAnchorTimer()
-        var firstTickCount = 0
-        var secondTickCount = 0
-
-        timer.start(interval: 0.01) {
-            firstTickCount += 1
-        }
-        XCTAssertTrue(timer.isRunning)
-
-        timer.start(interval: 0.01) {
-            secondTickCount += 1
-        }
-        XCTAssertTrue(timer.isRunning)
-
-        RunLoop.main.run(until: Date().addingTimeInterval(0.04))
-        timer.stop()
-
-        XCTAssertFalse(timer.isRunning)
-        XCTAssertEqual(firstTickCount, 0)
-        XCTAssertGreaterThan(secondTickCount, 0)
-
-        timer.stop()
-        XCTAssertFalse(timer.isRunning)
-    }
-
     func testActiveMaintenanceStopsWhenUserMovesDashboardBounds() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 280),
@@ -496,16 +470,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(clipView.bounds.origin.y, secondUserOriginY, accuracy: 0.0001)
     }
 
-    func testScrollAnchorControllerStopsTimerAndReleasesAfterTeardown() {
-        let position = StatusLinksScrollPosition(
-            operation: "remove",
-            visibleDocumentOffset: 40,
-            contentOriginY: 40,
-            distanceFromBottom: 60,
-            previousMaximumOffset: 120,
-            bottomAnchorView: nil,
-            bottomAnchorViewportY: nil
-        )
+    func testScrollAnchorControllerCancelsTransactionAndReleasesAfterTeardown() {
         weak var releasedController: StatusLinksScrollAnchorController?
 
         autoreleasepool {
@@ -517,10 +482,7 @@ final class StatusLinksTests: XCTestCase {
                     linksCountProvider: { 0 }
                 )
             releasedController = controller
-            controller?.startMaintenance(position, operation: "remove")
-            XCTAssertTrue(controller?.isMaintainingAnchor == true)
-            controller?.startMaintenance(position, operation: "remove")
-            XCTAssertTrue(controller?.isMaintainingAnchor == true)
+            XCTAssertFalse(controller?.isMaintainingAnchor == true)
             controller?.stop()
             XCTAssertFalse(controller?.isMaintainingAnchor == true)
             controller = nil

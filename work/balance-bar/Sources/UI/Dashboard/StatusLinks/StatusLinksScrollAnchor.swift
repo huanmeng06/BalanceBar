@@ -38,43 +38,18 @@ enum StatusLinksScrollAnchor {
     }
 }
 
-final class StatusLinksScrollAnchorTimer {
-    private var timer: Timer?
-
-    var isRunning: Bool {
-        timer?.isValid == true
-    }
-
-    func start(
-        interval: TimeInterval = 1.0 / 60.0,
-        tick: @escaping () -> Void
-    ) {
-        stop()
-        let timer = Timer(timeInterval: interval, repeats: true) { _ in
-            tick()
-        }
-        self.timer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-    }
-
-    deinit {
-        stop()
-    }
-}
-
 final class StatusLinksScrollAnchorController {
     private let dashboardProvider: () -> NSWindow?
     private let contentHostProvider: () -> NSView?
     private let sectionTitleProvider: () -> String
     private let linksCountProvider: () -> Int
-    private let maintenanceTimer = StatusLinksScrollAnchorTimer()
     private var maintenanceGeneration = 0
-    private weak var observedClipView: DashboardClipView?
+    private weak var observedScrollView: NSScrollView?
+    private var boundsObserver: NSObjectProtocol?
+    private var liveScrollObserver: NSObjectProtocol?
+    private var previousPostsBoundsChangedNotifications = false
+    private var isApplyingAnchorBounds = false
+    private var anchorTransactionActive = false
     private var lastObservedDocumentHeight: CGFloat?
 
     init(
@@ -90,14 +65,25 @@ final class StatusLinksScrollAnchorController {
     }
 
     var isMaintainingAnchor: Bool {
-        maintenanceTimer.isRunning
+        anchorTransactionActive
     }
 
     func stop() {
         maintenanceGeneration &+= 1
-        maintenanceTimer.stop()
-        observedClipView?.onUserBoundsMovement = nil
-        observedClipView = nil
+        if let contentView = observedScrollView?.contentView {
+            contentView.postsBoundsChangedNotifications =
+                previousPostsBoundsChangedNotifications
+        }
+        if let boundsObserver {
+            NotificationCenter.default.removeObserver(boundsObserver)
+        }
+        if let liveScrollObserver {
+            NotificationCenter.default.removeObserver(liveScrollObserver)
+        }
+        boundsObserver = nil
+        liveScrollObserver = nil
+        observedScrollView = nil
+        anchorTransactionActive = false
     }
 
     deinit {
@@ -131,10 +117,13 @@ final class StatusLinksScrollAnchorController {
             "in-place status-link refresh started; action=\(operation); old_rows=\(editor.rowCount); new_rows=\(links.count); editor_frame=\(DashboardLogging.rect(editor.frame))",
             category: "ui.layout"
         )
-        if let scrollPosition {
-            startMaintenance(scrollPosition, operation: operation)
+        let transactionGeneration: Int?
+        if scrollPosition != nil {
+            beginAnchorTransaction(operation: operation)
+            transactionGeneration = maintenanceGeneration
         } else {
             stop()
+            transactionGeneration = nil
         }
         editor.updateLinks(
             links,
@@ -142,10 +131,13 @@ final class StatusLinksScrollAnchorController {
             revealAddedRowsAtCompletion: operation == "add"
         ) { [weak self, weak page, weak editor] in
             guard let self, let page, let editor else { return }
+            if let transactionGeneration,
+               self.maintenanceGeneration != transactionGeneration {
+                return
+            }
             self.stop()
             page.layoutSubtreeIfNeeded()
             editor.superview?.layoutSubtreeIfNeeded()
-            self.clampDashboardScrollViewBounds()
             SwitchLog.write(
                 "in-place status-link refresh animation completed; action=\(operation); rows=\(editor.rowCount); editor_frame=\(DashboardLogging.rect(editor.frame)); page_frame=\(DashboardLogging.rect(page.frame))",
                 category: "ui.layout"
@@ -153,8 +145,6 @@ final class StatusLinksScrollAnchorController {
             editor.logGeometry(label: "after \(operation) animation")
             if let scrollPosition {
                 self.restore(scrollPosition, attempt: 0)
-            } else {
-                self.clampDashboardScrollViewBounds()
             }
             self.scheduleScrollLog(label: "after \(operation) animation")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -166,9 +156,6 @@ final class StatusLinksScrollAnchorController {
         // the clip view once more before returning to the run loop so the
         // first layout pass cannot expose a one-frame jump before the timer
         // gets its first tick.
-        if let scrollPosition {
-            maintain(scrollPosition)
-        }
         // Capture one state during the transition so the log distinguishes a
         // smooth layout animation from a late, discrete jump.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
@@ -178,45 +165,24 @@ final class StatusLinksScrollAnchorController {
     }
 
     func clampDashboardScrollViewBounds() {
-        guard let page = currentPage,
-              let scrollView = firstScrollView(in: page),
-              let documentView = scrollView.documentView else {
-            return
-        }
-        page.layoutSubtreeIfNeeded()
-        scrollView.layoutSubtreeIfNeeded()
-        traceLayoutIfNeeded(documentView, source: "anchor-clamp")
-        DashboardScrollTrace.marker("anchor-clamp", source: "StatusLinks")
-        setDashboardScrollBounds(
-            scrollView.contentView.bounds,
-            scrollView: scrollView,
-            documentView: documentView
-        )
+        // Native NSClipView/NSScrollView owns ordinary bounds enforcement.
+        DashboardScrollTrace.marker("native-scroll-clamp-no-op", source: "StatusLinks")
     }
 
     func startMaintenance(
         _ position: StatusLinksScrollPosition,
         operation: String
     ) {
-        stop()
-        installUserBoundsMovementHandler()
+        beginAnchorTransaction(operation: operation)
         DashboardScrollTrace.marker(
             "anchor-maintenance-start",
             source: "StatusLinks",
             flags: "operation=\(operation)"
         )
-        let generation = maintenanceGeneration
         SwitchLog.write(
-            "scroll anchor maintenance started; action=\(operation); interval=0.0167s; distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom))",
+            "scroll anchor transaction started; action=\(operation); adjustment=one-shot-after-layout; distanceFromBottom=\(DashboardLogging.number(position.distanceFromBottom))",
             category: "ui.scroll"
         )
-        maintenanceTimer.start { [weak self] in
-            guard let self, self.maintenanceGeneration == generation else { return }
-            self.maintain(position)
-        }
-        // Apply once immediately so the first layout pass does not wait for
-        // the first timer tick before the viewport begins following the card.
-        maintain(position)
     }
 
     func capture(
@@ -292,21 +258,47 @@ final class StatusLinksScrollAnchorController {
         contentHostProvider()?.subviews.first
     }
 
-    private func installUserBoundsMovementHandler() {
+    private func beginAnchorTransaction(operation: String) {
+        stop()
         guard let page = currentPage,
-              let scrollView = firstScrollView(in: page),
-              let clipView = scrollView.contentView as? DashboardClipView else {
+              let scrollView = firstScrollView(in: page) else {
+            anchorTransactionActive = true
             return
         }
-        observedClipView = clipView
-        clipView.onUserBoundsMovement = { [weak self] in
-            guard let self, self.maintenanceTimer.isRunning else { return }
-            SwitchLog.write(
-                "scroll anchor maintenance cancelled; reason=user-bounds-movement",
-                category: "ui.scroll"
-            )
-            self.stop()
+        anchorTransactionActive = true
+        observedScrollView = scrollView
+        previousPostsBoundsChangedNotifications =
+            scrollView.contentView.postsBoundsChangedNotifications
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        boundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, !self.isApplyingAnchorBounds else { return }
+            self.cancelAnchorTransaction(reason: "user-bounds-movement")
         }
+        liveScrollObserver = NotificationCenter.default.addObserver(
+            forName: NSScrollView.willStartLiveScrollNotification,
+            object: scrollView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.cancelAnchorTransaction(reason: "live-scroll-started")
+        }
+        DashboardScrollTrace.marker(
+            "anchor-transaction-start",
+            source: "StatusLinks",
+            flags: "operation=\(operation)"
+        )
+    }
+
+    private func cancelAnchorTransaction(reason: String) {
+        guard anchorTransactionActive else { return }
+        SwitchLog.write(
+            "scroll anchor transaction cancelled; reason=\(reason)",
+            category: "ui.scroll"
+        )
+        stop()
     }
 
     private func firstScrollView(in view: NSView) -> NSScrollView? {
@@ -345,96 +337,6 @@ final class StatusLinksScrollAnchorController {
     private func statusLinksBottomAnchorPoint(in view: NSView) -> NSPoint {
         let edgeY = view.isFlipped ? view.bounds.maxY : view.bounds.minY
         return NSPoint(x: view.bounds.midX, y: edgeY)
-    }
-
-    private func maintain(_ position: StatusLinksScrollPosition) {
-        guard let page = currentPage,
-              let scrollView = firstScrollView(in: page),
-              let documentView = scrollView.documentView else {
-            return
-        }
-
-        dashboardProvider()?.displayIfNeeded()
-        contentHostProvider()?.layoutSubtreeIfNeeded()
-        page.layoutSubtreeIfNeeded()
-        scrollView.layoutSubtreeIfNeeded()
-        traceLayoutIfNeeded(documentView, source: "anchor-maintain")
-        DashboardScrollTrace.marker(
-            "anchor-maintain",
-            source: "StatusLinks",
-            flags: "operation=\(position.operation)"
-        )
-
-        let contentView = scrollView.contentView
-        // A removal shrinks the document from the bottom. Restore the clip
-        // view through the shared visual-offset clamp so the new document
-        // range, rather than the old coordinate origin, decides the result.
-        if position.operation != "add" {
-            let geometry = dashboardScrollGeometry(
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            let targetVisualOffset = StatusLinksScrollAnchor
-                .visualOffsetPreservingDistanceFromBottom(
-                    position.distanceFromBottom,
-                    geometry: geometry
-                )
-            let targetContentOriginY = dashboardScrollContentOrigin(
-                scrollView: scrollView,
-                documentView: documentView,
-                visualOffset: targetVisualOffset
-            )
-            var bounds = contentView.bounds
-            guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
-            bounds.origin.y = targetContentOriginY
-            setDashboardScrollBounds(
-                bounds,
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            return
-        }
-
-        // Growing at the bottom must retain the exact document offset that
-        // was visible before the add. A card-bottom anchor instead follows
-        // the growing edge and visibly moves the title/header upward.
-        if position.operation != "add",
-           let anchorView = position.bottomAnchorView?.view,
-           let targetViewportY = position.bottomAnchorViewportY,
-           anchorView === page || anchorView.isDescendant(of: page) {
-            let currentViewportY = anchorView.convert(
-                statusLinksBottomAnchorPoint(in: anchorView),
-                to: contentView
-            ).y
-            let correction = currentViewportY - targetViewportY
-            guard abs(correction) > 0.01 else { return }
-            var bounds = contentView.bounds
-            // Changing the clip-view bounds origin translates the document in
-            // the viewport. Correct by the exact amount the red card edge
-            // moved, so the edge stays visually fixed throughout the height
-            // animation instead of letting the blue top edge win by default.
-            bounds.origin.y += correction
-            setDashboardScrollBounds(
-                bounds,
-                scrollView: scrollView,
-                documentView: documentView
-            )
-            return
-        }
-
-        var bounds = contentView.bounds
-        let targetContentOriginY = dashboardScrollContentOrigin(
-            scrollView: scrollView,
-            documentView: documentView,
-            visualOffset: position.visibleDocumentOffset
-        )
-        guard abs(bounds.origin.y - targetContentOriginY) > 0.01 else { return }
-        bounds.origin.y = targetContentOriginY
-        setDashboardScrollBounds(
-            bounds,
-            scrollView: scrollView,
-            documentView: documentView
-        )
     }
 
     private func applyRestore(
@@ -493,9 +395,6 @@ final class StatusLinksScrollAnchorController {
                 "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=document-distance; target_contentOriginY=\(DashboardLogging.number(targetContentOriginY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
                 category: "ui.scroll"
             )
-            if attempt < 2 {
-                restore(position, attempt: attempt + 1)
-            }
             return
         }
 
@@ -521,9 +420,6 @@ final class StatusLinksScrollAnchorController {
                 "scroll restore applied; action=\(position.operation); attempt=\(attempt); anchor=card-bottom; target_viewportY=\(DashboardLogging.number(targetViewportY)); actual_viewportY=\(DashboardLogging.number(currentViewportY)); correction=\(DashboardLogging.number(correction)); actual_contentOriginY=\(DashboardLogging.number(scrollView.contentView.bounds.origin.y)); \(dashboardScrollMetrics(scrollView: scrollView, documentView: documentView))",
                 category: "ui.scroll"
             )
-            if attempt < 2 {
-                restore(position, attempt: attempt + 1)
-            }
             return
         }
 
@@ -545,11 +441,6 @@ final class StatusLinksScrollAnchorController {
             category: "ui.scroll"
         )
 
-        // A second pass handles the case where Auto Layout updates the
-        // document frame immediately after the first bounds assignment.
-        if attempt < 2 {
-            restore(position, attempt: attempt + 1)
-        }
     }
 
     private func dashboardScrollGeometry(
@@ -569,25 +460,31 @@ final class StatusLinksScrollAnchorController {
         documentView: NSView
     ) {
         let contentView = scrollView.contentView
-        DashboardScrollTrace.marker(
-            "anchor-clamp-write",
-            source: "StatusLinks",
-            flags: "programmatic=true"
-        )
-        let clampedBounds = dashboardClampedContentBounds(
-            proposedBounds: proposedBounds,
-            contentView: contentView,
-            documentView: documentView
-        )
-        if let clipView = contentView as? DashboardClipView {
-            clipView.applyProgrammaticBoundsOrigin(clampedBounds.origin)
-        } else {
-            contentView.bounds = clampedBounds
-        }
         let geometry = dashboardScrollGeometry(
             scrollView: scrollView,
             documentView: documentView
         )
+        let proposedVisibleRect = contentView.convert(proposedBounds, to: documentView)
+        let targetVisualOffset = geometry.clampedVisualOffset(
+            for: proposedVisibleRect
+        )
+        var legalBounds = proposedBounds
+        legalBounds.origin.y = dashboardScrollContentOrigin(
+            scrollView: scrollView,
+            documentView: documentView,
+            visualOffset: targetVisualOffset
+        )
+        guard abs(contentView.bounds.origin.y - legalBounds.origin.y) > 0.001 else {
+            return
+        }
+        DashboardScrollTrace.marker(
+            "anchor-transaction-write",
+            source: "StatusLinks",
+            flags: "programmatic=true; one-shot=true"
+        )
+        isApplyingAnchorBounds = true
+        defer { isApplyingAnchorBounds = false }
+        contentView.bounds = legalBounds
         let visibleRect = contentView.convert(contentView.bounds, to: documentView)
         DashboardScrollTrace.record(
             kind: "reflect-scrolled-clip-view",

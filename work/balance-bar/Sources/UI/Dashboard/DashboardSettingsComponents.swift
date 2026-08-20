@@ -14,7 +14,7 @@ enum DashboardSettingsComponents {
     static func makeSettingsPage(_ sections: [NSView]) -> NSView {
         let root = NSView()
         let scrollView = NSScrollView()
-        scrollView.contentView = DashboardClipView()
+        scrollView.contentView = NSClipView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
