@@ -51,7 +51,9 @@ enum DashboardSettingsComponents {
             documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
-            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 62),
+            // The document top is the native legal top; no duplicate titlebar
+            // or document inset is placed in the scrollable content range.
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor),
             stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 34),
             stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -34),
             // The stack must fit inside the document, but it should keep its
@@ -287,7 +289,7 @@ final class DashboardSettingsPageView: NSView {
         guard !didEstablishInitialTopOrigin,
               !isEstablishingInitialTopOrigin,
               let scrollView = subviews.first(where: { $0 is NSScrollView }) as? NSScrollView,
-              let documentView = scrollView.documentView,
+              let documentView = scrollView.documentView as? DashboardSettingsDocumentView,
               scrollView.contentView.bounds.width > 0,
               scrollView.contentView.bounds.height > 0,
               documentView.bounds.width > 0,

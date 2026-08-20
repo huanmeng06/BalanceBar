@@ -66,6 +66,22 @@ final class DashboardScrollClampingTests: XCTestCase {
         let bottomVisible = tall.contentView.convert(tall.contentView.bounds, to: document)
         XCTAssertLessThanOrEqual(bottomVisible.maxY, document.bounds.maxY + 1)
         XCTAssertGreaterThanOrEqual(bottomVisible.minY, document.bounds.minY - 1)
+
+        let topVisibleDocumentRect = geometry.visibleDocumentRect(forVisualOffset: 0)
+        let topDocumentY = geometry.contentOriginDocumentY(
+            for: topVisibleDocumentRect,
+            contentViewIsFlipped: tall.contentView.isFlipped
+        )
+        let topContentY = document.convert(
+            NSPoint(x: document.bounds.minX, y: topDocumentY),
+            to: tall.contentView
+        ).y
+        tall.contentView.scroll(to: NSPoint(x: tall.contentView.bounds.minX, y: topContentY))
+        tall.reflectScrolledClipView(tall.contentView)
+        let returnedTop = tall.contentView.convert(tall.contentView.bounds, to: document)
+        let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
+        XCTAssertEqual(returnedTop.minY, document.bounds.minY, accuracy: 1)
+        XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
     }
 
     func testReplacingAScrolledPageResetsTheFreshPageToNativeTop() throws {

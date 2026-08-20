@@ -653,13 +653,43 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
             XCTAssertEqual(
                 pageStack.frame.minY,
-                documentView.bounds.minY + 62,
+                documentView.bounds.minY,
                 accuracy: 1
             )
             XCTAssertLessThanOrEqual(
                 visibleRect.maxY,
                 documentView.bounds.maxY + 1
             )
+        }
+    }
+
+    func testGeneralMenuBarAndAdvancedPageReplacementResetsNativeTop() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-30-page-replacement.db"))
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
+        )
+
+        for section in [DashboardSection.general, .menuBar, .advanced] {
+            appDelegate.dashboardCompositionForTesting.showSection(section)
+            window.displayIfNeeded()
+            layoutDescendants(of: window.contentView!)
+
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: window.contentView!, as: NSScrollView.self),
+                "Missing replaced settings scroll view for \(section)"
+            )
+            let document = try XCTUnwrap(scrollView.documentView)
+            let visible = scrollView.contentView.convert(
+                scrollView.contentView.bounds,
+                to: document
+            )
+            let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
+            XCTAssertTrue(document.isFlipped)
+            XCTAssertEqual(visible.minY, document.bounds.minY, accuracy: 1)
+            XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
         }
     }
 
