@@ -85,6 +85,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             minimumHeight: DashboardAdvancedPageLayout.compactTwoLineRowHeight,
             verticalPadding: DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
         )
+        automaticRow.identifier = NSUserInterfaceItemIdentifier("openCodexAutomaticDetectionRow")
 
         let portField = NSTextField()
         portField.stringValue = String(input.mode.manualPort ?? initialResolution.port)
@@ -99,6 +100,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.isHidden = true
         let manualPortRow = makeManualPortRow(portField: portField, errorLabel: errorLabel)
+        manualPortRow.identifier = NSUserInterfaceItemIdentifier("openCodexManualPortRow")
         manualPortRow.isHidden = automaticDetection
 
         let openButton = NSButton(
@@ -114,6 +116,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             control: openButton,
             minimumHeight: 62
         )
+        openButtonRow.identifier = NSUserInterfaceItemIdentifier("openCodexDashboardRow")
         let openCodex = DashboardSettingsComponents.makeSettingsSection(
             tr("OpenCodex", "OpenCodex"),
             rows: [automaticRow, manualPortRow, openButtonRow],
@@ -219,12 +222,16 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         manualPortHeightConstraint = heightConstraint
         let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually"))
         title.font = .systemFont(ofSize: 14, weight: .semibold)
+        title.isEditable = false
+        title.isSelectable = false
         let detail = NSTextField(wrappingLabelWithString: tr(
             "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
             "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
         ))
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
+        detail.isEditable = false
+        detail.isSelectable = false
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemRed
         errorLabel.isEditable = false
@@ -234,6 +241,8 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 2
+        labels.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        labels.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         labels.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(labels)
         portField.translatesAutoresizingMaskIntoConstraints = false

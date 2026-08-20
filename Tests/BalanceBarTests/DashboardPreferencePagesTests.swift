@@ -180,6 +180,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             guard let manualTitle = labels.first(where: { $0.stringValue == expectedManualTitle }) else {
                 return XCTFail("Expected manual port title \(expectedManualTitle)")
             }
+            guard let manualDetail = labels.first(where: {
+                $0.stringValue.contains("十进制 1–65535") ||
+                    $0.stringValue.contains("decimal 1–65535")
+            }) else {
+                return XCTFail("Expected manual port subtitle")
+            }
+            XCTAssertFalse(manualTitle.isEditable)
+            XCTAssertFalse(manualTitle.isSelectable)
+            XCTAssertFalse(manualDetail.isEditable)
+            XCTAssertFalse(manualDetail.isSelectable)
             XCTAssertEqual(
                 equalHeightConstraint(in: manualTitle.superview?.superview),
                 DashboardAdvancedPageLayout.compactTwoLineRowHeight
@@ -209,6 +219,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             relay.openOpenCodex(openButton)
             XCTAssertEqual(activationCount, 1)
 
+            page.frame = NSRect(x: 0, y: 0, width: 900, height: 700)
+            page.layoutSubtreeIfNeeded()
+            guard let automaticRow = view(withIdentifier: "openCodexAutomaticDetectionRow", in: page),
+                  let manualRow = view(withIdentifier: "openCodexManualPortRow", in: page),
+                  let dashboardRow = view(withIdentifier: "openCodexDashboardRow", in: page) else {
+                return XCTFail("Expected all OpenCodex rows")
+            }
+            XCTAssertEqual(automaticRow.frame.width, manualRow.frame.width, accuracy: 0.5)
+            XCTAssertEqual(automaticRow.frame.width, dashboardRow.frame.width, accuracy: 0.5)
+
             let unchangedTwoLineRow = DashboardSettingsComponents.makeSettingsRow(
                 "Unchanged",
                 subtitle: "Other settings keep the default row geometry"
@@ -219,6 +239,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func view(withIdentifier identifier: String, in view: NSView) -> NSView? {
+        descendants(of: view).first { $0.identifier?.rawValue == identifier }
     }
 
     private func nonEmptyTextFields(in view: NSView?) -> [String] {
