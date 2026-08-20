@@ -269,21 +269,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         page.frame = NSRect(x: 0, y: 0, width: 900, height: 700)
 
         page.layoutSubtreeIfNeeded()
-        let automaticWidths = rowWidths(in: page)
+        assertOpenCodexRowsUseAutomaticWidth(in: page)
         controller.handleAutomaticDetection(false)
         page.layoutSubtreeIfNeeded()
-        let manualWidths = rowWidths(in: page)
+        assertOpenCodexRowsUseAutomaticWidth(in: page)
         controller.handleAutomaticDetection(true)
         page.layoutSubtreeIfNeeded()
-        let restoredWidths = rowWidths(in: page)
-
-        XCTAssertEqual(automaticWidths.count, 3)
-        XCTAssertEqual(manualWidths.count, 3)
-        XCTAssertEqual(restoredWidths.count, 3)
-        for index in automaticWidths.indices {
-            XCTAssertEqual(manualWidths[index], automaticWidths[index], accuracy: 0.5)
-            XCTAssertEqual(restoredWidths[index], automaticWidths[index], accuracy: 0.5)
-        }
+        assertOpenCodexRowsUseAutomaticWidth(in: page)
     }
 
     private func descendants(of view: NSView) -> [NSView] {
@@ -294,12 +286,32 @@ final class DashboardPreferencePagesTests: XCTestCase {
         descendants(of: view).first { $0.identifier?.rawValue == identifier }
     }
 
-    private func rowWidths(in page: NSView) -> [CGFloat] {
-        [
-            "openCodexAutomaticDetectionRow",
-            "openCodexManualPortRow",
-            "openCodexDashboardRow"
-        ].compactMap { view(withIdentifier: $0, in: page)?.frame.width }
+    private func assertOpenCodexRowsUseAutomaticWidth(in page: NSView, file: StaticString = #filePath, line: UInt = #line) {
+        guard let automaticRow = view(withIdentifier: "openCodexAutomaticDetectionRow", in: page),
+              let manualRow = view(withIdentifier: "openCodexManualPortRow", in: page),
+              let dashboardRow = view(withIdentifier: "openCodexDashboardRow", in: page) else {
+            return XCTFail("Expected all OpenCodex rows", file: file, line: line)
+        }
+        XCTAssertEqual(manualRow.frame.width, automaticRow.frame.width, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(dashboardRow.frame.width, automaticRow.frame.width, accuracy: 0.5, file: file, line: line)
+        XCTAssertNotNil(
+            widthConstraint(between: manualRow, and: automaticRow, in: page),
+            "Manual port row must use the automatic row as its width reference",
+            file: file,
+            line: line
+        )
+    }
+
+    private func widthConstraint(between first: NSView, and second: NSView, in page: NSView) -> NSLayoutConstraint? {
+        descendants(of: page)
+            .compactMap { $0 as? NSStackView }
+            .flatMap(\.constraints)
+            .first { constraint in
+                constraint.firstAttribute == .width &&
+                    constraint.secondAttribute == .width &&
+                    ((constraint.firstItem as? NSView) === first && (constraint.secondItem as? NSView) === second ||
+                        (constraint.firstItem as? NSView) === second && (constraint.secondItem as? NSView) === first)
+            }
     }
 
     private func nonEmptyTextFields(in view: NSView?) -> [String] {

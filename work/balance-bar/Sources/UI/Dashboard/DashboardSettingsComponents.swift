@@ -97,6 +97,7 @@ enum DashboardSettingsComponents {
         _ title: String,
         rows: [NSView],
         separatorIndices: Set<Int>? = nil,
+        rowWidthReference: NSView? = nil,
         rowHeight: ((NSView) -> CGFloat?)? = nil,
         onLayoutCreated: ((NSStackView, NSLayoutConstraint, [NSView]) -> Void)? = nil
     ) -> NSView {
@@ -143,7 +144,15 @@ enum DashboardSettingsComponents {
         var separators: [NSView] = []
         for (index, row) in rows.enumerated() {
             rowsStack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
+            if let rowWidthReference, row !== rowWidthReference {
+                // Some arranged rows change their intrinsic width when they
+                // are hidden and revealed. For pages that opt in, keep every
+                // peer tied to the first stable row rather than allowing the
+                // visible row's content to choose a new width.
+                row.widthAnchor.constraint(equalTo: rowWidthReference.widthAnchor).isActive = true
+            } else {
+                row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
+            }
             let hasFollowingRow = index < rows.count - 1
             let shouldInsertSeparator = hasFollowingRow && (separatorIndices?.contains(index) ?? true)
             if shouldInsertSeparator {

@@ -120,6 +120,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         let openCodex = DashboardSettingsComponents.makeSettingsSection(
             tr("OpenCodex", "OpenCodex"),
             rows: [automaticRow, manualPortRow, openButtonRow],
+            rowWidthReference: automaticRow,
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
                 guard let self else { return }
                 self.settingsRowsStack = rowsStack
