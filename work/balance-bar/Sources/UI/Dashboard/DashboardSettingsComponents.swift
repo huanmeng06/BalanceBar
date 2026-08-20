@@ -177,6 +177,7 @@ enum DashboardSettingsComponents {
 
     static func makeSettingsRow(
         _ title: String,
+        titleLabel: NSTextField? = nil,
         subtitle: String? = nil,
         subtitleLabel: NSTextField? = nil,
         control: NSView? = nil,
@@ -186,7 +187,8 @@ enum DashboardSettingsComponents {
         row.translatesAutoresizingMaskIntoConstraints = false
         row.heightAnchor.constraint(equalToConstant: max(62, minimumHeight)).isActive = true
 
-        let label = NSTextField(labelWithString: title)
+        let label = titleLabel ?? NSTextField(labelWithString: title)
+        label.stringValue = title
         label.font = .systemFont(ofSize: 14, weight: .semibold)
         label.isEditable = false
         label.isSelectable = false

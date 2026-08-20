@@ -58,9 +58,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             manualPort: input.mode.effectiveManualPort,
             runtimeCandidate: nil
         )
-        let statusLabel = NSTextField(wrappingLabelWithString: tr("正在解析…", "Resolving…"))
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabelColor
+        let statusLabel = NSTextField(labelWithString: tr(
+            "当前端口：\(initialResolution.port)",
+            "Current port: \(initialResolution.port)"
+        ))
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         let automaticSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "openCodexAutomaticDetection",
@@ -69,14 +70,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
         let automaticRow = DashboardSettingsComponents.makeSettingsRow(
-            tr("自动检测端口", "Detect Port Automatically"),
-            subtitle: tr(
-                "使用已验证的 OpenCodex runtime 端口；未检测时使用 10100",
-                "Use the verified OpenCodex runtime port; use 10100 until one is detected"
-            ),
-            subtitleLabel: statusLabel,
+            statusLabel.stringValue,
+            titleLabel: statusLabel,
             control: automaticSwitch,
-            minimumHeight: 86
+            minimumHeight: 62
         )
 
         let portField = NSTextField()
@@ -95,7 +92,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         manualPortRow.isHidden = automaticDetection
 
         let openButton = NSButton(
-            title: tr("打开 OpenCodex", "Open OpenCodex"),
+            title: tr("打开", "Open"),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openOpenCodex(_:))
         )
@@ -103,13 +100,9 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         automaticSwitchState(automaticSwitch, portField: portField, manualPortRow: manualPortRow, statusLabel: statusLabel, errorLabel: errorLabel, openButton: openButton)
 
         let openButtonRow = DashboardSettingsComponents.makeSettingsRow(
-            tr("OpenCodex Dashboard", "OpenCodex Dashboard"),
-            subtitle: tr(
-                "使用当前解析到的本机地址；固定打开 /#dashboard",
-                "Uses the resolved local address and always opens /#dashboard"
-            ),
+            tr("打开 OpenCodex 仪表盘", "Open OpenCodex Dashboard"),
             control: openButton,
-            minimumHeight: 78
+            minimumHeight: 62
         )
         let openCodex = DashboardSettingsComponents.makeSettingsSection(
             tr("OpenCodex", "OpenCodex"),
@@ -286,24 +279,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             portField?.stringValue = String(state.mode.manualPort ?? resolution.port)
         }
         if let canOpen { openButton?.isEnabled = canOpen }
-        let currentPort = tr("当前端口：\(resolution.port)", "Current port: \(resolution.port)")
-        switch resolution.source {
-        case .manual:
-            portStatusLabel?.stringValue = tr(
-                "\(currentPort)\n手动端口只用于打开本机 Dashboard；不会修改 OpenCodex 配置",
-                "\(currentPort)\nThe manual port only opens the local Dashboard; it does not modify OpenCodex configuration"
-            )
-        case .runtime:
-            portStatusLabel?.stringValue = tr(
-                "\(currentPort)\n已自动检测 OpenCodex runtime 端口",
-                "\(currentPort)\nOpenCodex runtime port detected automatically"
-            )
-        case .fallback:
-            portStatusLabel?.stringValue = tr(
-                "\(currentPort)\n尚未自动检测；将使用默认端口 10100",
-                "\(currentPort)\nNot detected yet; the default port 10100 will be used"
-            )
-        }
+        portStatusLabel?.stringValue = tr(
+            "当前端口：\(resolution.port)",
+            "Current port: \(resolution.port)"
+        )
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {

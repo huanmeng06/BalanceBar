@@ -86,4 +86,110 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "0.11.20 · Dev"
         )
     }
+
+    func testOpenCodexSettingsWordingAndControlsAcrossLanguagesAndModes() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        for (language, automaticDetection) in [
+            (AppLanguage.simplifiedChinese, true),
+            (.simplifiedChinese, false),
+            (.english, true),
+            (.english, false)
+        ] {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.OpenCodex.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let preferences = AppPreferences(defaults: defaults)
+            preferences.openCodexDashboardAutomaticDetection = automaticDetection
+            preferences.openCodexDashboardPortOverride = automaticDetection ? nil : 23456
+
+            let relay = DashboardPreferencePageRelay()
+            var activationCount = 0
+            relay.onOpenOpenCodex = { activationCount += 1 }
+            let mode = OpenCodexDashboardMode(
+                automaticDetection: automaticDetection,
+                manualPort: automaticDetection ? nil : 23456
+            )
+            let resolution = OpenCodexDashboardResolver.resolve(
+                manualPort: mode.effectiveManualPort,
+                runtimeCandidate: nil
+            )
+            let page = DashboardAdvancedPage().make(.init(
+                preferences: preferences,
+                mode: mode,
+                currentResolution: resolution,
+                runtimeCandidate: nil,
+                relay: relay,
+                logViewer: NSView(),
+                onModeChanged: { _ in },
+                onClamp: {}
+            ))
+
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            let switches = descendants(of: page).compactMap { $0 as? NSSwitch }
+            let buttons = descendants(of: page).compactMap { $0 as? NSButton }
+            let expectedPort = automaticDetection ? 10100 : 23456
+            let expectedPortText = language == .simplifiedChinese
+                ? "当前端口：\(expectedPort)"
+                : "Current port: \(expectedPort)"
+            let expectedDashboardTitle = language == .simplifiedChinese
+                ? "打开 OpenCodex 仪表盘"
+                : "Open OpenCodex Dashboard"
+            let expectedButtonTitle = language == .simplifiedChinese ? "打开" : "Open"
+
+            guard let automaticSwitch = switches.first(where: {
+                $0.identifier?.rawValue == "openCodexAutomaticDetection"
+            }) else {
+                return XCTFail("Expected OpenCodex automatic detection switch")
+            }
+            XCTAssertEqual(automaticSwitch.state, automaticDetection ? .on : .off)
+
+            guard let portLabel = labels.first(where: { $0.stringValue == expectedPortText }) else {
+                return XCTFail("Expected current port label \(expectedPortText)")
+            }
+            XCTAssertFalse(portLabel.isEditable)
+            XCTAssertFalse(portLabel.isSelectable)
+            XCTAssertEqual(
+                nonEmptyTextFields(in: portLabel.superview?.superview),
+                [expectedPortText]
+            )
+
+            XCTAssertFalse(labels.contains { $0.stringValue == "自动检测端口" })
+            XCTAssertFalse(labels.contains { $0.stringValue == "Detect Port Automatically" })
+            XCTAssertFalse(labels.contains { $0.stringValue.contains("手动端口只用于") })
+            XCTAssertFalse(labels.contains { $0.stringValue.contains("The manual port only") })
+            XCTAssertFalse(labels.contains { $0.stringValue.contains("/#dashboard") })
+
+            guard let dashboardTitle = labels.first(where: { $0.stringValue == expectedDashboardTitle }) else {
+                return XCTFail("Expected Dashboard title \(expectedDashboardTitle)")
+            }
+            XCTAssertEqual(
+                nonEmptyTextFields(in: dashboardTitle.superview?.superview),
+                [expectedDashboardTitle]
+            )
+
+            guard let openButton = buttons.first(where: { $0.title == expectedButtonTitle }) else {
+                return XCTFail("Expected Dashboard button \(expectedButtonTitle)")
+            }
+            XCTAssertTrue(openButton.isEnabled)
+            relay.openOpenCodex(openButton)
+            XCTAssertEqual(activationCount, 1)
+        }
+    }
+
+    private func descendants(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func nonEmptyTextFields(in view: NSView?) -> [String] {
+        guard let view else { return [] }
+        return descendants(of: view)
+            .compactMap { $0 as? NSTextField }
+            .map(\.stringValue)
+            .filter { !$0.isEmpty }
+    }
 }
