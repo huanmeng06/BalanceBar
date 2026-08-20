@@ -65,6 +65,7 @@ trap 'status=$?; printf "build-balancebar: command failed at line %s (exit %s): 
 for required_file in \
     "$source_dir/Info.plist" \
     "$source_dir/BalanceBar.icns" \
+    "$source_dir/GitHub.svg" \
     "$source_dir/CodexIcon.svg" \
     "$source_dir/Claude.svg" \
     "$source_dir/ClaudeThinking.svg"
@@ -108,7 +109,7 @@ if [[ "$variant" == "dev" ]]; then
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
 fi
-for resource_file in BalanceBar.icns CodexIcon.svg Claude.svg ClaudeThinking.svg
+for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg
 do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
 done

@@ -86,4 +86,53 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "0.11.20 · Dev"
         )
     }
+
+    func testAboutPageGitHubEntryIsCenteredAccessibleAndOpensOnce() throws {
+        var openedURLs: [URL] = []
+        let resourceBundle = Bundle(for: DashboardAboutGitHubButton.self)
+        let page = DashboardAboutPage.make(
+            bundle: resourceBundle,
+            devBundleIdentifier: "com.huanmeng06.BalanceBar.dev",
+            openURL: { url in
+                openedURLs.append(url)
+                return true
+            }
+        )
+        page.frame = NSRect(x: 0, y: 0, width: 320, height: 300)
+        page.layoutSubtreeIfNeeded()
+
+        let row = try XCTUnwrap(descendant(withIdentifier: "about.githubRow", in: page) as? NSStackView)
+        let button = try XCTUnwrap(descendant(withIdentifier: "about.githubButton", in: page) as? DashboardAboutGitHubButton)
+        let rowCenter = row.convert(NSPoint(x: row.bounds.midX, y: row.bounds.midY), to: page).x
+
+        XCTAssertEqual(rowCenter, page.bounds.midX, accuracy: 0.5)
+        XCTAssertNotNil(button.image)
+        XCTAssertNotNil(resourceBundle.url(forResource: "GitHub", withExtension: "svg"))
+        XCTAssertFalse(button.isBordered)
+        XCTAssertEqual(button.bezelStyle, .regularSquare)
+        XCTAssertEqual(button.bounds.width, button.bounds.height, accuracy: 0.5)
+        XCTAssertEqual(button.circularBackgroundFrameForTesting.width, button.circularBackgroundFrameForTesting.height, accuracy: 0.5)
+        XCTAssertEqual(button.circularBackgroundFrameForTesting.midX, button.bounds.midX, accuracy: 0.5)
+        XCTAssertEqual(button.circularBackgroundFrameForTesting.midY, button.bounds.midY, accuracy: 0.5)
+        let iconWidth = try XCTUnwrap(button.image?.size.width)
+        XCTAssertEqual(iconWidth, DashboardAboutGitHubButton.iconSize, accuracy: 0.5)
+        XCTAssertLessThan(iconWidth, button.circularBackgroundFrameForTesting.width)
+        XCTAssertEqual(button.destinationURL, DashboardAboutPage.githubRepositoryURL)
+        let accessibilityLabel = button.accessibilityLabel()
+        XCTAssertTrue(accessibilityLabel == "GitHub 项目" || accessibilityLabel == "GitHub repository")
+
+        XCTAssertTrue(button.target === button)
+        XCTAssertEqual(button.action, #selector(DashboardAboutGitHubButton.activate(_:)))
+        button.activate(nil)
+
+        XCTAssertEqual(openedURLs, [DashboardAboutPage.githubRepositoryURL])
+    }
+
+    private func descendant(withIdentifier identifier: String, in view: NSView) -> NSView? {
+        if view.identifier?.rawValue == identifier { return view }
+        for child in view.subviews {
+            if let match = descendant(withIdentifier: identifier, in: child) { return match }
+        }
+        return nil
+    }
 }
