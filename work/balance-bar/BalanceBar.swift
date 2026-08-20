@@ -906,15 +906,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    private func makeDashboardSwitch(identifier: String, isOn: Bool) -> NSSwitch {
-        let control = NSSwitch()
-        control.identifier = NSUserInterfaceItemIdentifier(identifier)
-        control.state = isOn ? .on : .off
-        control.target = self
-        control.action = #selector(dashboardToggleChanged(_:))
-        return control
-    }
-
     @objc private func dashboardToggleChanged(_ sender: NSSwitch) {
         SwitchLog.write(
             "preference changed; key=\(sender.identifier?.rawValue ?? "unknown"); enabled=\(sender.state == .on)",
@@ -1603,211 +1594,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         rebuildDashboardProviderList()
     }
 
-    private func makeSettingsPage(_ sections: [NSView]) -> NSView {
-        let root = NSView()
-        let scrollView = NSScrollView()
-        scrollView.contentView = DashboardClipView()
-        scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.verticalScrollElasticity = .none
-        scrollView.horizontalScrollElasticity = .none
-        // Keep the scrollbar discoverable on dense settings pages. The
-        // document is taller than the viewport when the status-link editor is
-        // present, so hiding the scroller makes the add control look missing.
-        scrollView.autohidesScrollers = false
-        scrollView.scrollerStyle = .overlay
-        scrollView.borderType = .noBorder
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-
-        let documentView = NSView()
-        documentView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = documentView
-
-        let stack = NSStackView(views: sections)
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 28
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.setContentHuggingPriority(.required, for: .vertical)
-        stack.setContentCompressionResistancePriority(.required, for: .vertical)
-        documentView.addSubview(stack)
-        root.addSubview(scrollView)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: root.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
-            documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
-            documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
-            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-            documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
-            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 62),
-            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 34),
-            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -34),
-            // The stack must fit inside the document, but it should keep its
-            // natural height when the page is shorter than the viewport.
-            // Using an equality here makes AppKit stretch the first card to
-            // consume all remaining space.
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -34)
-        ])
-        for section in sections {
-            section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        }
-        return root
-    }
-
-    private func makeSettingsSection(
-        _ title: String,
-        rows: [NSView],
-        separatorIndices: Set<Int>? = nil,
-        onLayoutCreated: ((NSStackView, NSLayoutConstraint, [NSView]) -> Void)? = nil
-    ) -> NSView {
-        let heading = NSTextField(labelWithString: title)
-        heading.font = .systemFont(ofSize: 17, weight: .semibold)
-        let card = NSView()
-        card.wantsLayer = true
-        card.layer?.cornerRadius = 18
-        card.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor.white.withAlphaComponent(0.94),
-            dark: NSColor.white.withAlphaComponent(0.065)
-        ).cgColor
-        card.layer?.borderColor = dashboardAdaptiveColor(
-            light: NSColor.white.withAlphaComponent(0.95),
-            dark: NSColor.white.withAlphaComponent(0.075)
-        ).cgColor
-        card.layer?.borderWidth = 0.5
-        card.layer?.shadowColor = NSColor.black.cgColor
-        card.layer?.shadowOpacity = dashboardUsesDarkAppearance ? 0.20 : 0.08
-        card.layer?.shadowRadius = 14
-        card.layer?.shadowOffset = NSSize(width: 0, height: -3)
-        card.layer?.masksToBounds = false
-
-        let rowsStack = NSStackView()
-        rowsStack.orientation = .vertical
-        rowsStack.alignment = .leading
-        rowsStack.distribution = .fill
-        rowsStack.spacing = 0
-        rowsStack.translatesAutoresizingMaskIntoConstraints = false
-        rowsStack.setContentHuggingPriority(.required, for: .vertical)
-        // The card has an explicit height that changes when status-link rows
-        // are added or removed. Let the stack follow that constraint instead
-        // of preserving the previous intrinsic height and leaving an empty
-        // gravity area below the editor.
-        rowsStack.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
-        card.addSubview(rowsStack)
-        NSLayoutConstraint.activate([
-            rowsStack.topAnchor.constraint(equalTo: card.topAnchor),
-            rowsStack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            rowsStack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            rowsStack.bottomAnchor.constraint(equalTo: card.bottomAnchor)
-        ])
-        var separators: [NSView] = []
-        for (index, row) in rows.enumerated() {
-            rowsStack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
-            let hasFollowingRow = index < rows.count - 1
-            let shouldInsertSeparator = hasFollowingRow && (separatorIndices?.contains(index) ?? true)
-            if shouldInsertSeparator {
-                let separator = NSBox()
-                separator.boxType = .separator
-                separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
-                rowsStack.addArrangedSubview(separator)
-                separator.widthAnchor.constraint(equalTo: rowsStack.widthAnchor, constant: -32).isActive = true
-                separators.append(separator)
-            }
-        }
-
-        // NSView has no intrinsic height. Give the card the exact height of
-        // its rows so a short settings page cannot stretch the first row to
-        // fill the scroll viewport.
-        let visibleRows = rows.filter { !$0.isHidden }
-        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
-            let explicitHeight = row.constraints.first {
-                ($0.firstItem as? NSView) === row &&
-                    $0.firstAttribute == .height &&
-                    $0.relation == .equal
-            }?.constant
-            let fittingHeight: CGFloat
-            if let editor = row as? StatusLinksEditorHostingView {
-                fittingHeight = editor.layoutHeight
-            } else {
-                fittingHeight = row.fittingSize.height
-            }
-            return partial + max(1, explicitHeight ?? fittingHeight)
-        }
-        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count)
-        let cardHeightConstraint = card.heightAnchor.constraint(
-            equalToConstant: max(1, ceil(rowsHeight + separatorHeight))
-        )
-        cardHeightConstraint.isActive = true
-        onLayoutCreated?(rowsStack, cardHeightConstraint, separators)
-
-        let section = NSStackView(views: [heading, card])
-        section.orientation = .vertical
-        section.alignment = .leading
-        section.spacing = 11
-        card.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
-        if let editor = rows.first(where: { $0 is StatusLinksEditorHostingView }) as? StatusLinksEditorHostingView {
-            DispatchQueue.main.async { [weak editor] in
-                editor?.logGeometry(label: "initial")
-            }
-        }
-        return section
-    }
-
-    private func makeSettingsRow(
-        _ title: String,
-        subtitle: String? = nil,
-        subtitleLabel: NSTextField? = nil,
-        control: NSView? = nil,
-        minimumHeight: CGFloat = 58
-    ) -> NSView {
-        let row = NSView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.heightAnchor.constraint(equalToConstant: max(62, minimumHeight)).isActive = true
-
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 14, weight: .semibold)
-        label.isEditable = false
-        label.isSelectable = false
-        let labels = NSStackView(views: [label])
-        labels.orientation = .vertical
-        labels.alignment = .leading
-        labels.spacing = 2
-        if let subtitle, !subtitle.isEmpty {
-            let detail = subtitleLabel ?? NSTextField(wrappingLabelWithString: subtitle)
-            detail.stringValue = subtitle
-            detail.font = .systemFont(ofSize: 12)
-            detail.textColor = .secondaryLabelColor
-            detail.isEditable = false
-            detail.isSelectable = false
-            labels.addArrangedSubview(detail)
-        }
-        labels.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(labels)
-        var constraints = [
-            labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
-            labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 11),
-            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -11)
-        ]
-        if let control {
-            control.translatesAutoresizingMaskIntoConstraints = false
-            row.addSubview(control)
-            constraints.append(contentsOf: [
-                control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
-                control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-                labels.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -20)
-            ])
-        } else {
-            constraints.append(labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -20))
-        }
-        NSLayoutConstraint.activate(constraints)
-        return row
-    }
-
     private func makeOpenCodexManualPortRow(
         portField: NSTextField,
         errorLabel: NSTextField
@@ -1861,8 +1647,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "当前供应商：\(currentName)",
             "Current Provider: \(currentName)"
         )
-        let system = makeSettingsSection(tr("系统", "System"), rows: [
-            makeSettingsRow(
+        let system = DashboardSettingsComponents.makeSettingsSection(tr("系统", "System"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
                 "CC Switch",
                 subtitle: currentProviderText,
                 subtitleLabel: dashboardCurrentProviderSubtitle,
@@ -1870,7 +1656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             )
         ])
 
-        let activeRefreshPopup = makeIntervalPopup(
+        let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [
                 (1, tr("每 1 秒", "Every 1 sec")),
                 (2, tr("每 2 秒", "Every 2 sec")),
@@ -1879,9 +1665,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 (10, tr("每 10 秒", "Every 10 sec"))
             ],
             selected: codexUsageRefreshInterval,
-            identifier: "codexUsageRefreshInterval"
+            identifier: "codexUsageRefreshInterval",
+            target: self,
+            action: #selector(dashboardIntervalChanged(_:))
         )
-        let trailingRefreshPopup = makeIntervalPopup(
+        let trailingRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [
                 (0, tr("不继续", "Off")),
                 (6, tr("持续 6 秒", "For 6 sec")),
@@ -1889,7 +1677,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 (30, tr("持续 30 秒", "For 30 sec"))
             ],
             selected: postCodexRefreshDuration,
-            identifier: "postCodexRefreshDuration"
+            identifier: "postCodexRefreshDuration",
+            target: self,
+            action: #selector(dashboardIntervalChanged(_:))
         )
         let runningLabel = NSTextField(labelWithString: tr("运行中", "Running"))
         let trailingLabel = NSTextField(labelWithString: tr("结束后", "After"))
@@ -1923,8 +1713,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         activeRefreshControls.alignment = .trailing
         activeRefreshControls.spacing = 5
         let refreshButton = NSButton(title: tr("立即刷新", "Refresh Now"), target: self, action: #selector(dashboardManualRefresh))
-        let refreshing = makeSettingsSection(tr("刷新", "Refresh"), rows: [
-            makeSettingsRow(
+        let refreshing = DashboardSettingsComponents.makeSettingsSection(tr("刷新", "Refresh"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("任务期间余量更新频率", "Balance Updates During Tasks"),
                 subtitle: tr(
                     "Agent 运行时请求当前供应商的余量",
@@ -1933,27 +1723,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 control: activeRefreshControls,
                 minimumHeight: 76
             ),
-            makeSettingsRow(tr("余额数据", "Balance Data"), subtitle: tr("立即重新读取当前供应商", "Reload the current Provider now"), control: refreshButton)
+            DashboardSettingsComponents.makeSettingsRow(tr("余额数据", "Balance Data"), subtitle: tr("立即重新读取当前供应商", "Reload the current Provider now"), control: refreshButton)
         ])
 
-        let languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
-        languagePopup.target = self
-        languagePopup.action = #selector(dashboardLanguageChanged(_:))
-        for (index, language) in AppLanguage.allCases.enumerated() {
-            languagePopup.addItem(withTitle: language.localizedTitle)
-            languagePopup.item(at: index)?.representedObject = language.rawValue
-            if language == AppLanguage.selected {
-                languagePopup.selectItem(at: index)
-            }
-        }
-        let app = makeSettingsSection(tr("应用", "Application"), rows: [
-            makeSettingsRow(
+        let languagePopup = DashboardSettingsComponents.makePopUpButton(
+            items: AppLanguage.allCases.map {
+                DashboardSettingsComponents.PopUpItem(
+                    title: $0.localizedTitle,
+                    representedObject: $0.rawValue
+                )
+            },
+            selectedIndex: AppLanguage.allCases.firstIndex(of: AppLanguage.selected),
+            target: self,
+            action: #selector(dashboardLanguageChanged(_:))
+        )
+        let app = DashboardSettingsComponents.makeSettingsSection(tr("应用", "Application"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("语言", "Language"),
                 subtitle: tr("更改后立即应用到整个界面", "Changes apply to the entire interface immediately"),
                 control: languagePopup
             ),
         ])
-        return makeSettingsPage([system, refreshing, app])
+        return DashboardSettingsComponents.makeSettingsPage([system, refreshing, app])
     }
 
     private func makeStatusLinksEditor() -> StatusLinksEditorHostingView {
@@ -1988,30 +1779,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func makeMenuDashboardPage() -> NSView {
-        let quickSwitch = makeDashboardSwitch(
+        let quickSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "showQuickSwitchMenu",
-            isOn: showQuickSwitchMenu
+            isOn: showQuickSwitchMenu,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
-        let openCC = makeDashboardSwitch(
+        let openCC = DashboardSettingsComponents.makeSwitch(
             identifier: "showOpenCCSwitchMenu",
-            isOn: showOpenCCSwitchMenu
+            isOn: showOpenCCSwitchMenu,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
-        let openCodex = makeDashboardSwitch(
+        let openCodex = DashboardSettingsComponents.makeSwitch(
             identifier: AppPreferences.showOpenCodexMenuKey,
-            isOn: showOpenCodexMenu
+            isOn: showOpenCodexMenu,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
-        let keepOpen = makeDashboardSwitch(
+        let keepOpen = DashboardSettingsComponents.makeSwitch(
             identifier: "keepMenuOpenAfterRefresh",
-            isOn: keepMenuOpenAfterRefresh
+            isOn: keepMenuOpenAfterRefresh,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
 
-        let items = makeSettingsSection(tr("展开菜单", "Dropdown Menu"), rows: [
-            makeSettingsRow(tr("快速切换", "Quick Switch"), subtitle: tr("显示 CC Switch 供应商子菜单", "Show the CC Switch Provider submenu"), control: quickSwitch),
-            makeSettingsRow(tr("刷新后保持展开", "Keep Open After Refresh"), subtitle: tr("点击立即刷新后重新打开菜单", "Reopen the menu after Refresh Now"), control: keepOpen)
+        let items = DashboardSettingsComponents.makeSettingsSection(tr("展开菜单", "Dropdown Menu"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(tr("快速切换", "Quick Switch"), subtitle: tr("显示 CC Switch 供应商子菜单", "Show the CC Switch Provider submenu"), control: quickSwitch),
+            DashboardSettingsComponents.makeSettingsRow(tr("刷新后保持展开", "Keep Open After Refresh"), subtitle: tr("点击立即刷新后重新打开菜单", "Reopen the menu after Refresh Now"), control: keepOpen)
         ])
-        let openMainWindow = makeDashboardSwitch(
+        let openMainWindow = DashboardSettingsComponents.makeSwitch(
             identifier: "showOpenDashboardMenu",
-            isOn: true
+            isOn: true,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
         openMainWindow.isEnabled = false
         openMainWindow.toolTip = tr(
@@ -2020,24 +1821,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
 
         var projectRows: [NSView] = [
-            makeSettingsRow(
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("打开主窗口", "Open Main Window"),
                 control: openMainWindow
             ),
-            makeSettingsRow(
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 ChatGPT", "Open ChatGPT"),
                 subtitle: tr("显示 ChatGPT 启动项", "Show the ChatGPT launch item"),
-                control: makeDashboardSwitch(
+                control: DashboardSettingsComponents.makeSwitch(
                     identifier: "showOpenChatGPTMenu",
-                    isOn: showOpenChatGPTMenu
+                    isOn: showOpenChatGPTMenu,
+                    target: self,
+                    action: #selector(dashboardToggleChanged(_:))
                 )
             ),
-            makeSettingsRow(
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 CC Switch", "Open CC Switch"),
                 subtitle: tr("显示 CC Switch 启动项", "Show the CC Switch launch item"),
                 control: openCC
             ),
-            makeSettingsRow(
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 OpenCodex", "Open OpenCodex"),
                 subtitle: tr("显示 OpenCodex 启动项", "Show the OpenCodex launch item"),
                 control: openCodex
@@ -2048,13 +1851,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             : tr("在菜单栏中显示状态链接", "Show status links in the menu bar")
         )
         dashboardStatusMenuSubtitleLabel = statusSubtitle
-        projectRows.append(makeSettingsRow(
+        projectRows.append(DashboardSettingsComponents.makeSettingsRow(
             tr("查看状态", "View Status"),
             subtitle: showStatusMenu
                 ? tr("显示可自定义的服务状态链接", "Show customizable service status links")
                 : tr("在菜单栏中显示状态链接", "Show status links in the menu bar"),
             subtitleLabel: statusSubtitle,
-            control: makeDashboardSwitch(identifier: "showStatusMenu", isOn: showStatusMenu)
+            control: DashboardSettingsComponents.makeSwitch(
+                identifier: "showStatusMenu",
+                isOn: showStatusMenu,
+                target: self,
+                action: #selector(dashboardToggleChanged(_:))
+            )
         ))
         // Keep one editor instance in the page for both states so toggling
         // animates its height in place instead of rebuilding the whole page.
@@ -2062,14 +1870,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let editor = makeStatusLinksEditor()
         editor.setVisible(showStatusMenu, animated: false)
         projectRows.append(editor)
-        let projects = makeSettingsSection(
+        let projects = DashboardSettingsComponents.makeSettingsSection(
             tr("打开项目", "Open Project"),
             rows: projectRows,
             // Keep the Status Links editor visually attached to the View
             // Status row so toggling never has to detach/reattach a separator.
-            separatorIndices: [0, 1, 2, 3]
+            separatorIndices: [0, 1, 2, 3],
+            rowHeight: { row in
+                (row as? StatusLinksEditorHostingView)?.layoutHeight
+            }
         )
-        return makeSettingsPage([items, projects])
+        DispatchQueue.main.async { [weak editor] in
+            editor?.logGeometry(label: "initial")
+        }
+        return DashboardSettingsComponents.makeSettingsPage([items, projects])
     }
 
     private func makeDashboardLogViewer() -> NSView {
@@ -2143,12 +1957,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         openCodexSettingsSeparators = []
         openCodexDashboardInteractionState.mode = openCodexDashboardMode
         openCodexDashboardInteractionState.markPortEditorActive(false)
-        let animation = makeDashboardSwitch(
+        let animation = DashboardSettingsComponents.makeSwitch(
             identifier: "animateCodexActivity",
-            isOn: animateCodexActivity
+            isOn: animateCodexActivity,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
-        let activity = makeSettingsSection(tr("任务状态", "Task Status"), rows: [
-            makeSettingsRow(
+        let activity = DashboardSettingsComponents.makeSettingsSection(tr("任务状态", "Task Status"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("任务运行时播放图标动画", "Animate Icon While a Task Is Running"),
                 control: animation
             )
@@ -2166,11 +1982,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let automaticSwitch = makeDashboardSwitch(
+        let automaticSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "openCodexAutomaticDetection",
-            isOn: automaticDetection
+            isOn: automaticDetection,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
-        let automaticRow = makeSettingsRow(
+        let automaticRow = DashboardSettingsComponents.makeSettingsRow(
             tr("自动检测端口", "Detect Port Automatically"),
             subtitle: tr(
                 "使用已验证的 OpenCodex runtime 端口；未检测时使用 10100",
@@ -2215,7 +2033,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         openCodexPortStatusLabel = statusLabel
         openCodexPortErrorLabel = errorLabel
         openCodexOpenButton = openButton
-        let openButtonRow = makeSettingsRow(
+        let openButtonRow = DashboardSettingsComponents.makeSettingsRow(
             tr("OpenCodex Dashboard", "OpenCodex Dashboard"),
             subtitle: tr(
                 "使用当前解析到的本机地址；固定打开 /#dashboard",
@@ -2225,7 +2043,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             minimumHeight: 78
         )
 
-        let openCodex = makeSettingsSection(
+        let openCodex = DashboardSettingsComponents.makeSettingsSection(
             tr("OpenCodex", "OpenCodex"),
             rows: [automaticRow, manualPortRow, openButtonRow],
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
@@ -2249,8 +2067,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let logButtons = NSStackView(views: [refreshLog, revealLog])
         logButtons.orientation = .horizontal
         logButtons.spacing = 8
-        let logs = makeSettingsSection(tr("诊断", "Diagnostics"), rows: [
-            makeSettingsRow(
+        let logs = DashboardSettingsComponents.makeSettingsSection(tr("诊断", "Diagnostics"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("调试日志", "Debug Log"),
                 subtitle: tr(
                     "记录运行状态与错误",
@@ -2260,7 +2078,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             ),
             makeDashboardLogViewer()
         ])
-        return makeSettingsPage([activity, openCodex, logs])
+        return DashboardSettingsComponents.makeSettingsPage([activity, openCodex, logs])
     }
 
     private func makeAboutDashboardPage() -> NSView {
@@ -2324,8 +2142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardResetLabel.stringValue = choice.isCurrent
             ? snapshot.overviewReset(refreshDate: lastSuccessfulRefresh, formatter: Self.timeFormatter)
             : tr("选择为当前供应商后显示详细重置时间", "Select this Provider to display detailed reset information")
-        let usage = makeSettingsSection(tr("用量", "Usage"), rows: [
-            makeSettingsRow(tr("剩余额度", "Remaining Balance"), subtitle: dashboardResetLabel.stringValue, control: dashboardAmountLabel, minimumHeight: 76)
+        let usage = DashboardSettingsComponents.makeSettingsSection(tr("用量", "Usage"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(tr("剩余额度", "Remaining Balance"), subtitle: dashboardResetLabel.stringValue, control: dashboardAmountLabel, minimumHeight: 76)
         ])
 
         let action: NSButton
@@ -2336,30 +2154,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             action.identifier = NSUserInterfaceItemIdentifier(choice.id)
             action.toolTip = choice.name
         }
-        let connection = makeSettingsSection("CC Switch", rows: [
-            makeSettingsRow(tr("同步状态", "Sync Status"), subtitle: choice.isCurrent
+        let connection = DashboardSettingsComponents.makeSettingsSection("CC Switch", rows: [
+            DashboardSettingsComponents.makeSettingsRow(tr("同步状态", "Sync Status"), subtitle: choice.isCurrent
                 ? tr("正在跟随此供应商", "Following this Provider")
                 : tr("当前未使用此供应商", "This Provider is not currently active"), control: action)
         ])
-        return makeSettingsPage([heading, usage, connection])
-    }
-
-    private func makePageHeader(_ title: String, subtitle: String) -> NSStackView {
-        let heading = NSTextField(labelWithString: title)
-        heading.font = .systemFont(ofSize: 24, weight: .semibold)
-        let detail = NSTextField(wrappingLabelWithString: subtitle)
-        detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .secondaryLabelColor
-        let stack = NSStackView(views: [heading, detail])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 4
-        return stack
+        return DashboardSettingsComponents.makeSettingsPage([heading, usage, connection])
     }
 
     private func makeOverviewDashboardPage() -> NSView {
         let root = NSView()
-        let header = makePageHeader(tr("概览", "Overview"), subtitle: tr("当前余额、同步状态和 Codex 供应商", "Current balance, sync status, and Codex Provider"))
+        let header = DashboardSettingsComponents.makePageHeader(tr("概览", "Overview"), subtitle: tr("当前余额、同步状态和 Codex 供应商", "Current balance, sync status, and Codex Provider"))
 
         dashboardProviderLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         dashboardProviderLabel.lineBreakMode = .byTruncatingTail
@@ -2527,22 +2332,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             dashboardMenuPreviewCapsule.bottomAnchor.constraint(equalTo: previewRow.bottomAnchor, constant: 3),
             preview.heightAnchor.constraint(equalToConstant: 42)
         ])
-        let iconToggle = makeDashboardSwitch(
+        let iconToggle = DashboardSettingsComponents.makeSwitch(
             identifier: "showMenuBarIcon",
-            isOn: showMenuBarIcon
+            isOn: showMenuBarIcon,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
-        let amountToggle = makeDashboardSwitch(
+        let amountToggle = DashboardSettingsComponents.makeSwitch(
             identifier: "showMenuBarAmount",
-            isOn: showMenuBarAmount
+            isOn: showMenuBarAmount,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
-        let resetToggle = makeDashboardSwitch(
+        let resetToggle = DashboardSettingsComponents.makeSwitch(
             identifier: "showMenuBarReset",
-            isOn: showMenuBarReset
+            isOn: showMenuBarReset,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
         dashboardMenuBarIconSwitch = iconToggle
         dashboardMenuBarAmountSwitch = amountToggle
-        let previewSection = makeSettingsSection(tr("预览", "Preview"), rows: [
-            makeSettingsRow(
+        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
                 tr("当前布局", "Current Layout"),
                 subtitle: tr(
                     "菜单栏会随供应商数据实时更新",
@@ -2552,13 +2363,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 minimumHeight: 66
             )
         ])
-        let displaySection = makeSettingsSection(tr("显示项目", "Display Items"), rows: [
-            makeSettingsRow(tr("Agent 图标", "Agent Icon"), subtitle: tr("显示当前任务运行状态", "Shows the current task status"), control: iconToggle),
-            makeSettingsRow(tr("额度数字", "Balance Amount"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance"), control: amountToggle),
-            makeSettingsRow(tr("重置倒计时", "Reset Countdown"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available"), control: resetToggle)
+        let displaySection = DashboardSettingsComponents.makeSettingsSection(tr("显示项目", "Display Items"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(tr("Agent 图标", "Agent Icon"), subtitle: tr("显示当前任务运行状态", "Shows the current task status"), control: iconToggle),
+            DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance"), control: amountToggle),
+            DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available"), control: resetToggle)
         ])
         refreshDashboardMenuBarPage()
-        return makeSettingsPage([previewSection, displaySection])
+        return DashboardSettingsComponents.makeSettingsPage([previewSection, displaySection])
     }
 
     private func refreshDashboardMenuBarPage() {
@@ -2621,13 +2432,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func makeRefreshDashboardPage() -> NSView {
         let root = NSView()
-        let header = makePageHeader(tr("刷新设置", "Refresh Settings"), subtitle: tr("文件监听始终开启，轮询用于防止遗漏系统事件", "File monitoring is always active; polling prevents missed system events"))
+        let header = DashboardSettingsComponents.makePageHeader(tr("刷新设置", "Refresh Settings"), subtitle: tr("文件监听始终开启，轮询用于防止遗漏系统事件", "File monitoring is always active; polling prevents missed system events"))
         let pollingTitle = NSTextField(labelWithString: tr("CC Switch 轮询兜底", "CC Switch Fallback Polling"))
         pollingTitle.font = .systemFont(ofSize: 13, weight: .medium)
-        let pollingPopup = makeIntervalPopup(
+        let pollingPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [(1, tr("每 1 秒", "Every 1 sec")), (3, tr("每 3 秒", "Every 3 sec")), (5, tr("每 5 秒", "Every 5 sec")), (10, tr("每 10 秒", "Every 10 sec"))],
             selected: providerPollInterval,
-            identifier: "providerPollInterval"
+            identifier: "providerPollInterval",
+            target: self,
+            action: #selector(dashboardIntervalChanged(_:))
         )
         let pollingSpacer = NSView()
         let pollingRow = NSStackView(views: [pollingTitle, pollingSpacer, pollingPopup])
@@ -2636,19 +2449,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
         let activityTitle = NSTextField(labelWithString: tr("Codex 任务状态检测", "Codex Task Status Detection"))
         activityTitle.font = .systemFont(ofSize: 13, weight: .medium)
-        let activityPopup = makeIntervalPopup(
+        let activityPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [(0.25, tr("0.25 秒", "0.25 sec")), (0.5, tr("0.5 秒", "0.5 sec")), (1, tr("1 秒", "1 sec"))],
             selected: activityPollInterval,
-            identifier: "activityPollInterval"
+            identifier: "activityPollInterval",
+            target: self,
+            action: #selector(dashboardIntervalChanged(_:))
         )
         let activitySpacer = NSView()
         let activityRow = NSStackView(views: [activityTitle, activitySpacer, activityPopup])
         activityRow.orientation = .horizontal
         activityRow.alignment = .centerY
 
-        let animationToggle = makeDashboardSwitch(
+        let animationToggle = DashboardSettingsComponents.makeSwitch(
             identifier: "animateCodexActivity",
-            isOn: animateCodexActivity
+            isOn: animateCodexActivity,
+            target: self,
+            action: #selector(dashboardToggleChanged(_:))
         )
         let animationTitle = NSTextField(labelWithString: tr(
             "Codex 有任务运行时旋转菜单栏图标",
@@ -2686,26 +2503,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         return root
     }
 
-    private func makeIntervalPopup(
-        values: [(Double, String)],
-        selected: TimeInterval,
-        identifier: String
-    ) -> NSPopUpButton {
-        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        popup.identifier = NSUserInterfaceItemIdentifier(identifier)
-        popup.target = self
-        popup.action = #selector(dashboardIntervalChanged(_:))
-        for (index, value) in values.enumerated() {
-            popup.addItem(withTitle: value.1)
-            popup.item(at: index)?.representedObject = NSNumber(value: value.0)
-            if abs(value.0 - selected) < 0.001 { popup.selectItem(at: index) }
-        }
-        return popup
-    }
-
     private func makeLogsDashboardPage() -> NSView {
         let root = NSView()
-        let header = makePageHeader(tr("日志", "Logs"), subtitle: tr("供应商切换、同步和失败原因", "Provider switching, synchronization, and failure details"))
+        let header = DashboardSettingsComponents.makePageHeader(tr("日志", "Logs"), subtitle: tr("供应商切换、同步和失败原因", "Provider switching, synchronization, and failure details"))
         let refreshButton = NSButton(title: tr("刷新", "Refresh"), target: self, action: #selector(refreshDashboardLog))
         refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: tr("刷新", "Refresh"))
         let revealButton = NSButton(title: tr("在 Finder 中显示", "Show in Finder"), target: self, action: #selector(revealDashboardLog))

@@ -557,6 +557,99 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(reloadedOpenCodexSwitches.first?.state, .off)
     }
 
+    func testProductionSettingsPagesPreserveSectionRowGeometryAndNativeActions() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-27-pages.db"))
+        )
+        defer { appDelegate.teardownDashboardForTesting() }
+
+        for section in [DashboardSection.general, .menuBar, .menu, .advanced] {
+            let page = appDelegate.dashboardPageForTesting(section)
+            layoutDescendants(of: page)
+
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: page, as: NSScrollView.self),
+                "Missing production settings scroll view for \(section)"
+            )
+            XCTAssertTrue(scrollView.hasVerticalScroller)
+            XCTAssertFalse(scrollView.hasHorizontalScroller)
+            let documentView = try XCTUnwrap(scrollView.documentView)
+            let pageStack = try XCTUnwrap(
+                firstDescendant(of: documentView, as: NSStackView.self),
+                "Missing settings page stack for \(section)"
+            )
+            XCTAssertFalse(pageStack.arrangedSubviews.isEmpty)
+
+            for sectionView in pageStack.arrangedSubviews {
+                let sectionStack = try XCTUnwrap(sectionView as? NSStackView)
+                XCTAssertEqual(sectionStack.arrangedSubviews.count, 2)
+                let heading = try XCTUnwrap(sectionStack.arrangedSubviews.first as? NSTextField)
+                XCTAssertEqual(heading.font?.pointSize ?? -1, 17, accuracy: 0.01)
+                let card = sectionStack.arrangedSubviews[1]
+                XCTAssertEqual(card.layer?.cornerRadius ?? -1, 18, accuracy: 0.01)
+                let rowsStack = try XCTUnwrap(
+                    firstDescendant(of: card, as: NSStackView.self)
+                )
+                XCTAssertFalse(rowsStack.arrangedSubviews.isEmpty)
+                for row in rowsStack.arrangedSubviews where !(row is NSBox) && !row.isHidden {
+                    XCTAssertGreaterThanOrEqual(row.frame.height, 62)
+                }
+            }
+
+            for control in allControls(of: page, as: NSSwitch.self) {
+                XCTAssertNotNil(control.target, "Switch lost its target on \(section)")
+                XCTAssertNotNil(control.action, "Switch lost its action on \(section)")
+            }
+            for control in allControls(of: page, as: NSPopUpButton.self) {
+                XCTAssertNotNil(control.target, "Popup lost its target on \(section)")
+                XCTAssertNotNil(control.action, "Popup lost its action on \(section)")
+            }
+        }
+    }
+
+    func testDashboardSettingsFactoryPreservesNativeControlValuesAndActions() throws {
+        final class ActionTarget: NSObject {
+            var switchActionCount = 0
+            var popupActionCount = 0
+
+            @objc func switchChanged(_ sender: NSSwitch) {
+                switchActionCount += 1
+            }
+
+            @objc func popupChanged(_ sender: NSPopUpButton) {
+                popupActionCount += 1
+            }
+        }
+
+        let target = ActionTarget()
+        let control = DashboardSettingsComponents.makeSwitch(
+            identifier: "factory.switch",
+            isOn: true,
+            target: target,
+            action: #selector(ActionTarget.switchChanged(_:))
+        )
+        XCTAssertEqual(control.identifier?.rawValue, "factory.switch")
+        XCTAssertEqual(control.state, .on)
+        _ = target.perform(control.action, with: control)
+        XCTAssertEqual(target.switchActionCount, 1)
+
+        let popup = DashboardSettingsComponents.makePopUpButton(
+            identifier: "factory.popup",
+            items: [
+                .init(title: "First", representedObject: "first"),
+                .init(title: "Second", representedObject: "second")
+            ],
+            selectedIndex: 1,
+            target: target,
+            action: #selector(ActionTarget.popupChanged(_:))
+        )
+        XCTAssertEqual(popup.identifier?.rawValue, "factory.popup")
+        XCTAssertEqual(popup.indexOfSelectedItem, 1)
+        XCTAssertEqual(popup.item(at: 1)?.representedObject as? String, "second")
+        _ = target.perform(popup.action, with: popup)
+        XCTAssertEqual(target.popupActionCount, 1)
+    }
+
     func testStatusMenuEntryFollowsShowStatusMenuPreferenceInMainMenu() {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(
