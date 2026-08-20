@@ -1,0 +1,51 @@
+import AppKit
+
+/// The page modules own their controls; AppDelegate supplies these callbacks
+/// so preference writes and application actions remain explicit and testable.
+final class DashboardPreferencePageRelay: NSObject {
+    var onToggle: ((String, Bool) -> Void)?
+    var onInterval: ((String, TimeInterval) -> Void)?
+    var onLanguage: ((AppLanguage) -> Void)?
+    var onOpenCCSwitch: (() -> Void)?
+    var onManualRefresh: (() -> Void)?
+    var onOpenOpenCodex: (() -> Void)?
+    var onRefreshLog: (() -> Void)?
+    var onRevealLog: (() -> Void)?
+
+    @objc func toggle(_ sender: NSSwitch) {
+        guard let identifier = sender.identifier?.rawValue else { return }
+        onToggle?(identifier, sender.state == .on)
+    }
+
+    @objc func interval(_ sender: NSPopUpButton) {
+        guard let identifier = sender.identifier?.rawValue,
+              let value = sender.selectedItem?.representedObject as? NSNumber else { return }
+        onInterval?(identifier, value.doubleValue)
+    }
+
+    @objc func language(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let language = AppLanguage(rawValue: rawValue) else { return }
+        onLanguage?(language)
+    }
+
+    @objc func openCCSwitch(_ sender: NSButton) {
+        onOpenCCSwitch?()
+    }
+
+    @objc func manualRefresh(_ sender: NSButton) {
+        onManualRefresh?()
+    }
+
+    @objc func openOpenCodex(_ sender: NSButton) {
+        onOpenOpenCodex?()
+    }
+
+    @objc func refreshLog(_ sender: NSButton) {
+        onRefreshLog?()
+    }
+
+    @objc func revealLog(_ sender: NSButton) {
+        onRevealLog?()
+    }
+}

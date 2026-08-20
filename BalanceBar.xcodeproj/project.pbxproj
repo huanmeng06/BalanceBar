@@ -60,6 +60,15 @@
 		A1000000000000000000009A /* StatusLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009B /* StatusLinksTests.swift */; };
 		A1000000000000000000009D /* DashboardWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009E /* DashboardWindowController.swift */; };
 		A1000000000000000000009F /* DashboardWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000A0 /* DashboardWindowControllerTests.swift */; };
+		A100000000000000000000B0 /* DashboardAboutPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B1 /* DashboardAboutPage.swift */; };
+		A100000000000000000000B2 /* DashboardAdvancedPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B3 /* DashboardAdvancedPage.swift */; };
+		A100000000000000000000B4 /* DashboardGeneralAndRefreshPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */; };
+		A100000000000000000000B6 /* DashboardLogsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B7 /* DashboardLogsPage.swift */; };
+		A100000000000000000000B8 /* DashboardMenuBarPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000B9 /* DashboardMenuBarPage.swift */; };
+		A100000000000000000000BA /* DashboardMenuPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BB /* DashboardMenuPage.swift */; };
+		A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BD /* DashboardPreferencePageRelay.swift */; };
+		A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000BF /* DashboardPreferencePages.swift */; };
+		A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -118,6 +127,15 @@
 		A1000000000000000000009B /* StatusLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000009E /* DashboardWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowController.swift; sourceTree = "<group>"; };
 		A100000000000000000000A0 /* DashboardWindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowControllerTests.swift; sourceTree = "<group>"; };
+		A100000000000000000000B1 /* DashboardAboutPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAboutPage.swift; sourceTree = "<group>"; };
+		A100000000000000000000B3 /* DashboardAdvancedPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAdvancedPage.swift; sourceTree = "<group>"; };
+		A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardGeneralAndRefreshPages.swift; sourceTree = "<group>"; };
+		A100000000000000000000B7 /* DashboardLogsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLogsPage.swift; sourceTree = "<group>"; };
+		A100000000000000000000B9 /* DashboardMenuBarPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuBarPage.swift; sourceTree = "<group>"; };
+		A100000000000000000000BB /* DashboardMenuPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardMenuPage.swift; sourceTree = "<group>"; };
+		A100000000000000000000BD /* DashboardPreferencePageRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePageRelay.swift; sourceTree = "<group>"; };
+		A100000000000000000000BF /* DashboardPreferencePages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePages.swift; sourceTree = "<group>"; };
+		A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePagesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -224,6 +242,7 @@
 				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
 				A10000000000000000000077 /* CodexActivityMonitorTests.swift */,
 				A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */,
+				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -290,10 +309,27 @@
 				A100000000000000000000A2 /* DashboardSettingsComponents.swift */,
 				A1000000000000000000009E /* DashboardWindowController.swift */,
 				A10000000000000000000093 /* Components */,
+				A100000000000000000000C0 /* Preferences */,
 				A1000000000000000000009C /* StatusLinks */,
 			);
 			name = Dashboard;
 			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		A100000000000000000000C0 /* Preferences */ = {
+			isa = PBXGroup;
+			children = (
+				A100000000000000000000B1 /* DashboardAboutPage.swift */,
+				A100000000000000000000B3 /* DashboardAdvancedPage.swift */,
+				A100000000000000000000B5 /* DashboardGeneralAndRefreshPages.swift */,
+				A100000000000000000000B7 /* DashboardLogsPage.swift */,
+				A100000000000000000000B9 /* DashboardMenuBarPage.swift */,
+				A100000000000000000000BB /* DashboardMenuPage.swift */,
+				A100000000000000000000BD /* DashboardPreferencePageRelay.swift */,
+				A100000000000000000000BF /* DashboardPreferencePages.swift */,
+			);
+			name = Preferences;
+			path = "Pages/Preferences";
 			sourceTree = "<group>";
 		};
 		A10000000000000000000093 /* Components */ = {
@@ -458,6 +494,14 @@
 				A1000000000000000000009D /* DashboardWindowController.swift in Sources */,
 				A10000000000000000000096 /* StatusLinksEditor.swift in Sources */,
 				A10000000000000000000098 /* StatusLinksScrollAnchor.swift in Sources */,
+				A100000000000000000000B0 /* DashboardAboutPage.swift in Sources */,
+				A100000000000000000000B2 /* DashboardAdvancedPage.swift in Sources */,
+				A100000000000000000000B4 /* DashboardGeneralAndRefreshPages.swift in Sources */,
+				A100000000000000000000B6 /* DashboardLogsPage.swift in Sources */,
+				A100000000000000000000B8 /* DashboardMenuBarPage.swift in Sources */,
+				A100000000000000000000BA /* DashboardMenuPage.swift in Sources */,
+				A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */,
+				A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -482,6 +526,7 @@
 				A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */,
 				A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */,
 				A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */,
+				A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
