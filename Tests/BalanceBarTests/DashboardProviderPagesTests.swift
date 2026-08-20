@@ -34,8 +34,8 @@ final class DashboardProviderPagesTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-29-provider-pages.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .general))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general))
         window.layoutIfNeeded()
         window.displayIfNeeded()
 

@@ -12,14 +12,23 @@ enum DashboardSettingsComponents {
     }
 
     static func makeSettingsPage(_ sections: [NSView]) -> NSView {
-        let root = NSView()
+        let root = DashboardSettingsPageView()
+        let viewportContainer = NSView()
+        viewportContainer.translatesAutoresizingMaskIntoConstraints = false
         let scrollView = NSScrollView()
-        scrollView.contentView = DashboardClipView()
+        scrollView.contentView = NSClipView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.verticalScrollElasticity = .none
         scrollView.horizontalScrollElasticity = .none
+        // Do not inherit a window/titlebar content inset when a fresh page is
+        // mounted. AppKit still owns all user bounds and momentum behavior;
+        // this only makes the scroll host's legal top coincide with its
+        // document's top edge across window creation and page replacement.
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         // Keep the scrollbar discoverable on dense settings pages. The
         // document is taller than the viewport when the status-link editor is
         // present, so hiding the scroller makes the add control look missing.
@@ -28,7 +37,7 @@ enum DashboardSettingsComponents {
         scrollView.borderType = .noBorder
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        let documentView = NSView()
+        let documentView = DashboardSettingsDocumentView()
         documentView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
 
@@ -40,18 +49,29 @@ enum DashboardSettingsComponents {
         stack.setContentHuggingPriority(.required, for: .vertical)
         stack.setContentCompressionResistancePriority(.required, for: .vertical)
         documentView.addSubview(stack)
-        root.addSubview(scrollView)
+        root.addSubview(viewportContainer)
+        viewportContainer.addSubview(scrollView)
+        // Match the measured titlebar/content-host breathing room without
+        // making that space part of the scrollable document.
+        let viewportTopInset: CGFloat = 52
+        let viewportBottomInset: CGFloat = 0
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: root.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            viewportContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            viewportContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            viewportContainer.topAnchor.constraint(equalTo: root.topAnchor, constant: viewportTopInset),
+            viewportContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -viewportBottomInset),
+            scrollView.leadingAnchor.constraint(equalTo: viewportContainer.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: viewportContainer.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: viewportContainer.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: viewportContainer.bottomAnchor),
             documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
             documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
             documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
-            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 62),
+            // The document top is the native legal top; no duplicate titlebar
+            // or document inset is placed in the scrollable content range.
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor),
             stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 34),
             stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -34),
             // The stack must fit inside the document, but it should keep its
@@ -274,4 +294,17 @@ enum DashboardSettingsComponents {
             action: action
         )
     }
+}
+
+/// Settings documents use a top-origin coordinate system. NSScrollView remains
+/// the only user-scroll bounds owner.
+final class DashboardSettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+/// Hosts a settings scroll view in a top-origin coordinate system. The class
+/// only supplies AppKit's coordinate convention; it does not write bounds or
+/// participate in user scrolling.
+final class DashboardSettingsPageView: NSView {
+    override var isFlipped: Bool { true }
 }

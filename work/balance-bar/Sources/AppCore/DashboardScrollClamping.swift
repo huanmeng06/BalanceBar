@@ -1,5 +1,102 @@
 import AppKit
 
+struct DashboardScrollTraceEvent: Equatable {
+    let sequence: Int
+    let kind: String
+    let source: String
+    let proposedOriginY: CGFloat?
+    let resultOriginY: CGFloat?
+    let visualOffset: CGFloat?
+    let legalMaximum: CGFloat?
+    let documentHeight: CGFloat?
+    let viewportHeight: CGFloat?
+    let flags: String
+}
+
+enum DashboardScrollTrace {
+    static let capacity = 256
+    private static let persistencePreferenceKey = "debugDashboardScrollTrace"
+
+    private static var sequence = 0
+    private static var events: [DashboardScrollTraceEvent] = []
+
+    static func reset() {
+        sequence = 0
+        events.removeAll(keepingCapacity: true)
+    }
+
+    static func snapshot() -> [DashboardScrollTraceEvent] {
+        events
+    }
+
+    static func record(
+        kind: String,
+        source: String,
+        proposedOriginY: CGFloat? = nil,
+        resultOriginY: CGFloat? = nil,
+        visualOffset: CGFloat? = nil,
+        legalMaximum: CGFloat? = nil,
+        documentHeight: CGFloat? = nil,
+        viewportHeight: CGFloat? = nil,
+        flags: String = ""
+    ) {
+        sequence += 1
+        let event = DashboardScrollTraceEvent(
+            sequence: sequence,
+            kind: kind,
+            source: source,
+            proposedOriginY: proposedOriginY,
+            resultOriginY: resultOriginY,
+            visualOffset: visualOffset,
+            legalMaximum: legalMaximum,
+            documentHeight: documentHeight,
+            viewportHeight: viewportHeight,
+            flags: flags
+        )
+        events.append(event)
+        if events.count > capacity {
+            events.removeFirst(events.count - capacity)
+        }
+
+        // The persisted diagnostic is opt-in so tracing cannot add a disk
+        // write per scroll frame. The in-memory ring is always bounded and
+        // keeps the exact order available to production-style replay tests.
+        guard UserDefaults.standard.bool(forKey: persistencePreferenceKey) else {
+            return
+        }
+        SwitchLog.write(
+            "dashboard-scroll-trace; seq=\(sequence); kind=\(kind); source=\(source); proposed_y=\(format(proposedOriginY)); result_y=\(format(resultOriginY)); visual=\(format(visualOffset)); max=\(format(legalMaximum)); document_h=\(format(documentHeight)); viewport_h=\(format(viewportHeight)); flags=\(flags)",
+            category: "ui.scroll.trace"
+        )
+    }
+
+    static func marker(
+        _ kind: String,
+        source: String,
+        flags: String = ""
+    ) {
+        record(kind: kind, source: source, flags: flags)
+    }
+
+    private static func format(_ value: CGFloat?) -> String {
+        value.map(DashboardLogging.number) ?? "na"
+    }
+}
+
+enum DashboardScrollClampingPolicy {
+    static let boundsOriginTolerance: CGFloat = 0.001
+
+    static func clampedVisualOffset(
+        _ proposedOffset: CGFloat,
+        maximumOffset: CGFloat
+    ) -> CGFloat {
+        guard proposedOffset.isFinite else { return 0 }
+        let maximumOffset = max(0, maximumOffset)
+        guard maximumOffset > 0 else { return 0 }
+        return min(max(0, proposedOffset), maximumOffset)
+    }
+}
+
 /// Describes the vertical geometry of a document inside a clip view.
 ///
 /// `visualOffset` is measured from the document's visual top edge. Keeping
@@ -25,8 +122,10 @@ struct DashboardScrollGeometry {
     }
 
     func clampedVisualOffset(_ proposedOffset: CGFloat) -> CGFloat {
-        guard proposedOffset.isFinite else { return 0 }
-        return min(max(0, proposedOffset), maximumOffset)
+        DashboardScrollClampingPolicy.clampedVisualOffset(
+            proposedOffset,
+            maximumOffset: maximumOffset
+        )
     }
 
     func visualOffset(for visibleDocumentRect: NSRect) -> CGFloat {
@@ -76,98 +175,7 @@ struct DashboardScrollGeometry {
     }
 }
 
-/// Converts the legal document range back to an NSClipView bounds rect.
-///
-/// The conversion is deliberately supplied by AppKit rather than recreated
-/// from frame origins. This keeps the clamp correct when the document or clip
-/// view has a non-zero bounds origin, a different flipped state, or a future
-/// layout transform.
-func dashboardClampedContentBounds(
-    proposedBounds: NSRect,
-    contentView: NSClipView,
-    documentView: NSView
-) -> NSRect {
-    guard proposedBounds.height.isFinite else { return proposedBounds }
-
-    let geometry = DashboardScrollGeometry(
-        documentBounds: documentView.bounds,
-        viewportHeight: proposedBounds.height,
-        isDocumentFlipped: documentView.isFlipped
-    )
-    let visibleDocumentRect = contentView.convert(proposedBounds, to: documentView)
-    let legalDocumentRect = geometry.visibleDocumentRect(
-        forVisualOffset: geometry.clampedVisualOffset(for: visibleDocumentRect)
-    )
-    let legalDocumentY = geometry.contentOriginDocumentY(
-        for: legalDocumentRect,
-        contentViewIsFlipped: contentView.isFlipped
-    )
-    let legalOriginY = documentView.convert(
-        NSPoint(x: documentView.bounds.minX, y: legalDocumentY),
-        to: contentView
-    ).y
-    guard legalOriginY.isFinite else { return proposedBounds }
-
-    var clampedBounds = proposedBounds
-    clampedBounds.origin.y = legalOriginY
-    return clampedBounds
-}
-
-/// A settings-page clip view that applies the same legal range to AppKit's
-/// own scrolling, resizing, and bounds-constraining paths.
-final class DashboardClipView: NSClipView {
-    private var isApplyingRigidBounds = false
-    private let boundsOriginTolerance: CGFloat = 0.001
-
-    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
-        guard !isApplyingRigidBounds else {
-            return super.constrainBoundsRect(proposedBounds)
-        }
-        return rigidBounds(for: proposedBounds)
-    }
-
-    override func scroll(to newOrigin: NSPoint) {
-        guard !isApplyingRigidBounds else {
-            super.scroll(to: newOrigin)
-            return
-        }
-
-        var proposedBounds = bounds
-        proposedBounds.origin = newOrigin
-        let constrainedBounds = rigidBounds(for: proposedBounds)
-        guard needsBoundsOriginUpdate(constrainedBounds.origin) else { return }
-        isApplyingRigidBounds = true
-        defer { isApplyingRigidBounds = false }
-        super.scroll(to: constrainedBounds.origin)
-    }
-
-    override func setBoundsOrigin(_ newOrigin: NSPoint) {
-        guard !isApplyingRigidBounds else {
-            super.setBoundsOrigin(newOrigin)
-            return
-        }
-
-        var proposedBounds = bounds
-        proposedBounds.origin = newOrigin
-        let constrainedBounds = rigidBounds(for: proposedBounds)
-        guard needsBoundsOriginUpdate(constrainedBounds.origin) else { return }
-        isApplyingRigidBounds = true
-        defer { isApplyingRigidBounds = false }
-        super.setBoundsOrigin(constrainedBounds.origin)
-    }
-
-    private func rigidBounds(for proposedBounds: NSRect) -> NSRect {
-        let constrainedBounds = super.constrainBoundsRect(proposedBounds)
-        guard let documentView else { return constrainedBounds }
-        return dashboardClampedContentBounds(
-            proposedBounds: constrainedBounds,
-            contentView: self,
-            documentView: documentView
-        )
-    }
-
-    private func needsBoundsOriginUpdate(_ proposedOrigin: NSPoint) -> Bool {
-        abs(bounds.origin.x - proposedOrigin.x) > boundsOriginTolerance ||
-            abs(bounds.origin.y - proposedOrigin.y) > boundsOriginTolerance
-    }
-}
+/// Kept as a named type for composition/test seams. It intentionally has no
+/// scrolling overrides: ordinary settings pages use AppKit's native
+/// NSClipView momentum, deceleration, and legal-bounds behavior.
+final class DashboardClipView: NSClipView {}

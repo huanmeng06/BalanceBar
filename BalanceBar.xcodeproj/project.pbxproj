@@ -71,6 +71,13 @@
 		A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000C5 /* DashboardProviderPages.swift */; };
 		A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000C9 /* DashboardProviderPagesTests.swift */; };
 		A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */; };
+		A100000000000000000000D0 /* AppDelegateCompositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D1 /* AppDelegateCompositionTests.swift */; };
+		A100000000000000000000D2 /* ActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D3 /* ActivityCoordinator.swift */; };
+		A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */; };
+		A100000000000000000000D6 /* OpenCodexRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */; };
+		A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */; };
+		A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DB /* ProviderSwitchCoordinator.swift */; };
+		A100000000000000000000DC /* DashboardCompositionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DD /* DashboardCompositionController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -140,6 +147,13 @@
 		A100000000000000000000C5 /* DashboardProviderPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProviderPages.swift; sourceTree = "<group>"; };
 		A100000000000000000000C9 /* DashboardProviderPagesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProviderPagesTests.swift; sourceTree = "<group>"; };
 		A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardPreferencePagesTests.swift; sourceTree = "<group>"; };
+		A100000000000000000000D1 /* AppDelegateCompositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegateCompositionTests.swift; sourceTree = "<group>"; };
+		A100000000000000000000D3 /* ActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCoordinator.swift; sourceTree = "<group>"; };
+		A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchDatabaseWatcher.swift; sourceTree = "<group>"; };
+		A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRefreshCoordinator.swift; sourceTree = "<group>"; };
+		A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinator.swift; sourceTree = "<group>"; };
+		A100000000000000000000DB /* ProviderSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSwitchCoordinator.swift; sourceTree = "<group>"; };
+		A100000000000000000000DD /* DashboardCompositionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCompositionController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -230,6 +244,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000002E /* MenuBarGeometryTests.swift */,
+				A100000000000000000000D1 /* AppDelegateCompositionTests.swift */,
 				A100000000000000000000A0 /* DashboardWindowControllerTests.swift */,
 				A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */,
 				A10000000000000000000095 /* DashboardComponentsTests.swift */,
@@ -268,6 +283,10 @@
 		A10000000000000000000059 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
+				A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */,
+				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
+				A100000000000000000000DB /* ProviderSwitchCoordinator.swift */,
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
 				A10000000000000000000061 /* CredentialReader.swift */,
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
@@ -291,6 +310,7 @@
 		A10000000000000000000078 /* Monitoring */ = {
 			isa = PBXGroup;
 			children = (
+				A100000000000000000000D3 /* ActivityCoordinator.swift */,
 				A10000000000000000000076 /* CodexActivityMonitor.swift */,
 				A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */,
 			);
@@ -311,6 +331,7 @@
 		A10000000000000000000092 /* Dashboard */ = {
 			isa = PBXGroup;
 			children = (
+				A100000000000000000000DD /* DashboardCompositionController.swift */,
 				A100000000000000000000A2 /* DashboardSettingsComponents.swift */,
 				A1000000000000000000009E /* DashboardWindowController.swift */,
 				A10000000000000000000093 /* Components */,
@@ -518,6 +539,12 @@
 				A100000000000000000000BC /* DashboardPreferencePageRelay.swift in Sources */,
 				A100000000000000000000BE /* DashboardPreferencePages.swift in Sources */,
 				A100000000000000000000C3 /* DashboardProviderPages.swift in Sources */,
+				A100000000000000000000D2 /* ActivityCoordinator.swift in Sources */,
+				A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */,
+				A100000000000000000000D6 /* OpenCodexRefreshCoordinator.swift in Sources */,
+				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
+				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
+				A100000000000000000000DC /* DashboardCompositionController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -526,6 +553,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000030 /* MenuBarGeometryTests.swift in Sources */,
+				A100000000000000000000D0 /* AppDelegateCompositionTests.swift in Sources */,
 				A1000000000000000000009F /* DashboardWindowControllerTests.swift in Sources */,
 				A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */,
 				A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */,

@@ -255,6 +255,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     func windowDidResize(_ notification: Notification) {
         guard let resizedWindow = notification.object as? NSWindow,
               resizedWindow === window else { return }
+        DashboardScrollTrace.marker("window-resize", source: "DashboardWindowController")
         actions.didResize()
     }
 

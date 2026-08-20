@@ -10,10 +10,13 @@ trap 'rm -rf "$probe_dir"' EXIT
 {
     printf '%s\n' 'import Foundation' 'enum ProbeSubject {'
     awk '
-        /^    private static func localizedBalanceNetworkErrorReason\(/ { capture = 1 }
-        /^    private func fetchBalance\(/ { exit }
-        capture { print }
-    ' "$source_dir/BalanceBar.swift"
+        /^    static func localizedBalanceNetworkErrorReason\(/ { capture = 1 }
+        capture {
+            print
+            if (seen) exit
+            if (/^        return usesSimplifiedChinese/) seen = 1
+        }
+    ' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift"
     cat <<'SWIFT'
     static func reason(_ error: Error, usesSimplifiedChinese: Bool) -> String {
         localizedBalanceNetworkErrorReason(

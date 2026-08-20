@@ -343,18 +343,12 @@ SWIFT
 
 "$probe_binary"
 
-ui_render_block="$({
-    awk '
-        /let reason = failure\.userVisibleReason/ { capture = 1 }
-        capture { print }
-        capture && /client: client/ { exit }
-    ' "$source_dir/BalanceBar.swift"
-})"
+ui_render_block="$(sed -n '/func refreshStandardProvider(/,/func prefetchCurrentBalance/p' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift")"
 [[ "$ui_render_block" == *"failure.userVisibleReason"* ]] || {
     echo "balance query probe: FAIL; query-unavailable UI does not use the safe localized mapping" >&2
     exit 1
 }
-[[ "$ui_render_block" == *"renderBalanceErrorForCurrentProvider"* ]] || {
+[[ "$ui_render_block" == *"renderBalanceError"* ]] || {
     echo "balance query probe: FAIL; query-unavailable UI bypasses the Provider error helper" >&2
     exit 1
 }

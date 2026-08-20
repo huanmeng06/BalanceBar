@@ -85,6 +85,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var animationEnabled = true
     private let actions: Actions
     private var lifecycleGeneration = 0
+    private(set) var statusItemInstallCount = 0
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var isMenuTracking: Bool { isStatusMenuTracking }
@@ -270,6 +271,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func installStatusItem() {
+        statusItemInstallCount += 1
         let statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
         )

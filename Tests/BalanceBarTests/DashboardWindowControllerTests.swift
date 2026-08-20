@@ -124,8 +124,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let page = appDelegate.dashboardPageForTesting(.menu)
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
 
         let editor = findStatusLinksEditor(in: page)
         XCTAssertNotNil(editor, "The Status Links editor stays in the page so it can animate in place")
@@ -154,8 +154,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-layout.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.layoutIfNeeded()
         window.displayIfNeeded()
         let page = try XCTUnwrap(menuPage(in: window))
@@ -224,8 +224,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-add-anchor.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.setContentSize(NSSize(width: 800, height: 540))
         window.layoutIfNeeded()
         window.displayIfNeeded()
@@ -288,7 +288,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         ).y
         let initialDocumentHeight = documentView.bounds.height
 
-        appDelegate.addStatusLinkForTesting()
+        appDelegate.dashboardCompositionForTesting.addStatusLinkForTesting()
 
         let deadline = Date().addingTimeInterval(0.34)
         while Date() < deadline {
@@ -348,8 +348,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-toggle.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.layoutIfNeeded()
         window.displayIfNeeded()
         layoutDescendants(of: window.contentView!)
@@ -431,8 +431,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-rapid.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
-        let window = try XCTUnwrap(appDelegate.dashboardWindowForTesting(showing: .menu))
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menu))
         window.layoutIfNeeded()
         window.displayIfNeeded()
         layoutDescendants(of: window.contentView!)
@@ -531,9 +531,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-109-menu.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
 
-        let page = appDelegate.dashboardPageForTesting(.menu)
+        let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
         layoutDescendants(of: page)
         let openCodexSwitches = allControls(of: page, as: NSSwitch.self).filter {
             $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
@@ -548,7 +548,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(AppPreferences(defaults: defaults).showOpenCodexMenu)
         XCTAssertTrue(AppPreferences(defaults: defaults).showOpenCCSwitchMenu)
 
-        let reopenedPage = appDelegate.dashboardPageForTesting(.menu)
+        let reopenedPage = appDelegate.dashboardCompositionForTesting.makePageForTesting(.menu)
         layoutDescendants(of: reopenedPage)
         let reloadedOpenCodexSwitches = allControls(of: reopenedPage, as: NSSwitch.self).filter {
             $0.identifier?.rawValue == AppPreferences.showOpenCodexMenuKey
@@ -558,13 +558,23 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     func testProductionSettingsPagesPreserveSectionRowGeometryAndNativeActions() throws {
+        let defaults = UserDefaults.standard
+        let previousStatusMenu = defaults.object(forKey: "showStatusMenu")
+        defaults.set(true, forKey: "showStatusMenu")
+        defer {
+            if let previousStatusMenu {
+                defaults.set(previousStatusMenu, forKey: "showStatusMenu")
+            } else {
+                defaults.removeObject(forKey: "showStatusMenu")
+            }
+        }
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-27-pages.db"))
         )
-        defer { appDelegate.teardownDashboardForTesting() }
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
 
         for section in [DashboardSection.general, .menuBar, .menu, .advanced] {
-            let page = appDelegate.dashboardPageForTesting(section)
+            let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(section)
             layoutDescendants(of: page)
 
             let scrollView = try XCTUnwrap(
@@ -604,6 +614,205 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 XCTAssertNotNil(control.target, "Popup lost its target on \(section)")
                 XCTAssertNotNil(control.action, "Popup lost its action on \(section)")
             }
+        }
+    }
+
+    func testMenuBarAndAdvancedFirstMountStartAtNativeTopWithoutBlankRegion() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-30-top-blank.db"))
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+
+        for section in [DashboardSection.general, .menuBar, .advanced] {
+            let page = appDelegate.dashboardCompositionForTesting.makePageForTesting(section)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            window.layoutIfNeeded()
+            layoutDescendants(of: page)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            defer { window.orderOut(nil) }
+
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: page, as: NSScrollView.self),
+                "Missing settings scroll view for \(section)"
+            )
+            let documentView = try XCTUnwrap(scrollView.documentView)
+            let pageStack = try XCTUnwrap(
+                firstDescendant(of: documentView, as: NSStackView.self)
+            )
+            let firstSection = try XCTUnwrap(pageStack.arrangedSubviews.first)
+            let firstHeading = try XCTUnwrap(
+                firstDescendant(of: firstSection, as: NSTextField.self)
+            )
+            let visibleRect = scrollView.contentView.convert(
+                scrollView.contentView.bounds,
+                to: documentView
+            )
+            let firstHeadingRect = firstHeading.convert(
+                firstHeading.bounds,
+                to: documentView
+            )
+            let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
+
+            XCTAssertTrue(documentView.isFlipped)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(visibleRect.minY, documentView.bounds.minY, accuracy: 1)
+            XCTAssertEqual(
+                pageStack.frame.minY,
+                documentView.bounds.minY,
+                accuracy: 1
+            )
+            XCTAssertLessThanOrEqual(
+                visibleRect.maxY,
+                documentView.bounds.maxY + 1
+            )
+            XCTAssertTrue(
+                visibleRect.intersects(firstHeadingRect),
+                "First heading is not visible on initial mount for \(section): visible=\(visibleRect), heading=\(firstHeadingRect)"
+            )
+            let headingInPage = firstHeading.convert(firstHeading.bounds, to: page)
+            XCTAssertGreaterThanOrEqual(headingInPage.minY, viewportFrameInPage.minY - 1)
+            XCTAssertLessThanOrEqual(headingInPage.maxY, viewportFrameInPage.maxY + 1)
+        }
+    }
+
+    func testGeneralMenuBarAndAdvancedPageReplacementResetsNativeTop() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-30-page-replacement.db"))
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
+        )
+
+        for section in [DashboardSection.general, .menuBar, .advanced] {
+            appDelegate.dashboardCompositionForTesting.showSection(section)
+            window.displayIfNeeded()
+            layoutDescendants(of: window.contentView!)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: window.contentView!, as: NSScrollView.self),
+                "Missing replaced settings scroll view for \(section)"
+            )
+            let document = try XCTUnwrap(scrollView.documentView)
+            let visible = scrollView.contentView.convert(
+                scrollView.contentView.bounds,
+                to: document
+            )
+            let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
+            let firstSection = try XCTUnwrap(stack.arrangedSubviews.first)
+            let firstHeading = try XCTUnwrap(
+                firstDescendant(of: firstSection, as: NSTextField.self)
+            )
+            let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
+            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
+            XCTAssertTrue(document.isFlipped)
+            XCTAssertEqual(
+                viewportFrameInPage.minY - page.bounds.minY,
+                52,
+                accuracy: 1,
+                "Settings scroll viewport lost its measured non-document top inset for \(section)"
+            )
+            XCTAssertEqual(
+                visible.minY,
+                document.bounds.minY,
+                accuracy: 1,
+                "Initial visible origin mismatch for \(section): visible=\(visible), document=\(document.bounds), clipBounds=\(scrollView.contentView.bounds), contentInsets=\(scrollView.contentInsets)"
+            )
+            XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
+            XCTAssertTrue(
+                visible.intersects(firstHeadingRect),
+                "Replaced \(section) first heading is not visible: visible=\(visible), heading=\(firstHeadingRect)"
+            )
+            let headingInPage = firstHeading.convert(firstHeading.bounds, to: page)
+            XCTAssertGreaterThanOrEqual(headingInPage.minY, viewportFrameInPage.minY - 1)
+            XCTAssertLessThanOrEqual(headingInPage.maxY, viewportFrameInPage.maxY + 1)
+        }
+    }
+
+    func testProductionSettingsScrollHostsKeepNativeElasticityAndLegalEndpointFrames() throws {
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-30-endpoint.db"))
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
+        )
+
+        for section in [DashboardSection.general, .menuBar, .advanced] {
+            appDelegate.dashboardCompositionForTesting.showSection(section)
+            window.displayIfNeeded()
+            layoutDescendants(of: window.contentView!)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+
+            let scrollView = try XCTUnwrap(
+                firstDescendant(of: window.contentView!, as: NSScrollView.self),
+                "Missing settings scroll view for \(section)"
+            )
+            let contentView = scrollView.contentView
+            let document = try XCTUnwrap(scrollView.documentView)
+            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            let viewportFrameInPage = scrollView.convert(scrollView.bounds, to: page)
+            let stack = try XCTUnwrap(firstDescendant(of: document, as: NSStackView.self))
+            let firstHeading = try XCTUnwrap(
+                firstDescendant(of: stack.arrangedSubviews.first!, as: NSTextField.self)
+            )
+            let geometry = DashboardScrollGeometry(
+                documentBounds: document.bounds,
+                viewportHeight: contentView.bounds.height,
+                isDocumentFlipped: document.isFlipped
+            )
+
+            XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
+            XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+            XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
+            XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
+            XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
+            XCTAssertTrue(document.isFlipped)
+            XCTAssertEqual(viewportFrameInPage.minY - page.bounds.minY, 52, accuracy: 1)
+            XCTAssertEqual(viewportFrameInPage.maxY, page.bounds.maxY, accuracy: 1)
+
+            let proposals = geometry.maximumOffset > 1
+                ? [CGFloat(0), geometry.maximumOffset, geometry.maximumOffset * 0.72, geometry.maximumOffset, CGFloat(0)]
+                : [CGFloat(0)]
+            var bottomVisible: NSRect?
+            for proposal in proposals {
+                let targetRect = geometry.visibleDocumentRect(forVisualOffset: proposal)
+                let targetDocumentY = geometry.contentOriginDocumentY(
+                    for: targetRect,
+                    contentViewIsFlipped: contentView.isFlipped
+                )
+                let targetContentY = document.convert(
+                    NSPoint(x: document.bounds.minX, y: targetDocumentY),
+                    to: contentView
+                ).y
+                contentView.scroll(to: NSPoint(x: contentView.bounds.minX, y: targetContentY))
+                scrollView.reflectScrolledClipView(contentView)
+
+                let visible = contentView.convert(contentView.bounds, to: document)
+                let actual = geometry.visualOffset(for: visible)
+                XCTAssertEqual(actual, proposal, accuracy: 1, "Native endpoint replay moved \(section) unexpectedly")
+                XCTAssertGreaterThanOrEqual(visible.minY, document.bounds.minY - 1)
+                XCTAssertLessThanOrEqual(visible.maxY, document.bounds.maxY + 1)
+                if abs(proposal - geometry.maximumOffset) < 0.001 {
+                    bottomVisible = visible
+                }
+            }
+
+            let visibleAtTop = contentView.convert(contentView.bounds, to: document)
+            let firstHeadingRect = firstHeading.convert(firstHeading.bounds, to: document)
+            let visibleAtBottom = try XCTUnwrap(bottomVisible)
+            XCTAssertEqual(visibleAtBottom.maxY, document.bounds.maxY, accuracy: 1)
+            XCTAssertEqual(geometry.clampedVisualOffset(for: visibleAtTop), 0, accuracy: 1)
+            XCTAssertTrue(visibleAtTop.intersects(firstHeadingRect))
+            XCTAssertEqual(stack.frame.minY, document.bounds.minY, accuracy: 1)
         }
     }
 
@@ -885,9 +1094,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     private func menuPage(in window: NSWindow) -> NSView? {
-        window.contentView?.subviews
+        guard let contentView = window.contentView else { return nil }
+        func containsScrollView(_ view: NSView) -> Bool {
+            if view is NSScrollView { return true }
+            return view.subviews.contains(where: containsScrollView)
+        }
+        return contentView.subviews
             .flatMap { $0.subviews }
-            .first { $0.subviews.contains(where: { $0 is NSScrollView }) }
+            .first(where: containsScrollView)
     }
 
     private func firstControl<T: NSView>(
