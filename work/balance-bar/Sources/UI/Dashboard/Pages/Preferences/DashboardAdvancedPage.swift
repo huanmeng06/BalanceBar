@@ -131,6 +131,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         )
         state.updateResolvedPort(initialResolution.port)
         applyResolution(initialResolution, canOpen: currentResolution != nil)
+        // The automatic-mode separator is hidden in the section callback
+        // above. Recalculate once after that visibility change so AppKit does
+        // not distribute the stale separator space into the first row.
+        updateCardLayout()
 
         let refreshLog = NSButton(
             title: tr("重新载入", "Reload"),
@@ -293,9 +297,8 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             }?.constant
             return partial + max(1, explicitHeight ?? row.fittingSize.height)
         }
-        let separatorHeight = settingsSeparators.filter { !$0.isHidden }.reduce(CGFloat(0)) {
-            $0 + max(1, $1.fittingSize.height)
-        }
+        let separatorHeight = CGFloat(settingsSeparators.filter { !$0.isHidden }.count) *
+            DashboardSettingsComponents.settingsSeparatorHeight
         cardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
         onClamp?()
     }

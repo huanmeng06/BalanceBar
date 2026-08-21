@@ -330,6 +330,42 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
         XCTAssertEqual(manualRow.frame.width, automaticRow.frame.width, accuracy: 0.5, file: file, line: line)
         XCTAssertEqual(dashboardRow.frame.width, automaticRow.frame.width, accuracy: 0.5, file: file, line: line)
+        XCTAssertEqual(
+            automaticRow.frame.height,
+            DashboardAdvancedPageLayout.compactTwoLineRowHeight,
+            accuracy: 0.5,
+            file: file,
+            line: line
+        )
+        if !manualRow.isHidden {
+            XCTAssertEqual(
+                manualRow.frame.height,
+                DashboardAdvancedPageLayout.compactTwoLineRowHeight,
+                accuracy: 0.5,
+                file: file,
+                line: line
+            )
+        }
+        XCTAssertEqual(dashboardRow.frame.height, 62, accuracy: 0.5, file: file, line: line)
+        if let rowsStack = automaticRow.superview,
+           let card = rowsStack.superview {
+            let visibleRowHeight = DashboardAdvancedPageLayout.compactTwoLineRowHeight +
+                (manualRow.isHidden ? 0 : DashboardAdvancedPageLayout.compactTwoLineRowHeight) +
+                62
+            let visibleSeparatorCount = descendants(of: card)
+                .compactMap { $0 as? NSBox }
+                .filter { !$0.isHidden }
+                .count
+            XCTAssertEqual(
+                card.frame.height,
+                visibleRowHeight + CGFloat(visibleSeparatorCount) * DashboardSettingsComponents.settingsSeparatorHeight,
+                accuracy: 0.5,
+                file: file,
+                line: line
+            )
+        } else {
+            XCTFail("Expected OpenCodex rows to be hosted by a card", file: file, line: line)
+        }
         XCTAssertNotNil(
             widthConstraint(between: manualRow, and: automaticRow, in: page),
             "Manual port row must use the automatic row as its width reference",

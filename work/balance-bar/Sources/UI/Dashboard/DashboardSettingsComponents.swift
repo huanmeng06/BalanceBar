@@ -1,6 +1,8 @@
 import AppKit
 
 enum DashboardSettingsComponents {
+    static let settingsSeparatorHeight: CGFloat = 1
+
     struct PopUpItem {
         let title: String
         let representedObject: Any?
@@ -158,7 +160,7 @@ enum DashboardSettingsComponents {
             if shouldInsertSeparator {
                 let separator = NSBox()
                 separator.boxType = .separator
-                separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                separator.heightAnchor.constraint(equalToConstant: settingsSeparatorHeight).isActive = true
                 rowsStack.addArrangedSubview(separator)
                 separator.widthAnchor.constraint(equalTo: rowsStack.widthAnchor, constant: -32).isActive = true
                 separators.append(separator)
@@ -178,7 +180,7 @@ enum DashboardSettingsComponents {
             let fittingHeight = rowHeight?(row) ?? row.fittingSize.height
             return partial + max(1, explicitHeight ?? fittingHeight)
         }
-        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count)
+        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count) * settingsSeparatorHeight
         let cardHeightConstraint = card.heightAnchor.constraint(
             equalToConstant: max(1, ceil(rowsHeight + separatorHeight))
         )
