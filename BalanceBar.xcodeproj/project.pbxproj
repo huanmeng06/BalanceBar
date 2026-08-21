@@ -13,6 +13,8 @@
 		A10000000000000000000022 /* CodexIcon.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* CodexIcon.svg */; };
 		A10000000000000000000023 /* Claude.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Claude.svg */; };
 		A10000000000000000000024 /* ClaudeThinking.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* ClaudeThinking.svg */; };
+		A100000000000000000000E1 /* GitHub.svg in Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E0 /* GitHub.svg */; };
+		A100000000000000000000E2 /* GitHub.svg in Test Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E0 /* GitHub.svg */; };
 		A10000000000000000000025 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* AppKit.framework */; };
 		A10000000000000000000026 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
 		A10000000000000000000027 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* SwiftUI.framework */; };
@@ -87,6 +89,7 @@
 		A10000000000000000000013 /* CodexIcon.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = CodexIcon.svg; sourceTree = "<group>"; };
 		A10000000000000000000014 /* Claude.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Claude.svg; sourceTree = "<group>"; };
 		A10000000000000000000015 /* ClaudeThinking.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = ClaudeThinking.svg; sourceTree = "<group>"; };
+		A100000000000000000000E0 /* GitHub.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = GitHub.svg; sourceTree = "<group>"; };
 		A10000000000000000000016 /* BalanceBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BalanceBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000017 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		A10000000000000000000018 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -206,6 +209,7 @@
 				A10000000000000000000013 /* CodexIcon.svg */,
 				A10000000000000000000014 /* Claude.svg */,
 				A10000000000000000000015 /* ClaudeThinking.svg */,
+				A100000000000000000000E0 /* GitHub.svg */,
 			);
 			name = "work/balance-bar";
 			path = "work/balance-bar";
@@ -487,6 +491,7 @@
 				A10000000000000000000022 /* CodexIcon.svg in Resources */,
 				A10000000000000000000023 /* Claude.svg in Resources */,
 				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
+				A100000000000000000000E1 /* GitHub.svg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -494,6 +499,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A100000000000000000000E2 /* GitHub.svg in Test Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
