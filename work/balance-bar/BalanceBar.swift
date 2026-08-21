@@ -306,6 +306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 currentProvider: { [weak self] client in
                     self?.ccSwitchRepository.loadCurrent(appType: client.appType)
                 },
+                isActiveClient: { [weak self] client in
+                    self?.activeClient == client
+                },
                 render: { [weak self] snapshot in self?.render(snapshot) },
                 storeClientSnapshot: { [weak self] client, providerID, snapshot in
                     self?.clientSnapshots[client] = (providerID, snapshot)
