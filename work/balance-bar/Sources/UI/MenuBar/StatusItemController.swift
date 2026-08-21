@@ -507,6 +507,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             iconYOffset = 0
         }
+        let officialTextYOffset: CGFloat
+        if effectiveSnapshot.kind == .official, settings.showAmount {
+            officialTextYOffset = MenuBarLayout.officialTextYOffset(
+                hasSecondary: hasSecondary
+            )
+        } else {
+            officialTextYOffset = 0
+        }
         let frames = MenuBarLayout.frames(
             buttonSize: NSSize(width: buttonWidth, height: buttonHeight),
             geometry: geometry,
@@ -517,7 +525,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             ),
             textOffset: NSSize(
                 width: settings.amountOffsetX,
-                height: settings.amountOffsetY
+                height: settings.amountOffsetY + officialTextYOffset
             )
         )
         menuBarContentStack.frame = frames.content

@@ -11,6 +11,7 @@ final class DashboardMenuBarPage {
         let secondary: String
         let hasSecondary: Bool
         let isBalance: Bool
+        let isOfficial: Bool
     }
 
     static func presentation(
@@ -28,7 +29,8 @@ final class DashboardMenuBarPage {
                 && showReset
                 && effective.kind == .official
                 && !secondary.isEmpty,
-            isBalance: effective.kind == .balance
+            isBalance: effective.kind == .balance,
+            isOfficial: effective.kind == .official
         )
     }
 
@@ -293,6 +295,14 @@ final class DashboardMenuBarPage {
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
         let iconOffset = NSSize(width: CGFloat(iconOffsetX), height: CGFloat(iconOffsetY))
         let amountOffset = NSSize(width: CGFloat(amountOffsetX), height: CGFloat(amountOffsetY))
+        let officialTextYOffset: CGFloat
+        if presentation.isOfficial, preferences.showMenuBarAmount {
+            officialTextYOffset = MenuBarLayout.officialTextYOffset(
+                hasSecondary: presentation.hasSecondary
+            )
+        } else {
+            officialTextYOffset = 0
+        }
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
         if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
@@ -311,7 +321,7 @@ final class DashboardMenuBarPage {
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
                 translationX: amountOffset.width,
-                y: -amountOffset.height
+                y: -(amountOffset.height + officialTextYOffset)
             ))
         }
     }

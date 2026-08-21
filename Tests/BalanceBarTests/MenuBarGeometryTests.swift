@@ -145,6 +145,19 @@ final class MenuBarGeometryTests: XCTestCase {
         ))
     }
 
+    func testOfficialTextDefaultOffsetsFollowResetVisibility() {
+        XCTAssertEqual(
+            MenuBarLayout.officialTextYOffset(hasSecondary: false),
+            0.5,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            MenuBarLayout.officialTextYOffset(hasSecondary: true),
+            -0.1,
+            accuracy: 0.001
+        )
+    }
+
     func testOfficialIconCenterRemainsAlignedToAPIReference() {
         let primarySize = NSSize(width: 43.2, height: 13.1)
         let secondarySize = NSSize(width: 44.3, height: 9.1)

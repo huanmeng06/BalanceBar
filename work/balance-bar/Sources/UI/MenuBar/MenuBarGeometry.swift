@@ -90,6 +90,16 @@ enum MenuBarLayout {
     static let singleLineTextYOffset: CGFloat = 0.25
     static let singleLineIconYOffset: CGFloat = 0.25
 
+    // Official quota text baseline (visual: positive = up). Percentage-only
+    // text sits slightly higher; the two-line layout with reset time sits
+    // slightly lower. User fine-tune offsets stack on top of these defaults.
+    static let officialAmountOnlyTextYOffset: CGFloat = 0.5
+    static let officialSecondaryTextYOffset: CGFloat = -0.1
+
+    static func officialTextYOffset(hasSecondary: Bool) -> CGFloat {
+        hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
+    }
+
     static func geometry(
         primarySize: NSSize,
         secondarySize: NSSize,

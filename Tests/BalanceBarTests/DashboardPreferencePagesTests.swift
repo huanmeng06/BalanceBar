@@ -235,6 +235,74 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .allSatisfy { $0.isEnabled })
     }
 
+    func testMenuBarOfficialPreviewAppliesDefaultTextBaseline() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarOfficialBaseline.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        let controller = DashboardMenuBarPage()
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+
+        preferences.showMenuBarReset = false
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        let previewText = descendants(of: page).first {
+            $0.identifier?.rawValue == "menuBarPreviewText"
+        }
+        // Percentage-only official text defaults to 0.5pt higher.
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            -0.5,
+            accuracy: 0.001
+        )
+
+        preferences.showMenuBarReset = true
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        // With reset time shown the text block defaults to 0.1pt lower.
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            0.1,
+            accuracy: 0.001
+        )
+
+        // User fine-tune offsets stack on top of the official default baseline.
+        preferences.menuBarAmountOffsetY = 0.2
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            -(0.2 + MenuBarLayout.officialSecondaryTextYOffset),
+            accuracy: 0.001
+        )
+    }
+
     func testLogsKeepViewerTextAndSeverityStyling() {
         let text = "[12:00:00] [ERROR] [configuration] value=42%"
         let styled = DashboardLogsPage.styledLog(text)
