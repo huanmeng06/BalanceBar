@@ -109,9 +109,9 @@ enum OpenCodexCardCategory: Equatable, Hashable {
     var unavailableTitle: String {
         switch self {
         case .quota:
-            return tr("额度不可用", "Quota unavailable")
+            return tr("额度不可用", "Quota unavailable", "額度不可用", "クォータを利用できません")
         case .balance:
-            return tr("余额不可用", "Balance unavailable")
+            return tr("余额不可用", "Balance unavailable", "餘額不可用", "残高を利用できません")
         }
     }
 
@@ -553,7 +553,9 @@ enum OpenCodexCardPlanner {
                 category: .balance,
                 reason: tr(
                     "未读取到上游 provider 身份",
-                    "The upstream provider identity was not read"
+                    "The upstream provider identity was not read",
+                    "未讀取到上游 provider 身分",
+                    "上流プロバイダーの識別情報が読み取られていません"
                 )
             )
         }
@@ -627,11 +629,15 @@ enum OpenCodexCardPlanner {
             let reason = candidates.count > 1 || credentialMatches.count > 1
                 ? tr(
                     "找到多个余额来源，无法确认账户",
-                    "Multiple balance sources were found; the account could not be confirmed"
+                    "Multiple balance sources were found; the account could not be confirmed",
+                    "找到多個餘額來源，無法確認帳戶",
+                    "複数の残高ソースが見つかり、アカウントを確認できませんでした"
                 )
                 : tr(
                     "未找到可验证的余额来源",
-                    "No verifiable balance source was found"
+                    "No verifiable balance source was found",
+                    "找不到可驗證的餘額來源",
+                    "検証可能な残高ソースが見つかりませんでした"
                 )
             return .unavailable(
                 category: .balance,

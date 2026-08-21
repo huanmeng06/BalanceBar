@@ -645,33 +645,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             statusMenu.addItem(makeQuickSwitchMenuItem())
         }
         statusMenu.addItem(
-            withTitle: tr("立即刷新", "Refresh Now"),
+            withTitle: tr("立即刷新", "Refresh Now", "立即重新整理", "今すぐ更新"),
             action: #selector(manualRefresh),
             keyEquivalent: "r"
         ).target = self
         statusMenu.addItem(.separator())
         statusMenu.addItem(
-            withTitle: tr("打开主窗口", "Open Main Window"),
+            withTitle: tr("打开主窗口", "Open Main Window", "開啟主視窗", "メインウインドウを開く"),
             action: #selector(openDashboard),
             keyEquivalent: ""
         ).target = self
         if menuInput.showOpenChatGPTMenu {
             statusMenu.addItem(
-                withTitle: tr("打开 ChatGPT", "Open ChatGPT"),
+                withTitle: tr("打开 ChatGPT", "Open ChatGPT", "開啟 ChatGPT", "ChatGPT を開く"),
                 action: #selector(openChatGPT),
                 keyEquivalent: ""
             ).target = self
         }
         if menuInput.showOpenCCSwitchMenu {
             statusMenu.addItem(
-                withTitle: tr("打开 CC Switch", "Open CC Switch"),
+                withTitle: tr("打开 CC Switch", "Open CC Switch", "開啟 CC Switch", "CC Switch を開く"),
                 action: #selector(openCCSwitch),
                 keyEquivalent: ""
             ).target = self
         }
         if menuInput.showOpenCodexMenu {
             statusMenu.addItem(
-                withTitle: tr("打开 OpenCodex", "Open OpenCodex"),
+                withTitle: tr("打开 OpenCodex", "Open OpenCodex", "開啟 OpenCodex", "OpenCodex を開く"),
                 action: #selector(openOpenCodex),
                 keyEquivalent: ""
             ).target = self
@@ -681,7 +681,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         statusMenu.addItem(.separator())
         statusMenu.addItem(
-            withTitle: tr("退出 BalanceBar", "Quit BalanceBar"),
+            withTitle: tr("退出 BalanceBar", "Quit BalanceBar", "結束 BalanceBar", "BalanceBar を終了"),
             action: #selector(quit),
             keyEquivalent: "q"
         ).target = self
@@ -702,8 +702,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeStatusLinksMenuItem() -> NSMenuItem {
-        let parent = NSMenuItem(title: tr("查看状态", "View Status"), action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: tr("查看状态", "View Status"))
+        let parent = NSMenuItem(title: tr("查看状态", "View Status", "檢視狀態", "ステータスを表示"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: tr("查看状态", "View Status", "檢視狀態", "ステータスを表示"))
         for link in menuInput.statusLinks {
             let title = link.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let address = link.url.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -721,7 +721,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if submenu.items.isEmpty {
             let empty = NSMenuItem(
-                title: tr("尚未添加状态链接", "No status links configured"),
+                title: tr("尚未添加状态链接", "No status links configured", "尚未新增狀態連結", "ステータスリンクが設定されていません"),
                 action: nil,
                 keyEquivalent: ""
             )
@@ -733,15 +733,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeQuickSwitchMenuItem() -> NSMenuItem {
-        let parent = NSMenuItem(title: tr("快速切换", "Quick Switch"), action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: tr("快速切换", "Quick Switch"))
+        let parent = NSMenuItem(title: tr("快速切换", "Quick Switch", "快速切換", "クイック切り替え"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: tr("快速切换", "Quick Switch", "快速切換", "クイック切り替え"))
         submenu.minimumWidth = 210
         let choiceSummary = menuInput.choices.map {
             "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
         }.joined(separator: "|")
         let menuChoices = QuickSwitchMenuModel.entries(from: menuInput.choices)
         if menuChoices.isEmpty {
-            let empty = NSMenuItem(title: tr("未找到 Codex 供应商", "No Codex Provider Found"), action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: tr("未找到 Codex 供应商", "No Codex Provider Found", "找不到 Codex 供應商", "Codex プロバイダーが見つかりません"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             submenu.addItem(empty)
         } else {
@@ -793,7 +793,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let isBalance = snapshot.kind == .balance
         let layout = OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
-            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
+            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -819,7 +819,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if isBalance {
             quotaDetail.frame = layout.quotaDetail
             amount.frame = layout.amount
-            let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
+            let linkPrefix = makeOverviewLabel(tr("官方链接：", "Official Link:", "官方連結：", "公式リンク："), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
             linkPrefix.frame = layout.linkPrefix ?? .zero
             view.addSubview(linkPrefix)
@@ -847,17 +847,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.isEnabled = false
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 68))
         let title = makeOverviewLabel(
-            tr("OpenCodex", "OpenCodex"),
+            tr("OpenCodex", "OpenCodex", "OpenCodex", "OpenCodex"),
             font: .systemFont(ofSize: 15, weight: .semibold)
         )
         title.frame = NSRect(x: 14, y: 38, width: 220, height: 20)
         let status: String
         if let state = menuInput.openCodexState?.managementAvailable, !state {
-            status = tr("OpenCodex 管理接口不可用", "OpenCodex management API is unavailable")
+            status = tr("OpenCodex 管理接口不可用", "OpenCodex management API is unavailable", "OpenCodex 管理介面不可用", "OpenCodex 管理 API を利用できません")
         } else if menuInput.openCodexState?.preferenceDataAvailable == false {
-            status = tr("暂未读取到 OpenCodex 精选模型", "OpenCodex chosen models are not available yet")
+            status = tr("暂未读取到 OpenCodex 精选模型", "OpenCodex chosen models are not available yet", "尚未讀取到 OpenCodex 精選模型", "OpenCodex の選択モデルはまだ利用できません")
         } else {
-            status = tr("没有配置 OpenCodex 精选模型", "No OpenCodex chosen models are configured")
+            status = tr("没有配置 OpenCodex 精选模型", "No OpenCodex chosen models are configured", "未設定 OpenCodex 精選模型", "OpenCodex の選択モデルが設定されていません")
         }
         let detail = makeOverviewLabel(status, font: .systemFont(ofSize: 12))
         detail.textColor = .secondaryLabelColor
@@ -872,11 +872,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let category = card.data.category
         let layout = OpenCodexCardLayout.frames(
             for: category,
-            linkPrefixWidth: AppLanguage.usesSimplifiedChinese ? 62 : 72
+            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let titleText = OpenCodexCardPresentation.identity(for: card)
-            + (card.isCurrent ? tr(" · 当前", " · Current") : "")
+            + (card.isCurrent ? tr(" · 当前", " · Current", " · 目前", " · 現在") : "")
         let provider = makeOverviewLabel(titleText, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
         let updatedAt: Date?
@@ -909,7 +909,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             detail = makeOverviewLabel(label, font: .systemFont(ofSize: 13, weight: .medium))
             detail.frame = layout.quotaDetail
             secondary = makeOverviewLabel(
-                reset.map { tr("重置：\($0)", "Reset: \($0)") } ?? tr("重置时间不可用", "Reset time unavailable"),
+                reset.map { tr("重置：\($0)", "Reset: \($0)", "重設：\($0)", "リセット：\($0)") } ?? tr("重置时间不可用", "Reset time unavailable", "重設時間不可用", "リセット時刻を利用できません"),
                 font: .systemFont(ofSize: 13, weight: .regular)
             )
             secondary.textColor = .secondaryLabelColor
@@ -918,9 +918,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             primary = makeOverviewLabel(Self.formatBalanceSummary(amount, unit: unit), font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
             primary.alignment = .right
             primary.frame = layout.amount
-            detail = makeOverviewLabel(tr("剩余额度", "Remaining Balance"), font: .systemFont(ofSize: 13, weight: .medium))
+            detail = makeOverviewLabel(tr("剩余额度", "Remaining Balance", "剩餘額度", "残りのクォータ"), font: .systemFont(ofSize: 13, weight: .medium))
             detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(tr("官方链接：", "Official Link:"), font: .systemFont(ofSize: 12, weight: .regular))
+            secondary = makeOverviewLabel(tr("官方链接：", "Official Link:", "官方連結：", "公式リンク："), font: .systemFont(ofSize: 12, weight: .regular))
             secondary.textColor = .secondaryLabelColor
             secondary.frame = layout.linkPrefix ?? .zero
             if let websiteURL, let linkFrame = layout.link {
@@ -934,11 +934,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             primary.alignment = .right
             primary.frame = layout.amount
             detail = makeOverviewLabel(
-                category == .quota ? tr("正在读取额度…", "Reading quota…") : tr("正在读取余额…", "Reading balance…"),
+                category == .quota ? tr("正在读取额度…", "Reading quota…", "正在讀取額度…", "クォータを読み込み中…") : tr("正在读取余额…", "Reading balance…", "正在讀取餘額…", "残高を読み込み中…"),
                 font: .systemFont(ofSize: 13, weight: .medium)
             )
             detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(tr("尚未获得真实数据", "No live data received yet"), font: .systemFont(ofSize: 13, weight: .regular))
+            secondary = makeOverviewLabel(tr("尚未获得真实数据", "No live data received yet", "尚未獲得真實資料", "実際のデータはまだ受信されていません"), font: .systemFont(ofSize: 13, weight: .regular))
             secondary.textColor = .secondaryLabelColor
             secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
         case .unavailable(_, let reason):

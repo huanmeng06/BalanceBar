@@ -51,9 +51,9 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        let activity = DashboardSettingsComponents.makeSettingsSection(tr("任务状态", "Task Status"), rows: [
+        let activity = DashboardSettingsComponents.makeSettingsSection(tr("任务状态", "Task Status", "任務狀態", "タスクステータス"), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("任务运行时播放图标动画", "Animate Icon While a Task Is Running"),
+                tr("任务运行时播放图标动画", "Animate Icon While a Task Is Running", "任務執行時播放圖示動畫", "タスク実行中にアイコンをアニメーション表示"),
                 control: animation
             )
         ])
@@ -66,7 +66,9 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         )
         let statusLabel = NSTextField(wrappingLabelWithString: tr(
             "当前端口：\(initialResolution.port)",
-            "Current port: \(initialResolution.port)"
+            "Current port: \(initialResolution.port)",
+            "目前連接埠：\(initialResolution.port)",
+            "現在のポート：\(initialResolution.port)"
         ))
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
@@ -78,7 +80,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
         let automaticRow = DashboardSettingsComponents.makeSettingsRow(
-            tr("自动检测端口", "Detect Port Automatically"),
+            tr("自动检测端口", "Detect Port Automatically", "自動偵測連接埠", "ポートを自動検出"),
             subtitle: statusLabel.stringValue,
             subtitleLabel: statusLabel,
             control: automaticSwitch,
@@ -104,7 +106,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         manualPortRow.isHidden = automaticDetection
 
         let openButton = NSButton(
-            title: tr("打开", "Open"),
+            title: tr("打开", "Open", "開啟", "開く"),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openOpenCodex(_:))
         )
@@ -112,13 +114,13 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         automaticSwitchState(automaticSwitch, portField: portField, manualPortRow: manualPortRow, statusLabel: statusLabel, errorLabel: errorLabel, openButton: openButton)
 
         let openButtonRow = DashboardSettingsComponents.makeSettingsRow(
-            tr("打开 OpenCodex 仪表盘", "Open OpenCodex Dashboard"),
+            tr("打开 OpenCodex 仪表盘", "Open OpenCodex Dashboard", "開啟 OpenCodex 儀表板", "OpenCodex ダッシュボードを開く"),
             control: openButton,
             minimumHeight: 62
         )
         openButtonRow.identifier = NSUserInterfaceItemIdentifier("openCodexDashboardRow")
         let openCodex = DashboardSettingsComponents.makeSettingsSection(
-            tr("OpenCodex", "OpenCodex"),
+            tr("OpenCodex", "OpenCodex", "OpenCodex", "OpenCodex"),
             rows: [automaticRow, manualPortRow, openButtonRow],
             rowWidthReference: automaticRow,
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
@@ -137,22 +139,22 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         updateCardLayout()
 
         let refreshLog = NSButton(
-            title: tr("重新载入", "Reload"),
+            title: tr("重新载入", "Reload", "重新載入", "再読み込み"),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.refreshLog(_:))
         )
         let revealLog = NSButton(
-            title: tr("在 Finder 中显示", "Show in Finder"),
+            title: tr("在 Finder 中显示", "Show in Finder", "在 Finder 中顯示", "Finder に表示"),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.revealLog(_:))
         )
         let logButtons = NSStackView(views: [refreshLog, revealLog])
         logButtons.orientation = .horizontal
         logButtons.spacing = 8
-        let logs = DashboardSettingsComponents.makeSettingsSection(tr("诊断", "Diagnostics"), rows: [
+        let logs = DashboardSettingsComponents.makeSettingsSection(tr("诊断", "Diagnostics", "診斷", "診断"), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("调试日志", "Debug Log"),
-                subtitle: tr("记录运行状态与错误", "Records runtime status and errors"),
+                tr("调试日志", "Debug Log", "偵錯日誌", "デバッグログ"),
+                subtitle: tr("记录运行状态与错误", "Records runtime status and errors", "記錄執行狀態與錯誤", "実行状態とエラーを記録します"),
                 control: logButtons
             ),
             input.logViewer
@@ -225,13 +227,15 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         )
         heightConstraint.isActive = true
         manualPortHeightConstraint = heightConstraint
-        let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually"))
+        let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually", "手動輸入連接埠號", "ポートを手動で入力"))
         title.font = .systemFont(ofSize: 14, weight: .semibold)
         title.isEditable = false
         title.isSelectable = false
         let detail = NSTextField(wrappingLabelWithString: tr(
             "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
-            "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
+            "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection",
+            "僅接受去除空格後的十進位 1–65535；清空後恢復自動偵測",
+            "スペースを除いた 1～65535 の十進数のみ受け付けます。空にすると自動検出に戻ります"
         ))
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
@@ -312,7 +316,9 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         if let canOpen { openButton?.isEnabled = canOpen }
         portStatusLabel?.stringValue = tr(
             "当前端口：\(resolution.port)",
-            "Current port: \(resolution.port)"
+            "Current port: \(resolution.port)",
+            "目前連接埠：\(resolution.port)",
+            "現在のポート：\(resolution.port)"
         )
     }
 
@@ -342,7 +348,9 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             portErrorLabel?.isHidden = false
             portErrorLabel?.stringValue = tr(
                 "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
-                "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
+                "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection",
+                "請輸入 1 到 65535 的十進位連接埠；空值恢復自動偵測",
+                "1～65535 の十進数のポートを入力してください。空にすると自動検出に戻ります"
             )
             manualPortHeightConstraint?.constant = DashboardAdvancedPageLayout.invalidPortRowHeight
             updateCardLayout()
