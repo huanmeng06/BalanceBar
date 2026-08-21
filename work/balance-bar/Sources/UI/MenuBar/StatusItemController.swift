@@ -22,6 +22,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showReset: Bool
         let horizontalPadding: CGFloat
         let keepMenuOpenAfterRefresh: Bool
+        let iconOffsetX: CGFloat
+        let iconOffsetY: CGFloat
+        let amountOffsetX: CGFloat
+        let amountOffsetY: CGFloat
+
+        init(
+            showIcon: Bool,
+            showAmount: Bool,
+            showReset: Bool,
+            horizontalPadding: CGFloat,
+            keepMenuOpenAfterRefresh: Bool,
+            iconOffsetX: CGFloat = 0,
+            iconOffsetY: CGFloat = 0,
+            amountOffsetX: CGFloat = 0,
+            amountOffsetY: CGFloat = 0
+        ) {
+            self.showIcon = showIcon
+            self.showAmount = showAmount
+            self.showReset = showReset
+            self.horizontalPadding = horizontalPadding
+            self.keepMenuOpenAfterRefresh = keepMenuOpenAfterRefresh
+            self.iconOffsetX = iconOffsetX
+            self.iconOffsetY = iconOffsetY
+            self.amountOffsetX = amountOffsetX
+            self.amountOffsetY = amountOffsetY
+        }
     }
 
     struct MenuInput {
@@ -484,7 +510,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let frames = MenuBarLayout.frames(
             buttonSize: NSSize(width: buttonWidth, height: buttonHeight),
             geometry: geometry,
-            iconViewYOffset: iconYOffset
+            iconViewYOffset: iconYOffset,
+            iconOffset: NSSize(
+                width: settings.iconOffsetX,
+                height: settings.iconOffsetY
+            ),
+            textOffset: NSSize(
+                width: settings.amountOffsetX,
+                height: settings.amountOffsetY
+            )
         )
         menuBarContentStack.frame = frames.content
         menuBarIconSlot.frame = frames.iconSlot

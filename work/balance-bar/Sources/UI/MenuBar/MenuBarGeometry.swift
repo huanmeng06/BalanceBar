@@ -143,10 +143,16 @@ enum MenuBarLayout {
             : .zero
     }
 
+    /// Frames are expressed in visual terms: a positive offset x moves the
+    /// element right and a positive offset y moves it up. The icon slot is
+    /// unflipped while the text stack lives in a flipped container, so the
+    /// same semantic y offset maps to opposite frame y signs internally.
     static func frames(
         buttonSize: NSSize,
         geometry: MenuBarGeometry,
-        iconViewYOffset: CGFloat
+        iconViewYOffset: CGFloat,
+        iconOffset: NSSize = .zero,
+        textOffset: NSSize = .zero
     ) -> MenuBarLayoutFrames {
         let content = NSRect(
             x: floor(max(0, (buttonSize.width - geometry.contentWidth) / 2)),
@@ -161,14 +167,14 @@ enum MenuBarLayout {
             height: geometry.iconWidth
         )
         let icon = NSRect(
-            x: 0,
-            y: iconViewYOffset,
+            x: iconOffset.width,
+            y: iconViewYOffset + iconOffset.height,
             width: iconSlot.width,
             height: iconSlot.height
         )
         let text = NSRect(
-            x: geometry.iconWidth + geometry.gap,
-            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2)),
+            x: geometry.iconWidth + geometry.gap + textOffset.width,
+            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2)) - textOffset.height,
             width: geometry.textWidth,
             height: geometry.textHeight
         )

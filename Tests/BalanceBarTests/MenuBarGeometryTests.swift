@@ -107,6 +107,44 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(frames.text, NSRect(x: 24, y: 2, width: 49, height: 14))
     }
 
+    func testMenuBarFramesApplyIconAndTextOffsets() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 43.2, height: 13.1),
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+        let base = MenuBarLayout.frames(
+            buttonSize: NSSize(width: 100, height: 24),
+            geometry: geometry,
+            iconViewYOffset: MenuBarLayout.singleLineIconYOffset
+        )
+        let offset = MenuBarLayout.frames(
+            buttonSize: NSSize(width: 100, height: 24),
+            geometry: geometry,
+            iconViewYOffset: MenuBarLayout.singleLineIconYOffset,
+            iconOffset: NSSize(width: 2, height: 3),
+            textOffset: NSSize(width: -1, height: 4)
+        )
+
+        XCTAssertEqual(offset.content, base.content)
+        XCTAssertEqual(offset.iconSlot, base.iconSlot)
+        XCTAssertEqual(offset.icon, NSRect(
+            x: base.icon.minX + 2,
+            y: base.icon.minY + 3,
+            width: base.icon.width,
+            height: base.icon.height
+        ))
+        XCTAssertEqual(offset.text, NSRect(
+            x: base.text.minX - 1,
+            y: base.text.minY - 4,
+            width: base.text.width,
+            height: base.text.height
+        ))
+    }
+
     func testOfficialIconCenterRemainsAlignedToAPIReference() {
         let primarySize = NSSize(width: 43.2, height: 13.1)
         let secondarySize = NSSize(width: 44.3, height: 9.1)

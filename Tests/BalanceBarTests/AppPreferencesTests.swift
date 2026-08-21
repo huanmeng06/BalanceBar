@@ -76,6 +76,40 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarHorizontalPadding, 14)
     }
 
+    func testMenuBarElementOffsetsDefaultRoundTripAndClamp() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 0)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, 0)
+        XCTAssertEqual(preferences.menuBarAmountOffsetX, 0)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, 0)
+
+        preferences.menuBarIconOffsetX = 3
+        preferences.menuBarIconOffsetY = -4
+        preferences.menuBarAmountOffsetX = 10
+        preferences.menuBarAmountOffsetY = -10
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 3)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, -4)
+        XCTAssertEqual(preferences.menuBarAmountOffsetX, 10)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10)
+
+        preferences.menuBarIconOffsetX = 100
+        preferences.menuBarIconOffsetY = -100
+        preferences.menuBarAmountOffsetX = 11
+        preferences.menuBarAmountOffsetY = -11
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 10)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, -10)
+        XCTAssertEqual(preferences.menuBarAmountOffsetX, 10)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10)
+
+        defaults.set(50, forKey: AppPreferences.menuBarIconOffsetXKey)
+        defaults.set(-50, forKey: AppPreferences.menuBarAmountOffsetYKey)
+        defaults.set(7, forKey: AppPreferences.menuBarIconOffsetYKey)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 10)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, 7)
+    }
+
     func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

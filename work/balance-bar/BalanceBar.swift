@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection"]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -188,6 +188,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             setSortAlphabetically: { [weak self] enabled in self?.sortProvidersAlphabetically = enabled },
             onToggle: { [weak self] identifier, enabled in self?.handleDashboardToggle(identifier: identifier, enabled: enabled) },
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
+            onOffsetAdjust: { [weak self] identifier, delta in
+                self?.handleDashboardOffsetAdjust(identifier: identifier, delta: delta)
+            },
+            onOffsetReset: { [weak self] identifier in
+                self?.handleDashboardOffsetReset(identifier: identifier)
+            },
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
             onOpenCCSwitch: { [weak self] in self?.openCCSwitch() },
             onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
@@ -268,6 +274,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var keepMenuOpenAfterRefresh: Bool { get { preferences.keepMenuOpenAfterRefresh } set { preferences.keepMenuOpenAfterRefresh = newValue } }
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
+    private var menuBarIconOffsetX: Int { get { preferences.menuBarIconOffsetX } set { preferences.menuBarIconOffsetX = newValue } }
+    private var menuBarIconOffsetY: Int { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
+    private var menuBarAmountOffsetX: Int { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
+    private var menuBarAmountOffsetY: Int { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
     private var openCodexDashboardPortOverride: Int? {
         get { preferences.openCodexDashboardPortOverride }
         set { preferences.openCodexDashboardPortOverride = newValue }
@@ -472,7 +482,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showAmount: showMenuBarAmount,
             showReset: showMenuBarReset,
             horizontalPadding: menuBarHorizontalPadding,
-            keepMenuOpenAfterRefresh: keepMenuOpenAfterRefresh
+            keepMenuOpenAfterRefresh: keepMenuOpenAfterRefresh,
+            iconOffsetX: CGFloat(menuBarIconOffsetX),
+            iconOffsetY: CGFloat(menuBarIconOffsetY),
+            amountOffsetX: CGFloat(menuBarAmountOffsetX),
+            amountOffsetY: CGFloat(menuBarAmountOffsetY)
         )
     }
 
@@ -873,6 +887,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         if refreshTimers {
             configureRefreshTimers()
         }
+    }
+
+    private func handleDashboardOffsetAdjust(identifier: String, delta: Int) {
+        switch identifier {
+        case AppPreferences.menuBarIconOffsetXKey:
+            preferences.menuBarIconOffsetX += delta
+        case AppPreferences.menuBarIconOffsetYKey:
+            preferences.menuBarIconOffsetY += delta
+        case AppPreferences.menuBarAmountOffsetXKey:
+            preferences.menuBarAmountOffsetX += delta
+        case AppPreferences.menuBarAmountOffsetYKey:
+            preferences.menuBarAmountOffsetY += delta
+        default:
+            return
+        }
+        SwitchLog.write(
+            "preference changed; key=\(identifier); delta=\(delta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardOffsetReset(identifier: String) {
+        switch identifier {
+        case DashboardMenuBarPage.iconOffsetsResetIdentifier:
+            preferences.menuBarIconOffsetX = 0
+            preferences.menuBarIconOffsetY = 0
+        case DashboardMenuBarPage.amountOffsetsResetIdentifier:
+            preferences.menuBarAmountOffsetX = 0
+            preferences.menuBarAmountOffsetY = 0
+        default:
+            return
+        }
+        SwitchLog.write(
+            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
     }
 
     @objc private func dashboardMenuBarPaddingChanged(_ sender: NSSlider) {

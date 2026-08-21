@@ -11,6 +11,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onOpenOpenCodex: (() -> Void)?
     var onRefreshLog: (() -> Void)?
     var onRevealLog: (() -> Void)?
+    var onOffsetAdjust: ((String, Int) -> Void)?
+    var onOffsetReset: ((String) -> Void)?
 
     @objc func toggle(_ sender: NSSwitch) {
         guard let identifier = sender.identifier?.rawValue else { return }
@@ -47,5 +49,15 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func revealLog(_ sender: NSButton) {
         onRevealLog?()
+    }
+
+    @objc func adjustOffset(_ sender: NSButton) {
+        guard let identifier = sender.identifier?.rawValue else { return }
+        onOffsetAdjust?(identifier, sender.tag)
+    }
+
+    @objc func resetOffset(_ sender: NSButton) {
+        guard let identifier = sender.identifier?.rawValue else { return }
+        onOffsetReset?(identifier)
     }
 }

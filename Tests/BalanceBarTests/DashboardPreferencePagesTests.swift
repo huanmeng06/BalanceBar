@@ -66,6 +66,174 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(presentation.isBalance)
     }
 
+    func testRelayRoutesOffsetAdjustAndResetOnce() {
+        let relay = DashboardPreferencePageRelay()
+        var adjustments: [(String, Int)] = []
+        var resets: [String] = []
+        relay.onOffsetAdjust = { identifier, delta in adjustments.append((identifier, delta)) }
+        relay.onOffsetReset = { identifier in resets.append(identifier) }
+
+        let up = NSButton(
+            title: "Up",
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
+        )
+        up.identifier = NSUserInterfaceItemIdentifier(AppPreferences.menuBarIconOffsetYKey)
+        up.tag = 1
+        relay.adjustOffset(up)
+
+        let left = NSButton(
+            title: "Left",
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
+        )
+        left.identifier = NSUserInterfaceItemIdentifier(AppPreferences.menuBarAmountOffsetXKey)
+        left.tag = -1
+        relay.adjustOffset(left)
+
+        let reset = NSButton(
+            title: "Reset",
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        reset.identifier = NSUserInterfaceItemIdentifier(DashboardMenuBarPage.iconOffsetsResetIdentifier)
+        relay.resetOffset(reset)
+
+        XCTAssertEqual(adjustments.count, 2)
+        XCTAssertEqual(adjustments[0].0, AppPreferences.menuBarIconOffsetYKey)
+        XCTAssertEqual(adjustments[0].1, 1)
+        XCTAssertEqual(adjustments[1].0, AppPreferences.menuBarAmountOffsetXKey)
+        XCTAssertEqual(adjustments[1].1, -1)
+        XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
+    }
+
+    func testMenuBarFineTuneSectionRendersControlsAndPreviewOffsets() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarFineTune.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarIconOffsetX = 2
+        preferences.menuBarIconOffsetY = -3
+        preferences.menuBarAmountOffsetX = -4
+        preferences.menuBarAmountOffsetY = 5
+        let relay = DashboardPreferencePageRelay()
+        relay.onOffsetAdjust = { identifier, delta in
+            switch identifier {
+            case AppPreferences.menuBarIconOffsetXKey:
+                preferences.menuBarIconOffsetX += delta
+            case AppPreferences.menuBarIconOffsetYKey:
+                preferences.menuBarIconOffsetY += delta
+            case AppPreferences.menuBarAmountOffsetXKey:
+                preferences.menuBarAmountOffsetX += delta
+            case AppPreferences.menuBarAmountOffsetYKey:
+                preferences.menuBarAmountOffsetY += delta
+            default:
+                break
+            }
+        }
+        let controller = DashboardMenuBarPage()
+        let snapshot = Snapshot.balance("Provider", 12.34, "USD", nil, Date(timeIntervalSince1970: 1))
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let buttons = descendants(of: page).compactMap { $0 as? NSButton }
+        let iconXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
+        let iconYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
+        let amountXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
+        let amountYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
+        XCTAssertEqual(iconXButtons.count, 2)
+        XCTAssertEqual(iconYButtons.count, 2)
+        XCTAssertEqual(amountXButtons.count, 2)
+        XCTAssertEqual(amountYButtons.count, 2)
+        XCTAssertEqual(
+            Set(iconXButtons.map(\.tag)),
+            [-1, 1]
+        )
+        XCTAssertEqual(
+            Set(amountYButtons.map(\.tag)),
+            [-1, 1]
+        )
+        XCTAssertEqual(
+            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.title,
+            "归零"
+        )
+        XCTAssertEqual(
+            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetsResetIdentifier }?.title,
+            "归零"
+        )
+        XCTAssertEqual(
+            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.isEnabled,
+            true
+        )
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
+        let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
+        XCTAssertEqual(iconSummary?.stringValue, "X 2 · Y -3")
+        XCTAssertEqual(amountSummary?.stringValue, "X -4 · Y 5")
+        XCTAssertEqual(labels.first { $0.stringValue == "细节微调" }?.stringValue, "细节微调")
+        XCTAssertEqual(labels.first { $0.stringValue == "图标" }?.stringValue, "图标")
+        XCTAssertEqual(labels.first { $0.stringValue == "金额" }?.stringValue, "金额")
+
+        let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
+        let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
+        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 2, accuracy: 0.001)
+        XCTAssertEqual(
+            previewIcon?.layer?.affineTransform().ty ?? CGFloat.nan,
+            -3 - MenuBarLayout.singleLineIconYOffset,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -4, accuracy: 0.001)
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            -(5 + MenuBarLayout.singleLineTextYOffset),
+            accuracy: 0.001
+        )
+
+        guard let rightButton = iconXButtons.first(where: {
+            $0.tag == 1
+        }) else {
+            return XCTFail("Expected a right button for the icon X offset")
+        }
+        relay.adjustOffset(rightButton)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 3)
+
+        preferences.showMenuBarIcon = false
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        let refreshedButtons = descendants(of: page).compactMap { $0 as? NSButton }
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
+            .allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
+            .allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }
+            .allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
+            .allSatisfy { $0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
+            .allSatisfy { $0.isEnabled })
+    }
+
     func testLogsKeepViewerTextAndSeverityStyling() {
         let text = "[12:00:00] [ERROR] [configuration] value=42%"
         let styled = DashboardLogsPage.styledLog(text)

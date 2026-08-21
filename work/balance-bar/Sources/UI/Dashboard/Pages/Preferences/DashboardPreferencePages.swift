@@ -3,6 +3,8 @@ import AppKit
 struct DashboardPreferencePageActions {
     let onToggle: (String, Bool) -> Void
     let onInterval: (String, TimeInterval) -> Void
+    let onOffsetAdjust: (String, Int) -> Void
+    let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onOpenCCSwitch: () -> Void
     let onManualRefresh: () -> Void
@@ -28,6 +30,8 @@ final class DashboardPreferencePages {
         self.actions = actions
         relay.onToggle = actions.onToggle
         relay.onInterval = actions.onInterval
+        relay.onOffsetAdjust = actions.onOffsetAdjust
+        relay.onOffsetReset = actions.onOffsetReset
         relay.onLanguage = actions.onLanguage
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
         relay.onManualRefresh = actions.onManualRefresh

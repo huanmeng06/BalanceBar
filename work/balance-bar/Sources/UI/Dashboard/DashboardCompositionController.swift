@@ -29,6 +29,8 @@ struct DashboardCompositionActions {
     let setSortAlphabetically: (Bool) -> Void
     let onToggle: (String, Bool) -> Void
     let onInterval: (String, TimeInterval) -> Void
+    let onOffsetAdjust: (String, Int) -> Void
+    let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenOpenCodex: () -> Void
@@ -63,6 +65,8 @@ final class DashboardCompositionController {
         actions: DashboardPreferencePageActions(
             onToggle: actions.onToggle,
             onInterval: actions.onInterval,
+            onOffsetAdjust: actions.onOffsetAdjust,
+            onOffsetReset: actions.onOffsetReset,
             onLanguage: actions.onLanguage,
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onManualRefresh: actions.onManualRefresh,

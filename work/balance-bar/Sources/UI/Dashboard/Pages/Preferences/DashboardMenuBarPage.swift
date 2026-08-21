@@ -1,6 +1,11 @@
 import AppKit
 
 final class DashboardMenuBarPage {
+    static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
+    static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
+    static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
+    static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
+
     struct Presentation: Equatable {
         let primary: String
         let secondary: String
@@ -46,6 +51,10 @@ final class DashboardMenuBarPage {
     private var capsuleLeadingConstraint: NSLayoutConstraint?
     private var capsuleTrailingConstraint: NSLayoutConstraint?
     private var textWidthConstraint: NSLayoutConstraint?
+    private var iconOffsetSummaryLabel: NSTextField?
+    private var amountOffsetSummaryLabel: NSTextField?
+    private var iconOffsetButtons: [NSButton] = []
+    private var amountOffsetButtons: [NSButton] = []
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -84,6 +93,7 @@ final class DashboardMenuBarPage {
         previewIcon.imageScaling = .scaleProportionallyDown
         previewIcon.translatesAutoresizingMaskIntoConstraints = false
         previewIcon.wantsLayer = true
+        previewIcon.identifier = NSUserInterfaceItemIdentifier("menuBarPreviewIcon")
         previewIcon.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewPrimary.font = MenuBarLayout.primaryFont
@@ -93,6 +103,7 @@ final class DashboardMenuBarPage {
         previewText.addSubview(previewPrimary)
         previewText.addSubview(previewSecondary)
         previewText.wantsLayer = true
+        previewText.identifier = NSUserInterfaceItemIdentifier("menuBarPreviewText")
         previewText.layer?.setAffineTransform(.identity)
         let previewTextWidth = previewText.widthAnchor.constraint(equalToConstant: 32)
         previewTextWidth.priority = .defaultHigh
@@ -183,9 +194,52 @@ final class DashboardMenuBarPage {
             DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance"), control: amountToggle),
             DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available"), control: resetToggle)
         ])
+        let iconOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
+        let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
+        let iconOffsetControls = makeOffsetControls(
+            keyX: AppPreferences.menuBarIconOffsetXKey,
+            keyY: AppPreferences.menuBarIconOffsetYKey,
+            resetIdentifier: Self.iconOffsetsResetIdentifier,
+            relay: input.relay
+        )
+        let amountOffsetControls = makeOffsetControls(
+            keyX: AppPreferences.menuBarAmountOffsetXKey,
+            keyY: AppPreferences.menuBarAmountOffsetYKey,
+            resetIdentifier: Self.amountOffsetsResetIdentifier,
+            relay: input.relay
+        )
+        iconOffsetSummaryLabel = iconOffsetSummary
+        amountOffsetSummaryLabel = amountOffsetSummary
+        iconOffsetButtons = iconOffsetControls
+        amountOffsetButtons = amountOffsetControls
+        let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("细节微调", "Fine Tuning"),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("图标", "Icon"),
+                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    subtitleLabel: iconOffsetSummary,
+                    control: makeOffsetControlStack(buttons: iconOffsetControls),
+                    minimumHeight: 66
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("金额", "Amount"),
+                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    subtitleLabel: amountOffsetSummary,
+                    control: makeOffsetControlStack(buttons: amountOffsetControls),
+                    minimumHeight: 66
+                )
+            ]
+        )
         isBuilt = true
         refresh(snapshot: input.snapshot, preferences: input.preferences, menuBarSnapshot: input.menuBarSnapshot, iconImage: input.iconImage)
-        return DashboardSettingsComponents.makeSettingsPage([previewSection, displaySection])
+        return DashboardSettingsComponents.makeSettingsPage([
+            previewSection,
+            displaySection,
+            fineTuneSection
+        ])
     }
 
     func refresh(
@@ -229,16 +283,35 @@ final class DashboardMenuBarPage {
         capsuleTrailingConstraint?.constant = preferences.menuBarHorizontalPadding + chromeInset
         previewIcon.image = iconImage
         previewIcon.contentTintColor = .labelColor
+        let iconOffsetX = preferences.menuBarIconOffsetX
+        let iconOffsetY = preferences.menuBarIconOffsetY
+        let amountOffsetX = preferences.menuBarAmountOffsetX
+        let amountOffsetY = preferences.menuBarAmountOffsetY
+        iconOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: iconOffsetX, y: iconOffsetY)
+        amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
+        iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
+        amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
+        let iconOffset = NSSize(width: CGFloat(iconOffsetX), height: CGFloat(iconOffsetY))
+        let amountOffset = NSSize(width: CGFloat(amountOffsetX), height: CGFloat(amountOffsetY))
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
         if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -MenuBarLayout.singleLineIconYOffset
+                translationX: iconOffset.width,
+                y: iconOffset.height - MenuBarLayout.singleLineIconYOffset
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -MenuBarLayout.singleLineTextYOffset
+                translationX: amountOffset.width,
+                y: -(amountOffset.height + MenuBarLayout.singleLineTextYOffset)
+            ))
+        } else {
+            previewIcon.layer?.setAffineTransform(CGAffineTransform(
+                translationX: iconOffset.width,
+                y: iconOffset.height
+            ))
+            previewText.layer?.setAffineTransform(CGAffineTransform(
+                translationX: amountOffset.width,
+                y: -amountOffset.height
             ))
         }
     }
@@ -252,5 +325,87 @@ final class DashboardMenuBarPage {
         default:
             break
         }
+    }
+
+    private static func offsetSummaryText(x: Int, y: Int) -> String {
+        "X \(x) · Y \(y)"
+    }
+
+    private func makeOffsetControls(
+        keyX: String,
+        keyY: String,
+        resetIdentifier: String,
+        relay: DashboardPreferencePageRelay
+    ) -> [NSButton] {
+        [
+            makeOffsetButton(
+                title: tr("上", "Up"),
+                key: keyY,
+                delta: 1,
+                relay: relay
+            ),
+            makeOffsetButton(
+                title: tr("下", "Down"),
+                key: keyY,
+                delta: -1,
+                relay: relay
+            ),
+            makeOffsetButton(
+                title: tr("左", "Left"),
+                key: keyX,
+                delta: -1,
+                relay: relay
+            ),
+            makeOffsetButton(
+                title: tr("右", "Right"),
+                key: keyX,
+                delta: 1,
+                relay: relay
+            ),
+            makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
+        ]
+    }
+
+    private func makeOffsetButton(
+        title: String,
+        key: String,
+        delta: Int,
+        relay: DashboardPreferencePageRelay
+    ) -> NSButton {
+        let button = NSButton(
+            title: title,
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
+        )
+        button.identifier = NSUserInterfaceItemIdentifier(key)
+        button.tag = delta
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        return button
+    }
+
+    private func makeOffsetResetButton(
+        identifier: String,
+        relay: DashboardPreferencePageRelay
+    ) -> NSButton {
+        let button = NSButton(
+            title: tr("归零", "Reset"),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        button.identifier = NSUserInterfaceItemIdentifier(identifier)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        return button
+    }
+
+    private func makeOffsetControlStack(buttons: [NSButton]) -> NSStackView {
+        let stack = NSStackView(views: buttons)
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
     }
 }
