@@ -5,8 +5,8 @@ enum AppLanguage: String, CaseIterable {
     case system
     case simplifiedChinese
     case traditionalChinese
-    case japanese
     case english
+    case japanese
 
     static var selected: AppLanguage {
         get {
