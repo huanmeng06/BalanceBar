@@ -4,6 +4,20 @@ import XCTest
 
 @MainActor
 final class DashboardWindowDragRegionTests: XCTestCase {
+    func testTitlebarDragViewInvokesDoubleClickCallbackDeterministically() {
+        var doubleClickCount = 0
+        let dragView = DashboardTitlebarDragView(frame: NSRect(x: 0, y: 0, width: 880, height: 52))
+        dragView.onDoubleClick = {
+            doubleClickCount += 1
+        }
+
+        XCTAssertTrue(dragView.mouseDownCanMoveWindow)
+        XCTAssertTrue(dragView.handleMouseDown(clickCount: 2))
+        XCTAssertEqual(doubleClickCount, 1)
+        XCTAssertFalse(dragView.handleMouseDown(clickCount: 1))
+        XCTAssertEqual(doubleClickCount, 1)
+    }
+
     func testRegionIncludesOnlyTheTopTitlebarBand() {
         let region = DashboardWindowDragRegion(
             bounds: NSRect(x: 0, y: 0, width: 880, height: 620),
@@ -133,7 +147,7 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertTrue(frameView.hitTest(resizedContentPoint) === root)
     }
 
-    private func makeWindow() -> (
+    private func makeWindow(onDoubleClick: (() -> Void)? = nil) -> (
         window: NSWindow,
         root: DashboardContentRootView,
         dragView: DashboardTitlebarDragView
@@ -156,7 +170,11 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         let root = DashboardContentRootView(frame: window.contentView?.bounds ?? .zero)
         root.autoresizingMask = [.width, .height]
         window.contentView = root
-        let dragView = DashboardWindowDragPolicy.install(in: window, contentRoot: root)
+        let dragView = DashboardWindowDragPolicy.install(
+            in: window,
+            contentRoot: root,
+            onDoubleClick: onDoubleClick
+        )
         window.layoutIfNeeded()
         root.layoutSubtreeIfNeeded()
         return (window, root, dragView)

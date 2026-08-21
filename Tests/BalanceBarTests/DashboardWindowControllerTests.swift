@@ -4,6 +4,68 @@ import XCTest
 
 @MainActor
 final class DashboardWindowControllerTests: XCTestCase {
+    func testWindowDisablesNativeZoomButStaysResizable() throws {
+        let controller = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in NSView() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { controller.teardown() }
+
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        XCTAssertFalse(window.standardWindowButton(.zoomButton)?.isEnabled ?? true)
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertFalse(window.styleMask.contains(.fullScreen))
+    }
+
+    func testWindowZoomStateUsesTargetFrameAndRestoresRepeatedly() {
+        let normalFrame = NSRect(x: 120, y: 180, width: 880, height: 620)
+        let primaryVisibleFrame = NSRect(x: 0, y: 25, width: 1_440, height: 875)
+        let secondaryVisibleFrame = NSRect(x: 1_440, y: 25, width: 1_920, height: 1_055)
+        var state = DashboardWindowZoomState()
+
+        XCTAssertEqual(
+            state.toggle(currentFrame: normalFrame, targetFrame: primaryVisibleFrame),
+            primaryVisibleFrame
+        )
+        XCTAssertTrue(state.isZoomed)
+        XCTAssertEqual(
+            state.toggle(currentFrame: primaryVisibleFrame, targetFrame: secondaryVisibleFrame),
+            normalFrame
+        )
+        XCTAssertFalse(state.isZoomed)
+
+        XCTAssertEqual(
+            state.toggle(currentFrame: normalFrame, targetFrame: secondaryVisibleFrame),
+            secondaryVisibleFrame
+        )
+        XCTAssertEqual(state.toggle(currentFrame: secondaryVisibleFrame, targetFrame: primaryVisibleFrame), normalFrame)
+        XCTAssertFalse(state.isZoomed)
+    }
+
+    func testWindowZoomStateDoesNothingWithoutAScreenAndCanReset() {
+        let normalFrame = NSRect(x: 120, y: 180, width: 880, height: 620)
+        var state = DashboardWindowZoomState()
+
+        XCTAssertNil(state.toggle(currentFrame: normalFrame, targetFrame: nil))
+        XCTAssertFalse(state.isZoomed)
+        XCTAssertNil(state.toggle(currentFrame: normalFrame, targetFrame: .zero))
+        XCTAssertFalse(state.isZoomed)
+
+        let visibleFrame = NSRect(x: 0, y: 25, width: 1_440, height: 875)
+        XCTAssertEqual(state.toggle(currentFrame: normalFrame, targetFrame: visibleFrame), visibleFrame)
+        XCTAssertTrue(state.isZoomed)
+        state.reset()
+        XCTAssertFalse(state.isZoomed)
+    }
+
     func testRepeatedStartAndOpenKeepOneObserverMonitorAndWindow() {
         var shownPageCount = 0
         let choices = [
