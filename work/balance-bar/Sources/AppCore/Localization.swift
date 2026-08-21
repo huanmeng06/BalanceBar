@@ -85,13 +85,13 @@ enum AppLanguage: String, CaseIterable {
         case .system:
             return tr("跟随系统", "Follow System", "跟隨系統", "システムに従う", language: language)
         case .simplifiedChinese:
-            return tr("简体中文", "Simplified Chinese", "簡體中文", "簡体中国語", language: language)
+            return "简体中文"
         case .traditionalChinese:
-            return tr("繁體中文", "Traditional Chinese", "繁體中文", "繁体中国語", language: language)
+            return "繁體中文"
         case .japanese:
-            return tr("日本語", "Japanese", "日本語", "日本語", language: language)
+            return "日本語"
         case .english:
-            return tr("English", "English", "English", "English", language: language)
+            return "English"
         }
     }
 

@@ -100,25 +100,14 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .japanese), "システムに従う")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .english), "Follow System")
 
-        XCTAssertEqual(AppLanguage.simplifiedChinese.localizedTitle(using: .simplifiedChinese), "简体中文")
-        XCTAssertEqual(AppLanguage.simplifiedChinese.localizedTitle(using: .traditionalChinese), "簡體中文")
-        XCTAssertEqual(AppLanguage.simplifiedChinese.localizedTitle(using: .japanese), "簡体中国語")
-        XCTAssertEqual(AppLanguage.simplifiedChinese.localizedTitle(using: .english), "Simplified Chinese")
-
-        XCTAssertEqual(AppLanguage.traditionalChinese.localizedTitle(using: .simplifiedChinese), "繁體中文")
-        XCTAssertEqual(AppLanguage.traditionalChinese.localizedTitle(using: .traditionalChinese), "繁體中文")
-        XCTAssertEqual(AppLanguage.traditionalChinese.localizedTitle(using: .japanese), "繁体中国語")
-        XCTAssertEqual(AppLanguage.traditionalChinese.localizedTitle(using: .english), "Traditional Chinese")
-
-        XCTAssertEqual(AppLanguage.japanese.localizedTitle(using: .simplifiedChinese), "日本語")
-        XCTAssertEqual(AppLanguage.japanese.localizedTitle(using: .traditionalChinese), "日本語")
-        XCTAssertEqual(AppLanguage.japanese.localizedTitle(using: .japanese), "日本語")
-        XCTAssertEqual(AppLanguage.japanese.localizedTitle(using: .english), "Japanese")
-
-        XCTAssertEqual(AppLanguage.english.localizedTitle(using: .simplifiedChinese), "English")
-        XCTAssertEqual(AppLanguage.english.localizedTitle(using: .traditionalChinese), "English")
-        XCTAssertEqual(AppLanguage.english.localizedTitle(using: .japanese), "English")
-        XCTAssertEqual(AppLanguage.english.localizedTitle(using: .english), "English")
+        // Language options always keep their own original names; only
+        // "Follow System" is localized into the current UI language.
+        for language in allLanguages + [.system] {
+            XCTAssertEqual(AppLanguage.simplifiedChinese.localizedTitle(using: language), "简体中文")
+            XCTAssertEqual(AppLanguage.traditionalChinese.localizedTitle(using: language), "繁體中文")
+            XCTAssertEqual(AppLanguage.japanese.localizedTitle(using: language), "日本語")
+            XCTAssertEqual(AppLanguage.english.localizedTitle(using: language), "English")
+        }
     }
 
     func testTranslationReturnsLanguageSpecificStrings() {
@@ -149,11 +138,11 @@ final class LocalizationTests: XCTestCase {
                 case .simplifiedChinese:
                     return ["关于 BalanceBar", "跟随系统", "简体中文", "繁體中文", "日本語"]
                 case .traditionalChinese:
-                    return ["關於 BalanceBar", "跟隨系統", "簡體中文", "繁體中文", "日本語"]
+                    return ["關於 BalanceBar", "跟隨系統", "简体中文", "繁體中文", "日本語"]
                 case .japanese:
-                    return ["BalanceBar について", "システムに従う", "簡体中国語", "繁体中国語", "日本語"]
+                    return ["BalanceBar について", "システムに従う", "简体中文", "繁體中文", "日本語"]
                 case .english:
-                    return ["About BalanceBar", "Follow System", "Simplified Chinese", "Traditional Chinese", "Japanese"]
+                    return ["About BalanceBar", "Follow System", "简体中文", "繁體中文", "日本語"]
                 case .system:
                     return []
                 }
