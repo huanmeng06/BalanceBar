@@ -51,32 +51,35 @@ final class AppPreferences {
     var sortProvidersAlphabetically: Bool { get { defaults.bool(forKey: "sortProvidersAlphabetically") } set { defaults.set(newValue, forKey: "sortProvidersAlphabetically") } }
     var menuBarHorizontalPadding: CGFloat { get { CGFloat(positiveDouble("menuBarHorizontalPadding", default: 10)) } set { defaults.set(Double(newValue), forKey: "menuBarHorizontalPadding") } }
 
-    static let menuBarOffsetRange = -10...10
+    /// Fine-tune offsets are stored in points with 0.1pt resolution and are
+    /// clamped to the safe range on both read and write.
+    static let menuBarOffsetRange = -10.0...10.0
+    static let menuBarOffsetStep: Double = 0.1
     static let menuBarIconOffsetXKey = "menuBarIconOffsetX"
     static let menuBarIconOffsetYKey = "menuBarIconOffsetY"
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
 
-    /// Pixel offsets for the menu bar Agent icon. Positive X moves right,
+    /// Point offsets for the menu bar Agent icon. Positive X moves right,
     /// positive Y moves up. Values are clamped to `menuBarOffsetRange`.
-    var menuBarIconOffsetX: Int {
+    var menuBarIconOffsetX: Double {
         get { clampedMenuBarOffset(Self.menuBarIconOffsetXKey) }
-        set { defaults.set(clampMenuBarOffset(newValue), forKey: Self.menuBarIconOffsetXKey) }
+        set { defaults.set(roundedMenuBarOffset(newValue), forKey: Self.menuBarIconOffsetXKey) }
     }
-    var menuBarIconOffsetY: Int {
+    var menuBarIconOffsetY: Double {
         get { clampedMenuBarOffset(Self.menuBarIconOffsetYKey) }
-        set { defaults.set(clampMenuBarOffset(newValue), forKey: Self.menuBarIconOffsetYKey) }
+        set { defaults.set(roundedMenuBarOffset(newValue), forKey: Self.menuBarIconOffsetYKey) }
     }
 
-    /// Pixel offsets for the menu bar amount text block (symbol + digits).
+    /// Point offsets for the menu bar amount text block (symbol + digits).
     /// Positive X moves right, positive Y moves up.
-    var menuBarAmountOffsetX: Int {
+    var menuBarAmountOffsetX: Double {
         get { clampedMenuBarOffset(Self.menuBarAmountOffsetXKey) }
-        set { defaults.set(clampMenuBarOffset(newValue), forKey: Self.menuBarAmountOffsetXKey) }
+        set { defaults.set(roundedMenuBarOffset(newValue), forKey: Self.menuBarAmountOffsetXKey) }
     }
-    var menuBarAmountOffsetY: Int {
+    var menuBarAmountOffsetY: Double {
         get { clampedMenuBarOffset(Self.menuBarAmountOffsetYKey) }
-        set { defaults.set(clampMenuBarOffset(newValue), forKey: Self.menuBarAmountOffsetYKey) }
+        set { defaults.set(roundedMenuBarOffset(newValue), forKey: Self.menuBarAmountOffsetYKey) }
     }
 
     /// An optional local-only Dashboard port override. The value is deliberately
@@ -137,12 +140,15 @@ final class AppPreferences {
 
     private func bool(_ key: String, default fallback: Bool) -> Bool { defaults.object(forKey: key) as? Bool ?? fallback }
     private func positiveDouble(_ key: String, default fallback: Double) -> Double { let value = defaults.double(forKey: key); return value > 0 ? value : fallback }
-    private func clampMenuBarOffset(_ value: Int) -> Int {
+    private func clampMenuBarOffset(_ value: Double) -> Double {
         min(max(value, Self.menuBarOffsetRange.lowerBound), Self.menuBarOffsetRange.upperBound)
     }
-    private func clampedMenuBarOffset(_ key: String) -> Int {
+    private func roundedMenuBarOffset(_ value: Double) -> Double {
+        (clampMenuBarOffset(value) * 10).rounded() / 10
+    }
+    private func clampedMenuBarOffset(_ key: String) -> Double {
         guard let number = defaults.object(forKey: key) as? NSNumber else { return 0 }
-        return clampMenuBarOffset(number.intValue)
+        return roundedMenuBarOffset(number.doubleValue)
     }
 }
 

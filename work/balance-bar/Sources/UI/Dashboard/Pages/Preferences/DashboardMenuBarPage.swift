@@ -327,8 +327,8 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private static func offsetSummaryText(x: Int, y: Int) -> String {
-        "X \(x) · Y \(y)"
+    private static func offsetSummaryText(x: Double, y: Double) -> String {
+        String(format: "X %.1f · Y %.1f", x, y)
     }
 
     private func makeOffsetControls(
