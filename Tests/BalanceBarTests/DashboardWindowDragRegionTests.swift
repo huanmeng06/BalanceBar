@@ -4,6 +4,35 @@ import XCTest
 
 @MainActor
 final class DashboardWindowDragRegionTests: XCTestCase {
+    func testDoubleClickCallbackIsInstalledOnlyOnTheMovableTitlebarRegion() throws {
+        var doubleClickCount = 0
+        let (window, root, dragView) = makeWindow {
+            doubleClickCount += 1
+        }
+        defer { window.close() }
+        window.layoutIfNeeded()
+        root.layoutSubtreeIfNeeded()
+
+        let titlebarPoint = NSPoint(x: root.bounds.midX, y: root.bounds.maxY - 8)
+        XCTAssertTrue(dragView.hitTest(titlebarPoint) === dragView)
+        let event = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: titlebarPoint,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 2,
+            pressure: 0
+        ))
+        dragView.mouseDown(with: event)
+        XCTAssertEqual(doubleClickCount, 1)
+
+        let contentPoint = NSPoint(x: root.bounds.midX, y: root.bounds.midY)
+        XCTAssertNil(dragView.hitTest(contentPoint))
+    }
+
     func testRegionIncludesOnlyTheTopTitlebarBand() {
         let region = DashboardWindowDragRegion(
             bounds: NSRect(x: 0, y: 0, width: 880, height: 620),
@@ -133,7 +162,7 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         XCTAssertTrue(frameView.hitTest(resizedContentPoint) === root)
     }
 
-    private func makeWindow() -> (
+    private func makeWindow(onDoubleClick: (() -> Void)? = nil) -> (
         window: NSWindow,
         root: DashboardContentRootView,
         dragView: DashboardTitlebarDragView
@@ -156,7 +185,11 @@ final class DashboardWindowDragRegionTests: XCTestCase {
         let root = DashboardContentRootView(frame: window.contentView?.bounds ?? .zero)
         root.autoresizingMask = [.width, .height]
         window.contentView = root
-        let dragView = DashboardWindowDragPolicy.install(in: window, contentRoot: root)
+        let dragView = DashboardWindowDragPolicy.install(
+            in: window,
+            contentRoot: root,
+            onDoubleClick: onDoubleClick
+        )
         window.layoutIfNeeded()
         root.layoutSubtreeIfNeeded()
         return (window, root, dragView)

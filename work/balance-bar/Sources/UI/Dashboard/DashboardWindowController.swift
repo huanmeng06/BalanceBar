@@ -47,12 +47,43 @@ struct DashboardWindowDragRegion {
     }
 }
 
+struct DashboardWindowZoomState {
+    private(set) var savedNormalFrame: NSRect?
+
+    var isZoomed: Bool { savedNormalFrame != nil }
+
+    mutating func toggle(currentFrame: NSRect, targetFrame: NSRect?) -> NSRect? {
+        if let savedNormalFrame {
+            self.savedNormalFrame = nil
+            return savedNormalFrame
+        }
+
+        guard let targetFrame, !targetFrame.isEmpty else { return nil }
+        savedNormalFrame = currentFrame
+        return targetFrame
+    }
+
+    mutating func reset() {
+        savedNormalFrame = nil
+    }
+}
+
 final class DashboardContentRootView: NSVisualEffectView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
 final class DashboardTitlebarDragView: NSView {
+    var onDoubleClick: (() -> Void)?
+
     override var mouseDownCanMoveWindow: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, let onDoubleClick {
+            onDoubleClick()
+            return
+        }
+        super.mouseDown(with: event)
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden,
@@ -82,10 +113,15 @@ final class DashboardTitlebarDragView: NSView {
 
 enum DashboardWindowDragPolicy {
     @discardableResult
-    static func install(in window: NSWindow, contentRoot: NSView) -> DashboardTitlebarDragView {
+    static func install(
+        in window: NSWindow,
+        contentRoot: NSView,
+        onDoubleClick: (() -> Void)? = nil
+    ) -> DashboardTitlebarDragView {
         window.isMovableByWindowBackground = false
 
         let dragView = DashboardTitlebarDragView()
+        dragView.onDoubleClick = onDoubleClick
         dragView.translatesAutoresizingMaskIntoConstraints = false
         contentRoot.addSubview(dragView)
         NSLayoutConstraint.activate([
@@ -113,6 +149,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var isTornDown = false
+    private var windowZoomState = DashboardWindowZoomState()
+
+    var isWindowZoomedForTesting: Bool { windowZoomState.isZoomed }
 
     init(actions: DashboardWindowControllerActions) {
         self.actions = actions
@@ -177,9 +216,10 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        // Keep the complete standard titlebar button group enabled so AppKit
-        // owns the native colors, hover glyphs, pressed state, and zoom action.
-        window.standardWindowButton(.zoomButton)?.isEnabled = true
+        // Keep the native button visible for the standard titlebar appearance,
+        // but reserve zoom/full-screen behavior for the explicit titlebar
+        // double-click interaction below.
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
 
         self.window = window
         windowCreationCount += 1
@@ -242,6 +282,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         window?.delegate = nil
         window?.close()
         window = nil
+        windowZoomState.reset()
         navigationButtons.removeAll()
         navigationRows.removeAll()
     }
@@ -249,6 +290,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let closedWindow = notification.object as? NSWindow,
               closedWindow === window else { return }
+        windowZoomState.reset()
         actions.didClose()
     }
 
@@ -359,7 +401,19 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         ])
 
         window.contentView = root
-        DashboardWindowDragPolicy.install(in: window, contentRoot: root)
+        DashboardWindowDragPolicy.install(in: window, contentRoot: root) { [weak self] in
+            self?.toggleWindowZoom()
+        }
+    }
+
+    func toggleWindowZoom() {
+        guard let window else { return }
+        let targetFrame = window.screen?.visibleFrame
+        guard let frame = windowZoomState.toggle(
+            currentFrame: window.frame,
+            targetFrame: targetFrame
+        ) else { return }
+        window.setFrame(frame, display: true, animate: true)
     }
 
     private func makeSidebar(titlebarHeight: CGFloat) -> NSView {
