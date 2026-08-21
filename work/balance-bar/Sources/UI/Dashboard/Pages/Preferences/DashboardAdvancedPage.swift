@@ -1,5 +1,11 @@
 import AppKit
 
+enum DashboardAdvancedPageLayout {
+    static let compactTwoLineRowHeight: CGFloat = 66
+    static let compactTwoLineRowVerticalPadding: CGFloat = 8
+    static let invalidPortRowHeight: CGFloat = 112
+}
+
 final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
     struct Input {
         let preferences: AppPreferences
@@ -58,7 +64,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             manualPort: input.mode.effectiveManualPort,
             runtimeCandidate: nil
         )
-        let statusLabel = NSTextField(wrappingLabelWithString: tr("正在解析…", "Resolving…"))
+        let statusLabel = NSTextField(wrappingLabelWithString: tr(
+            "当前端口：\(initialResolution.port)",
+            "Current port: \(initialResolution.port)"
+        ))
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -70,14 +79,13 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         )
         let automaticRow = DashboardSettingsComponents.makeSettingsRow(
             tr("自动检测端口", "Detect Port Automatically"),
-            subtitle: tr(
-                "使用已验证的 OpenCodex runtime 端口；未检测时使用 10100",
-                "Use the verified OpenCodex runtime port; use 10100 until one is detected"
-            ),
+            subtitle: statusLabel.stringValue,
             subtitleLabel: statusLabel,
             control: automaticSwitch,
-            minimumHeight: 86
+            minimumHeight: DashboardAdvancedPageLayout.compactTwoLineRowHeight,
+            verticalPadding: DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
         )
+        automaticRow.identifier = NSUserInterfaceItemIdentifier("openCodexAutomaticDetectionRow")
 
         let portField = NSTextField()
         portField.stringValue = String(input.mode.manualPort ?? initialResolution.port)
@@ -92,10 +100,11 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.isHidden = true
         let manualPortRow = makeManualPortRow(portField: portField, errorLabel: errorLabel)
+        manualPortRow.identifier = NSUserInterfaceItemIdentifier("openCodexManualPortRow")
         manualPortRow.isHidden = automaticDetection
 
         let openButton = NSButton(
-            title: tr("打开 OpenCodex", "Open OpenCodex"),
+            title: tr("打开", "Open"),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openOpenCodex(_:))
         )
@@ -103,17 +112,15 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         automaticSwitchState(automaticSwitch, portField: portField, manualPortRow: manualPortRow, statusLabel: statusLabel, errorLabel: errorLabel, openButton: openButton)
 
         let openButtonRow = DashboardSettingsComponents.makeSettingsRow(
-            tr("OpenCodex Dashboard", "OpenCodex Dashboard"),
-            subtitle: tr(
-                "使用当前解析到的本机地址；固定打开 /#dashboard",
-                "Uses the resolved local address and always opens /#dashboard"
-            ),
+            tr("打开 OpenCodex 仪表盘", "Open OpenCodex Dashboard"),
             control: openButton,
-            minimumHeight: 78
+            minimumHeight: 62
         )
+        openButtonRow.identifier = NSUserInterfaceItemIdentifier("openCodexDashboardRow")
         let openCodex = DashboardSettingsComponents.makeSettingsSection(
             tr("OpenCodex", "OpenCodex"),
             rows: [automaticRow, manualPortRow, openButtonRow],
+            rowWidthReference: automaticRow,
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
                 guard let self else { return }
                 self.settingsRowsStack = rowsStack
@@ -124,6 +131,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         )
         state.updateResolvedPort(initialResolution.port)
         applyResolution(initialResolution, canOpen: currentResolution != nil)
+        // The automatic-mode separator is hidden in the section callback
+        // above. Recalculate once after that visibility change so AppKit does
+        // not distribute the stale separator space into the first row.
+        updateCardLayout()
 
         let refreshLog = NSButton(
             title: tr("重新载入", "Reload"),
@@ -164,7 +175,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         portInputHasError = false
         portErrorLabel?.stringValue = ""
         portErrorLabel?.isHidden = true
-        manualPortHeightConstraint?.constant = 86
+        manualPortHeightConstraint?.constant = DashboardAdvancedPageLayout.compactTwoLineRowHeight
         updateModeUI()
         SwitchLog.write(
             "OpenCodex Dashboard detection mode changed; mode=\(enabled ? "automatic" : "manual")",
@@ -209,17 +220,23 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
     private func makeManualPortRow(portField: NSTextField, errorLabel: NSTextField) -> NSView {
         let row = NSView()
         row.translatesAutoresizingMaskIntoConstraints = false
-        let heightConstraint = row.heightAnchor.constraint(equalToConstant: 86)
+        let heightConstraint = row.heightAnchor.constraint(
+            equalToConstant: DashboardAdvancedPageLayout.compactTwoLineRowHeight
+        )
         heightConstraint.isActive = true
         manualPortHeightConstraint = heightConstraint
         let title = NSTextField(labelWithString: tr("手动输入端口号", "Enter Port Manually"))
         title.font = .systemFont(ofSize: 14, weight: .semibold)
+        title.isEditable = false
+        title.isSelectable = false
         let detail = NSTextField(wrappingLabelWithString: tr(
             "仅接受去空格后的十进制 1–65535；清空后恢复自动检测",
             "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection"
         ))
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
+        detail.isEditable = false
+        detail.isSelectable = false
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemRed
         errorLabel.isEditable = false
@@ -229,6 +246,8 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 2
+        labels.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        labels.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         labels.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(labels)
         portField.translatesAutoresizingMaskIntoConstraints = false
@@ -236,8 +255,14 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         NSLayoutConstraint.activate([
             labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
             labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 11),
-            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -11),
+            labels.topAnchor.constraint(
+                greaterThanOrEqualTo: row.topAnchor,
+                constant: DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
+            ),
+            labels.bottomAnchor.constraint(
+                lessThanOrEqualTo: row.bottomAnchor,
+                constant: -DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
+            ),
             portField.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
             portField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             labels.trailingAnchor.constraint(lessThanOrEqualTo: portField.leadingAnchor, constant: -20)
@@ -272,9 +297,8 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             }?.constant
             return partial + max(1, explicitHeight ?? row.fittingSize.height)
         }
-        let separatorHeight = settingsSeparators.filter { !$0.isHidden }.reduce(CGFloat(0)) {
-            $0 + max(1, $1.fittingSize.height)
-        }
+        let separatorHeight = CGFloat(settingsSeparators.filter { !$0.isHidden }.count) *
+            DashboardSettingsComponents.settingsSeparatorHeight
         cardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
         onClamp?()
     }
@@ -286,24 +310,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             portField?.stringValue = String(state.mode.manualPort ?? resolution.port)
         }
         if let canOpen { openButton?.isEnabled = canOpen }
-        let currentPort = tr("当前端口：\(resolution.port)", "Current port: \(resolution.port)")
-        switch resolution.source {
-        case .manual:
-            portStatusLabel?.stringValue = tr(
-                "\(currentPort)\n手动端口只用于打开本机 Dashboard；不会修改 OpenCodex 配置",
-                "\(currentPort)\nThe manual port only opens the local Dashboard; it does not modify OpenCodex configuration"
-            )
-        case .runtime:
-            portStatusLabel?.stringValue = tr(
-                "\(currentPort)\n已自动检测 OpenCodex runtime 端口",
-                "\(currentPort)\nOpenCodex runtime port detected automatically"
-            )
-        case .fallback:
-            portStatusLabel?.stringValue = tr(
-                "\(currentPort)\n尚未自动检测；将使用默认端口 10100",
-                "\(currentPort)\nNot detected yet; the default port 10100 will be used"
-            )
-        }
+        portStatusLabel?.stringValue = tr(
+            "当前端口：\(resolution.port)",
+            "Current port: \(resolution.port)"
+        )
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -318,7 +328,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         case .success(let port):
             portInputHasError = false
             portErrorLabel?.isHidden = true
-            manualPortHeightConstraint?.constant = 86
+            manualPortHeightConstraint?.constant = DashboardAdvancedPageLayout.compactTwoLineRowHeight
             state.mode = OpenCodexDashboardMode(automaticDetection: port == nil, manualPort: port)
             onModeChanged?(state.mode)
             portErrorLabel?.stringValue = ""
@@ -334,7 +344,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
                 "请输入 1 到 65535 的十进制端口；空值恢复自动检测",
                 "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection"
             )
-            manualPortHeightConstraint?.constant = 112
+            manualPortHeightConstraint?.constant = DashboardAdvancedPageLayout.invalidPortRowHeight
             updateCardLayout()
         }
     }
