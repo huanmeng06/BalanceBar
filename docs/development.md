@@ -54,7 +54,19 @@ The output is work/balance-bar/build/dev/BalanceBar-dev.app. The build script
 cleans only the selected generated output. It does not modify the tracked
 work/balance-bar/Info.plist.
 
-### 2. Xcode project/build target
+### 2. Localization probes
+
+Standalone Swift probes compile the production localization sources
+(`Sources/AppCore/Localization.swift` plus the relevant production file) and
+verify the balance-query failure mapping and the network-error mapping in all
+four supported languages, including the unknown-error fallback:
+
+~~~sh
+./work/balance-bar/balance-query-probe.sh
+./work/balance-bar/balance-network-error-localization-probe.sh
+~~~
+
+### 3. Xcode project/build target
 
 Confirm the shared project and scheme are visible:
 
@@ -76,7 +88,7 @@ xcodebuild -project BalanceBar.xcodeproj \
 The Xcode app is written below
 /tmp/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app.
 
-### 3. XCTest
+### 4. XCTest
 
 Run the project test target without parallel XCTest workers. This is the
 repository's CI command with a local DerivedData path:
@@ -99,7 +111,7 @@ watcher behavior, credential readers, balance/quota/OpenCodex clients, and
 Codex/Claude activity monitoring. Network-facing tests inject URL loading
 stubs; they are not a substitute for GUI testing.
 
-### 4. Repository hygiene and path checks
+### 5. Repository hygiene and path checks
 
 Run these checks after the build/test commands:
 
@@ -135,8 +147,10 @@ runs on macos-15 for pull requests, pushes to main, and manual dispatch. It
 executes, in order:
 
 1. ./work/balance-bar/build.sh;
-2. an unsigned xcodebuild Debug build; and
-3. an unsigned, non-parallel xcodebuild test with destination
+2. ./work/balance-bar/balance-query-probe.sh and
+   ./work/balance-bar/balance-network-error-localization-probe.sh;
+3. an unsigned xcodebuild Debug build; and
+4. an unsigned, non-parallel xcodebuild test with destination
    platform=macOS,arch=arm64.
 
 Keep local verification aligned with those commands. Do not add a workflow
