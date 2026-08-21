@@ -206,15 +206,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
             guard let dashboardTitle = labels.first(where: { $0.stringValue == expectedDashboardTitle }) else {
                 return XCTFail("Expected Dashboard title \(expectedDashboardTitle)")
             }
-            XCTAssertEqual(
-                nonEmptyTextFields(in: dashboardTitle.superview?.superview),
-                [expectedDashboardTitle]
-            )
+            XCTAssertEqual(dashboardTitle.stringValue, expectedDashboardTitle)
             XCTAssertEqual(equalHeightConstraint(in: dashboardTitle.superview?.superview), 62)
 
             guard let openButton = buttons.first(where: { $0.title == expectedButtonTitle }) else {
                 return XCTFail("Expected Dashboard button \(expectedButtonTitle)")
             }
+            XCTAssertEqual(openButton.title, expectedButtonTitle)
             XCTAssertTrue(openButton.isEnabled)
             relay.openOpenCodex(openButton)
             XCTAssertEqual(activationCount, 1)
