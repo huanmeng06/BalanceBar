@@ -70,6 +70,50 @@ struct MenuBarLayoutFrames {
     let text: NSRect
 }
 
+/// Coordinate spaces used by the real status item and the Dashboard preview.
+/// The real menu bar positions views with frames (icon slot is unflipped, the
+/// text stack lives in a flipped container); the Dashboard preview positions
+/// them with layer transforms (the icon layer is unflipped, the text layer is
+/// geometry-flipped to match its flipped view).
+enum MenuBarOffsetSpace {
+    /// Frame coordinates inside an unflipped container: y grows upward.
+    case unflippedFrame
+    /// Frame coordinates inside a flipped container: y grows downward.
+    case flippedFrame
+    /// Layer transform coordinates on a non-flipped layer: y grows upward.
+    case unflippedLayer
+    /// Layer transform coordinates on a geometry-flipped layer: y grows
+    /// downward.
+    case flippedLayer
+}
+
+/// Shared visual→coordinate mapping so the real menu bar and the Dashboard
+/// preview interpret the same user offset identically. User offsets are visual
+/// values: positive x moves right, positive y moves up.
+enum MenuBarOffsetLayout {
+    static func xDelta(visualX: CGFloat) -> CGFloat { visualX }
+
+    static func yDelta(visualY: CGFloat, in space: MenuBarOffsetSpace) -> CGFloat {
+        switch space {
+        case .unflippedFrame, .unflippedLayer:
+            return visualY
+        case .flippedFrame, .flippedLayer:
+            return -visualY
+        }
+    }
+
+    /// Inverse of `yDelta`: converts a delta already expressed in `space` back
+    /// to the visual y offset it represents.
+    static func visualY(forYDelta delta: CGFloat, in space: MenuBarOffsetSpace) -> CGFloat {
+        switch space {
+        case .unflippedFrame, .unflippedLayer:
+            return delta
+        case .flippedFrame, .flippedLayer:
+            return -delta
+        }
+    }
+}
+
 enum MenuBarLayout {
     static let primaryFont = NSFont.monospacedDigitSystemFont(
         ofSize: 13,
@@ -177,14 +221,21 @@ enum MenuBarLayout {
             height: geometry.iconWidth
         )
         let icon = NSRect(
-            x: iconOffset.width,
-            y: iconViewYOffset + iconOffset.height,
+            x: MenuBarOffsetLayout.xDelta(visualX: iconOffset.width),
+            y: iconViewYOffset + MenuBarOffsetLayout.yDelta(
+                visualY: iconOffset.height,
+                in: .unflippedFrame
+            ),
             width: iconSlot.width,
             height: iconSlot.height
         )
         let text = NSRect(
-            x: geometry.iconWidth + geometry.gap + textOffset.width,
-            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2)) - textOffset.height,
+            x: geometry.iconWidth + geometry.gap + MenuBarOffsetLayout.xDelta(visualX: textOffset.width),
+            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2))
+                + MenuBarOffsetLayout.yDelta(
+                    visualY: textOffset.height,
+                    in: .flippedFrame
+                ),
             width: geometry.textWidth,
             height: geometry.textHeight
         )

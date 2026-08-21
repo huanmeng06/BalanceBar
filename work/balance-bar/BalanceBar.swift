@@ -274,10 +274,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var keepMenuOpenAfterRefresh: Bool { get { preferences.keepMenuOpenAfterRefresh } set { preferences.keepMenuOpenAfterRefresh = newValue } }
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
-    private var menuBarIconOffsetX: Double { get { preferences.menuBarIconOffsetX } set { preferences.menuBarIconOffsetX = newValue } }
-    private var menuBarIconOffsetY: Double { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
-    private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
-    private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
+    private var menuBarIconOffsetX: Int { get { preferences.menuBarIconOffsetX } set { preferences.menuBarIconOffsetX = newValue } }
+    private var menuBarIconOffsetY: Int { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
+    private var menuBarAmountOffsetX: Int { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
+    private var menuBarAmountOffsetY: Int { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
     private var openCodexDashboardPortOverride: Int? {
         get { preferences.openCodexDashboardPortOverride }
         set { preferences.openCodexDashboardPortOverride = newValue }
@@ -890,21 +890,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func handleDashboardOffsetAdjust(identifier: String, delta: Int) {
-        let pointDelta = Double(delta) * AppPreferences.menuBarOffsetStep
         switch identifier {
         case AppPreferences.menuBarIconOffsetXKey:
-            preferences.menuBarIconOffsetX += pointDelta
+            preferences.menuBarIconOffsetX += delta
         case AppPreferences.menuBarIconOffsetYKey:
-            preferences.menuBarIconOffsetY += pointDelta
+            preferences.menuBarIconOffsetY += delta
         case AppPreferences.menuBarAmountOffsetXKey:
-            preferences.menuBarAmountOffsetX += pointDelta
+            preferences.menuBarAmountOffsetX += delta
         case AppPreferences.menuBarAmountOffsetYKey:
-            preferences.menuBarAmountOffsetY += pointDelta
+            preferences.menuBarAmountOffsetY += delta
         default:
             return
         }
         SwitchLog.write(
-            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            "preference changed; key=\(identifier); delta=\(delta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)

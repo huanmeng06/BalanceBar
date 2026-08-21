@@ -118,22 +118,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = AppPreferences(defaults: defaults)
-        preferences.menuBarIconOffsetX = 0.2
-        preferences.menuBarIconOffsetY = -0.3
-        preferences.menuBarAmountOffsetX = -0.4
-        preferences.menuBarAmountOffsetY = 0.5
+        preferences.menuBarIconOffsetX = 2
+        preferences.menuBarIconOffsetY = -3
+        preferences.menuBarAmountOffsetX = -4
+        preferences.menuBarAmountOffsetY = 5
         let relay = DashboardPreferencePageRelay()
         relay.onOffsetAdjust = { identifier, delta in
-            let pointDelta = Double(delta) * AppPreferences.menuBarOffsetStep
             switch identifier {
             case AppPreferences.menuBarIconOffsetXKey:
-                preferences.menuBarIconOffsetX += pointDelta
+                preferences.menuBarIconOffsetX += delta
             case AppPreferences.menuBarIconOffsetYKey:
-                preferences.menuBarIconOffsetY += pointDelta
+                preferences.menuBarIconOffsetY += delta
             case AppPreferences.menuBarAmountOffsetXKey:
-                preferences.menuBarAmountOffsetX += pointDelta
+                preferences.menuBarAmountOffsetX += delta
             case AppPreferences.menuBarAmountOffsetYKey:
-                preferences.menuBarAmountOffsetY += pointDelta
+                preferences.menuBarAmountOffsetY += delta
             default:
                 break
             }
@@ -165,6 +164,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
             Set(amountYButtons.map(\.tag)),
             [-1, 1]
         )
+        XCTAssertTrue(iconXButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(iconYButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(amountXButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(amountYButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertFalse(buttons.first {
+            $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier
+        } is RepeatOffsetButton)
         XCTAssertEqual(
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.title,
             "归零"
@@ -181,24 +187,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
-        XCTAssertEqual(iconSummary?.stringValue, "X 0.2 · Y -0.3")
-        XCTAssertEqual(amountSummary?.stringValue, "X -0.4 · Y 0.5")
+        XCTAssertEqual(iconSummary?.stringValue, "X 2 · Y -3")
+        XCTAssertEqual(amountSummary?.stringValue, "X -4 · Y 5")
         XCTAssertEqual(labels.first { $0.stringValue == "细节微调" }?.stringValue, "细节微调")
         XCTAssertEqual(labels.first { $0.stringValue == "图标" }?.stringValue, "图标")
         XCTAssertEqual(labels.first { $0.stringValue == "金额" }?.stringValue, "金额")
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
-        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 0.2, accuracy: 0.001)
+        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 2, accuracy: 0.001)
         XCTAssertEqual(
             previewIcon?.layer?.affineTransform().ty ?? CGFloat.nan,
-            -0.3 - MenuBarLayout.singleLineIconYOffset,
+            -3 + MenuBarLayout.singleLineIconYOffset,
             accuracy: 0.001
         )
-        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -0.4, accuracy: 0.001)
+        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -4, accuracy: 0.001)
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            -(0.5 + MenuBarLayout.singleLineTextYOffset),
+            -(5 + MenuBarLayout.singleLineTextYOffset),
             accuracy: 0.001
         )
 
@@ -208,7 +214,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             return XCTFail("Expected a right button for the icon X offset")
         }
         relay.adjustOffset(rightButton)
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.3, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 3)
 
         preferences.showMenuBarIcon = false
         controller.refresh(
@@ -289,7 +295,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
 
         // User fine-tune offsets stack on top of the official default baseline.
-        preferences.menuBarAmountOffsetY = 0.2
+        preferences.menuBarAmountOffsetY = 1
         controller.refresh(
             snapshot: snapshot,
             preferences: preferences,
@@ -298,9 +304,48 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            -(0.2 + MenuBarLayout.officialSecondaryTextYOffset),
+            -(1 + MenuBarLayout.officialSecondaryTextYOffset),
             accuracy: 0.001
         )
+    }
+
+    func testMenuBarOffsetRepeatPolicyDelaysAndAccelerates() {
+        let policy = MenuBarOffsetRepeatPolicy.standard
+        XCTAssertEqual(policy.initialDelay, 0.35, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 0), 0.35, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 1), 0.1, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 2), 0.09, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 3), 0.081, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 50), 0.03, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 200), 0.03, accuracy: 0.001)
+    }
+
+    func testMenuBarOffsetRepeatDriverStepsAndStops() {
+        let policy = MenuBarOffsetRepeatPolicy(
+            initialDelay: 0.05,
+            initialInterval: 0.02,
+            accelerationFactor: 0.9,
+            minimumInterval: 0.01
+        )
+        var steps = 0
+        let driver = MenuBarOffsetRepeatDriver(policy: policy) { steps += 1 }
+        driver.start()
+
+        let ran = expectation(description: "repeat driver ran")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            driver.stop()
+            ran.fulfill()
+        }
+        wait(for: [ran], timeout: 2)
+        XCTAssertGreaterThanOrEqual(steps, 8)
+        let countAfterStop = steps
+
+        let settled = expectation(description: "repeat driver stopped")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            settled.fulfill()
+        }
+        wait(for: [settled], timeout: 1)
+        XCTAssertEqual(steps, countAfterStop)
     }
 
     func testLogsKeepViewerTextAndSeverityStyling() {

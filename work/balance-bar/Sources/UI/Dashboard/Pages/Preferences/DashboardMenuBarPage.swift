@@ -1,5 +1,192 @@
 import AppKit
 
+/// Pure delay/interval policy for long-press auto-repeat of the fine-tune
+/// direction buttons. Press-and-hold starts stepping after `initialDelay`,
+/// then repeats every `initialInterval`, accelerating by `accelerationFactor`
+/// per step and floored at `minimumInterval`.
+struct MenuBarOffsetRepeatPolicy: Equatable {
+    static let standard = MenuBarOffsetRepeatPolicy(
+        initialDelay: 0.35,
+        initialInterval: 0.1,
+        accelerationFactor: 0.9,
+        minimumInterval: 0.03
+    )
+
+    let initialDelay: TimeInterval
+    let initialInterval: TimeInterval
+    let accelerationFactor: Double
+    let minimumInterval: TimeInterval
+
+    /// Interval before the `step`-th repeat fires. `step == 0` is the initial
+    /// press-and-hold delay before auto-repeat starts.
+    func interval(afterStep step: Int) -> TimeInterval {
+        guard step > 0 else { return initialDelay }
+        let multiplier = pow(accelerationFactor, Double(step - 1))
+        return max(minimumInterval, initialInterval * multiplier)
+    }
+}
+
+/// Drives auto-repeat steps after a press-and-hold. Fires `onStep` once after
+/// the policy's initial delay, then repeatedly at policy intervals on the main
+/// run loop until stopped.
+final class MenuBarOffsetRepeatDriver {
+    private let policy: MenuBarOffsetRepeatPolicy
+    private let onStep: () -> Void
+    private var delayWorkItem: DispatchWorkItem?
+    private var repeatTimer: Timer?
+    private var stepCount = 0
+
+    init(policy: MenuBarOffsetRepeatPolicy, onStep: @escaping () -> Void) {
+        self.policy = policy
+        self.onStep = onStep
+    }
+
+    var isRunning: Bool { delayWorkItem != nil || repeatTimer != nil }
+
+    func start() {
+        stop()
+        stepCount = 0
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.performStep()
+            self.scheduleNext()
+        }
+        delayWorkItem = item
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + policy.initialDelay,
+            execute: item
+        )
+    }
+
+    func stop() {
+        delayWorkItem?.cancel()
+        delayWorkItem = nil
+        repeatTimer?.invalidate()
+        repeatTimer = nil
+    }
+
+    private func performStep() {
+        stepCount += 1
+        onStep()
+    }
+
+    private func scheduleNext() {
+        let interval = policy.interval(afterStep: stepCount)
+        let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.performStep()
+            self.scheduleNext()
+        }
+        repeatTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+}
+
+/// Direction button that auto-repeats while pressed and held. A short press
+/// fires the action exactly once; holding past the policy delay starts
+/// repeating the action at policy intervals. Releasing, dragging outside the
+/// button, or the window losing key status stops the repeat immediately.
+final class RepeatOffsetButton: NSButton {
+    private enum PressPhase {
+        case idle
+        case waiting
+        case repeating
+    }
+
+    private let policy: MenuBarOffsetRepeatPolicy
+    private lazy var driver = MenuBarOffsetRepeatDriver(policy: policy) { [weak self] in
+        guard let self,
+              self.pressPhase == .waiting || self.pressPhase == .repeating else {
+            return
+        }
+        if self.pressPhase == .waiting {
+            self.pressPhase = .repeating
+        }
+        _ = self.sendAction(self.action, to: self.target)
+    }
+    private var pressPhase: PressPhase = .idle
+    private var resignObserver: NSObjectProtocol?
+    private var driverWasUsed = false
+
+    init(
+        title: String,
+        policy: MenuBarOffsetRepeatPolicy,
+        target: AnyObject?,
+        action: Selector?
+    ) {
+        self.policy = policy
+        super.init(frame: .zero)
+        self.title = title
+        self.target = target
+        self.action = action
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let resignObserver {
+            NotificationCenter.default.removeObserver(resignObserver)
+        }
+        if driverWasUsed {
+            driver.stop()
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        isHighlighted = true
+        pressPhase = .waiting
+        driverWasUsed = true
+        observeWindowResignIfNeeded()
+        driver.start()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard pressPhase != .idle else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        if !bounds.contains(point) {
+            isHighlighted = false
+            stopPress(removeObserver: true)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard pressPhase != .idle else { return }
+        let wasRepeating = pressPhase == .repeating
+        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        isHighlighted = false
+        stopPress(removeObserver: true)
+        if inside && !wasRepeating {
+            _ = sendAction(action, to: target)
+        }
+    }
+
+    private func observeWindowResignIfNeeded() {
+        guard resignObserver == nil, let window else { return }
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.stopPress(removeObserver: true)
+        }
+    }
+
+    private func stopPress(removeObserver: Bool) {
+        isHighlighted = false
+        pressPhase = .idle
+        if driverWasUsed {
+            driver.stop()
+        }
+        if removeObserver, let resignObserver {
+            NotificationCenter.default.removeObserver(resignObserver)
+            self.resignObserver = nil
+        }
+    }
+}
+
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
@@ -293,8 +480,10 @@ final class DashboardMenuBarPage {
         amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
-        let iconOffset = NSSize(width: CGFloat(iconOffsetX), height: CGFloat(iconOffsetY))
-        let amountOffset = NSSize(width: CGFloat(amountOffsetX), height: CGFloat(amountOffsetY))
+        let iconVisualX = CGFloat(iconOffsetX)
+        let iconVisualY = CGFloat(iconOffsetY)
+        let amountVisualX = CGFloat(amountOffsetX)
+        let amountVisualY = CGFloat(amountOffsetY)
         let officialTextYOffset: CGFloat
         if presentation.isOfficial, preferences.showMenuBarAmount {
             officialTextYOffset = MenuBarLayout.officialTextYOffset(
@@ -307,21 +496,31 @@ final class DashboardMenuBarPage {
         previewText.layer?.setAffineTransform(.identity)
         if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
-                translationX: iconOffset.width,
-                y: iconOffset.height - MenuBarLayout.singleLineIconYOffset
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX),
+                y: MenuBarOffsetLayout.yDelta(visualY: iconVisualY, in: .unflippedLayer)
+                    + MenuBarOffsetLayout.yDelta(
+                        visualY: MenuBarLayout.singleLineIconYOffset,
+                        in: .unflippedLayer
+                    )
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
-                translationX: amountOffset.width,
-                y: -(amountOffset.height + MenuBarLayout.singleLineTextYOffset)
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                y: MenuBarOffsetLayout.yDelta(
+                    visualY: amountVisualY + MenuBarLayout.singleLineTextYOffset,
+                    in: .flippedLayer
+                )
             ))
         } else {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
-                translationX: iconOffset.width,
-                y: iconOffset.height
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX),
+                y: MenuBarOffsetLayout.yDelta(visualY: iconVisualY, in: .unflippedLayer)
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
-                translationX: amountOffset.width,
-                y: -(amountOffset.height + officialTextYOffset)
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                y: MenuBarOffsetLayout.yDelta(
+                    visualY: amountVisualY + officialTextYOffset,
+                    in: .flippedLayer
+                )
             ))
         }
     }
@@ -337,8 +536,8 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private static func offsetSummaryText(x: Double, y: Double) -> String {
-        String(format: "X %.1f · Y %.1f", x, y)
+    private static func offsetSummaryText(x: Int, y: Int) -> String {
+        "X \(x) · Y \(y)"
     }
 
     private func makeOffsetControls(
@@ -382,8 +581,9 @@ final class DashboardMenuBarPage {
         delta: Int,
         relay: DashboardPreferencePageRelay
     ) -> NSButton {
-        let button = NSButton(
+        let button = RepeatOffsetButton(
             title: title,
+            policy: MenuBarOffsetRepeatPolicy.standard,
             target: relay,
             action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
         )
