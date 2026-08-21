@@ -34,14 +34,14 @@ final class ProviderSwitchCoordinator {
                 let deadline = Date().addingTimeInterval(4)
                 while !running.isTerminated && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
                 guard running.isTerminated else {
-                    self.actions.failed(tr("切换失败：CC Switch 未能正常重载", "Switch failed: CC Switch could not reload normally"))
+                    self.actions.failed(tr("切换失败：CC Switch 未能正常重载", "Switch failed: CC Switch could not reload normally", "切換失敗：CC Switch 未能正常重新載入", "切り替えに失敗しました：CC Switch を正常に再読み込みできませんでした"))
                     return
                 }
             }
             do {
                 try self.repository.switchCurrent(to: providerID, appType: appType)
                 guard self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })?.id == providerID else {
-                    throw NSError(domain: "BalanceBar.SwitchValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: tr("数据库校验未通过", "Database verification failed")])
+                    throw NSError(domain: "BalanceBar.SwitchValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: tr("数据库校验未通过", "Database verification failed", "資料庫驗證未通過", "データベースの検証に失敗しました")])
                 }
                 if running != nil, let applicationURL {
                     DispatchQueue.main.async {
@@ -61,7 +61,7 @@ final class ProviderSwitchCoordinator {
                         NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, _ in }
                     }
                 }
-                self.actions.failed(tr("切换失败：\(error.localizedDescription)", "Switch failed: \(error.localizedDescription)"))
+                self.actions.failed(tr("切换失败：\(error.localizedDescription)", "Switch failed: \(error.localizedDescription)", "切換失敗：\(error.localizedDescription)", "切り替えに失敗しました：\(error.localizedDescription)"))
             }
         }
     }

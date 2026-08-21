@@ -65,7 +65,7 @@ final class ProviderRefreshCoordinator {
             guard current.isOfficial else {
                 let failure = current.queryFailure ?? .unknown
                 let reason = failure.userVisibleReason(
-                    usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese
+                    language: AppLanguage.resolved
                 )
                 renderBalanceError(
                     providerID: current.id,
@@ -183,15 +183,15 @@ final class ProviderRefreshCoordinator {
                     client: client
                 )
             case .failure(.nonHTTPS):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额接口不是 HTTPS", "The balance endpoint is not HTTPS"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额接口不是 HTTPS", "The balance endpoint is not HTTPS", "餘額介面不是 HTTPS", "残高エンドポイントが HTTPS ではありません"), client: client)
             case .failure(.transport(let error)):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
             case .failure(.httpStatus):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额接口返回异常", "The balance endpoint returned an error"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额接口返回异常", "The balance endpoint returned an error", "餘額介面傳回異常", "残高エンドポイントでエラーが返されました"), client: client)
             case .failure(.unsupportedFormat):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("未识别余额格式", "Unrecognized balance format"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("未识别余额格式", "Unrecognized balance format", "無法辨識餘額格式", "残高形式を認識できません"), client: client)
             case .failure(.invalidJSON):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额响应无法解析", "The balance response could not be parsed"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额响应无法解析", "The balance response could not be parsed", "無法解析餘額回應", "残高レスポンスを解析できません"), client: client)
             }
             }
         ) else {
@@ -211,11 +211,11 @@ final class ProviderRefreshCoordinator {
                     client: client
                 )
             case .failure(.missingCredentials):
-                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：未找到本机登录态", "Official \(client.displayName): Local sign-in credentials were not found")), providerID: providerID, client: client)
+                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：未找到本机登录态", "Official \(client.displayName): Local sign-in credentials were not found", "\(client.displayName) 官方帳號：找不到本機登入狀態", "\(client.displayName) 公式アカウント：ローカルログイン情報が見つかりません")), providerID: providerID, client: client)
             case .failure(.transport(let error)):
-                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：\(error.localizedDescription)", "Official \(client.displayName): \(error.localizedDescription)")), providerID: providerID, client: client)
+                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：\(error.localizedDescription)", "Official \(client.displayName): \(error.localizedDescription)", "\(client.displayName) 官方帳號：\(error.localizedDescription)", "\(client.displayName) 公式アカウント：\(error.localizedDescription)")), providerID: providerID, client: client)
             case .failure:
-                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：额度接口返回异常", "Official \(client.displayName): The quota endpoint returned an error")), providerID: providerID, client: client)
+                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：额度接口返回异常", "Official \(client.displayName): The quota endpoint returned an error", "\(client.displayName) 官方帳號：額度介面傳回異常", "\(client.displayName) 公式アカウント：クォータエンドポイントでエラーが返されました")), providerID: providerID, client: client)
             }
         }
     }
@@ -264,22 +264,29 @@ final class ProviderRefreshCoordinator {
     }
 
     private static func localizedNetworkErrorReason(_ error: Error) -> String {
-        localizedBalanceNetworkErrorReason(error, usesSimplifiedChinese: AppLanguage.usesSimplifiedChinese)
+        localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved)
     }
 
-    static func localizedBalanceNetworkErrorReason(_ error: Error, usesSimplifiedChinese: Bool) -> String {
+    static func localizedBalanceNetworkErrorReason(_ error: Error, language: AppLanguage) -> String {
         let nsError = error as NSError
-        guard nsError.domain == NSURLErrorDomain else { return usesSimplifiedChinese ? "网络请求失败" : "Network request failed" }
-        let reason: (String, String)
-        switch URLError.Code(rawValue: nsError.code) {
-        case .timedOut: reason = ("网络请求超时", "Network request timed out")
-        case .notConnectedToInternet: reason = ("无网络连接", "No internet connection")
-        case .networkConnectionLost: reason = ("网络连接已中断", "Network connection was lost")
-        case .cannotFindHost: reason = ("找不到主机", "Host could not be found")
-        case .cannotConnectToHost: reason = ("无法连接主机", "Could not connect to host")
-        case .secureConnectionFailed: reason = ("安全连接失败", "Secure connection failed")
-        default: reason = ("网络请求失败", "Network request failed")
+        guard nsError.domain == NSURLErrorDomain else {
+            return tr("网络请求失败", "Network request failed", "網路請求失敗", "ネットワークリクエストに失敗しました", language: language)
         }
-        return usesSimplifiedChinese ? reason.0 : reason.1
+        switch URLError.Code(rawValue: nsError.code) {
+        case .timedOut:
+            return tr("网络请求超时", "Network request timed out", "網路請求逾時", "ネットワークリクエストがタイムアウトしました", language: language)
+        case .notConnectedToInternet:
+            return tr("无网络连接", "No internet connection", "沒有網路連線", "ネットワークに接続されていません", language: language)
+        case .networkConnectionLost:
+            return tr("网络连接已中断", "Network connection was lost", "網路連線已中斷", "ネットワーク接続が切断されました", language: language)
+        case .cannotFindHost:
+            return tr("找不到主机", "Host could not be found", "找不到主機", "ホストが見つかりません", language: language)
+        case .cannotConnectToHost:
+            return tr("无法连接主机", "Could not connect to host", "無法連線主機", "ホストに接続できません", language: language)
+        case .secureConnectionFailed:
+            return tr("安全连接失败", "Secure connection failed", "安全連線失敗", "安全な接続に失敗しました", language: language)
+        default:
+            return tr("网络请求失败", "Network request failed", "網路請求失敗", "ネットワークリクエストに失敗しました", language: language)
+        }
     }
 }

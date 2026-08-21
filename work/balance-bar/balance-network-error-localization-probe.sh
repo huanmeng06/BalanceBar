@@ -7,56 +7,57 @@ probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/balancebar-network-error-localization-pr
 probe_binary="$probe_dir/network-error-localization-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
-{
-    printf '%s\n' 'import Foundation' 'enum ProbeSubject {'
-    awk '
-        /^    static func localizedBalanceNetworkErrorReason\(/ { capture = 1 }
-        capture {
-            print
-            if (seen) exit
-            if (/^        return usesSimplifiedChinese/) seen = 1
-        }
-    ' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift"
-    cat <<'SWIFT'
-    static func reason(_ error: Error, usesSimplifiedChinese: Bool) -> String {
-        localizedBalanceNetworkErrorReason(
-            error,
-            usesSimplifiedChinese: usesSimplifiedChinese
-        )
+network_error_function="$(awk '
+    /^    static func localizedBalanceNetworkErrorReason\(/ { capture = 1 }
+    capture {
+        print
+        opens = gsub(/\{/, "{")
+        closes = gsub(/\}/, "}")
+        depth += opens - closes
+        if (seenOpen && depth <= 0) exit
+        if (opens > 0) seenOpen = 1
     }
+' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift")"
+
+[[ "$network_error_function" == *"static func localizedBalanceNetworkErrorReason(_ error: Error, language: AppLanguage)"* ]] || {
+    echo "network error localization probe: FAIL; production function signature changed or could not be extracted" >&2
+    exit 1
 }
-SWIFT
+
+{
+    printf '%s\n' 'import Foundation' 'import AppKit'
+    cat "$source_dir/Sources/AppCore/Localization.swift"
+    printf '%s\n' 'enum ProbeSubject {'
+    printf '%s\n' "$network_error_function"
     cat <<'SWIFT'
+}
 
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {
     precondition(condition(), message)
 }
 
-let cases: [(URLError.Code, String, String)] = [
-    (.timedOut, "网络请求超时", "Network request timed out"),
-    (.notConnectedToInternet, "无网络连接", "No internet connection"),
-    (.networkConnectionLost, "网络连接已中断", "Network connection was lost"),
-    (.cannotFindHost, "找不到主机", "Host could not be found"),
-    (.cannotConnectToHost, "无法连接主机", "Could not connect to host"),
-    (.secureConnectionFailed, "安全连接失败", "Secure connection failed")
+let languages: [AppLanguage] = [.simplifiedChinese, .traditionalChinese, .japanese, .english]
+
+let cases: [(URLError.Code, String, String, String, String)] = [
+    (.timedOut, "网络请求超时", "Network request timed out", "網路請求逾時", "ネットワークリクエストがタイムアウトしました"),
+    (.notConnectedToInternet, "无网络连接", "No internet connection", "沒有網路連線", "ネットワークに接続されていません"),
+    (.networkConnectionLost, "网络连接已中断", "Network connection was lost", "網路連線已中斷", "ネットワーク接続が切断されました"),
+    (.cannotFindHost, "找不到主机", "Host could not be found", "找不到主機", "ホストが見つかりません"),
+    (.cannotConnectToHost, "无法连接主机", "Could not connect to host", "無法連線主機", "ホストに接続できません"),
+    (.secureConnectionFailed, "安全连接失败", "Secure connection failed", "安全連線失敗", "安全な接続に失敗しました")
 ]
 
-for (code, simplifiedChinese, english) in cases {
-    let urlError = URLError(code)
-    require(
-        ProbeSubject.reason(
-            urlError,
-            usesSimplifiedChinese: true
-        ) == simplifiedChinese,
-        "URLError \(code.rawValue) has a fixed Simplified Chinese reason"
-    )
-    require(
-        ProbeSubject.reason(
-            NSError(domain: NSURLErrorDomain, code: code.rawValue),
-            usesSimplifiedChinese: false
-        ) == english,
-        "NSError \(code.rawValue) has a fixed English reason"
-    )
+for (code, simplifiedChinese, english, traditionalChinese, japanese) in cases {
+    for error in [URLError(code) as Error, NSError(domain: NSURLErrorDomain, code: code.rawValue)] {
+        let simplified = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .simplifiedChinese)
+        let traditional = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .traditionalChinese)
+        let japaneseText = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .japanese)
+        let englishText = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .english)
+        require(simplified == simplifiedChinese, "error \(code.rawValue) has a fixed Simplified Chinese reason")
+        require(englishText == english, "error \(code.rawValue) has a fixed English reason")
+        require(traditional == traditionalChinese, "error \(code.rawValue) has a fixed Traditional Chinese reason")
+        require(japaneseText == japanese, "error \(code.rawValue) has a fixed Japanese reason")
+    }
 }
 
 let sensitiveDescription = "secret.example.test/path?token=do-not-display"
@@ -71,23 +72,23 @@ let unknownURLError = NSError(
     userInfo: [NSLocalizedDescriptionKey: sensitiveDescription]
 )
 
+let unknownExpected: [AppLanguage: String] = [
+    .simplifiedChinese: "网络请求失败",
+    .traditionalChinese: "網路請求失敗",
+    .japanese: "ネットワークリクエストに失敗しました",
+    .english: "Network request failed"
+]
+
 for error in [unknownError, unknownURLError] {
-    let simplifiedChinese = ProbeSubject.reason(
-        error,
-        usesSimplifiedChinese: true
-    )
-    let english = ProbeSubject.reason(
-        error,
-        usesSimplifiedChinese: false
-    )
-    require(simplifiedChinese == "网络请求失败", "unknown errors use the Chinese fallback")
-    require(english == "Network request failed", "unknown errors use the English fallback")
-    require(!simplifiedChinese.contains(sensitiveDescription), "Chinese fallback excludes the original description")
-    require(!english.contains(sensitiveDescription), "English fallback excludes the original description")
+    for language in languages {
+        let message = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: language)
+        require(message == unknownExpected[language], "unknown errors use the \(language.rawValue) fallback")
+        require(!message.contains(sensitiveDescription), "\(language.rawValue) fallback excludes the original description")
+    }
 }
 
-print("network error localization probe: PASS; six stable URL error mappings; Simplified Chinese and English; unknown domain/code fallback; original descriptions excluded")
+print("network error localization probe: PASS; six stable URL error mappings; Simplified/Traditional/Japanese/English; unknown domain/code fallback; original descriptions excluded")
 SWIFT
-} | swiftc -framework Foundation -o "$probe_binary" -
+} | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
 "$probe_binary"

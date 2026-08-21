@@ -381,10 +381,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
         for (language, automaticDetection) in [
             (AppLanguage.simplifiedChinese, true),
             (.simplifiedChinese, false),
+            (.traditionalChinese, true),
+            (.traditionalChinese, false),
+            (.japanese, true),
+            (.japanese, false),
             (.english, true),
             (.english, false)
         ] {
             AppLanguage.selected = language
+            let copy: (String, String, String, String) -> String = { zh, en, zhT, ja in
+                switch language {
+                case .simplifiedChinese: return zh
+                case .traditionalChinese: return zhT
+                case .japanese: return ja
+                case .english, .system: return en
+                }
+            }
             let suiteName = "DashboardPreferencePagesTests.OpenCodex.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
             defaults.removePersistentDomain(forName: suiteName)
@@ -420,13 +432,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let switches = descendants(of: page).compactMap { $0 as? NSSwitch }
             let buttons = descendants(of: page).compactMap { $0 as? NSButton }
             let expectedPort = automaticDetection ? 10100 : 23456
-            let expectedPortText = language == .simplifiedChinese
-                ? "当前端口：\(expectedPort)"
-                : "Current port: \(expectedPort)"
-            let expectedDashboardTitle = language == .simplifiedChinese
-                ? "打开 OpenCodex 仪表盘"
-                : "Open OpenCodex Dashboard"
-            let expectedButtonTitle = language == .simplifiedChinese ? "打开" : "Open"
+            let expectedPortText = copy(
+                "当前端口：\(expectedPort)",
+                "Current port: \(expectedPort)",
+                "目前連接埠：\(expectedPort)",
+                "現在のポート：\(expectedPort)"
+            )
+            let expectedDashboardTitle = copy(
+                "打开 OpenCodex 仪表盘",
+                "Open OpenCodex Dashboard",
+                "開啟 OpenCodex 儀表板",
+                "OpenCodex ダッシュボードを開く"
+            )
+            let expectedButtonTitle = copy("打开", "Open", "開啟", "開く")
 
             guard let automaticSwitch = switches.first(where: {
                 $0.identifier?.rawValue == "openCodexAutomaticDetection"
@@ -438,9 +456,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             guard let portLabel = labels.first(where: { $0.stringValue == expectedPortText }) else {
                 return XCTFail("Expected current port label \(expectedPortText)")
             }
-            let expectedAutomaticTitle = language == .simplifiedChinese
-                ? "自动检测端口"
-                : "Detect Port Automatically"
+            let expectedAutomaticTitle = copy(
+                "自动检测端口",
+                "Detect Port Automatically",
+                "自動偵測連接埠",
+                "ポートを自動検出"
+            )
             guard let automaticTitle = labels.first(where: { $0.stringValue == expectedAutomaticTitle }) else {
                 return XCTFail("Expected automatic detection title \(expectedAutomaticTitle)")
             }
@@ -461,15 +482,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 DashboardAdvancedPageLayout.compactTwoLineRowVerticalPadding
             )
 
-            let expectedManualTitle = language == .simplifiedChinese
-                ? "手动输入端口号"
-                : "Enter Port Manually"
+            let expectedManualTitle = copy(
+                "手动输入端口号",
+                "Enter Port Manually",
+                "手動輸入連接埠號",
+                "ポートを手動で入力"
+            )
             guard let manualTitle = labels.first(where: { $0.stringValue == expectedManualTitle }) else {
                 return XCTFail("Expected manual port title \(expectedManualTitle)")
             }
             guard let manualDetail = labels.first(where: {
-                $0.stringValue.contains("十进制 1–65535") ||
-                    $0.stringValue.contains("decimal 1–65535")
+                let value = $0.stringValue
+                return value.contains("十进制 1–65535")
+                    || value.contains("十進位 1–65535")
+                    || value.contains("decimal 1–65535")
+                    || value.contains("1～65535")
             }) else {
                 return XCTFail("Expected manual port subtitle")
             }

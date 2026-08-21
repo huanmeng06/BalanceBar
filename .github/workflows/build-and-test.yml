@@ -27,6 +27,11 @@ jobs:
       - name: CLI fresh build
         run: ./work/balance-bar/build.sh
 
+      - name: Localization probes
+        run: >-
+          ./work/balance-bar/balance-query-probe.sh
+          && ./work/balance-bar/balance-network-error-localization-probe.sh
+
       - name: Xcode Debug build
         run: >-
           xcodebuild

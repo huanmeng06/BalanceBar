@@ -374,18 +374,18 @@ final class DashboardMenuBarPage {
         )
         iconSwitch = iconToggle
         amountSwitch = amountToggle
-        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview"), rows: [
+        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview", "預覽", "プレビュー"), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("当前布局", "Current Layout"),
-                subtitle: tr("菜单栏会随供应商数据实时更新", "The menu bar updates with Provider data in real time"),
+                tr("当前布局", "Current Layout", "目前版面", "現在のレイアウト"),
+                subtitle: tr("菜单栏会随供应商数据实时更新", "The menu bar updates with Provider data in real time", "選單列會隨供應商資料即時更新", "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"),
                 control: preview,
                 minimumHeight: 66
             )
         ])
-        let displaySection = DashboardSettingsComponents.makeSettingsSection(tr("显示项目", "Display Items"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(tr("Agent 图标", "Agent Icon"), subtitle: tr("显示当前任务运行状态", "Shows the current task status"), control: iconToggle),
-            DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance"), control: amountToggle),
-            DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available"), control: resetToggle)
+        let displaySection = DashboardSettingsComponents.makeSettingsSection(tr("显示项目", "Display Items", "顯示項目", "表示項目"), rows: [
+            DashboardSettingsComponents.makeSettingsRow(tr("Agent 图标", "Agent Icon", "Agent 圖示", "エージェントアイコン"), subtitle: tr("显示当前任务运行状态", "Shows the current task status", "顯示目前任務執行狀態", "現在のタスク実行状態を表示"), control: iconToggle),
+            DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount", "額度數字", "残高の数値"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance", "顯示百分比或 API 餘額", "パーセンテージまたは API 残高を表示"), control: amountToggle),
+            DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown", "重設倒數計時", "リセットカウントダウン"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available", "僅在官方額度可用時顯示", "公式クォータが利用可能な場合のみ表示"), control: resetToggle)
         ])
         let iconOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
         iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
@@ -408,17 +408,17 @@ final class DashboardMenuBarPage {
         iconOffsetButtons = iconOffsetControls
         amountOffsetButtons = amountOffsetControls
         let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
-            tr("细节微调", "Fine Tuning"),
+            tr("细节微调", "Fine Tuning", "細節微調", "微調整"),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("图标", "Icon"),
+                    tr("图标", "Icon", "圖示", "アイコン"),
                     subtitle: Self.offsetSummaryText(x: 0, y: 0),
                     subtitleLabel: iconOffsetSummary,
                     control: makeOffsetControlStack(buttons: iconOffsetControls),
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("金额", "Amount"),
+                    tr("金额", "Amount", "金額", "金額"),
                     subtitle: Self.offsetSummaryText(x: 0, y: 0),
                     subtitleLabel: amountOffsetSummary,
                     control: makeOffsetControlStack(buttons: amountOffsetControls),
@@ -567,25 +567,25 @@ final class DashboardMenuBarPage {
     ) -> [NSButton] {
         [
             makeOffsetButton(
-                title: tr("上", "Up"),
+                title: tr("上", "Up", "上", "上"),
                 key: keyY,
                 delta: 1,
                 relay: relay
             ),
             makeOffsetButton(
-                title: tr("下", "Down"),
+                title: tr("下", "Down", "下", "下"),
                 key: keyY,
                 delta: -1,
                 relay: relay
             ),
             makeOffsetButton(
-                title: tr("左", "Left"),
+                title: tr("左", "Left", "左", "左"),
                 key: keyX,
                 delta: -1,
                 relay: relay
             ),
             makeOffsetButton(
-                title: tr("右", "Right"),
+                title: tr("右", "Right", "右", "右"),
                 key: keyX,
                 delta: 1,
                 relay: relay
@@ -619,7 +619,7 @@ final class DashboardMenuBarPage {
         relay: DashboardPreferencePageRelay
     ) -> NSButton {
         let button = NSButton(
-            title: tr("归零", "Reset"),
+            title: tr("归零", "Reset", "歸零", "リセット"),
             target: relay,
             action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
         )

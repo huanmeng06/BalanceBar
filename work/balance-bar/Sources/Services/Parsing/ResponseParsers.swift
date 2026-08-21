@@ -224,10 +224,10 @@ enum OfficialQuotaResponseParser {
     ) throws -> Output {
         if client == .claude {
             let tierNames = [
-                ("seven_day", tr("7 日额度", "7-Day Quota"), tr("7 天", "7 Days")),
-                ("five_hour", tr("5 小时额度", "5-Hour Quota"), tr("5 小时", "5 Hours")),
-                ("seven_day_sonnet", tr("Sonnet 7 日额度", "Sonnet 7-Day Quota"), tr("7 天", "7 Days")),
-                ("seven_day_opus", tr("Opus 7 日额度", "Opus 7-Day Quota"), tr("7 天", "7 Days"))
+                ("seven_day", tr("7 日额度", "7-Day Quota", "7 日額度", "7日間クォータ"), tr("7 天", "7 Days", "7 天", "7日間")),
+                ("five_hour", tr("5 小时额度", "5-Hour Quota", "5 小時額度", "5時間クォータ"), tr("5 小时", "5 Hours", "5 小時", "5時間")),
+                ("seven_day_sonnet", tr("Sonnet 7 日额度", "Sonnet 7-Day Quota", "Sonnet 7 日額度", "Sonnet 7日間クォータ"), tr("7 天", "7 Days", "7 天", "7日間")),
+                ("seven_day_opus", tr("Opus 7 日额度", "Opus 7-Day Quota", "Opus 7 日額度", "Opus 7日間クォータ"), tr("7 天", "7 Days", "7 天", "7日間"))
             ]
             for (name, label, daysText) in tierNames {
                 guard let window = object[name] as? [String: Any],
@@ -263,8 +263,8 @@ enum OfficialQuotaResponseParser {
             ?? ResponseParsingSupport.stringValue(chosen["reset_description"])
         return Output(
             remaining: remaining,
-            label: isWeekly ? tr("7 日额度", "7-Day Quota") : tr("额度", "Quota"),
-            daysText: isWeekly ? tr("7 天", "7 Days") : tr("额度", "Quota"),
+            label: isWeekly ? tr("7 日额度", "7-Day Quota", "7 日額度", "7日間クォータ") : tr("额度", "Quota", "額度", "クォータ"),
+            daysText: isWeekly ? tr("7 天", "7 Days", "7 天", "7日間") : tr("额度", "Quota", "額度", "クォータ"),
             reset: reset
         )
     }

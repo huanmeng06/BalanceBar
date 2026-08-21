@@ -166,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences: preferences,
             devBundleIdentifier: devBundleIdentifier,
             providerPollInterval: providerPollInterval,
-            currentProviderName: { [weak self] in self?.currentProviderName() ?? tr("未找到", "Not Found") },
+            currentProviderName: { [weak self] in self?.currentProviderName() ?? tr("未找到", "Not Found", "找不到", "見つかりません") },
             providerChoices: { [weak self] in self?.ccSwitchRepository.loadChoices(appType: self?.activeClient.appType ?? AssistantClient.codex.appType) ?? [] },
             snapshot: { [weak self] in self?.snapshot ?? .placeholder },
             quickSwitchSummaries: { [weak self] in self?.quickSwitchSummariesSnapshot() ?? [:] },
@@ -457,7 +457,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func currentProviderName() -> String {
         ccSwitchRepository.loadChoices(appType: activeClient.appType)
-            .first(where: { $0.isCurrent })?.name ?? tr("未找到", "Not Found")
+            .first(where: { $0.isCurrent })?.name ?? tr("未找到", "Not Found", "找不到", "見つかりません")
     }
 
     private func quickSwitchSummariesSnapshot() -> [String: String] {
@@ -641,30 +641,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let applicationMenu = NSMenu(title: "BalanceBar")
         applicationItem.submenu = applicationMenu
         applicationMenu.addItem(
-            withTitle: tr("关于 BalanceBar", "About BalanceBar"),
+            withTitle: tr("关于 BalanceBar", "About BalanceBar", "關於 BalanceBar", "BalanceBar について"),
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         )
         applicationMenu.addItem(.separator())
         applicationMenu.addItem(
-            withTitle: tr("隐藏 BalanceBar", "Hide BalanceBar"),
+            withTitle: tr("隐藏 BalanceBar", "Hide BalanceBar", "隱藏 BalanceBar", "BalanceBar を隠す"),
             action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h"
         )
         let hideOthers = applicationMenu.addItem(
-            withTitle: tr("隐藏其他应用", "Hide Others"),
+            withTitle: tr("隐藏其他应用", "Hide Others", "隱藏其他應用程式", "ほかのアプリを隠す"),
             action: #selector(NSApplication.hideOtherApplications(_:)),
             keyEquivalent: "h"
         )
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         applicationMenu.addItem(
-            withTitle: tr("全部显示", "Show All"),
+            withTitle: tr("全部显示", "Show All", "全部顯示", "すべてを表示"),
             action: #selector(NSApplication.unhideAllApplications(_:)),
             keyEquivalent: ""
         )
         applicationMenu.addItem(.separator())
         let quitItem = applicationMenu.addItem(
-            withTitle: tr("退出 BalanceBar", "Quit BalanceBar"),
+            withTitle: tr("退出 BalanceBar", "Quit BalanceBar", "結束 BalanceBar", "BalanceBar を終了"),
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -672,48 +672,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         mainMenu.addItem(applicationItem)
 
         let editItem = NSMenuItem()
-        let editMenu = NSMenu(title: tr("编辑", "Edit"))
+        let editMenu = NSMenu(title: tr("编辑", "Edit", "編輯", "編集"))
         editItem.submenu = editMenu
         editMenu.autoenablesItems = true
         editMenu.addItem(
-            withTitle: tr("撤销", "Undo"),
+            withTitle: tr("撤销", "Undo", "還原", "取り消す"),
             action: #selector(UndoManager.undo),
             keyEquivalent: "z"
         )
         let redoItem = editMenu.addItem(
-            withTitle: tr("重做", "Redo"),
+            withTitle: tr("重做", "Redo", "重做", "やり直す"),
             action: #selector(UndoManager.redo),
             keyEquivalent: "z"
         )
         redoItem.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(.separator())
         editMenu.addItem(
-            withTitle: tr("剪切", "Cut"),
+            withTitle: tr("剪切", "Cut", "剪切", "カット"),
             action: #selector(NSText.cut(_:)),
             keyEquivalent: "x"
         )
         editMenu.addItem(
-            withTitle: tr("拷贝", "Copy"),
+            withTitle: tr("拷贝", "Copy", "拷貝", "コピー"),
             action: #selector(NSText.copy(_:)),
             keyEquivalent: "c"
         )
         editMenu.addItem(
-            withTitle: tr("粘贴", "Paste"),
+            withTitle: tr("粘贴", "Paste", "貼上", "ペースト"),
             action: #selector(NSText.paste(_:)),
             keyEquivalent: "v"
         )
         editMenu.addItem(
-            withTitle: tr("全选", "Select All"),
+            withTitle: tr("全选", "Select All", "全選", "すべてを選択"),
             action: #selector(NSText.selectAll(_:)),
             keyEquivalent: "a"
         )
         mainMenu.addItem(editItem)
 
         let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: tr("窗口", "Window"))
+        let windowMenu = NSMenu(title: tr("窗口", "Window", "視窗", "ウインドウ"))
         windowItem.submenu = windowMenu
         let closeItem = windowMenu.addItem(
-            withTitle: tr("关闭窗口", "Close Window"),
+            withTitle: tr("关闭窗口", "Close Window", "關閉視窗", "ウインドウを閉じる"),
             action: #selector(NSWindow.performClose(_:)),
             keyEquivalent: "w"
         )
@@ -1143,7 +1143,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 )
                 self.render(.error(tr(
                     "未找到 CC Switch 当前 \(client.displayName) 供应商",
-                    "The current CC Switch \(client.displayName) Provider was not found"
+                    "The current CC Switch \(client.displayName) Provider was not found",
+                    "找不到 CC Switch 目前的 \(client.displayName) 供應商",
+                    "現在の CC Switch \(client.displayName) プロバイダーが見つかりません"
                 )))
                 return
             }

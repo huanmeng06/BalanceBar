@@ -9,6 +9,7 @@ trap 'rm -rf "$probe_dir"' EXIT
 
 {
     printf '%s\n' 'import Foundation'
+    cat "$source_dir/Sources/AppCore/Localization.swift"
     cat "$source_dir/Sources/Domain/BalanceQuery.swift"
     cat <<'SWIFT'
 
@@ -305,27 +306,31 @@ for diagnostic in diagnostics {
     require(!diagnostic.contains("\"response\""), "diagnostic excludes response content")
 }
 
-private let expectedUserVisibleReasons: [(BalanceQueryFailure, String, String)] = [
-    (.settingsJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid"),
-    (.metaJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid"),
-    (.usageScriptMissing, "用量脚本缺失", "Usage script is missing"),
-    (.usageScriptInvalid, "用量脚本无效", "Usage script is invalid"),
-    (.usageScriptDisabled, "用量脚本未启用", "Usage script is not enabled"),
-    (.credentialMissing, "缺少访问凭据", "Access credential is missing"),
-    (.baseURLMissing, "缺少 API 地址", "API address is missing"),
-    (.requestCodeMissing, "用量脚本缺少请求代码", "Usage script request code is missing"),
-    (.requestEndpointMissing, "用量脚本缺少请求地址", "Usage script request address is missing"),
-    (.nativeTemplateUnsupported, "不支持当前余额模板", "Current balance template is not supported"),
-    (.newAPIUserIDMissing, "New API 用户 ID 缺失", "New API user ID is missing"),
-    (.unknown, "余额查询配置不完整", "Balance query configuration is incomplete")
+private let expectedUserVisibleReasons: [(BalanceQueryFailure, String, String, String, String)] = [
+    (.settingsJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid", "CC Switch 設定格式無效", "CC Switch の設定形式が無効です"),
+    (.metaJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid", "CC Switch 設定格式無效", "CC Switch の設定形式が無効です"),
+    (.usageScriptMissing, "用量脚本缺失", "Usage script is missing", "用量指令碼缺失", "使用量スクリプトがありません"),
+    (.usageScriptInvalid, "用量脚本无效", "Usage script is invalid", "用量指令碼無效", "使用量スクリプトが無効です"),
+    (.usageScriptDisabled, "用量脚本未启用", "Usage script is not enabled", "用量指令碼未啟用", "使用量スクリプトが有効になっていません"),
+    (.credentialMissing, "缺少访问凭据", "Access credential is missing", "缺少存取憑證", "アクセス資格情報がありません"),
+    (.baseURLMissing, "缺少 API 地址", "API address is missing", "缺少 API 位址", "API アドレスがありません"),
+    (.requestCodeMissing, "用量脚本缺少请求代码", "Usage script request code is missing", "用量指令碼缺少請求程式碼", "使用量スクリプトのリクエストコードがありません"),
+    (.requestEndpointMissing, "用量脚本缺少请求地址", "Usage script request address is missing", "用量指令碼缺少請求位址", "使用量スクリプトのリクエストアドレスがありません"),
+    (.nativeTemplateUnsupported, "不支持当前余额模板", "Current balance template is not supported", "不支援目前餘額範本", "現在の残高テンプレートはサポートされていません"),
+    (.newAPIUserIDMissing, "New API 用户 ID 缺失", "New API user ID is missing", "New API 使用者 ID 缺失", "New API ユーザー ID がありません"),
+    (.unknown, "余额查询配置不完整", "Balance query configuration is incomplete", "餘額查詢設定不完整", "残高クエリの設定が不完全です")
 ]
 require(expectedUserVisibleReasons.count == 12, "every stable failure type has a user-visible mapping")
-for (failure, simplifiedChinese, english) in expectedUserVisibleReasons {
-    let actualChinese = failure.userVisibleReason(usesSimplifiedChinese: true)
-    let actualEnglish = failure.userVisibleReason(usesSimplifiedChinese: false)
-    require(actualChinese == simplifiedChinese, "Chinese user-visible reason is fixed for \(failure.rawValue)")
+for (failure, simplifiedChinese, english, traditionalChinese, japanese) in expectedUserVisibleReasons {
+    let actualSimplified = failure.userVisibleReason(language: .simplifiedChinese)
+    let actualEnglish = failure.userVisibleReason(language: .english)
+    let actualTraditional = failure.userVisibleReason(language: .traditionalChinese)
+    let actualJapanese = failure.userVisibleReason(language: .japanese)
+    require(actualSimplified == simplifiedChinese, "Simplified Chinese user-visible reason is fixed for \(failure.rawValue)")
     require(actualEnglish == english, "English user-visible reason is fixed for \(failure.rawValue)")
-    for message in [actualChinese, actualEnglish] {
+    require(actualTraditional == traditionalChinese, "Traditional Chinese user-visible reason is fixed for \(failure.rawValue)")
+    require(actualJapanese == japanese, "Japanese user-visible reason is fixed for \(failure.rawValue)")
+    for message in [actualSimplified, actualEnglish, actualTraditional, actualJapanese] {
         require(!message.contains(failure.rawValue), "user-visible reason excludes internal raw values")
         require(!message.contains("stage="), "user-visible reason excludes diagnostic stages")
         require(!message.contains("reason="), "user-visible reason excludes diagnostic reasons")
@@ -339,13 +344,17 @@ for (failure, simplifiedChinese, english) in expectedUserVisibleReasons {
 }
 
 SWIFT
-} | swiftc -framework Foundation -o "$probe_binary" -
+} | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
 "$probe_binary"
 
 ui_render_block="$(sed -n '/func refreshStandardProvider(/,/func prefetchCurrentBalance/p' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift")"
 [[ "$ui_render_block" == *"failure.userVisibleReason"* ]] || {
     echo "balance query probe: FAIL; query-unavailable UI does not use the safe localized mapping" >&2
+    exit 1
+}
+[[ "$ui_render_block" == *"language: AppLanguage.resolved"* ]] || {
+    echo "balance query probe: FAIL; query-unavailable UI does not resolve the current language" >&2
     exit 1
 }
 [[ "$ui_render_block" == *"renderBalanceError"* ]] || {
@@ -361,4 +370,4 @@ if grep -Eq 'rawValue|diagnostic|stage=|reason=|https?://|Bearer|SENSITIVE_BEARE
     exit 1
 fi
 
-echo "balance query probe: PASS; success paths; all stable parsing failures; fixed Chinese/English user-visible mappings; diagnostics and UI text exclude sensitive configuration"
+echo "balance query probe: PASS; success paths; all stable parsing failures; fixed Simplified/Traditional/Japanese/English user-visible mappings via production Localization; diagnostics and UI text exclude sensitive configuration"

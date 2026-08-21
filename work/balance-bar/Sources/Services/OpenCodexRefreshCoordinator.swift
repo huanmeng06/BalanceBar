@@ -80,7 +80,8 @@ final class OpenCodexRefreshCoordinator {
                         self.prepareCards(providerID: providerID, state: next, force: true)
                         self.render(providerID: providerID, providerName: self.repository.loadCurrent(appType: AssistantClient.codex.appType)?.name ?? providerID, state: next, client: .codex)
                     case .failure(let error):
-                        let status = tr("切换失败：\(error.simplifiedChineseMessage)", "Switch failed: \(error.englishMessage)")
+                        let message = error.message(for: AppLanguage.resolved)
+                        let status = tr("切换失败：\(message)", "Switch failed: \(message)", "切換失敗：\(message)", "切り替えに失敗しました：\(message)")
                         self.actions.render(.openCodex(providerID, selector: oldState.currentSelector, status: status, Date()), providerID, .codex)
                     }
                 }
@@ -118,7 +119,7 @@ final class OpenCodexRefreshCoordinator {
                     let unavailable = self.unavailableState(from: previous)
                     self.stateByProvider[providerID] = unavailable
                     self.publishState(providerID: providerID, state: unavailable)
-                    self.publishCardsUnavailable(reason: tr("OpenCodex 管理接口不可用", "OpenCodex management API is unavailable"))
+                    self.publishCardsUnavailable(reason: tr("OpenCodex 管理接口不可用", "OpenCodex management API is unavailable", "OpenCodex 管理介面不可用", "OpenCodex 管理 API を利用できません"))
                     self.render(providerID: providerID, providerName: providerName, state: unavailable, client: client)
                 case .recognized(let recognized):
                     self.candidateByProvider[providerID] = candidate
@@ -162,7 +163,7 @@ final class OpenCodexRefreshCoordinator {
         for plan in plans {
             if case .unavailable = plan.source { continue }
             nextData[plan.source] = refreshCoordinator.visibleData(for: plan.source)
-                ?? (state.managementAvailable ? .loading(category: plan.source.category) : .unavailable(category: plan.source.category, reason: tr("OpenCodex 管理接口不可用", "OpenCodex management API is unavailable")))
+                ?? (state.managementAvailable ? .loading(category: plan.source.category) : .unavailable(category: plan.source.category, reason: tr("OpenCodex 管理接口不可用", "OpenCodex management API is unavailable", "OpenCodex 管理介面不可用", "OpenCodex 管理 API を利用できません")))
         }
         cardData = nextData
         publishCards()
@@ -175,7 +176,7 @@ final class OpenCodexRefreshCoordinator {
                 fetchOfficialCard(providerID: providerID, generation: generation)
             case .balance(let sourceID):
                 guard let summary = sources.first(where: { $0.id == sourceID }), let query = summary.query else {
-                    updateCard(providerID: providerID, generation: generation, source: source.source, data: .unavailable(category: .balance, reason: tr("余额来源配置不完整", "The balance source configuration is incomplete")))
+                    updateCard(providerID: providerID, generation: generation, source: source.source, data: .unavailable(category: .balance, reason: tr("余额来源配置不完整", "The balance source configuration is incomplete", "餘額來源設定不完整", "残高ソースの設定が不完全です")))
                     continue
                 }
                 _ = balanceAPIClient.fetchBalance(query: query, client: .codex, providerID: "opencodex-card:\(sourceID)") { [weak self] result in
@@ -184,9 +185,9 @@ final class OpenCodexRefreshCoordinator {
                     if case .success(let response) = result {
                         data = .balance(amount: response.output.amount, unit: response.output.unit, websiteURL: Self.secureWebsiteURL(summary.websiteURL ?? query.websiteURL), updatedAt: Date())
                     } else if case .failure(.nonHTTPS) = result {
-                        data = .unavailable(category: .balance, reason: tr("余额不可用：余额接口不是 HTTPS", "Balance unavailable: the balance endpoint is not HTTPS"))
+                        data = .unavailable(category: .balance, reason: tr("余额不可用：余额接口不是 HTTPS", "Balance unavailable: the balance endpoint is not HTTPS", "餘額不可用：餘額介面不是 HTTPS", "残高を利用できません：残高エンドポイントが HTTPS ではありません"))
                     } else {
-                        data = .unavailable(category: .balance, reason: tr("余额不可用：无法读取上游余额", "Balance unavailable: the upstream balance could not be read"))
+                        data = .unavailable(category: .balance, reason: tr("余额不可用：无法读取上游余额", "Balance unavailable: the upstream balance could not be read", "餘額不可用：無法讀取上游餘額", "残高を利用できません：上流の残高を読み取れません"))
                     }
                     self.queue.async { self.updateCard(providerID: providerID, generation: generation, source: source.source, data: data) }
                 }
@@ -268,9 +269,9 @@ final class OpenCodexRefreshCoordinator {
             case .success(let response):
                 data = .official(remaining: response.output.remaining, label: response.output.label, reset: response.output.reset, updatedAt: Date())
             case .failure(.missingCredentials):
-                data = .unavailable(category: .quota, reason: tr("额度不可用：未找到官方登录态", "Quota unavailable: official sign-in credentials were not found"))
+                data = .unavailable(category: .quota, reason: tr("额度不可用：未找到官方登录态", "Quota unavailable: official sign-in credentials were not found", "額度不可用：找不到官方登入狀態", "クォータを利用できません：公式ログイン情報が見つかりません"))
             case .failure:
-                data = .unavailable(category: .quota, reason: tr("额度不可用：官方额度接口暂时不可用", "Quota unavailable: the official quota endpoint is temporarily unavailable"))
+                data = .unavailable(category: .quota, reason: tr("额度不可用：官方额度接口暂时不可用", "Quota unavailable: the official quota endpoint is temporarily unavailable", "額度不可用：官方額度介面暫時不可用", "クォータを利用できません：公式クォータエンドポイントが一時的に利用できません"))
             }
             self.queue.async { self.updateCard(providerID: providerID, generation: generation, source: .official, data: data) }
         }
@@ -299,11 +300,11 @@ final class OpenCodexRefreshCoordinator {
     }
 
     private func statusText(for state: OpenCodexRuntimeState) -> String {
-        if !state.managementAvailable { return tr("管理接口不可用，等待 OpenCodex 恢复", "Management API unavailable; waiting for OpenCodex") }
-        if !state.preferenceDataAvailable { return tr("暂未读取到 OpenCodex 偏好", "OpenCodex preferences are not available yet") }
-        if state.preferences.isEmpty { return tr("没有配置 OpenCodex 子项", "No OpenCodex preferences configured") }
-        if let current = state.currentSelector { return tr("当前：\(current)", "Current: \(current)") }
-        return tr("已读取 OpenCodex 偏好", "OpenCodex preferences loaded")
+        if !state.managementAvailable { return tr("管理接口不可用，等待 OpenCodex 恢复", "Management API unavailable; waiting for OpenCodex", "管理介面不可用，等待 OpenCodex 恢復", "管理 API を利用できません。OpenCodex の復旧を待機中") }
+        if !state.preferenceDataAvailable { return tr("暂未读取到 OpenCodex 偏好", "OpenCodex preferences are not available yet", "尚未讀取到 OpenCodex 偏好", "OpenCodex の設定はまだ読み込まれていません") }
+        if state.preferences.isEmpty { return tr("没有配置 OpenCodex 子项", "No OpenCodex preferences configured", "未設定 OpenCodex 子項目", "OpenCodex の設定がありません") }
+        if let current = state.currentSelector { return tr("当前：\(current)", "Current: \(current)", "目前：\(current)", "現在：\(current)") }
+        return tr("已读取 OpenCodex 偏好", "OpenCodex preferences loaded", "已讀取 OpenCodex 偏好", "OpenCodex の設定を読み込みました")
     }
 
     private func unavailableState(from state: OpenCodexRuntimeState) -> OpenCodexRuntimeState {

@@ -556,23 +556,18 @@ enum OpenCodexRepositoryError: Error, Equatable {
     case verificationFailed
     case rollbackFailed
 
-    var simplifiedChineseMessage: String {
+    func message(for language: AppLanguage) -> String {
         switch self {
-        case .managementUnavailable: return "OpenCodex 管理接口不可用"
-        case .invalidResponse: return "OpenCodex 返回的数据无效"
-        case .switchFailed: return "OpenCodex 切换未完成"
-        case .verificationFailed: return "OpenCodex 切换后校验失败"
-        case .rollbackFailed: return "OpenCodex 回滚校验失败，实际状态可能已部分改变"
-        }
-    }
-
-    var englishMessage: String {
-        switch self {
-        case .managementUnavailable: return "OpenCodex management API is unavailable"
-        case .invalidResponse: return "OpenCodex returned invalid data"
-        case .switchFailed: return "OpenCodex switch did not complete"
-        case .verificationFailed: return "OpenCodex switch verification failed"
-        case .rollbackFailed: return "OpenCodex rollback verification failed; the actual state may be partially changed"
+        case .managementUnavailable:
+            return tr("OpenCodex 管理接口不可用", "OpenCodex management API is unavailable", "OpenCodex 管理介面不可用", "OpenCodex 管理 API を利用できません", language: language)
+        case .invalidResponse:
+            return tr("OpenCodex 返回的数据无效", "OpenCodex returned invalid data", "OpenCodex 傳回的資料無效", "OpenCodex が返したデータが無効です", language: language)
+        case .switchFailed:
+            return tr("OpenCodex 切换未完成", "OpenCodex switch did not complete", "OpenCodex 切換未完成", "OpenCodex の切り替えが完了していません", language: language)
+        case .verificationFailed:
+            return tr("OpenCodex 切换后校验失败", "OpenCodex switch verification failed", "OpenCodex 切換後驗證失敗", "OpenCodex の切り替え後の検証に失敗しました", language: language)
+        case .rollbackFailed:
+            return tr("OpenCodex 回滚校验失败，实际状态可能已部分改变", "OpenCodex rollback verification failed; the actual state may be partially changed", "OpenCodex 回滾驗證失敗，實際狀態可能已部分變更", "OpenCodex のロールバック検証に失敗しました。実際の状態が一部変更されている可能性があります", language: language)
         }
     }
 }

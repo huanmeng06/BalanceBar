@@ -273,13 +273,13 @@ final class CCSwitchRepository {
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX,
             nil
         ) == SQLITE_OK, let database else {
-            throw switchError(tr("无法打开 CC Switch 数据库", "Unable to open the CC Switch database"))
+            throw switchError(tr("无法打开 CC Switch 数据库", "Unable to open the CC Switch database", "無法開啟 CC Switch 資料庫", "CC Switch データベースを開けません"))
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 3_000)
 
         guard let target = loadSwitchTarget(providerID, appType: appType, database: database) else {
-            throw switchError(tr("供应商不存在", "Provider does not exist"))
+            throw switchError(tr("供应商不存在", "Provider does not exist", "供應商不存在", "プロバイダーが存在しません"))
         }
 
         var appSettings = (try? Data(contentsOf: appSettingsURL))
@@ -296,7 +296,9 @@ final class CCSwitchRepository {
                 else {
                     throw switchError(tr(
                         "供应商的 Claude 配置不完整",
-                        "The Provider's Claude configuration is incomplete"
+                        "The Provider's Claude configuration is incomplete",
+                        "供應商的 Claude 設定不完整",
+                        "プロバイダーの Claude 設定が不完全です"
                     ))
                 }
                 let settingsURL = homeDirectoryURL
@@ -315,7 +317,7 @@ final class CCSwitchRepository {
                 guard let stored = try? JSONSerialization.jsonObject(with: Data(target.settingsConfig.utf8)) as? [String: Any],
                       let auth = stored["auth"],
                       var config = stored["config"] as? String else {
-                    throw switchError(tr("供应商的 Codex 配置不完整", "The Provider's Codex configuration is incomplete"))
+                    throw switchError(tr("供应商的 Codex 配置不完整", "The Provider's Codex configuration is incomplete", "供應商的 Codex 設定不完整", "プロバイダーの Codex 設定が不完全です"))
                 }
 
                 let codexDirectory = homeDirectoryURL.appendingPathComponent(".codex", isDirectory: true)
@@ -346,7 +348,7 @@ final class CCSwitchRepository {
         }
 
         guard sqlite3_exec(database, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
-            throw switchError(tr("CC Switch 数据库正忙", "The CC Switch database is busy"))
+            throw switchError(tr("CC Switch 数据库正忙", "The CC Switch database is busy", "CC Switch 資料庫忙碌中", "CC Switch データベースがビジーです"))
         }
         var committed = false
         defer { if !committed { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) } }
@@ -361,10 +363,10 @@ final class CCSwitchRepository {
             bindings: [providerID, appType]
         )
         guard sqlite3_changes(database) == 1 else {
-            throw switchError(tr("未能选中供应商", "Unable to select the Provider"))
+            throw switchError(tr("未能选中供应商", "Unable to select the Provider", "無法選取供應商", "プロバイダーを選択できません"))
         }
         guard sqlite3_exec(database, "COMMIT", nil, nil, nil) == SQLITE_OK else {
-            throw switchError(tr("无法保存供应商切换", "Unable to save the Provider switch"))
+            throw switchError(tr("无法保存供应商切换", "Unable to save the Provider switch", "無法儲存供應商切換", "プロバイダーの切り替えを保存できません"))
         }
         committed = true
 
@@ -410,14 +412,14 @@ final class CCSwitchRepository {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else {
-            throw switchError(tr("数据库写入准备失败", "Failed to prepare the database write"))
+            throw switchError(tr("数据库写入准备失败", "Failed to prepare the database write", "資料庫寫入準備失敗", "データベース書き込みの準備に失敗しました"))
         }
         defer { sqlite3_finalize(statement) }
         for (index, binding) in bindings.enumerated() {
             bind(binding, to: statement, at: Int32(index + 1))
         }
         guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw switchError(tr("数据库写入失败", "Database write failed"))
+            throw switchError(tr("数据库写入失败", "Database write failed", "資料庫寫入失敗", "データベースの書き込みに失敗しました"))
         }
     }
 

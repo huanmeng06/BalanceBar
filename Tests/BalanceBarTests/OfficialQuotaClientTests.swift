@@ -157,7 +157,7 @@ final class OfficialQuotaClientTests: XCTestCase {
             return XCTFail("expected Codex success, got \(result)")
         }
         XCTAssertEqual(response.output.remaining, 45, accuracy: 0.000001)
-        XCTAssertEqual(response.output.daysText, tr("7 天", "7 Days"))
+        XCTAssertEqual(response.output.daysText, tr("7 天", "7 Days", "7 天", "7日間"))
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
         XCTAssertEqual(request.url?.host, "chatgpt.com")
@@ -181,7 +181,7 @@ final class OfficialQuotaClientTests: XCTestCase {
             return XCTFail("expected Claude success, got \(result)")
         }
         XCTAssertEqual(response.output.remaining, 87.5, accuracy: 0.000001)
-        XCTAssertEqual(response.output.daysText, tr("7 天", "7 Days"))
+        XCTAssertEqual(response.output.daysText, tr("7 天", "7 Days", "7 天", "7日間"))
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
         XCTAssertEqual(request.url?.host, "api.anthropic.com")
         XCTAssertEqual(request.url?.path, "/api/oauth/usage")
