@@ -118,21 +118,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = AppPreferences(defaults: defaults)
-        preferences.menuBarIconOffsetX = 2
-        preferences.menuBarIconOffsetY = -3
-        preferences.menuBarAmountOffsetX = -4
-        preferences.menuBarAmountOffsetY = 5
+        preferences.menuBarIconOffsetX = 0.2
+        preferences.menuBarIconOffsetY = -0.3
+        preferences.menuBarAmountOffsetX = -0.4
+        preferences.menuBarAmountOffsetY = 0.5
         let relay = DashboardPreferencePageRelay()
         relay.onOffsetAdjust = { identifier, delta in
+            let pointDelta = Double(delta) * AppPreferences.menuBarOffsetStep
             switch identifier {
             case AppPreferences.menuBarIconOffsetXKey:
-                preferences.menuBarIconOffsetX += delta
+                preferences.menuBarIconOffsetX += pointDelta
             case AppPreferences.menuBarIconOffsetYKey:
-                preferences.menuBarIconOffsetY += delta
+                preferences.menuBarIconOffsetY += pointDelta
             case AppPreferences.menuBarAmountOffsetXKey:
-                preferences.menuBarAmountOffsetX += delta
+                preferences.menuBarAmountOffsetX += pointDelta
             case AppPreferences.menuBarAmountOffsetYKey:
-                preferences.menuBarAmountOffsetY += delta
+                preferences.menuBarAmountOffsetY += pointDelta
             default:
                 break
             }
@@ -187,24 +188,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
-        XCTAssertEqual(iconSummary?.stringValue, "X 2 · Y -3")
-        XCTAssertEqual(amountSummary?.stringValue, "X -4 · Y 5")
+        XCTAssertEqual(iconSummary?.stringValue, "X 0.2 · Y -0.3")
+        XCTAssertEqual(amountSummary?.stringValue, "X -0.4 · Y 0.5")
         XCTAssertEqual(labels.first { $0.stringValue == "细节微调" }?.stringValue, "细节微调")
         XCTAssertEqual(labels.first { $0.stringValue == "图标" }?.stringValue, "图标")
         XCTAssertEqual(labels.first { $0.stringValue == "金额" }?.stringValue, "金额")
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
-        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 2, accuracy: 0.001)
+        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 0.2, accuracy: 0.001)
         XCTAssertEqual(
             previewIcon?.layer?.affineTransform().ty ?? CGFloat.nan,
-            -3 + MenuBarLayout.singleLineIconYOffset,
+            -0.3 + MenuBarLayout.singleLineIconYOffset,
             accuracy: 0.001
         )
-        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -4, accuracy: 0.001)
+        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -0.4, accuracy: 0.001)
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            -(5 + MenuBarLayout.singleLineTextYOffset),
+            0.5 - MenuBarLayout.singleLineTextYOffset,
             accuracy: 0.001
         )
 
@@ -214,7 +215,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             return XCTFail("Expected a right button for the icon X offset")
         }
         relay.adjustOffset(rightButton)
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 3)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.3, accuracy: 0.001)
 
         preferences.showMenuBarIcon = false
         controller.refresh(
@@ -304,7 +305,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            -(1 + MenuBarLayout.officialSecondaryTextYOffset),
+            1 - MenuBarLayout.officialSecondaryTextYOffset,
             accuracy: 0.001
         )
     }

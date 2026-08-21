@@ -196,14 +196,19 @@ final class MenuBarGeometryTests: XCTestCase {
     }
 
     func testMenuBarOffsetDirectionsMatchRealAndPreview() {
+        // Layouts: balance single-line, official one-line (percentage only),
+        // official two-line (with reset time).
         let layouts: [(String, Bool, Bool)] = [
             ("balance", false, true),
             ("official-one-line", false, false),
             ("official-two-line", true, false)
         ]
+        // Spaces used for the user-offset component on each side. The amount
+        // preview Y uses unflipped layer semantics so "up" matches the real
+        // menu bar; built-in baselines keep their existing visual unchanged.
         let elements: [(String, MenuBarOffsetSpace, MenuBarOffsetSpace)] = [
             ("icon", .unflippedFrame, .unflippedLayer),
-            ("amount", .flippedFrame, .flippedLayer)
+            ("amount", .flippedFrame, .unflippedLayer)
         ]
         let directions: [(String, CGFloat, CGFloat)] = [
             ("up", 0, 1),
@@ -212,26 +217,17 @@ final class MenuBarGeometryTests: XCTestCase {
             ("right", 1, 0)
         ]
 
-        for (layoutName, hasSecondary, isBalance) in layouts {
+        for (layoutName, _, _) in layouts {
             for (elementName, realSpace, previewSpace) in elements {
                 for (directionName, dx, dy) in directions {
-                    let baseline: CGFloat
-                    if elementName == "amount", !isBalance {
-                        baseline = MenuBarLayout.officialTextYOffset(
-                            hasSecondary: hasSecondary
-                        )
-                    } else {
-                        baseline = 0
-                    }
-                    let visualY = dy + baseline
                     let realDX = MenuBarOffsetLayout.xDelta(visualX: dx)
                     let realDY = MenuBarOffsetLayout.yDelta(
-                        visualY: visualY,
+                        visualY: dy,
                         in: realSpace
                     )
                     let previewDX = MenuBarOffsetLayout.xDelta(visualX: dx)
                     let previewDY = MenuBarOffsetLayout.yDelta(
-                        visualY: visualY,
+                        visualY: dy,
                         in: previewSpace
                     )
 
@@ -240,7 +236,7 @@ final class MenuBarGeometryTests: XCTestCase {
                             forYDelta: realDY,
                             in: realSpace
                         ),
-                        visualY,
+                        dy,
                         accuracy: 0.001,
                         "\(layoutName)/\(elementName)/\(directionName) real visual y"
                     )
@@ -249,7 +245,7 @@ final class MenuBarGeometryTests: XCTestCase {
                             forYDelta: previewDY,
                             in: previewSpace
                         ),
-                        visualY,
+                        dy,
                         accuracy: 0.001,
                         "\(layoutName)/\(elementName)/\(directionName) preview visual y"
                     )

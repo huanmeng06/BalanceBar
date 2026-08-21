@@ -505,8 +505,14 @@ final class DashboardMenuBarPage {
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
                 translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                // User Y offsets use unflipped layer semantics (positive = up)
+                // to match the real menu bar; the built-in single-line baseline
+                // keeps its existing visual unchanged.
                 y: MenuBarOffsetLayout.yDelta(
-                    visualY: amountVisualY + MenuBarLayout.singleLineTextYOffset,
+                    visualY: amountVisualY,
+                    in: .unflippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: MenuBarLayout.singleLineTextYOffset,
                     in: .flippedLayer
                 )
             ))
@@ -518,7 +524,10 @@ final class DashboardMenuBarPage {
             previewText.layer?.setAffineTransform(CGAffineTransform(
                 translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
                 y: MenuBarOffsetLayout.yDelta(
-                    visualY: amountVisualY + officialTextYOffset,
+                    visualY: amountVisualY,
+                    in: .unflippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: officialTextYOffset,
                     in: .flippedLayer
                 )
             ))
@@ -536,8 +545,8 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private static func offsetSummaryText(x: Int, y: Int) -> String {
-        "X \(x) · Y \(y)"
+    private static func offsetSummaryText(x: Double, y: Double) -> String {
+        String(format: "X %.1f · Y %.1f", x, y)
     }
 
     private func makeOffsetControls(

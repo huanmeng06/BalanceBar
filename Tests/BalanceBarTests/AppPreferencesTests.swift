@@ -79,35 +79,44 @@ final class AppPreferencesTests: XCTestCase {
     func testMenuBarElementOffsetsDefaultRoundTripAndClamp() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 0)
-        XCTAssertEqual(preferences.menuBarIconOffsetY, 0)
-        XCTAssertEqual(preferences.menuBarAmountOffsetX, 0)
-        XCTAssertEqual(preferences.menuBarAmountOffsetY, 0)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 0, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, 0, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetX, 0, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, 0, accuracy: 0.001)
 
-        preferences.menuBarIconOffsetX = 3
-        preferences.menuBarIconOffsetY = -4
+        preferences.menuBarIconOffsetX = 0.3
+        preferences.menuBarIconOffsetY = -0.4
         preferences.menuBarAmountOffsetX = 10
         preferences.menuBarAmountOffsetY = -10
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 3)
-        XCTAssertEqual(preferences.menuBarIconOffsetY, -4)
-        XCTAssertEqual(preferences.menuBarAmountOffsetX, 10)
-        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.3, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, -0.4, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetX, 10, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10, accuracy: 0.001)
 
         preferences.menuBarIconOffsetX = 100
         preferences.menuBarIconOffsetY = -100
-        preferences.menuBarAmountOffsetX = 11
-        preferences.menuBarAmountOffsetY = -11
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 10)
-        XCTAssertEqual(preferences.menuBarIconOffsetY, -10)
-        XCTAssertEqual(preferences.menuBarAmountOffsetX, 10)
-        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10)
+        preferences.menuBarAmountOffsetX = 10.06
+        preferences.menuBarAmountOffsetY = -10.04
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 10, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, -10, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetX, 10, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10, accuracy: 0.001)
+
+        // Repeated 0.1pt steps stay exact after the setter rounds to 0.1.
+        preferences.menuBarIconOffsetX = 0
+        for _ in 0..<5 {
+            preferences.menuBarIconOffsetX += AppPreferences.menuBarOffsetStep
+        }
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.5, accuracy: 0.001)
+        preferences.menuBarIconOffsetX = 0.15
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.2, accuracy: 0.001)
 
         defaults.set(50, forKey: AppPreferences.menuBarIconOffsetXKey)
         defaults.set(-50, forKey: AppPreferences.menuBarAmountOffsetYKey)
-        defaults.set(7, forKey: AppPreferences.menuBarIconOffsetYKey)
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 10)
-        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10)
-        XCTAssertEqual(preferences.menuBarIconOffsetY, 7)
+        defaults.set(0.7, forKey: AppPreferences.menuBarIconOffsetYKey)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 10, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, -10, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, 0.7, accuracy: 0.001)
     }
 
     func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
