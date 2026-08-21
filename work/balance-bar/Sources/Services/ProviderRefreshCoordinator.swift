@@ -2,6 +2,7 @@ import Foundation
 
 struct ProviderRefreshActions {
     let currentProvider: (AssistantClient) -> CCSwitchProvider?
+    let isActiveClient: (AssistantClient) -> Bool
     let render: (Snapshot) -> Void
     let storeClientSnapshot: (AssistantClient, String, Snapshot) -> Void
     let updateQuickSwitchSummary: (String, String) -> Void
@@ -229,6 +230,7 @@ final class ProviderRefreshCoordinator {
                 if next.kind == .official || next.kind == .balance {
                     self.actions.storeClientSnapshot(client, providerID, next)
                 }
+                guard self.actions.isActiveClient(client) else { return }
                 guard self.actions.currentProvider(client)?.id == providerID else { return }
                 self.actions.render(next)
             }
@@ -245,6 +247,7 @@ final class ProviderRefreshCoordinator {
                 reason: reason
             )
             DispatchQueue.main.async {
+                guard self.actions.isActiveClient(client) else { return }
                 guard self.actions.currentProvider(client)?.id == providerID else { return }
                 self.actions.render(next)
             }
