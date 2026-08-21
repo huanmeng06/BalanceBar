@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class DashboardWindowDragRegionTests: XCTestCase {
-    func testDoubleClickCallbackIsInstalledOnlyOnTheMovableTitlebarRegion() throws {
+    func testDoubleClickCallbackIsInstalledOnlyOnTheMovableTitlebarRegion() {
         var doubleClickCount = 0
         let (window, root, dragView) = makeWindow {
             doubleClickCount += 1
@@ -15,18 +15,9 @@ final class DashboardWindowDragRegionTests: XCTestCase {
 
         let titlebarPoint = NSPoint(x: root.bounds.midX, y: root.bounds.maxY - 8)
         XCTAssertTrue(dragView.hitTest(titlebarPoint) === dragView)
-        let event = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: titlebarPoint,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 0,
-            clickCount: 2,
-            pressure: 0
-        ))
-        dragView.mouseDown(with: event)
+        XCTAssertTrue(dragView.handleMouseDown(clickCount: 2))
+        XCTAssertEqual(doubleClickCount, 1)
+        XCTAssertFalse(dragView.handleMouseDown(clickCount: 1))
         XCTAssertEqual(doubleClickCount, 1)
 
         let contentPoint = NSPoint(x: root.bounds.midX, y: root.bounds.midY)

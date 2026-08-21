@@ -78,11 +78,17 @@ final class DashboardTitlebarDragView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2, let onDoubleClick {
-            onDoubleClick()
+        if handleMouseDown(clickCount: event.clickCount) {
             return
         }
         super.mouseDown(with: event)
+    }
+
+    @discardableResult
+    func handleMouseDown(clickCount: Int) -> Bool {
+        guard clickCount == 2, let onDoubleClick else { return false }
+        onDoubleClick()
+        return true
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
