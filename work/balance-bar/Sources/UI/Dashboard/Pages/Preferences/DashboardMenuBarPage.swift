@@ -192,6 +192,10 @@ final class DashboardMenuBarPage {
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
+    /// Extra default lift for the amount text in the Dashboard preview only
+    /// (visual, positive = up). The real menu bar layout is unchanged; user
+    /// fine-tune offsets stack on top.
+    static let previewAmountDefaultYOffset: CGFloat = 0.5
 
     struct Presentation: Equatable {
         let primary: String
@@ -514,6 +518,9 @@ final class DashboardMenuBarPage {
                 ) + MenuBarOffsetLayout.yDelta(
                     visualY: MenuBarLayout.singleLineTextYOffset,
                     in: .flippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: Self.previewAmountDefaultYOffset,
+                    in: .unflippedLayer
                 )
             ))
         } else {
@@ -529,6 +536,9 @@ final class DashboardMenuBarPage {
                 ) + MenuBarOffsetLayout.yDelta(
                     visualY: officialTextYOffset,
                     in: .flippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: Self.previewAmountDefaultYOffset,
+                    in: .unflippedLayer
                 )
             ))
         }

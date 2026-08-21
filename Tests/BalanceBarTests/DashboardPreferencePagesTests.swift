@@ -205,7 +205,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -0.4, accuracy: 0.001)
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            0.5 - MenuBarLayout.singleLineTextYOffset,
+            0.5 - MenuBarLayout.singleLineTextYOffset
+                + DashboardMenuBarPage.previewAmountDefaultYOffset,
             accuracy: 0.001
         )
 
@@ -277,7 +278,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         // Percentage-only official text defaults to 0.5pt higher.
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            -0.5,
+            DashboardMenuBarPage.previewAmountDefaultYOffset
+                - MenuBarLayout.officialAmountOnlyTextYOffset,
             accuracy: 0.001
         )
 
@@ -291,7 +293,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         // With reset time shown the text block defaults to 0.1pt lower.
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            0.1,
+            DashboardMenuBarPage.previewAmountDefaultYOffset
+                - MenuBarLayout.officialSecondaryTextYOffset,
             accuracy: 0.001
         )
 
@@ -305,7 +308,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            1 - MenuBarLayout.officialSecondaryTextYOffset,
+            1 - MenuBarLayout.officialSecondaryTextYOffset
+                + DashboardMenuBarPage.previewAmountDefaultYOffset,
             accuracy: 0.001
         )
     }
