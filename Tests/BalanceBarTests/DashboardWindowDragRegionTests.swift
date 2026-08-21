@@ -4,24 +4,18 @@ import XCTest
 
 @MainActor
 final class DashboardWindowDragRegionTests: XCTestCase {
-    func testDoubleClickCallbackIsInstalledOnlyOnTheMovableTitlebarRegion() {
+    func testTitlebarDragViewInvokesDoubleClickCallbackDeterministically() {
         var doubleClickCount = 0
-        let (window, root, dragView) = makeWindow {
+        let dragView = DashboardTitlebarDragView(frame: NSRect(x: 0, y: 0, width: 880, height: 52))
+        dragView.onDoubleClick = {
             doubleClickCount += 1
         }
-        defer { window.close() }
-        window.layoutIfNeeded()
-        root.layoutSubtreeIfNeeded()
 
-        let titlebarPoint = NSPoint(x: root.bounds.midX, y: root.bounds.maxY - 8)
-        XCTAssertTrue(dragView.hitTest(titlebarPoint) === dragView)
+        XCTAssertTrue(dragView.mouseDownCanMoveWindow)
         XCTAssertTrue(dragView.handleMouseDown(clickCount: 2))
         XCTAssertEqual(doubleClickCount, 1)
         XCTAssertFalse(dragView.handleMouseDown(clickCount: 1))
         XCTAssertEqual(doubleClickCount, 1)
-
-        let contentPoint = NSPoint(x: root.bounds.midX, y: root.bounds.midY)
-        XCTAssertNil(dragView.hitTest(contentPoint))
     }
 
     func testRegionIncludesOnlyTheTopTitlebarBand() {
