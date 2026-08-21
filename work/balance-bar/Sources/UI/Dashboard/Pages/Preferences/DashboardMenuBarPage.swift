@@ -1,11 +1,208 @@
 import AppKit
 
+/// Pure delay/interval policy for long-press auto-repeat of the fine-tune
+/// direction buttons. Press-and-hold starts stepping after `initialDelay`,
+/// then repeats every `initialInterval`, accelerating by `accelerationFactor`
+/// per step and floored at `minimumInterval`.
+struct MenuBarOffsetRepeatPolicy: Equatable {
+    static let standard = MenuBarOffsetRepeatPolicy(
+        initialDelay: 0.35,
+        initialInterval: 0.1,
+        accelerationFactor: 0.9,
+        minimumInterval: 0.03
+    )
+
+    let initialDelay: TimeInterval
+    let initialInterval: TimeInterval
+    let accelerationFactor: Double
+    let minimumInterval: TimeInterval
+
+    /// Interval before the `step`-th repeat fires. `step == 0` is the initial
+    /// press-and-hold delay before auto-repeat starts.
+    func interval(afterStep step: Int) -> TimeInterval {
+        guard step > 0 else { return initialDelay }
+        let multiplier = pow(accelerationFactor, Double(step - 1))
+        return max(minimumInterval, initialInterval * multiplier)
+    }
+}
+
+/// Drives auto-repeat steps after a press-and-hold. Fires `onStep` once after
+/// the policy's initial delay, then repeatedly at policy intervals on the main
+/// run loop until stopped.
+final class MenuBarOffsetRepeatDriver {
+    private let policy: MenuBarOffsetRepeatPolicy
+    private let onStep: () -> Void
+    private var delayWorkItem: DispatchWorkItem?
+    private var repeatTimer: Timer?
+    private var stepCount = 0
+
+    init(policy: MenuBarOffsetRepeatPolicy, onStep: @escaping () -> Void) {
+        self.policy = policy
+        self.onStep = onStep
+    }
+
+    var isRunning: Bool { delayWorkItem != nil || repeatTimer != nil }
+
+    func start() {
+        stop()
+        stepCount = 0
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.performStep()
+            self.scheduleNext()
+        }
+        delayWorkItem = item
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + policy.initialDelay,
+            execute: item
+        )
+    }
+
+    func stop() {
+        delayWorkItem?.cancel()
+        delayWorkItem = nil
+        repeatTimer?.invalidate()
+        repeatTimer = nil
+    }
+
+    private func performStep() {
+        stepCount += 1
+        onStep()
+    }
+
+    private func scheduleNext() {
+        let interval = policy.interval(afterStep: stepCount)
+        let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.performStep()
+            self.scheduleNext()
+        }
+        repeatTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+}
+
+/// Direction button that auto-repeats while pressed and held. A short press
+/// fires the action exactly once; holding past the policy delay starts
+/// repeating the action at policy intervals. Releasing, dragging outside the
+/// button, or the window losing key status stops the repeat immediately.
+final class RepeatOffsetButton: NSButton {
+    private enum PressPhase {
+        case idle
+        case waiting
+        case repeating
+    }
+
+    private let policy: MenuBarOffsetRepeatPolicy
+    private lazy var driver = MenuBarOffsetRepeatDriver(policy: policy) { [weak self] in
+        guard let self,
+              self.pressPhase == .waiting || self.pressPhase == .repeating else {
+            return
+        }
+        if self.pressPhase == .waiting {
+            self.pressPhase = .repeating
+        }
+        _ = self.sendAction(self.action, to: self.target)
+    }
+    private var pressPhase: PressPhase = .idle
+    private var resignObserver: NSObjectProtocol?
+    private var driverWasUsed = false
+
+    init(
+        title: String,
+        policy: MenuBarOffsetRepeatPolicy,
+        target: AnyObject?,
+        action: Selector?
+    ) {
+        self.policy = policy
+        super.init(frame: .zero)
+        self.title = title
+        self.target = target
+        self.action = action
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let resignObserver {
+            NotificationCenter.default.removeObserver(resignObserver)
+        }
+        if driverWasUsed {
+            driver.stop()
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        isHighlighted = true
+        pressPhase = .waiting
+        driverWasUsed = true
+        observeWindowResignIfNeeded()
+        driver.start()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard pressPhase != .idle else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        if !bounds.contains(point) {
+            isHighlighted = false
+            stopPress(removeObserver: true)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard pressPhase != .idle else { return }
+        let wasRepeating = pressPhase == .repeating
+        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        isHighlighted = false
+        stopPress(removeObserver: true)
+        if inside && !wasRepeating {
+            _ = sendAction(action, to: target)
+        }
+    }
+
+    private func observeWindowResignIfNeeded() {
+        guard resignObserver == nil, let window else { return }
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.stopPress(removeObserver: true)
+        }
+    }
+
+    private func stopPress(removeObserver: Bool) {
+        isHighlighted = false
+        pressPhase = .idle
+        if driverWasUsed {
+            driver.stop()
+        }
+        if removeObserver, let resignObserver {
+            NotificationCenter.default.removeObserver(resignObserver)
+            self.resignObserver = nil
+        }
+    }
+}
+
 final class DashboardMenuBarPage {
+    static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
+    static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
+    static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
+    static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
+    /// Extra default lift for the amount text in the Dashboard preview only
+    /// (visual, positive = up). The real menu bar layout is unchanged; user
+    /// fine-tune offsets stack on top.
+    static let previewAmountDefaultYOffset: CGFloat = 0.5
+
     struct Presentation: Equatable {
         let primary: String
         let secondary: String
         let hasSecondary: Bool
         let isBalance: Bool
+        let isOfficial: Bool
     }
 
     static func presentation(
@@ -23,7 +220,8 @@ final class DashboardMenuBarPage {
                 && showReset
                 && effective.kind == .official
                 && !secondary.isEmpty,
-            isBalance: effective.kind == .balance
+            isBalance: effective.kind == .balance,
+            isOfficial: effective.kind == .official
         )
     }
 
@@ -46,6 +244,10 @@ final class DashboardMenuBarPage {
     private var capsuleLeadingConstraint: NSLayoutConstraint?
     private var capsuleTrailingConstraint: NSLayoutConstraint?
     private var textWidthConstraint: NSLayoutConstraint?
+    private var iconOffsetSummaryLabel: NSTextField?
+    private var amountOffsetSummaryLabel: NSTextField?
+    private var iconOffsetButtons: [NSButton] = []
+    private var amountOffsetButtons: [NSButton] = []
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -84,6 +286,7 @@ final class DashboardMenuBarPage {
         previewIcon.imageScaling = .scaleProportionallyDown
         previewIcon.translatesAutoresizingMaskIntoConstraints = false
         previewIcon.wantsLayer = true
+        previewIcon.identifier = NSUserInterfaceItemIdentifier("menuBarPreviewIcon")
         previewIcon.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewPrimary.font = MenuBarLayout.primaryFont
@@ -93,6 +296,7 @@ final class DashboardMenuBarPage {
         previewText.addSubview(previewPrimary)
         previewText.addSubview(previewSecondary)
         previewText.wantsLayer = true
+        previewText.identifier = NSUserInterfaceItemIdentifier("menuBarPreviewText")
         previewText.layer?.setAffineTransform(.identity)
         let previewTextWidth = previewText.widthAnchor.constraint(equalToConstant: 32)
         previewTextWidth.priority = .defaultHigh
@@ -183,9 +387,52 @@ final class DashboardMenuBarPage {
             DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance"), control: amountToggle),
             DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available"), control: resetToggle)
         ])
+        let iconOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
+        let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
+        let iconOffsetControls = makeOffsetControls(
+            keyX: AppPreferences.menuBarIconOffsetXKey,
+            keyY: AppPreferences.menuBarIconOffsetYKey,
+            resetIdentifier: Self.iconOffsetsResetIdentifier,
+            relay: input.relay
+        )
+        let amountOffsetControls = makeOffsetControls(
+            keyX: AppPreferences.menuBarAmountOffsetXKey,
+            keyY: AppPreferences.menuBarAmountOffsetYKey,
+            resetIdentifier: Self.amountOffsetsResetIdentifier,
+            relay: input.relay
+        )
+        iconOffsetSummaryLabel = iconOffsetSummary
+        amountOffsetSummaryLabel = amountOffsetSummary
+        iconOffsetButtons = iconOffsetControls
+        amountOffsetButtons = amountOffsetControls
+        let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("细节微调", "Fine Tuning"),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("图标", "Icon"),
+                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    subtitleLabel: iconOffsetSummary,
+                    control: makeOffsetControlStack(buttons: iconOffsetControls),
+                    minimumHeight: 66
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("金额", "Amount"),
+                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    subtitleLabel: amountOffsetSummary,
+                    control: makeOffsetControlStack(buttons: amountOffsetControls),
+                    minimumHeight: 66
+                )
+            ]
+        )
         isBuilt = true
         refresh(snapshot: input.snapshot, preferences: input.preferences, menuBarSnapshot: input.menuBarSnapshot, iconImage: input.iconImage)
-        return DashboardSettingsComponents.makeSettingsPage([previewSection, displaySection])
+        return DashboardSettingsComponents.makeSettingsPage([
+            previewSection,
+            displaySection,
+            fineTuneSection
+        ])
     }
 
     func refresh(
@@ -229,16 +476,70 @@ final class DashboardMenuBarPage {
         capsuleTrailingConstraint?.constant = preferences.menuBarHorizontalPadding + chromeInset
         previewIcon.image = iconImage
         previewIcon.contentTintColor = .labelColor
+        let iconOffsetX = preferences.menuBarIconOffsetX
+        let iconOffsetY = preferences.menuBarIconOffsetY
+        let amountOffsetX = preferences.menuBarAmountOffsetX
+        let amountOffsetY = preferences.menuBarAmountOffsetY
+        iconOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: iconOffsetX, y: iconOffsetY)
+        amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
+        iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
+        amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
+        let iconVisualX = CGFloat(iconOffsetX)
+        let iconVisualY = CGFloat(iconOffsetY)
+        let amountVisualX = CGFloat(amountOffsetX)
+        let amountVisualY = CGFloat(amountOffsetY)
+        let officialTextYOffset: CGFloat
+        if presentation.isOfficial, preferences.showMenuBarAmount {
+            officialTextYOffset = MenuBarLayout.officialTextYOffset(
+                hasSecondary: presentation.hasSecondary
+            )
+        } else {
+            officialTextYOffset = 0
+        }
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
         if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -MenuBarLayout.singleLineIconYOffset
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX),
+                y: MenuBarOffsetLayout.yDelta(visualY: iconVisualY, in: .unflippedLayer)
+                    + MenuBarOffsetLayout.yDelta(
+                        visualY: MenuBarLayout.singleLineIconYOffset,
+                        in: .unflippedLayer
+                    )
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
-                translationX: 0,
-                y: -MenuBarLayout.singleLineTextYOffset
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                // User Y offsets use unflipped layer semantics (positive = up)
+                // to match the real menu bar; the built-in single-line baseline
+                // keeps its existing visual unchanged.
+                y: MenuBarOffsetLayout.yDelta(
+                    visualY: amountVisualY,
+                    in: .unflippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: MenuBarLayout.singleLineTextYOffset,
+                    in: .flippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: Self.previewAmountDefaultYOffset,
+                    in: .unflippedLayer
+                )
+            ))
+        } else {
+            previewIcon.layer?.setAffineTransform(CGAffineTransform(
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX),
+                y: MenuBarOffsetLayout.yDelta(visualY: iconVisualY, in: .unflippedLayer)
+            ))
+            previewText.layer?.setAffineTransform(CGAffineTransform(
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                y: MenuBarOffsetLayout.yDelta(
+                    visualY: amountVisualY,
+                    in: .unflippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: officialTextYOffset,
+                    in: .flippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: Self.previewAmountDefaultYOffset,
+                    in: .unflippedLayer
+                )
             ))
         }
     }
@@ -252,5 +553,88 @@ final class DashboardMenuBarPage {
         default:
             break
         }
+    }
+
+    private static func offsetSummaryText(x: Double, y: Double) -> String {
+        String(format: "X %.1f · Y %.1f", x, y)
+    }
+
+    private func makeOffsetControls(
+        keyX: String,
+        keyY: String,
+        resetIdentifier: String,
+        relay: DashboardPreferencePageRelay
+    ) -> [NSButton] {
+        [
+            makeOffsetButton(
+                title: tr("上", "Up"),
+                key: keyY,
+                delta: 1,
+                relay: relay
+            ),
+            makeOffsetButton(
+                title: tr("下", "Down"),
+                key: keyY,
+                delta: -1,
+                relay: relay
+            ),
+            makeOffsetButton(
+                title: tr("左", "Left"),
+                key: keyX,
+                delta: -1,
+                relay: relay
+            ),
+            makeOffsetButton(
+                title: tr("右", "Right"),
+                key: keyX,
+                delta: 1,
+                relay: relay
+            ),
+            makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
+        ]
+    }
+
+    private func makeOffsetButton(
+        title: String,
+        key: String,
+        delta: Int,
+        relay: DashboardPreferencePageRelay
+    ) -> NSButton {
+        let button = RepeatOffsetButton(
+            title: title,
+            policy: MenuBarOffsetRepeatPolicy.standard,
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
+        )
+        button.identifier = NSUserInterfaceItemIdentifier(key)
+        button.tag = delta
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        return button
+    }
+
+    private func makeOffsetResetButton(
+        identifier: String,
+        relay: DashboardPreferencePageRelay
+    ) -> NSButton {
+        let button = NSButton(
+            title: tr("归零", "Reset"),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        button.identifier = NSUserInterfaceItemIdentifier(identifier)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        return button
+    }
+
+    private func makeOffsetControlStack(buttons: [NSButton]) -> NSStackView {
+        let stack = NSStackView(views: buttons)
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
     }
 }

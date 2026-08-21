@@ -66,6 +66,293 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(presentation.isBalance)
     }
 
+    func testRelayRoutesOffsetAdjustAndResetOnce() {
+        let relay = DashboardPreferencePageRelay()
+        var adjustments: [(String, Int)] = []
+        var resets: [String] = []
+        relay.onOffsetAdjust = { identifier, delta in adjustments.append((identifier, delta)) }
+        relay.onOffsetReset = { identifier in resets.append(identifier) }
+
+        let up = NSButton(
+            title: "Up",
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
+        )
+        up.identifier = NSUserInterfaceItemIdentifier(AppPreferences.menuBarIconOffsetYKey)
+        up.tag = 1
+        relay.adjustOffset(up)
+
+        let left = NSButton(
+            title: "Left",
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
+        )
+        left.identifier = NSUserInterfaceItemIdentifier(AppPreferences.menuBarAmountOffsetXKey)
+        left.tag = -1
+        relay.adjustOffset(left)
+
+        let reset = NSButton(
+            title: "Reset",
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        reset.identifier = NSUserInterfaceItemIdentifier(DashboardMenuBarPage.iconOffsetsResetIdentifier)
+        relay.resetOffset(reset)
+
+        XCTAssertEqual(adjustments.count, 2)
+        XCTAssertEqual(adjustments[0].0, AppPreferences.menuBarIconOffsetYKey)
+        XCTAssertEqual(adjustments[0].1, 1)
+        XCTAssertEqual(adjustments[1].0, AppPreferences.menuBarAmountOffsetXKey)
+        XCTAssertEqual(adjustments[1].1, -1)
+        XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
+    }
+
+    func testMenuBarFineTuneSectionRendersControlsAndPreviewOffsets() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarFineTune.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarIconOffsetX = 0.2
+        preferences.menuBarIconOffsetY = -0.3
+        preferences.menuBarAmountOffsetX = -0.4
+        preferences.menuBarAmountOffsetY = 0.5
+        let relay = DashboardPreferencePageRelay()
+        relay.onOffsetAdjust = { identifier, delta in
+            let pointDelta = Double(delta) * AppPreferences.menuBarOffsetStep
+            switch identifier {
+            case AppPreferences.menuBarIconOffsetXKey:
+                preferences.menuBarIconOffsetX += pointDelta
+            case AppPreferences.menuBarIconOffsetYKey:
+                preferences.menuBarIconOffsetY += pointDelta
+            case AppPreferences.menuBarAmountOffsetXKey:
+                preferences.menuBarAmountOffsetX += pointDelta
+            case AppPreferences.menuBarAmountOffsetYKey:
+                preferences.menuBarAmountOffsetY += pointDelta
+            default:
+                break
+            }
+        }
+        let controller = DashboardMenuBarPage()
+        let snapshot = Snapshot.balance("Provider", 12.34, "USD", nil, Date(timeIntervalSince1970: 1))
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let buttons = descendants(of: page).compactMap { $0 as? NSButton }
+        let iconXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
+        let iconYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
+        let amountXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
+        let amountYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
+        XCTAssertEqual(iconXButtons.count, 2)
+        XCTAssertEqual(iconYButtons.count, 2)
+        XCTAssertEqual(amountXButtons.count, 2)
+        XCTAssertEqual(amountYButtons.count, 2)
+        XCTAssertEqual(
+            Set(iconXButtons.map(\.tag)),
+            [-1, 1]
+        )
+        XCTAssertEqual(
+            Set(amountYButtons.map(\.tag)),
+            [-1, 1]
+        )
+        XCTAssertTrue(iconXButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(iconYButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(amountXButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(amountYButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertFalse(buttons.first {
+            $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier
+        } is RepeatOffsetButton)
+        XCTAssertEqual(
+            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.title,
+            "归零"
+        )
+        XCTAssertEqual(
+            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetsResetIdentifier }?.title,
+            "归零"
+        )
+        XCTAssertEqual(
+            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.isEnabled,
+            true
+        )
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
+        let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
+        XCTAssertEqual(iconSummary?.stringValue, "X 0.2 · Y -0.3")
+        XCTAssertEqual(amountSummary?.stringValue, "X -0.4 · Y 0.5")
+        XCTAssertEqual(labels.first { $0.stringValue == "细节微调" }?.stringValue, "细节微调")
+        XCTAssertEqual(labels.first { $0.stringValue == "图标" }?.stringValue, "图标")
+        XCTAssertEqual(labels.first { $0.stringValue == "金额" }?.stringValue, "金额")
+
+        let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
+        let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
+        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 0.2, accuracy: 0.001)
+        XCTAssertEqual(
+            previewIcon?.layer?.affineTransform().ty ?? CGFloat.nan,
+            -0.3 + MenuBarLayout.singleLineIconYOffset,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -0.4, accuracy: 0.001)
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            0.5 - MenuBarLayout.singleLineTextYOffset
+                + DashboardMenuBarPage.previewAmountDefaultYOffset,
+            accuracy: 0.001
+        )
+
+        guard let rightButton = iconXButtons.first(where: {
+            $0.tag == 1
+        }) else {
+            return XCTFail("Expected a right button for the icon X offset")
+        }
+        relay.adjustOffset(rightButton)
+        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.3, accuracy: 0.001)
+
+        preferences.showMenuBarIcon = false
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        let refreshedButtons = descendants(of: page).compactMap { $0 as? NSButton }
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
+            .allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
+            .allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }
+            .allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
+            .allSatisfy { $0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
+            .allSatisfy { $0.isEnabled })
+    }
+
+    func testMenuBarOfficialPreviewAppliesDefaultTextBaseline() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarOfficialBaseline.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        let controller = DashboardMenuBarPage()
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+
+        preferences.showMenuBarReset = false
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        let previewText = descendants(of: page).first {
+            $0.identifier?.rawValue == "menuBarPreviewText"
+        }
+        // Percentage-only official text defaults to 0.5pt higher.
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            DashboardMenuBarPage.previewAmountDefaultYOffset
+                - MenuBarLayout.officialAmountOnlyTextYOffset,
+            accuracy: 0.001
+        )
+
+        preferences.showMenuBarReset = true
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        // With reset time shown the text block defaults to 0.1pt lower.
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            DashboardMenuBarPage.previewAmountDefaultYOffset
+                - MenuBarLayout.officialSecondaryTextYOffset,
+            accuracy: 0.001
+        )
+
+        // User fine-tune offsets stack on top of the official default baseline.
+        preferences.menuBarAmountOffsetY = 1
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        XCTAssertEqual(
+            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
+            1 - MenuBarLayout.officialSecondaryTextYOffset
+                + DashboardMenuBarPage.previewAmountDefaultYOffset,
+            accuracy: 0.001
+        )
+    }
+
+    func testMenuBarOffsetRepeatPolicyDelaysAndAccelerates() {
+        let policy = MenuBarOffsetRepeatPolicy.standard
+        XCTAssertEqual(policy.initialDelay, 0.35, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 0), 0.35, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 1), 0.1, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 2), 0.09, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 3), 0.081, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 50), 0.03, accuracy: 0.001)
+        XCTAssertEqual(policy.interval(afterStep: 200), 0.03, accuracy: 0.001)
+    }
+
+    func testMenuBarOffsetRepeatDriverStepsAndStops() {
+        let policy = MenuBarOffsetRepeatPolicy(
+            initialDelay: 0.05,
+            initialInterval: 0.02,
+            accelerationFactor: 0.9,
+            minimumInterval: 0.01
+        )
+        var steps = 0
+        let driver = MenuBarOffsetRepeatDriver(policy: policy) { steps += 1 }
+        driver.start()
+
+        let ran = expectation(description: "repeat driver ran")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            driver.stop()
+            ran.fulfill()
+        }
+        wait(for: [ran], timeout: 2)
+        XCTAssertGreaterThanOrEqual(steps, 8)
+        let countAfterStop = steps
+
+        let settled = expectation(description: "repeat driver stopped")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            settled.fulfill()
+        }
+        wait(for: [settled], timeout: 1)
+        XCTAssertEqual(steps, countAfterStop)
+    }
+
     func testLogsKeepViewerTextAndSeverityStyling() {
         let text = "[12:00:00] [ERROR] [configuration] value=42%"
         let styled = DashboardLogsPage.styledLog(text)

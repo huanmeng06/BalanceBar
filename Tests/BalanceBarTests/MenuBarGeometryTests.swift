@@ -107,6 +107,155 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(frames.text, NSRect(x: 24, y: 2, width: 49, height: 14))
     }
 
+    func testMenuBarFramesApplyIconAndTextOffsets() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 43.2, height: 13.1),
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+        let base = MenuBarLayout.frames(
+            buttonSize: NSSize(width: 100, height: 24),
+            geometry: geometry,
+            iconViewYOffset: MenuBarLayout.singleLineIconYOffset
+        )
+        let offset = MenuBarLayout.frames(
+            buttonSize: NSSize(width: 100, height: 24),
+            geometry: geometry,
+            iconViewYOffset: MenuBarLayout.singleLineIconYOffset,
+            iconOffset: NSSize(width: 2, height: 3),
+            textOffset: NSSize(width: -1, height: 4)
+        )
+
+        XCTAssertEqual(offset.content, base.content)
+        XCTAssertEqual(offset.iconSlot, base.iconSlot)
+        XCTAssertEqual(offset.icon, NSRect(
+            x: base.icon.minX + 2,
+            y: base.icon.minY + 3,
+            width: base.icon.width,
+            height: base.icon.height
+        ))
+        XCTAssertEqual(offset.text, NSRect(
+            x: base.text.minX - 1,
+            y: base.text.minY - 4,
+            width: base.text.width,
+            height: base.text.height
+        ))
+    }
+
+    func testOfficialTextDefaultOffsetsFollowResetVisibility() {
+        XCTAssertEqual(
+            MenuBarLayout.officialTextYOffset(hasSecondary: false),
+            0.5,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            MenuBarLayout.officialTextYOffset(hasSecondary: true),
+            -0.1,
+            accuracy: 0.001
+        )
+    }
+
+    func testOfficialBaselineMovesRealTextFramesUpAndDown() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 43.2, height: 13.1),
+            secondarySize: NSSize(width: 44.3, height: 9.1),
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let base = MenuBarLayout.frames(
+            buttonSize: NSSize(width: 100, height: 24),
+            geometry: geometry,
+            iconViewYOffset: 0
+        )
+        let percentageOnly = MenuBarLayout.frames(
+            buttonSize: NSSize(width: 100, height: 24),
+            geometry: geometry,
+            iconViewYOffset: 0,
+            textOffset: NSSize(
+                width: 0,
+                height: MenuBarLayout.officialAmountOnlyTextYOffset
+            )
+        )
+        let withReset = MenuBarLayout.frames(
+            buttonSize: NSSize(width: 100, height: 24),
+            geometry: geometry,
+            iconViewYOffset: 0,
+            textOffset: NSSize(
+                width: 0,
+                height: MenuBarLayout.officialSecondaryTextYOffset
+            )
+        )
+
+        XCTAssertEqual(percentageOnly.text.minY, base.text.minY - 0.5, accuracy: 0.001)
+        XCTAssertEqual(withReset.text.minY, base.text.minY + 0.1, accuracy: 0.001)
+    }
+
+    func testMenuBarOffsetDirectionsMatchRealAndPreview() {
+        // Layouts: balance single-line, official one-line (percentage only),
+        // official two-line (with reset time).
+        let layouts: [(String, Bool, Bool)] = [
+            ("balance", false, true),
+            ("official-one-line", false, false),
+            ("official-two-line", true, false)
+        ]
+        // Spaces used for the user-offset component on each side. The amount
+        // preview Y uses unflipped layer semantics so "up" matches the real
+        // menu bar; built-in baselines keep their existing visual unchanged.
+        let elements: [(String, MenuBarOffsetSpace, MenuBarOffsetSpace)] = [
+            ("icon", .unflippedFrame, .unflippedLayer),
+            ("amount", .flippedFrame, .unflippedLayer)
+        ]
+        let directions: [(String, CGFloat, CGFloat)] = [
+            ("up", 0, 1),
+            ("down", 0, -1),
+            ("left", -1, 0),
+            ("right", 1, 0)
+        ]
+
+        for (layoutName, _, _) in layouts {
+            for (elementName, realSpace, previewSpace) in elements {
+                for (directionName, dx, dy) in directions {
+                    let realDX = MenuBarOffsetLayout.xDelta(visualX: dx)
+                    let realDY = MenuBarOffsetLayout.yDelta(
+                        visualY: dy,
+                        in: realSpace
+                    )
+                    let previewDX = MenuBarOffsetLayout.xDelta(visualX: dx)
+                    let previewDY = MenuBarOffsetLayout.yDelta(
+                        visualY: dy,
+                        in: previewSpace
+                    )
+
+                    XCTAssertEqual(
+                        MenuBarOffsetLayout.visualY(
+                            forYDelta: realDY,
+                            in: realSpace
+                        ),
+                        dy,
+                        accuracy: 0.001,
+                        "\(layoutName)/\(elementName)/\(directionName) real visual y"
+                    )
+                    XCTAssertEqual(
+                        MenuBarOffsetLayout.visualY(
+                            forYDelta: previewDY,
+                            in: previewSpace
+                        ),
+                        dy,
+                        accuracy: 0.001,
+                        "\(layoutName)/\(elementName)/\(directionName) preview visual y"
+                    )
+                    XCTAssertEqual(realDX, previewDX, accuracy: 0.001)
+                    XCTAssertEqual(realDX, dx, accuracy: 0.001)
+                }
+            }
+        }
+    }
+
     func testOfficialIconCenterRemainsAlignedToAPIReference() {
         let primarySize = NSSize(width: 43.2, height: 13.1)
         let secondarySize = NSSize(width: 44.3, height: 9.1)
