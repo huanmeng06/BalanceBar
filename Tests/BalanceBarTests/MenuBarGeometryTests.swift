@@ -311,10 +311,14 @@ final class MenuBarGeometryTests: XCTestCase {
 
             // A two-component layout preserves the explicit relative offset;
             // a single visible component remains centered even when its
-            // stored offset is non-zero.
+            // stored offset is non-zero. Icon-only uses its own optical
+            // baseline, two points left of the combined card baseline.
+            let expectedOpticalNudge = geometry.iconWidth > 0 && geometry.textWidth == 0
+                ? MenuBarLayout.menuBarIconOnlyOpticalCenterNudgeX
+                : MenuBarLayout.menuBarOpticalCenterNudgeX
             XCTAssertEqual(
                 centeredBounds.midX,
-                baseBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
+                baseBounds.midX + expectedOpticalNudge,
                 accuracy: 0.001
             )
             XCTAssertGreaterThan(centeredBounds.width, 0)
@@ -357,10 +361,20 @@ final class MenuBarGeometryTests: XCTestCase {
             MenuBarLayout.horizontalCenteringCompensation(
                 backgroundBounds: backgroundBounds,
                 geometry: iconOnlyGeometry,
+                iconOffsetX: 0,
+                textOffsetX: 0
+            ),
+            MenuBarLayout.menuBarIconOnlyOpticalCenterNudgeX,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: iconOnlyGeometry,
                 iconOffsetX: -4,
                 textOffsetX: 0
             ),
-            6,
+            4,
             accuracy: 0.001
         )
     }

@@ -147,6 +147,11 @@ enum MenuBarLayout {
     // persisted user offset.
     static let menuBarOpticalCenterNudgeX: CGFloat = 2
 
+    // The icon-only card does not have the amount column's visual mass. Its
+    // observed optical center is the nominal background center, so it needs
+    // two points less nudge than the combined icon+amount card.
+    static let menuBarIconOnlyOpticalCenterNudgeX: CGFloat = 0
+
     static func officialTextYOffset(hasSecondary: Bool) -> CGFloat {
         hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
     }
@@ -342,8 +347,11 @@ enum MenuBarLayout {
         ) else {
             return 0
         }
+        let opticalCenterNudgeX = geometry.iconWidth > 0 && geometry.textWidth == 0
+            ? menuBarIconOnlyOpticalCenterNudgeX
+            : menuBarOpticalCenterNudgeX
         return baseBounds.midX
-            + menuBarOpticalCenterNudgeX
+            + opticalCenterNudgeX
             - adjustedBounds.midX
     }
 }
