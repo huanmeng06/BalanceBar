@@ -1,0 +1,229 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Package and publish Release
+    if: github.event.pull_request.merged == true
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+
+    steps:
+      - name: Check out the merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Detect version change in the merged PR
+        id: release_context
+        run: node scripts/release/release-context.mjs
+
+      - name: Skip merged PRs without a version change
+        if: steps.release_context.outputs.should_release != 'true'
+        run: echo "No Info.plist version change was found; no Release will be published."
+
+      - name: Plan the Release from the existing version
+        id: version_plan
+        if: steps.release_context.outputs.should_release == 'true'
+        env:
+          PREVIOUS_VERSION: ${{ steps.release_context.outputs.previous_version }}
+          CURRENT_VERSION: ${{ steps.release_context.outputs.version }}
+          CURRENT_BUILD: ${{ steps.release_context.outputs.build }}
+        run: |
+          node scripts/release/version.mjs plan-existing \
+            --previous-version "$PREVIOUS_VERSION" \
+            --current-version "$CURRENT_VERSION" \
+            --current-build "$CURRENT_BUILD"
+
+      - name: Skip an already-created release
+        id: release_guard
+        if: steps.release_context.outputs.should_release == 'true'
+        env:
+          TAG: ${{ steps.version_plan.outputs.tag }}
+          VERSION: ${{ steps.version_plan.outputs.version }}
+          PRERELEASE: ${{ steps.version_plan.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          existing_beta_tags="$(git ls-remote --tags origin "refs/tags/v${VERSION}-beta.*" || true)"
+          if [[ "$PRERELEASE" == "true" && -n "$existing_beta_tags" ]]; then
+            echo "A beta tag for $VERSION already exists; refusing to create a duplicate release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists; refusing to create a duplicate release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Find the previous Release
+        id: previous_release
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          previous_tag="$(gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --limit 1 \
+            --exclude-drafts \
+            --json tagName \
+            --jq '.[0].tagName' 2>/dev/null || true)"
+          if [[ -z "$previous_tag" ]]; then
+            previous_tag="$(git describe --tags --abbrev=0 "${MERGE_SHA}^" 2>/dev/null || true)"
+          fi
+          if [[ -z "$previous_tag" ]]; then
+            previous_tag="$(git rev-list --max-parents=0 "$MERGE_SHA")"
+          fi
+          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
+          echo "Previous release: $previous_tag"
+
+      - name: Collect commits, files, and merged PR metadata
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        env:
+          PREVIOUS_TAG: ${{ steps.previous_release.outputs.previous_tag }}
+          VERSION: ${{ steps.version_plan.outputs.version }}
+          TAG: ${{ steps.version_plan.outputs.tag }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          compare_json="$RUNNER_TEMP/balancebar-release-compare.json"
+          prs_json="$RUNNER_TEMP/balancebar-release-prs.json"
+          input_json="$RUNNER_TEMP/balancebar-release-input.json"
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/compare/${PREVIOUS_TAG}...${MERGE_SHA}" \
+            > "$compare_json"
+
+          gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state merged \
+            --base main \
+            --limit 100 \
+            --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit \
+            > "$prs_json"
+
+          node scripts/release/collect-release-input.mjs \
+            --event "$GITHUB_EVENT_PATH" \
+            --compare "$compare_json" \
+            --prs "$prs_json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --previous-tag "$PREVIOUS_TAG" \
+            --current-sha "$MERGE_SHA" \
+            --version "$VERSION" \
+            --tag "$TAG" \
+            --output "$input_json"
+
+          echo "RELEASE_INPUT=$input_json" >> "$GITHUB_ENV"
+
+      - name: Generate structured description with OpenAI
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: |
+          set -Eeuo pipefail
+          ai_json="$RUNNER_TEMP/balancebar-release-ai.json"
+          node scripts/release/generate-release-notes.mjs \
+            --input "$RELEASE_INPUT" \
+            --output "$ai_json"
+          echo "RELEASE_AI_NOTES=$ai_json" >> "$GITHUB_ENV"
+
+      - name: Render and validate the exact Release format
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        run: |
+          set -Eeuo pipefail
+          notes_file="$RUNNER_TEMP/balancebar-release-notes.md"
+          node scripts/release/render-release-notes.mjs \
+            --input "$RELEASE_INPUT" \
+            --ai "$RELEASE_AI_NOTES" \
+            --output "$notes_file"
+          echo "RELEASE_NOTES=$notes_file" >> "$GITHUB_ENV"
+
+      - name: Build the production app and DMG
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version_plan.outputs.version }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./work/balance-bar/build.sh production
+          dmg="$RUNNER_TEMP/BalanceBar-${VERSION}.dmg"
+          hdiutil create \
+            -volname "BalanceBar ${VERSION}" \
+            -srcfolder work/balance-bar/build/BalanceBar.app \
+            -ov \
+            -format UDZO \
+            "$dmg"
+          shasum -a 256 "$dmg" > "${dmg}.sha256"
+          echo "RELEASE_DMG=$dmg" >> "$GITHUB_ENV"
+          echo "RELEASE_CHECKSUM=${dmg}.sha256" >> "$GITHUB_ENV"
+
+      - name: Create the Git tag
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.version_plan.outputs.tag }}
+          VERSION: ${{ steps.version_plan.outputs.version }}
+          VERSION_SHA: ${{ steps.release_context.outputs.merge_sha }}
+        run: |
+          set -Eeuo pipefail
+          git tag -a "$TAG" "$VERSION_SHA" -m "BalanceBar ${VERSION}"
+          git push origin "$TAG"
+
+      - name: Publish the GitHub Release
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.version_plan.outputs.tag }}
+          VERSION: ${{ steps.version_plan.outputs.version }}
+          PRERELEASE: ${{ steps.version_plan.outputs.prerelease }}
+          BETA_NUMBER: ${{ steps.version_plan.outputs.beta_number }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_flags=(--latest)
+          title="BalanceBar ${VERSION}"
+          if [[ "$PRERELEASE" == "true" ]]; then
+            release_flags=(--prerelease --latest=false)
+            title="BalanceBar ${VERSION} Beta ${BETA_NUMBER}"
+          fi
+
+          gh release create "$TAG" \
+            "$RELEASE_DMG" \
+            "$RELEASE_CHECKSUM" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$title" \
+            --notes-file "$RELEASE_NOTES" \
+            "${release_flags[@]}"
+
+          release_url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
+          echo "Published $release_url"
