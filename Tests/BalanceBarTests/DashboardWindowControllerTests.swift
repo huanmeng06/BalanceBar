@@ -1093,8 +1093,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let scrollAnimation = AccountMarqueeView.scrollAnimation(
             forOverflow: accountView.measuredTextWidth - accountView.bounds.width
         )
-        XCTAssertEqual(scrollAnimation.values?.count, 4)
-        XCTAssertEqual(scrollAnimation.keyTimes?.count, 4)
+        XCTAssertEqual(scrollAnimation.values?.count, 5)
+        let keyTimes = try XCTUnwrap(scrollAnimation.keyTimes)
+        XCTAssertEqual(keyTimes.count, 5)
+        XCTAssertEqual(keyTimes[1].doubleValue, 0.16, accuracy: 0.001)
+        XCTAssertEqual(keyTimes[3].doubleValue, 0.66, accuracy: 0.001)
+        XCTAssertEqual(
+            keyTimes[1].doubleValue - keyTimes[0].doubleValue,
+            keyTimes[3].doubleValue - keyTimes[2].doubleValue,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            keyTimes[2].doubleValue - keyTimes[1].doubleValue,
+            keyTimes[4].doubleValue - keyTimes[3].doubleValue,
+            accuracy: 0.001
+        )
         XCTAssertEqual(scrollAnimation.repeatCount, .infinity)
         XCTAssertGreaterThan(scrollAnimation.duration, 0)
         XCTAssertEqual(

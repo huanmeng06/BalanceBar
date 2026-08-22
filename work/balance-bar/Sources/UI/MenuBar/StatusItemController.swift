@@ -134,8 +134,8 @@ final class AccountMarqueeView: NSView {
     static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
         let offset = NSNumber(value: -Double(max(0, overflow)))
-        animation.values = [0, offset, offset, 0]
-        animation.keyTimes = [0, 0.42, 0.58, 1]
+        animation.values = [0, 0, offset, offset, 0]
+        animation.keyTimes = [0, 0.16, 0.5, 0.66, 1]
         animation.duration = max(
             minimumScrollDuration,
             Double(max(0, overflow) / scrollPixelsPerSecond) + 4
@@ -143,7 +143,8 @@ final class AccountMarqueeView: NSView {
         animation.repeatCount = .infinity
         animation.timingFunctions = [
             CAMediaTimingFunction(name: .easeInEaseOut),
-            CAMediaTimingFunction(name: .linear),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
             CAMediaTimingFunction(name: .easeInEaseOut)
         ]
         return animation
