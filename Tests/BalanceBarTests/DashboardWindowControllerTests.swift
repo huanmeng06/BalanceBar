@@ -546,7 +546,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let hiddenEditor = try XCTUnwrap(findStatusLinksEditor(in: try XCTUnwrap(menuPage(in: window))))
         XCTAssertFalse(hiddenEditor.isVisible)
         XCTAssertEqual(hiddenEditor.frame.height, 0, accuracy: 1)
-        XCTAssertEqual(hiddenEditor.alphaValue, 0, accuracy: 0.01)
+        XCTAssertEqual(hiddenEditor.alphaValue, 1, accuracy: 0.01)
+        XCTAssertEqual(hiddenEditor.visibilityOpacity, 0, accuracy: 0.01)
         XCTAssertEqual(hiddenEditor.rowCount, customLinks.count)
 
         finalToggle.state = .on

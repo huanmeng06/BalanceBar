@@ -6,6 +6,19 @@ enum StatusLinkField: Equatable {
     case url
 }
 
+enum StatusLinksEditorAnimation {
+    static let visibilityDuration: TimeInterval = 0.20
+    static let visibilityTimingFunctionName = "easeInEaseOut"
+
+    static func configure(_ context: NSAnimationContext) {
+        context.duration = visibilityDuration
+        context.timingFunction = CAMediaTimingFunction(
+            name: CAMediaTimingFunctionName(rawValue: visibilityTimingFunctionName)
+        )
+        context.allowsImplicitAnimation = true
+    }
+}
+
 /// An inert AppKit marker gives regression tests the frame of the actual
 /// SwiftUI title/header content without adding another hosting view.
 private struct StatusLinksGeometryAnchor: NSViewRepresentable {
@@ -53,6 +66,7 @@ final class StatusLinksEditorModel: ObservableObject {
     @Published var reservesAddedRowSlot = false
     @Published var revealingAddedRowIndex: Int?
     @Published private(set) var isAddInFlight = false
+    @Published private(set) var visibilityOpacity = 1.0
     let onChange: (Int, StatusLinkField, String) -> Void
     let onAdd: () -> Void
     let onRemove: (Int) -> Void
@@ -99,6 +113,16 @@ final class StatusLinksEditorModel: ObservableObject {
         onReset()
     }
 
+    func setVisibilityOpacity(_ opacity: Double, animated: Bool) {
+        var transaction = Transaction()
+        transaction.animation = animated
+            ? .easeInOut(duration: StatusLinksEditorAnimation.visibilityDuration)
+            : nil
+        withTransaction(transaction) {
+            visibilityOpacity = opacity
+        }
+    }
+
     func reserveAddedRowSlot() {
         reservesAddedRowSlot = true
     }
@@ -129,6 +153,55 @@ final class StatusLinksEditorModel: ObservableObject {
     }
 }
 
+private struct StatusLinksResetButton: NSViewRepresentable {
+    let title: String
+    let action: () -> Void
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+
+        @objc func reset() {
+            action()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(
+            title: title,
+            target: context.coordinator,
+            action: #selector(Coordinator.reset)
+        )
+        configure(button, coordinator: context.coordinator)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.action = action
+        configure(button, coordinator: context.coordinator)
+    }
+
+    private func configure(_ button: NSButton, coordinator: Coordinator) {
+        button.title = title
+        button.target = coordinator
+        button.action = #selector(Coordinator.reset)
+        // Match the native settings action buttons (for example, “立即刷新”)
+        // by letting AppKit's automatic bezel choose the appearance for the
+        // containing window and theme.
+        button.bezelStyle = .automatic
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 12)
+        button.identifier = NSUserInterfaceItemIdentifier("statusLinks.reset")
+    }
+}
+
 struct StatusLinksEditorView: View {
     @ObservedObject var model: StatusLinksEditorModel
 
@@ -138,11 +211,11 @@ struct StatusLinksEditorView: View {
                 Text(tr("状态链接", "Status Links", "狀態連結", "ステータスリンク"))
                     .font(.system(size: 13, weight: .medium))
                 Spacer(minLength: 12)
-                Button(tr("恢复默认", "Restore Defaults", "恢復預設", "デフォルトに戻す"), action: model.reset)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .font(.system(size: 12))
-                    .accessibilityIdentifier("statusLinks.reset")
+                StatusLinksResetButton(
+                    title: tr("恢复默认", "Restore Defaults", "恢復預設", "デフォルトに戻す"),
+                    action: model.reset
+                )
+                .fixedSize(horizontal: true, vertical: false)
             }
             .frame(height: 24)
             .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor")))
@@ -155,7 +228,7 @@ struct StatusLinksEditorView: View {
                 Color.clear.frame(width: 24, height: 1)
             }
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             .frame(height: 20, alignment: .center)
             .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor")))
 
@@ -223,6 +296,8 @@ struct StatusLinksEditorView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .compositingGroup()
+        .opacity(model.visibilityOpacity)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -241,8 +316,9 @@ final class StatusLinksEditorHostingView: NSView {
 
     var rowCount: Int { links.count }
     var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
+    var visibilityOpacity: Double { model.visibilityOpacity }
     var isVisible: Bool {
-        (heightConstraint?.constant ?? 0) > 0 && alphaValue > 0
+        (heightConstraint?.constant ?? 0) > 0 && visibilityOpacity > 0
     }
 
     var renderedRowCount: Int { model.links.count }
@@ -299,10 +375,9 @@ final class StatusLinksEditorHostingView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = true
+        layer?.backgroundColor = NSColor.clear.cgColor
         clipsToBounds = true
         translatesAutoresizingMaskIntoConstraints = false
-        hostingView.wantsLayer = true
-        hostingView.layer?.masksToBounds = true
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hostingView)
         NSLayoutConstraint.activate([
@@ -386,9 +461,7 @@ final class StatusLinksEditorHostingView: NSView {
         }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.20
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
+                StatusLinksEditorAnimation.configure(context)
                 self.heightConstraint?.animator().constant = targetHeight
                 self.synchronizeAncestorCardHeight(animated: true, editorHeight: targetHeight)
                 self.superview?.layoutSubtreeIfNeeded()
@@ -407,6 +480,8 @@ final class StatusLinksEditorHostingView: NSView {
         let targetHeight: CGFloat = visible ? layoutHeight : 0
         let applyLayout = { [weak self] in
             guard let self else { return }
+            self.alphaValue = 1
+            self.model.setVisibilityOpacity(visible ? 1 : 0, animated: false)
             self.heightConstraint?.constant = targetHeight
             self.hostingHeightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
@@ -415,31 +490,21 @@ final class StatusLinksEditorHostingView: NSView {
             self.superview?.layoutSubtreeIfNeeded()
         }
         guard animated else {
-            alphaValue = visible ? 1 : 0
             applyLayout()
             return
         }
 
-        if visible {
-            // Establish the final frame first. Only opacity is animated, so
-            // the editor never travels through the rows above it.
-            alphaValue = 0
-            applyLayout()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                self.animator().alphaValue = 1
-            }
-            return
-        }
-
+        let ancestorInfo = ancestorCardInfo(editorHeight: targetHeight)
+        model.setVisibilityOpacity(visible ? 1 : 0, animated: true)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.14
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            self.animator().alphaValue = 0
+            StatusLinksEditorAnimation.configure(context)
+            self.alphaValue = 1
+            self.heightConstraint?.animator().constant = targetHeight
+            self.hostingHeightConstraint?.animator().constant = targetHeight
+            ancestorInfo?.1.animator().constant = ancestorInfo?.2 ?? 0
+            self.superview?.layoutSubtreeIfNeeded()
         } completionHandler: { [weak self] in
             guard let self, self.visibilityGeneration == generation else { return }
-            self.alphaValue = 0
             applyLayout()
         }
     }
