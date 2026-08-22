@@ -268,7 +268,7 @@ final class DomainModelsTests: XCTestCase {
         let store = ProviderBalanceProgressStore(defaults: defaults)
 
         XCTAssertEqual(try progress(store, amount: 10, unit: "USD", identity: identity), 100)
-        XCTAssertEqual(try progress(store, amount: -1.02, unit: "USD", identity: identity), 0)
+        XCTAssertEqual(try progress(store, amount: -1.02, unit: "USD", identity: identity), 1)
 
         let invalidIdentity = ProviderBalanceProgressIdentity(
             client: .codex,
@@ -304,12 +304,12 @@ final class DomainModelsTests: XCTestCase {
             providerID: "zero-provider",
             query: query
         )
-        XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 0)
-        XCTAssertEqual(try progress(store, amount: 0.004, unit: "USD", identity: zeroIdentity), 0)
-        XCTAssertEqual(try progress(store, amount: 0.01, unit: "USD", identity: zeroIdentity), 0)
-        XCTAssertEqual(try progress(store, amount: 0.09, unit: "USD", identity: zeroIdentity), 0)
+        XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 1)
+        XCTAssertEqual(try progress(store, amount: 0.004, unit: "USD", identity: zeroIdentity), 1)
+        XCTAssertEqual(try progress(store, amount: 0.01, unit: "USD", identity: zeroIdentity), 1)
+        XCTAssertEqual(try progress(store, amount: 0.09, unit: "USD", identity: zeroIdentity), 1)
         XCTAssertEqual(try progress(store, amount: 0.10, unit: "USD", identity: zeroIdentity), 100)
-        XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 0)
+        XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 1)
     }
 
     func testOpenCodexCardPresentationDoesNotExposeModelIdentity() {

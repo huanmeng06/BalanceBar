@@ -94,6 +94,8 @@ final class ProviderBalanceProgressStore {
     // Keep sub-ten-cent recharge baselines visually empty for now. This is a
     // fixed policy until a future settings surface makes it configurable.
     static let minimumProgressBaselineCents = 10
+    // A third-party zero balance should still render a visible red sliver.
+    static let minimumVisibleProgressPercentage = 1.0
 
     private let defaults: UserDefaults
     private let lock = NSLock()
@@ -183,10 +185,13 @@ final class ProviderBalanceProgressStore {
     }
 
     private static func percentage(currentCents: Int, baselineCents: Int) -> Double {
-        guard baselineCents >= minimumProgressBaselineCents else { return 0 }
-        return min(
+        guard baselineCents >= minimumProgressBaselineCents else {
+            return minimumVisibleProgressPercentage
+        }
+        let percentage = min(
             100,
             max(0, Double(currentCents) / Double(baselineCents) * 100)
         )
+        return percentage == 0 ? minimumVisibleProgressPercentage : percentage
     }
 }
