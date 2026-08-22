@@ -126,7 +126,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0, accuracy: 0.001)
         XCTAssertEqual(
             preferences.menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
-            -10,
+            -20,
             accuracy: 0.001
         )
 

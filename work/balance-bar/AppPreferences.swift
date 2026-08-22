@@ -61,9 +61,9 @@ final class AppPreferences {
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
     static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
     /// The actual status-item width baseline. The persisted/user-facing
-    /// adjustment remains zero-based, so logical 0pt applies -10pt to the
+    /// adjustment remains zero-based, so logical 0pt applies -20pt to the
     /// outer status-item footprint.
-    static let menuBarStatusItemWidthBaseline: Double = -10.0
+    static let menuBarStatusItemWidthBaseline: Double = -20.0
 
     /// Point offsets for the menu bar Agent icon. Positive X moves right,
     /// positive Y moves up. Values are clamped to `menuBarOffsetRange`.
@@ -88,7 +88,7 @@ final class AppPreferences {
     }
 
     /// Additional points applied to the complete menu bar status item width.
-    /// This is a user-facing adjustment relative to the -10pt baseline.
+    /// This is a user-facing adjustment relative to the -20pt baseline.
     /// Positive values widen the status item symmetrically; negative values
     /// narrow it without changing the icon/text spacing inside the item.
     var menuBarStatusItemWidthAdjustment: Double {
