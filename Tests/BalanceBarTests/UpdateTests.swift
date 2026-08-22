@@ -171,6 +171,26 @@ final class UpdateTests: XCTestCase {
         }
     }
 
+    private final class StubDetachedProcessLauncher: UpdateDetachedProcessLaunching {
+        private(set) var executableURL: URL?
+        private(set) var arguments: [String]?
+        var onLaunch: (() -> Void)?
+
+        func launch(executableURL: URL, arguments: [String]) throws {
+            self.executableURL = executableURL
+            self.arguments = arguments
+            onLaunch?()
+        }
+    }
+
+    private final class StubApplicationTerminator: UpdateApplicationTerminating {
+        var onTerminate: (() -> Void)?
+
+        func terminateApplication() {
+            onTerminate?()
+        }
+    }
+
     private var session: URLSession!
 
     override func setUp() {
@@ -635,6 +655,34 @@ final class UpdateTests: XCTestCase {
         try mounter.unmount(mounted)
         XCTAssertEqual(runner.arguments[0].prefix(4), ["attach", "-plist", "-nobrowse", "-readonly"])
         XCTAssertEqual(runner.arguments[1], ["detach", "/Volumes/BalanceBar Test"])
+    }
+
+    func testRelauncherWaitsForCurrentProcessBeforeOpeningReplacedBundle() throws {
+        let launcher = StubDetachedProcessLauncher()
+        let terminator = StubApplicationTerminator()
+        var events: [String] = []
+        launcher.onLaunch = { events.append("launch-waiter") }
+        let termination = expectation(description: "old process termination requested")
+        terminator.onTerminate = {
+            events.append("terminate-old-process")
+            termination.fulfill()
+        }
+        let relauncher = LiveUpdateApplicationRelauncher(
+            processLauncher: launcher,
+            terminator: terminator
+        )
+        let applicationURL = URL(fileURLWithPath: "/tmp/BalanceBar-test.app")
+
+        try relauncher.relaunchApplication(at: applicationURL)
+        wait(for: [termination], timeout: 1)
+
+        XCTAssertEqual(events, ["launch-waiter", "terminate-old-process"])
+        XCTAssertEqual(launcher.executableURL?.path, "/bin/sh")
+        let arguments = try XCTUnwrap(launcher.arguments)
+        XCTAssertEqual(arguments.first, "-c")
+        XCTAssertTrue(arguments[1].contains("kill -0"))
+        XCTAssertTrue(arguments[1].contains("/usr/bin/open -n"))
+        XCTAssertEqual(arguments.last, applicationURL.path)
     }
 
     // MARK: - Dashboard state/action wiring and localization

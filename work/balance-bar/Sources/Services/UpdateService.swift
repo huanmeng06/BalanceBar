@@ -294,6 +294,19 @@ struct LiveUpdateProcessRunner: UpdateProcessRunning {
     }
 }
 
+protocol UpdateDetachedProcessLaunching {
+    func launch(executableURL: URL, arguments: [String]) throws
+}
+
+struct LiveUpdateDetachedProcessLauncher: UpdateDetachedProcessLaunching {
+    func launch(executableURL: URL, arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
+        try process.run()
+    }
+}
+
 enum UpdateInstallationError: Error, Equatable {
     case invalidDiskImage
     case mountFailed
@@ -349,27 +362,61 @@ protocol UpdateApplicationRelaunching {
     func relaunchApplication(at applicationURL: URL) throws
 }
 
-struct LiveUpdateApplicationRelauncher: UpdateApplicationRelaunching {
-    private let processRunner: UpdateProcessRunning
-    private let openURL = URL(fileURLWithPath: "/usr/bin/open")
+protocol UpdateApplicationTerminating {
+    func terminateApplication()
+}
 
-    init(processRunner: UpdateProcessRunning = LiveUpdateProcessRunner()) {
-        self.processRunner = processRunner
+struct LiveUpdateApplicationTerminator: UpdateApplicationTerminating {
+    func terminateApplication() {
+        NSApplication.shared.terminate(nil)
+    }
+}
+
+struct LiveUpdateApplicationRelauncher: UpdateApplicationRelaunching {
+    private let processLauncher: UpdateDetachedProcessLaunching
+    private let terminator: UpdateApplicationTerminating
+    private let shellURL = URL(fileURLWithPath: "/bin/sh")
+
+    init(
+        processLauncher: UpdateDetachedProcessLaunching = LiveUpdateDetachedProcessLauncher(),
+        terminator: UpdateApplicationTerminating = LiveUpdateApplicationTerminator()
+    ) {
+        self.processLauncher = processLauncher
+        self.terminator = terminator
     }
 
     func relaunchApplication(at applicationURL: URL) throws {
-        let result: UpdateProcessResult
+        // Launch a detached waiter before terminating this process. Calling
+        // `open -n` while the current app is still alive is not reliable for a
+        // bundle that disallows multiple instances: LaunchServices can accept
+        // the request without starting the replaced bundle. Passing the path
+        // as a positional shell argument avoids interpolating it into code.
+        let waitAndOpenScript = """
+        pid="$1"
+        app="$2"
+        attempts=0
+        while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 150 ]; do
+            sleep 0.1
+            attempts=$((attempts + 1))
+        done
+        exec /usr/bin/open -n "$app"
+        """
         do {
-            result = try processRunner.run(
-                executableURL: openURL,
-                arguments: ["-n", applicationURL.path]
+            try processLauncher.launch(
+                executableURL: shellURL,
+                arguments: [
+                    "-c",
+                    waitAndOpenScript,
+                    "BalanceBar-relaunch",
+                    String(ProcessInfo.processInfo.processIdentifier),
+                    applicationURL.path
+                ]
             )
         } catch {
             throw UpdateInstallationError.relaunchFailed
         }
-        guard result.status == 0 else { throw UpdateInstallationError.relaunchFailed }
         DispatchQueue.main.async {
-            NSApplication.shared.terminate(nil)
+            self.terminator.terminateApplication()
         }
     }
 }
