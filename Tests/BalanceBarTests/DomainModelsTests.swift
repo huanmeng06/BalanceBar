@@ -15,6 +15,45 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(StatusLink.self, from: encoded), link)
     }
 
+    func testOpenAIAccountPresentationUsesOnlyTheCurrentOfficialCodexProvider() {
+        let available = OpenAIAccountPresentation.current(
+            activeClient: .codex,
+            providerIsOfficial: true,
+            accountID: "account-123"
+        )
+        XCTAssertEqual(available?.state, .available("account-123"))
+        XCTAssertEqual(available?.text(language: .simplifiedChinese), "账号：account-123")
+        XCTAssertEqual(available?.text(language: .traditionalChinese), "帳號：account-123")
+        XCTAssertEqual(available?.text(language: .japanese), "アカウント：account-123")
+        XCTAssertEqual(available?.text(language: .english), "Account: account-123")
+
+        let unavailable = OpenAIAccountPresentation.current(
+            activeClient: .codex,
+            providerIsOfficial: true,
+            accountID: nil
+        )
+        XCTAssertEqual(unavailable?.state, .unavailable)
+        XCTAssertEqual(unavailable?.text(language: .simplifiedChinese), "账号不可用")
+        XCTAssertEqual(unavailable?.text(language: .traditionalChinese), "帳號不可用")
+        XCTAssertEqual(unavailable?.text(language: .japanese), "アカウントを利用できません")
+        XCTAssertEqual(unavailable?.text(language: .english), "Account unavailable")
+
+        XCTAssertNil(
+            OpenAIAccountPresentation.current(
+                activeClient: .claude,
+                providerIsOfficial: true,
+                accountID: "should-not-leak"
+            )
+        )
+        XCTAssertNil(
+            OpenAIAccountPresentation.current(
+                activeClient: .codex,
+                providerIsOfficial: false,
+                accountID: "should-not-leak"
+            )
+        )
+    }
+
     func testPlaceholderAndOfficialSnapshotFormatting() {
         let placeholder = Snapshot.placeholder
         XCTAssertEqual(placeholder.kind, .placeholder)

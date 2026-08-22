@@ -255,6 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient = BalanceAPIClient()
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
@@ -304,6 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateService: UpdateService? = nil
     ) {
         self.ccSwitchRepository = repository
+        self.officialQuotaClient = officialQuotaClient
         self.updateService = updateService ?? UpdateService()
         super.init()
         self.updateService.onStateChange = { [weak self] _ in
@@ -314,6 +316,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
             onChange: { [weak self] in
+                DispatchQueue.main.async { [weak self] in
+                    self?.refreshStatusItemMenuInput()
+                }
                 self?.refresh(reason: .configurationChanged)
                 self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: self?.activeClient ?? .codex)
             }
@@ -384,6 +389,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.lastOpenCodexFetch = nil
                     self.openCodexRefreshCoordinator.clear()
                     DispatchQueue.main.async {
+                        self.refreshStatusItemMenuInput()
                         self.openCodexState = nil
                         self.openCodexCards = []
                         self.openCodexSwitchInFlight = false
@@ -450,13 +456,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
-        StatusItemController.MenuInput(
+        let currentProvider = ccSwitchRepository.loadCurrent(appType: activeClient.appType)
+        let isOfficialOpenAICodex = activeClient == .codex && currentProvider?.isOfficial == true
+        let openAIAccount = OpenAIAccountPresentation.current(
+            activeClient: activeClient,
+            providerIsOfficial: isOfficialOpenAICodex,
+            accountID: isOfficialOpenAICodex
+                ? officialQuotaClient.codexAccountID()
+                : nil
+        )
+        return StatusItemController.MenuInput(
             openCodexCards: openCodexCards,
             openCodexState: openCodexState?.state,
             openCodexSwitchInFlight: openCodexSwitchInFlight,
             choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
             activeClient: activeClient,
+            openAIAccount: openAIAccount,
             statusLinks: statusLinks,
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
@@ -598,8 +614,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
         )
+        refreshStatusItemMenuInput()
         refresh(reason: .manual)
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
+    }
+
+    private func refreshStatusItemMenuInput() {
+        statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
     private func switchProvider(_ providerID: String) {
@@ -991,6 +1012,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         timer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
+            self?.refreshStatusItemMenuInput()
             self?.refresh(reason: .scheduled)
             self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: false, for: self?.activeClient ?? .codex)
         }
@@ -1069,6 +1091,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         updateStatusItemActivity()
+        refreshStatusItemMenuInput()
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
@@ -1352,6 +1375,7 @@ enum ErrorCardLayout {
         let cardSize: NSSize
         let title: NSRect
         let refreshTime: NSRect
+        let account: NSRect?
         let quotaDetail: NSRect
         let amount: NSRect
         let detail: NSRect
@@ -1412,19 +1436,26 @@ enum ErrorCardLayout {
     /// Frames for the error card. A single-line detail follows the same three
     /// row rhythm as the compact balance card; additional detail lines shift
     /// the rows above upward by only the extra measured height.
-    static func errorFrames(for message: String) -> ErrorFrames {
+    static func errorFrames(
+        for message: String,
+        includesAccount: Bool = false
+    ) -> ErrorFrames {
         let text = detailText(for: message, width: detailWidth)
         let detailH = measuredHeight(of: text, width: detailWidth)
         let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
-        let cardHeight = minimumCardHeight + extraDetailHeight
+        let accountShift: CGFloat = includesAccount ? 19 : 0
+        let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
         // of the left status/detail region. As that region grows, move the
         // amount by half the extra height to preserve the same optical center.
         let amountY = 5 + extraDetailHeight / 2
         return ErrorFrames(
             cardSize: NSSize(width: cardWidth, height: cardHeight),
-            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: 127, height: 20),
-            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight, width: refreshTimeWidth, height: 17),
+            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight + accountShift, width: 127, height: 20),
+            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight + accountShift, width: refreshTimeWidth, height: 17),
+            account: includesAccount
+                ? NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: contentWidth, height: 17)
+                : nil,
             quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
             amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
             detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),

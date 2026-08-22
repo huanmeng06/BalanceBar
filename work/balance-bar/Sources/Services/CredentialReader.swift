@@ -59,6 +59,12 @@ struct CredentialReader {
         return Self.codexAccessToken(from: data)
     }
 
+    func codexAccountID() -> String? {
+        let authURL = homeDirectoryURL.appendingPathComponent(".codex/auth.json")
+        guard let data = try? fileReader.readData(from: authURL) else { return nil }
+        return Self.codexAccountID(from: data)
+    }
+
     func claudeAccessToken() -> String? {
         if let result = try? processRunner.run(arguments: [
             "find-generic-password", "-s", "Claude Code-credentials", "-w"
@@ -78,6 +84,14 @@ struct CredentialReader {
               let token = tokens["access_token"] as? String,
               !token.isEmpty else { return nil }
         return token
+    }
+
+    static func codexAccountID(from data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokens = object["tokens"] as? [String: Any],
+              let accountID = tokens["account_id"] as? String else { return nil }
+        let normalized = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
     }
 
     static func claudeAccessToken(from data: Data) -> String? {

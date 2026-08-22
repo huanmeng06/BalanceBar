@@ -100,6 +100,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
+            openAIAccount: nil,
             statusLinks: [],
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,

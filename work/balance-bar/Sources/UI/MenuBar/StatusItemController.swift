@@ -57,6 +57,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let choices: [ProviderChoice]
         let quickSwitchSummaries: [String: String]
         let activeClient: AssistantClient
+        let openAIAccount: OpenAIAccountPresentation?
         let statusLinks: [StatusLink]
         let showQuickSwitchMenu: Bool
         let showOpenChatGPTMenu: Bool
@@ -91,6 +92,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         choices: [],
         quickSwitchSummaries: [:],
         activeClient: .codex,
+        openAIAccount: nil,
         statusLinks: [],
         showQuickSwitchMenu: true,
         showOpenChatGPTMenu: true,
@@ -793,7 +795,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let isBalance = snapshot.kind == .balance
         let layout = OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
-            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
+            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
+            includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -806,6 +809,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             refreshTime.alignment = .right
             refreshTime.frame = layout.refreshTime
             view.addSubview(refreshTime)
+        }
+        if let account = menuInput.openAIAccount, let accountFrame = layout.account {
+            let accountLabel = makeOverviewLabel(
+                account.text(),
+                font: .systemFont(ofSize: 13, weight: .regular)
+            )
+            accountLabel.textColor = .secondaryLabelColor
+            accountLabel.frame = accountFrame
+            view.addSubview(accountLabel)
         }
         if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
@@ -971,11 +983,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = false
         let message = snapshot.overviewReset(refreshDate: nil, formatter: Self.timeFormatter)
-        let frames = ErrorCardLayout.errorFrames(for: message)
+        let frames = ErrorCardLayout.errorFrames(
+            for: message,
+            includesAccount: menuInput.openAIAccount != nil
+        )
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
         view.addSubview(provider)
+        if let account = menuInput.openAIAccount, let accountFrame = frames.account {
+            let accountLabel = makeOverviewLabel(
+                account.text(),
+                font: .systemFont(ofSize: 13, weight: .regular)
+            )
+            accountLabel.textColor = .secondaryLabelColor
+            accountLabel.frame = accountFrame
+            view.addSubview(accountLabel)
+        }
         let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
         let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
             timeText,

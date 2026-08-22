@@ -953,6 +953,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
+            openAIAccount: nil,
             statusLinks: [
                 StatusLink(title: "Status", url: "https://status.example")
             ],
@@ -981,6 +982,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
+            openAIAccount: nil,
             statusLinks: [
                 StatusLink(title: "Status", url: "https://status.example")
             ],
@@ -1002,6 +1004,128 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNil(
             controller.menuItemsForTesting.first {
                 $0.title == "查看状态" || $0.title == "View Status"
+            }
+        )
+    }
+
+    func testOpenAIAccountSubtitleUpdatesTruncatesAndHidesOutsideOfficialCodex() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        func input(account: OpenAIAccountPresentation?) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(
+                openCodexCards: [],
+                openCodexState: nil,
+                openCodexSwitchInFlight: false,
+                choices: [],
+                quickSwitchSummaries: [:],
+                activeClient: .codex,
+                openAIAccount: account,
+                statusLinks: [],
+                showQuickSwitchMenu: false,
+                showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false,
+                showOpenCodexMenu: false,
+                showStatusMenu: false
+            )
+        }
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let longID = String(repeating: "account-", count: 20)
+        controller.start(
+            snapshot: .official("OpenAI Official", 83, "7-Day Quota", "2 hours", date),
+            refreshDate: date,
+            menuInput: input(account: OpenAIAccountPresentation(accountID: longID)),
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let accountLabel = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue.hasPrefix("Account:")
+            }
+        )
+        XCTAssertEqual(accountLabel.font?.pointSize, 13)
+        XCTAssertEqual(accountLabel.textColor, .secondaryLabelColor)
+        XCTAssertEqual(accountLabel.lineBreakMode, .byTruncatingTail)
+        XCTAssertEqual(
+            accountLabel.frame,
+            try XCTUnwrap(OpenCodexCardLayout.frames(for: .quota, includesAccount: true).account)
+        )
+        XCTAssertLessThanOrEqual(accountLabel.frame.maxX, overview.bounds.maxX)
+        XCTAssertNotNil(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == "83%"
+            }
+        )
+
+        controller.updateMenu(
+            input: input(account: OpenAIAccountPresentation(accountID: "account-2"))
+        )
+        let switchedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertNil(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue.contains(longID)
+            }
+        )
+        XCTAssertEqual(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue == "Account: account-2"
+            }?.stringValue,
+            "Account: account-2"
+        )
+
+        controller.updateMenu(
+            input: input(account: OpenAIAccountPresentation(accountID: nil))
+        )
+        let unavailableOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertNotNil(
+            allControls(of: unavailableOverview, as: NSTextField.self).first {
+                $0.stringValue == "Account unavailable"
+            }
+        )
+
+        controller.update(
+            snapshot: .balance(
+                "Relay",
+                12.34,
+                "USD",
+                URL(string: "https://relay.example"),
+                date
+            ),
+            refreshDate: date,
+            menuInput: input(account: nil),
+            settings: settings
+        )
+        let nonOfficialOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertFalse(
+            allControls(of: nonOfficialOverview, as: NSTextField.self).contains {
+                $0.stringValue.contains("Account") || $0.stringValue.contains("account-")
             }
         )
     }
@@ -1050,6 +1174,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                             choices: choices,
                             quickSwitchSummaries: [:],
                             activeClient: .claude,
+                            openAIAccount: nil,
                             statusLinks: [
                                 StatusLink(title: "Status", url: "https://status.example")
                             ],

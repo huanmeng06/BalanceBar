@@ -1100,6 +1100,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(official.cardSize, CGSize(width: 304, height: 102))
         XCTAssertEqual(official.title, CGRect(x: 14, y: 75, width: 189, height: 20))
         XCTAssertEqual(official.refreshTime, CGRect(x: 209, y: 76, width: 81, height: 17))
+        XCTAssertNil(official.account)
         XCTAssertEqual(official.quotaDetail, CGRect(x: 14, y: 47, width: 128, height: 18))
         XCTAssertEqual(official.reset, CGRect(x: 14, y: 28, width: 128, height: 17))
         XCTAssertEqual(official.amount, CGRect(x: 149, y: 18, width: 141, height: 48))
@@ -1111,6 +1112,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 86))
         XCTAssertEqual(balance.title, CGRect(x: 14, y: 58, width: 189, height: 20))
         XCTAssertEqual(balance.refreshTime, CGRect(x: 209, y: 59, width: 81, height: 17))
+        XCTAssertNil(balance.account)
         XCTAssertEqual(balance.quotaDetail, CGRect(x: 14, y: 31, width: 128, height: 18))
         XCTAssertNil(balance.reset)
         XCTAssertEqual(balance.amount, CGRect(x: 149, y: 5, width: 141, height: 48))
@@ -1121,6 +1123,22 @@ final class OpenCodexRepositoryTests: XCTestCase {
         let englishBalance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 72)
         XCTAssertEqual(englishBalance.linkPrefix, CGRect(x: 14, y: 7, width: 72, height: 17))
         XCTAssertEqual(englishBalance.link, CGRect(x: 85, y: 7, width: 136, height: 17))
+    }
+
+    func testOpenAIAccountRowAddsASeparatedSubtitleBeforeQuotaDetails() {
+        let frames = OpenCodexCardLayout.frames(for: .quota, includesAccount: true)
+
+        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 121))
+        XCTAssertEqual(frames.title, CGRect(x: 14, y: 94, width: 189, height: 20))
+        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 95, width: 81, height: 17))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 276, height: 17))
+        XCTAssertEqual(frames.quotaDetail, CGRect(x: 14, y: 47, width: 128, height: 18))
+        XCTAssertEqual(frames.reset, CGRect(x: 14, y: 28, width: 128, height: 17))
+        XCTAssertEqual(frames.amount, CGRect(x: 149, y: 18, width: 141, height: 48))
+        XCTAssertEqual(frames.progress, CGRect(x: 14, y: 8, width: 276, height: 5))
+
+        XCTAssertLessThan(frames.quotaDetail.maxY, frames.account?.minY ?? 0)
+        XCTAssertLessThan(frames.progress?.maxY ?? 0, frames.reset?.minY ?? 0)
     }
 
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {

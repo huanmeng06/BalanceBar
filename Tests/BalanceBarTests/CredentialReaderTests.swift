@@ -12,6 +12,19 @@ final class CredentialReaderTests: XCTestCase {
         XCTAssertNil(CredentialReader.codexAccessToken(from: Data("not-json".utf8)))
     }
 
+    func testCodexReaderExtractsStableAccountIDWithoutUsingTokenMaterial() {
+        XCTAssertEqual(
+            CredentialReader.codexAccountID(from: Data(#"{"tokens":{"access_token":"secret-token","account_id":"account-123"}}"#.utf8)),
+            "account-123"
+        )
+        XCTAssertNil(
+            CredentialReader.codexAccountID(from: Data(#"{"tokens":{"account_id":"   "}}"#.utf8))
+        )
+        XCTAssertNil(
+            CredentialReader.codexAccountID(from: Data(#"{"tokens":{"account_id":42}}"#.utf8))
+        )
+    }
+
     func testClaudeReaderPrefersKeychainAndSupportsBothCredentialKeys() {
         let fileReader = FixtureFileReader(dataByPath: [:])
         let processRunner = FixtureProcessRunner(
