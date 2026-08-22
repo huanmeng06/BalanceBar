@@ -166,14 +166,6 @@ struct StatusLinksEditorView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .font(.system(size: 12))
-                    // The bordered style may use a separate platform-backed
-                    // layer. Keep its pressed/hover transaction independent
-                    // from the editor visibility fade; the enclosing
-                    // compositing group owns the single shared opacity.
-                    .transaction { transaction in
-                        transaction.animation = nil
-                    }
-                    .compositingGroup()
                     .accessibilityIdentifier("statusLinks.reset")
             }
             .frame(height: 24)
@@ -187,7 +179,7 @@ struct StatusLinksEditorView: View {
                 Color.clear.frame(width: 24, height: 1)
             }
             .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             .frame(height: 20, alignment: .center)
             .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor")))
 
