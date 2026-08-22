@@ -295,8 +295,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
     private var menuBarFontSize: Double { get { preferences.menuBarFontSize } set { preferences.menuBarFontSize = newValue } }
     private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
+    private var menuBarFontSizeAdjustmentSession = MenuBarFontSizeAdjustmentSession()
     private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
         self?.applyMenuBarWidthAdjustmentFrame(value)
+    }
+    private lazy var menuBarFontSizeCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
+        self?.applyMenuBarFontSizeFrame(value)
     }
     private var menuBarStatusItemWidthAdjustment: Double {
         menuBarStatusItemWidthAdjustmentSession.transientValue
@@ -902,11 +906,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func handleDashboardOffsetValue(identifier: String, value: Double) {
         switch identifier {
         case AppPreferences.menuBarFontSizeKey:
-            menuBarFontSize = AppPreferences.normalizedMenuBarFontSize(
-                value,
-                range: AppPreferences.menuBarFontSizeRange
-            )
-            updateStatusItem(for: snapshot)
+            let transientValue = menuBarFontSizeAdjustmentSession.update(value)
+            menuBarFontSizeCoalescer.submit(CGFloat(transientValue))
         case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
             // NSSlider sends this action continuously. Keep the value transient:
             // UserDefaults and logging belong to the editing-ended path, not the
@@ -921,20 +922,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func handleDashboardOffsetValueEnded(identifier: String, value: Double) {
-        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+        switch identifier {
+        case AppPreferences.menuBarFontSizeKey:
+            let finalValue = menuBarFontSizeAdjustmentSession.finish(value) { finalValue in
+                self.preferences.menuBarFontSize = finalValue
+            }
+            menuBarFontSizeCoalescer.submit(CGFloat(finalValue))
+            menuBarFontSizeCoalescer.flush()
+            finishDashboardMenuBarFontSize()
+            updateStatusItem(for: snapshot)
+            SwitchLog.write(
+                "preference changed; key=\(identifier); value=\(menuBarFontSize); secondary=\(preferences.menuBarSecondaryFontSize)",
+                category: "configuration"
+            )
+        case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
+            let appPreferences = preferences
+            let finalValue = menuBarStatusItemWidthAdjustmentSession.finish(value) { finalValue in
+                appPreferences.menuBarStatusItemWidthAdjustment = finalValue
+            }
+            menuBarWidthAdjustmentCoalescer.submit(CGFloat(finalValue))
+            menuBarWidthAdjustmentCoalescer.flush()
+            finishDashboardMenuBarWidthAdjustment(finalValue)
+            SwitchLog.write(
+                "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
+                category: "configuration"
+            )
+        default:
             return
         }
-        let appPreferences = preferences
-        let finalValue = menuBarStatusItemWidthAdjustmentSession.finish(value) { finalValue in
-            appPreferences.menuBarStatusItemWidthAdjustment = finalValue
-        }
-        menuBarWidthAdjustmentCoalescer.submit(CGFloat(finalValue))
-        menuBarWidthAdjustmentCoalescer.flush()
-        finishDashboardMenuBarWidthAdjustment(finalValue)
-        SwitchLog.write(
-            "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
-            category: "configuration"
-        )
     }
 
     private func applyMenuBarWidthAdjustmentFrame(_ widthAdjustment: CGFloat) {
@@ -946,6 +961,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    private func applyMenuBarFontSizeFrame(_ fontSize: CGFloat) {
+        statusItemController.updateFontSize(fontSize)
+        refreshDashboardMenuBarFontSize(Double(fontSize))
+    }
+
     private func handleDashboardOffsetReset(identifier: String) {
         switch identifier {
         case DashboardMenuBarPage.iconOffsetsResetIdentifier:
@@ -955,6 +975,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
         case DashboardMenuBarPage.fontSizeResetIdentifier:
+            menuBarFontSizeAdjustmentSession.cancel()
+            menuBarFontSizeCoalescer.cancel()
             menuBarFontSize = AppPreferences.menuBarFontSizeDefault
         default:
             return
@@ -1022,6 +1044,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             widthAdjustment,
             horizontalPadding: menuBarHorizontalPadding
         )
+    }
+
+    private func refreshDashboardMenuBarFontSize(_ fontSize: Double) {
+        dashboardComposition.refreshMenuBarFontSize(fontSize)
+    }
+
+    private func finishDashboardMenuBarFontSize() {
+        dashboardComposition.finishMenuBarFontSize()
     }
 
     private func refreshDashboardOpenCodexSettings() {

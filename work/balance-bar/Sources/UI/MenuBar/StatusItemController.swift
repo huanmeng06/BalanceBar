@@ -24,13 +24,15 @@ enum MenuBarWidthPerformance {
     #endif
 }
 
-/// Coalesces continuous width changes to display refreshes without making the
-/// slider's mouse-tracking action perform the expensive status-bar update.
-/// The display link runs in the common main run-loop modes so it continues
-/// during AppKit slider tracking.
+/// Coalesces continuous menu-bar layout changes to display refreshes without
+/// making a slider's mouse-tracking action perform the expensive status-bar
+/// update. The display link runs in the common main run-loop modes so it
+/// continues during AppKit slider tracking. Width and font-size adjustments
+/// share this path so only the latest normalized value reaches a frame.
 final class MenuBarWidthDisplayCoalescer: NSObject {
     private let apply: (CGFloat) -> Void
     private var pendingValue: CGFloat?
+    private var lastAppliedValue: CGFloat?
     private var displayLink: CADisplayLink?
     private var fallbackTimer: Timer?
 
@@ -41,6 +43,9 @@ final class MenuBarWidthDisplayCoalescer: NSObject {
 
     func submit(_ value: CGFloat) {
         dispatchPrecondition(condition: .onQueue(.main))
+        if pendingValue == value || (pendingValue == nil && lastAppliedValue == value) {
+            return
+        }
         pendingValue = value
         guard displayLink == nil, fallbackTimer == nil else { return }
         startRefreshSource()
@@ -51,7 +56,8 @@ final class MenuBarWidthDisplayCoalescer: NSObject {
         stopRefreshSource()
         let value = pendingValue
         pendingValue = nil
-        if let value {
+        if let value, value != lastAppliedValue {
+            lastAppliedValue = value
             apply(value)
         }
     }
@@ -108,7 +114,10 @@ final class MenuBarWidthDisplayCoalescer: NSObject {
             stopRefreshSource()
             return
         }
-        apply(value)
+        if value != lastAppliedValue {
+            lastAppliedValue = value
+            apply(value)
+        }
 
         if pendingValue == nil {
             stopRefreshSource()
@@ -294,7 +303,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Shared logical AppKit point size for both official rows and the
         /// single-line third-party amount. The secondary row is derived from
         /// the default 13:10 ratio in the renderer.
-        let fontSize: CGFloat
+        var fontSize: CGFloat
 
         init(
             showIcon: Bool,
@@ -490,6 +499,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         applyPendingWidthAdjustment(widthAdjustment)
     }
 
+    /// Applies one already-coalesced font-size value to the live menu-bar
+    /// content. This deliberately stays on the cached snapshot/layout path:
+    /// provider reads, menu reconstruction, persistence, and full Dashboard
+    /// refreshes belong to the editing-ended transaction in AppDelegate.
+    func updateFontSize(_ fontSize: CGFloat) {
+        settings.fontSize = CGFloat(
+            AppPreferences.normalizedMenuBarFontSize(
+                Double(fontSize),
+                range: AppPreferences.menuBarFontSizeRange
+            )
+        )
+        applyPendingFontSize(settings.fontSize)
+    }
+
     private func applyPendingWidthAdjustment(_ widthAdjustment: CGFloat) {
         guard let statusItem,
               let button = statusItem.button,
@@ -513,9 +536,81 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 geometry: geometry,
                 iconViewYOffset: lastMenuBarIconYOffset,
                 effectiveSnapshot: lastMenuBarEffectiveSnapshot,
-                officialTextYOffset: lastMenuBarOfficialTextYOffset
+                officialTextYOffset: lastMenuBarOfficialTextYOffset,
+                backingScaleFactor: menuBarBackingScaleFactor(for: button)
             )
         }
+    }
+
+    private func applyPendingFontSize(_ fontSize: CGFloat) {
+        guard let statusItem,
+              let button = statusItem.button else {
+            return
+        }
+
+        settings.fontSize = fontSize
+        applyMenuBarFonts()
+        let effectiveSnapshot = lastMenuBarEffectiveSnapshot
+        let reservedSecondary = settings.showAmount && effectiveSnapshot.kind == .official
+            ? effectiveSnapshot.menuBarSecondary
+            : ""
+        let hasSecondary = settings.showAmount
+            && settings.showReset
+            && !reservedSecondary.isEmpty
+        menuBarPrimaryLabel.stringValue = settings.showAmount
+            ? effectiveSnapshot.menuBarPrimary
+            : ""
+        menuBarSecondaryLabel.stringValue = reservedSecondary
+        menuBarIconSlot.isHidden = !settings.showIcon
+        menuBarTextStack.isHidden = !settings.showAmount
+
+        let geometry = MenuBarLayout.geometry(
+            primarySize: menuBarPrimaryLabel.intrinsicContentSize,
+            secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
+            showIcon: settings.showIcon,
+            showAmount: settings.showAmount,
+            hasSecondary: hasSecondary,
+            isBalance: effectiveSnapshot.kind == .balance
+        )
+        MenuBarLayout.applyTextLayout(
+            container: menuBarTextStack,
+            primary: menuBarPrimaryLabel,
+            secondary: menuBarSecondaryLabel,
+            geometry: geometry,
+            showAmount: settings.showAmount,
+            hasSecondary: hasSecondary
+        )
+
+        let requestedLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: settings.horizontalPadding,
+            widthAdjustment: settings.widthAdjustment
+        )
+        if requestedLength != statusItem.length {
+            statusItem.length = requestedLength
+        }
+        button.layoutSubtreeIfNeeded()
+
+        let backingScaleFactor = menuBarBackingScaleFactor(for: button)
+        let offsets = menuBarVerticalOffsets(
+            geometry: geometry,
+            effectiveSnapshot: effectiveSnapshot,
+            hasSecondary: hasSecondary,
+            buttonHeight: button.bounds.height,
+            backingScaleFactor: backingScaleFactor
+        )
+        lastMenuBarGeometry = geometry
+        lastMenuBarIconYOffset = offsets.iconYOffset
+        lastMenuBarOfficialTextYOffset = offsets.officialTextYOffset
+        applyMenuBarContentFrames(
+            button: button,
+            buttonSize: NSSize(width: max(0, requestedLength), height: button.bounds.height),
+            geometry: geometry,
+            iconViewYOffset: offsets.iconYOffset,
+            effectiveSnapshot: effectiveSnapshot,
+            officialTextYOffset: offsets.officialTextYOffset,
+            backingScaleFactor: backingScaleFactor
+        )
     }
 
     func updateMenu(input: MenuInput) {
@@ -818,38 +913,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         button.layoutSubtreeIfNeeded()
 
+        let backingScaleFactor = menuBarBackingScaleFactor(for: button)
         let buttonHeight = button.bounds.height
-        let apiIconYOffset = settings.showIcon && settings.showAmount
-            ? MenuBarLayout.singleLineIconYOffset
-            : 0
-        let iconYOffset: CGFloat
-        if effectiveSnapshot.kind == .official, settings.showIcon {
-            let apiGeometry = MenuBarLayout.geometry(
-                primarySize: menuBarPrimaryLabel.intrinsicContentSize,
-                secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
-                showIcon: settings.showIcon,
-                showAmount: settings.showAmount,
-                hasSecondary: false,
-                isBalance: true
-            )
-            iconYOffset = geometry.iconViewYOffset(
-                alignedTo: apiGeometry,
-                buttonHeight: buttonHeight,
-                referenceIconViewYOffset: apiIconYOffset
-            )
-        } else if effectiveSnapshot.kind == .balance {
-            iconYOffset = apiIconYOffset
-        } else {
-            iconYOffset = 0
-        }
-        let officialTextYOffset: CGFloat
-        if effectiveSnapshot.kind == .official, settings.showAmount {
-            officialTextYOffset = MenuBarLayout.officialTextYOffset(
-                hasSecondary: hasSecondary
-            )
-        } else {
-            officialTextYOffset = 0
-        }
+        let offsets = menuBarVerticalOffsets(
+            geometry: geometry,
+            effectiveSnapshot: effectiveSnapshot,
+            hasSecondary: hasSecondary,
+            buttonHeight: buttonHeight,
+            backingScaleFactor: backingScaleFactor
+        )
+        let iconYOffset = offsets.iconYOffset
+        let officialTextYOffset = offsets.officialTextYOffset
         lastMenuBarGeometry = geometry
         lastMenuBarIconYOffset = iconYOffset
         lastMenuBarOfficialTextYOffset = officialTextYOffset
@@ -864,7 +938,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             geometry: geometry,
             iconViewYOffset: iconYOffset,
             effectiveSnapshot: effectiveSnapshot,
-            officialTextYOffset: officialTextYOffset
+            officialTextYOffset: officialTextYOffset,
+            backingScaleFactor: backingScaleFactor
         )
         logMenuBarIconFrames(
             snapshot: effectiveSnapshot,
@@ -889,13 +964,58 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
     }
 
+    private func menuBarBackingScaleFactor(for button: NSStatusBarButton) -> CGFloat {
+        button.window?.backingScaleFactor
+            ?? button.window?.screen?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor
+            ?? 1
+    }
+
+    private func menuBarVerticalOffsets(
+        geometry: MenuBarGeometry,
+        effectiveSnapshot: Snapshot,
+        hasSecondary: Bool,
+        buttonHeight: CGFloat,
+        backingScaleFactor: CGFloat
+    ) -> (iconYOffset: CGFloat, officialTextYOffset: CGFloat) {
+        let apiIconYOffset = settings.showIcon && settings.showAmount
+            ? MenuBarLayout.singleLineIconYOffset
+            : 0
+        let iconYOffset: CGFloat
+        if effectiveSnapshot.kind == .official, settings.showIcon {
+            let apiGeometry = MenuBarLayout.geometry(
+                primarySize: menuBarPrimaryLabel.intrinsicContentSize,
+                secondarySize: menuBarSecondaryLabel.intrinsicContentSize,
+                showIcon: settings.showIcon,
+                showAmount: settings.showAmount,
+                hasSecondary: false,
+                isBalance: true
+            )
+            iconYOffset = geometry.iconViewYOffset(
+                alignedTo: apiGeometry,
+                buttonHeight: buttonHeight,
+                referenceIconViewYOffset: apiIconYOffset,
+                backingScaleFactor: backingScaleFactor
+            )
+        } else if effectiveSnapshot.kind == .balance {
+            iconYOffset = apiIconYOffset
+        } else {
+            iconYOffset = 0
+        }
+        let officialTextYOffset = effectiveSnapshot.kind == .official && settings.showAmount
+            ? MenuBarLayout.officialTextYOffset(hasSecondary: hasSecondary)
+            : 0
+        return (iconYOffset, officialTextYOffset)
+    }
+
     private func applyMenuBarContentFrames(
         button: NSStatusBarButton,
         buttonSize: NSSize? = nil,
         geometry: MenuBarGeometry,
         iconViewYOffset: CGFloat,
         effectiveSnapshot: Snapshot,
-        officialTextYOffset: CGFloat
+        officialTextYOffset: CGFloat,
+        backingScaleFactor: CGFloat
     ) {
         // Use the requested status-item footprint as the horizontal background
         // geometry immediately; the actual button height remains authoritative.
@@ -920,14 +1040,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             textOffset: NSSize(
                 width: settings.amountOffsetX,
                 height: settings.amountOffsetY + officialTextYOffset
-            )
+            ),
+            backingScaleFactor: backingScaleFactor
         )
         let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
             backgroundBounds: backgroundBounds,
             geometry: geometry,
             iconOffsetX: settings.iconOffsetX,
             textOffsetX: settings.amountOffsetX,
-            centerVisibleUnionOnBackground: geometry.secondaryHeight > 0
+            centerVisibleUnionOnBackground: geometry.secondaryHeight > 0,
+            backingScaleFactor: backingScaleFactor
         )
         menuBarContentStack.frame = frames.content.offsetBy(
             dx: horizontalCenteringCompensation,

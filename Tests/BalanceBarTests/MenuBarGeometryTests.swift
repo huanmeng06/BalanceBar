@@ -129,8 +129,9 @@ final class MenuBarGeometryTests: XCTestCase {
             text: frames.text
         )
         let centeredVisibleBounds = try! XCTUnwrap(
-            MenuBarLayout.visibleContentBounds(
+            MenuBarLayout.visibleMeasuredContentBounds(
                 for: centeredFrames,
+                geometry: geometry,
                 in: backgroundBounds
             )
         )
@@ -196,8 +197,9 @@ final class MenuBarGeometryTests: XCTestCase {
             text: adjustedFrames.text
         )
         let centeredVisibleBounds = try! XCTUnwrap(
-            MenuBarLayout.visibleContentBounds(
+            MenuBarLayout.visibleMeasuredContentBounds(
                 for: centeredFrames,
+                geometry: geometry,
                 in: backgroundBounds
             )
         )
@@ -309,8 +311,9 @@ final class MenuBarGeometryTests: XCTestCase {
                 text: frames.text
             )
             let visibleBounds = try! XCTUnwrap(
-                MenuBarLayout.visibleContentBounds(
+                MenuBarLayout.visibleMeasuredContentBounds(
                     for: centeredFrames,
+                    geometry: geometry,
                     in: backgroundBounds
                 )
             )
@@ -391,8 +394,9 @@ final class MenuBarGeometryTests: XCTestCase {
                     text: frames.text
                 )
                 let visibleBounds = try! XCTUnwrap(
-                    MenuBarLayout.visibleContentBounds(
+                    MenuBarLayout.visibleMeasuredContentBounds(
                         for: centeredFrames,
+                        geometry: geometry,
                         in: backgroundBounds
                     )
                 )
@@ -438,6 +442,119 @@ final class MenuBarGeometryTests: XCTestCase {
                     accuracy: 0.001,
                     "visible union lost optical centering at primary=\(primarySize), secondary=\(secondarySize)"
                 )
+        }
+    }
+
+    func testBackingScaleAlignmentKeepsOddTextAllocationVisuallyCentered() throws {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 52.3, height: 14.2),
+            secondarySize: NSSize(width: 48.1, height: 9.1),
+            showIcon: false,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        XCTAssertEqual(geometry.textHeight, 23, accuracy: 0.001)
+        XCTAssertEqual(geometry.measuredTextHeight, 21.3, accuracy: 0.001)
+
+        let background = NSRect(x: 0, y: 0, width: 180, height: 22)
+        let retinaFrames = MenuBarLayout.frames(
+            buttonSize: background.size,
+            geometry: geometry,
+            iconViewYOffset: 0,
+            backingScaleFactor: 2
+        )
+        let retinaVisible = try XCTUnwrap(
+            MenuBarLayout.visibleMeasuredContentBounds(
+                for: retinaFrames,
+                geometry: geometry,
+                in: background
+            )
+        )
+        XCTAssertEqual(retinaFrames.content.minY, -0.5, accuracy: 0.001)
+        XCTAssertEqual(retinaVisible.midY, background.midY, accuracy: 0.001)
+
+        let oneXFrames = MenuBarLayout.frames(
+            buttonSize: background.size,
+            geometry: geometry,
+            iconViewYOffset: 0,
+            backingScaleFactor: 1
+        )
+        let oneXVisible = try XCTUnwrap(
+            MenuBarLayout.visibleMeasuredContentBounds(
+                for: oneXFrames,
+                geometry: geometry,
+                in: background
+            )
+        )
+        XCTAssertLessThanOrEqual(abs(oneXVisible.midY - background.midY), 0.5)
+    }
+
+    func testSharedFontRangeUsesMeasuredUnionAtOneXAndTwoX() throws {
+        let range = AppPreferences.menuBarFontSizeRange
+        let stepCount = Int(
+            ((range.upperBound - range.lowerBound) / AppPreferences.menuBarFontSizeStep).rounded()
+        )
+        for backingScaleFactor in [CGFloat(1), CGFloat(2)] {
+            for stepIndex in stride(from: 0, through: stepCount, by: 4) {
+                let primarySize = range.lowerBound
+                    + Double(stepIndex) * AppPreferences.menuBarFontSizeStep
+                let secondarySize = AppPreferences.secondaryMenuBarFontSize(for: primarySize)
+                let primary = NSTextField(labelWithString: "100% remaining")
+                primary.font = MenuBarLayout.primaryFont(size: CGFloat(primarySize))
+                let secondary = NSTextField(labelWithString: "Reset in 99h 23m")
+                secondary.font = MenuBarLayout.secondaryFont(size: CGFloat(secondarySize))
+                let geometry = MenuBarLayout.geometry(
+                    primarySize: primary.intrinsicContentSize,
+                    secondarySize: secondary.intrinsicContentSize,
+                    showIcon: true,
+                    showAmount: true,
+                    hasSecondary: true,
+                    isBalance: false
+                )
+                let background = NSRect(
+                    x: 0,
+                    y: 0,
+                    width: MenuBarLayout.statusItemLength(
+                        contentWidth: geometry.contentWidth,
+                        horizontalPadding: 10,
+                        widthAdjustment: CGFloat(AppPreferences.menuBarStatusItemWidthBaseline)
+                    ),
+                    height: 22
+                )
+                let frames = MenuBarLayout.frames(
+                    buttonSize: background.size,
+                    geometry: geometry,
+                    iconViewYOffset: 0,
+                    backingScaleFactor: backingScaleFactor
+                )
+                let compensation = MenuBarLayout.horizontalCenteringCompensation(
+                    backgroundBounds: background,
+                    geometry: geometry,
+                    iconOffsetX: 0,
+                    textOffsetX: 0,
+                    centerVisibleUnionOnBackground: true,
+                    backingScaleFactor: backingScaleFactor
+                )
+                let centeredFrames = MenuBarLayoutFrames(
+                    content: frames.content.offsetBy(dx: compensation, dy: 0),
+                    iconSlot: frames.iconSlot,
+                    icon: frames.icon,
+                    text: frames.text
+                )
+                let visible = try XCTUnwrap(
+                    MenuBarLayout.visibleMeasuredContentBounds(
+                        for: centeredFrames,
+                        geometry: geometry,
+                        in: background
+                    )
+                )
+                XCTAssertLessThanOrEqual(
+                    abs(visible.midX - (background.midX + MenuBarLayout.menuBarOpticalCenterNudgeX)),
+                    0.5 / backingScaleFactor + 0.001,
+                    "font=\(primarySize), scale=\(backingScaleFactor)"
+                )
+            }
         }
     }
 
@@ -857,8 +974,9 @@ final class MenuBarGeometryTests: XCTestCase {
             iconViewYOffset: 0
         )
         let visibleContentBounds = try! XCTUnwrap(
-            MenuBarLayout.visibleContentBounds(
+            MenuBarLayout.visibleMeasuredContentBounds(
                 for: frames,
+                geometry: geometry,
                 in: backgroundBounds
             )
         )

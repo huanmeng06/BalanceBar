@@ -338,6 +338,35 @@ struct MenuBarStatusItemWidthAdjustmentSession {
     }
 }
 
+/// Holds the in-progress value of the shared menu-bar font-size slider without
+/// treating every mouse-tracking event as a persisted preference change.
+struct MenuBarFontSizeAdjustmentSession {
+    private(set) var transientValue: Double?
+
+    mutating func update(_ value: Double) -> Double {
+        let normalized = AppPreferences.normalizedMenuBarFontSize(
+            value,
+            range: AppPreferences.menuBarFontSizeRange
+        )
+        transientValue = normalized
+        return normalized
+    }
+
+    mutating func finish(_ value: Double, persist: (Double) -> Void) -> Double {
+        let normalized = AppPreferences.normalizedMenuBarFontSize(
+            value,
+            range: AppPreferences.menuBarFontSizeRange
+        )
+        transientValue = nil
+        persist(normalized)
+        return normalized
+    }
+
+    mutating func cancel() {
+        transientValue = nil
+    }
+}
+
 enum AppPreferencesMigration {
     static let marker = "didMigrateToBalanceBarApp.v1"
 
