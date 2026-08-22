@@ -309,17 +309,56 @@ final class MenuBarGeometryTests: XCTestCase {
                 )
             )
 
-            if geometry.iconWidth > 0, geometry.textWidth > 0 {
-                XCTAssertEqual(centeredBounds.midX, baseBounds.midX, accuracy: 0.001)
-            } else {
-                // A single visible component has no two-part group to
-                // recenter; its explicit offset remains absolute.
-                XCTAssertNotEqual(centeredBounds.midX, baseBounds.midX, accuracy: 0.001)
-            }
+            // A two-component layout preserves the explicit relative offset;
+            // a single visible component remains centered even when its
+            // stored offset is non-zero.
+            XCTAssertEqual(centeredBounds.midX, baseBounds.midX, accuracy: 0.001)
             XCTAssertGreaterThan(centeredBounds.width, 0)
             XCTAssertLessThanOrEqual(centeredBounds.minX, backgroundBounds.maxX)
             XCTAssertGreaterThanOrEqual(centeredBounds.maxX, backgroundBounds.minX)
         }
+    }
+
+    func testSingleVisibleComponentCompensatesItsVisualOffsetButKeepsPreferenceValueUsable() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 50, height: 13),
+            secondarySize: .zero,
+            showIcon: false,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+        let backgroundBounds = NSRect(x: 0, y: 0, width: 160, height: 24)
+
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: 0,
+                textOffsetX: 10
+            ),
+            -10,
+            accuracy: 0.001
+        )
+
+        let iconOnlyGeometry = MenuBarLayout.geometry(
+            primarySize: .zero,
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: false,
+            hasSecondary: false,
+            isBalance: false
+        )
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: iconOnlyGeometry,
+                iconOffsetX: -4,
+                textOffsetX: 0
+            ),
+            4,
+            accuracy: 0.001
+        )
     }
 
     func testAmountOnlyLayoutCentersAgainstUpdatedOuterWidth() {

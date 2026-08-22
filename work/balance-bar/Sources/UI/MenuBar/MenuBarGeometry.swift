@@ -274,7 +274,11 @@ enum MenuBarLayout {
     /// independent icon/amount X offsets. The baseline and adjusted bounds
     /// are both measured using the actual background geometry, so the
     /// existing pixel-aligned default remains unchanged while a user offset
-    /// changes only the relative arrangement and not the group's center.
+    /// changes only the relative arrangement and not the group's center. If
+    /// only one component is visible, its configured X offset is compensated
+    /// so the sole visible component remains centered; the preference value
+    /// itself is retained and becomes visible again when both components are
+    /// shown.
     ///
     /// This helper deliberately does not allocate width. The caller supplies
     /// the real status-item/card bounds; a future width setting therefore
@@ -285,11 +289,7 @@ enum MenuBarLayout {
         iconOffsetX: CGFloat,
         textOffsetX: CGFloat
     ) -> CGFloat {
-        // With only one visible component there is no two-part group to
-        // recenter. Keep that component's explicit offset absolute instead of
-        // letting the compensation cancel it completely.
-        guard geometry.iconWidth > 0,
-              geometry.textWidth > 0,
+        guard (geometry.iconWidth > 0 || geometry.textWidth > 0),
               iconOffsetX != 0 || textOffsetX != 0 else {
             return 0
         }
