@@ -209,24 +209,85 @@ final class MenuBarGeometryTests: XCTestCase {
             dx: adjustedFrames.content.minX + compensation,
             dy: adjustedFrames.content.minY
         )
+        // NSStatusItem.length is the button allocation. AppKit's rendered
+        // status-item window/card supplies symmetric side chrome outside that
+        // allocation, so the visual clipping boundary is wider than the
+        // button frame.
+        let visualCardBounds = backgroundBounds.insetBy(
+            dx: -MenuBarLayout.menuBarStatusItemVisualOverhangX,
+            dy: 0
+        )
 
         XCTAssertEqual(
             centeredTextBounds.midX,
             backgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
             accuracy: 0.001
         )
-        XCTAssertGreaterThanOrEqual(centeredIconBounds.minX, backgroundBounds.minX)
-        XCTAssertLessThanOrEqual(centeredIconBounds.maxX, backgroundBounds.maxX)
-        XCTAssertGreaterThanOrEqual(centeredTextBounds.minX, backgroundBounds.minX)
-        XCTAssertLessThanOrEqual(centeredTextBounds.maxX, backgroundBounds.maxX)
+        XCTAssertGreaterThanOrEqual(centeredIconBounds.minX, visualCardBounds.minX)
+        XCTAssertLessThanOrEqual(centeredIconBounds.maxX, visualCardBounds.maxX)
+        XCTAssertGreaterThanOrEqual(centeredTextBounds.minX, visualCardBounds.minX)
+        XCTAssertLessThanOrEqual(centeredTextBounds.maxX, visualCardBounds.maxX)
         XCTAssertEqual(
             (adjustedFrames.text.minX - adjustedFrames.icon.minX)
                 - (baseFrames.text.minX - baseFrames.icon.minX),
             -2.5 - 1.5,
             accuracy: 0.001
         )
-        XCTAssertEqual(leadingReserve, geometry.iconWidth + geometry.gap, accuracy: 0.001)
+        XCTAssertEqual(leadingReserve, 4, accuracy: 0.001)
+        XCTAssertLessThan(leadingReserve, geometry.iconWidth + geometry.gap)
         XCTAssertEqual(backgroundBounds.width, geometry.contentWidth + leadingReserve, accuracy: 0.001)
+    }
+
+    func testOfficialTwoLineWidthBaselinePreservesPhysicalDefaultAndUserDeltas() {
+        let primary = NSTextField(labelWithString: "85%")
+        primary.font = MenuBarLayout.primaryFont(size: 13)
+        let secondary = NSTextField(labelWithString: "6d11h")
+        secondary.font = MenuBarLayout.secondaryFont(size: 10)
+        let geometry = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: secondary.intrinsicContentSize,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let leadingReserve = MenuBarLayout.textCenteringLeadingReserve(for: geometry)
+        let defaultPhysicalAdjustment = CGFloat(
+            AppPreferences.menuBarStatusItemWidthBaseline
+        )
+        let defaultLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: defaultPhysicalAdjustment,
+            leadingContentReserve: leadingReserve
+        )
+        let plusTenLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: defaultPhysicalAdjustment + 10,
+            leadingContentReserve: leadingReserve
+        )
+        let plusTwentyLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: defaultPhysicalAdjustment + 20,
+            leadingContentReserve: leadingReserve
+        )
+
+        XCTAssertEqual(defaultPhysicalAdjustment, -20, accuracy: 0.001)
+        XCTAssertEqual(
+            defaultLength,
+            geometry.contentWidth + leadingReserve,
+            accuracy: 0.001,
+            "logical 0pt keeps the -20pt physical baseline while retaining only the structural reserve"
+        )
+        XCTAssertEqual(plusTenLength - defaultLength, 10, accuracy: 0.001)
+        XCTAssertEqual(plusTwentyLength - defaultLength, 20, accuracy: 0.001)
+        XCTAssertEqual(
+            plusTwentyLength - plusTenLength,
+            10,
+            accuracy: 0.001
+        )
     }
 
     func testOfficialTwoLineFontRangeStaysInsideCenteredCardAtWidthBaseline() {
@@ -294,6 +355,10 @@ final class MenuBarGeometryTests: XCTestCase {
                     dx: frames.content.minX + compensation,
                     dy: frames.content.minY
                 )
+                let visualCardBounds = backgroundBounds.insetBy(
+                    dx: -MenuBarLayout.menuBarStatusItemVisualOverhangX,
+                    dy: 0
+                )
 
                 XCTAssertEqual(
                     textBounds.midX,
@@ -303,22 +368,22 @@ final class MenuBarGeometryTests: XCTestCase {
                 )
                 XCTAssertGreaterThanOrEqual(
                     iconBounds.minX,
-                    backgroundBounds.minX - 0.001,
+                    visualCardBounds.minX - 0.001,
                     "icon left clipped at primary=\(primarySize), secondary=\(secondarySize)"
                 )
                 XCTAssertLessThanOrEqual(
                     iconBounds.maxX,
-                    backgroundBounds.maxX + 0.001,
+                    visualCardBounds.maxX + 0.001,
                     "icon right clipped at primary=\(primarySize), secondary=\(secondarySize)"
                 )
                 XCTAssertGreaterThanOrEqual(
                     textBounds.minX,
-                    backgroundBounds.minX - 0.001,
+                    visualCardBounds.minX - 0.001,
                     "text left clipped at primary=\(primarySize), secondary=\(secondarySize)"
                 )
                 XCTAssertLessThanOrEqual(
                     textBounds.maxX,
-                    backgroundBounds.maxX + 0.001,
+                    visualCardBounds.maxX + 0.001,
                     "text right clipped at primary=\(primarySize), secondary=\(secondarySize)"
                 )
         }

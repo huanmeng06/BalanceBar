@@ -175,6 +175,14 @@ enum MenuBarLayout {
     // two points less nudge than the combined icon+amount card.
     static let menuBarIconOnlyOpticalCenterNudgeX: CGFloat = 0
 
+    // AppKit gives an NSStatusItem's button an 8pt side chrome in the
+    // rendered status-item window/card. This is outside `NSStatusItem.length`
+    // (the value that controls the gap to adjacent status items), but it is
+    // part of the visible capsule/shadow. Keep the measurement explicit so
+    // the font-layout reserve does not accidentally become a second width
+    // slider.
+    static let menuBarStatusItemVisualOverhangX: CGFloat = 8
+
     static func officialTextYOffset(hasSecondary: Bool) -> CGFloat {
         hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
     }
@@ -206,16 +214,29 @@ enum MenuBarLayout {
     }
 
     /// The official two-line card keeps the icon at the leading side while
-    /// centering the amount text block itself. Reserve the icon/gap footprint
-    /// in the outer status item so the common `-20pt` width baseline cannot
-    /// clip the icon after the text block is centered.
+    /// centering the amount text block itself. AppKit's status-item window
+    /// already provides symmetric side chrome around the button, so only the
+    /// small residual reserve needed for the rounded/floored text frame is
+    /// added to `NSStatusItem.length`. The full icon/gap width must not be
+    /// added here: doing so changes the existing #135 default card width.
     static func textCenteringLeadingReserve(for geometry: MenuBarGeometry) -> CGFloat {
         guard geometry.secondaryHeight > 0,
               geometry.iconWidth > 0,
               geometry.textWidth > 0 else {
             return 0
         }
-        return geometry.iconWidth + geometry.gap
+        let textFrameSlack = max(
+            0,
+            geometry.textWidth - geometry.measuredTextWidth
+        )
+        let requiredInsideButton = geometry.iconWidth
+            + geometry.gap
+            - textFrameSlack
+            - (menuBarStatusItemVisualOverhangX * 2)
+        // Keep a 1pt safety margin for AppKit's floor-aligned content origin
+        // and fractional slider values. This is a structural constant, not a
+        // user-facing width adjustment.
+        return max(0, ceil(requiredInsideButton) + 1)
     }
 
     static func geometry(

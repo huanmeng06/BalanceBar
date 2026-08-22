@@ -402,7 +402,8 @@ final class DashboardMenuBarPage {
         let initialCapsuleInset = Self.previewCapsuleHorizontalInset(
             horizontalPadding: input.preferences.menuBarHorizontalPadding,
             widthAdjustment: input.preferences.menuBarStatusItemWidthAdjustment
-                + AppPreferences.menuBarStatusItemWidthBaseline
+                + AppPreferences.menuBarStatusItemWidthBaseline,
+            additionalWidth: MenuBarLayout.menuBarStatusItemVisualOverhangX * 2
         )
         let capsuleLeading = previewCapsule.leadingAnchor.constraint(
             equalTo: previewRow.leadingAnchor,
@@ -771,7 +772,8 @@ final class DashboardMenuBarPage {
             let capsuleInset = Self.previewCapsuleHorizontalInset(
                 horizontalPadding: horizontalPadding,
                 widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
-                additionalWidth: previewTextCenteringReserve
+                additionalWidth: (MenuBarLayout.menuBarStatusItemVisualOverhangX * 2)
+                    + previewTextCenteringReserve
             )
             capsuleLeadingConstraint?.constant = -capsuleInset
             capsuleTrailingConstraint?.constant = capsuleInset
