@@ -528,7 +528,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 height: settings.amountOffsetY + officialTextYOffset
             )
         )
-        menuBarContentStack.frame = frames.content
+        let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
+            backgroundBounds: button.bounds,
+            geometry: geometry,
+            iconOffsetX: settings.iconOffsetX,
+            textOffsetX: settings.amountOffsetX
+        )
+        menuBarContentStack.frame = frames.content.offsetBy(
+            dx: horizontalCenteringCompensation,
+            dy: 0
+        )
         menuBarIconSlot.frame = frames.iconSlot
         menuBarIconView.frame = frames.icon
         menuBarTextStack.frame = frames.text

@@ -196,13 +196,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
-        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 0.2, accuracy: 0.001)
+        let previewIconX = previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan
+        let previewTextX = previewText?.layer?.affineTransform().tx ?? CGFloat.nan
+        XCTAssertEqual(previewIconX - previewTextX, 0.6, accuracy: 0.001)
+        // The same automatic centering compensation is applied to both
+        // components; it must not consume their explicit relative offsets.
+        XCTAssertEqual(previewIconX - 0.2, previewTextX - (-0.4), accuracy: 0.001)
         XCTAssertEqual(
             previewIcon?.layer?.affineTransform().ty ?? CGFloat.nan,
             -0.3 + MenuBarLayout.singleLineIconYOffset,
             accuracy: 0.001
         )
-        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -0.4, accuracy: 0.001)
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
             0.5 - MenuBarLayout.singleLineTextYOffset

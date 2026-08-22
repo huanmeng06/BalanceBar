@@ -246,4 +246,75 @@ enum MenuBarLayout {
             text: text
         )
     }
+
+    /// Returns the visible horizontal bounds of the icon and amount frames in
+    /// the supplied background coordinate space. The component frames in
+    /// `MenuBarLayoutFrames` are relative to `content`, while
+    /// `backgroundBounds` is the actual status-item/card geometry.
+    static func visibleContentBounds(
+        for frames: MenuBarLayoutFrames,
+        in backgroundBounds: NSRect
+    ) -> NSRect? {
+        let contentOrigin = NSPoint(
+            x: backgroundBounds.minX + frames.content.minX,
+            y: backgroundBounds.minY + frames.content.minY
+        )
+        var result: NSRect?
+        for frame in [frames.icon, frames.text] where frame.width > 0 && frame.height > 0 {
+            let absoluteFrame = frame.offsetBy(
+                dx: contentOrigin.x,
+                dy: contentOrigin.y
+            )
+            result = result.map { $0.union(absoluteFrame) } ?? absoluteFrame
+        }
+        return result
+    }
+
+    /// Equal translation for the outer content container that compensates for
+    /// independent icon/amount X offsets. The baseline and adjusted bounds
+    /// are both measured using the actual background geometry, so the
+    /// existing pixel-aligned default remains unchanged while a user offset
+    /// changes only the relative arrangement and not the group's center.
+    ///
+    /// This helper deliberately does not allocate width. The caller supplies
+    /// the real status-item/card bounds; a future width setting therefore
+    /// changes the centering reference without being reimplemented here.
+    static func horizontalCenteringCompensation(
+        backgroundBounds: NSRect,
+        geometry: MenuBarGeometry,
+        iconOffsetX: CGFloat,
+        textOffsetX: CGFloat
+    ) -> CGFloat {
+        // With only one visible component there is no two-part group to
+        // recenter. Keep that component's explicit offset absolute instead of
+        // letting the compensation cancel it completely.
+        guard geometry.iconWidth > 0,
+              geometry.textWidth > 0,
+              iconOffsetX != 0 || textOffsetX != 0 else {
+            return 0
+        }
+
+        let baseFrames = frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0
+        )
+        let adjustedFrames = frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0,
+            iconOffset: NSSize(width: iconOffsetX, height: 0),
+            textOffset: NSSize(width: textOffsetX, height: 0)
+        )
+        guard let baseBounds = visibleContentBounds(
+            for: baseFrames,
+            in: backgroundBounds
+        ), let adjustedBounds = visibleContentBounds(
+            for: adjustedFrames,
+            in: backgroundBounds
+        ) else {
+            return 0
+        }
+        return baseBounds.midX - adjustedBounds.midX
+    }
 }
