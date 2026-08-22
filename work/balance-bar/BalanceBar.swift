@@ -195,6 +195,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onOffsetValue: { [weak self] identifier, value in
                 self?.handleDashboardOffsetValue(identifier: identifier, value: value)
             },
+            onOffsetValueEnded: { [weak self] identifier, value in
+                self?.handleDashboardOffsetValueEnded(identifier: identifier, value: value)
+            },
             onOffsetReset: { [weak self] identifier in
                 self?.handleDashboardOffsetReset(identifier: identifier)
             },
@@ -940,10 +943,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // NSSlider sends this action continuously. Keep the interaction on a
         // lightweight width-only path so active icon animation is not
         // interrupted by menu rebuilds or full Dashboard relayouts.
+        refreshDashboardMenuBarWidthAdjustment(menuBarStatusItemWidthAdjustment)
+    }
+
+    private func handleDashboardOffsetValueEnded(identifier: String, value: Double) {
+        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+            return
+        }
+        menuBarStatusItemWidthAdjustment = value
         statusItemController.updateWidthAdjustment(
             CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
         )
-        refreshDashboardMenuBarWidthAdjustment()
+        SwitchLog.write(
+            "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
+            category: "configuration"
+        )
     }
 
     private func handleDashboardOffsetReset(identifier: String) {
@@ -1008,9 +1022,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardComposition.refreshMenuBarPage(snapshot: snapshot)
     }
 
-    private func refreshDashboardMenuBarWidthAdjustment() {
+    private func refreshDashboardMenuBarWidthAdjustment(_ widthAdjustment: Double) {
         dashboardComposition.refreshMenuBarWidthAdjustment(
-            menuBarStatusItemWidthAdjustment,
+            widthAdjustment,
             horizontalPadding: menuBarHorizontalPadding
         )
     }

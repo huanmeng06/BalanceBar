@@ -187,6 +187,20 @@ final class RepeatOffsetButton: NSButton {
     }
 }
 
+final class MenuBarWidthSlider: NSSlider {
+    var onEditingEnded: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        onEditingEnded?()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        super.keyDown(with: event)
+        onEditingEnded?()
+    }
+}
+
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
@@ -671,7 +685,7 @@ final class DashboardMenuBarPage {
         relay: DashboardPreferencePageRelay
     ) -> WidthSliderControls {
         let range = AppPreferences.menuBarStatusItemWidthAdjustmentRange
-        let slider = NSSlider()
+        let slider = MenuBarWidthSlider()
         slider.identifier = NSUserInterfaceItemIdentifier(key)
         slider.minValue = range.lowerBound
         slider.maxValue = range.upperBound
@@ -688,6 +702,10 @@ final class DashboardMenuBarPage {
             "從 0pt 向右放大，最大 +20pt",
             "0pt から右へ広げ、最大 +20pt"
         )
+        slider.onEditingEnded = { [weak relay, weak slider] in
+            guard let relay, let slider else { return }
+            relay.finishOffsetValue(slider)
+        }
         slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
 
         let minimumLabel = makeWidthSliderEndpointLabel(

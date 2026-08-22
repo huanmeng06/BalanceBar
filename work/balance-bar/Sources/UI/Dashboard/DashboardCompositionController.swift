@@ -32,6 +32,7 @@ struct DashboardCompositionActions {
     let onInterval: (String, TimeInterval) -> Void
     let onOffsetAdjust: (String, Int) -> Void
     let onOffsetValue: (String, Double) -> Void
+    let onOffsetValueEnded: (String, Double) -> Void
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onOpenCCSwitch: () -> Void
@@ -71,6 +72,7 @@ final class DashboardCompositionController {
             onInterval: actions.onInterval,
             onOffsetAdjust: actions.onOffsetAdjust,
             onOffsetValue: actions.onOffsetValue,
+            onOffsetValueEnded: actions.onOffsetValueEnded,
             onOffsetReset: actions.onOffsetReset,
             onLanguage: actions.onLanguage,
             onOpenCCSwitch: actions.onOpenCCSwitch,

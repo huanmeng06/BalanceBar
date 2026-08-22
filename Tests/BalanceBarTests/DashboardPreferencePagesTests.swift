@@ -70,9 +70,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         var adjustments: [(String, Int)] = []
         var values: [(String, Double)] = []
+        var endedValues: [(String, Double)] = []
         var resets: [String] = []
         relay.onOffsetAdjust = { identifier, delta in adjustments.append((identifier, delta)) }
         relay.onOffsetValue = { identifier, value in values.append((identifier, value)) }
+        relay.onOffsetValueEnded = { identifier, value in endedValues.append((identifier, value)) }
         relay.onOffsetReset = { identifier in resets.append(identifier) }
 
         let up = NSButton(
@@ -101,6 +103,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         widthSlider.maxValue = AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound
         widthSlider.doubleValue = 12.3
         relay.adjustOffsetValue(widthSlider)
+        relay.finishOffsetValue(widthSlider)
 
         let reset = NSButton(
             title: "Reset",
@@ -118,6 +121,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(values.count, 1)
         XCTAssertEqual(values.first?.0, AppPreferences.menuBarStatusItemWidthAdjustmentKey)
         XCTAssertEqual(values.first?.1 ?? .nan, 12.3, accuracy: 0.001)
+        XCTAssertEqual(endedValues.count, 1)
+        XCTAssertEqual(endedValues.first?.0, AppPreferences.menuBarStatusItemWidthAdjustmentKey)
+        XCTAssertEqual(endedValues.first?.1 ?? .nan, 12.3, accuracy: 0.001)
         XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
     }
 
@@ -208,6 +214,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(widthSlider.doubleValue, 0.6, accuracy: 0.001)
+        XCTAssertTrue(widthSlider is MenuBarWidthSlider)
         XCTAssertTrue(widthSlider.isContinuous)
         XCTAssertFalse(widthSlider.allowsTickMarkValuesOnly)
         XCTAssertEqual(widthSlider.numberOfTickMarks, 21)
