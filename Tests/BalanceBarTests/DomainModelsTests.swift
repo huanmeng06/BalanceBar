@@ -15,6 +15,60 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(StatusLink.self, from: encoded), link)
     }
 
+    func testOpenAIAccountPresentationUsesOnlyTheCurrentOfficialCodexProvider() {
+        let available = OpenAIAccountPresentation.current(
+            activeClient: .codex,
+            providerIsOfficial: true,
+            email: "person@example.com",
+            subscription: .proFiveX
+        )
+        XCTAssertEqual(available?.state, .available("person@example.com"))
+        XCTAssertEqual(available?.subscription, .proFiveX)
+        XCTAssertEqual(available?.text(language: .simplifiedChinese), "person@example.com")
+        XCTAssertEqual(available?.text(language: .traditionalChinese), "person@example.com")
+        XCTAssertEqual(available?.text(language: .japanese), "person@example.com")
+        XCTAssertEqual(available?.text(language: .english), "person@example.com")
+
+        let unavailable = OpenAIAccountPresentation.current(
+            activeClient: .codex,
+            providerIsOfficial: true,
+            email: nil
+        )
+        XCTAssertEqual(unavailable?.state, .unavailable)
+        XCTAssertEqual(unavailable?.text(language: .simplifiedChinese), "账号不可用")
+        XCTAssertEqual(unavailable?.text(language: .traditionalChinese), "帳號不可用")
+        XCTAssertEqual(unavailable?.text(language: .japanese), "アカウントを利用できません")
+        XCTAssertEqual(unavailable?.text(language: .english), "Account unavailable")
+
+        XCTAssertNil(
+            OpenAIAccountPresentation.current(
+                activeClient: .claude,
+                providerIsOfficial: true,
+                email: "should-not-leak@example.com"
+            )
+        )
+        XCTAssertNil(
+            OpenAIAccountPresentation.current(
+                activeClient: .codex,
+                providerIsOfficial: false,
+                email: "should-not-leak@example.com"
+            )
+        )
+    }
+
+    func testOpenAISubscriptionTierMapsOfficialPlanClaimsToTheRequestedBadgeText() {
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "plus"), .plus)
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "prolite"), .proFiveX)
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "PRO"), .proTwentyX)
+        XCTAssertEqual(OpenAISubscriptionTier(planType: " pro_20x "), .proTwentyX)
+        XCTAssertNil(OpenAISubscriptionTier(planType: "team"))
+        XCTAssertNil(OpenAISubscriptionTier(planType: nil))
+
+        XCTAssertEqual(OpenAISubscriptionTier.plus.text, "PLUS")
+        XCTAssertEqual(OpenAISubscriptionTier.proFiveX.text, "Pro · 5x")
+        XCTAssertEqual(OpenAISubscriptionTier.proTwentyX.text, "Pro · 20x")
+    }
+
     func testPlaceholderAndOfficialSnapshotFormatting() {
         let placeholder = Snapshot.placeholder
         XCTAssertEqual(placeholder.kind, .placeholder)

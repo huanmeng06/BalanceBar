@@ -33,6 +33,89 @@ struct ProviderChoice {
     let isCurrent: Bool
 }
 
+enum OpenAISubscriptionTier: Equatable {
+    case plus
+    case proFiveX
+    case proTwentyX
+
+    init?(planType: String?) {
+        guard let planType else { return nil }
+        switch planType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "plus":
+            self = .plus
+        case "prolite", "pro_5x", "pro5x":
+            self = .proFiveX
+        case "pro", "pro_20x", "pro20x":
+            self = .proTwentyX
+        default:
+            return nil
+        }
+    }
+
+    var text: String {
+        switch self {
+        case .plus:
+            return "PLUS"
+        case .proFiveX:
+            return "Pro · 5x"
+        case .proTwentyX:
+            return "Pro · 20x"
+        }
+    }
+}
+
+struct OpenAIAccountPresentation: Equatable {
+    enum State: Equatable {
+        case available(String)
+        case unavailable
+    }
+
+    let state: State
+    let subscription: OpenAISubscriptionTier?
+
+    init(email: String?, subscription: OpenAISubscriptionTier? = nil) {
+        if let email {
+            let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            state = normalized.isEmpty ? .unavailable : .available(normalized)
+            self.subscription = normalized.isEmpty ? nil : subscription
+        } else {
+            state = .unavailable
+            self.subscription = nil
+        }
+    }
+
+    static func current(
+        activeClient: AssistantClient,
+        providerIsOfficial: Bool,
+        email: String?,
+        subscription: OpenAISubscriptionTier? = nil
+    ) -> Self? {
+        guard activeClient == .codex, providerIsOfficial else { return nil }
+        return Self(email: email, subscription: subscription)
+    }
+
+    func text(language: AppLanguage = .selected) -> String {
+        switch state {
+        case .available(let email):
+            return tr(
+                email,
+                email,
+                email,
+                email,
+                language: language
+            )
+        case .unavailable:
+            return tr(
+                "账号不可用",
+                "Account unavailable",
+                "帳號不可用",
+                "アカウントを利用できません",
+                language: language
+            )
+        }
+    }
+}
+
 struct QuickSwitchMenuEntry: Equatable {
     let id: String
     let name: String
@@ -440,6 +523,8 @@ struct OpenCodexCardFrames: Equatable {
     let cardSize: CGSize
     let title: CGRect
     let refreshTime: CGRect
+    let account: CGRect?
+    let subscription: CGRect?
     let quotaDetail: CGRect
     let reset: CGRect?
     let amount: CGRect
@@ -452,20 +537,40 @@ enum OpenCodexCardLayout {
     static let cardWidth: CGFloat = 304
     static let horizontalInset: CGFloat = 14
     static let contentWidth = cardWidth - horizontalInset * 2
+    static let subscriptionWidth: CGFloat = 78
+    static let subscriptionGap: CGFloat = 8
     static let amountWidth: CGFloat = 141
     static let amountX = cardWidth - horizontalInset - amountWidth
     static let refreshTimeX = cardWidth - horizontalInset - 81
 
     static func frames(
         for category: OpenCodexCardCategory,
-        linkPrefixWidth: CGFloat = 62
+        linkPrefixWidth: CGFloat = 62,
+        includesAccount: Bool = false,
+        includesSubscription: Bool = false
     ) -> OpenCodexCardFrames {
         switch category {
         case .quota:
+            let hasSubscription = includesAccount && includesSubscription
+            let accountShift: CGFloat = includesAccount ? 19 : 0
+            let accountWidth = hasSubscription
+                ? contentWidth - subscriptionWidth - subscriptionGap
+                : contentWidth
             return OpenCodexCardFrames(
-                cardSize: CGSize(width: cardWidth, height: 102),
-                title: CGRect(x: horizontalInset, y: 75, width: 189, height: 20),
-                refreshTime: CGRect(x: refreshTimeX, y: 76, width: 81, height: 17),
+                cardSize: CGSize(width: cardWidth, height: 102 + accountShift),
+                title: CGRect(x: horizontalInset, y: 75 + accountShift, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: 76 + accountShift, width: 81, height: 17),
+                account: includesAccount
+                    ? CGRect(x: horizontalInset, y: 75, width: accountWidth, height: 17)
+                    : nil,
+                subscription: hasSubscription
+                    ? CGRect(
+                        x: cardWidth - horizontalInset - subscriptionWidth,
+                        y: 75,
+                        width: subscriptionWidth,
+                        height: 17
+                    )
+                    : nil,
                 quotaDetail: CGRect(x: horizontalInset, y: 47, width: 128, height: 18),
                 reset: CGRect(x: horizontalInset, y: 28, width: 128, height: 17),
                 amount: CGRect(x: amountX, y: 18, width: amountWidth, height: 48),
@@ -480,6 +585,8 @@ enum OpenCodexCardLayout {
                 cardSize: CGSize(width: cardWidth, height: 86),
                 title: CGRect(x: horizontalInset, y: 58, width: 189, height: 20),
                 refreshTime: CGRect(x: refreshTimeX, y: 59, width: 81, height: 17),
+                account: nil,
+                subscription: nil,
                 quotaDetail: CGRect(x: horizontalInset, y: 31, width: 128, height: 18),
                 reset: nil,
                 amount: CGRect(x: amountX, y: 5, width: amountWidth, height: 48),
