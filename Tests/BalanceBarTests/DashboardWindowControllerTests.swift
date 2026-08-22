@@ -1080,9 +1080,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(accountView.isScrollable)
         XCTAssertTrue(accountView.showsEdgeFade)
         XCTAssertGreaterThan(accountView.accountLabel.frame.width, accountView.bounds.width)
-        XCTAssertEqual(accountView.accountLabel.frame.minX, accountView.edgeFadeInset)
+        XCTAssertEqual(accountView.accountLabel.frame.minX, 0)
         XCTAssertEqual(
-            accountView.edgeFadeInset + accountView.measuredTextWidth - accountView.scrollOverflow,
+            accountView.measuredTextWidth - accountView.scrollOverflow,
             accountView.bounds.width - accountView.edgeFadeInset,
             accuracy: 0.5
         )

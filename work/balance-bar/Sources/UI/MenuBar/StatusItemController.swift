@@ -73,7 +73,7 @@ final class AccountMarqueeView: NSView {
             ? measuredTextWidth + edgeFadeInset
             : max(bounds.width, measuredTextWidth)
         accountLabel.frame = NSRect(
-            x: edgeFadeInset,
+            x: 0,
             y: 0,
             width: contentWidth,
             height: bounds.height
