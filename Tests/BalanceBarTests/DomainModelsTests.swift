@@ -256,7 +256,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertFalse(String(data: storedData, encoding: .utf8)?.contains("different-token") == true)
     }
 
-    func testProviderBalanceProgressRejectsInvalidOrInconsistentValuesWithoutChangingState() throws {
+    func testProviderBalanceProgressHandlesNonPositiveAndRejectsInvalidOrInconsistentValues() throws {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let query = makeBalanceProgressQuery()
@@ -268,35 +268,36 @@ final class DomainModelsTests: XCTestCase {
         let store = ProviderBalanceProgressStore(defaults: defaults)
 
         XCTAssertEqual(try progress(store, amount: 10, unit: "USD", identity: identity), 100)
-        guard case .failure(.invalidAmount) = store.update(
-            amount: -0.01,
-            unit: "USD",
-            identity: identity
-        ) else {
-            return XCTFail("negative balances must not update the baseline")
-        }
+        XCTAssertEqual(try progress(store, amount: -1.02, unit: "USD", identity: identity), 0)
+
+        let invalidIdentity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "invalid-provider",
+            query: query
+        )
+        XCTAssertEqual(try progress(store, amount: 10, unit: "USD", identity: invalidIdentity), 100)
         guard case .failure(.invalidAmount) = store.update(
             amount: .nan,
             unit: "USD",
-            identity: identity
+            identity: invalidIdentity
         ) else {
             return XCTFail("non-finite balances must not update the baseline")
         }
         guard case .failure(.invalidUnit) = store.update(
             amount: 9,
             unit: "  ",
-            identity: identity
+            identity: invalidIdentity
         ) else {
             return XCTFail("empty units must not update the baseline")
         }
         guard case .failure(.inconsistentUnit(expected: "USD", actual: "CNY")) = store.update(
             amount: 9,
             unit: "CNY",
-            identity: identity
+            identity: invalidIdentity
         ) else {
             return XCTFail("unit changes must not update the baseline")
         }
-        XCTAssertEqual(try progress(store, amount: 5, unit: "USD", identity: identity), 50)
+        XCTAssertEqual(try progress(store, amount: 5, unit: "USD", identity: invalidIdentity), 50)
 
         let zeroIdentity = ProviderBalanceProgressIdentity(
             client: .codex,
@@ -305,7 +306,9 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 0)
         XCTAssertEqual(try progress(store, amount: 0.004, unit: "USD", identity: zeroIdentity), 0)
-        XCTAssertEqual(try progress(store, amount: 0.01, unit: "USD", identity: zeroIdentity), 100)
+        XCTAssertEqual(try progress(store, amount: 0.01, unit: "USD", identity: zeroIdentity), 0)
+        XCTAssertEqual(try progress(store, amount: 0.09, unit: "USD", identity: zeroIdentity), 0)
+        XCTAssertEqual(try progress(store, amount: 0.10, unit: "USD", identity: zeroIdentity), 100)
         XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 0)
     }
 

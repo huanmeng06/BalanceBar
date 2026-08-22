@@ -91,6 +91,9 @@ final class ProviderBalanceProgressStore {
     }
 
     static let storageKey = "balancebar.providerBalanceProgress.v1"
+    // Keep sub-ten-cent recharge baselines visually empty for now. This is a
+    // fixed policy until a future settings surface makes it configurable.
+    static let minimumProgressBaselineCents = 10
 
     private let defaults: UserDefaults
     private let lock = NSLock()
@@ -161,8 +164,8 @@ final class ProviderBalanceProgressStore {
 
     private static func cents(from amount: Double) -> Int? {
         guard amount.isFinite,
-              amount >= 0,
               amount <= Double(Int.max) / 100 else { return nil }
+        if amount <= 0 { return 0 }
 
         let rounded = NSDecimalNumber(value: amount).rounding(
             accordingToBehavior: NSDecimalNumberHandler(
@@ -180,7 +183,7 @@ final class ProviderBalanceProgressStore {
     }
 
     private static func percentage(currentCents: Int, baselineCents: Int) -> Double {
-        guard baselineCents > 0 else { return 0 }
+        guard baselineCents >= minimumProgressBaselineCents else { return 0 }
         return min(
             100,
             max(0, Double(currentCents) / Double(baselineCents) * 100)
