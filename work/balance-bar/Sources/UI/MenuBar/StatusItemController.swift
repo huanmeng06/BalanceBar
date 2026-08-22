@@ -835,6 +835,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lastMenuBarEffectiveSnapshot = effectiveSnapshot
         applyMenuBarContentFrames(
             button: button,
+            // AppKit can update the status button's bounds one run-loop turn
+            // after `statusItem.length` changes. Pass the requested footprint
+            // immediately so toggling the icon cannot leave the amount
+            // centered against the previous icon-inclusive width.
+            buttonSize: NSSize(width: max(0, statusItem.length), height: buttonHeight),
             geometry: geometry,
             iconViewYOffset: iconYOffset,
             effectiveSnapshot: effectiveSnapshot,
@@ -860,8 +865,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         effectiveSnapshot: Snapshot,
         officialTextYOffset: CGFloat
     ) {
+        // Use the requested status-item footprint as the horizontal background
+        // geometry immediately; the actual button height remains authoritative.
+        let effectiveButtonSize = buttonSize ?? NSSize(
+            width: max(0, statusItem?.length ?? button.bounds.width),
+            height: button.bounds.height
+        )
+        let backgroundBounds = NSRect(
+            x: button.bounds.minX,
+            y: button.bounds.minY,
+            width: max(0, effectiveButtonSize.width),
+            height: max(0, effectiveButtonSize.height)
+        )
         let frames = MenuBarLayout.frames(
-            buttonSize: buttonSize ?? NSSize(width: button.bounds.width, height: button.bounds.height),
+            buttonSize: backgroundBounds.size,
             geometry: geometry,
             iconViewYOffset: iconViewYOffset,
             iconOffset: NSSize(
@@ -873,7 +890,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 height: settings.amountOffsetY + officialTextYOffset
             )
         )
-        menuBarContentStack.frame = frames.content
+        let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
+            backgroundBounds: backgroundBounds,
+            geometry: geometry,
+            iconOffsetX: settings.iconOffsetX,
+            textOffsetX: settings.amountOffsetX
+        )
+        menuBarContentStack.frame = frames.content.offsetBy(
+            dx: horizontalCenteringCompensation,
+            dy: 0
+        )
         menuBarIconSlot.frame = frames.iconSlot
         menuBarIconView.frame = frames.icon
         menuBarTextStack.frame = frames.text

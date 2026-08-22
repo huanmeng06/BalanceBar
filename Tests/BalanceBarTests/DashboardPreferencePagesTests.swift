@@ -181,27 +181,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let iconYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
         let amountXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
         let amountYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
+        XCTAssertTrue(iconXButtons.isEmpty)
         let sliders = descendants(of: page).compactMap { $0 as? NSSlider }
         guard let widthSlider = sliders.first(where: {
             $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey
         }) else {
             return XCTFail("Expected a status item width slider")
         }
-        XCTAssertEqual(iconXButtons.count, 2)
         XCTAssertEqual(iconYButtons.count, 2)
-        XCTAssertEqual(amountXButtons.count, 2)
+        XCTAssertTrue(amountXButtons.isEmpty)
         XCTAssertEqual(amountYButtons.count, 2)
-        XCTAssertEqual(
-            Set(iconXButtons.map(\.tag)),
-            [-1, 1]
-        )
         XCTAssertEqual(
             Set(amountYButtons.map(\.tag)),
             [-1, 1]
         )
-        XCTAssertTrue(iconXButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertTrue(iconYButtons.allSatisfy { $0 is RepeatOffsetButton })
-        XCTAssertTrue(amountXButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertTrue(amountYButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertEqual(
             widthSlider.minValue,
@@ -266,13 +260,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
-        XCTAssertEqual(previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan, 0.2, accuracy: 0.001)
+        let previewIconX = previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan
+        let previewTextX = previewText?.layer?.affineTransform().tx ?? CGFloat.nan
+        XCTAssertEqual(previewIconX - previewTextX, 0.6, accuracy: 0.001)
+        // The same automatic centering compensation is applied to both
+        // components; it must not consume their explicit relative offsets.
+        XCTAssertEqual(previewIconX - 0.2, previewTextX - (-0.4), accuracy: 0.001)
         XCTAssertEqual(
             previewIcon?.layer?.affineTransform().ty ?? CGFloat.nan,
             -0.3 + MenuBarLayout.singleLineIconYOffset,
             accuracy: 0.001
         )
-        XCTAssertEqual(previewText?.layer?.affineTransform().tx ?? CGFloat.nan, -0.4, accuracy: 0.001)
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
             0.5 - MenuBarLayout.singleLineTextYOffset
@@ -280,18 +278,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             accuracy: 0.001
         )
 
-        guard let rightButton = iconXButtons.first(where: {
-            $0.tag == 1
-        }) else {
-            return XCTFail("Expected a right button for the icon X offset")
-        }
-        relay.adjustOffset(rightButton)
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.3, accuracy: 0.001)
-
         widthSlider.doubleValue = 0.7
         relay.adjustOffsetValue(widthSlider)
         XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.7, accuracy: 0.001)
-
         preferences.showMenuBarIcon = false
         controller.refresh(
             snapshot: snapshot,
@@ -303,7 +292,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let refreshedSliders = descendants(of: page).compactMap { $0 as? NSSlider }
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
-            .allSatisfy { !$0.isEnabled })
+            .isEmpty)
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
             .allSatisfy { !$0.isEnabled })
@@ -312,7 +301,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .allSatisfy { !$0.isEnabled })
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
-            .allSatisfy { $0.isEnabled })
+            .isEmpty)
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
             .allSatisfy { $0.isEnabled })

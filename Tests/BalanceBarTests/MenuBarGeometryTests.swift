@@ -145,6 +145,282 @@ final class MenuBarGeometryTests: XCTestCase {
         ))
     }
 
+    func testHorizontalCenteringCompensationKeepsDefaultAndExplicitOffsetsDistinct() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 43.2, height: 13.1),
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+        let backgroundBounds = NSRect(x: 10, y: 2, width: 120, height: 24)
+        let baseFrames = MenuBarLayout.frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: MenuBarLayout.singleLineIconYOffset
+        )
+        let baseBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
+                for: baseFrames,
+                in: backgroundBounds
+            )
+        )
+
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: 0,
+                textOffsetX: 0
+            ),
+            MenuBarLayout.menuBarOpticalCenterNudgeX,
+            accuracy: 0.001
+        )
+
+        for (iconOffsetX, textOffsetX) in [
+            (-2.0, 0.0),
+            (2.0, 0.0),
+            (0.0, -3.0),
+            (0.0, 3.0),
+            (-2.0, 3.0),
+            (2.0, -3.0)
+        ] {
+            let compensation = MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: iconOffsetX,
+                textOffsetX: textOffsetX
+            )
+            let adjustedFrames = MenuBarLayout.frames(
+                buttonSize: backgroundBounds.size,
+                geometry: geometry,
+                iconViewYOffset: MenuBarLayout.singleLineIconYOffset,
+                iconOffset: NSSize(width: iconOffsetX, height: 0),
+                textOffset: NSSize(width: textOffsetX, height: 0)
+            )
+            let centeredFrames = MenuBarLayoutFrames(
+                content: adjustedFrames.content.offsetBy(dx: compensation, dy: 0),
+                iconSlot: adjustedFrames.iconSlot,
+                icon: adjustedFrames.icon,
+                text: adjustedFrames.text
+            )
+            let centeredBounds = try! XCTUnwrap(
+                MenuBarLayout.visibleContentBounds(
+                    for: centeredFrames,
+                    in: backgroundBounds
+                )
+            )
+
+            XCTAssertEqual(
+                centeredBounds.midX,
+                baseBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
+                accuracy: 0.001,
+                "icon=\(iconOffsetX), amount=\(textOffsetX)"
+            )
+            XCTAssertEqual(
+                (adjustedFrames.icon.minX - adjustedFrames.text.minX)
+                    - (baseFrames.icon.minX - baseFrames.text.minX),
+                iconOffsetX - textOffsetX,
+                accuracy: 0.001,
+                "explicit offsets must remain relative after compensation"
+            )
+        }
+    }
+
+    func testHorizontalCenteringUsesActualBackgroundWidthAndVisibleComponentSizes() {
+        let geometries = [
+            MenuBarLayout.geometry(
+                primarySize: NSSize(width: 24, height: 13),
+                secondarySize: .zero,
+                showIcon: true,
+                showAmount: true,
+                hasSecondary: false,
+                isBalance: true
+            ),
+            MenuBarLayout.geometry(
+                primarySize: NSSize(width: 78, height: 13),
+                secondarySize: NSSize(width: 35, height: 9),
+                showIcon: true,
+                showAmount: true,
+                hasSecondary: true,
+                isBalance: false
+            ),
+            MenuBarLayout.geometry(
+                primarySize: NSSize(width: 40, height: 13),
+                secondarySize: .zero,
+                showIcon: false,
+                showAmount: true,
+                hasSecondary: false,
+                isBalance: true
+            ),
+            MenuBarLayout.geometry(
+                primarySize: .zero,
+                secondarySize: .zero,
+                showIcon: true,
+                showAmount: false,
+                hasSecondary: false,
+                isBalance: false
+            )
+        ]
+
+        for geometry in geometries {
+            let backgroundBounds = NSRect(
+                x: 17,
+                y: 4,
+                width: max(80, geometry.contentWidth + 42),
+                height: 24
+            )
+            let baseFrames = MenuBarLayout.frames(
+                buttonSize: backgroundBounds.size,
+                geometry: geometry,
+                iconViewYOffset: 0
+            )
+            guard let baseBounds = MenuBarLayout.visibleContentBounds(
+                for: baseFrames,
+                in: backgroundBounds
+            ) else {
+                XCTFail("Expected visible content for geometry \(geometry)")
+                continue
+            }
+            let compensation = MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: -4,
+                textOffsetX: 5
+            )
+            let adjustedFrames = MenuBarLayout.frames(
+                buttonSize: backgroundBounds.size,
+                geometry: geometry,
+                iconViewYOffset: 0,
+                iconOffset: NSSize(width: -4, height: 0),
+                textOffset: NSSize(width: 5, height: 0)
+            )
+            let centeredFrames = MenuBarLayoutFrames(
+                content: adjustedFrames.content.offsetBy(dx: compensation, dy: 0),
+                iconSlot: adjustedFrames.iconSlot,
+                icon: adjustedFrames.icon,
+                text: adjustedFrames.text
+            )
+            let centeredBounds = try! XCTUnwrap(
+                MenuBarLayout.visibleContentBounds(
+                    for: centeredFrames,
+                    in: backgroundBounds
+                )
+            )
+
+            // A two-component layout preserves the explicit relative offset;
+            // a single visible component remains centered even when its
+            // stored offset is non-zero. Icon-only uses its own optical
+            // baseline, two points left of the combined card baseline.
+            let expectedOpticalNudge = geometry.iconWidth > 0 && geometry.textWidth == 0
+                ? MenuBarLayout.menuBarIconOnlyOpticalCenterNudgeX
+                : MenuBarLayout.menuBarOpticalCenterNudgeX
+            XCTAssertEqual(
+                centeredBounds.midX,
+                baseBounds.midX + expectedOpticalNudge,
+                accuracy: 0.001
+            )
+            XCTAssertGreaterThan(centeredBounds.width, 0)
+            XCTAssertLessThanOrEqual(centeredBounds.minX, backgroundBounds.maxX)
+            XCTAssertGreaterThanOrEqual(centeredBounds.maxX, backgroundBounds.minX)
+        }
+    }
+
+    func testSingleVisibleComponentCompensatesItsVisualOffsetButKeepsPreferenceValueUsable() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 50, height: 13),
+            secondarySize: .zero,
+            showIcon: false,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+        let backgroundBounds = NSRect(x: 0, y: 0, width: 160, height: 24)
+
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: 0,
+                textOffsetX: 10
+            ),
+            -8,
+            accuracy: 0.001
+        )
+
+        let iconOnlyGeometry = MenuBarLayout.geometry(
+            primarySize: .zero,
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: false,
+            hasSecondary: false,
+            isBalance: false
+        )
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: iconOnlyGeometry,
+                iconOffsetX: 0,
+                textOffsetX: 0
+            ),
+            MenuBarLayout.menuBarIconOnlyOpticalCenterNudgeX,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: iconOnlyGeometry,
+                iconOffsetX: -4,
+                textOffsetX: 0
+            ),
+            4,
+            accuracy: 0.001
+        )
+    }
+
+    func testAmountOnlyLayoutCentersAgainstUpdatedOuterWidth() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 42, height: 13),
+            secondarySize: NSSize(width: 50, height: 9),
+            showIcon: false,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let naturalContentWidth = geometry.contentWidth
+        let backgroundBounds = NSRect(
+            x: 0,
+            y: 0,
+            width: naturalContentWidth + 108,
+            height: 24
+        )
+        let frames = MenuBarLayout.frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0
+        )
+        let visibleBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
+                for: frames,
+                in: backgroundBounds
+            )
+        )
+
+        XCTAssertEqual(frames.text.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(visibleBounds.midX, backgroundBounds.midX, accuracy: 0.001)
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: 0,
+                textOffsetX: 0
+            ),
+            MenuBarLayout.menuBarOpticalCenterNudgeX,
+            accuracy: 0.001
+        )
+    }
+
     func testStatusItemWidthAdjustmentChangesOuterFootprintOnly() {
         let geometry = MenuBarLayout.geometry(
             primarySize: NSSize(width: 43.2, height: 13.1),
