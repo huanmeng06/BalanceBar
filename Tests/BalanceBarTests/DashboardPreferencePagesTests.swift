@@ -153,21 +153,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let iconYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
         let amountXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
         let amountYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
-        XCTAssertEqual(iconXButtons.count, 2)
+        XCTAssertTrue(iconXButtons.isEmpty)
         XCTAssertEqual(iconYButtons.count, 2)
-        XCTAssertEqual(amountXButtons.count, 2)
+        XCTAssertTrue(amountXButtons.isEmpty)
         XCTAssertEqual(amountYButtons.count, 2)
-        XCTAssertEqual(
-            Set(iconXButtons.map(\.tag)),
-            [-1, 1]
-        )
         XCTAssertEqual(
             Set(amountYButtons.map(\.tag)),
             [-1, 1]
         )
-        XCTAssertTrue(iconXButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertTrue(iconYButtons.allSatisfy { $0 is RepeatOffsetButton })
-        XCTAssertTrue(amountXButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertTrue(amountYButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertFalse(buttons.first {
             $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier
@@ -214,14 +208,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             accuracy: 0.001
         )
 
-        guard let rightButton = iconXButtons.first(where: {
-            $0.tag == 1
-        }) else {
-            return XCTFail("Expected a right button for the icon X offset")
-        }
-        relay.adjustOffset(rightButton)
-        XCTAssertEqual(preferences.menuBarIconOffsetX, 0.3, accuracy: 0.001)
-
         preferences.showMenuBarIcon = false
         controller.refresh(
             snapshot: snapshot,
@@ -232,7 +218,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let refreshedButtons = descendants(of: page).compactMap { $0 as? NSButton }
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
-            .allSatisfy { !$0.isEnabled })
+            .isEmpty)
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
             .allSatisfy { !$0.isEnabled })
@@ -241,7 +227,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .allSatisfy { !$0.isEnabled })
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
-            .allSatisfy { $0.isEnabled })
+            .isEmpty)
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
             .allSatisfy { $0.isEnabled })

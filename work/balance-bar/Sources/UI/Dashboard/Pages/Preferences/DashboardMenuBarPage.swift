@@ -397,13 +397,11 @@ final class DashboardMenuBarPage {
         let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
         amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
         let iconOffsetControls = makeOffsetControls(
-            keyX: AppPreferences.menuBarIconOffsetXKey,
             keyY: AppPreferences.menuBarIconOffsetYKey,
             resetIdentifier: Self.iconOffsetsResetIdentifier,
             relay: input.relay
         )
         let amountOffsetControls = makeOffsetControls(
-            keyX: AppPreferences.menuBarAmountOffsetXKey,
             keyY: AppPreferences.menuBarAmountOffsetYKey,
             resetIdentifier: Self.amountOffsetsResetIdentifier,
             relay: input.relay
@@ -596,7 +594,6 @@ final class DashboardMenuBarPage {
     }
 
     private func makeOffsetControls(
-        keyX: String,
         keyY: String,
         resetIdentifier: String,
         relay: DashboardPreferencePageRelay
@@ -612,18 +609,6 @@ final class DashboardMenuBarPage {
                 title: tr("下", "Down", "下", "下"),
                 key: keyY,
                 delta: -1,
-                relay: relay
-            ),
-            makeOffsetButton(
-                title: tr("左", "Left", "左", "左"),
-                key: keyX,
-                delta: -1,
-                relay: relay
-            ),
-            makeOffsetButton(
-                title: tr("右", "Right", "右", "右"),
-                key: keyX,
-                delta: 1,
                 relay: relay
             ),
             makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
