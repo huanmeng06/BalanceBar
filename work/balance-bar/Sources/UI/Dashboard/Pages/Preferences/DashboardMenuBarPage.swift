@@ -268,8 +268,10 @@ final class DashboardMenuBarPage {
     private let previewCapsule = NSView()
     private weak var iconSwitch: NSSwitch?
     private weak var amountSwitch: NSSwitch?
+    private weak var previewBackground: NSView?
     private var capsuleLeadingConstraint: NSLayoutConstraint?
     private var capsuleTrailingConstraint: NSLayoutConstraint?
+    private var previewWidthConstraint: NSLayoutConstraint?
     private var textWidthConstraint: NSLayoutConstraint?
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
@@ -312,7 +314,10 @@ final class DashboardMenuBarPage {
             preview = visualEffectPreview
         }
         preview.translatesAutoresizingMaskIntoConstraints = false
-        preview.widthAnchor.constraint(equalToConstant: 190).isActive = true
+        let previewWidthConstraint = preview.widthAnchor.constraint(equalToConstant: 190)
+        previewWidthConstraint.isActive = true
+        self.previewBackground = preview
+        self.previewWidthConstraint = previewWidthConstraint
         previewIcon.imageScaling = .scaleProportionallyDown
         previewIcon.translatesAutoresizingMaskIntoConstraints = false
         previewIcon.wantsLayer = true
@@ -431,13 +436,11 @@ final class DashboardMenuBarPage {
         let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(widthAdjustment))
         widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
         let iconOffsetControls = makeOffsetControls(
-            keyX: AppPreferences.menuBarIconOffsetXKey,
             keyY: AppPreferences.menuBarIconOffsetYKey,
             resetIdentifier: Self.iconOffsetsResetIdentifier,
             relay: input.relay
         )
         let amountOffsetControls = makeOffsetControls(
-            keyX: AppPreferences.menuBarAmountOffsetXKey,
             keyY: AppPreferences.menuBarAmountOffsetYKey,
             resetIdentifier: Self.amountOffsetsResetIdentifier,
             relay: input.relay
@@ -554,11 +557,22 @@ final class DashboardMenuBarPage {
         } else {
             officialTextYOffset = 0
         }
+        let previewBackgroundBounds = resolvedPreviewBackgroundBounds(
+            fallbackWidth: geometry.contentWidth
+                + (preferences.menuBarHorizontalPadding + chromeInset) * 2
+        )
+        let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
+            backgroundBounds: previewBackgroundBounds,
+            geometry: geometry,
+            iconOffsetX: iconVisualX,
+            textOffsetX: amountVisualX
+        )
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
         if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
-                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX),
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX)
+                    + horizontalCenteringCompensation,
                 y: MenuBarOffsetLayout.yDelta(visualY: iconVisualY, in: .unflippedLayer)
                     + MenuBarOffsetLayout.yDelta(
                         visualY: MenuBarLayout.singleLineIconYOffset,
@@ -566,7 +580,8 @@ final class DashboardMenuBarPage {
                     )
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
-                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX)
+                    + horizontalCenteringCompensation,
                 // User Y offsets use unflipped layer semantics (positive = up)
                 // to match the real menu bar; the built-in single-line baseline
                 // keeps its existing visual unchanged.
@@ -583,11 +598,13 @@ final class DashboardMenuBarPage {
             ))
         } else {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
-                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX),
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX)
+                    + horizontalCenteringCompensation,
                 y: MenuBarOffsetLayout.yDelta(visualY: iconVisualY, in: .unflippedLayer)
             ))
             previewText.layer?.setAffineTransform(CGAffineTransform(
-                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX)
+                    + horizontalCenteringCompensation,
                 y: MenuBarOffsetLayout.yDelta(
                     visualY: amountVisualY,
                     in: .unflippedLayer
@@ -600,6 +617,23 @@ final class DashboardMenuBarPage {
                 )
             ))
         }
+    }
+
+    private func resolvedPreviewBackgroundBounds(fallbackWidth: CGFloat) -> NSRect {
+        if let previewBackground, previewBackground.bounds.width > 0 {
+            return previewBackground.bounds
+        }
+        let width = max(
+            0,
+            previewWidthConstraint?.constant ?? fallbackWidth
+        )
+        let height = previewBackground?.bounds.height ?? 42
+        return NSRect(
+            x: 0,
+            y: 0,
+            width: width,
+            height: max(0, height)
+        )
     }
 
     /// Refreshes only the width-specific presentation while a continuous
@@ -684,7 +718,6 @@ final class DashboardMenuBarPage {
     }
 
     private func makeOffsetControls(
-        keyX: String,
         keyY: String,
         resetIdentifier: String,
         relay: DashboardPreferencePageRelay
@@ -700,18 +733,6 @@ final class DashboardMenuBarPage {
                 title: tr("下", "Down", "下", "下"),
                 key: keyY,
                 delta: -1,
-                relay: relay
-            ),
-            makeOffsetButton(
-                title: tr("左", "Left", "左", "左"),
-                key: keyX,
-                delta: -1,
-                relay: relay
-            ),
-            makeOffsetButton(
-                title: tr("右", "Right", "右", "右"),
-                key: keyX,
-                delta: 1,
                 relay: relay
             ),
             makeOffsetResetButton(identifier: resetIdentifier, relay: relay)

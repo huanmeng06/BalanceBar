@@ -141,6 +141,12 @@ enum MenuBarLayout {
     static let officialAmountOnlyTextYOffset: CGFloat = 0.5
     static let officialSecondaryTextYOffset: CGFloat = -0.1
 
+    // The rendered status-item capsule/shadow is optically centered two points
+    // to the right of the nominal status-item bounds. Keep this shared by the
+    // real menu bar and Dashboard preview; it is a layout baseline, not a
+    // persisted user offset.
+    static let menuBarOpticalCenterNudgeX: CGFloat = 2
+
     static func officialTextYOffset(hasSecondary: Bool) -> CGFloat {
         hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
     }
@@ -267,5 +273,77 @@ enum MenuBarLayout {
             icon: icon,
             text: text
         )
+    }
+
+    /// Returns the visible horizontal bounds of the icon and amount frames in
+    /// the supplied background coordinate space. The component frames in
+    /// `MenuBarLayoutFrames` are relative to `content`, while
+    /// `backgroundBounds` is the actual status-item/card geometry.
+    static func visibleContentBounds(
+        for frames: MenuBarLayoutFrames,
+        in backgroundBounds: NSRect
+    ) -> NSRect? {
+        let contentOrigin = NSPoint(
+            x: backgroundBounds.minX + frames.content.minX,
+            y: backgroundBounds.minY + frames.content.minY
+        )
+        var result: NSRect?
+        for frame in [frames.icon, frames.text] where frame.width > 0 && frame.height > 0 {
+            let absoluteFrame = frame.offsetBy(
+                dx: contentOrigin.x,
+                dy: contentOrigin.y
+            )
+            result = result.map { $0.union(absoluteFrame) } ?? absoluteFrame
+        }
+        return result
+    }
+
+    /// Equal translation for the outer content container that compensates for
+    /// independent icon/amount X offsets. The baseline and adjusted bounds
+    /// are both measured using the actual background geometry. The target
+    /// center includes the fixed 2pt optical correction for the rendered
+    /// capsule/shadow. A user offset changes only the relative arrangement and
+    /// not the group's corrected center. If only one component is visible,
+    /// its configured X offset is compensated so the sole visible component
+    /// remains centered; the preference value itself is retained and becomes
+    /// visible again when both components are shown.
+    ///
+    /// This helper deliberately does not allocate width. The caller supplies
+    /// the real status-item/card bounds; a future width setting therefore
+    /// changes the centering reference without being reimplemented here.
+    static func horizontalCenteringCompensation(
+        backgroundBounds: NSRect,
+        geometry: MenuBarGeometry,
+        iconOffsetX: CGFloat,
+        textOffsetX: CGFloat
+    ) -> CGFloat {
+        guard geometry.iconWidth > 0 || geometry.textWidth > 0 else {
+            return 0
+        }
+
+        let baseFrames = frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0
+        )
+        let adjustedFrames = frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0,
+            iconOffset: NSSize(width: iconOffsetX, height: 0),
+            textOffset: NSSize(width: textOffsetX, height: 0)
+        )
+        guard let baseBounds = visibleContentBounds(
+            for: baseFrames,
+            in: backgroundBounds
+        ), let adjustedBounds = visibleContentBounds(
+            for: adjustedFrames,
+            in: backgroundBounds
+        ) else {
+            return 0
+        }
+        return baseBounds.midX
+            + menuBarOpticalCenterNudgeX
+            - adjustedBounds.midX
     }
 }
