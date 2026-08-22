@@ -12,6 +12,78 @@ final class CredentialReaderTests: XCTestCase {
         XCTAssertNil(CredentialReader.codexAccessToken(from: Data("not-json".utf8)))
     }
 
+    func testCodexReaderExtractsEmailFromIDTokenWithoutUsingTokenMaterial() {
+        let idToken = Self.makeJWT(payload: #"{"email":"person@example.com","https://api.openai.com/auth":{"chatgpt_plan_type":"prolite"}}"#)
+        let blankEmailToken = Self.makeJWT(payload: #"{"email":"   "}"#)
+        XCTAssertEqual(
+            CredentialReader.codexAccountEmail(
+                from: Data("{\"tokens\":{\"id_token\":\"\(idToken)\",\"access_token\":\"secret-token\"}}".utf8)
+            ),
+            "person@example.com"
+        )
+        XCTAssertEqual(
+            CredentialReader.codexAccountEmail(
+                from: Data(#"{"tokens":{"id_token":{"email":"person@example.com"}}}"#.utf8)
+            ),
+            "person@example.com"
+        )
+        XCTAssertEqual(
+            CredentialReader.codexAccountProfile(
+                from: Data("{\"tokens\":{\"id_token\":\"\(idToken)\"}}".utf8)
+            ),
+            CodexAccountProfile(email: "person@example.com", planType: "prolite")
+        )
+        XCTAssertEqual(
+            CredentialReader.codexAccountProfile(
+                from: Data(#"{"tokens":{"id_token":{"email":"person@example.com","chatgpt_plan_type":"pro"}}}"#.utf8)
+            ),
+            CodexAccountProfile(email: "person@example.com", planType: "pro")
+        )
+        XCTAssertNil(
+            CredentialReader.codexAccountEmail(
+                from: Data("{\"tokens\":{\"id_token\":\"\(blankEmailToken)\"}}".utf8)
+            )
+        )
+        XCTAssertNil(
+            CredentialReader.codexAccountEmail(
+                from: Data("{\"tokens\":{\"id_token\":\"not-a-jwt\"}}".utf8)
+            )
+        )
+
+        let home = URL(fileURLWithPath: "/fixture-home")
+        let authURL = home.appendingPathComponent(".codex/auth.json")
+        let reader = CredentialReader(
+            homeDirectoryURL: home,
+            fileReader: FixtureFileReader(
+                dataByPath: [
+                    authURL.path: Data("{\"tokens\":{\"id_token\":\"\(idToken)\"}}".utf8)
+                ]
+            ),
+            processRunner: FixtureProcessRunner(
+                result: CredentialProcessResult(terminationStatus: 1, standardOutput: Data())
+            )
+        )
+        XCTAssertEqual(reader.codexAccountEmail(), "person@example.com")
+        XCTAssertEqual(
+            reader.codexAccountProfile(),
+            CodexAccountProfile(email: "person@example.com", planType: "prolite")
+        )
+    }
+
+    private static func makeJWT(payload: String) -> String {
+        let header = Data(#"{"alg":"none","typ":"JWT"}"#.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+        let encodedPayload = Data(payload.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+        return "\(header).\(encodedPayload).signature"
+    }
+
     func testClaudeReaderPrefersKeychainAndSupportsBothCredentialKeys() {
         let fileReader = FixtureFileReader(dataByPath: [:])
         let processRunner = FixtureProcessRunner(

@@ -261,6 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient = BalanceAPIClient()
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
@@ -321,6 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateService: UpdateService? = nil
     ) {
         self.ccSwitchRepository = repository
+        self.officialQuotaClient = officialQuotaClient
         self.updateService = updateService ?? UpdateService()
         super.init()
         self.updateService.onStateChange = { [weak self] _ in
@@ -331,6 +333,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
             onChange: { [weak self] in
+                DispatchQueue.main.async { [weak self] in
+                    self?.refreshStatusItemMenuInput()
+                }
                 self?.refresh(reason: .configurationChanged)
                 self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: self?.activeClient ?? .codex)
             }
@@ -401,6 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.lastOpenCodexFetch = nil
                     self.openCodexRefreshCoordinator.clear()
                     DispatchQueue.main.async {
+                        self.refreshStatusItemMenuInput()
                         self.openCodexState = nil
                         self.openCodexCards = []
                         self.openCodexSwitchInFlight = false
@@ -467,13 +473,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
-        StatusItemController.MenuInput(
+        let currentProvider = ccSwitchRepository.loadCurrent(appType: activeClient.appType)
+        let isOfficialOpenAICodex = activeClient == .codex && currentProvider?.isOfficial == true
+        let accountProfile = isOfficialOpenAICodex
+            ? officialQuotaClient.codexAccountProfile()
+            : nil
+        let openAIAccount = OpenAIAccountPresentation.current(
+            activeClient: activeClient,
+            providerIsOfficial: isOfficialOpenAICodex,
+            email: accountProfile?.email,
+            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
+        )
+        return StatusItemController.MenuInput(
             openCodexCards: openCodexCards,
             openCodexState: openCodexState?.state,
             openCodexSwitchInFlight: openCodexSwitchInFlight,
             choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
             activeClient: activeClient,
+            openAIAccount: openAIAccount,
             statusLinks: statusLinks,
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
@@ -618,8 +636,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
         )
+        refreshStatusItemMenuInput()
         refresh(reason: .manual)
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
+    }
+
+    private func refreshStatusItemMenuInput() {
+        statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
     private func switchProvider(_ providerID: String) {
@@ -666,93 +689,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func configureApplicationMenu() {
-        let mainMenu = NSMenu(title: "BalanceBar")
-
-        let applicationItem = NSMenuItem()
-        let applicationMenu = NSMenu(title: "BalanceBar")
-        applicationItem.submenu = applicationMenu
-        applicationMenu.addItem(
-            withTitle: tr("关于 BalanceBar", "About BalanceBar", "關於 BalanceBar", "BalanceBar について"),
-            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
-            keyEquivalent: ""
-        )
-        applicationMenu.addItem(.separator())
-        applicationMenu.addItem(
-            withTitle: tr("隐藏 BalanceBar", "Hide BalanceBar", "隱藏 BalanceBar", "BalanceBar を隠す"),
-            action: #selector(NSApplication.hide(_:)),
-            keyEquivalent: "h"
-        )
-        let hideOthers = applicationMenu.addItem(
-            withTitle: tr("隐藏其他应用", "Hide Others", "隱藏其他應用程式", "ほかのアプリを隠す"),
-            action: #selector(NSApplication.hideOtherApplications(_:)),
-            keyEquivalent: "h"
-        )
-        hideOthers.keyEquivalentModifierMask = [.command, .option]
-        applicationMenu.addItem(
-            withTitle: tr("全部显示", "Show All", "全部顯示", "すべてを表示"),
-            action: #selector(NSApplication.unhideAllApplications(_:)),
-            keyEquivalent: ""
-        )
-        applicationMenu.addItem(.separator())
-        let quitItem = applicationMenu.addItem(
-            withTitle: tr("退出 BalanceBar", "Quit BalanceBar", "結束 BalanceBar", "BalanceBar を終了"),
-            action: #selector(NSApplication.terminate(_:)),
-            keyEquivalent: "q"
-        )
-        quitItem.target = NSApp
-        mainMenu.addItem(applicationItem)
-
-        let editItem = NSMenuItem()
-        let editMenu = NSMenu(title: tr("编辑", "Edit", "編輯", "編集"))
-        editItem.submenu = editMenu
-        editMenu.autoenablesItems = true
-        editMenu.addItem(
-            withTitle: tr("撤销", "Undo", "還原", "取り消す"),
-            action: #selector(UndoManager.undo),
-            keyEquivalent: "z"
-        )
-        let redoItem = editMenu.addItem(
-            withTitle: tr("重做", "Redo", "重做", "やり直す"),
-            action: #selector(UndoManager.redo),
-            keyEquivalent: "z"
-        )
-        redoItem.keyEquivalentModifierMask = [.command, .shift]
-        editMenu.addItem(.separator())
-        editMenu.addItem(
-            withTitle: tr("剪切", "Cut", "剪切", "カット"),
-            action: #selector(NSText.cut(_:)),
-            keyEquivalent: "x"
-        )
-        editMenu.addItem(
-            withTitle: tr("拷贝", "Copy", "拷貝", "コピー"),
-            action: #selector(NSText.copy(_:)),
-            keyEquivalent: "c"
-        )
-        editMenu.addItem(
-            withTitle: tr("粘贴", "Paste", "貼上", "ペースト"),
-            action: #selector(NSText.paste(_:)),
-            keyEquivalent: "v"
-        )
-        editMenu.addItem(
-            withTitle: tr("全选", "Select All", "全選", "すべてを選択"),
-            action: #selector(NSText.selectAll(_:)),
-            keyEquivalent: "a"
-        )
-        mainMenu.addItem(editItem)
-
-        let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: tr("窗口", "Window", "視窗", "ウインドウ"))
-        windowItem.submenu = windowMenu
-        let closeItem = windowMenu.addItem(
-            withTitle: tr("关闭窗口", "Close Window", "關閉視窗", "ウインドウを閉じる"),
-            action: #selector(NSWindow.performClose(_:)),
-            keyEquivalent: "w"
-        )
-        closeItem.target = nil
-        mainMenu.addItem(windowItem)
-        NSApp.windowsMenu = windowMenu
-
-        NSApp.mainMenu = mainMenu
+        let configuration = ApplicationMenuConfiguration.make()
+        NSApp.windowsMenu = configuration.windowMenu
+        NSApp.mainMenu = configuration.mainMenu
     }
     @objc private func openCCSwitch() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else { return }
@@ -1064,6 +1003,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         timer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
+            self?.refreshStatusItemMenuInput()
             self?.refresh(reason: .scheduled)
             self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: false, for: self?.activeClient ?? .codex)
         }
@@ -1142,6 +1082,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         updateStatusItemActivity()
+        refreshStatusItemMenuInput()
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
@@ -1332,6 +1273,122 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }()
 }
 
+struct ApplicationMenuConfiguration {
+    let mainMenu: NSMenu
+    let windowMenu: NSMenu
+
+    static func make() -> ApplicationMenuConfiguration {
+        let mainMenu = NSMenu(title: "BalanceBar")
+
+        let applicationItem = NSMenuItem()
+        let applicationMenu = NSMenu(title: "BalanceBar")
+        applicationItem.submenu = applicationMenu
+        applicationMenu.addItem(
+            withTitle: tr("关于 BalanceBar", "About BalanceBar", "關於 BalanceBar", "BalanceBar について"),
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: ""
+        )
+        applicationMenu.addItem(.separator())
+        let hideItem = applicationMenu.addItem(
+            withTitle: tr("隐藏 BalanceBar", "Hide BalanceBar", "隱藏 BalanceBar", "BalanceBar を隠す"),
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h"
+        )
+        hideItem.keyEquivalentModifierMask = [.command]
+        let hideOthers = applicationMenu.addItem(
+            withTitle: tr("隐藏其他应用", "Hide Others", "隱藏其他應用程式", "ほかのアプリを隠す"),
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        applicationMenu.addItem(
+            withTitle: tr("全部显示", "Show All", "全部顯示", "すべてを表示"),
+            action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: ""
+        )
+        applicationMenu.addItem(.separator())
+        let quitItem = applicationMenu.addItem(
+            withTitle: tr("退出 BalanceBar", "Quit BalanceBar", "結束 BalanceBar", "BalanceBar を終了"),
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        quitItem.keyEquivalentModifierMask = [.command]
+        quitItem.target = NSApp
+        mainMenu.addItem(applicationItem)
+
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: tr("编辑", "Edit", "編輯", "編集"))
+        editItem.submenu = editMenu
+        editMenu.autoenablesItems = true
+        let undoItem = editMenu.addItem(
+            withTitle: tr("撤销", "Undo", "還原", "取り消す"),
+            action: #selector(UndoManager.undo),
+            keyEquivalent: "z"
+        )
+        undoItem.keyEquivalentModifierMask = [.command]
+        let redoItem = editMenu.addItem(
+            withTitle: tr("重做", "Redo", "重做", "やり直す"),
+            action: #selector(UndoManager.redo),
+            keyEquivalent: "z"
+        )
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        for (title, action, keyEquivalent) in [
+            (tr("剪切", "Cut", "剪切", "カット"), #selector(NSText.cut(_:)), "x"),
+            (tr("拷贝", "Copy", "拷貝", "コピー"), #selector(NSText.copy(_:)), "c"),
+            (tr("粘贴", "Paste", "貼上", "ペースト"), #selector(NSText.paste(_:)), "v"),
+            (tr("全选", "Select All", "全選", "すべてを選択"), #selector(NSText.selectAll(_:)), "a")
+        ] {
+            let item = editMenu.addItem(
+                withTitle: title,
+                action: action,
+                keyEquivalent: keyEquivalent
+            )
+            item.keyEquivalentModifierMask = [.command]
+        }
+        mainMenu.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: tr("窗口", "Window", "視窗", "ウインドウ"))
+        windowMenu.autoenablesItems = true
+        windowItem.submenu = windowMenu
+
+        let closeItem = windowMenu.addItem(
+            withTitle: tr("关闭窗口", "Close Window", "關閉視窗", "ウインドウを閉じる"),
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        )
+        closeItem.keyEquivalentModifierMask = [.command]
+        closeItem.target = nil
+
+        let minimizeItem = windowMenu.addItem(
+            withTitle: tr("最小化", "Minimize", "最小化", "最小化"),
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m"
+        )
+        minimizeItem.keyEquivalentModifierMask = [.command]
+        minimizeItem.target = nil
+
+        let zoomItem = windowMenu.addItem(
+            withTitle: tr("缩放", "Zoom", "縮放", "拡大/縮小"),
+            action: #selector(NSWindow.performZoom(_:)),
+            keyEquivalent: ""
+        )
+        zoomItem.target = nil
+
+        windowMenu.addItem(.separator())
+        let arrangeItem = windowMenu.addItem(
+            withTitle: tr("将所有窗口置于最前", "Bring All to Front", "將所有視窗置於最前", "すべてを手前に移動"),
+            action: #selector(NSApplication.arrangeInFront(_:)),
+            keyEquivalent: ""
+        )
+        arrangeItem.target = nil
+
+        mainMenu.addItem(windowItem)
+        return ApplicationMenuConfiguration(mainMenu: mainMenu, windowMenu: windowMenu)
+    }
+}
+
 struct ApplicationLifecycleStats: Equatable {
     let startCount: Int
     let terminateCount: Int
@@ -1410,6 +1467,8 @@ enum ErrorCardLayout {
     static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
     static let refreshTimeWidth: CGFloat = 81
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
+    static let subscriptionWidth: CGFloat = 78
+    static let subscriptionGap: CGFloat = 8
 
     // Match the compact third-party balance card for a single-line error.
     static let minimumCardHeight: CGFloat = 86
@@ -1425,6 +1484,8 @@ enum ErrorCardLayout {
         let cardSize: NSSize
         let title: NSRect
         let refreshTime: NSRect
+        let account: NSRect?
+        let subscription: NSRect?
         let quotaDetail: NSRect
         let amount: NSRect
         let detail: NSRect
@@ -1485,19 +1546,39 @@ enum ErrorCardLayout {
     /// Frames for the error card. A single-line detail follows the same three
     /// row rhythm as the compact balance card; additional detail lines shift
     /// the rows above upward by only the extra measured height.
-    static func errorFrames(for message: String) -> ErrorFrames {
+    static func errorFrames(
+        for message: String,
+        includesAccount: Bool = false,
+        includesSubscription: Bool = false
+    ) -> ErrorFrames {
         let text = detailText(for: message, width: detailWidth)
         let detailH = measuredHeight(of: text, width: detailWidth)
         let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
-        let cardHeight = minimumCardHeight + extraDetailHeight
+        let hasSubscription = includesAccount && includesSubscription
+        let accountShift: CGFloat = includesAccount ? 19 : 0
+        let accountWidth = hasSubscription
+            ? contentWidth - subscriptionWidth - subscriptionGap
+            : contentWidth
+        let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
         // of the left status/detail region. As that region grows, move the
         // amount by half the extra height to preserve the same optical center.
         let amountY = 5 + extraDetailHeight / 2
         return ErrorFrames(
             cardSize: NSSize(width: cardWidth, height: cardHeight),
-            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: 127, height: 20),
-            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight, width: refreshTimeWidth, height: 17),
+            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight + accountShift, width: 127, height: 20),
+            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight + accountShift, width: refreshTimeWidth, height: 17),
+            account: includesAccount
+                ? NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: accountWidth, height: 17)
+                : nil,
+            subscription: hasSubscription
+                ? NSRect(
+                    x: cardWidth - horizontalInset - subscriptionWidth,
+                    y: 58 + extraDetailHeight,
+                    width: subscriptionWidth,
+                    height: 17
+                )
+                : nil,
             quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
             amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
             detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),

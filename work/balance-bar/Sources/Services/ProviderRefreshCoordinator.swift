@@ -211,13 +211,41 @@ final class ProviderRefreshCoordinator {
                     client: client
                 )
             case .failure(.missingCredentials):
-                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：未找到本机登录态", "Official \(client.displayName): Local sign-in credentials were not found", "\(client.displayName) 官方帳號：找不到本機登入狀態", "\(client.displayName) 公式アカウント：ローカルログイン情報が見つかりません")), providerID: providerID, client: client)
+                self.renderOfficialError(
+                    providerID: providerID,
+                    providerName: providerName,
+                    reason: tr("\(client.displayName) 官方账号：未找到本机登录态", "Official \(client.displayName): Local sign-in credentials were not found", "\(client.displayName) 官方帳號：找不到本機登入狀態", "\(client.displayName) 公式アカウント：ローカルログイン情報が見つかりません"),
+                    client: client
+                )
             case .failure(.transport(let error)):
-                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：\(error.localizedDescription)", "Official \(client.displayName): \(error.localizedDescription)", "\(client.displayName) 官方帳號：\(error.localizedDescription)", "\(client.displayName) 公式アカウント：\(error.localizedDescription)")), providerID: providerID, client: client)
+                self.renderOfficialError(
+                    providerID: providerID,
+                    providerName: providerName,
+                    reason: tr("\(client.displayName) 官方账号：\(error.localizedDescription)", "Official \(client.displayName): \(error.localizedDescription)", "\(client.displayName) 官方帳號：\(error.localizedDescription)", "\(client.displayName) 公式アカウント：\(error.localizedDescription)"),
+                    client: client
+                )
             case .failure:
-                self.renderForCurrentProvider(.error(tr("\(client.displayName) 官方账号：额度接口返回异常", "Official \(client.displayName): The quota endpoint returned an error", "\(client.displayName) 官方帳號：額度介面傳回異常", "\(client.displayName) 公式アカウント：クォータエンドポイントでエラーが返されました")), providerID: providerID, client: client)
+                self.renderOfficialError(
+                    providerID: providerID,
+                    providerName: providerName,
+                    reason: tr("\(client.displayName) 官方账号：额度接口返回异常", "Official \(client.displayName): The quota endpoint returned an error", "\(client.displayName) 官方帳號：額度介面傳回異常", "\(client.displayName) 公式アカウント：クォータエンドポイントでエラーが返されました"),
+                    client: client
+                )
             }
         }
+    }
+
+    private func renderOfficialError(
+        providerID: String,
+        providerName: String,
+        reason: String,
+        client: AssistantClient
+    ) {
+        renderForCurrentProvider(
+            .providerError(providerName, reason: reason, cachedBalance: nil),
+            providerID: providerID,
+            client: client
+        )
     }
 
     private func renderForCurrentProvider(_ next: Snapshot, providerID: String, client: AssistantClient) {

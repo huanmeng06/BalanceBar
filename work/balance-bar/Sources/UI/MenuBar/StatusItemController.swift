@@ -116,6 +116,155 @@ final class MenuBarWidthDisplayCoalescer: NSObject {
     }
 }
 
+final class AccountMarqueeView: NSView {
+    static let animationKey = "BalanceBar.accountMarquee"
+    private static let edgeFadeWidth: CGFloat = 8
+    private static let minimumScrollDuration: TimeInterval = 5
+    private static let scrollPixelsPerSecond: CGFloat = 24
+
+    let accountLabel: NSTextField
+    private(set) var measuredTextWidth: CGFloat = 0
+    private(set) var isScrollable = false
+    private(set) var showsEdgeFade = false
+    private(set) var edgeFadeInset: CGFloat = 0
+    private(set) var scrollOverflow: CGFloat = 0
+
+    private var edgeFadeMask: CAGradientLayer?
+
+    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect) {
+        accountLabel = NSTextField(labelWithString: text)
+        super.init(frame: frame)
+
+        wantsLayer = true
+        layer?.masksToBounds = true
+
+        accountLabel.font = font
+        accountLabel.textColor = textColor
+        accountLabel.alignment = .left
+        accountLabel.lineBreakMode = .byClipping
+        accountLabel.usesSingleLineMode = true
+        accountLabel.maximumNumberOfLines = 1
+        accountLabel.wantsLayer = true
+        addSubview(accountLabel)
+
+        configureContent()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        edgeFadeMask?.frame = bounds
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            stopScrolling()
+        } else {
+            startScrollingIfNeeded()
+        }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        startScrollingIfNeeded()
+    }
+
+    deinit {
+        stopScrolling()
+    }
+
+    private func configureContent() {
+        measuredTextWidth = Self.textWidth(of: accountLabel.stringValue, font: accountLabel.font ?? .systemFont(ofSize: 13))
+        isScrollable = measuredTextWidth > bounds.width + 0.5
+        edgeFadeInset = isScrollable && bounds.width > 0
+            ? min(Self.edgeFadeWidth, bounds.width / 4)
+            : 0
+        let contentWidth = isScrollable
+            ? measuredTextWidth + edgeFadeInset
+            : max(bounds.width, measuredTextWidth)
+        accountLabel.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: contentWidth,
+            height: bounds.height
+        )
+        scrollOverflow = max(0, accountLabel.frame.maxX - bounds.width)
+
+        guard isScrollable, bounds.width > 0 else {
+            layer?.mask = nil
+            edgeFadeMask = nil
+            showsEdgeFade = false
+            return
+        }
+
+        let mask = CAGradientLayer()
+        mask.colors = [
+            NSColor.clear.cgColor,
+            NSColor.black.cgColor,
+            NSColor.black.cgColor,
+            NSColor.clear.cgColor
+        ]
+        let fadeWidth = edgeFadeInset
+        let fadeFraction = fadeWidth / bounds.width
+        mask.locations = [
+            0,
+            NSNumber(value: Double(fadeFraction)),
+            NSNumber(value: Double(1 - fadeFraction)),
+            1
+        ]
+        mask.frame = bounds
+        edgeFadeMask = mask
+        layer?.mask = mask
+        showsEdgeFade = true
+    }
+
+    private func startScrollingIfNeeded() {
+        guard isScrollable,
+              window != nil,
+              accountLabel.layer != nil,
+              accountLabel.layer?.animation(forKey: Self.animationKey) == nil else {
+            return
+        }
+
+        let overflow = scrollOverflow
+        guard overflow > 0 else { return }
+
+        let animation = Self.scrollAnimation(forOverflow: overflow)
+        accountLabel.layer?.add(animation, forKey: Self.animationKey)
+    }
+
+    private func stopScrolling() {
+        accountLabel.layer?.removeAnimation(forKey: Self.animationKey)
+    }
+
+    static func textWidth(of text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
+        let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
+        let offset = NSNumber(value: -Double(max(0, overflow)))
+        animation.values = [0, 0, offset, offset, 0]
+        animation.keyTimes = [0, 0.16, 0.5, 0.66, 1]
+        animation.duration = max(
+            minimumScrollDuration,
+            Double(max(0, overflow) / scrollPixelsPerSecond) + 4
+        )
+        animation.repeatCount = .infinity
+        animation.timingFunctions = [
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut)
+        ]
+        return animation
+    }
+}
+
 final class StatusItemController: NSObject, NSMenuDelegate {
     struct Actions {
         let manualRefresh: () -> Void
@@ -175,6 +324,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let choices: [ProviderChoice]
         let quickSwitchSummaries: [String: String]
         let activeClient: AssistantClient
+        let openAIAccount: OpenAIAccountPresentation?
         let statusLinks: [StatusLink]
         let showQuickSwitchMenu: Bool
         let showOpenChatGPTMenu: Bool
@@ -209,6 +359,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         choices: [],
         quickSwitchSummaries: [:],
         activeClient: .codex,
+        openAIAccount: nil,
         statusLinks: [],
         showQuickSwitchMenu: true,
         showOpenChatGPTMenu: true,
@@ -977,7 +1128,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let isBalance = snapshot.kind == .balance
         let layout = OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
-            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
+            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
+            includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
+            includesSubscription: snapshot.kind == .official && menuInput.openAIAccount?.subscription != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -990,6 +1143,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             refreshTime.alignment = .right
             refreshTime.frame = layout.refreshTime
             view.addSubview(refreshTime)
+        }
+        if let account = menuInput.openAIAccount, let accountFrame = layout.account {
+            let accountLabel = makeAccountLabel(
+                account.text(),
+                frame: accountFrame
+            )
+            view.addSubview(accountLabel)
+        }
+        if let subscription = menuInput.openAIAccount?.subscription,
+           let subscriptionFrame = layout.subscription {
+            view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
         if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
@@ -1155,11 +1319,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = false
         let message = snapshot.overviewReset(refreshDate: nil, formatter: Self.timeFormatter)
-        let frames = ErrorCardLayout.errorFrames(for: message)
+        let frames = ErrorCardLayout.errorFrames(
+            for: message,
+            includesAccount: menuInput.openAIAccount != nil,
+            includesSubscription: menuInput.openAIAccount?.subscription != nil
+        )
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
         view.addSubview(provider)
+        if let account = menuInput.openAIAccount, let accountFrame = frames.account {
+            let accountLabel = makeAccountLabel(
+                account.text(),
+                frame: accountFrame
+            )
+            view.addSubview(accountLabel)
+        }
+        if let subscription = menuInput.openAIAccount?.subscription,
+           let subscriptionFrame = frames.subscription {
+            view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
+        }
         let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
         let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
             timeText,
@@ -1190,6 +1369,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
         return label
+    }
+
+    private func makeSubscriptionLabel(_ text: String, frame: NSRect) -> NSTextField {
+        let label = makeOverviewLabel(text, font: .systemFont(ofSize: 13, weight: .regular))
+        label.textColor = .secondaryLabelColor
+        label.alignment = .right
+        label.frame = frame
+        return label
+    }
+
+    private func makeAccountLabel(_ text: String, frame: NSRect) -> AccountMarqueeView {
+        AccountMarqueeView(
+            text: text,
+            font: .systemFont(ofSize: 13, weight: .regular),
+            textColor: .secondaryLabelColor,
+            frame: frame
+        )
     }
 
     static func formatBalanceSummary(_ amount: Double, unit: String) -> String {
