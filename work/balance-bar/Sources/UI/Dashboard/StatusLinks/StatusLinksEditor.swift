@@ -153,54 +153,49 @@ final class StatusLinksEditorModel: ObservableObject {
     }
 }
 
-private struct StatusLinksDarkResetButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color(nsColor: .controlTextColor))
-            .padding(.horizontal, 9)
-            .frame(minHeight: 24)
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-                    .overlay {
-                        if !configuration.isPressed {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.10))
-                        }
-                    }
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-            }
-    }
-}
-
-private struct StatusLinksResetButton: View {
+private struct StatusLinksResetButton: NSViewRepresentable {
+    let title: String
     let action: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
 
-    @ViewBuilder
-    var body: some View {
-        if colorScheme == .dark {
-            Button(
-                tr("恢复默认", "Restore Defaults", "恢復預設", "デフォルトに戻す"),
-                action: action
-            )
-            .buttonStyle(StatusLinksDarkResetButtonStyle())
-            .controlSize(.small)
-            .font(.system(size: 12))
-            .accessibilityIdentifier("statusLinks.reset")
-        } else {
-            Button(
-                tr("恢复默认", "Restore Defaults", "恢復預設", "デフォルトに戻す"),
-                action: action
-            )
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .font(.system(size: 12))
-            .accessibilityIdentifier("statusLinks.reset")
+    final class Coordinator: NSObject {
+        var action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
         }
+
+        @objc func reset() {
+            action()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(
+            title: title,
+            target: context.coordinator,
+            action: #selector(Coordinator.reset)
+        )
+        configure(button, coordinator: context.coordinator)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.action = action
+        configure(button, coordinator: context.coordinator)
+    }
+
+    private func configure(_ button: NSButton, coordinator: Coordinator) {
+        button.title = title
+        button.target = coordinator
+        button.action = #selector(Coordinator.reset)
+        button.bezelStyle = .roundRect
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 12)
+        button.identifier = NSUserInterfaceItemIdentifier("statusLinks.reset")
     }
 }
 
@@ -213,7 +208,10 @@ struct StatusLinksEditorView: View {
                 Text(tr("状态链接", "Status Links", "狀態連結", "ステータスリンク"))
                     .font(.system(size: 13, weight: .medium))
                 Spacer(minLength: 12)
-                StatusLinksResetButton(action: model.reset)
+                StatusLinksResetButton(
+                    title: tr("恢复默认", "Restore Defaults", "恢復預設", "デフォルトに戻す"),
+                    action: model.reset
+                )
             }
             .frame(height: 24)
             .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor")))
