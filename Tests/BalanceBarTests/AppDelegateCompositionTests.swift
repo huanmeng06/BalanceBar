@@ -63,6 +63,23 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(switching.contains("com.ccswitch.desktop"))
     }
 
+    @MainActor
+    func testMenuBarWidthCoalescerFlushesLatestValueAndCancelsPendingWork() {
+        var applied: [CGFloat] = []
+        let coalescer = MenuBarWidthDisplayCoalescer { applied.append($0) }
+
+        coalescer.submit(3.1)
+        coalescer.submit(7.4)
+        coalescer.flush()
+
+        XCTAssertEqual(applied, [7.4])
+
+        coalescer.submit(12.6)
+        coalescer.cancel()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(applied, [7.4])
+    }
+
     func testLifecycleGateInstallsAndTearsDownExactlyOnce() {
         let lifecycle = ApplicationLifecycleState()
 
@@ -78,7 +95,7 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
-    func testStatusItemStartIsIdempotentAndTeardownIsSafe() {
+    func testStatusItemStartIsIdempotentAndTeardownIsSafe() throws {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: {},
@@ -101,6 +118,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
+            openAIAccount: nil,
             statusLinks: [],
             showQuickSwitchMenu: true,
             showOpenChatGPTMenu: true,
@@ -129,6 +147,22 @@ final class AppDelegateCompositionTests: XCTestCase {
             settings: settings
         )
         XCTAssertEqual(controller.statusItemInstallCount, 1)
+
+        let initialLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        let menuItemIdentities = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
+        controller.updateWidthAdjustment(10)
+        controller.updateWidthAdjustment(20)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(
+            controller.statusItemLengthForTesting ?? .nan,
+            initialLength + 20,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            menuItemIdentities,
+            "continuous width updates must not rebuild the status menu"
+        )
 
         controller.teardown()
         controller.teardown()

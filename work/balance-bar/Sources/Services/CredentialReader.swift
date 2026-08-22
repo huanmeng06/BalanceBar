@@ -5,6 +5,11 @@ struct CredentialProcessResult {
     let standardOutput: Data
 }
 
+struct CodexAccountProfile: Equatable {
+    let email: String?
+    let planType: String?
+}
+
 protocol CredentialFileReading {
     func readData(from url: URL) throws -> Data
 }
@@ -59,6 +64,16 @@ struct CredentialReader {
         return Self.codexAccessToken(from: data)
     }
 
+    func codexAccountEmail() -> String? {
+        codexAccountProfile()?.email
+    }
+
+    func codexAccountProfile() -> CodexAccountProfile? {
+        let authURL = homeDirectoryURL.appendingPathComponent(".codex/auth.json")
+        guard let data = try? fileReader.readData(from: authURL) else { return nil }
+        return Self.codexAccountProfile(from: data)
+    }
+
     func claudeAccessToken() -> String? {
         if let result = try? processRunner.run(arguments: [
             "find-generic-password", "-s", "Claude Code-credentials", "-w"
@@ -78,6 +93,61 @@ struct CredentialReader {
               let token = tokens["access_token"] as? String,
               !token.isEmpty else { return nil }
         return token
+    }
+
+    static func codexAccountEmail(from data: Data) -> String? {
+        codexAccountProfile(from: data)?.email
+    }
+
+    static func codexAccountProfile(from data: Data) -> CodexAccountProfile? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokens = object["tokens"] as? [String: Any] else { return nil }
+        let claims: [String: Any]?
+        if let idToken = tokens["id_token"] as? String {
+            claims = Self.jwtPayload(fromIDToken: idToken)
+        } else {
+            claims = tokens["id_token"] as? [String: Any]
+        }
+        guard let claims else { return nil }
+        let email = (claims["email"] as? String).flatMap(Self.normalizedEmail)
+        let authClaims = claims["https://api.openai.com/auth"] as? [String: Any]
+        let planType = (
+            claims["chatgpt_plan_type"] as? String
+                ?? authClaims?["chatgpt_plan_type"] as? String
+        )?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return CodexAccountProfile(
+            email: email,
+            planType: planType?.isEmpty == true ? nil : planType
+        )
+    }
+
+    static func codexAccountEmail(fromIDToken idToken: String) -> String? {
+        guard let claims = Self.jwtPayload(fromIDToken: idToken),
+              let email = claims["email"] as? String else { return nil }
+        return Self.normalizedEmail(email)
+    }
+
+    private static func jwtPayload(fromIDToken idToken: String) -> [String: Any]? {
+        let segments = idToken.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count >= 2 else { return nil }
+
+        var encodedPayload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = (4 - encodedPayload.count % 4) % 4
+        encodedPayload += String(repeating: "=", count: padding)
+
+        guard let payloadData = Data(base64Encoded: encodedPayload) else { return nil }
+        return try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
+    }
+
+    private static func normalizedEmail(_ email: String) -> String? {
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              normalized.contains("@"),
+              !normalized.contains(where: { $0.isWhitespace }) else { return nil }
+        return normalized
     }
 
     static func claudeAccessToken(from data: Data) -> String? {

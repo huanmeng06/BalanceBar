@@ -953,6 +953,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
+            openAIAccount: nil,
             statusLinks: [
                 StatusLink(title: "Status", url: "https://status.example")
             ],
@@ -981,6 +982,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             choices: [],
             quickSwitchSummaries: [:],
             activeClient: .codex,
+            openAIAccount: nil,
             statusLinks: [
                 StatusLink(title: "Status", url: "https://status.example")
             ],
@@ -1002,6 +1004,210 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNil(
             controller.menuItemsForTesting.first {
                 $0.title == "查看状态" || $0.title == "View Status"
+            }
+        )
+    }
+
+    func testOpenAIAccountSubtitleMarqueesLongEmailsAndHidesOutsideOfficialCodex() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        func input(account: OpenAIAccountPresentation?) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(
+                openCodexCards: [],
+                openCodexState: nil,
+                openCodexSwitchInFlight: false,
+                choices: [],
+                quickSwitchSummaries: [:],
+                activeClient: .codex,
+                openAIAccount: account,
+                statusLinks: [],
+                showQuickSwitchMenu: false,
+                showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false,
+                showOpenCodexMenu: false,
+                showStatusMenu: false
+            )
+        }
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let longEmail = String(repeating: "very-long-address-", count: 8) + "@example.com"
+        controller.start(
+            snapshot: .official("OpenAI Official", 83, "7-Day Quota", "2 hours", date),
+            refreshDate: date,
+            menuInput: input(account: OpenAIAccountPresentation(email: longEmail, subscription: .proFiveX)),
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let accountView = try XCTUnwrap(
+            overview.subviews.compactMap { $0 as? AccountMarqueeView }.first
+        )
+        let accountLabel = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue.contains("@")
+            }
+        )
+        XCTAssertEqual(accountLabel.font?.pointSize, 13)
+        XCTAssertEqual(accountLabel.textColor, .secondaryLabelColor)
+        XCTAssertEqual(accountLabel.lineBreakMode, .byClipping)
+        XCTAssertEqual(accountLabel.stringValue, longEmail)
+        XCTAssertTrue(accountView.isScrollable)
+        XCTAssertTrue(accountView.showsEdgeFade)
+        XCTAssertGreaterThan(accountView.accountLabel.frame.width, accountView.bounds.width)
+        XCTAssertEqual(accountView.accountLabel.frame.minX, 0)
+        XCTAssertEqual(accountView.edgeFadeInset, 8, accuracy: 0.001)
+        XCTAssertEqual(
+            accountView.measuredTextWidth - accountView.scrollOverflow,
+            accountView.bounds.width - accountView.edgeFadeInset,
+            accuracy: 0.5
+        )
+        let edgeFadeMask = try XCTUnwrap(accountView.layer?.mask as? CAGradientLayer)
+        XCTAssertEqual(edgeFadeMask.locations?.count, 4)
+        XCTAssertGreaterThan(edgeFadeMask.locations?[1].doubleValue ?? 0, 0)
+        XCTAssertLessThan(edgeFadeMask.locations?[2].doubleValue ?? 1, 1)
+        let scrollAnimation = AccountMarqueeView.scrollAnimation(
+            forOverflow: accountView.measuredTextWidth - accountView.bounds.width
+        )
+        XCTAssertEqual(scrollAnimation.values?.count, 5)
+        let keyTimes = try XCTUnwrap(scrollAnimation.keyTimes)
+        XCTAssertEqual(keyTimes.count, 5)
+        XCTAssertEqual(keyTimes[1].doubleValue, 0.16, accuracy: 0.001)
+        XCTAssertEqual(keyTimes[3].doubleValue, 0.66, accuracy: 0.001)
+        XCTAssertEqual(
+            keyTimes[1].doubleValue - keyTimes[0].doubleValue,
+            keyTimes[3].doubleValue - keyTimes[2].doubleValue,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            keyTimes[2].doubleValue - keyTimes[1].doubleValue,
+            keyTimes[4].doubleValue - keyTimes[3].doubleValue,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(scrollAnimation.repeatCount, .infinity)
+        XCTAssertGreaterThan(scrollAnimation.duration, 0)
+        XCTAssertEqual(
+            accountView.frame,
+            try XCTUnwrap(
+                OpenCodexCardLayout.frames(
+                    for: .quota,
+                    includesAccount: true,
+                    includesSubscription: true
+                ).account
+            )
+        )
+        XCTAssertLessThanOrEqual(accountView.frame.maxX, overview.bounds.maxX)
+        let subscriptionLabel = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == "Pro · 5x"
+            }
+        )
+        XCTAssertEqual(subscriptionLabel.font?.pointSize, 13)
+        XCTAssertEqual(subscriptionLabel.textColor, .secondaryLabelColor)
+        XCTAssertEqual(subscriptionLabel.alignment, .right)
+        XCTAssertEqual(subscriptionLabel.lineBreakMode, .byTruncatingTail)
+        let subscriptionFrame = try XCTUnwrap(
+            OpenCodexCardLayout.frames(
+                for: .quota,
+                includesAccount: true,
+                includesSubscription: true
+            ).subscription
+        )
+        XCTAssertEqual(subscriptionLabel.frame, subscriptionFrame)
+        XCTAssertTrue(subscriptionLabel.superview === overview)
+        XCTAssertEqual(accountView.frame.minY, subscriptionLabel.frame.minY)
+        XCTAssertEqual(accountView.frame.height, subscriptionLabel.frame.height)
+        XCTAssertLessThanOrEqual(accountView.frame.maxX, subscriptionLabel.frame.minX)
+        XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
+        XCTAssertNotNil(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == "83%"
+            }
+        )
+
+        controller.updateMenu(
+            input: input(account: OpenAIAccountPresentation(email: "person@example.com", subscription: .proTwentyX))
+        )
+        let switchedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let switchedAccountView = try XCTUnwrap(
+            switchedOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first
+        )
+        XCTAssertFalse(switchedAccountView.isScrollable)
+        XCTAssertFalse(switchedAccountView.showsEdgeFade)
+        XCTAssertEqual(switchedAccountView.accountLabel.frame.width, switchedAccountView.bounds.width)
+        XCTAssertNil(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue.contains(longEmail)
+            }
+        )
+        XCTAssertEqual(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue == "person@example.com"
+            }?.stringValue,
+            "person@example.com"
+        )
+        XCTAssertNotNil(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue == "Pro · 20x"
+            }
+        )
+        XCTAssertNil(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue == "Pro · 5x"
+            }
+        )
+
+        controller.updateMenu(
+            input: input(account: OpenAIAccountPresentation(email: nil))
+        )
+        let unavailableOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertNotNil(
+            allControls(of: unavailableOverview, as: NSTextField.self).first {
+                $0.stringValue == "Account unavailable"
+            }
+        )
+
+        controller.update(
+            snapshot: .balance(
+                "Relay",
+                12.34,
+                "USD",
+                URL(string: "https://relay.example"),
+                date
+            ),
+            refreshDate: date,
+            menuInput: input(account: nil),
+            settings: settings
+        )
+        let nonOfficialOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertFalse(
+            allControls(of: nonOfficialOverview, as: NSTextField.self).contains {
+                $0.stringValue.contains("Account") || $0.stringValue.contains("account-")
             }
         )
     }
@@ -1050,6 +1256,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                             choices: choices,
                             quickSwitchSummaries: [:],
                             activeClient: .claude,
+                            openAIAccount: nil,
                             statusLinks: [
                                 StatusLink(title: "Status", url: "https://status.example")
                             ],

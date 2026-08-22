@@ -40,6 +40,7 @@ enum OfficialQuotaCredentialSource: String, Hashable {
 
 protocol OfficialQuotaCredentialReading {
     func codexAccessToken() -> String?
+    func codexAccountProfile() -> CodexAccountProfile?
     func claudeAccessToken() -> String?
 }
 
@@ -145,6 +146,12 @@ final class OfficialQuotaClient {
         self.session = session
         self.credentialReader = credentialReader
         self.parser = parser
+    }
+
+    /// Reads the same Codex auth source used by official quota requests. The
+    /// returned profile contains only display-safe claims, never token material.
+    func codexAccountProfile() -> CodexAccountProfile? {
+        credentialReader.codexAccountProfile()
     }
 
     static func credentialSource(

@@ -1,5 +1,269 @@
 import AppKit
 import Foundation
+import QuartzCore
+
+enum MenuBarWidthPerformance {
+    #if DEBUG
+    private static let log = OSLog(
+        subsystem: "com.huanmeng06.BalanceBar",
+        category: "menu-bar-width"
+    )
+
+    @inline(__always)
+    static func measure(_ name: StaticString, _ body: () -> Void) {
+        let signpostID = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: name, signpostID: signpostID)
+        body()
+        os_signpost(.end, log: log, name: name, signpostID: signpostID)
+    }
+    #else
+    @inline(__always)
+    static func measure(_ name: StaticString, _ body: () -> Void) {
+        body()
+    }
+    #endif
+}
+
+/// Coalesces continuous width changes to display refreshes without making the
+/// slider's mouse-tracking action perform the expensive status-bar update.
+/// The display link runs in the common main run-loop modes so it continues
+/// during AppKit slider tracking.
+final class MenuBarWidthDisplayCoalescer: NSObject {
+    private let apply: (CGFloat) -> Void
+    private var pendingValue: CGFloat?
+    private var displayLink: CADisplayLink?
+    private var fallbackTimer: Timer?
+
+    init(apply: @escaping (CGFloat) -> Void) {
+        self.apply = apply
+        super.init()
+    }
+
+    func submit(_ value: CGFloat) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        pendingValue = value
+        guard displayLink == nil, fallbackTimer == nil else { return }
+        startRefreshSource()
+    }
+
+    func flush() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        stopRefreshSource()
+        let value = pendingValue
+        pendingValue = nil
+        if let value {
+            apply(value)
+        }
+    }
+
+    func cancel() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        stopRefreshSource()
+        pendingValue = nil
+    }
+
+    private func startRefreshSource() {
+        if #available(macOS 14.0, *), let screen = NSScreen.main {
+            let link = screen.displayLink(
+                target: self,
+                selector: #selector(displayLinkDidRefresh(_:))
+            )
+            displayLink = link
+            link.add(to: .main, forMode: .common)
+        } else {
+            startFallbackTimer()
+        }
+    }
+
+    private func startFallbackTimer() {
+        let framesPerSecond = max(1, NSScreen.main?.maximumFramesPerSecond ?? 60)
+        let timer = Timer(
+            timeInterval: 1.0 / Double(framesPerSecond),
+            repeats: true
+        ) { [weak self] _ in
+            self?.flushOneFrame()
+        }
+        fallbackTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopRefreshSource() {
+        if let displayLink {
+            displayLink.invalidate()
+            self.displayLink = nil
+        }
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+    }
+
+    @objc private func displayLinkDidRefresh(_ displayLink: CADisplayLink) {
+        flushOneFrame()
+    }
+
+    private func flushOneFrame() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let value = pendingValue
+        pendingValue = nil
+        guard let value else {
+            stopRefreshSource()
+            return
+        }
+        apply(value)
+
+        if pendingValue == nil {
+            stopRefreshSource()
+        }
+    }
+}
+
+final class AccountMarqueeView: NSView {
+    static let animationKey = "BalanceBar.accountMarquee"
+    private static let edgeFadeWidth: CGFloat = 8
+    private static let minimumScrollDuration: TimeInterval = 5
+    private static let scrollPixelsPerSecond: CGFloat = 24
+
+    let accountLabel: NSTextField
+    private(set) var measuredTextWidth: CGFloat = 0
+    private(set) var isScrollable = false
+    private(set) var showsEdgeFade = false
+    private(set) var edgeFadeInset: CGFloat = 0
+    private(set) var scrollOverflow: CGFloat = 0
+
+    private var edgeFadeMask: CAGradientLayer?
+
+    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect) {
+        accountLabel = NSTextField(labelWithString: text)
+        super.init(frame: frame)
+
+        wantsLayer = true
+        layer?.masksToBounds = true
+
+        accountLabel.font = font
+        accountLabel.textColor = textColor
+        accountLabel.alignment = .left
+        accountLabel.lineBreakMode = .byClipping
+        accountLabel.usesSingleLineMode = true
+        accountLabel.maximumNumberOfLines = 1
+        accountLabel.wantsLayer = true
+        addSubview(accountLabel)
+
+        configureContent()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        edgeFadeMask?.frame = bounds
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            stopScrolling()
+        } else {
+            startScrollingIfNeeded()
+        }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        startScrollingIfNeeded()
+    }
+
+    deinit {
+        stopScrolling()
+    }
+
+    private func configureContent() {
+        measuredTextWidth = Self.textWidth(of: accountLabel.stringValue, font: accountLabel.font ?? .systemFont(ofSize: 13))
+        isScrollable = measuredTextWidth > bounds.width + 0.5
+        edgeFadeInset = isScrollable && bounds.width > 0
+            ? min(Self.edgeFadeWidth, bounds.width / 4)
+            : 0
+        let contentWidth = isScrollable
+            ? measuredTextWidth + edgeFadeInset
+            : max(bounds.width, measuredTextWidth)
+        accountLabel.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: contentWidth,
+            height: bounds.height
+        )
+        scrollOverflow = max(0, accountLabel.frame.maxX - bounds.width)
+
+        guard isScrollable, bounds.width > 0 else {
+            layer?.mask = nil
+            edgeFadeMask = nil
+            showsEdgeFade = false
+            return
+        }
+
+        let mask = CAGradientLayer()
+        mask.colors = [
+            NSColor.clear.cgColor,
+            NSColor.black.cgColor,
+            NSColor.black.cgColor,
+            NSColor.clear.cgColor
+        ]
+        let fadeWidth = edgeFadeInset
+        let fadeFraction = fadeWidth / bounds.width
+        mask.locations = [
+            0,
+            NSNumber(value: Double(fadeFraction)),
+            NSNumber(value: Double(1 - fadeFraction)),
+            1
+        ]
+        mask.frame = bounds
+        edgeFadeMask = mask
+        layer?.mask = mask
+        showsEdgeFade = true
+    }
+
+    private func startScrollingIfNeeded() {
+        guard isScrollable,
+              window != nil,
+              accountLabel.layer != nil,
+              accountLabel.layer?.animation(forKey: Self.animationKey) == nil else {
+            return
+        }
+
+        let overflow = scrollOverflow
+        guard overflow > 0 else { return }
+
+        let animation = Self.scrollAnimation(forOverflow: overflow)
+        accountLabel.layer?.add(animation, forKey: Self.animationKey)
+    }
+
+    private func stopScrolling() {
+        accountLabel.layer?.removeAnimation(forKey: Self.animationKey)
+    }
+
+    static func textWidth(of text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
+        let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
+        let offset = NSNumber(value: -Double(max(0, overflow)))
+        animation.values = [0, 0, offset, offset, 0]
+        animation.keyTimes = [0, 0.16, 0.5, 0.66, 1]
+        animation.duration = max(
+            minimumScrollDuration,
+            Double(max(0, overflow) / scrollPixelsPerSecond) + 4
+        )
+        animation.repeatCount = .infinity
+        animation.timingFunctions = [
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut)
+        ]
+        return animation
+    }
+}
 
 final class StatusItemController: NSObject, NSMenuDelegate {
     struct Actions {
@@ -26,6 +290,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let iconOffsetY: CGFloat
         let amountOffsetX: CGFloat
         let amountOffsetY: CGFloat
+        var widthAdjustment: CGFloat
 
         init(
             showIcon: Bool,
@@ -36,7 +301,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             iconOffsetX: CGFloat = 0,
             iconOffsetY: CGFloat = 0,
             amountOffsetX: CGFloat = 0,
-            amountOffsetY: CGFloat = 0
+            amountOffsetY: CGFloat = 0,
+            widthAdjustment: CGFloat = 0
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -47,6 +313,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.iconOffsetY = iconOffsetY
             self.amountOffsetX = amountOffsetX
             self.amountOffsetY = amountOffsetY
+            self.widthAdjustment = widthAdjustment
         }
     }
 
@@ -57,6 +324,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let choices: [ProviderChoice]
         let quickSwitchSummaries: [String: String]
         let activeClient: AssistantClient
+        let openAIAccount: OpenAIAccountPresentation?
         let statusLinks: [StatusLink]
         let showQuickSwitchMenu: Bool
         let showOpenChatGPTMenu: Bool
@@ -91,6 +359,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         choices: [],
         quickSwitchSummaries: [:],
         activeClient: .codex,
+        openAIAccount: nil,
         statusLinks: [],
         showQuickSwitchMenu: true,
         showOpenChatGPTMenu: true,
@@ -109,6 +378,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var isCodexTaskRunning = false
     private var isClaudeTaskRunning = false
     private var animationEnabled = true
+    private var lastMenuBarGeometry: MenuBarGeometry?
+    private var lastMenuBarIconYOffset: CGFloat = 0
+    private var lastMenuBarOfficialTextYOffset: CGFloat = 0
+    private var lastMenuBarEffectiveSnapshot = Snapshot.placeholder
     private let actions: Actions
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
@@ -116,6 +389,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var isMenuTracking: Bool { isStatusMenuTracking }
     var iconImage: NSImage? { menuBarIconView.image }
+
+    // Exposes the controller's current outer footprint for headless layout
+    // tests without exposing the underlying NSStatusItem.
+    var statusItemLengthForTesting: CGFloat? { statusItem?.length }
 
     // Exposes the controller's actual menu for headless production-path tests.
     // The application still owns and renders this same NSMenu instance.
@@ -157,6 +434,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
         lastMenuBarIconFrameDiagnostic = nil
+        lastMenuBarGeometry = nil
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
         menuBarIconView.onImageChanged = nil
@@ -181,6 +459,42 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.settings = settings
         layoutStatusItem(for: snapshot)
         rebuildOrDeferMenu()
+    }
+
+    /// Applies one already-coalesced width value to the status item. The
+    /// application owns the display-frame coalescer so the Dashboard preview
+    /// and the real menu-bar card consume the same value on the same frame.
+    func updateWidthAdjustment(_ widthAdjustment: CGFloat) {
+        settings.widthAdjustment = widthAdjustment
+        applyPendingWidthAdjustment(widthAdjustment)
+    }
+
+    private func applyPendingWidthAdjustment(_ widthAdjustment: CGFloat) {
+        guard let statusItem,
+              let button = statusItem.button,
+              let geometry = lastMenuBarGeometry else {
+            return
+        }
+
+        let requestedLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: settings.horizontalPadding,
+            widthAdjustment: widthAdjustment
+        )
+        guard requestedLength != statusItem.length else { return }
+        MenuBarWidthPerformance.measure("statusItem.length") {
+            statusItem.length = requestedLength
+        }
+        MenuBarWidthPerformance.measure("content-frames") {
+            applyMenuBarContentFrames(
+                button: button,
+                buttonSize: NSSize(width: requestedLength, height: button.bounds.height),
+                geometry: geometry,
+                iconViewYOffset: lastMenuBarIconYOffset,
+                effectiveSnapshot: lastMenuBarEffectiveSnapshot,
+                officialTextYOffset: lastMenuBarOfficialTextYOffset
+            )
+        }
     }
 
     func updateMenu(input: MenuInput) {
@@ -476,24 +790,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hasSecondary: hasSecondary
         )
 
-        statusItem.length = max(
-            30,
-            ceil(geometry.contentWidth + (settings.horizontalPadding * 2))
+        statusItem.length = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: settings.horizontalPadding,
+            widthAdjustment: settings.widthAdjustment
         )
         button.layoutSubtreeIfNeeded()
 
-        // AppKit can update the status button's bounds one run-loop turn
-        // after `statusItem.length` changes. Use the requested status-item
-        // footprint as the horizontal background geometry immediately, so
-        // toggling the icon cannot leave the amount centered against the
-        // previous icon-inclusive width. The height still comes from the
-        // actual button.
-        let backgroundBounds = NSRect(
-            x: button.bounds.minX,
-            y: button.bounds.minY,
-            width: max(0, statusItem.length),
-            height: button.bounds.height
-        )
         let buttonHeight = button.bounds.height
         let apiIconYOffset = settings.showIcon && settings.showAmount
             ? MenuBarLayout.singleLineIconYOffset
@@ -526,10 +829,58 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             officialTextYOffset = 0
         }
+        lastMenuBarGeometry = geometry
+        lastMenuBarIconYOffset = iconYOffset
+        lastMenuBarOfficialTextYOffset = officialTextYOffset
+        lastMenuBarEffectiveSnapshot = effectiveSnapshot
+        applyMenuBarContentFrames(
+            button: button,
+            // AppKit can update the status button's bounds one run-loop turn
+            // after `statusItem.length` changes. Pass the requested footprint
+            // immediately so toggling the icon cannot leave the amount
+            // centered against the previous icon-inclusive width.
+            buttonSize: NSSize(width: max(0, statusItem.length), height: buttonHeight),
+            geometry: geometry,
+            iconViewYOffset: iconYOffset,
+            effectiveSnapshot: effectiveSnapshot,
+            officialTextYOffset: officialTextYOffset
+        )
+        logMenuBarIconFrames(
+            snapshot: effectiveSnapshot,
+            button: button,
+            hasSecondary: hasSecondary,
+            iconYOffset: iconYOffset
+        )
+        button.toolTip = effectiveSnapshot.menuBarToolTip
+        button.isHidden = false
+        button.isEnabled = true
+        statusItem.isVisible = true
+    }
+
+    private func applyMenuBarContentFrames(
+        button: NSStatusBarButton,
+        buttonSize: NSSize? = nil,
+        geometry: MenuBarGeometry,
+        iconViewYOffset: CGFloat,
+        effectiveSnapshot: Snapshot,
+        officialTextYOffset: CGFloat
+    ) {
+        // Use the requested status-item footprint as the horizontal background
+        // geometry immediately; the actual button height remains authoritative.
+        let effectiveButtonSize = buttonSize ?? NSSize(
+            width: max(0, statusItem?.length ?? button.bounds.width),
+            height: button.bounds.height
+        )
+        let backgroundBounds = NSRect(
+            x: button.bounds.minX,
+            y: button.bounds.minY,
+            width: max(0, effectiveButtonSize.width),
+            height: max(0, effectiveButtonSize.height)
+        )
         let frames = MenuBarLayout.frames(
             buttonSize: backgroundBounds.size,
             geometry: geometry,
-            iconViewYOffset: iconYOffset,
+            iconViewYOffset: iconViewYOffset,
             iconOffset: NSSize(
                 width: settings.iconOffsetX,
                 height: settings.iconOffsetY
@@ -561,16 +912,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 y: -MenuBarLayout.singleLineTextYOffset
             ))
         }
-        logMenuBarIconFrames(
-            snapshot: effectiveSnapshot,
-            button: button,
-            hasSecondary: hasSecondary,
-            iconYOffset: iconYOffset
-        )
-        button.toolTip = effectiveSnapshot.menuBarToolTip
-        button.isHidden = false
-        button.isEnabled = true
-        statusItem.isVisible = true
     }
 
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {
@@ -813,7 +1154,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let isBalance = snapshot.kind == .balance
         let layout = OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
-            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
+            linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
+            includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
+            includesSubscription: snapshot.kind == .official && menuInput.openAIAccount?.subscription != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -826,6 +1169,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             refreshTime.alignment = .right
             refreshTime.frame = layout.refreshTime
             view.addSubview(refreshTime)
+        }
+        if let account = menuInput.openAIAccount, let accountFrame = layout.account {
+            let accountLabel = makeAccountLabel(
+                account.text(),
+                frame: accountFrame
+            )
+            view.addSubview(accountLabel)
+        }
+        if let subscription = menuInput.openAIAccount?.subscription,
+           let subscriptionFrame = layout.subscription {
+            view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
         if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
@@ -991,11 +1345,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = false
         let message = snapshot.overviewReset(refreshDate: nil, formatter: Self.timeFormatter)
-        let frames = ErrorCardLayout.errorFrames(for: message)
+        let frames = ErrorCardLayout.errorFrames(
+            for: message,
+            includesAccount: menuInput.openAIAccount != nil,
+            includesSubscription: menuInput.openAIAccount?.subscription != nil
+        )
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
         provider.frame = frames.title
         view.addSubview(provider)
+        if let account = menuInput.openAIAccount, let accountFrame = frames.account {
+            let accountLabel = makeAccountLabel(
+                account.text(),
+                frame: accountFrame
+            )
+            view.addSubview(accountLabel)
+        }
+        if let subscription = menuInput.openAIAccount?.subscription,
+           let subscriptionFrame = frames.subscription {
+            view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
+        }
         let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
         let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
             timeText,
@@ -1026,6 +1395,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
         return label
+    }
+
+    private func makeSubscriptionLabel(_ text: String, frame: NSRect) -> NSTextField {
+        let label = makeOverviewLabel(text, font: .systemFont(ofSize: 13, weight: .regular))
+        label.textColor = .secondaryLabelColor
+        label.alignment = .right
+        label.frame = frame
+        return label
+    }
+
+    private func makeAccountLabel(_ text: String, frame: NSRect) -> AccountMarqueeView {
+        AccountMarqueeView(
+            text: text,
+            font: .systemFont(ofSize: 13, weight: .regular),
+            textColor: .secondaryLabelColor,
+            frame: frame
+        )
     }
 
     static func formatBalanceSummary(_ amount: Double, unit: String) -> String {

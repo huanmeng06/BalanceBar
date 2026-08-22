@@ -119,6 +119,66 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarIconOffsetY, 0.7, accuracy: 0.001)
     }
 
+    func testMenuBarStatusItemWidthAdjustmentDefaultsPersistsAndClamps() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            preferences.menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
+            -20,
+            accuracy: 0.001
+        )
+
+        preferences.menuBarStatusItemWidthAdjustment = 0.3
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.3, accuracy: 0.001)
+        XCTAssertEqual(
+            defaults.double(forKey: AppPreferences.menuBarStatusItemWidthAdjustmentKey),
+            0.3,
+            accuracy: 0.001
+        )
+
+        preferences.menuBarStatusItemWidthAdjustment = 100
+        XCTAssertEqual(
+            preferences.menuBarStatusItemWidthAdjustment,
+            AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound,
+            accuracy: 0.001
+        )
+        preferences.menuBarStatusItemWidthAdjustment = -100
+        XCTAssertEqual(
+            preferences.menuBarStatusItemWidthAdjustment,
+            AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound,
+            accuracy: 0.001
+        )
+        preferences.menuBarStatusItemWidthAdjustment = 20
+        XCTAssertEqual(
+            preferences.menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
+            0,
+            accuracy: 0.001
+        )
+
+        defaults.set(0.15, forKey: AppPreferences.menuBarStatusItemWidthAdjustmentKey)
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.2, accuracy: 0.001)
+    }
+
+    func testMenuBarStatusItemWidthAdjustmentSessionDoesNotPersistDuringDrag() {
+        var session = MenuBarStatusItemWidthAdjustmentSession()
+
+        XCTAssertNil(session.transientValue)
+        XCTAssertEqual(session.update(7.44), 7.4, accuracy: 0.001)
+        XCTAssertEqual(session.transientValue ?? .nan, 7.4, accuracy: 0.001)
+
+        var persistedValues: [Double] = []
+        let finalValue = session.finish(20.06) { persistedValues.append($0) }
+        XCTAssertEqual(finalValue, 20, accuracy: 0.001)
+        XCTAssertEqual(persistedValues, [20])
+        XCTAssertNil(session.transientValue)
+
+        _ = session.update(12.3)
+        session.cancel()
+        XCTAssertNil(session.transientValue)
+    }
+
     func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

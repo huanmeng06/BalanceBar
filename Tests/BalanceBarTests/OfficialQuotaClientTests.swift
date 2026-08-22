@@ -122,9 +122,21 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     private struct FixtureCredentialReader: OfficialQuotaCredentialReading {
         let codexToken: String?
+        let codexAccountProfileValue: CodexAccountProfile?
         let claudeToken: String?
 
+        init(
+            codexToken: String?,
+            codexAccountProfile: CodexAccountProfile? = nil,
+            claudeToken: String?
+        ) {
+            self.codexToken = codexToken
+            self.codexAccountProfileValue = codexAccountProfile
+            self.claudeToken = claudeToken
+        }
+
         func codexAccessToken() -> String? { codexToken }
+        func codexAccountProfile() -> CodexAccountProfile? { codexAccountProfileValue }
         func claudeAccessToken() -> String? { claudeToken }
     }
 
@@ -207,6 +219,17 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertEqual(
             request.value(forHTTPHeaderField: "Authorization"),
             "Bearer fixture-stored-value"
+        )
+    }
+
+    func testCodexAccountProfileUsesTheOfficialCredentialReaderSource() {
+        let client = makeClient(
+            codexAccountProfile: CodexAccountProfile(email: "person@example.com", planType: "prolite")
+        )
+
+        XCTAssertEqual(
+            client.codexAccountProfile(),
+            CodexAccountProfile(email: "person@example.com", planType: "prolite")
         )
     }
 
@@ -449,12 +472,14 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     private func makeClient(
         codexToken: String? = nil,
-        claudeToken: String? = nil
+        claudeToken: String? = nil,
+        codexAccountProfile: CodexAccountProfile? = nil
     ) -> OfficialQuotaClient {
         OfficialQuotaClient(
             session: session,
             credentialReader: FixtureCredentialReader(
                 codexToken: codexToken,
+                codexAccountProfile: codexAccountProfile,
                 claudeToken: claudeToken
             ),
             parser: DefaultOfficialQuotaParser {

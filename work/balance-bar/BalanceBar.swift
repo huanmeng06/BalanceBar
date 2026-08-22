@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -191,6 +191,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
             onOffsetAdjust: { [weak self] identifier, delta in
                 self?.handleDashboardOffsetAdjust(identifier: identifier, delta: delta)
+            },
+            onOffsetValue: { [weak self] identifier, value in
+                self?.handleDashboardOffsetValue(identifier: identifier, value: value)
+            },
+            onOffsetValueEnded: { [weak self] identifier, value in
+                self?.handleDashboardOffsetValueEnded(identifier: identifier, value: value)
             },
             onOffsetReset: { [weak self] identifier in
                 self?.handleDashboardOffsetReset(identifier: identifier)
@@ -255,6 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient = BalanceAPIClient()
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
@@ -282,6 +289,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarIconOffsetY: Double { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
     private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
+    private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
+    private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
+        self?.applyMenuBarWidthAdjustmentFrame(value)
+    }
+    private var menuBarStatusItemWidthAdjustment: Double {
+        menuBarStatusItemWidthAdjustmentSession.transientValue
+            ?? preferences.menuBarStatusItemWidthAdjustment
+    }
+    private var menuBarStatusItemPhysicalWidthAdjustment: Double {
+        menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+    }
     private var openCodexDashboardPortOverride: Int? {
         get { preferences.openCodexDashboardPortOverride }
         set { preferences.openCodexDashboardPortOverride = newValue }
@@ -304,6 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateService: UpdateService? = nil
     ) {
         self.ccSwitchRepository = repository
+        self.officialQuotaClient = officialQuotaClient
         self.updateService = updateService ?? UpdateService()
         super.init()
         self.updateService.onStateChange = { [weak self] _ in
@@ -314,6 +333,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
             onChange: { [weak self] in
+                DispatchQueue.main.async { [weak self] in
+                    self?.refreshStatusItemMenuInput()
+                }
                 self?.refresh(reason: .configurationChanged)
                 self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: self?.activeClient ?? .codex)
             }
@@ -384,6 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     self.lastOpenCodexFetch = nil
                     self.openCodexRefreshCoordinator.clear()
                     DispatchQueue.main.async {
+                        self.refreshStatusItemMenuInput()
                         self.openCodexState = nil
                         self.openCodexCards = []
                         self.openCodexSwitchInFlight = false
@@ -450,13 +473,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
-        StatusItemController.MenuInput(
+        let currentProvider = ccSwitchRepository.loadCurrent(appType: activeClient.appType)
+        let isOfficialOpenAICodex = activeClient == .codex && currentProvider?.isOfficial == true
+        let accountProfile = isOfficialOpenAICodex
+            ? officialQuotaClient.codexAccountProfile()
+            : nil
+        let openAIAccount = OpenAIAccountPresentation.current(
+            activeClient: activeClient,
+            providerIsOfficial: isOfficialOpenAICodex,
+            email: accountProfile?.email,
+            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
+        )
+        return StatusItemController.MenuInput(
             openCodexCards: openCodexCards,
             openCodexState: openCodexState?.state,
             openCodexSwitchInFlight: openCodexSwitchInFlight,
             choices: ccSwitchRepository.loadChoices(appType: activeClient.appType),
             quickSwitchSummaries: quickSwitchSummariesSnapshot(),
             activeClient: activeClient,
+            openAIAccount: openAIAccount,
             statusLinks: statusLinks,
             showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: showOpenChatGPTMenu,
@@ -497,7 +532,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconOffsetX: CGFloat(menuBarIconOffsetX),
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
-            amountOffsetY: CGFloat(menuBarAmountOffsetY)
+            amountOffsetY: CGFloat(menuBarAmountOffsetY),
+            widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
         )
     }
 
@@ -575,6 +611,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         activityCoordinator.stop()
+        menuBarWidthAdjustmentCoalescer.cancel()
+        menuBarStatusItemWidthAdjustmentSession.cancel()
         dashboardComposition.teardown()
         statusItemController.teardown()
         databaseWatcher.stop()
@@ -598,8 +636,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "manual refresh requested; source=\(source); client=\(activeClient.rawValue)",
             category: "refresh"
         )
+        refreshStatusItemMenuInput()
         refresh(reason: .manual)
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
+    }
+
+    private func refreshStatusItemMenuInput() {
+        statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
     private func switchProvider(_ providerID: String) {
@@ -831,10 +874,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             return
         }
         SwitchLog.write(
-            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardOffsetValue(identifier: String, value: Double) {
+        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+            return
+        }
+        // NSSlider sends this action continuously. Keep the value transient:
+        // UserDefaults and logging belong to the editing-ended path, not the
+        // mouse-tracking hot path.
+        let transientValue = menuBarStatusItemWidthAdjustmentSession.update(value)
+        MenuBarWidthPerformance.measure("slider-action") {
+            menuBarWidthAdjustmentCoalescer.submit(CGFloat(transientValue))
+        }
+    }
+
+    private func handleDashboardOffsetValueEnded(identifier: String, value: Double) {
+        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+            return
+        }
+        let appPreferences = preferences
+        let finalValue = menuBarStatusItemWidthAdjustmentSession.finish(value) { finalValue in
+            appPreferences.menuBarStatusItemWidthAdjustment = finalValue
+        }
+        menuBarWidthAdjustmentCoalescer.submit(CGFloat(finalValue))
+        menuBarWidthAdjustmentCoalescer.flush()
+        finishDashboardMenuBarWidthAdjustment(finalValue)
+        SwitchLog.write(
+            "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
+            category: "configuration"
+        )
+    }
+
+    private func applyMenuBarWidthAdjustmentFrame(_ widthAdjustment: CGFloat) {
+        let physicalWidthAdjustment = widthAdjustment
+            + CGFloat(AppPreferences.menuBarStatusItemWidthBaseline)
+        MenuBarWidthPerformance.measure("menu-bar-width-frame") {
+            statusItemController.updateWidthAdjustment(physicalWidthAdjustment)
+            refreshDashboardMenuBarWidthAdjustment(Double(widthAdjustment))
+        }
     }
 
     private func handleDashboardOffsetReset(identifier: String) {
@@ -849,7 +931,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             return
         }
         SwitchLog.write(
-            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
@@ -899,6 +981,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         dashboardComposition.refreshMenuBarPage(snapshot: snapshot)
     }
 
+    private func refreshDashboardMenuBarWidthAdjustment(_ widthAdjustment: Double) {
+        dashboardComposition.refreshMenuBarWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: menuBarHorizontalPadding
+        )
+    }
+
+    private func finishDashboardMenuBarWidthAdjustment(_ widthAdjustment: Double) {
+        dashboardComposition.finishMenuBarWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: menuBarHorizontalPadding
+        )
+    }
+
     private func refreshDashboardOpenCodexSettings() {
         dashboardComposition.refreshOpenCodexSettings()
     }
@@ -907,6 +1003,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         timer?.invalidate()
 
         let providerTimer = Timer(timeInterval: providerPollInterval, repeats: true) { [weak self] _ in
+            self?.refreshStatusItemMenuInput()
             self?.refresh(reason: .scheduled)
             self?.providerRefreshCoordinator.refreshQuickSwitchSummaries(force: false, for: self?.activeClient ?? .codex)
         }
@@ -985,6 +1082,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
         updateStatusItemActivity()
+        refreshStatusItemMenuInput()
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
@@ -1369,6 +1467,8 @@ enum ErrorCardLayout {
     static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
     static let refreshTimeWidth: CGFloat = 81
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
+    static let subscriptionWidth: CGFloat = 78
+    static let subscriptionGap: CGFloat = 8
 
     // Match the compact third-party balance card for a single-line error.
     static let minimumCardHeight: CGFloat = 86
@@ -1384,6 +1484,8 @@ enum ErrorCardLayout {
         let cardSize: NSSize
         let title: NSRect
         let refreshTime: NSRect
+        let account: NSRect?
+        let subscription: NSRect?
         let quotaDetail: NSRect
         let amount: NSRect
         let detail: NSRect
@@ -1444,19 +1546,39 @@ enum ErrorCardLayout {
     /// Frames for the error card. A single-line detail follows the same three
     /// row rhythm as the compact balance card; additional detail lines shift
     /// the rows above upward by only the extra measured height.
-    static func errorFrames(for message: String) -> ErrorFrames {
+    static func errorFrames(
+        for message: String,
+        includesAccount: Bool = false,
+        includesSubscription: Bool = false
+    ) -> ErrorFrames {
         let text = detailText(for: message, width: detailWidth)
         let detailH = measuredHeight(of: text, width: detailWidth)
         let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
-        let cardHeight = minimumCardHeight + extraDetailHeight
+        let hasSubscription = includesAccount && includesSubscription
+        let accountShift: CGFloat = includesAccount ? 19 : 0
+        let accountWidth = hasSubscription
+            ? contentWidth - subscriptionWidth - subscriptionGap
+            : contentWidth
+        let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
         // of the left status/detail region. As that region grows, move the
         // amount by half the extra height to preserve the same optical center.
         let amountY = 5 + extraDetailHeight / 2
         return ErrorFrames(
             cardSize: NSSize(width: cardWidth, height: cardHeight),
-            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: 127, height: 20),
-            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight, width: refreshTimeWidth, height: 17),
+            title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight + accountShift, width: 127, height: 20),
+            refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight + accountShift, width: refreshTimeWidth, height: 17),
+            account: includesAccount
+                ? NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: accountWidth, height: 17)
+                : nil,
+            subscription: hasSubscription
+                ? NSRect(
+                    x: cardWidth - horizontalInset - subscriptionWidth,
+                    y: 58 + extraDetailHeight,
+                    width: subscriptionWidth,
+                    height: 17
+                )
+                : nil,
             quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
             amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
             detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),
