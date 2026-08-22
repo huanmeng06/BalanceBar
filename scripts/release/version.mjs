@@ -2,7 +2,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 export const DEFAULT_PLIST_PATH = "work/balance-bar/Info.plist";
@@ -126,31 +125,9 @@ export function readVersionFromPlist(plistPath = DEFAULT_PLIST_PATH) {
   return readVersionFromPlistContent(fs.readFileSync(plistPath, "utf8"));
 }
 
-function readExistingTags() {
-  try {
-    return execFileSync("git", ["tag", "--list"], { encoding: "utf8" })
-      .split("\n")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-function nextBetaNumber(version, existingTags) {
-  const prefix = `v${version}-beta.`;
-  const numbers = existingTags
-    .filter((tag) => tag.startsWith(prefix))
-    .map((tag) => Number(tag.slice(prefix.length)))
-    .filter((number) => Number.isInteger(number) && number > 0);
-
-  return numbers.length === 0 ? 1 : Math.max(...numbers) + 1;
-}
-
 export function planVersion({
   plistPath = DEFAULT_PLIST_PATH,
   bump,
-  existingTags = [],
 }) {
   if (!BUMP_NAMES.has(bump)) {
     throw new Error(`Bump must be one of patch, minor, major: ${bump}`);
@@ -172,8 +149,7 @@ export function planVersion({
 
   const version = formatSemver(next);
   const prerelease = bump === "patch";
-  const betaNumber = prerelease ? nextBetaNumber(version, existingTags) : null;
-  const tag = prerelease ? `v${version}-beta.${betaNumber}` : `v${version}`;
+  const tag = `v${version}`;
 
   return {
     bump,
@@ -182,7 +158,6 @@ export function planVersion({
     version,
     build: current.build + 1,
     prerelease,
-    betaNumber,
     tag,
   };
 }
@@ -191,7 +166,6 @@ export function planVersionFromChange({
   previousVersion,
   currentVersion,
   currentBuild,
-  existingTags = [],
 }) {
   const bump = classifyVersionChange(previousVersion, currentVersion);
   if (!bump) {
@@ -203,10 +177,7 @@ export function planVersionFromChange({
   }
 
   const prerelease = bump === "patch";
-  const betaNumber = prerelease ? nextBetaNumber(currentVersion, existingTags) : null;
-  const tag = prerelease
-    ? `v${currentVersion}-beta.${betaNumber}`
-    : `v${currentVersion}`;
+  const tag = `v${currentVersion}`;
 
   return {
     bump,
@@ -215,7 +186,6 @@ export function planVersionFromChange({
     version: currentVersion,
     build: currentBuild,
     prerelease,
-    betaNumber,
     tag,
   };
 }
@@ -256,7 +226,6 @@ function writeGithubOutput(plan, outputPath) {
     version: plan.version,
     build: plan.build,
     prerelease: String(plan.prerelease),
-    beta_number: plan.betaNumber ?? "",
     tag: plan.tag,
   };
 
@@ -285,12 +254,10 @@ function main() {
       previousVersion: options["previous-version"],
       currentVersion: options["current-version"],
       currentBuild: Number(options["current-build"]),
-      existingTags: readExistingTags(),
     })
     : planVersion({
       plistPath,
       bump,
-      existingTags: readExistingTags(),
     });
 
   if (command === "bump") {

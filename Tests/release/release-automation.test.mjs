@@ -28,10 +28,10 @@ function fixtureInput() {
     repo: "huanmeng06/BalanceBar",
     currentSha: "1411411411411411411411411411411411411411",
     version: "1.1.5",
-    tag: "v1.1.5-beta.1",
+    tag: "v1.1.5",
     previousTag: "v1.1.0",
     previousVersion: "1.1.0",
-    compareUrl: "https://github.com/huanmeng06/BalanceBar/compare/v1.1.0...v1.1.5-beta.1",
+    compareUrl: "https://github.com/huanmeng06/BalanceBar/compare/v1.1.0...v1.1.5",
     pullRequests: [
       {
         number: 140,
@@ -82,12 +82,11 @@ test("patch and minor plans follow the release policy", () => {
   const patchPlan = planVersion({
     plistPath,
     bump: "patch",
-    existingTags: ["v1.1.5-beta.1"],
   });
   assert.equal(patchPlan.version, "1.1.5");
   assert.equal(patchPlan.build, 29);
   assert.equal(patchPlan.prerelease, true);
-  assert.equal(patchPlan.tag, "v1.1.5-beta.2");
+  assert.equal(patchPlan.tag, "v1.1.5");
 
   const minorPlan = planVersion({ plistPath, bump: "minor" });
   assert.equal(minorPlan.version, "1.2.0");
@@ -111,12 +110,11 @@ test("existing version changes are classified without incrementing again", () =>
     previousVersion: "1.1.3",
     currentVersion: "1.1.4",
     currentBuild: 28,
-    existingTags: ["v1.1.4-beta.1"],
   });
   assert.equal(patchPlan.version, "1.1.4");
   assert.equal(patchPlan.build, 28);
   assert.equal(patchPlan.prerelease, true);
-  assert.equal(patchPlan.tag, "v1.1.4-beta.2");
+  assert.equal(patchPlan.tag, "v1.1.4");
 
   const minorPlan = planVersionFromChange({
     previousVersion: "1.1.4",
@@ -313,7 +311,7 @@ test("release input includes all PRs represented by compare commits", () => {
     previousTag: "v1.1.0",
     currentSha: "merge-141",
     version: "1.1.5",
-    tag: "v1.1.5-beta.1",
+    tag: "v1.1.5",
   });
 
   assert.deepEqual(input.pullRequests.map((pullRequest) => pullRequest.number), [140, 141]);
