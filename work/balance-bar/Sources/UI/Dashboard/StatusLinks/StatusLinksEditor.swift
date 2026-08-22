@@ -192,7 +192,7 @@ private struct StatusLinksResetButton: NSViewRepresentable {
         button.title = title
         button.target = coordinator
         button.action = #selector(Coordinator.reset)
-        button.bezelStyle = .roundRect
+        button.bezelStyle = .rounded
         button.controlSize = .small
         button.font = .systemFont(ofSize: 12)
         button.identifier = NSUserInterfaceItemIdentifier("statusLinks.reset")
