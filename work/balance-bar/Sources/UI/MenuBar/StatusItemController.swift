@@ -482,7 +482,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         button.layoutSubtreeIfNeeded()
 
-        let buttonWidth = button.bounds.width
+        // AppKit can update the status button's bounds one run-loop turn
+        // after `statusItem.length` changes. Use the requested status-item
+        // footprint as the horizontal background geometry immediately, so
+        // toggling the icon cannot leave the amount centered against the
+        // previous icon-inclusive width. The height still comes from the
+        // actual button.
+        let backgroundBounds = NSRect(
+            x: button.bounds.minX,
+            y: button.bounds.minY,
+            width: max(0, statusItem.length),
+            height: button.bounds.height
+        )
         let buttonHeight = button.bounds.height
         let apiIconYOffset = settings.showIcon && settings.showAmount
             ? MenuBarLayout.singleLineIconYOffset
@@ -516,7 +527,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             officialTextYOffset = 0
         }
         let frames = MenuBarLayout.frames(
-            buttonSize: NSSize(width: buttonWidth, height: buttonHeight),
+            buttonSize: backgroundBounds.size,
             geometry: geometry,
             iconViewYOffset: iconYOffset,
             iconOffset: NSSize(
@@ -529,7 +540,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
         )
         let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
-            backgroundBounds: button.bounds,
+            backgroundBounds: backgroundBounds,
             geometry: geometry,
             iconOffsetX: settings.iconOffsetX,
             textOffsetX: settings.amountOffsetX

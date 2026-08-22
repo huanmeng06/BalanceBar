@@ -322,6 +322,48 @@ final class MenuBarGeometryTests: XCTestCase {
         }
     }
 
+    func testAmountOnlyLayoutCentersAgainstUpdatedOuterWidth() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 42, height: 13),
+            secondarySize: NSSize(width: 50, height: 9),
+            showIcon: false,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let naturalContentWidth = geometry.contentWidth
+        let backgroundBounds = NSRect(
+            x: 0,
+            y: 0,
+            width: naturalContentWidth + 108,
+            height: 24
+        )
+        let frames = MenuBarLayout.frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0
+        )
+        let visibleBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
+                for: frames,
+                in: backgroundBounds
+            )
+        )
+
+        XCTAssertEqual(frames.text.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(visibleBounds.midX, backgroundBounds.midX, accuracy: 0.001)
+        XCTAssertEqual(
+            MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: 0,
+                textOffsetX: 0
+            ),
+            0,
+            accuracy: 0.001
+        )
+    }
+
     func testOfficialTextDefaultOffsetsFollowResetVisibility() {
         XCTAssertEqual(
             MenuBarLayout.officialTextYOffset(hasSecondary: false),
