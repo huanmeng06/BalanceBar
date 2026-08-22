@@ -66,6 +66,7 @@ final class StatusLinksEditorModel: ObservableObject {
     @Published var reservesAddedRowSlot = false
     @Published var revealingAddedRowIndex: Int?
     @Published private(set) var isAddInFlight = false
+    @Published private(set) var visibilityOpacity = 1.0
     let onChange: (Int, StatusLinkField, String) -> Void
     let onAdd: () -> Void
     let onRemove: (Int) -> Void
@@ -112,6 +113,16 @@ final class StatusLinksEditorModel: ObservableObject {
         onReset()
     }
 
+    func setVisibilityOpacity(_ opacity: Double, animated: Bool) {
+        var transaction = Transaction()
+        transaction.animation = animated
+            ? .easeInOut(duration: StatusLinksEditorAnimation.visibilityDuration)
+            : nil
+        withTransaction(transaction) {
+            visibilityOpacity = opacity
+        }
+    }
+
     func reserveAddedRowSlot() {
         reservesAddedRowSlot = true
     }
@@ -155,6 +166,14 @@ struct StatusLinksEditorView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .font(.system(size: 12))
+                    // The bordered style may use a separate platform-backed
+                    // layer. Keep its pressed/hover transaction independent
+                    // from the editor visibility fade; the enclosing
+                    // compositing group owns the single shared opacity.
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
+                    .compositingGroup()
                     .accessibilityIdentifier("statusLinks.reset")
             }
             .frame(height: 24)
@@ -236,6 +255,8 @@ struct StatusLinksEditorView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .compositingGroup()
+        .opacity(model.visibilityOpacity)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -254,8 +275,9 @@ final class StatusLinksEditorHostingView: NSView {
 
     var rowCount: Int { links.count }
     var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
+    var visibilityOpacity: Double { model.visibilityOpacity }
     var isVisible: Bool {
-        (heightConstraint?.constant ?? 0) > 0 && alphaValue > 0
+        (heightConstraint?.constant ?? 0) > 0 && visibilityOpacity > 0
     }
 
     var renderedRowCount: Int { model.links.count }
@@ -417,7 +439,8 @@ final class StatusLinksEditorHostingView: NSView {
         let targetHeight: CGFloat = visible ? layoutHeight : 0
         let applyLayout = { [weak self] in
             guard let self else { return }
-            self.alphaValue = visible ? 1 : 0
+            self.alphaValue = 1
+            self.model.setVisibilityOpacity(visible ? 1 : 0, animated: false)
             self.heightConstraint?.constant = targetHeight
             self.hostingHeightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
@@ -426,15 +449,15 @@ final class StatusLinksEditorHostingView: NSView {
             self.superview?.layoutSubtreeIfNeeded()
         }
         guard animated else {
-            alphaValue = visible ? 1 : 0
             applyLayout()
             return
         }
 
         let ancestorInfo = ancestorCardInfo(editorHeight: targetHeight)
+        model.setVisibilityOpacity(visible ? 1 : 0, animated: true)
         NSAnimationContext.runAnimationGroup { context in
             StatusLinksEditorAnimation.configure(context)
-            self.animator().alphaValue = visible ? 1 : 0
+            self.alphaValue = 1
             self.heightConstraint?.animator().constant = targetHeight
             self.hostingHeightConstraint?.animator().constant = targetHeight
             ancestorInfo?.1.animator().constant = ancestorInfo?.2 ?? 0

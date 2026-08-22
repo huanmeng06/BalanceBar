@@ -149,7 +149,8 @@ final class StatusLinksTests: XCTestCase {
 
         editor.setVisible(false, animated: false)
         window.layoutIfNeeded()
-        XCTAssertEqual(editor.alphaValue, 0, accuracy: 0.001)
+        XCTAssertEqual(editor.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.visibilityOpacity, 0, accuracy: 0.001)
         XCTAssertEqual(editor.frame.height, 0, accuracy: 0.5)
         XCTAssertEqual(editor.subviews.count, 1)
 
@@ -167,6 +168,7 @@ final class StatusLinksTests: XCTestCase {
 
         XCTAssertTrue(editor.isVisible)
         XCTAssertEqual(editor.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.visibilityOpacity, 1, accuracy: 0.001)
         XCTAssertEqual(editor.frame.height, editor.layoutHeight, accuracy: 0.5)
         XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
         XCTAssertEqual(editor.subviews.count, 1)
