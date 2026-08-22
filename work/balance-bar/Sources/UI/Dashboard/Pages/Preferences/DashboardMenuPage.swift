@@ -56,9 +56,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                         "充值後餘額仍未達到此金額時，進度條保持紅色狀態",
                         "チャージ後の残高がこの金額に達しない場合、進捗バーを赤色で表示"
                     ),
-                    control: balanceDisplayThreshold,
-                    minimumHeight: 76,
-                    verticalPadding: 10
+                    control: balanceDisplayThreshold
                 )
             ]
         )

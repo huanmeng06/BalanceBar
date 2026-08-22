@@ -91,6 +91,25 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
         XCTAssertEqual(field.stringValue, "0.10")
 
+        guard let thresholdRow = field.superview,
+        let quickSwitchRow = descendants(of: page)
+            .first(where: { view in
+                guard let view = view as? NSSwitch else { return false }
+                return view.identifier?.rawValue == "showQuickSwitchMenu"
+            })?.superview else {
+            return XCTFail("Expected both balance display and dropdown-menu rows")
+        }
+        XCTAssertEqual(
+            equalHeightConstraint(in: thresholdRow),
+            equalHeightConstraint(in: quickSwitchRow),
+            "Balance display row must use the same height as the dropdown-menu rows"
+        )
+        XCTAssertEqual(
+            verticalLabelPadding(in: thresholdRow),
+            verticalLabelPadding(in: quickSwitchRow),
+            "Balance display row must use the same vertical padding as the dropdown-menu rows"
+        )
+
         field.stringValue = "0.25"
         pageController.controlTextDidEndEditing(
             Notification(name: NSNotification.Name("BalanceBarTests.textDidEndEditing"), object: field)
