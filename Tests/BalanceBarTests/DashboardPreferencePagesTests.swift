@@ -189,7 +189,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentResetIdentifier }?.title,
-            "归零"
+            "重置"
         )
         XCTAssertEqual(
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.isEnabled,
@@ -272,14 +272,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String)] = [
-            (.simplifiedChinese, "宽度"),
-            (.traditionalChinese, "寬度"),
-            (.japanese, "幅"),
-            (.english, "Width")
+        let cases: [(AppLanguage, String, String)] = [
+            (.simplifiedChinese, "宽度", "重置"),
+            (.traditionalChinese, "寬度", "重設"),
+            (.japanese, "幅", "リセット"),
+            (.english, "Width", "Reset")
         ]
 
-        for (language, expectedTitle) in cases {
+        for (language, expectedTitle, expectedResetTitle) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarWidthLocalization.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -300,6 +300,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .stringValue,
                 expectedTitle,
                 "width title for \(language)"
+            )
+            XCTAssertEqual(
+                descendants(of: page)
+                    .compactMap { $0 as? NSButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentResetIdentifier }?
+                    .title,
+                expectedResetTitle,
+                "width reset title for \(language)"
             )
             defaults.removePersistentDomain(forName: suiteName)
         }

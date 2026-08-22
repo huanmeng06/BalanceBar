@@ -399,7 +399,8 @@ final class DashboardMenuBarPage {
         iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
         let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
         amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
-        let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(0))
+        let widthAdjustment = input.preferences.menuBarStatusItemWidthAdjustment
+        let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(widthAdjustment))
         widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
         let iconOffsetControls = makeOffsetControls(
             keyX: AppPreferences.menuBarIconOffsetXKey,
@@ -443,7 +444,7 @@ final class DashboardMenuBarPage {
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
                     tr("宽度", "Width", "寬度", "幅"),
-                    subtitle: Self.widthAdjustmentSummaryText(0),
+                    subtitle: Self.widthAdjustmentSummaryText(widthAdjustment),
                     subtitleLabel: widthAdjustmentSummary,
                     control: makeOffsetControlStack(buttons: widthAdjustmentControls),
                     minimumHeight: 66
@@ -660,7 +661,7 @@ final class DashboardMenuBarPage {
                 delta: 1,
                 relay: relay
             ),
-            makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
+            makeWidthResetButton(identifier: resetIdentifier, relay: relay)
         ]
     }
 
@@ -690,6 +691,22 @@ final class DashboardMenuBarPage {
     ) -> NSButton {
         let button = NSButton(
             title: tr("归零", "Reset", "歸零", "リセット"),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        button.identifier = NSUserInterfaceItemIdentifier(identifier)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        return button
+    }
+
+    private func makeWidthResetButton(
+        identifier: String,
+        relay: DashboardPreferencePageRelay
+    ) -> NSButton {
+        let button = NSButton(
+            title: tr("重置", "Reset", "重設", "リセット"),
             target: relay,
             action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
         )

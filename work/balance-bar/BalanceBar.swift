@@ -937,7 +937,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
         case DashboardMenuBarPage.widthAdjustmentResetIdentifier:
-            menuBarStatusItemWidthAdjustment = 0
+            menuBarStatusItemWidthAdjustment = AppPreferences.menuBarStatusItemWidthAdjustmentDefault
         default:
             return
         }

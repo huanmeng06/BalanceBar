@@ -123,7 +123,11 @@ final class AppPreferencesTests: XCTestCase {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            preferences.menuBarStatusItemWidthAdjustment,
+            AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
+            accuracy: 0.001
+        )
 
         preferences.menuBarStatusItemWidthAdjustment = 0.3
         XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.3, accuracy: 0.001)
