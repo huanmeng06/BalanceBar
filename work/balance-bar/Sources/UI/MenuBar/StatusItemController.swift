@@ -4,7 +4,7 @@ import QuartzCore
 
 final class AccountMarqueeView: NSView {
     static let animationKey = "BalanceBar.accountMarquee"
-    private static let edgeFadeWidth: CGFloat = 14
+    private static let edgeFadeWidth: CGFloat = 8
     private static let minimumScrollDuration: TimeInterval = 5
     private static let scrollPixelsPerSecond: CGFloat = 24
 
