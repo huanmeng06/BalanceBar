@@ -19,18 +19,18 @@ final class DomainModelsTests: XCTestCase {
         let available = OpenAIAccountPresentation.current(
             activeClient: .codex,
             providerIsOfficial: true,
-            accountID: "account-123"
+            email: "person@example.com"
         )
-        XCTAssertEqual(available?.state, .available("account-123"))
-        XCTAssertEqual(available?.text(language: .simplifiedChinese), "账号：account-123")
-        XCTAssertEqual(available?.text(language: .traditionalChinese), "帳號：account-123")
-        XCTAssertEqual(available?.text(language: .japanese), "アカウント：account-123")
-        XCTAssertEqual(available?.text(language: .english), "Account: account-123")
+        XCTAssertEqual(available?.state, .available("person@example.com"))
+        XCTAssertEqual(available?.text(language: .simplifiedChinese), "person@example.com")
+        XCTAssertEqual(available?.text(language: .traditionalChinese), "person@example.com")
+        XCTAssertEqual(available?.text(language: .japanese), "person@example.com")
+        XCTAssertEqual(available?.text(language: .english), "person@example.com")
 
         let unavailable = OpenAIAccountPresentation.current(
             activeClient: .codex,
             providerIsOfficial: true,
-            accountID: nil
+            email: nil
         )
         XCTAssertEqual(unavailable?.state, .unavailable)
         XCTAssertEqual(unavailable?.text(language: .simplifiedChinese), "账号不可用")
@@ -42,14 +42,14 @@ final class DomainModelsTests: XCTestCase {
             OpenAIAccountPresentation.current(
                 activeClient: .claude,
                 providerIsOfficial: true,
-                accountID: "should-not-leak"
+                email: "should-not-leak@example.com"
             )
         )
         XCTAssertNil(
             OpenAIAccountPresentation.current(
                 activeClient: .codex,
                 providerIsOfficial: false,
-                accountID: "should-not-leak"
+                email: "should-not-leak@example.com"
             )
         )
     }

@@ -59,10 +59,10 @@ struct CredentialReader {
         return Self.codexAccessToken(from: data)
     }
 
-    func codexAccountID() -> String? {
+    func codexAccountEmail() -> String? {
         let authURL = homeDirectoryURL.appendingPathComponent(".codex/auth.json")
         guard let data = try? fileReader.readData(from: authURL) else { return nil }
-        return Self.codexAccountID(from: data)
+        return Self.codexAccountEmail(from: data)
     }
 
     func claudeAccessToken() -> String? {
@@ -86,12 +86,41 @@ struct CredentialReader {
         return token
     }
 
-    static func codexAccountID(from data: Data) -> String? {
+    static func codexAccountEmail(from data: Data) -> String? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tokens = object["tokens"] as? [String: Any],
-              let accountID = tokens["account_id"] as? String else { return nil }
-        let normalized = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? nil : normalized
+              let tokens = object["tokens"] as? [String: Any] else { return nil }
+        if let idToken = tokens["id_token"] as? String {
+            return Self.codexAccountEmail(fromIDToken: idToken)
+        }
+        if let claims = tokens["id_token"] as? [String: Any],
+           let email = claims["email"] as? String {
+            return Self.normalizedEmail(email)
+        }
+        return nil
+    }
+
+    static func codexAccountEmail(fromIDToken idToken: String) -> String? {
+        let segments = idToken.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count >= 2 else { return nil }
+
+        var encodedPayload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = (4 - encodedPayload.count % 4) % 4
+        encodedPayload += String(repeating: "=", count: padding)
+
+        guard let payloadData = Data(base64Encoded: encodedPayload),
+              let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+              let email = payload["email"] as? String else { return nil }
+        return Self.normalizedEmail(email)
+    }
+
+    private static func normalizedEmail(_ email: String) -> String? {
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              normalized.contains("@"),
+              !normalized.contains(where: { $0.isWhitespace }) else { return nil }
+        return normalized
     }
 
     static func claudeAccessToken(from data: Data) -> String? {

@@ -1056,18 +1056,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
 
         let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let longID = String(repeating: "account-", count: 20)
+        let longEmail = String(repeating: "very-long-address-", count: 8) + "@example.com"
         controller.start(
             snapshot: .official("OpenAI Official", 83, "7-Day Quota", "2 hours", date),
             refreshDate: date,
-            menuInput: input(account: OpenAIAccountPresentation(accountID: longID)),
+            menuInput: input(account: OpenAIAccountPresentation(email: longEmail)),
             settings: settings
         )
 
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let accountLabel = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
-                $0.stringValue.hasPrefix("Account:")
+                $0.stringValue.contains("@")
             }
         )
         XCTAssertEqual(accountLabel.font?.pointSize, 13)
@@ -1085,23 +1085,23 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         controller.updateMenu(
-            input: input(account: OpenAIAccountPresentation(accountID: "account-2"))
+            input: input(account: OpenAIAccountPresentation(email: "person@example.com"))
         )
         let switchedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertNil(
             allControls(of: switchedOverview, as: NSTextField.self).first {
-                $0.stringValue.contains(longID)
+                $0.stringValue.contains(longEmail)
             }
         )
         XCTAssertEqual(
             allControls(of: switchedOverview, as: NSTextField.self).first {
-                $0.stringValue == "Account: account-2"
+                $0.stringValue == "person@example.com"
             }?.stringValue,
-            "Account: account-2"
+            "person@example.com"
         )
 
         controller.updateMenu(
-            input: input(account: OpenAIAccountPresentation(accountID: nil))
+            input: input(account: OpenAIAccountPresentation(email: nil))
         )
         let unavailableOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertNotNil(

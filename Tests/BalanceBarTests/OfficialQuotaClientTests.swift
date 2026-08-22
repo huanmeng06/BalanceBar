@@ -122,21 +122,21 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     private struct FixtureCredentialReader: OfficialQuotaCredentialReading {
         let codexToken: String?
-        let codexAccountIDValue: String?
+        let codexAccountEmailValue: String?
         let claudeToken: String?
 
         init(
             codexToken: String?,
-            codexAccountID: String? = nil,
+            codexAccountEmail: String? = nil,
             claudeToken: String?
         ) {
             self.codexToken = codexToken
-            self.codexAccountIDValue = codexAccountID
+            self.codexAccountEmailValue = codexAccountEmail
             self.claudeToken = claudeToken
         }
 
         func codexAccessToken() -> String? { codexToken }
-        func codexAccountID() -> String? { codexAccountIDValue }
+        func codexAccountEmail() -> String? { codexAccountEmailValue }
         func claudeAccessToken() -> String? { claudeToken }
     }
 
@@ -222,10 +222,10 @@ final class OfficialQuotaClientTests: XCTestCase {
         )
     }
 
-    func testCodexAccountIDUsesTheOfficialCredentialReaderSource() {
-        let client = makeClient(codexAccountID: "account-from-auth")
+    func testCodexAccountEmailUsesTheOfficialCredentialReaderSource() {
+        let client = makeClient(codexAccountEmail: "person@example.com")
 
-        XCTAssertEqual(client.codexAccountID(), "account-from-auth")
+        XCTAssertEqual(client.codexAccountEmail(), "person@example.com")
     }
 
     func testOverlappingCredentialSourcesDoNotShareTransport() throws {
@@ -468,13 +468,13 @@ final class OfficialQuotaClientTests: XCTestCase {
     private func makeClient(
         codexToken: String? = nil,
         claudeToken: String? = nil,
-        codexAccountID: String? = nil
+        codexAccountEmail: String? = nil
     ) -> OfficialQuotaClient {
         OfficialQuotaClient(
             session: session,
             credentialReader: FixtureCredentialReader(
                 codexToken: codexToken,
-                codexAccountID: codexAccountID,
+                codexAccountEmail: codexAccountEmail,
                 claudeToken: claudeToken
             ),
             parser: DefaultOfficialQuotaParser {

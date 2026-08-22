@@ -41,9 +41,9 @@ struct OpenAIAccountPresentation: Equatable {
 
     let state: State
 
-    init(accountID: String?) {
-        if let accountID {
-            let normalized = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+    init(email: String?) {
+        if let email {
+            let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines)
             state = normalized.isEmpty ? .unavailable : .available(normalized)
         } else {
             state = .unavailable
@@ -53,20 +53,20 @@ struct OpenAIAccountPresentation: Equatable {
     static func current(
         activeClient: AssistantClient,
         providerIsOfficial: Bool,
-        accountID: String?
+        email: String?
     ) -> Self? {
         guard activeClient == .codex, providerIsOfficial else { return nil }
-        return Self(accountID: accountID)
+        return Self(email: email)
     }
 
     func text(language: AppLanguage = .selected) -> String {
         switch state {
-        case .available(let accountID):
+        case .available(let email):
             return tr(
-                "账号：\(accountID)",
-                "Account: \(accountID)",
-                "帳號：\(accountID)",
-                "アカウント：\(accountID)",
+                email,
+                email,
+                email,
+                email,
                 language: language
             )
         case .unavailable:

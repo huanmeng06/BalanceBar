@@ -461,8 +461,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex,
-            accountID: isOfficialOpenAICodex
-                ? officialQuotaClient.codexAccountID()
+            email: isOfficialOpenAICodex
+                ? officialQuotaClient.codexAccountEmail()
                 : nil
         )
         return StatusItemController.MenuInput(
