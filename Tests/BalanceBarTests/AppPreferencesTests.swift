@@ -150,6 +150,12 @@ final class AppPreferencesTests: XCTestCase {
             AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound,
             accuracy: 0.001
         )
+        preferences.menuBarStatusItemWidthAdjustment = 20
+        XCTAssertEqual(
+            preferences.menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
+            0,
+            accuracy: 0.001
+        )
 
         defaults.set(0.15, forKey: AppPreferences.menuBarStatusItemWidthAdjustmentKey)
         XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.2, accuracy: 0.001)

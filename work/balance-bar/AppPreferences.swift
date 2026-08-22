@@ -60,9 +60,9 @@ final class AppPreferences {
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
     static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
-    /// The width slider is centered at the logical zero point and allows a
-    /// wider range than the icon/text positional offsets.
-    static let menuBarStatusItemWidthAdjustmentRange = -20.0...20.0
+    /// The width slider is zero-based and only widens the status item above
+    /// its actual -20pt baseline.
+    static let menuBarStatusItemWidthAdjustmentRange = 0.0...20.0
     static let menuBarStatusItemWidthAdjustmentStep: Double = menuBarOffsetStep
     /// The actual status-item width baseline. The persisted/user-facing
     /// adjustment remains zero-based, so logical 0pt applies -20pt to the

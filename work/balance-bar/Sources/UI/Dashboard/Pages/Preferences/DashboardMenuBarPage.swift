@@ -676,15 +676,17 @@ final class DashboardMenuBarPage {
         slider.target = relay
         slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
         slider.toolTip = tr(
-            "向左缩小，向右放大；中间为 0pt",
-            "Drag left to narrow or right to widen; center is 0pt",
-            "向左縮小，向右放大；中央為 0pt",
-            "左で狭く、右で広く調整；中央は 0pt"
+            "从 0pt 向右放大，最大 +20pt",
+            "Drag right to widen from 0pt up to +20pt",
+            "從 0pt 向右放大，最大 +20pt",
+            "0pt から右へ広げ、最大 +20pt"
         )
         slider.widthAnchor.constraint(equalToConstant: 190).isActive = true
 
         let minimumLabel = makeWidthSliderEndpointLabel(
-            String(format: "%+.0f", range.lowerBound),
+            range.lowerBound == 0
+                ? "0"
+                : String(format: "%+.0f", range.lowerBound),
             identifier: Self.widthAdjustmentSliderMinimumIdentifier
         )
         let maximumLabel = makeWidthSliderEndpointLabel(

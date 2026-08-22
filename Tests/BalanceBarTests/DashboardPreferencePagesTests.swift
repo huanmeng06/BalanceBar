@@ -99,7 +99,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         widthSlider.minValue = AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound
         widthSlider.maxValue = AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound
-        widthSlider.doubleValue = -12.3
+        widthSlider.doubleValue = 12.3
         relay.adjustOffsetValue(widthSlider)
 
         let reset = NSButton(
@@ -117,7 +117,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(adjustments[1].1, -1)
         XCTAssertEqual(values.count, 1)
         XCTAssertEqual(values.first?.0, AppPreferences.menuBarStatusItemWidthAdjustmentKey)
-        XCTAssertEqual(values.first?.1 ?? .nan, -12.3, accuracy: 0.001)
+        XCTAssertEqual(values.first?.1 ?? .nan, 12.3, accuracy: 0.001)
         XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
     }
 
@@ -211,6 +211,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(widthSlider.isContinuous)
         XCTAssertFalse(widthSlider.allowsTickMarkValuesOnly)
         XCTAssertEqual(widthSlider.numberOfTickMarks, 21)
+        let widthMinimumLabel = descendants(of: page)
+            .compactMap { $0 as? NSTextField }
+            .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSliderMinimumIdentifier }
+        let widthMaximumLabel = descendants(of: page)
+            .compactMap { $0 as? NSTextField }
+            .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSliderMaximumIdentifier }
+        XCTAssertEqual(widthMinimumLabel?.stringValue, "0")
+        XCTAssertEqual(widthMaximumLabel?.stringValue, "+20")
         XCTAssertFalse(buttons.first {
             $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier
         } is RepeatOffsetButton)
@@ -311,10 +319,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { AppLanguage.selected = previousLanguage }
 
         let cases: [(AppLanguage, String, String, String)] = [
-            (.simplifiedChinese, "宽度", "归零", "向左缩小，向右放大；中间为 0pt"),
-            (.traditionalChinese, "寬度", "歸零", "向左縮小，向右放大；中央為 0pt"),
-            (.japanese, "幅", "リセット", "左で狭く、右で広く調整；中央は 0pt"),
-            (.english, "Width", "Reset", "Drag left to narrow or right to widen; center is 0pt")
+            (.simplifiedChinese, "宽度", "归零", "从 0pt 向右放大，最大 +20pt"),
+            (.traditionalChinese, "寬度", "歸零", "從 0pt 向右放大，最大 +20pt"),
+            (.japanese, "幅", "リセット", "0pt から右へ広げ、最大 +20pt"),
+            (.english, "Width", "Reset", "Drag right to widen from 0pt up to +20pt")
         ]
 
         for (language, expectedTitle, expectedResetTitle, expectedToolTip) in cases {
