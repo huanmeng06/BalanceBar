@@ -537,7 +537,7 @@ enum OpenCodexCardLayout {
     static let cardWidth: CGFloat = 304
     static let horizontalInset: CGFloat = 14
     static let contentWidth = cardWidth - horizontalInset * 2
-    static let subscriptionBadgeWidth: CGFloat = 78
+    static let subscriptionWidth: CGFloat = 78
     static let subscriptionGap: CGFloat = 8
     static let amountWidth: CGFloat = 141
     static let amountX = cardWidth - horizontalInset - amountWidth
@@ -552,9 +552,9 @@ enum OpenCodexCardLayout {
         switch category {
         case .quota:
             let hasSubscription = includesAccount && includesSubscription
-            let accountShift: CGFloat = includesAccount ? (hasSubscription ? 20 : 19) : 0
+            let accountShift: CGFloat = includesAccount ? 19 : 0
             let accountWidth = hasSubscription
-                ? contentWidth - subscriptionBadgeWidth - subscriptionGap
+                ? contentWidth - subscriptionWidth - subscriptionGap
                 : contentWidth
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: 102 + accountShift),
@@ -565,10 +565,10 @@ enum OpenCodexCardLayout {
                     : nil,
                 subscription: hasSubscription
                     ? CGRect(
-                        x: cardWidth - horizontalInset - subscriptionBadgeWidth,
-                        y: 72,
-                        width: subscriptionBadgeWidth,
-                        height: 22
+                        x: cardWidth - horizontalInset - subscriptionWidth,
+                        y: 75,
+                        width: subscriptionWidth,
+                        height: 17
                     )
                     : nil,
                 quotaDetail: CGRect(x: horizontalInset, y: 47, width: 128, height: 18),

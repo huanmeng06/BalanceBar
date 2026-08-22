@@ -1362,7 +1362,7 @@ enum ErrorCardLayout {
     static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
     static let refreshTimeWidth: CGFloat = 81
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
-    static let subscriptionBadgeWidth: CGFloat = 78
+    static let subscriptionWidth: CGFloat = 78
     static let subscriptionGap: CGFloat = 8
 
     // Match the compact third-party balance card for a single-line error.
@@ -1450,9 +1450,9 @@ enum ErrorCardLayout {
         let detailH = measuredHeight(of: text, width: detailWidth)
         let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
         let hasSubscription = includesAccount && includesSubscription
-        let accountShift: CGFloat = includesAccount ? (hasSubscription ? 20 : 19) : 0
+        let accountShift: CGFloat = includesAccount ? 19 : 0
         let accountWidth = hasSubscription
-            ? contentWidth - subscriptionBadgeWidth - subscriptionGap
+            ? contentWidth - subscriptionWidth - subscriptionGap
             : contentWidth
         let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
@@ -1468,10 +1468,10 @@ enum ErrorCardLayout {
                 : nil,
             subscription: hasSubscription
                 ? NSRect(
-                    x: cardWidth - horizontalInset - subscriptionBadgeWidth,
-                    y: 55 + extraDetailHeight,
-                    width: subscriptionBadgeWidth,
-                    height: 22
+                    x: cardWidth - horizontalInset - subscriptionWidth,
+                    y: 58 + extraDetailHeight,
+                    width: subscriptionWidth,
+                    height: 17
                 )
                 : nil,
             quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),

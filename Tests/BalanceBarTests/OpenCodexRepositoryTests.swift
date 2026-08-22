@@ -1144,21 +1144,22 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertLessThan(frames.progress?.maxY ?? 0, frames.reset?.minY ?? 0)
     }
 
-    func testOpenAISubscriptionBadgeReservesRightAlignedSpaceBesideAccount() {
+    func testOpenAISubscriptionTextSharesAccountRowAndReservesRightAlignedSpace() {
         let frames = OpenCodexCardLayout.frames(
             for: .quota,
             includesAccount: true,
             includesSubscription: true
         )
 
-        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 122))
+        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 121))
         XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 190, height: 17))
-        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 72, width: 78, height: 22))
-        XCTAssertEqual(frames.title, CGRect(x: 14, y: 95, width: 189, height: 20))
-        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 96, width: 81, height: 17))
+        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 75, width: 78, height: 17))
+        XCTAssertEqual(frames.title, CGRect(x: 14, y: 94, width: 189, height: 20))
+        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 95, width: 81, height: 17))
+        XCTAssertEqual(frames.account?.minY, frames.subscription?.minY)
+        XCTAssertEqual(frames.account?.height, frames.subscription?.height)
         XCTAssertLessThanOrEqual(frames.account?.maxX ?? 0, frames.subscription?.minX ?? 0)
         XCTAssertLessThanOrEqual(frames.subscription?.maxX ?? 0, frames.cardSize.width - 14)
-        XCTAssertLessThan(frames.subscription?.maxY ?? 0, frames.title.minY)
 
         let errorFrames = ErrorCardLayout.errorFrames(
             for: "quota unavailable",
@@ -1166,9 +1167,10 @@ final class OpenCodexRepositoryTests: XCTestCase {
             includesSubscription: true
         )
         XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 190, height: 17))
-        XCTAssertEqual(errorFrames.subscription, CGRect(x: 212, y: 55, width: 78, height: 22))
+        XCTAssertEqual(errorFrames.subscription, CGRect(x: 212, y: 58, width: 78, height: 17))
+        XCTAssertEqual(errorFrames.account?.minY, errorFrames.subscription?.minY)
+        XCTAssertEqual(errorFrames.account?.height, errorFrames.subscription?.height)
         XCTAssertLessThanOrEqual(errorFrames.account?.maxX ?? 0, errorFrames.subscription?.minX ?? 0)
-        XCTAssertLessThan(errorFrames.subscription?.maxY ?? 0, errorFrames.title.minY)
     }
 
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {

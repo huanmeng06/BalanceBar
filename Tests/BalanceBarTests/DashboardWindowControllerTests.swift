@@ -1091,9 +1091,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(subscriptionLabel.font?.pointSize, 13)
         XCTAssertEqual(subscriptionLabel.textColor, .secondaryLabelColor)
-        XCTAssertEqual(subscriptionLabel.alignment, .center)
+        XCTAssertEqual(subscriptionLabel.alignment, .right)
         XCTAssertEqual(subscriptionLabel.lineBreakMode, .byTruncatingTail)
-        let subscriptionBadge = try XCTUnwrap(subscriptionLabel.superview)
         let subscriptionFrame = try XCTUnwrap(
             OpenCodexCardLayout.frames(
                 for: .quota,
@@ -1101,11 +1100,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 includesSubscription: true
             ).subscription
         )
-        XCTAssertEqual(subscriptionBadge.frame, subscriptionFrame)
-        XCTAssertEqual(subscriptionBadge.layer?.cornerRadius, subscriptionFrame.height / 2)
-        XCTAssertEqual(subscriptionBadge.layer?.borderWidth, 1)
-        XCTAssertEqual(subscriptionBadge.frame.maxX, overview.bounds.width - 14)
-        XCTAssertLessThanOrEqual(accountLabel.frame.maxX, subscriptionBadge.frame.minX)
+        XCTAssertEqual(subscriptionLabel.frame, subscriptionFrame)
+        XCTAssertTrue(subscriptionLabel.superview === overview)
+        XCTAssertEqual(accountLabel.frame.minY, subscriptionLabel.frame.minY)
+        XCTAssertEqual(accountLabel.frame.height, subscriptionLabel.frame.height)
+        XCTAssertLessThanOrEqual(accountLabel.frame.maxX, subscriptionLabel.frame.minX)
+        XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
         XCTAssertNotNil(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.stringValue == "83%"

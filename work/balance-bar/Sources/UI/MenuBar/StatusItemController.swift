@@ -822,7 +822,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if let subscription = menuInput.openAIAccount?.subscription,
            let subscriptionFrame = layout.subscription {
-            view.addSubview(makeSubscriptionBadge(subscription.text, frame: subscriptionFrame))
+            view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
         if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
@@ -1008,7 +1008,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if let subscription = menuInput.openAIAccount?.subscription,
            let subscriptionFrame = frames.subscription {
-            view.addSubview(makeSubscriptionBadge(subscription.text, frame: subscriptionFrame))
+            view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
         let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
         let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
@@ -1042,20 +1042,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return label
     }
 
-    private func makeSubscriptionBadge(_ text: String, frame: NSRect) -> NSView {
-        let badge = NSView(frame: frame)
-        badge.wantsLayer = true
-        badge.layer?.cornerRadius = frame.height / 2
-        badge.layer?.borderWidth = 1
-        badge.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
-        badge.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.35).cgColor
-
+    private func makeSubscriptionLabel(_ text: String, frame: NSRect) -> NSTextField {
         let label = makeOverviewLabel(text, font: .systemFont(ofSize: 13, weight: .regular))
         label.textColor = .secondaryLabelColor
-        label.alignment = .center
-        label.frame = badge.bounds.insetBy(dx: 5, dy: 0)
-        badge.addSubview(label)
-        return badge
+        label.alignment = .right
+        label.frame = frame
+        return label
     }
 
     static func formatBalanceSummary(_ amount: Double, unit: String) -> String {
