@@ -15,6 +15,11 @@ import {
   renderReleaseNotes,
   validateReleaseNotes,
 } from "../../scripts/release/render-release-notes.mjs";
+import {
+  buildDeepSeekRequest,
+  requestReleaseNotes,
+  resolveAIProvider,
+} from "../../scripts/release/generate-release-notes.mjs";
 import { buildReleaseContext } from "../../scripts/release/release-context.mjs";
 import { buildReleaseInput } from "../../scripts/release/collect-release-input.mjs";
 
@@ -156,6 +161,83 @@ test("release context ignores build-only changes and detects version changes", (
   });
   assert.equal(patch.should_release, "true");
   assert.equal(patch.bump, "patch");
+});
+
+test("DeepSeek is the default provider and uses JSON chat completions", async () => {
+  assert.equal(resolveAIProvider(""), "deepseek");
+
+  const request = buildDeepSeekRequest(fixtureInput(), "deepseek-v4-pro");
+  assert.equal(request.model, "deepseek-v4-pro");
+  assert.deepEqual(request.response_format, { type: "json_object" });
+  assert.match(request.messages[0].content, /JSON/);
+  assert.match(request.messages[0].content, /"number": 140/);
+  assert.match(request.messages[1].content, /v1\.1\.5/);
+
+  let observedUrl;
+  let observedOptions;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    model: "deepseek-v4-pro",
+    fetchImpl: async (url, options) => {
+      observedUrl = url;
+      observedOptions = options;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(fixtureNotes()) } }],
+        }),
+      };
+    },
+  });
+
+  assert.equal(observedUrl, "https://api.deepseek.com/chat/completions");
+  assert.equal(observedOptions.headers.Authorization, "Bearer test-deepseek-key");
+  assert.deepEqual(notes, fixtureNotes());
+  assert.equal(JSON.parse(observedOptions.body).response_format.type, "json_object");
+});
+
+test("DeepSeek empty JSON output fails closed", async () => {
+  await assert.rejects(
+    () => requestReleaseNotes(fixtureInput(), {
+      provider: "deepseek",
+      apiKey: "test-deepseek-key",
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: "" } }] }),
+      }),
+    }),
+    /DeepSeek response did not contain output text/,
+  );
+});
+
+test("OpenAI remains available as an explicit provider", async () => {
+  assert.equal(resolveAIProvider("openai"), "openai");
+
+  let observedUrl;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "openai",
+    apiKey: "test-openai-key",
+    model: "gpt-5.6-terra",
+    fetchImpl: async (url, options) => {
+      observedUrl = url;
+      const request = JSON.parse(options.body);
+      assert.equal(request.text.format.type, "json_schema");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "completed",
+          output_text: JSON.stringify(fixtureNotes()),
+        }),
+      };
+    },
+  });
+
+  assert.equal(observedUrl, "https://api.openai.com/v1/responses");
+  assert.deepEqual(notes, fixtureNotes());
 });
 
 test("renderer preserves the BalanceBar release layout and links every row", () => {
