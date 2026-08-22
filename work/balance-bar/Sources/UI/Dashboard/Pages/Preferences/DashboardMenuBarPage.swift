@@ -205,19 +205,44 @@ final class MenuBarWidthSlider: NSSlider {
     }
 }
 
+/// Snaps every user-generated slider action to the AppKit logical-point step
+/// before the relay observes it. The controller still normalizes the value on
+/// persistence, so programmatic callers and restored preferences are covered
+/// by the same rule.
+final class MenuBarFontSizeSlider: NSSlider {
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        doubleValue = AppPreferences.normalizedMenuBarFontSize(
+            doubleValue,
+            range: minValue...maxValue
+        )
+        return super.sendAction(action, to: target)
+    }
+}
+
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
+    static let primaryFontSizeResetIdentifier = "menuBarPrimaryFontSizeReset"
+    static let secondaryFontSizeResetIdentifier = "menuBarSecondaryFontSizeReset"
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
+    static let primaryFontSizeSummaryIdentifier = "menuBarPrimaryFontSizeSummary"
+    static let secondaryFontSizeSummaryIdentifier = "menuBarSecondaryFontSizeSummary"
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
+    static let primaryFontSizeSliderMinimumIdentifier = "menuBarPrimaryFontSizeMinimum"
+    static let primaryFontSizeSliderMaximumIdentifier = "menuBarPrimaryFontSizeMaximum"
+    static let secondaryFontSizeSliderMinimumIdentifier = "menuBarSecondaryFontSizeMinimum"
+    static let secondaryFontSizeSliderMaximumIdentifier = "menuBarSecondaryFontSizeMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
+    static let fontSizeSliderWidth: CGFloat = 140
     /// Extra default lift for the amount text in the Dashboard preview only
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
     static let previewAmountDefaultYOffset: CGFloat = 0.5
+    static let previewPrimaryIdentifier = "menuBarPreviewPrimary"
+    static let previewSecondaryIdentifier = "menuBarPreviewSecondary"
 
     struct Presentation: Equatable {
         let primary: String
@@ -260,6 +285,12 @@ final class DashboardMenuBarPage {
         let slider: NSSlider
     }
 
+    private struct FontSliderControls {
+        let view: NSView
+        let slider: NSSlider
+        let resetButton: NSButton
+    }
+
     private let previewIcon = PassthroughImageView()
     private let previewIconSlot = NSView()
     private let previewText = MenuBarTextView()
@@ -276,9 +307,15 @@ final class DashboardMenuBarPage {
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
+    private var primaryFontSizeSummaryLabel: NSTextField?
+    private var secondaryFontSizeSummaryLabel: NSTextField?
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
+    private weak var primaryFontSizeSlider: NSSlider?
+    private weak var secondaryFontSizeSlider: NSSlider?
+    private var primaryFontSizeResetButton: NSButton?
+    private var secondaryFontSizeResetButton: NSButton?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
@@ -326,8 +363,10 @@ final class DashboardMenuBarPage {
         previewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewPrimary.font = MenuBarLayout.primaryFont
         previewPrimary.textColor = .labelColor
+        previewPrimary.identifier = NSUserInterfaceItemIdentifier(Self.previewPrimaryIdentifier)
         previewSecondary.font = MenuBarLayout.secondaryFont
         previewSecondary.textColor = .labelColor
+        previewSecondary.identifier = NSUserInterfaceItemIdentifier(Self.previewSecondaryIdentifier)
         previewText.addSubview(previewPrimary)
         previewText.addSubview(previewSecondary)
         previewText.wantsLayer = true
@@ -450,12 +489,81 @@ final class DashboardMenuBarPage {
             key: AppPreferences.menuBarStatusItemWidthAdjustmentKey,
             relay: input.relay
         )
+        let primaryFontSize = input.preferences.menuBarPrimaryFontSize
+        let secondaryFontSize = input.preferences.menuBarSecondaryFontSize
+        let primaryFontSizeSummary = NSTextField(
+            labelWithString: Self.fontSizeSummaryText(primaryFontSize)
+        )
+        primaryFontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
+            Self.primaryFontSizeSummaryIdentifier
+        )
+        let secondaryFontSizeSummary = NSTextField(
+            labelWithString: Self.fontSizeSummaryText(secondaryFontSize)
+        )
+        secondaryFontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
+            Self.secondaryFontSizeSummaryIdentifier
+        )
+        let primaryFontSizeControls = makeFontSizeSliderControls(
+            value: primaryFontSize,
+            key: AppPreferences.menuBarPrimaryFontSizeKey,
+            resetIdentifier: Self.primaryFontSizeResetIdentifier,
+            range: AppPreferences.menuBarPrimaryFontSizeRange,
+            relay: input.relay,
+            toolTip: tr(
+                "主行字号，10.0–16.0pt，每次 0.1pt",
+                "Primary row size, 10.0–16.0pt in 0.1pt steps",
+                "主行字號，10.0–16.0pt，每次 0.1pt",
+                "主行のサイズ、10.0–16.0pt、0.1pt刻み"
+            ),
+            minimumIdentifier: Self.primaryFontSizeSliderMinimumIdentifier,
+            maximumIdentifier: Self.primaryFontSizeSliderMaximumIdentifier
+        )
+        let secondaryFontSizeControls = makeFontSizeSliderControls(
+            value: secondaryFontSize,
+            key: AppPreferences.menuBarSecondaryFontSizeKey,
+            resetIdentifier: Self.secondaryFontSizeResetIdentifier,
+            range: AppPreferences.menuBarSecondaryFontSizeRange,
+            relay: input.relay,
+            toolTip: tr(
+                "副行字号，8.0–13.0pt，每次 0.1pt",
+                "Secondary row size, 8.0–13.0pt in 0.1pt steps",
+                "副行字號，8.0–13.0pt，每次 0.1pt",
+                "副行のサイズ、8.0–13.0pt、0.1pt刻み"
+            ),
+            minimumIdentifier: Self.secondaryFontSizeSliderMinimumIdentifier,
+            maximumIdentifier: Self.secondaryFontSizeSliderMaximumIdentifier
+        )
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
         widthAdjustmentSummaryLabel = widthAdjustmentSummary
+        primaryFontSizeSummaryLabel = primaryFontSizeSummary
+        secondaryFontSizeSummaryLabel = secondaryFontSizeSummary
         iconOffsetButtons = iconOffsetControls
         amountOffsetButtons = amountOffsetControls
         widthAdjustmentSlider = widthAdjustmentControls.slider
+        primaryFontSizeSlider = primaryFontSizeControls.slider
+        secondaryFontSizeSlider = secondaryFontSizeControls.slider
+        primaryFontSizeResetButton = primaryFontSizeControls.resetButton
+        secondaryFontSizeResetButton = secondaryFontSizeControls.resetButton
+        let fontSizeSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("字号", "Font Size", "字號", "フォントサイズ"),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("主行", "Primary Row", "主行", "主行"),
+                    subtitle: Self.fontSizeSummaryText(primaryFontSize),
+                    subtitleLabel: primaryFontSizeSummary,
+                    control: primaryFontSizeControls.view,
+                    minimumHeight: 66
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("副行", "Secondary Row", "副行", "副行"),
+                    subtitle: Self.fontSizeSummaryText(secondaryFontSize),
+                    subtitleLabel: secondaryFontSizeSummary,
+                    control: secondaryFontSizeControls.view,
+                    minimumHeight: 66
+                )
+            ]
+        )
         let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
             tr("细节微调", "Fine Tuning", "細節微調", "微調整"),
             rows: [
@@ -487,6 +595,7 @@ final class DashboardMenuBarPage {
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
             displaySection,
+            fontSizeSection,
             fineTuneSection
         ])
     }
@@ -502,6 +611,12 @@ final class DashboardMenuBarPage {
         previewText.isHidden = !preferences.showMenuBarAmount
         iconSwitch?.isEnabled = preferences.showMenuBarAmount
         amountSwitch?.isEnabled = preferences.showMenuBarIcon
+        previewPrimary.font = MenuBarLayout.primaryFont(
+            size: CGFloat(preferences.menuBarPrimaryFontSize)
+        )
+        previewSecondary.font = MenuBarLayout.secondaryFont(
+            size: CGFloat(preferences.menuBarSecondaryFontSize)
+        )
         let presentation = Self.presentation(
             for: snapshot,
             showAmount: preferences.showMenuBarAmount,
@@ -538,6 +653,18 @@ final class DashboardMenuBarPage {
         amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
+        primaryFontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
+            preferences.menuBarPrimaryFontSize
+        )
+        secondaryFontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
+            preferences.menuBarSecondaryFontSize
+        )
+        primaryFontSizeSlider?.doubleValue = preferences.menuBarPrimaryFontSize
+        secondaryFontSizeSlider?.doubleValue = preferences.menuBarSecondaryFontSize
+        primaryFontSizeSlider?.isEnabled = preferences.showMenuBarAmount
+        secondaryFontSizeSlider?.isEnabled = preferences.showMenuBarAmount
+        primaryFontSizeResetButton?.isEnabled = preferences.showMenuBarAmount
+        secondaryFontSizeResetButton?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
         applyWidthAdjustment(
@@ -710,11 +837,77 @@ final class DashboardMenuBarPage {
         )
     }
 
+    private static func fontSizeSummaryText(_ value: Double) -> String {
+        String(format: "%.1f pt", value)
+    }
+
     private static func previewCapsuleHorizontalInset(
         horizontalPadding: CGFloat,
         widthAdjustment: Double
     ) -> CGFloat {
         horizontalPadding + 10 + (CGFloat(widthAdjustment) / 2)
+    }
+
+    private func makeFontSizeSliderControls(
+        value: Double,
+        key: String,
+        resetIdentifier: String,
+        range: ClosedRange<Double>,
+        relay: DashboardPreferencePageRelay,
+        toolTip: String,
+        minimumIdentifier: String,
+        maximumIdentifier: String
+    ) -> FontSliderControls {
+        let slider = MenuBarFontSizeSlider()
+        slider.identifier = NSUserInterfaceItemIdentifier(key)
+        slider.minValue = range.lowerBound
+        slider.maxValue = range.upperBound
+        slider.doubleValue = AppPreferences.normalizedMenuBarFontSize(value, range: range)
+        slider.isContinuous = true
+        slider.allowsTickMarkValuesOnly = false
+        slider.target = relay
+        slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
+        slider.toolTip = toolTip
+        slider.widthAnchor.constraint(equalToConstant: Self.fontSizeSliderWidth).isActive = true
+
+        let minimumLabel = makeFontSizeSliderEndpointLabel(
+            String(format: "%.0f", range.lowerBound),
+            identifier: minimumIdentifier
+        )
+        let maximumLabel = makeFontSizeSliderEndpointLabel(
+            String(format: "%.0f", range.upperBound),
+            identifier: maximumIdentifier
+        )
+        let resetButton = NSButton(
+            title: tr("恢复默认", "Default", "恢復預設", "デフォルト"),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
+        )
+        resetButton.identifier = NSUserInterfaceItemIdentifier(resetIdentifier)
+        resetButton.bezelStyle = .rounded
+        resetButton.controlSize = .small
+        resetButton.font = .systemFont(ofSize: 11)
+
+        let stack = NSStackView(views: [minimumLabel, slider, maximumLabel, resetButton])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return FontSliderControls(view: stack, slider: slider, resetButton: resetButton)
+    }
+
+    private func makeFontSizeSliderEndpointLabel(
+        _ title: String,
+        identifier: String
+    ) -> NSTextField {
+        let label = NSTextField(labelWithString: title)
+        label.identifier = NSUserInterfaceItemIdentifier(identifier)
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return label
     }
 
     private func makeOffsetControls(

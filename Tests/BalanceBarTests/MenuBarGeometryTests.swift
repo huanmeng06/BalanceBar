@@ -21,6 +21,22 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(geometry.contentHeight, 18)
     }
 
+    func testSingleLineBalanceExpandsForLargePrimaryFontWithoutClipping() {
+        let primary = NSTextField(labelWithString: "USD 123,456.78")
+        primary.font = MenuBarLayout.primaryFont(size: 16)
+        let geometry = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+
+        XCTAssertGreaterThanOrEqual(geometry.contentHeight, geometry.textHeight)
+        XCTAssertGreaterThanOrEqual(geometry.contentHeight, MenuBarLayout.singleLineHeight)
+    }
+
     func testTwoLineAmountWithoutIconUsesTallestTextWidthAndRowSpacing() {
         let geometry = makeGeometry(
             primarySize: NSSize(width: 31.1, height: 11.2),
@@ -39,6 +55,145 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(geometry.textHeight, 24)
         XCTAssertEqual(geometry.contentWidth, 50)
         XCTAssertEqual(geometry.contentHeight, 24)
+    }
+
+    func testMenuBarFontFactoriesUseLogicalAppKitPointSizes() {
+        let primary = MenuBarLayout.primaryFont(size: 14.2)
+        let secondary = MenuBarLayout.secondaryFont(size: 9.6)
+
+        XCTAssertEqual(primary.pointSize, 14.2, accuracy: 0.001)
+        XCTAssertEqual(secondary.pointSize, 9.6, accuracy: 0.001)
+        XCTAssertEqual(MenuBarLayout.primaryFont.pointSize, 13, accuracy: 0.001)
+        XCTAssertEqual(MenuBarLayout.secondaryFont.pointSize, 10, accuracy: 0.001)
+    }
+
+    func testActualFontMetricsKeepOfficialRowsLeftAlignedAndCentered() {
+        let primary = NSTextField(labelWithString: "100% remaining")
+        primary.font = MenuBarLayout.primaryFont(size: 14.2)
+        let secondary = NSTextField(labelWithString: "Reset in 99h 23m")
+        secondary.font = MenuBarLayout.secondaryFont(size: 9.6)
+        let geometry = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: secondary.intrinsicContentSize,
+            showIcon: false,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let container = MenuBarTextView()
+
+        MenuBarLayout.applyTextLayout(
+            container: container,
+            primary: primary,
+            secondary: secondary,
+            geometry: geometry,
+            showAmount: true,
+            hasSecondary: true
+        )
+
+        XCTAssertEqual(primary.frame.minX, secondary.frame.minX, accuracy: 0.001)
+        XCTAssertEqual(primary.frame.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(secondary.frame.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            geometry.textWidth,
+            ceil(max(primary.intrinsicContentSize.width, secondary.intrinsicContentSize.width))
+                + MenuBarLayout.textWidthSlack,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(primary.frame.width, secondary.frame.width, accuracy: 0.001)
+
+        let backgroundBounds = NSRect(x: 0, y: 0, width: 220, height: 42)
+        let frames = MenuBarLayout.frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0
+        )
+        let visibleBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(for: frames, in: backgroundBounds)
+        )
+        let compensation = MenuBarLayout.horizontalCenteringCompensation(
+            backgroundBounds: backgroundBounds,
+            geometry: geometry,
+            iconOffsetX: 0,
+            textOffsetX: 0
+        )
+        let centeredFrames = MenuBarLayoutFrames(
+            content: frames.content.offsetBy(dx: compensation, dy: 0),
+            iconSlot: frames.iconSlot,
+            icon: frames.icon,
+            text: frames.text
+        )
+        let centeredBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(for: centeredFrames, in: backgroundBounds)
+        )
+
+        XCTAssertEqual(
+            visibleBounds.width,
+            geometry.textWidth,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            centeredBounds.midX,
+            backgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
+            accuracy: 0.001
+        )
+    }
+
+    func testChangingOnlyOneFontSizeChangesItsMetricsWithoutChangingSharedRowOrigin() {
+        let primary = NSTextField(labelWithString: "72%")
+        let secondary = NSTextField(labelWithString: "Reset 2h")
+        primary.font = MenuBarLayout.primaryFont(size: 13)
+        secondary.font = MenuBarLayout.secondaryFont(size: 10)
+        let baseline = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: secondary.intrinsicContentSize,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let baselinePrimaryWidth = primary.intrinsicContentSize.width
+        let baselineSecondaryWidth = secondary.intrinsicContentSize.width
+
+        primary.font = MenuBarLayout.primaryFont(size: 15)
+        let enlargedPrimary = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: secondary.intrinsicContentSize,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        XCTAssertGreaterThan(enlargedPrimary.primaryHeight, baseline.primaryHeight)
+        XCTAssertEqual(enlargedPrimary.secondaryHeight, baseline.secondaryHeight)
+        XCTAssertGreaterThan(primary.intrinsicContentSize.width, baselinePrimaryWidth)
+
+        primary.font = MenuBarLayout.primaryFont(size: 13)
+        secondary.font = MenuBarLayout.secondaryFont(size: 12)
+        let enlargedSecondary = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: secondary.intrinsicContentSize,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        XCTAssertEqual(enlargedSecondary.primaryHeight, baseline.primaryHeight)
+        XCTAssertGreaterThan(enlargedSecondary.secondaryHeight, baseline.secondaryHeight)
+        XCTAssertGreaterThan(secondary.intrinsicContentSize.width, baselineSecondaryWidth)
+
+        let container = MenuBarTextView()
+        let primaryLabel = NSTextField(labelWithString: "72%")
+        let secondaryLabel = NSTextField(labelWithString: "Reset 2h")
+        MenuBarLayout.applyTextLayout(
+            container: container,
+            primary: primaryLabel,
+            secondary: secondaryLabel,
+            geometry: enlargedSecondary,
+            showAmount: true,
+            hasSecondary: true
+        )
+        XCTAssertEqual(primaryLabel.frame.minX, secondaryLabel.frame.minX, accuracy: 0.001)
     }
 
     func testIconOnlyGeometryHasNoTextOrGap() {

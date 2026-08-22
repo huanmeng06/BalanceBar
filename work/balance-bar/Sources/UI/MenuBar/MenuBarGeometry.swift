@@ -33,7 +33,7 @@ struct MenuBarGeometry {
         textHeight = primaryHeight + (hasSecondary ? textRowSpacing + secondaryHeight : 0)
         contentWidth = iconWidth + gap + textWidth
         contentHeight = isBalance && showAmount
-            ? singleLineHeight
+            ? max(singleLineHeight, textHeight)
             : ceil(max(iconWidth, textHeight))
     }
 
@@ -115,22 +115,36 @@ enum MenuBarOffsetLayout {
 }
 
 enum MenuBarLayout {
-    static let primaryFont = NSFont.monospacedDigitSystemFont(
-        ofSize: 13,
-        weight: .semibold
+    static let primaryFontPointSize: CGFloat = CGFloat(
+        AppPreferences.menuBarPrimaryFontSizeDefault
     )
-    static let secondaryFont = NSFont.monospacedDigitSystemFont(
-        ofSize: 10,
-        weight: .medium
+    static let secondaryFontPointSize: CGFloat = CGFloat(
+        AppPreferences.menuBarSecondaryFontSizeDefault
     )
+
+    static var primaryFont: NSFont {
+        primaryFont(size: primaryFontPointSize)
+    }
+
+    static var secondaryFont: NSFont {
+        secondaryFont(size: secondaryFontPointSize)
+    }
+
+    static func primaryFont(size: CGFloat) -> NSFont {
+        NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+    }
+
+    static func secondaryFont(size: CGFloat) -> NSFont {
+        NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
+    }
     static let iconSlotWidth: CGFloat = 18
     static let iconTextSpacing: CGFloat = 6
     static let textRowSpacing: CGFloat = -2
     static let textWidthSlack: CGFloat = 5
     static let minimumStatusItemLength: CGFloat = 30
 
-    // Fixed API single-line baseline. Keep these independent from the
-    // official two-line layout so provider switches cannot alter the result.
+    // Fixed API single-line baseline/minimum. Keep these independent from the
+    // official two-line layout while allowing a larger selected font to fit.
     static let singleLineHeight: CGFloat = 18
     static let singleLineTextYOffset: CGFloat = 0.25
     static let singleLineIconYOffset: CGFloat = 0.25

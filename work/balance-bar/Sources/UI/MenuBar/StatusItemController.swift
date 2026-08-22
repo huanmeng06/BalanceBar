@@ -291,6 +291,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amountOffsetX: CGFloat
         let amountOffsetY: CGFloat
         var widthAdjustment: CGFloat
+        let primaryFontSize: CGFloat
+        let secondaryFontSize: CGFloat
 
         init(
             showIcon: Bool,
@@ -302,7 +304,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             iconOffsetY: CGFloat = 0,
             amountOffsetX: CGFloat = 0,
             amountOffsetY: CGFloat = 0,
-            widthAdjustment: CGFloat = 0
+            widthAdjustment: CGFloat = 0,
+            primaryFontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
+            secondaryFontSize: CGFloat = MenuBarLayout.secondaryFontPointSize
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -314,6 +318,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.amountOffsetX = amountOffsetX
             self.amountOffsetY = amountOffsetY
             self.widthAdjustment = widthAdjustment
+            self.primaryFontSize = primaryFontSize
+            self.secondaryFontSize = secondaryFontSize
         }
     }
 
@@ -397,6 +403,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // Exposes the controller's actual menu for headless production-path tests.
     // The application still owns and renders this same NSMenu instance.
     var menuItemsForTesting: [NSMenuItem] { statusMenu.items }
+
+    // Exposes the actual AppKit point sizes applied to the live menu-bar
+    // labels without exposing the labels themselves.
+    var menuBarFontPointSizesForTesting: (primary: CGFloat, secondary: CGFloat)? {
+        guard let primary = menuBarPrimaryLabel.font?.pointSize,
+              let secondary = menuBarSecondaryLabel.font?.pointSize else {
+            return nil
+        }
+        return (primary, secondary)
+    }
 
     var startupDiagnostic: String {
         let statusWindow = statusItem?.button?.window
@@ -581,10 +597,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         actions.iconChanged(menuBarIconView.image)
         menuBarIconView.imageScaling = .scaleProportionallyDown
         menuBarIconView.contentTintColor = .labelColor
-        menuBarPrimaryLabel.font = MenuBarLayout.primaryFont
+        applyMenuBarFonts()
         menuBarPrimaryLabel.textColor = .labelColor
         menuBarPrimaryLabel.lineBreakMode = .byClipping
-        menuBarSecondaryLabel.font = MenuBarLayout.secondaryFont
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
         configureMenuBarContentStackIfNeeded()
@@ -761,6 +776,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func layoutStatusItem(for snapshot: Snapshot) {
         guard let statusItem, let button = statusItem.button else { return }
+        applyMenuBarFonts()
         let effectiveSnapshot = menuBarSnapshot(for: snapshot)
         let reservedSecondary = settings.showAmount && effectiveSnapshot.kind == .official
             ? effectiveSnapshot.menuBarSecondary
@@ -855,6 +871,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.isHidden = false
         button.isEnabled = true
         statusItem.isVisible = true
+    }
+
+    private func applyMenuBarFonts() {
+        menuBarPrimaryLabel.font = MenuBarLayout.primaryFont(
+            size: settings.primaryFontSize
+        )
+        menuBarSecondaryLabel.font = MenuBarLayout.secondaryFont(
+            size: settings.secondaryFontSize
+        )
     }
 
     private func applyMenuBarContentFrames(

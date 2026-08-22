@@ -77,6 +77,17 @@ final class AppPreferences {
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
     static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
+    static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"
+    static let menuBarSecondaryFontSizeKey = "menuBarSecondaryFontSize"
+    /// Menu-bar font sizes are AppKit logical points, independent of the
+    /// display backing scale. The bounds keep the two-line preview inside its
+    /// fixed 42pt card while leaving useful room on either side of the
+    /// current 13pt/10pt defaults.
+    static let menuBarPrimaryFontSizeRange = 10.0...16.0
+    static let menuBarSecondaryFontSizeRange = 8.0...13.0
+    static let menuBarFontSizeStep: Double = 0.1
+    static let menuBarPrimaryFontSizeDefault: Double = 13.0
+    static let menuBarSecondaryFontSizeDefault: Double = 10.0
     /// The width slider is zero-based and only widens the status item above
     /// its actual -20pt baseline.
     static let menuBarStatusItemWidthAdjustmentRange = 0.0...20.0
@@ -118,6 +129,48 @@ final class AppPreferences {
             defaults.set(
                 roundedMenuBarStatusItemWidthAdjustment(newValue),
                 forKey: Self.menuBarStatusItemWidthAdjustmentKey
+            )
+        }
+    }
+
+    /// The official/third-party primary menu-bar text size in logical AppKit
+    /// points. It is also used by the single-line third-party balance path.
+    var menuBarPrimaryFontSize: Double {
+        get {
+            clampedMenuBarFontSize(
+                Self.menuBarPrimaryFontSizeKey,
+                default: Self.menuBarPrimaryFontSizeDefault,
+                range: Self.menuBarPrimaryFontSizeRange
+            )
+        }
+        set {
+            defaults.set(
+                Self.normalizedMenuBarFontSize(
+                    newValue,
+                    range: Self.menuBarPrimaryFontSizeRange
+                ),
+                forKey: Self.menuBarPrimaryFontSizeKey
+            )
+        }
+    }
+
+    /// The official two-line secondary menu-bar text size in logical AppKit
+    /// points. It is ignored when the secondary row is not visible.
+    var menuBarSecondaryFontSize: Double {
+        get {
+            clampedMenuBarFontSize(
+                Self.menuBarSecondaryFontSizeKey,
+                default: Self.menuBarSecondaryFontSizeDefault,
+                range: Self.menuBarSecondaryFontSizeRange
+            )
+        }
+        set {
+            defaults.set(
+                Self.normalizedMenuBarFontSize(
+                    newValue,
+                    range: Self.menuBarSecondaryFontSizeRange
+                ),
+                forKey: Self.menuBarSecondaryFontSizeKey
             )
         }
     }
@@ -224,11 +277,32 @@ final class AppPreferences {
         return (clamped * scale).rounded() / scale
     }
 
+    static func normalizedMenuBarFontSize(
+        _ value: Double,
+        range: ClosedRange<Double>
+    ) -> Double {
+        let finiteValue = value.isFinite ? value : range.lowerBound
+        let clamped = min(max(finiteValue, range.lowerBound), range.upperBound)
+        let scale = 1 / menuBarFontSizeStep
+        return (clamped * scale).rounded() / scale
+    }
+
     private func clampedMenuBarStatusItemWidthAdjustment() -> Double {
         guard let number = defaults.object(
             forKey: Self.menuBarStatusItemWidthAdjustmentKey
         ) as? NSNumber else { return 0 }
         return roundedMenuBarStatusItemWidthAdjustment(number.doubleValue)
+    }
+
+    private func clampedMenuBarFontSize(
+        _ key: String,
+        default fallback: Double,
+        range: ClosedRange<Double>
+    ) -> Double {
+        guard let number = defaults.object(forKey: key) as? NSNumber else {
+            return fallback
+        }
+        return Self.normalizedMenuBarFontSize(number.doubleValue, range: range)
     }
 }
 

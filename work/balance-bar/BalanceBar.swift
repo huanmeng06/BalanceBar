@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -293,6 +293,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarIconOffsetY: Double { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
     private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
+    private var menuBarPrimaryFontSize: Double { get { preferences.menuBarPrimaryFontSize } set { preferences.menuBarPrimaryFontSize = newValue } }
+    private var menuBarSecondaryFontSize: Double { get { preferences.menuBarSecondaryFontSize } set { preferences.menuBarSecondaryFontSize = newValue } }
     private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
     private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
         self?.applyMenuBarWidthAdjustmentFrame(value)
@@ -539,7 +541,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
             amountOffsetY: CGFloat(menuBarAmountOffsetY),
-            widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
+            widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment),
+            primaryFontSize: CGFloat(menuBarPrimaryFontSize),
+            secondaryFontSize: CGFloat(menuBarSecondaryFontSize)
         )
     }
 
@@ -898,15 +902,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func handleDashboardOffsetValue(identifier: String, value: Double) {
-        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+        switch identifier {
+        case AppPreferences.menuBarPrimaryFontSizeKey:
+            menuBarPrimaryFontSize = AppPreferences.normalizedMenuBarFontSize(
+                value,
+                range: AppPreferences.menuBarPrimaryFontSizeRange
+            )
+            updateStatusItem(for: snapshot)
+        case AppPreferences.menuBarSecondaryFontSizeKey:
+            menuBarSecondaryFontSize = AppPreferences.normalizedMenuBarFontSize(
+                value,
+                range: AppPreferences.menuBarSecondaryFontSizeRange
+            )
+            updateStatusItem(for: snapshot)
+        case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
+            // NSSlider sends this action continuously. Keep the value transient:
+            // UserDefaults and logging belong to the editing-ended path, not the
+            // mouse-tracking hot path.
+            let transientValue = menuBarStatusItemWidthAdjustmentSession.update(value)
+            MenuBarWidthPerformance.measure("slider-action") {
+                menuBarWidthAdjustmentCoalescer.submit(CGFloat(transientValue))
+            }
+        default:
             return
-        }
-        // NSSlider sends this action continuously. Keep the value transient:
-        // UserDefaults and logging belong to the editing-ended path, not the
-        // mouse-tracking hot path.
-        let transientValue = menuBarStatusItemWidthAdjustmentSession.update(value)
-        MenuBarWidthPerformance.measure("slider-action") {
-            menuBarWidthAdjustmentCoalescer.submit(CGFloat(transientValue))
         }
     }
 
@@ -944,6 +962,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case DashboardMenuBarPage.amountOffsetsResetIdentifier:
             preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
+        case DashboardMenuBarPage.primaryFontSizeResetIdentifier:
+            menuBarPrimaryFontSize = AppPreferences.menuBarPrimaryFontSizeDefault
+        case DashboardMenuBarPage.secondaryFontSizeResetIdentifier:
+            menuBarSecondaryFontSize = AppPreferences.menuBarSecondaryFontSizeDefault
         default:
             return
         }

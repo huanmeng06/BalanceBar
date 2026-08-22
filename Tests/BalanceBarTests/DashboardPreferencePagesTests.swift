@@ -385,6 +385,146 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .allSatisfy { $0.isEnabled })
     }
 
+    func testMenuBarFontSizeControlsKeepRowsIndependentAndRefreshPreview() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarFontSize.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarPrimaryFontSize = 14.2
+        preferences.menuBarSecondaryFontSize = 9.6
+        let relay = DashboardPreferencePageRelay()
+        relay.onOffsetValue = { identifier, value in
+            switch identifier {
+            case AppPreferences.menuBarPrimaryFontSizeKey:
+                preferences.menuBarPrimaryFontSize = AppPreferences.normalizedMenuBarFontSize(
+                    value,
+                    range: AppPreferences.menuBarPrimaryFontSizeRange
+                )
+            case AppPreferences.menuBarSecondaryFontSizeKey:
+                preferences.menuBarSecondaryFontSize = AppPreferences.normalizedMenuBarFontSize(
+                    value,
+                    range: AppPreferences.menuBarSecondaryFontSizeRange
+                )
+            default:
+                break
+            }
+        }
+        relay.onOffsetReset = { identifier in
+            switch identifier {
+            case DashboardMenuBarPage.primaryFontSizeResetIdentifier:
+                preferences.menuBarPrimaryFontSize = AppPreferences.menuBarPrimaryFontSizeDefault
+            case DashboardMenuBarPage.secondaryFontSizeResetIdentifier:
+                preferences.menuBarSecondaryFontSize = AppPreferences.menuBarSecondaryFontSizeDefault
+            default:
+                break
+            }
+        }
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let sliders = descendants(of: page).compactMap { $0 as? NSSlider }
+        let primarySlider = try XCTUnwrap(sliders.first {
+            $0.identifier?.rawValue == AppPreferences.menuBarPrimaryFontSizeKey
+        })
+        let secondarySlider = try XCTUnwrap(sliders.first {
+            $0.identifier?.rawValue == AppPreferences.menuBarSecondaryFontSizeKey
+        })
+        XCTAssertTrue(primarySlider is MenuBarFontSizeSlider)
+        XCTAssertTrue(secondarySlider is MenuBarFontSizeSlider)
+        XCTAssertEqual(primarySlider.minValue, 10, accuracy: 0.001)
+        XCTAssertEqual(primarySlider.maxValue, 16, accuracy: 0.001)
+        XCTAssertEqual(secondarySlider.minValue, 8, accuracy: 0.001)
+        XCTAssertEqual(secondarySlider.maxValue, 13, accuracy: 0.001)
+        XCTAssertEqual(primarySlider.doubleValue, 14.2, accuracy: 0.001)
+        XCTAssertEqual(secondarySlider.doubleValue, 9.6, accuracy: 0.001)
+        XCTAssertTrue(primarySlider.isContinuous)
+        XCTAssertTrue(secondarySlider.isContinuous)
+        XCTAssertFalse(primarySlider.allowsTickMarkValuesOnly)
+        XCTAssertFalse(secondarySlider.allowsTickMarkValuesOnly)
+        XCTAssertTrue(primarySlider.toolTip?.contains("0.1pt") == true)
+        XCTAssertTrue(secondarySlider.toolTip?.contains("0.1pt") == true)
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertEqual(
+            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.primaryFontSizeSummaryIdentifier }?.stringValue,
+            "14.2 pt"
+        )
+        XCTAssertEqual(
+            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.secondaryFontSizeSummaryIdentifier }?.stringValue,
+            "9.6 pt"
+        )
+
+        let previewPrimary = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+            } as? NSTextField
+        )
+        let previewSecondary = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewSecondaryIdentifier
+            } as? NSTextField
+        )
+        XCTAssertEqual(previewPrimary.font?.pointSize ?? .nan, 14.2, accuracy: 0.001)
+        XCTAssertEqual(previewSecondary.font?.pointSize ?? .nan, 9.6, accuracy: 0.001)
+        XCTAssertEqual(previewPrimary.frame.minX, previewSecondary.frame.minX, accuracy: 0.001)
+        XCTAssertEqual(previewPrimary.frame.width, previewSecondary.frame.width, accuracy: 0.001)
+
+        primarySlider.doubleValue = 15.04
+        XCTAssertTrue(primarySlider.sendAction(primarySlider.action, to: primarySlider.target))
+        XCTAssertEqual(preferences.menuBarPrimaryFontSize, 15.0, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 9.6, accuracy: 0.001)
+        secondarySlider.doubleValue = 8.95
+        XCTAssertTrue(secondarySlider.sendAction(secondarySlider.action, to: secondarySlider.target))
+        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 9.0, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarPrimaryFontSize, 15.0, accuracy: 0.001)
+
+        let primaryReset = try XCTUnwrap(descendants(of: page)
+            .compactMap { $0 as? NSButton }
+            .first { $0.identifier?.rawValue == DashboardMenuBarPage.primaryFontSizeResetIdentifier })
+        relay.resetOffset(primaryReset)
+        XCTAssertEqual(
+            preferences.menuBarPrimaryFontSize,
+            AppPreferences.menuBarPrimaryFontSizeDefault,
+            accuracy: 0.001
+        )
+        let secondaryReset = try XCTUnwrap(descendants(of: page)
+            .compactMap { $0 as? NSButton }
+            .first { $0.identifier?.rawValue == DashboardMenuBarPage.secondaryFontSizeResetIdentifier })
+        relay.resetOffset(secondaryReset)
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            AppPreferences.menuBarSecondaryFontSizeDefault,
+            accuracy: 0.001
+        )
+
+        preferences.showMenuBarAmount = false
+        controller.refresh(
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        let refreshedSliders = descendants(of: page).compactMap { $0 as? NSSlider }
+        XCTAssertTrue(refreshedSliders
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarPrimaryFontSizeKey }
+            .allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(refreshedSliders
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarSecondaryFontSizeKey }
+            .allSatisfy { !$0.isEnabled })
+    }
+
     func testMenuBarWidthOnlyRefreshUpdatesSummaryWithoutFightingSlider() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
