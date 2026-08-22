@@ -3,6 +3,10 @@ import AppKit
 struct MenuBarGeometry {
     let iconWidth: CGFloat
     let gap: CGFloat
+    /// The widest measured text row before the anti-clipping slack is added.
+    /// This is the horizontal metric used when the official two-line text
+    /// block itself is centered; `textWidth` remains the actual label frame.
+    let measuredTextWidth: CGFloat
     let textWidth: CGFloat
     let primaryHeight: CGFloat
     let secondaryHeight: CGFloat
@@ -25,8 +29,11 @@ struct MenuBarGeometry {
     ) {
         iconWidth = showIcon ? iconSlotWidth : 0
         gap = showIcon && showAmount ? iconTextSpacing : 0
+        measuredTextWidth = showAmount
+            ? max(0, max(primarySize.width, secondarySize.width))
+            : 0
         textWidth = showAmount
-            ? ceil(max(primarySize.width, secondarySize.width)) + textWidthSlack
+            ? ceil(measuredTextWidth) + textWidthSlack
             : 0
         primaryHeight = showAmount ? ceil(primarySize.height) : 0
         secondaryHeight = hasSecondary ? ceil(secondarySize.height) : 0
@@ -173,22 +180,40 @@ enum MenuBarLayout {
     /// Returns the complete horizontal footprint of the BalanceBar status
     /// item. The adjustment belongs to the outer NSStatusItem length, so it
     /// changes the space allocated beside neighboring status items without
-    /// changing the icon/text spacing inside this item. Keep the natural
-    /// content width as a hard lower bound so a narrow setting cannot clip it.
+    /// changing the icon/text spacing inside this item. An optional leading
+    /// reserve is part of that outer footprint when a layout centers a text
+    /// column while keeping an icon leading it. Keep the natural footprint as
+    /// a hard lower bound so a narrow setting cannot clip visible content.
     static func statusItemLength(
         contentWidth: CGFloat,
         horizontalPadding: CGFloat,
-        widthAdjustment: CGFloat = 0
+        widthAdjustment: CGFloat = 0,
+        leadingContentReserve: CGFloat = 0
     ) -> CGFloat {
         let safeContentWidth = max(0, contentWidth)
         let safePadding = max(0, horizontalPadding)
+        let safeLeadingReserve = max(0, leadingContentReserve)
+        let safeFootprint = safeContentWidth + safeLeadingReserve
         // Keep the user-visible 0.1pt step in the actual footprint. The
         // natural content width is already measured in whole points; rounding
         // the complete result here would turn a continuous slider into 1pt
         // jumps.
-        let requestedLength = safeContentWidth + (safePadding * 2) + widthAdjustment
-        let safeMinimum = max(minimumStatusItemLength, safeContentWidth)
+        let requestedLength = safeFootprint + (safePadding * 2) + widthAdjustment
+        let safeMinimum = max(minimumStatusItemLength, safeFootprint)
         return max(safeMinimum, requestedLength)
+    }
+
+    /// The official two-line card keeps the icon at the leading side while
+    /// centering the amount text block itself. Reserve the icon/gap footprint
+    /// in the outer status item so the common `-20pt` width baseline cannot
+    /// clip the icon after the text block is centered.
+    static func textCenteringLeadingReserve(for geometry: MenuBarGeometry) -> CGFloat {
+        guard geometry.secondaryHeight > 0,
+              geometry.iconWidth > 0,
+              geometry.textWidth > 0 else {
+            return 0
+        }
+        return geometry.iconWidth + geometry.gap
     }
 
     static func geometry(
@@ -317,24 +342,53 @@ enum MenuBarLayout {
         return result
     }
 
+    /// Returns the measured horizontal bounds of the amount text block. The
+    /// label frame includes `textWidthSlack` to prevent glyph clipping; that
+    /// slack is deliberately excluded from this metric so the official two
+    /// rows are centered by their actual measured width.
+    static func visibleTextBounds(
+        for frames: MenuBarLayoutFrames,
+        geometry: MenuBarGeometry,
+        in backgroundBounds: NSRect
+    ) -> NSRect? {
+        guard frames.text.height > 0,
+              geometry.measuredTextWidth > 0 else {
+            return nil
+        }
+        let contentOrigin = NSPoint(
+            x: backgroundBounds.minX + frames.content.minX,
+            y: backgroundBounds.minY + frames.content.minY
+        )
+        return NSRect(
+            x: contentOrigin.x + frames.text.minX,
+            y: contentOrigin.y + frames.text.minY,
+            width: min(frames.text.width, geometry.measuredTextWidth),
+            height: frames.text.height
+        )
+    }
+
     /// Equal translation for the outer content container that compensates for
     /// independent icon/amount X offsets. The baseline and adjusted bounds
-    /// are both measured using the actual background geometry. The target
-    /// center includes the fixed 2pt optical correction for the rendered
-    /// capsule/shadow. A user offset changes only the relative arrangement and
-    /// not the group's corrected center. If only one component is visible,
-    /// its configured X offset is compensated so the sole visible component
-    /// remains centered; the preference value itself is retained and becomes
-    /// visible again when both components are shown.
+    /// are both measured using the actual background geometry. By default the
+    /// visible icon/text union is centered; `centerTextBlock` instead centers
+    /// the measured text column itself. The target center includes the fixed
+    /// 2pt optical correction for the rendered capsule/shadow. A user offset
+    /// changes only the relative arrangement and not the selected target
+    /// center. If only one component is visible, its configured X offset is
+    /// compensated so the sole visible component remains centered; the
+    /// preference value itself is retained and becomes visible again when both
+    /// components are shown.
     ///
     /// This helper deliberately does not allocate width. The caller supplies
-    /// the real status-item/card bounds; a future width setting therefore
-    /// changes the centering reference without being reimplemented here.
+    /// the real status-item/card bounds (including any leading reserve); a
+    /// width setting therefore changes the centering reference without being
+    /// reimplemented here.
     static func horizontalCenteringCompensation(
         backgroundBounds: NSRect,
         geometry: MenuBarGeometry,
         iconOffsetX: CGFloat,
-        textOffsetX: CGFloat
+        textOffsetX: CGFloat,
+        centerTextBlock: Bool = false
     ) -> CGFloat {
         guard geometry.iconWidth > 0 || geometry.textWidth > 0 else {
             return 0
@@ -352,19 +406,39 @@ enum MenuBarLayout {
             iconOffset: NSSize(width: iconOffsetX, height: 0),
             textOffset: NSSize(width: textOffsetX, height: 0)
         )
-        guard let baseBounds = visibleContentBounds(
-            for: baseFrames,
-            in: backgroundBounds
-        ), let adjustedBounds = visibleContentBounds(
-            for: adjustedFrames,
-            in: backgroundBounds
-        ) else {
+        let baseBounds: NSRect?
+        let adjustedBounds: NSRect?
+        if centerTextBlock {
+            baseBounds = visibleTextBounds(
+                for: baseFrames,
+                geometry: geometry,
+                in: backgroundBounds
+            )
+            adjustedBounds = visibleTextBounds(
+                for: adjustedFrames,
+                geometry: geometry,
+                in: backgroundBounds
+            )
+        } else {
+            baseBounds = visibleContentBounds(
+                for: baseFrames,
+                in: backgroundBounds
+            )
+            adjustedBounds = visibleContentBounds(
+                for: adjustedFrames,
+                in: backgroundBounds
+            )
+        }
+        guard let baseBounds, let adjustedBounds else {
             return 0
         }
         let opticalCenterNudgeX = geometry.iconWidth > 0 && geometry.textWidth == 0
             ? menuBarIconOnlyOpticalCenterNudgeX
             : menuBarOpticalCenterNudgeX
-        return baseBounds.midX
+        let targetCenter = centerTextBlock
+            ? backgroundBounds.midX
+            : baseBounds.midX
+        return targetCenter
             + opticalCenterNudgeX
             - adjustedBounds.midX
     }

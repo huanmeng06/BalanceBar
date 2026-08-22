@@ -317,6 +317,7 @@ final class DashboardMenuBarPage {
     private var primaryFontSizeResetButton: NSButton?
     private var secondaryFontSizeResetButton: NSButton?
     private var transientWidthAdjustment: Double?
+    private var previewTextCenteringReserve: CGFloat = 0
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -642,6 +643,9 @@ final class DashboardMenuBarPage {
             showAmount: preferences.showMenuBarAmount,
             hasSecondary: hasSecondary
         )
+        previewTextCenteringReserve = MenuBarLayout.textCenteringLeadingReserve(
+            for: geometry
+        )
         textWidthConstraint?.constant = geometry.textWidth
         previewIcon.image = iconImage
         previewIcon.contentTintColor = .labelColor
@@ -692,7 +696,8 @@ final class DashboardMenuBarPage {
             backgroundBounds: previewBackgroundBounds,
             geometry: geometry,
             iconOffsetX: iconVisualX,
-            textOffsetX: amountVisualX
+            textOffsetX: amountVisualX,
+            centerTextBlock: hasSecondary
         )
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
@@ -800,7 +805,8 @@ final class DashboardMenuBarPage {
         MenuBarWidthPerformance.measure("dashboard-preview") {
             let capsuleInset = Self.previewCapsuleHorizontalInset(
                 horizontalPadding: horizontalPadding,
-                widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+                widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
+                additionalWidth: previewTextCenteringReserve
             )
             capsuleLeadingConstraint?.constant = -capsuleInset
             capsuleTrailingConstraint?.constant = capsuleInset
@@ -843,9 +849,13 @@ final class DashboardMenuBarPage {
 
     private static func previewCapsuleHorizontalInset(
         horizontalPadding: CGFloat,
-        widthAdjustment: Double
+        widthAdjustment: Double,
+        additionalWidth: CGFloat = 0
     ) -> CGFloat {
-        horizontalPadding + 10 + (CGFloat(widthAdjustment) / 2)
+        horizontalPadding
+            + 10
+            + (CGFloat(widthAdjustment) / 2)
+            + (max(0, additionalWidth) / 2)
     }
 
     private func makeFontSizeSliderControls(

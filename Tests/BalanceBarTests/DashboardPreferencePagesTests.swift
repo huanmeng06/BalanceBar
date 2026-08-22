@@ -699,6 +699,71 @@ final class DashboardPreferencePagesTests: XCTestCase {
             menuBarSnapshot: { $0 },
             iconImage: nil
         )
+        let previewIcon = try! XCTUnwrap(
+            descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
+        )
+        let previewTextView = try! XCTUnwrap(
+            descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
+        )
+        let previewPrimary = try! XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+            } as? NSTextField
+        )
+        let previewSecondary = try! XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewSecondaryIdentifier
+            } as? NSTextField
+        )
+        let previewGeometry = MenuBarLayout.geometry(
+            primarySize: previewPrimary.intrinsicContentSize,
+            secondarySize: previewSecondary.intrinsicContentSize,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let previewBackgroundBounds = NSRect(x: 0, y: 0, width: 190, height: 42)
+        let previewFrames = MenuBarLayout.frames(
+            buttonSize: previewBackgroundBounds.size,
+            geometry: previewGeometry,
+            iconViewYOffset: 0
+        )
+        let previewCompensation = MenuBarLayout.horizontalCenteringCompensation(
+            backgroundBounds: previewBackgroundBounds,
+            geometry: previewGeometry,
+            iconOffsetX: 0,
+            textOffsetX: 0,
+            centerTextBlock: true
+        )
+        let centeredPreviewFrames = MenuBarLayoutFrames(
+            content: previewFrames.content.offsetBy(dx: previewCompensation, dy: 0),
+            iconSlot: previewFrames.iconSlot,
+            icon: previewFrames.icon,
+            text: previewFrames.text
+        )
+        let centeredPreviewTextBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleTextBounds(
+                for: centeredPreviewFrames,
+                geometry: previewGeometry,
+                in: previewBackgroundBounds
+            )
+        )
+        XCTAssertEqual(
+            centeredPreviewTextBounds.midX,
+            previewBackgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            previewTextView.layer?.affineTransform().tx ?? .nan,
+            previewCompensation,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            previewIcon.layer?.affineTransform().tx ?? .nan,
+            previewCompensation,
+            accuracy: 0.001
+        )
         // With reset time shown the text block defaults to 0.1pt lower.
         XCTAssertEqual(
             previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
