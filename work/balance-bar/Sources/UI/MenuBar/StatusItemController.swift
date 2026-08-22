@@ -26,7 +26,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let iconOffsetY: CGFloat
         let amountOffsetX: CGFloat
         let amountOffsetY: CGFloat
-        let widthAdjustment: CGFloat
+        var widthAdjustment: CGFloat
 
         init(
             showIcon: Bool,
@@ -112,6 +112,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var isCodexTaskRunning = false
     private var isClaudeTaskRunning = false
     private var animationEnabled = true
+    private var lastMenuBarGeometry: MenuBarGeometry?
+    private var lastMenuBarIconYOffset: CGFloat = 0
+    private var lastMenuBarOfficialTextYOffset: CGFloat = 0
+    private var lastMenuBarEffectiveSnapshot = Snapshot.placeholder
     private let actions: Actions
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
@@ -119,6 +123,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var isMenuTracking: Bool { isStatusMenuTracking }
     var iconImage: NSImage? { menuBarIconView.image }
+
+    // Exposes the controller's current outer footprint for headless layout
+    // tests without exposing the underlying NSStatusItem.
+    var statusItemLengthForTesting: CGFloat? { statusItem?.length }
 
     // Exposes the controller's actual menu for headless production-path tests.
     // The application still owns and renders this same NSMenu instance.
@@ -160,6 +168,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
         lastMenuBarIconFrameDiagnostic = nil
+        lastMenuBarGeometry = nil
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
         menuBarIconView.onImageChanged = nil
@@ -184,6 +193,35 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.settings = settings
         layoutStatusItem(for: snapshot)
         rebuildOrDeferMenu()
+    }
+
+    /// Updates only the status item's outer width while a continuous width
+    /// slider is being dragged. Rebuilding the menu or restarting activity
+    /// animation for every slider event makes the main-thread interaction
+    /// visibly stutter, so the existing content geometry is reused here.
+    func updateWidthAdjustment(_ widthAdjustment: CGFloat) {
+        settings.widthAdjustment = widthAdjustment
+        guard let statusItem,
+              let button = statusItem.button,
+              let geometry = lastMenuBarGeometry else {
+            return
+        }
+
+        let requestedLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: settings.horizontalPadding,
+            widthAdjustment: widthAdjustment
+        )
+        guard requestedLength != statusItem.length else { return }
+        statusItem.length = requestedLength
+        button.layoutSubtreeIfNeeded()
+        applyMenuBarContentFrames(
+            button: button,
+            geometry: geometry,
+            iconViewYOffset: lastMenuBarIconYOffset,
+            effectiveSnapshot: lastMenuBarEffectiveSnapshot,
+            officialTextYOffset: lastMenuBarOfficialTextYOffset
+        )
     }
 
     func updateMenu(input: MenuInput) {
@@ -486,7 +524,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         button.layoutSubtreeIfNeeded()
 
-        let buttonWidth = button.bounds.width
         let buttonHeight = button.bounds.height
         let apiIconYOffset = settings.showIcon && settings.showAmount
             ? MenuBarLayout.singleLineIconYOffset
@@ -519,10 +556,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } else {
             officialTextYOffset = 0
         }
-        let frames = MenuBarLayout.frames(
-            buttonSize: NSSize(width: buttonWidth, height: buttonHeight),
+        lastMenuBarGeometry = geometry
+        lastMenuBarIconYOffset = iconYOffset
+        lastMenuBarOfficialTextYOffset = officialTextYOffset
+        lastMenuBarEffectiveSnapshot = effectiveSnapshot
+        applyMenuBarContentFrames(
+            button: button,
             geometry: geometry,
             iconViewYOffset: iconYOffset,
+            effectiveSnapshot: effectiveSnapshot,
+            officialTextYOffset: officialTextYOffset
+        )
+        logMenuBarIconFrames(
+            snapshot: effectiveSnapshot,
+            button: button,
+            hasSecondary: hasSecondary,
+            iconYOffset: iconYOffset
+        )
+        button.toolTip = effectiveSnapshot.menuBarToolTip
+        button.isHidden = false
+        button.isEnabled = true
+        statusItem.isVisible = true
+    }
+
+    private func applyMenuBarContentFrames(
+        button: NSStatusBarButton,
+        geometry: MenuBarGeometry,
+        iconViewYOffset: CGFloat,
+        effectiveSnapshot: Snapshot,
+        officialTextYOffset: CGFloat
+    ) {
+        let frames = MenuBarLayout.frames(
+            buttonSize: NSSize(width: button.bounds.width, height: button.bounds.height),
+            geometry: geometry,
+            iconViewYOffset: iconViewYOffset,
             iconOffset: NSSize(
                 width: settings.iconOffsetX,
                 height: settings.iconOffsetY
@@ -545,16 +612,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 y: -MenuBarLayout.singleLineTextYOffset
             ))
         }
-        logMenuBarIconFrames(
-            snapshot: effectiveSnapshot,
-            button: button,
-            hasSecondary: hasSecondary,
-            iconYOffset: iconYOffset
-        )
-        button.toolTip = effectiveSnapshot.menuBarToolTip
-        button.isHidden = false
-        button.isEnabled = true
-        statusItem.isVisible = true
     }
 
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {

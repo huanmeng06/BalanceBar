@@ -77,7 +77,7 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
-    func testStatusItemStartIsIdempotentAndTeardownIsSafe() {
+    func testStatusItemStartIsIdempotentAndTeardownIsSafe() throws {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: {},
@@ -128,6 +128,20 @@ final class AppDelegateCompositionTests: XCTestCase {
             settings: settings
         )
         XCTAssertEqual(controller.statusItemInstallCount, 1)
+
+        let initialLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        let menuItemIdentities = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
+        controller.updateWidthAdjustment(10)
+        XCTAssertEqual(
+            controller.statusItemLengthForTesting ?? .nan,
+            initialLength + 10,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            menuItemIdentities,
+            "continuous width updates must not rebuild the status menu"
+        )
 
         controller.teardown()
         controller.teardown()

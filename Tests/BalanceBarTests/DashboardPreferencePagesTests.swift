@@ -211,6 +211,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(widthSlider.isContinuous)
         XCTAssertFalse(widthSlider.allowsTickMarkValuesOnly)
         XCTAssertEqual(widthSlider.numberOfTickMarks, 21)
+        XCTAssertEqual(
+            widthSlider.constraints.first(where: { $0.firstAttribute == .width })?.constant ?? .nan,
+            DashboardMenuBarPage.widthAdjustmentSliderWidth,
+            accuracy: 0.001
+        )
         let widthMinimumLabel = descendants(of: page)
             .compactMap { $0 as? NSTextField }
             .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSliderMinimumIdentifier }
@@ -312,6 +317,38 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(refreshedSliders
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey }
             .allSatisfy { $0.isEnabled })
+    }
+
+    func testMenuBarWidthOnlyRefreshUpdatesSliderAndSummary() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarWidthOnlyRefresh.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .balance("Provider", 12.34, "USD", nil, Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+
+        controller.refreshWidthAdjustment(7.4, horizontalPadding: 10)
+
+        let slider = descendants(of: page)
+            .compactMap { $0 as? NSSlider }
+            .first { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey }
+        let summary = descendants(of: page)
+            .compactMap { $0 as? NSTextField }
+            .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
+        XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
+        XCTAssertEqual(summary?.stringValue, "横向范围 +7.4 pt")
     }
 
     func testMenuBarWidthFineTuneLabelLocalizesAcrossSupportedLanguages() {

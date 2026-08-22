@@ -939,11 +939,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             return
         }
         menuBarStatusItemWidthAdjustment = value
-        SwitchLog.write(
-            "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
-            category: "configuration"
+        // NSSlider sends this action continuously. Keep the interaction on a
+        // lightweight width-only path so active icon animation is not
+        // interrupted by menu rebuilds or full Dashboard relayouts.
+        statusItemController.updateWidthAdjustment(
+            CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
         )
-        updateStatusItem(for: snapshot)
+        refreshDashboardMenuBarWidthAdjustment()
     }
 
     private func handleDashboardOffsetReset(identifier: String) {
@@ -1008,6 +1010,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refreshDashboardMenuBarPage() {
         dashboardComposition.refreshMenuBarPage(snapshot: snapshot)
+    }
+
+    private func refreshDashboardMenuBarWidthAdjustment() {
+        dashboardComposition.refreshMenuBarWidthAdjustment(
+            menuBarStatusItemWidthAdjustment,
+            horizontalPadding: menuBarHorizontalPadding
+        )
     }
 
     private func refreshDashboardOpenCodexSettings() {

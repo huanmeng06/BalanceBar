@@ -196,6 +196,7 @@ final class DashboardMenuBarPage {
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
+    static let widthAdjustmentSliderWidth: CGFloat = 140
     /// Extra default lift for the amount text in the Dashboard preview only
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
@@ -509,13 +510,6 @@ final class DashboardMenuBarPage {
             hasSecondary: hasSecondary
         )
         textWidthConstraint?.constant = geometry.textWidth
-        let widthAdjustment = preferences.menuBarStatusItemWidthAdjustment
-        let capsuleInset = Self.previewCapsuleHorizontalInset(
-            horizontalPadding: preferences.menuBarHorizontalPadding,
-            widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
-        )
-        capsuleLeadingConstraint?.constant = -capsuleInset
-        capsuleTrailingConstraint?.constant = capsuleInset
         previewIcon.image = iconImage
         previewIcon.contentTintColor = .labelColor
         let iconOffsetX = preferences.menuBarIconOffsetX
@@ -524,12 +518,12 @@ final class DashboardMenuBarPage {
         let amountOffsetY = preferences.menuBarAmountOffsetY
         iconOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: iconOffsetX, y: iconOffsetY)
         amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
-        widthAdjustmentSummaryLabel?.stringValue = Self.widthAdjustmentSummaryText(widthAdjustment)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
-        widthAdjustmentSlider?.doubleValue = widthAdjustment
-        widthAdjustmentSlider?.isEnabled = true
-        widthAdjustmentResetButton?.isEnabled = true
+        refreshWidthAdjustment(
+            preferences.menuBarStatusItemWidthAdjustment,
+            horizontalPadding: preferences.menuBarHorizontalPadding
+        )
         let iconVisualX = CGFloat(iconOffsetX)
         let iconVisualY = CGFloat(iconOffsetY)
         let amountVisualX = CGFloat(amountOffsetX)
@@ -588,6 +582,26 @@ final class DashboardMenuBarPage {
                 )
             ))
         }
+    }
+
+    /// Refreshes only the width-specific presentation while a continuous
+    /// slider is moving. The full page refresh also resolves snapshots and
+    /// reapplies icon/text transforms, which is unnecessary for this field.
+    func refreshWidthAdjustment(
+        _ widthAdjustment: Double,
+        horizontalPadding: CGFloat
+    ) {
+        guard isBuilt else { return }
+        let capsuleInset = Self.previewCapsuleHorizontalInset(
+            horizontalPadding: horizontalPadding,
+            widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+        )
+        capsuleLeadingConstraint?.constant = -capsuleInset
+        capsuleTrailingConstraint?.constant = capsuleInset
+        widthAdjustmentSummaryLabel?.stringValue = Self.widthAdjustmentSummaryText(widthAdjustment)
+        widthAdjustmentSlider?.doubleValue = widthAdjustment
+        widthAdjustmentSlider?.isEnabled = true
+        widthAdjustmentResetButton?.isEnabled = true
     }
 
     func restoreRequiredToggle(identifier: String) {
@@ -681,7 +695,7 @@ final class DashboardMenuBarPage {
             "從 0pt 向右放大，最大 +20pt",
             "0pt から右へ広げ、最大 +20pt"
         )
-        slider.widthAnchor.constraint(equalToConstant: 190).isActive = true
+        slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
 
         let minimumLabel = makeWidthSliderEndpointLabel(
             range.lowerBound == 0

@@ -160,6 +160,17 @@ final class DashboardCompositionController {
         )
     }
 
+    func refreshMenuBarWidthAdjustment(
+        _ widthAdjustment: Double,
+        horizontalPadding: CGFloat
+    ) {
+        guard window?.isVisible == true, section == .menuBar else { return }
+        dashboardPreferencePages.refreshMenuBarWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: horizontalPadding
+        )
+    }
+
     func refreshOpenCodexSettings() {
         guard window?.isVisible == true, section == .advanced else { return }
         dashboardPreferencePages.refreshAdvanced(
