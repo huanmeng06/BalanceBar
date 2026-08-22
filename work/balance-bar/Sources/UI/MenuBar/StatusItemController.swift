@@ -116,6 +116,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lastMenuBarIconYOffset: CGFloat = 0
     private var lastMenuBarOfficialTextYOffset: CGFloat = 0
     private var lastMenuBarEffectiveSnapshot = Snapshot.placeholder
+    private var pendingWidthAdjustment: CGFloat?
+    private var widthAdjustmentUpdateTimer: Timer?
     private let actions: Actions
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
@@ -169,6 +171,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         isStatusMenuTracking = false
         lastMenuBarIconFrameDiagnostic = nil
         lastMenuBarGeometry = nil
+        cancelPendingWidthAdjustment()
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
         menuBarIconView.onImageChanged = nil
@@ -187,6 +190,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput: MenuInput,
         settings: MenuBarSettings
     ) {
+        cancelPendingWidthAdjustment()
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
@@ -201,6 +205,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// visibly stutter, so the existing content geometry is reused here.
     func updateWidthAdjustment(_ widthAdjustment: CGFloat) {
         settings.widthAdjustment = widthAdjustment
+        pendingWidthAdjustment = widthAdjustment
+        guard widthAdjustmentUpdateTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: false) { [weak self] _ in
+            self?.applyPendingWidthAdjustment()
+        }
+        widthAdjustmentUpdateTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func applyPendingWidthAdjustment() {
+        widthAdjustmentUpdateTimer = nil
+        guard let widthAdjustment = pendingWidthAdjustment else { return }
+        pendingWidthAdjustment = nil
         guard let statusItem,
               let button = statusItem.button,
               let geometry = lastMenuBarGeometry else {
@@ -222,6 +239,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             effectiveSnapshot: lastMenuBarEffectiveSnapshot,
             officialTextYOffset: lastMenuBarOfficialTextYOffset
         )
+    }
+
+    private func cancelPendingWidthAdjustment() {
+        widthAdjustmentUpdateTimer?.invalidate()
+        widthAdjustmentUpdateTimer = nil
+        pendingWidthAdjustment = nil
     }
 
     func updateMenu(input: MenuInput) {

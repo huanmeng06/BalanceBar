@@ -132,9 +132,11 @@ final class AppDelegateCompositionTests: XCTestCase {
         let initialLength = try XCTUnwrap(controller.statusItemLengthForTesting)
         let menuItemIdentities = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
         controller.updateWidthAdjustment(10)
+        controller.updateWidthAdjustment(20)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(
             controller.statusItemLengthForTesting ?? .nan,
-            initialLength + 10,
+            initialLength + 20,
             accuracy: 0.001
         )
         XCTAssertEqual(

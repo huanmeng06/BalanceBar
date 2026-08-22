@@ -235,14 +235,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetsResetIdentifier }?.title,
             "归零"
         )
-        XCTAssertEqual(
-            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentResetIdentifier }?.title,
-            "归零"
-        )
-        XCTAssertEqual(
-            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentResetIdentifier }?.isEnabled,
-            true
-        )
+        XCTAssertFalse(buttons.contains {
+            $0.identifier?.rawValue == "menuBarStatusItemWidthAdjustmentReset"
+        })
         XCTAssertEqual(
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.isEnabled,
             true
@@ -355,14 +350,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String, String, String)] = [
-            (.simplifiedChinese, "宽度", "归零", "从 0pt 向右放大，最大 +20pt"),
-            (.traditionalChinese, "寬度", "歸零", "從 0pt 向右放大，最大 +20pt"),
-            (.japanese, "幅", "リセット", "0pt から右へ広げ、最大 +20pt"),
-            (.english, "Width", "Reset", "Drag right to widen from 0pt up to +20pt")
+        let cases: [(AppLanguage, String, String)] = [
+            (.simplifiedChinese, "宽度", "从 0pt 向右放大，最大 +20pt"),
+            (.traditionalChinese, "寬度", "從 0pt 向右放大，最大 +20pt"),
+            (.japanese, "幅", "0pt から右へ広げ、最大 +20pt"),
+            (.english, "Width", "Drag right to widen from 0pt up to +20pt")
         ]
 
-        for (language, expectedTitle, expectedResetTitle, expectedToolTip) in cases {
+        for (language, expectedTitle, expectedToolTip) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarWidthLocalization.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -384,13 +379,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 expectedTitle,
                 "width title for \(language)"
             )
-            XCTAssertEqual(
-                descendants(of: page)
-                    .compactMap { $0 as? NSButton }
-                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentResetIdentifier }?
-                    .title,
-                expectedResetTitle,
-                "width reset title for \(language)"
+            XCTAssertFalse(
+                descendants(of: page).contains {
+                    $0.identifier?.rawValue == "menuBarStatusItemWidthAdjustmentReset"
+                },
+                "width reset control must be absent for \(language)"
             )
             let slider = descendants(of: page)
                 .compactMap { $0 as? NSSlider }

@@ -922,8 +922,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences.menuBarAmountOffsetX += pointDelta
         case AppPreferences.menuBarAmountOffsetYKey:
             preferences.menuBarAmountOffsetY += pointDelta
-        case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
-            menuBarStatusItemWidthAdjustment += pointDelta
         default:
             return
         }
@@ -956,8 +954,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case DashboardMenuBarPage.amountOffsetsResetIdentifier:
             preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
-        case DashboardMenuBarPage.widthAdjustmentResetIdentifier:
-            menuBarStatusItemWidthAdjustment = 0
         default:
             return
         }

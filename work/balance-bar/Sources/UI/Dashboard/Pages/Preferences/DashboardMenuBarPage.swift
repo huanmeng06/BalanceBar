@@ -190,7 +190,6 @@ final class RepeatOffsetButton: NSButton {
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
-    static let widthAdjustmentResetIdentifier = "menuBarStatusItemWidthAdjustmentReset"
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
@@ -241,7 +240,6 @@ final class DashboardMenuBarPage {
     private struct WidthSliderControls {
         let view: NSView
         let slider: NSSlider
-        let resetButton: NSButton
     }
 
     private let previewIcon = PassthroughImageView()
@@ -261,7 +259,6 @@ final class DashboardMenuBarPage {
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
-    private weak var widthAdjustmentResetButton: NSButton?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -428,7 +425,6 @@ final class DashboardMenuBarPage {
         let widthAdjustmentControls = makeWidthSliderControls(
             value: widthAdjustment,
             key: AppPreferences.menuBarStatusItemWidthAdjustmentKey,
-            resetIdentifier: Self.widthAdjustmentResetIdentifier,
             relay: input.relay
         )
         iconOffsetSummaryLabel = iconOffsetSummary
@@ -437,7 +433,6 @@ final class DashboardMenuBarPage {
         iconOffsetButtons = iconOffsetControls
         amountOffsetButtons = amountOffsetControls
         widthAdjustmentSlider = widthAdjustmentControls.slider
-        widthAdjustmentResetButton = widthAdjustmentControls.resetButton
         let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
             tr("细节微调", "Fine Tuning", "細節微調", "微調整"),
             rows: [
@@ -601,7 +596,6 @@ final class DashboardMenuBarPage {
         widthAdjustmentSummaryLabel?.stringValue = Self.widthAdjustmentSummaryText(widthAdjustment)
         widthAdjustmentSlider?.doubleValue = widthAdjustment
         widthAdjustmentSlider?.isEnabled = true
-        widthAdjustmentResetButton?.isEnabled = true
     }
 
     func restoreRequiredToggle(identifier: String) {
@@ -674,7 +668,6 @@ final class DashboardMenuBarPage {
     private func makeWidthSliderControls(
         value: Double,
         key: String,
-        resetIdentifier: String,
         relay: DashboardPreferencePageRelay
     ) -> WidthSliderControls {
         let range = AppPreferences.menuBarStatusItemWidthAdjustmentRange
@@ -707,13 +700,12 @@ final class DashboardMenuBarPage {
             String(format: "%+.0f", range.upperBound),
             identifier: Self.widthAdjustmentSliderMaximumIdentifier
         )
-        let resetButton = makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
-        let stack = NSStackView(views: [minimumLabel, slider, maximumLabel, resetButton])
+        let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 6
         stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return WidthSliderControls(view: stack, slider: slider, resetButton: resetButton)
+        return WidthSliderControls(view: stack, slider: slider)
     }
 
     private func makeWidthSliderEndpointLabel(
