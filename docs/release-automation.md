@@ -9,8 +9,8 @@ The workflow does not require a Release label and does not require a manual Git
 tag. It compares `work/balance-bar/Info.plist` in the merged commit with the
 first parent of that commit:
 
-- `1.1.3 → 1.1.4` — `c+1`, publishes a beta pre-release such as
-  `v1.1.4-beta.1`;
+- `1.1.3 → 1.1.4` — `c+1`, publishes a Pre-release using the plain tag
+  `v1.1.4`;
 - `1.1.4 → 1.2.0` — `b+1`, publishes a stable release such as `v1.2.0`;
 - `1.2.0 → 2.0.0` — `a+1`, publishes a stable release such as `v2.0.0`.
 
@@ -18,6 +18,10 @@ If the version did not change, the workflow exits successfully without
 publishing anything. If the version change skips a number or does not reset
 the lower components according to the rules above, it fails safely and asks
 for a corrected version bump.
+
+Patch releases use a normal `vX.Y.Z` tag without a beta-number suffix.
+GitHub's Pre-release flag identifies the release as a test version; the tag and
+Release title remain `vX.Y.Z`.
 
 ## AI provider configuration
 
