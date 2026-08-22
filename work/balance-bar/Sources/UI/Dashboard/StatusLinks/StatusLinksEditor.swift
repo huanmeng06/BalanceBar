@@ -212,6 +212,7 @@ struct StatusLinksEditorView: View {
                     title: tr("恢复默认", "Restore Defaults", "恢復預設", "デフォルトに戻す"),
                     action: model.reset
                 )
+                .fixedSize(horizontal: true, vertical: false)
             }
             .frame(height: 24)
             .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor")))
