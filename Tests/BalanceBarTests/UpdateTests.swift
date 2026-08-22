@@ -55,11 +55,15 @@ final class UpdateTests: XCTestCase {
                 client?.urlProtocol(self, didFailWithError: error)
                 return
             }
+            var headers = ["Content-Type": "application/json"]
+            if let data = result.data {
+                headers["Content-Length"] = String(data.count)
+            }
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: result.statusCode,
                 httpVersion: "HTTP/1.1",
-                headerFields: ["Content-Type": "application/json"]
+                headerFields: headers
             )!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             if let data = result.data {
@@ -89,18 +93,26 @@ final class UpdateTests: XCTestCase {
     private final class StubDownloader: UpdateAssetDownloading {
         private(set) var requestCount = 0
         private(set) var cleanedURLs: [URL] = []
+        private var progress: ((Int) -> Void)?
         private var completion: ((Result<URL, UpdateAssetDownloadError>) -> Void)?
 
         func download(
             asset: GitHubReleaseAsset,
+            progress: @escaping (Int) -> Void,
             completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
         ) {
             requestCount += 1
+            self.progress = progress
             self.completion = completion
+        }
+
+        func reportProgress(_ value: Int) {
+            progress?(value)
         }
 
         func resolve(_ result: Result<URL, UpdateAssetDownloadError>) {
             completion?(result)
+            progress = nil
             completion = nil
         }
 
@@ -111,6 +123,7 @@ final class UpdateTests: XCTestCase {
 
     private final class StubInstaller: UpdateApplicationInstalling {
         var shouldFail = false
+        var progressValues: [Int] = []
         private(set) var installCount = 0
         private(set) var lastVersion: AppSemanticVersion?
 
@@ -118,10 +131,12 @@ final class UpdateTests: XCTestCase {
             diskImageURL: URL,
             expectedVersion: AppSemanticVersion,
             currentApplicationURL: URL,
-            expectedBundleIdentifier: String
+            expectedBundleIdentifier: String,
+            progress: @escaping (Int) -> Void
         ) throws {
             installCount += 1
             lastVersion = expectedVersion
+            progressValues.forEach(progress)
             if shouldFail { throw UpdateInstallationError.replacementFailed }
         }
     }
@@ -313,7 +328,8 @@ final class UpdateTests: XCTestCase {
         let downloader = URLSessionUpdateAssetDownloader(session: session)
         let expectation = expectation(description: "asset downloaded")
         var result: Result<URL, UpdateAssetDownloadError>?
-        downloader.download(asset: asset) {
+        var progressValues: [Int] = []
+        downloader.download(asset: asset, progress: { progressValues.append($0) }) {
             result = $0
             expectation.fulfill()
         }
@@ -324,6 +340,8 @@ final class UpdateTests: XCTestCase {
         }
         downloadedURL = url
         XCTAssertEqual(try Data(contentsOf: downloadedURL), data)
+        XCTAssertEqual(progressValues.first, 0)
+        XCTAssertEqual(progressValues.last, 100)
         downloader.cleanupDownloadedFile(at: downloadedURL)
         XCTAssertFalse(FileManager.default.fileExists(atPath: downloadedURL.path))
     }
@@ -506,6 +524,7 @@ final class UpdateTests: XCTestCase {
         let fetcher = StubReleaseFetcher()
         let downloader = StubDownloader()
         let installer = StubInstaller()
+        installer.progressValues = [25, 100]
         let queue = DispatchQueue(label: "UpdateTests.install")
         let service = UpdateService(
             releaseFetcher: fetcher,
@@ -525,14 +544,26 @@ final class UpdateTests: XCTestCase {
         }
         wait(for: [available], timeout: 2)
 
-        let restarting = waitForState(service, queue: queue) {
-            if case .restarting(_, let latest) = $0 { return latest == AppSemanticVersion("1.0.1") }
-            return false
+        let downloadingProgress = expectation(description: "download progress")
+        let installingProgress = expectation(description: "install progress")
+        let restarting = expectation(description: "restarting state")
+        service.onStateChange = { state in
+            switch state {
+            case .downloading(_, _, let progress) where progress == 25:
+                downloadingProgress.fulfill()
+            case .installing(_, _, let progress) where progress == 25:
+                installingProgress.fulfill()
+            case .restarting(_, let latest) where latest == AppSemanticVersion("1.0.1"):
+                restarting.fulfill()
+            default:
+                break
+            }
         }
         service.installAvailableUpdate()
         XCTAssertEqual(downloader.requestCount, 1)
+        downloader.reportProgress(25)
         downloader.resolve(.success(URL(fileURLWithPath: "/tmp/verified-BalanceBar-1.0.1.dmg")))
-        wait(for: [restarting], timeout: 2)
+        wait(for: [downloadingProgress, installingProgress, restarting], timeout: 2)
         XCTAssertEqual(installer.installCount, 1)
         XCTAssertEqual(installer.lastVersion, AppSemanticVersion("1.0.1"))
         XCTAssertEqual(downloader.cleanedURLs, [URL(fileURLWithPath: "/tmp/verified-BalanceBar-1.0.1.dmg")])
@@ -590,6 +621,7 @@ final class UpdateTests: XCTestCase {
         try Data("fixture-dmg".utf8).write(to: image)
         let mounter = StubMounter(mountPoint: mountPoint)
         let relauncher = StubRelauncher()
+        var progressValues: [Int] = []
         let installer = UpdateApplicationInstaller(
             fileSystem: LiveUpdateFileSystem(),
             mounter: mounter,
@@ -599,12 +631,14 @@ final class UpdateTests: XCTestCase {
             diskImageURL: image,
             expectedVersion: try XCTUnwrap(AppSemanticVersion("1.0.1")),
             currentApplicationURL: currentApp,
-            expectedBundleIdentifier: "com.huanmeng06.BalanceBar.app"
+            expectedBundleIdentifier: "com.huanmeng06.BalanceBar.app",
+            progress: { progressValues.append($0) }
         )
         XCTAssertEqual(LiveUpdateFileSystem().bundleMetadata(at: currentApp)?.shortVersion, "1.0.1")
         XCTAssertEqual(mounter.mountCount, 1)
         XCTAssertEqual(mounter.unmountCount, 1)
         XCTAssertEqual(relauncher.relaunchCount, 1)
+        XCTAssertEqual(progressValues, [0, 15, 25, 50, 60, 80, 95, 100])
     }
 
     func testInstallerRollsBackOldBundleWhenRelaunchFails() throws {
@@ -758,6 +792,38 @@ final class UpdateTests: XCTestCase {
             case .english:
                 XCTAssertEqual(presentation.subtitle, "New version available: 1.0.6 -> 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "Download and Install")
+            case .system:
+                XCTFail("system is not part of this explicit localization matrix")
+            }
+            let downloading = DashboardUpdatePresentation.make(
+                for: .downloading(
+                    current: try XCTUnwrap(AppSemanticVersion("1.0.6")),
+                    latest: try XCTUnwrap(AppSemanticVersion("1.0.7")),
+                    progress: 25
+                ),
+                language: language
+            )
+            let installing = DashboardUpdatePresentation.make(
+                for: .installing(
+                    current: try XCTUnwrap(AppSemanticVersion("1.0.6")),
+                    latest: try XCTUnwrap(AppSemanticVersion("1.0.7")),
+                    progress: 25
+                ),
+                language: language
+            )
+            switch language {
+            case .simplifiedChinese:
+                XCTAssertEqual(downloading.buttonTitle, "下载中 25% …")
+                XCTAssertEqual(installing.buttonTitle, "安装中 25% …")
+            case .traditionalChinese:
+                XCTAssertEqual(downloading.buttonTitle, "下載中 25% …")
+                XCTAssertEqual(installing.buttonTitle, "安裝中 25% …")
+            case .japanese:
+                XCTAssertEqual(downloading.buttonTitle, "ダウンロード中 25% …")
+                XCTAssertEqual(installing.buttonTitle, "インストール中 25% …")
+            case .english:
+                XCTAssertEqual(downloading.buttonTitle, "Downloading 25% …")
+                XCTAssertEqual(installing.buttonTitle, "Installing 25% …")
             case .system:
                 XCTFail("system is not part of this explicit localization matrix")
             }

@@ -48,17 +48,17 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonEnabled: true,
                 performsInstall: true
             )
-        case .downloading:
+        case .downloading(_, _, let progress):
             return DashboardUpdatePresentation(
                 subtitle: tr("正在下载新版本…", "Downloading the new version…", "正在下載新版本…", "新しいバージョンをダウンロード中…", language: language),
-                buttonTitle: tr("下载中…", "Downloading…", "下載中…", "ダウンロード中…", language: language),
+                buttonTitle: tr("下载中 \(progress)% …", "Downloading \(progress)% …", "下載中 \(progress)% …", "ダウンロード中 \(progress)% …", language: language),
                 buttonEnabled: false,
                 performsInstall: false
             )
-        case .installing:
+        case .installing(_, _, let progress):
             return DashboardUpdatePresentation(
                 subtitle: tr("正在安装新版本…", "Installing the new version…", "正在安裝新版本…", "新しいバージョンをインストール中…", language: language),
-                buttonTitle: tr("安装中…", "Installing…", "安裝中…", "インストール中…", language: language),
+                buttonTitle: tr("安装中 \(progress)% …", "Installing \(progress)% …", "安裝中 \(progress)% …", "インストール中 \(progress)% …", language: language),
                 buttonEnabled: false,
                 performsInstall: false
             )

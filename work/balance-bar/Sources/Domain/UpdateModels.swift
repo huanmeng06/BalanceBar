@@ -200,8 +200,8 @@ enum UpdateCheckState: Equatable {
     case checking(current: AppSemanticVersion)
     case latest(current: AppSemanticVersion)
     case available(current: AppSemanticVersion, latest: AppSemanticVersion)
-    case downloading(current: AppSemanticVersion, latest: AppSemanticVersion)
-    case installing(current: AppSemanticVersion, latest: AppSemanticVersion)
+    case downloading(current: AppSemanticVersion, latest: AppSemanticVersion, progress: Int)
+    case installing(current: AppSemanticVersion, latest: AppSemanticVersion, progress: Int)
     case restarting(current: AppSemanticVersion, latest: AppSemanticVersion)
     case failed(UpdateFailure)
 }

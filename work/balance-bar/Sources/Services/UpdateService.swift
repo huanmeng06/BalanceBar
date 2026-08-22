@@ -73,7 +73,30 @@ protocol UpdateAssetDownloading {
         completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
     )
 
+    func download(
+        asset: GitHubReleaseAsset,
+        progress: @escaping (Int) -> Void,
+        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
+    )
+
     func cleanupDownloadedFile(at url: URL)
+}
+
+extension UpdateAssetDownloading {
+    func download(
+        asset: GitHubReleaseAsset,
+        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
+    ) {
+        download(asset: asset, progress: { _ in }, completion: completion)
+    }
+
+    func download(
+        asset: GitHubReleaseAsset,
+        progress: @escaping (Int) -> Void,
+        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
+    ) {
+        download(asset: asset, completion: completion)
+    }
 }
 
 enum UpdateAssetVerifier {
@@ -122,16 +145,17 @@ private enum SHA256Hex {
 /// validates HTTP status, content size, and the optional GitHub SHA-256 digest
 /// before exposing the path to the installer.
 final class URLSessionUpdateAssetDownloader: UpdateAssetDownloading {
-    private let session: URLSession
+    private let sessionConfiguration: URLSessionConfiguration
     private let fileManager: FileManager
 
     init(session: URLSession = .shared, fileManager: FileManager = .default) {
-        self.session = session
+        self.sessionConfiguration = session.configuration
         self.fileManager = fileManager
     }
 
     func download(
         asset: GitHubReleaseAsset,
+        progress: @escaping (Int) -> Void,
         completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
     ) {
         guard let url = asset.browserDownloadURL,
@@ -145,41 +169,107 @@ final class URLSessionUpdateAssetDownloader: UpdateAssetDownloading {
         request.timeoutInterval = 120
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.setValue("BalanceBar", forHTTPHeaderField: "User-Agent")
-        session.dataTask(with: request) { [fileManager] data, response, error in
-            if error != nil {
-                completion(.failure(.transport))
-                return
-            }
-            guard let httpResponse = response as? HTTPURLResponse else {
-                completion(.failure(.invalidAsset))
-                return
-            }
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                completion(.failure(.httpStatus(httpResponse.statusCode)))
-                return
-            }
-            guard let data else {
-                completion(.failure(.emptyData))
-                return
-            }
-            do {
-                try UpdateAssetVerifier.verify(data: data, asset: asset)
-                let directory = fileManager.temporaryDirectory
-                    .appendingPathComponent("BalanceBar-update-\(UUID().uuidString)", isDirectory: true)
-                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-                let destination = directory.appendingPathComponent(asset.name)
-                try data.write(to: destination, options: .atomic)
-                completion(.success(destination))
-            } catch let error as UpdateAssetDownloadError {
-                completion(.failure(error))
-            } catch {
-                completion(.failure(.writeFailed))
-            }
-        }.resume()
+        let delegate = UpdateAssetDownloadDelegate(
+            asset: asset,
+            fileManager: fileManager,
+            progress: progress,
+            completion: completion
+        )
+        let session = URLSession(
+            configuration: sessionConfiguration,
+            delegate: delegate,
+            delegateQueue: nil
+        )
+        progress(0)
+        session.dataTask(with: request).resume()
     }
 
     func cleanupDownloadedFile(at url: URL) {
         try? fileManager.removeItem(at: url.deletingLastPathComponent())
+    }
+}
+
+private final class UpdateAssetDownloadDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let asset: GitHubReleaseAsset
+    private let fileManager: FileManager
+    private let progress: (Int) -> Void
+    private let completion: (Result<URL, UpdateAssetDownloadError>) -> Void
+    private var response: HTTPURLResponse?
+    private var expectedByteCount: Int64 = NSURLSessionTransferSizeUnknown
+    private var receivedData = Data()
+    private var didComplete = false
+
+    init(
+        asset: GitHubReleaseAsset,
+        fileManager: FileManager,
+        progress: @escaping (Int) -> Void,
+        completion: @escaping (Result<URL, UpdateAssetDownloadError>) -> Void
+    ) {
+        self.asset = asset
+        self.fileManager = fileManager
+        self.progress = progress
+        self.completion = completion
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        self.response = response as? HTTPURLResponse
+        expectedByteCount = response.expectedContentLength
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        receivedData.append(data)
+        guard expectedByteCount > 0 else { return }
+        let fraction = Double(receivedData.count) / Double(expectedByteCount)
+        progress(Self.percent(for: fraction))
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard !didComplete else { return }
+        didComplete = true
+        defer { session.finishTasksAndInvalidate() }
+
+        if error != nil {
+            completion(.failure(.transport))
+            return
+        }
+        guard let response,
+              (200..<300).contains(response.statusCode)
+        else {
+            if let response {
+                completion(.failure(.httpStatus(response.statusCode)))
+            } else {
+                completion(.failure(.invalidAsset))
+            }
+            return
+        }
+        guard !receivedData.isEmpty else {
+            completion(.failure(.emptyData))
+            return
+        }
+        do {
+            try UpdateAssetVerifier.verify(data: receivedData, asset: asset)
+            let directory = fileManager.temporaryDirectory
+                .appendingPathComponent("BalanceBar-update-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let destination = directory.appendingPathComponent(asset.name)
+            try receivedData.write(to: destination, options: .atomic)
+            progress(100)
+            completion(.success(destination))
+        } catch let error as UpdateAssetDownloadError {
+            completion(.failure(error))
+        } catch {
+            completion(.failure(.writeFailed))
+        }
+    }
+
+    private static func percent(for fraction: Double) -> Int {
+        min(max(Int((fraction * 100).rounded(.down)), 0), 100)
     }
 }
 
@@ -428,6 +518,46 @@ protocol UpdateApplicationInstalling {
         currentApplicationURL: URL,
         expectedBundleIdentifier: String
     ) throws
+
+    func install(
+        diskImageURL: URL,
+        expectedVersion: AppSemanticVersion,
+        currentApplicationURL: URL,
+        expectedBundleIdentifier: String,
+        progress: @escaping (Int) -> Void
+    ) throws
+}
+
+extension UpdateApplicationInstalling {
+    func install(
+        diskImageURL: URL,
+        expectedVersion: AppSemanticVersion,
+        currentApplicationURL: URL,
+        expectedBundleIdentifier: String
+    ) throws {
+        try install(
+            diskImageURL: diskImageURL,
+            expectedVersion: expectedVersion,
+            currentApplicationURL: currentApplicationURL,
+            expectedBundleIdentifier: expectedBundleIdentifier,
+            progress: { _ in }
+        )
+    }
+
+    func install(
+        diskImageURL: URL,
+        expectedVersion: AppSemanticVersion,
+        currentApplicationURL: URL,
+        expectedBundleIdentifier: String,
+        progress: @escaping (Int) -> Void
+    ) throws {
+        try install(
+            diskImageURL: diskImageURL,
+            expectedVersion: expectedVersion,
+            currentApplicationURL: currentApplicationURL,
+            expectedBundleIdentifier: expectedBundleIdentifier
+        )
+    }
 }
 
 /// Stages and validates a new app before atomically replacing the currently
@@ -453,8 +583,10 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         diskImageURL: URL,
         expectedVersion: AppSemanticVersion,
         currentApplicationURL: URL,
-        expectedBundleIdentifier: String
+        expectedBundleIdentifier: String,
+        progress: @escaping (Int) -> Void
     ) throws {
+        progress(0)
         guard fileSystem.fileExists(at: diskImageURL),
               fileSystem.isRegularFile(at: diskImageURL)
         else { throw UpdateInstallationError.invalidDiskImage }
@@ -467,6 +599,7 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         } catch {
             throw UpdateInstallationError.mountFailed
         }
+        progress(15)
 
         var mountIsActive = true
         var stagingDirectory: URL?
@@ -487,6 +620,7 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         else {
             throw UpdateInstallationError.bundleMetadataMismatch
         }
+        progress(25)
 
         let temporaryDirectory: URL
         do {
@@ -508,6 +642,7 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         else {
             throw UpdateInstallationError.bundleMetadataMismatch
         }
+        progress(50)
 
         do {
             try mounter.unmount(mounted)
@@ -515,6 +650,7 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         } catch {
             throw UpdateInstallationError.mountFailed
         }
+        progress(60)
 
         let backupName = ".BalanceBar.previous-\(UUID().uuidString).app"
         let backupURL = currentApplicationURL
@@ -534,6 +670,7 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
         } catch {
             throw UpdateInstallationError.replacementFailed
         }
+        progress(80)
 
         do {
             try relauncher.relaunchApplication(at: currentApplicationURL)
@@ -546,7 +683,9 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
             )
             throw UpdateInstallationError.relaunchFailed
         }
+        progress(95)
         try? fileSystem.removeItem(at: backupURL)
+        progress(100)
     }
 }
 
@@ -611,17 +750,36 @@ final class UpdateService {
               let release = availableRelease,
               let asset = release.matchingAsset(for: latestVersion)
         else { return }
-        transition(to: .downloading(current: currentVersion, latest: latestVersion))
-        downloader.download(asset: asset) { [weak self] result in
-            guard let self else { return }
-            self.callbackQueue.async {
-                self.handleDownloadResult(
-                    result,
-                    currentVersion: currentVersion,
-                    latestVersion: latestVersion
-                )
+        transition(to: .downloading(current: currentVersion, latest: latestVersion, progress: 0))
+        downloader.download(
+            asset: asset,
+            progress: { [weak self] progress in
+                guard let self else { return }
+                self.callbackQueue.async {
+                    guard case .downloading(let current, let latest, _) = self.state,
+                          current == currentVersion,
+                          latest == latestVersion
+                    else { return }
+                    self.transition(
+                        to: .downloading(
+                            current: currentVersion,
+                            latest: latestVersion,
+                            progress: Self.clampProgress(progress)
+                        )
+                    )
+                }
+            },
+            completion: { [weak self] result in
+                guard let self else { return }
+                self.callbackQueue.async {
+                    self.handleDownloadResult(
+                        result,
+                        currentVersion: currentVersion,
+                        latestVersion: latestVersion
+                    )
+                }
             }
-        }
+        )
     }
 
     private var isBusy: Bool {
@@ -687,7 +845,7 @@ final class UpdateService {
                 transition(to: .failed(.downloadFailed))
             }
         case .success(let downloadedURL):
-            transition(to: .installing(current: currentVersion, latest: latestVersion))
+            transition(to: .installing(current: currentVersion, latest: latestVersion, progress: 0))
             guard let bundleIdentifier = currentBundleIdentifier else {
                 downloader.cleanupDownloadedFile(at: downloadedURL)
                 transition(to: .failed(.installationFailed))
@@ -700,7 +858,23 @@ final class UpdateService {
                         diskImageURL: downloadedURL,
                         expectedVersion: latestVersion,
                         currentApplicationURL: self.currentApplicationURL,
-                        expectedBundleIdentifier: bundleIdentifier
+                        expectedBundleIdentifier: bundleIdentifier,
+                        progress: { [weak self] progress in
+                            guard let self else { return }
+                            self.callbackQueue.async {
+                                guard case .installing(let current, let latest, _) = self.state,
+                                      current == currentVersion,
+                                      latest == latestVersion
+                                else { return }
+                                self.transition(
+                                    to: .installing(
+                                        current: currentVersion,
+                                        latest: latestVersion,
+                                        progress: Self.clampProgress(progress)
+                                    )
+                                )
+                            }
+                        }
                     )
                     self.downloader.cleanupDownloadedFile(at: downloadedURL)
                     self.callbackQueue.async {
@@ -719,5 +893,9 @@ final class UpdateService {
     private func transition(to newState: UpdateCheckState) {
         state = newState
         onStateChange?(newState)
+    }
+
+    private static func clampProgress(_ value: Int) -> Int {
+        min(max(value, 0), 100)
     }
 }
