@@ -16,6 +16,7 @@ final class ProviderRefreshCoordinator {
     private let repository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient: BalanceAPIClient
+    private let balanceProgressStore: ProviderBalanceProgressStore
     private let queue: DispatchQueue
     private let actions: ProviderRefreshActions
     private var lastBalanceFetch: Date?
@@ -29,12 +30,14 @@ final class ProviderRefreshCoordinator {
         repository: CCSwitchRepository,
         officialQuotaClient: OfficialQuotaClient,
         balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
+        balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-refresh"),
         actions: ProviderRefreshActions
     ) {
         self.repository = repository
         self.officialQuotaClient = officialQuotaClient
         self.balanceAPIClient = balanceAPIClient
+        self.balanceProgressStore = balanceProgressStore
         self.queue = queue
         self.actions = actions
     }
@@ -138,6 +141,16 @@ final class ProviderRefreshCoordinator {
                     providerID: source.id
                 ) { [weak self] result in
                     guard let self, case .success(let response) = result else { return }
+                    let identity = ProviderBalanceProgressIdentity(
+                        client: client,
+                        providerID: source.id,
+                        query: query
+                    )
+                    guard case .success = self.balanceProgressStore.update(
+                        amount: response.output.amount,
+                        unit: response.output.unit,
+                        identity: identity
+                    ) else { return }
                     self.updateQuickSwitchSummary(
                         providerID: source.id,
                         text: Self.formatBalanceSummary(response.output.amount, unit: response.output.unit)
@@ -173,12 +186,40 @@ final class ProviderRefreshCoordinator {
             guard let self else { return }
             switch result {
             case .success(let response):
+                let identity = ProviderBalanceProgressIdentity(
+                    client: client,
+                    providerID: providerID,
+                    query: query
+                )
+                let progressResult = self.balanceProgressStore.update(
+                    amount: response.output.amount,
+                    unit: response.output.unit,
+                    identity: identity
+                )
+                guard case .success(let progressPercentage) = progressResult else {
+                    if case .failure(let error) = progressResult {
+                        self.renderBalanceError(
+                            providerID: providerID,
+                            providerName: providerName,
+                            reason: error.userVisibleReason(language: AppLanguage.resolved),
+                            client: client
+                        )
+                    }
+                    return
+                }
                 self.updateQuickSwitchSummary(
                     providerID: providerID,
                     text: Self.formatBalanceSummary(response.output.amount, unit: response.output.unit)
                 )
                 self.renderForCurrentProvider(
-                    .balance(providerName, response.output.amount, response.output.unit, query.websiteURL, Date()),
+                    .balance(
+                        providerName,
+                        response.output.amount,
+                        response.output.unit,
+                        query.websiteURL,
+                        Date(),
+                        progressPercentage: progressPercentage
+                    ),
                     providerID: providerID,
                     client: client
                 )

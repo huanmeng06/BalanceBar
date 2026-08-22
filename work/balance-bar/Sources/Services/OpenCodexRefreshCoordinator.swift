@@ -17,6 +17,7 @@ final class OpenCodexRefreshCoordinator {
     private let repository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient: BalanceAPIClient
+    private let balanceProgressStore: ProviderBalanceProgressStore
     private let openCodexRepository: OpenCodexRepository
     private let queue: DispatchQueue
     private let actions: OpenCodexRefreshActions
@@ -33,6 +34,7 @@ final class OpenCodexRefreshCoordinator {
         repository: CCSwitchRepository,
         officialQuotaClient: OfficialQuotaClient,
         balanceAPIClient: BalanceAPIClient,
+        balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         openCodexRepository: OpenCodexRepository,
         queue: DispatchQueue,
         actions: OpenCodexRefreshActions
@@ -40,6 +42,7 @@ final class OpenCodexRefreshCoordinator {
         self.repository = repository
         self.officialQuotaClient = officialQuotaClient
         self.balanceAPIClient = balanceAPIClient
+        self.balanceProgressStore = balanceProgressStore
         self.openCodexRepository = openCodexRepository
         self.queue = queue
         self.actions = actions
@@ -183,7 +186,30 @@ final class OpenCodexRefreshCoordinator {
                     guard let self else { return }
                     let data: OpenCodexCardData
                     if case .success(let response) = result {
-                        data = .balance(amount: response.output.amount, unit: response.output.unit, websiteURL: Self.secureWebsiteURL(summary.websiteURL ?? query.websiteURL), updatedAt: Date())
+                        let identity = ProviderBalanceProgressIdentity(
+                            client: .codex,
+                            providerID: sourceID,
+                            query: query
+                        )
+                        switch self.balanceProgressStore.update(
+                            amount: response.output.amount,
+                            unit: response.output.unit,
+                            identity: identity
+                        ) {
+                        case .success(let progressPercentage):
+                            data = .balance(
+                                amount: response.output.amount,
+                                unit: response.output.unit,
+                                progressPercentage: progressPercentage,
+                                websiteURL: Self.secureWebsiteURL(summary.websiteURL ?? query.websiteURL),
+                                updatedAt: Date()
+                            )
+                        case .failure(let error):
+                            data = .unavailable(
+                                category: .balance,
+                                reason: error.userVisibleReason(language: AppLanguage.resolved)
+                            )
+                        }
                     } else if case .failure(.nonHTTPS) = result {
                         data = .unavailable(category: .balance, reason: tr("余额不可用：余额接口不是 HTTPS", "Balance unavailable: the balance endpoint is not HTTPS", "餘額不可用：餘額介面不是 HTTPS", "残高を利用できません：残高エンドポイントが HTTPS ではありません"))
                     } else {

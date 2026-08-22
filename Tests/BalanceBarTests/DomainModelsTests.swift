@@ -139,14 +139,15 @@ final class DomainModelsTests: XCTestCase {
             12,
             "USD",
             URL(string: "https://provider.example"),
-            date
+            date,
+            progressPercentage: 20
         )
         XCTAssertEqual(balance.menuBarPrimary, "$12.00")
         XCTAssertEqual(balance.overviewProvider, "Provider One")
         XCTAssertEqual(balance.overviewQuotaTitle, tr("可用余额", "Available Balance", "可用餘額", "利用可能な残高"))
         XCTAssertEqual(balance.overviewQuotaDetail, tr("剩余额度", "Remaining Balance", "剩餘額度", "残りのクォータ"))
         XCTAssertEqual(balance.overviewLargeAmount, "$12.00")
-        XCTAssertNil(balance.progressPercentage)
+        XCTAssertEqual(balance.progressPercentage, 20)
 
         var cache = ProviderBalanceSnapshotCache()
         cache.store(balance, clientID: "codex", providerID: "provider-one")
@@ -183,6 +184,131 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertNil(otherClient.date)
     }
 
+    func testProviderBalanceProgressUsesDynamicRechargeBaseline() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let identity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "provider-one",
+            query: query
+        )
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+
+        XCTAssertEqual(try progress(store, amount: 5, unit: "USD", identity: identity), 100)
+        XCTAssertEqual(try progress(store, amount: 3, unit: "USD", identity: identity), 60)
+        XCTAssertEqual(try progress(store, amount: 1, unit: "USD", identity: identity), 20)
+        XCTAssertEqual(try progress(store, amount: 5.20, unit: "USD", identity: identity), 100)
+        XCTAssertEqual(
+            try progress(store, amount: 1, unit: "USD", identity: identity),
+            100 / 5.2,
+            accuracy: 0.000001
+        )
+    }
+
+    func testProviderBalanceProgressRoundsToCentsAndPersistsIsolation() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let identity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "provider-one",
+            query: query
+        )
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+
+        XCTAssertEqual(try progress(store, amount: 5, unit: "USD", identity: identity), 100)
+        XCTAssertEqual(try progress(store, amount: 4, unit: "USD", identity: identity), 80)
+        XCTAssertEqual(
+            try progress(store, amount: 4.004, unit: "USD", identity: identity),
+            80,
+            accuracy: 0.000001
+        )
+        XCTAssertEqual(try progress(store, amount: 4.01, unit: "USD", identity: identity), 100)
+
+        let restored = ProviderBalanceProgressStore(defaults: defaults)
+        XCTAssertEqual(
+            try progress(restored, amount: 1, unit: "USD", identity: identity),
+            1 / 4.01 * 100,
+            accuracy: 0.000001
+        )
+
+        let otherEndpoint = makeBalanceProgressQuery(url: "https://provider.example/other")
+        let otherIdentity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "provider-one",
+            query: otherEndpoint
+        )
+        XCTAssertEqual(try progress(restored, amount: 1, unit: "USD", identity: otherIdentity), 100)
+
+        let otherCredential = makeBalanceProgressQuery(apiKey: "different-token")
+        let otherCredentialIdentity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "provider-one",
+            query: otherCredential
+        )
+        XCTAssertEqual(
+            try progress(restored, amount: 2, unit: "USD", identity: otherCredentialIdentity),
+            100
+        )
+
+        let storedData = try XCTUnwrap(defaults.data(forKey: ProviderBalanceProgressStore.storageKey))
+        XCTAssertFalse(String(data: storedData, encoding: .utf8)?.contains("different-token") == true)
+    }
+
+    func testProviderBalanceProgressRejectsInvalidOrInconsistentValuesWithoutChangingState() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let query = makeBalanceProgressQuery()
+        let identity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "provider-one",
+            query: query
+        )
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+
+        XCTAssertEqual(try progress(store, amount: 10, unit: "USD", identity: identity), 100)
+        guard case .failure(.invalidAmount) = store.update(
+            amount: -0.01,
+            unit: "USD",
+            identity: identity
+        ) else {
+            return XCTFail("negative balances must not update the baseline")
+        }
+        guard case .failure(.invalidAmount) = store.update(
+            amount: .nan,
+            unit: "USD",
+            identity: identity
+        ) else {
+            return XCTFail("non-finite balances must not update the baseline")
+        }
+        guard case .failure(.invalidUnit) = store.update(
+            amount: 9,
+            unit: "  ",
+            identity: identity
+        ) else {
+            return XCTFail("empty units must not update the baseline")
+        }
+        guard case .failure(.inconsistentUnit(expected: "USD", actual: "CNY")) = store.update(
+            amount: 9,
+            unit: "CNY",
+            identity: identity
+        ) else {
+            return XCTFail("unit changes must not update the baseline")
+        }
+        XCTAssertEqual(try progress(store, amount: 5, unit: "USD", identity: identity), 50)
+
+        let zeroIdentity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "zero-provider",
+            query: query
+        )
+        XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 0)
+        XCTAssertEqual(try progress(store, amount: 0.004, unit: "USD", identity: zeroIdentity), 0)
+        XCTAssertEqual(try progress(store, amount: 0.01, unit: "USD", identity: zeroIdentity), 100)
+        XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 0)
+    }
+
     func testOpenCodexCardPresentationDoesNotExposeModelIdentity() {
         let date = Date(timeIntervalSince1970: 1_700_000_123)
         let currentOfficial = OpenCodexModelCard(
@@ -214,6 +340,7 @@ final class DomainModelsTests: XCTestCase {
             data: .balance(
                 amount: 12.34,
                 unit: "USD",
+                progressPercentage: 64.2,
                 websiteURL: URL(string: "https://relay.example.test"),
                 updatedAt: date
             )
@@ -221,6 +348,7 @@ final class DomainModelsTests: XCTestCase {
         let balance = OpenCodexCardPresentation.menuBarSnapshot(for: currentBalance)
         XCTAssertEqual(balance.menuBarPrimary, "$12.34")
         XCTAssertEqual(balance.menuBarSecondary, "")
+        XCTAssertEqual(balance.progressPercentage, 64.2)
         XCTAssertFalse(balance.menuBarTitle.contains("gpt-5.6-sol"))
 
         let loading = OpenCodexCardPresentation.menuBarSnapshot(
@@ -287,6 +415,7 @@ final class DomainModelsTests: XCTestCase {
             data: .balance(
                 amount: 1.44,
                 unit: "USD",
+                progressPercentage: 28.8,
                 websiteURL: URL(string: "https://tokenshop.homes"),
                 updatedAt: date
             )
@@ -397,5 +526,46 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(native?.url, "https://api.deepseek.com/user/balance")
         XCTAssertEqual(native?.nativeBalanceProvider?.endpoint, "https://api.deepseek.com/user/balance")
         XCTAssertEqual(native?.subscriptionPrefix, "/codex")
+    }
+
+    private func makeDefaults() -> (UserDefaults, String) {
+        let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return (defaults, suiteName)
+    }
+
+    private func makeBalanceProgressQuery(
+        url: String = "https://provider.example/usage",
+        apiKey: String = "test-token"
+    ) -> BalanceQuery {
+        BalanceQuery(
+            url: url,
+            websiteURL: URL(string: "https://provider.example"),
+            apiKey: apiKey,
+            intervalMinutes: 1,
+            timeoutSeconds: 10,
+            isRightCode: false,
+            subscriptionPrefix: "/codex",
+            nativeBalanceProvider: nil,
+            isNewAPI: false,
+            additionalHeaders: [:]
+        )
+    }
+
+    private func progress(
+        _ store: ProviderBalanceProgressStore,
+        amount: Double,
+        unit: String,
+        identity: ProviderBalanceProgressIdentity
+    ) throws -> Double {
+        guard case .success(let value) = store.update(
+            amount: amount,
+            unit: unit,
+            identity: identity
+        ) else {
+            throw NSError(domain: "BalanceBarTests.ProviderBalanceProgress", code: 1)
+        }
+        return value
     }
 }

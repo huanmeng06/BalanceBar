@@ -9,12 +9,13 @@ struct Snapshot {
     let date: Date?
     let message: String?
     let websiteURL: URL?
+    let balanceProgressPercentage: Double?
 
-    static let placeholder = Snapshot(kind: .placeholder, provider: "", amount: nil, unit: nil, date: nil, message: nil, websiteURL: nil)
-    static func official(_ provider: String, _ remaining: Double, _ lane: String, _ reset: String?, _ date: Date) -> Snapshot { Snapshot(kind: .official, provider: provider, amount: remaining, unit: lane, date: date, message: reset, websiteURL: nil) }
-    static func balance(_ provider: String, _ amount: Double, _ unit: String, _ websiteURL: URL?, _ date: Date) -> Snapshot { Snapshot(kind: .balance, provider: provider, amount: amount, unit: unit, date: date, message: nil, websiteURL: websiteURL) }
-    static func openCodex(_ provider: String, selector: String?, status: String, _ date: Date) -> Snapshot { Snapshot(kind: .openCodex, provider: provider, amount: nil, unit: selector, date: date, message: status, websiteURL: nil) }
-    static func error(_ message: String) -> Snapshot { Snapshot(kind: .error, provider: "", amount: nil, unit: nil, date: nil, message: message, websiteURL: nil) }
+    static let placeholder = Snapshot(kind: .placeholder, provider: "", amount: nil, unit: nil, date: nil, message: nil, websiteURL: nil, balanceProgressPercentage: nil)
+    static func official(_ provider: String, _ remaining: Double, _ lane: String, _ reset: String?, _ date: Date) -> Snapshot { Snapshot(kind: .official, provider: provider, amount: remaining, unit: lane, date: date, message: reset, websiteURL: nil, balanceProgressPercentage: nil) }
+    static func balance(_ provider: String, _ amount: Double, _ unit: String, _ websiteURL: URL?, _ date: Date, progressPercentage: Double? = nil) -> Snapshot { Snapshot(kind: .balance, provider: provider, amount: amount, unit: unit, date: date, message: nil, websiteURL: websiteURL, balanceProgressPercentage: progressPercentage) }
+    static func openCodex(_ provider: String, selector: String?, status: String, _ date: Date) -> Snapshot { Snapshot(kind: .openCodex, provider: provider, amount: nil, unit: selector, date: date, message: status, websiteURL: nil, balanceProgressPercentage: nil) }
+    static func error(_ message: String) -> Snapshot { Snapshot(kind: .error, provider: "", amount: nil, unit: nil, date: nil, message: message, websiteURL: nil, balanceProgressPercentage: nil) }
     static func providerError(_ provider: String, reason: String, cachedBalance: Snapshot?) -> Snapshot {
         let cached = cachedBalance?.kind == .balance ? cachedBalance : nil
         return Snapshot(
@@ -24,7 +25,8 @@ struct Snapshot {
             unit: cached?.unit,
             date: cached?.date,
             message: reason,
-            websiteURL: nil
+            websiteURL: nil,
+            balanceProgressPercentage: cached?.balanceProgressPercentage
         )
     }
 
@@ -134,7 +136,11 @@ struct Snapshot {
     }
 
     var progressPercentage: Double? {
-        kind == .official ? amount : nil
+        switch kind {
+        case .official: return amount
+        case .balance: return balanceProgressPercentage
+        case .placeholder, .openCodex, .error: return nil
+        }
     }
 
     var title: String {

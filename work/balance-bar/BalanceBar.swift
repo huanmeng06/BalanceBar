@@ -263,6 +263,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient = BalanceAPIClient()
+    private let balanceProgressStore = ProviderBalanceProgressStore()
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
@@ -344,6 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             repository: repository,
             officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient,
+            balanceProgressStore: balanceProgressStore,
             queue: DispatchQueue(label: "local.balancebar.provider-refresh"),
             actions: ProviderRefreshActions(
                 currentProvider: { [weak self] client in
@@ -371,6 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             repository: repository,
             officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient,
+            balanceProgressStore: balanceProgressStore,
             openCodexRepository: openCodexRepository,
             queue: DispatchQueue(label: "local.balancebar.open-codex-refresh"),
             actions: OpenCodexRefreshActions(

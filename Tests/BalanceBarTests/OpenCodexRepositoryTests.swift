@@ -1063,19 +1063,21 @@ final class OpenCodexRepositoryTests: XCTestCase {
             .balance(providerID: "relay-source"): .balance(
                 amount: 12.34,
                 unit: "USD",
+                progressPercentage: 73.4,
                 websiteURL: URL(string: "https://relay.example.test")!,
                 updatedAt: now
             ),
         ]
         let successCards = OpenCodexCardPlanner.cards(plans: plans, data: successful)
         guard case .official(let remaining, _, let reset, _) = successCards[0].data,
-              case .balance(let amount, let unit, let websiteURL, _) = successCards[1].data else {
+              case .balance(let amount, let unit, let progressPercentage, let websiteURL, _) = successCards[1].data else {
             return XCTFail("injected successful data should be preserved on the matching cards")
         }
         XCTAssertEqual(remaining, 73)
         XCTAssertEqual(reset, "2d3h")
         XCTAssertEqual(amount, 12.34)
         XCTAssertEqual(unit, "USD")
+        XCTAssertEqual(progressPercentage, 73.4)
         XCTAssertEqual(websiteURL, URL(string: "https://relay.example.test"))
 
         let failed: [OpenCodexCardSource: OpenCodexCardData] = [
@@ -1110,21 +1112,21 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertNil(official.link)
 
         let balance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 62)
-        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 86))
-        XCTAssertEqual(balance.title, CGRect(x: 14, y: 58, width: 189, height: 20))
-        XCTAssertEqual(balance.refreshTime, CGRect(x: 209, y: 59, width: 81, height: 17))
+        XCTAssertEqual(balance.cardSize, CGSize(width: 304, height: 102))
+        XCTAssertEqual(balance.title, CGRect(x: 14, y: 75, width: 189, height: 20))
+        XCTAssertEqual(balance.refreshTime, CGRect(x: 209, y: 76, width: 81, height: 17))
         XCTAssertNil(balance.account)
         XCTAssertNil(balance.subscription)
-        XCTAssertEqual(balance.quotaDetail, CGRect(x: 14, y: 31, width: 128, height: 18))
+        XCTAssertEqual(balance.quotaDetail, CGRect(x: 14, y: 47, width: 128, height: 18))
         XCTAssertNil(balance.reset)
-        XCTAssertEqual(balance.amount, CGRect(x: 149, y: 5, width: 141, height: 48))
-        XCTAssertNil(balance.progress)
-        XCTAssertEqual(balance.linkPrefix, CGRect(x: 14, y: 7, width: 62, height: 17))
-        XCTAssertEqual(balance.link, CGRect(x: 75, y: 7, width: 148, height: 17))
+        XCTAssertEqual(balance.amount, CGRect(x: 149, y: 18, width: 141, height: 48))
+        XCTAssertEqual(balance.progress, CGRect(x: 14, y: 8, width: 276, height: 5))
+        XCTAssertEqual(balance.linkPrefix, CGRect(x: 14, y: 28, width: 62, height: 17))
+        XCTAssertEqual(balance.link, CGRect(x: 75, y: 28, width: 148, height: 17))
 
         let englishBalance = OpenCodexCardLayout.frames(for: .balance, linkPrefixWidth: 72)
-        XCTAssertEqual(englishBalance.linkPrefix, CGRect(x: 14, y: 7, width: 72, height: 17))
-        XCTAssertEqual(englishBalance.link, CGRect(x: 85, y: 7, width: 136, height: 17))
+        XCTAssertEqual(englishBalance.linkPrefix, CGRect(x: 14, y: 28, width: 72, height: 17))
+        XCTAssertEqual(englishBalance.link, CGRect(x: 85, y: 28, width: 136, height: 17))
     }
 
     func testOpenAIAccountRowAddsASeparatedSubtitleBeforeQuotaDetails() {
@@ -1521,6 +1523,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
             return .balance(
                 amount: 12.34,
                 unit: "USD",
+                progressPercentage: 67.8,
                 websiteURL: URL(string: "https://relay.example.test"),
                 updatedAt: updatedAt
             )

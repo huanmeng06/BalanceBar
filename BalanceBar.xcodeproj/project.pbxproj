@@ -78,6 +78,7 @@
 		A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */; };
 		A100000000000000000000D6 /* OpenCodexRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */; };
 		A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */; };
+		A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EC /* ProviderBalanceProgressStore.swift */; };
 		A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DB /* ProviderSwitchCoordinator.swift */; };
 		A100000000000000000000DC /* DashboardCompositionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DD /* DashboardCompositionController.swift */; };
 		A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */; };
@@ -159,6 +160,7 @@
 		A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchDatabaseWatcher.swift; sourceTree = "<group>"; };
 		A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodexRefreshCoordinator.swift; sourceTree = "<group>"; };
 		A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinator.swift; sourceTree = "<group>"; };
+		A100000000000000000000EC /* ProviderBalanceProgressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderBalanceProgressStore.swift; sourceTree = "<group>"; };
 		A100000000000000000000DB /* ProviderSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSwitchCoordinator.swift; sourceTree = "<group>"; };
 		A100000000000000000000DD /* DashboardCompositionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCompositionController.swift; sourceTree = "<group>"; };
 		A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -301,6 +303,7 @@
 				A100000000000000000000D5 /* CCSwitchDatabaseWatcher.swift */,
 				A100000000000000000000D7 /* OpenCodexRefreshCoordinator.swift */,
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
+				A100000000000000000000EC /* ProviderBalanceProgressStore.swift */,
 				A100000000000000000000DB /* ProviderSwitchCoordinator.swift */,
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
 				A10000000000000000000061 /* CredentialReader.swift */,
@@ -562,6 +565,7 @@
 				A100000000000000000000D4 /* CCSwitchDatabaseWatcher.swift in Sources */,
 				A100000000000000000000D6 /* OpenCodexRefreshCoordinator.swift in Sources */,
 				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
+				A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */,
 				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
 				A100000000000000000000DC /* DashboardCompositionController.swift in Sources */,
 				A100000000000000000000E7 /* UpdateService.swift in Sources */,
