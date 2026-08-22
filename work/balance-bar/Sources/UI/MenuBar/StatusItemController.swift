@@ -202,12 +202,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Updates only the status item's outer width while a continuous width
     /// slider is being dragged. Rebuilding the menu or restarting activity
     /// animation for every slider event makes the main-thread interaction
-    /// visibly stutter, so the existing content geometry is reused here.
+    /// visibly stutter, so the existing content geometry is reused and the
+    /// expensive system status-bar reflow is bounded to a live 30Hz cadence.
     func updateWidthAdjustment(_ widthAdjustment: CGFloat) {
         settings.widthAdjustment = widthAdjustment
         pendingWidthAdjustment = widthAdjustment
         guard widthAdjustmentUpdateTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: false) { [weak self] _ in
             self?.applyPendingWidthAdjustment()
         }
         widthAdjustmentUpdateTimer = timer

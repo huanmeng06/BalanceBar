@@ -941,8 +941,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         menuBarStatusItemWidthAdjustment = value
         // NSSlider sends this action continuously. Keep the interaction on a
-        // lightweight width-only path so active icon animation is not
-        // interrupted by menu rebuilds or full Dashboard relayouts.
+        // width-only path so active icon animation is not interrupted by menu
+        // rebuilds or full Dashboard relayouts. StatusItemController limits
+        // the expensive system status-bar reflow to a bounded live cadence.
+        statusItemController.updateWidthAdjustment(
+            CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
+        )
         refreshDashboardMenuBarWidthAdjustment(menuBarStatusItemWidthAdjustment)
     }
 
