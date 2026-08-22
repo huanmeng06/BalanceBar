@@ -1008,7 +1008,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
-    func testOpenAIAccountSubtitleUpdatesTruncatesAndHidesOutsideOfficialCodex() throws {
+    func testOpenAIAccountSubtitleMarqueesLongEmailsAndHidesOutsideOfficialCodex() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english
@@ -1065,6 +1065,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let accountView = try XCTUnwrap(
+            overview.subviews.compactMap { $0 as? AccountMarqueeView }.first
+        )
         let accountLabel = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.stringValue.contains("@")
@@ -1072,9 +1075,25 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(accountLabel.font?.pointSize, 13)
         XCTAssertEqual(accountLabel.textColor, .secondaryLabelColor)
-        XCTAssertEqual(accountLabel.lineBreakMode, .byTruncatingTail)
+        XCTAssertEqual(accountLabel.lineBreakMode, .byClipping)
+        XCTAssertEqual(accountLabel.stringValue, longEmail)
+        XCTAssertTrue(accountView.isScrollable)
+        XCTAssertTrue(accountView.showsEdgeFade)
+        XCTAssertGreaterThan(accountView.accountLabel.frame.width, accountView.bounds.width)
+        XCTAssertEqual(accountView.accountLabel.frame.minX, 0)
+        let edgeFadeMask = try XCTUnwrap(accountView.layer?.mask as? CAGradientLayer)
+        XCTAssertEqual(edgeFadeMask.locations?.count, 4)
+        XCTAssertGreaterThan(edgeFadeMask.locations?[1].doubleValue ?? 0, 0)
+        XCTAssertLessThan(edgeFadeMask.locations?[2].doubleValue ?? 1, 1)
+        let scrollAnimation = AccountMarqueeView.scrollAnimation(
+            forOverflow: accountView.measuredTextWidth - accountView.bounds.width
+        )
+        XCTAssertEqual(scrollAnimation.values?.count, 4)
+        XCTAssertEqual(scrollAnimation.keyTimes?.count, 4)
+        XCTAssertEqual(scrollAnimation.repeatCount, .infinity)
+        XCTAssertGreaterThan(scrollAnimation.duration, 0)
         XCTAssertEqual(
-            accountLabel.frame,
+            accountView.frame,
             try XCTUnwrap(
                 OpenCodexCardLayout.frames(
                     for: .quota,
@@ -1083,7 +1102,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 ).account
             )
         )
-        XCTAssertLessThanOrEqual(accountLabel.frame.maxX, overview.bounds.maxX)
+        XCTAssertLessThanOrEqual(accountView.frame.maxX, overview.bounds.maxX)
         let subscriptionLabel = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.stringValue == "Pro · 5x"
@@ -1102,9 +1121,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(subscriptionLabel.frame, subscriptionFrame)
         XCTAssertTrue(subscriptionLabel.superview === overview)
-        XCTAssertEqual(accountLabel.frame.minY, subscriptionLabel.frame.minY)
-        XCTAssertEqual(accountLabel.frame.height, subscriptionLabel.frame.height)
-        XCTAssertLessThanOrEqual(accountLabel.frame.maxX, subscriptionLabel.frame.minX)
+        XCTAssertEqual(accountView.frame.minY, subscriptionLabel.frame.minY)
+        XCTAssertEqual(accountView.frame.height, subscriptionLabel.frame.height)
+        XCTAssertLessThanOrEqual(accountView.frame.maxX, subscriptionLabel.frame.minX)
         XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
         XCTAssertNotNil(
             allControls(of: overview, as: NSTextField.self).first {
@@ -1116,6 +1135,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             input: input(account: OpenAIAccountPresentation(email: "person@example.com", subscription: .proTwentyX))
         )
         let switchedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let switchedAccountView = try XCTUnwrap(
+            switchedOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first
+        )
+        XCTAssertFalse(switchedAccountView.isScrollable)
+        XCTAssertFalse(switchedAccountView.showsEdgeFade)
+        XCTAssertEqual(switchedAccountView.accountLabel.frame.width, switchedAccountView.bounds.width)
         XCTAssertNil(
             allControls(of: switchedOverview, as: NSTextField.self).first {
                 $0.stringValue.contains(longEmail)

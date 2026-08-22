@@ -1,5 +1,141 @@
 import AppKit
 import Foundation
+import QuartzCore
+
+final class AccountMarqueeView: NSView {
+    static let animationKey = "BalanceBar.accountMarquee"
+    private static let edgeFadeWidth: CGFloat = 14
+    private static let minimumScrollDuration: TimeInterval = 5
+    private static let scrollPixelsPerSecond: CGFloat = 24
+
+    let accountLabel: NSTextField
+    private(set) var measuredTextWidth: CGFloat = 0
+    private(set) var isScrollable = false
+    private(set) var showsEdgeFade = false
+
+    private var edgeFadeMask: CAGradientLayer?
+
+    init(text: String, font: NSFont, textColor: NSColor, frame: NSRect) {
+        accountLabel = NSTextField(labelWithString: text)
+        super.init(frame: frame)
+
+        wantsLayer = true
+        layer?.masksToBounds = true
+
+        accountLabel.font = font
+        accountLabel.textColor = textColor
+        accountLabel.alignment = .left
+        accountLabel.lineBreakMode = .byClipping
+        accountLabel.usesSingleLineMode = true
+        accountLabel.maximumNumberOfLines = 1
+        accountLabel.wantsLayer = true
+        addSubview(accountLabel)
+
+        configureContent()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        edgeFadeMask?.frame = bounds
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            stopScrolling()
+        } else {
+            startScrollingIfNeeded()
+        }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        startScrollingIfNeeded()
+    }
+
+    deinit {
+        stopScrolling()
+    }
+
+    private func configureContent() {
+        measuredTextWidth = Self.textWidth(of: accountLabel.stringValue, font: accountLabel.font ?? .systemFont(ofSize: 13))
+        isScrollable = measuredTextWidth > bounds.width + 0.5
+        let contentWidth = max(bounds.width, measuredTextWidth)
+        accountLabel.frame = NSRect(x: 0, y: 0, width: contentWidth, height: bounds.height)
+
+        guard isScrollable, bounds.width > 0 else {
+            layer?.mask = nil
+            edgeFadeMask = nil
+            showsEdgeFade = false
+            return
+        }
+
+        let mask = CAGradientLayer()
+        mask.colors = [
+            NSColor.clear.cgColor,
+            NSColor.black.cgColor,
+            NSColor.black.cgColor,
+            NSColor.clear.cgColor
+        ]
+        let fadeWidth = min(Self.edgeFadeWidth, bounds.width / 4)
+        let fadeFraction = fadeWidth / bounds.width
+        mask.locations = [
+            0,
+            NSNumber(value: Double(fadeFraction)),
+            NSNumber(value: Double(1 - fadeFraction)),
+            1
+        ]
+        mask.frame = bounds
+        edgeFadeMask = mask
+        layer?.mask = mask
+        showsEdgeFade = true
+    }
+
+    private func startScrollingIfNeeded() {
+        guard isScrollable,
+              window != nil,
+              accountLabel.layer != nil,
+              accountLabel.layer?.animation(forKey: Self.animationKey) == nil else {
+            return
+        }
+
+        let overflow = max(0, measuredTextWidth - bounds.width)
+        guard overflow > 0 else { return }
+
+        let animation = Self.scrollAnimation(forOverflow: overflow)
+        accountLabel.layer?.add(animation, forKey: Self.animationKey)
+    }
+
+    private func stopScrolling() {
+        accountLabel.layer?.removeAnimation(forKey: Self.animationKey)
+    }
+
+    static func textWidth(of text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
+        let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
+        let offset = NSNumber(value: -Double(max(0, overflow)))
+        animation.values = [0, offset, offset, 0]
+        animation.keyTimes = [0, 0.42, 0.58, 1]
+        animation.duration = max(
+            minimumScrollDuration,
+            Double(max(0, overflow) / scrollPixelsPerSecond) + 4
+        )
+        animation.repeatCount = .infinity
+        animation.timingFunctions = [
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .linear),
+            CAMediaTimingFunction(name: .easeInEaseOut)
+        ]
+        return animation
+    }
+}
 
 final class StatusItemController: NSObject, NSMenuDelegate {
     struct Actions {
@@ -812,12 +948,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(refreshTime)
         }
         if let account = menuInput.openAIAccount, let accountFrame = layout.account {
-            let accountLabel = makeOverviewLabel(
+            let accountLabel = makeAccountLabel(
                 account.text(),
-                font: .systemFont(ofSize: 13, weight: .regular)
+                frame: accountFrame
             )
-            accountLabel.textColor = .secondaryLabelColor
-            accountLabel.frame = accountFrame
             view.addSubview(accountLabel)
         }
         if let subscription = menuInput.openAIAccount?.subscription,
@@ -998,12 +1132,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         provider.frame = frames.title
         view.addSubview(provider)
         if let account = menuInput.openAIAccount, let accountFrame = frames.account {
-            let accountLabel = makeOverviewLabel(
+            let accountLabel = makeAccountLabel(
                 account.text(),
-                font: .systemFont(ofSize: 13, weight: .regular)
+                frame: accountFrame
             )
-            accountLabel.textColor = .secondaryLabelColor
-            accountLabel.frame = accountFrame
             view.addSubview(accountLabel)
         }
         if let subscription = menuInput.openAIAccount?.subscription,
@@ -1048,6 +1180,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.alignment = .right
         label.frame = frame
         return label
+    }
+
+    private func makeAccountLabel(_ text: String, frame: NSRect) -> AccountMarqueeView {
+        AccountMarqueeView(
+            text: text,
+            font: .systemFont(ofSize: 13, weight: .regular),
+            textColor: .secondaryLabelColor,
+            frame: frame
+        )
     }
 
     static func formatBalanceSummary(_ amount: Double, unit: String) -> String {
