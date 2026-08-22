@@ -4,6 +4,7 @@ struct DashboardPreferencePageActions {
     let onToggle: (String, Bool) -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onOffsetAdjust: (String, Int) -> Void
+    let onOffsetValue: (String, Double) -> Void
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onOpenCCSwitch: () -> Void
@@ -34,6 +35,7 @@ final class DashboardPreferencePages {
         relay.onToggle = actions.onToggle
         relay.onInterval = actions.onInterval
         relay.onOffsetAdjust = actions.onOffsetAdjust
+        relay.onOffsetValue = actions.onOffsetValue
         relay.onOffsetReset = actions.onOffsetReset
         relay.onLanguage = actions.onLanguage
         relay.onOpenCCSwitch = actions.onOpenCCSwitch

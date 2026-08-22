@@ -192,6 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onOffsetAdjust: { [weak self] identifier, delta in
                 self?.handleDashboardOffsetAdjust(identifier: identifier, delta: delta)
             },
+            onOffsetValue: { [weak self] identifier, value in
+                self?.handleDashboardOffsetValue(identifier: identifier, value: value)
+            },
             onOffsetReset: { [weak self] identifier in
                 self?.handleDashboardOffsetReset(identifier: identifier)
             },
@@ -926,6 +929,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         SwitchLog.write(
             "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardOffsetValue(identifier: String, value: Double) {
+        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+            return
+        }
+        menuBarStatusItemWidthAdjustment = value
+        SwitchLog.write(
+            "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)

@@ -60,6 +60,10 @@ final class AppPreferences {
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
     static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
+    /// The width slider is centered at the logical zero point and allows a
+    /// wider range than the icon/text positional offsets.
+    static let menuBarStatusItemWidthAdjustmentRange = -20.0...20.0
+    static let menuBarStatusItemWidthAdjustmentStep: Double = menuBarOffsetStep
     /// The actual status-item width baseline. The persisted/user-facing
     /// adjustment remains zero-based, so logical 0pt applies -20pt to the
     /// outer status-item footprint.
@@ -92,10 +96,10 @@ final class AppPreferences {
     /// Positive values widen the status item symmetrically; negative values
     /// narrow it without changing the icon/text spacing inside the item.
     var menuBarStatusItemWidthAdjustment: Double {
-        get { clampedMenuBarOffset(Self.menuBarStatusItemWidthAdjustmentKey) }
+        get { clampedMenuBarStatusItemWidthAdjustment() }
         set {
             defaults.set(
-                roundedMenuBarOffset(newValue),
+                roundedMenuBarStatusItemWidthAdjustment(newValue),
                 forKey: Self.menuBarStatusItemWidthAdjustmentKey
             )
         }
@@ -168,6 +172,26 @@ final class AppPreferences {
     private func clampedMenuBarOffset(_ key: String) -> Double {
         guard let number = defaults.object(forKey: key) as? NSNumber else { return 0 }
         return roundedMenuBarOffset(number.doubleValue)
+    }
+
+    private func clampMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
+        min(
+            max(value, Self.menuBarStatusItemWidthAdjustmentRange.lowerBound),
+            Self.menuBarStatusItemWidthAdjustmentRange.upperBound
+        )
+    }
+
+    private func roundedMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
+        let step = Self.menuBarStatusItemWidthAdjustmentStep
+        let scale = 1 / step
+        return (clampMenuBarStatusItemWidthAdjustment(value) * scale).rounded() / scale
+    }
+
+    private func clampedMenuBarStatusItemWidthAdjustment() -> Double {
+        guard let number = defaults.object(
+            forKey: Self.menuBarStatusItemWidthAdjustmentKey
+        ) as? NSNumber else { return 0 }
+        return roundedMenuBarStatusItemWidthAdjustment(number.doubleValue)
     }
 }
 

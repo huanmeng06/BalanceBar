@@ -208,6 +208,14 @@ final class MenuBarGeometryTests: XCTestCase {
             ),
             MenuBarLayout.minimumStatusItemLength
         )
+        XCTAssertEqual(
+            MenuBarLayout.statusItemLength(
+                contentWidth: 80,
+                horizontalPadding: 1,
+                widthAdjustment: -40
+            ),
+            80
+        )
     }
 
     func testOfficialTextDefaultOffsetsFollowResetVisibility() {
