@@ -288,9 +288,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarIconOffsetY: Double { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
     private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
+    private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
+    private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
+        self?.applyMenuBarWidthAdjustmentFrame(value)
+    }
     private var menuBarStatusItemWidthAdjustment: Double {
-        get { preferences.menuBarStatusItemWidthAdjustment }
-        set { preferences.menuBarStatusItemWidthAdjustment = newValue }
+        menuBarStatusItemWidthAdjustmentSession.transientValue
+            ?? preferences.menuBarStatusItemWidthAdjustment
     }
     private var menuBarStatusItemPhysicalWidthAdjustment: Double {
         menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
@@ -589,6 +593,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         activityCoordinator.stop()
+        menuBarWidthAdjustmentCoalescer.cancel()
+        menuBarStatusItemWidthAdjustmentSession.cancel()
         dashboardComposition.teardown()
         statusItemController.teardown()
         databaseWatcher.stop()
@@ -939,29 +945,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
             return
         }
-        menuBarStatusItemWidthAdjustment = value
-        // NSSlider sends this action continuously. Keep the interaction on a
-        // width-only path so active icon animation is not interrupted by menu
-        // rebuilds or full Dashboard relayouts. StatusItemController limits
-        // the expensive system status-bar reflow to a bounded live cadence.
-        statusItemController.updateWidthAdjustment(
-            CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
-        )
-        refreshDashboardMenuBarWidthAdjustment(menuBarStatusItemWidthAdjustment)
+        // NSSlider sends this action continuously. Keep the value transient:
+        // UserDefaults and logging belong to the editing-ended path, not the
+        // mouse-tracking hot path.
+        let transientValue = menuBarStatusItemWidthAdjustmentSession.update(value)
+        MenuBarWidthPerformance.measure("slider-action") {
+            menuBarWidthAdjustmentCoalescer.submit(CGFloat(transientValue))
+        }
     }
 
     private func handleDashboardOffsetValueEnded(identifier: String, value: Double) {
         guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
             return
         }
-        menuBarStatusItemWidthAdjustment = value
-        statusItemController.updateWidthAdjustment(
-            CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
-        )
+        let appPreferences = preferences
+        let finalValue = menuBarStatusItemWidthAdjustmentSession.finish(value) { finalValue in
+            appPreferences.menuBarStatusItemWidthAdjustment = finalValue
+        }
+        menuBarWidthAdjustmentCoalescer.submit(CGFloat(finalValue))
+        menuBarWidthAdjustmentCoalescer.flush()
+        finishDashboardMenuBarWidthAdjustment(finalValue)
         SwitchLog.write(
             "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
+    }
+
+    private func applyMenuBarWidthAdjustmentFrame(_ widthAdjustment: CGFloat) {
+        let physicalWidthAdjustment = widthAdjustment
+            + CGFloat(AppPreferences.menuBarStatusItemWidthBaseline)
+        MenuBarWidthPerformance.measure("menu-bar-width-frame") {
+            statusItemController.updateWidthAdjustment(physicalWidthAdjustment)
+            refreshDashboardMenuBarWidthAdjustment(Double(widthAdjustment))
+        }
     }
 
     private func handleDashboardOffsetReset(identifier: String) {
@@ -1028,6 +1044,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refreshDashboardMenuBarWidthAdjustment(_ widthAdjustment: Double) {
         dashboardComposition.refreshMenuBarWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: menuBarHorizontalPadding
+        )
+    }
+
+    private func finishDashboardMenuBarWidthAdjustment(_ widthAdjustment: Double) {
+        dashboardComposition.finishMenuBarWidthAdjustment(
             widthAdjustment,
             horizontalPadding: menuBarHorizontalPadding
         )

@@ -321,7 +321,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .allSatisfy { $0.isEnabled })
     }
 
-    func testMenuBarWidthOnlyRefreshUpdatesSliderAndSummary() {
+    func testMenuBarWidthOnlyRefreshUpdatesSummaryWithoutFightingSlider() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -349,8 +349,50 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let summary = descendants(of: page)
             .compactMap { $0 as? NSTextField }
             .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
-        XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
+        XCTAssertEqual(slider?.doubleValue ?? .nan, 0, accuracy: 0.001)
         XCTAssertEqual(summary?.stringValue, "横向范围 +7.4 pt")
+
+        controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
+        XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
+    }
+
+    func testMenuBarWidthTransientRefreshDoesNotFightSliderTracking() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarWidthTransientRefresh.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .balance("Provider", 12.34, "USD", nil, Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        guard let slider = descendants(of: page)
+            .compactMap({ $0 as? NSSlider })
+            .first(where: { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey })
+        else {
+            return XCTFail("Expected width slider")
+        }
+
+        slider.doubleValue = 4.2
+        controller.refreshWidthAdjustment(7.4, horizontalPadding: 10)
+        XCTAssertEqual(
+            slider.doubleValue,
+            4.2,
+            accuracy: 0.001,
+            "live preview must not write back into the slider during AppKit tracking"
+        )
+
+        controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
+        XCTAssertEqual(slider.doubleValue, 7.4, accuracy: 0.001)
     }
 
     func testMenuBarWidthFineTuneLabelLocalizesAcrossSupportedLanguages() {

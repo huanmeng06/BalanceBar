@@ -197,6 +197,10 @@ final class MenuBarWidthSlider: NSSlider {
 
     override func keyDown(with event: NSEvent) {
         super.keyDown(with: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        super.keyUp(with: event)
         onEditingEnded?()
     }
 }
@@ -273,6 +277,7 @@ final class DashboardMenuBarPage {
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
+    private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -421,7 +426,8 @@ final class DashboardMenuBarPage {
         iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
         let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
         amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
-        let widthAdjustment = input.preferences.menuBarStatusItemWidthAdjustment
+        let widthAdjustment = transientWidthAdjustment
+            ?? input.preferences.menuBarStatusItemWidthAdjustment
         let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(widthAdjustment))
         widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
         let iconOffsetControls = makeOffsetControls(
@@ -529,9 +535,12 @@ final class DashboardMenuBarPage {
         amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
-        refreshWidthAdjustment(
-            preferences.menuBarStatusItemWidthAdjustment,
-            horizontalPadding: preferences.menuBarHorizontalPadding
+        let widthAdjustment = transientWidthAdjustment
+            ?? preferences.menuBarStatusItemWidthAdjustment
+        applyWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: preferences.menuBarHorizontalPadding,
+            synchronizeSlider: transientWidthAdjustment == nil
         )
         let iconVisualX = CGFloat(iconOffsetX)
         let iconVisualY = CGFloat(iconOffsetY)
@@ -598,18 +607,48 @@ final class DashboardMenuBarPage {
     /// reapplies icon/text transforms, which is unnecessary for this field.
     func refreshWidthAdjustment(
         _ widthAdjustment: Double,
+        horizontalPadding: CGFloat,
+        synchronizeSlider: Bool = false
+    ) {
+        transientWidthAdjustment = AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(widthAdjustment)
+        applyWidthAdjustment(
+            transientWidthAdjustment ?? 0,
+            horizontalPadding: horizontalPadding,
+            synchronizeSlider: synchronizeSlider
+        )
+    }
+
+    func finishWidthAdjustment(
+        _ widthAdjustment: Double,
         horizontalPadding: CGFloat
     ) {
-        guard isBuilt else { return }
-        let capsuleInset = Self.previewCapsuleHorizontalInset(
+        transientWidthAdjustment = nil
+        applyWidthAdjustment(
+            AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(widthAdjustment),
             horizontalPadding: horizontalPadding,
-            widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+            synchronizeSlider: true
         )
-        capsuleLeadingConstraint?.constant = -capsuleInset
-        capsuleTrailingConstraint?.constant = capsuleInset
-        widthAdjustmentSummaryLabel?.stringValue = Self.widthAdjustmentSummaryText(widthAdjustment)
-        widthAdjustmentSlider?.doubleValue = widthAdjustment
-        widthAdjustmentSlider?.isEnabled = true
+    }
+
+    private func applyWidthAdjustment(
+        _ widthAdjustment: Double,
+        horizontalPadding: CGFloat,
+        synchronizeSlider: Bool
+    ) {
+        guard isBuilt else { return }
+        MenuBarWidthPerformance.measure("dashboard-preview") {
+            let capsuleInset = Self.previewCapsuleHorizontalInset(
+                horizontalPadding: horizontalPadding,
+                widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+            )
+            capsuleLeadingConstraint?.constant = -capsuleInset
+            capsuleTrailingConstraint?.constant = capsuleInset
+            widthAdjustmentSummaryLabel?.stringValue = Self.widthAdjustmentSummaryText(widthAdjustment)
+            if synchronizeSlider {
+                widthAdjustmentSlider?.doubleValue = widthAdjustment
+            }
+            widthAdjustmentSlider?.isEnabled = true
+        }
     }
 
     func restoreRequiredToggle(identifier: String) {

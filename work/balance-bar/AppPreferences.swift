@@ -174,17 +174,17 @@ final class AppPreferences {
         return roundedMenuBarOffset(number.doubleValue)
     }
 
-    private func clampMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
-        min(
-            max(value, Self.menuBarStatusItemWidthAdjustmentRange.lowerBound),
-            Self.menuBarStatusItemWidthAdjustmentRange.upperBound
-        )
+    private func roundedMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
+        Self.normalizedMenuBarStatusItemWidthAdjustment(value)
     }
 
-    private func roundedMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
-        let step = Self.menuBarStatusItemWidthAdjustmentStep
-        let scale = 1 / step
-        return (clampMenuBarStatusItemWidthAdjustment(value) * scale).rounded() / scale
+    static func normalizedMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
+        let clamped = min(
+            max(value, menuBarStatusItemWidthAdjustmentRange.lowerBound),
+            menuBarStatusItemWidthAdjustmentRange.upperBound
+        )
+        let scale = 1 / menuBarStatusItemWidthAdjustmentStep
+        return (clamped * scale).rounded() / scale
     }
 
     private func clampedMenuBarStatusItemWidthAdjustment() -> Double {
@@ -192,6 +192,29 @@ final class AppPreferences {
             forKey: Self.menuBarStatusItemWidthAdjustmentKey
         ) as? NSNumber else { return 0 }
         return roundedMenuBarStatusItemWidthAdjustment(number.doubleValue)
+    }
+}
+
+/// Holds the in-progress value of the width slider without treating every
+/// mouse-tracking event as a persisted preference change.
+struct MenuBarStatusItemWidthAdjustmentSession {
+    private(set) var transientValue: Double?
+
+    mutating func update(_ value: Double) -> Double {
+        let normalized = AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(value)
+        transientValue = normalized
+        return normalized
+    }
+
+    mutating func finish(_ value: Double, persist: (Double) -> Void) -> Double {
+        let normalized = AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(value)
+        transientValue = nil
+        persist(normalized)
+        return normalized
+    }
+
+    mutating func cancel() {
+        transientValue = nil
     }
 }
 

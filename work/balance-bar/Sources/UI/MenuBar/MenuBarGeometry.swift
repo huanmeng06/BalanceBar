@@ -157,10 +157,12 @@ enum MenuBarLayout {
     ) -> CGFloat {
         let safeContentWidth = max(0, contentWidth)
         let safePadding = max(0, horizontalPadding)
-        let requestedLength = ceil(
-            safeContentWidth + (safePadding * 2) + widthAdjustment
-        )
-        let safeMinimum = max(minimumStatusItemLength, ceil(safeContentWidth))
+        // Keep the user-visible 0.1pt step in the actual footprint. The
+        // natural content width is already measured in whole points; rounding
+        // the complete result here would turn a continuous slider into 1pt
+        // jumps.
+        let requestedLength = safeContentWidth + (safePadding * 2) + widthAdjustment
+        let safeMinimum = max(minimumStatusItemLength, safeContentWidth)
         return max(safeMinimum, requestedLength)
     }
 

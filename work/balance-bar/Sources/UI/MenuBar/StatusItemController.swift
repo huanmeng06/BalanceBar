@@ -1,5 +1,120 @@
 import AppKit
 import Foundation
+import QuartzCore
+
+enum MenuBarWidthPerformance {
+    #if DEBUG
+    private static let log = OSLog(
+        subsystem: "com.huanmeng06.BalanceBar",
+        category: "menu-bar-width"
+    )
+
+    @inline(__always)
+    static func measure(_ name: StaticString, _ body: () -> Void) {
+        let signpostID = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: name, signpostID: signpostID)
+        body()
+        os_signpost(.end, log: log, name: name, signpostID: signpostID)
+    }
+    #else
+    @inline(__always)
+    static func measure(_ name: StaticString, _ body: () -> Void) {
+        body()
+    }
+    #endif
+}
+
+/// Coalesces continuous width changes to display refreshes without making the
+/// slider's mouse-tracking action perform the expensive status-bar update.
+/// The display link runs in the common main run-loop modes so it continues
+/// during AppKit slider tracking.
+final class MenuBarWidthDisplayCoalescer: NSObject {
+    private let apply: (CGFloat) -> Void
+    private var pendingValue: CGFloat?
+    private var displayLink: CADisplayLink?
+    private var fallbackTimer: Timer?
+
+    init(apply: @escaping (CGFloat) -> Void) {
+        self.apply = apply
+        super.init()
+    }
+
+    func submit(_ value: CGFloat) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        pendingValue = value
+        guard displayLink == nil, fallbackTimer == nil else { return }
+        startRefreshSource()
+    }
+
+    func flush() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        stopRefreshSource()
+        let value = pendingValue
+        pendingValue = nil
+        if let value {
+            apply(value)
+        }
+    }
+
+    func cancel() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        stopRefreshSource()
+        pendingValue = nil
+    }
+
+    private func startRefreshSource() {
+        if #available(macOS 14.0, *), let screen = NSScreen.main {
+            let link = screen.displayLink(
+                target: self,
+                selector: #selector(displayLinkDidRefresh(_:))
+            )
+            displayLink = link
+            link.add(to: .main, forMode: .common)
+        } else {
+            startFallbackTimer()
+        }
+    }
+
+    private func startFallbackTimer() {
+        let framesPerSecond = max(1, NSScreen.main?.maximumFramesPerSecond ?? 60)
+        let timer = Timer(
+            timeInterval: 1.0 / Double(framesPerSecond),
+            repeats: true
+        ) { [weak self] _ in
+            self?.flushOneFrame()
+        }
+        fallbackTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopRefreshSource() {
+        if let displayLink {
+            displayLink.invalidate()
+            self.displayLink = nil
+        }
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+    }
+
+    @objc private func displayLinkDidRefresh(_ displayLink: CADisplayLink) {
+        flushOneFrame()
+    }
+
+    private func flushOneFrame() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let value = pendingValue
+        pendingValue = nil
+        guard let value else {
+            stopRefreshSource()
+            return
+        }
+        apply(value)
+
+        if pendingValue == nil {
+            stopRefreshSource()
+        }
+    }
+}
 
 final class StatusItemController: NSObject, NSMenuDelegate {
     struct Actions {
@@ -116,8 +231,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lastMenuBarIconYOffset: CGFloat = 0
     private var lastMenuBarOfficialTextYOffset: CGFloat = 0
     private var lastMenuBarEffectiveSnapshot = Snapshot.placeholder
-    private var pendingWidthAdjustment: CGFloat?
-    private var widthAdjustmentUpdateTimer: Timer?
     private let actions: Actions
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
@@ -171,7 +284,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         isStatusMenuTracking = false
         lastMenuBarIconFrameDiagnostic = nil
         lastMenuBarGeometry = nil
-        cancelPendingWidthAdjustment()
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
         menuBarIconView.onImageChanged = nil
@@ -190,7 +302,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput: MenuInput,
         settings: MenuBarSettings
     ) {
-        cancelPendingWidthAdjustment()
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
@@ -199,26 +310,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         rebuildOrDeferMenu()
     }
 
-    /// Updates only the status item's outer width while a continuous width
-    /// slider is being dragged. Rebuilding the menu or restarting activity
-    /// animation for every slider event makes the main-thread interaction
-    /// visibly stutter, so the existing content geometry is reused and the
-    /// expensive system status-bar reflow is bounded to a live 30Hz cadence.
+    /// Applies one already-coalesced width value to the status item. The
+    /// application owns the display-frame coalescer so the Dashboard preview
+    /// and the real menu-bar card consume the same value on the same frame.
     func updateWidthAdjustment(_ widthAdjustment: CGFloat) {
         settings.widthAdjustment = widthAdjustment
-        pendingWidthAdjustment = widthAdjustment
-        guard widthAdjustmentUpdateTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: false) { [weak self] _ in
-            self?.applyPendingWidthAdjustment()
-        }
-        widthAdjustmentUpdateTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
+        applyPendingWidthAdjustment(widthAdjustment)
     }
 
-    private func applyPendingWidthAdjustment() {
-        widthAdjustmentUpdateTimer = nil
-        guard let widthAdjustment = pendingWidthAdjustment else { return }
-        pendingWidthAdjustment = nil
+    private func applyPendingWidthAdjustment(_ widthAdjustment: CGFloat) {
         guard let statusItem,
               let button = statusItem.button,
               let geometry = lastMenuBarGeometry else {
@@ -231,21 +331,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             widthAdjustment: widthAdjustment
         )
         guard requestedLength != statusItem.length else { return }
-        statusItem.length = requestedLength
-        button.layoutSubtreeIfNeeded()
-        applyMenuBarContentFrames(
-            button: button,
-            geometry: geometry,
-            iconViewYOffset: lastMenuBarIconYOffset,
-            effectiveSnapshot: lastMenuBarEffectiveSnapshot,
-            officialTextYOffset: lastMenuBarOfficialTextYOffset
-        )
-    }
-
-    private func cancelPendingWidthAdjustment() {
-        widthAdjustmentUpdateTimer?.invalidate()
-        widthAdjustmentUpdateTimer = nil
-        pendingWidthAdjustment = nil
+        MenuBarWidthPerformance.measure("statusItem.length") {
+            statusItem.length = requestedLength
+        }
+        MenuBarWidthPerformance.measure("content-frames") {
+            applyMenuBarContentFrames(
+                button: button,
+                buttonSize: NSSize(width: requestedLength, height: button.bounds.height),
+                geometry: geometry,
+                iconViewYOffset: lastMenuBarIconYOffset,
+                effectiveSnapshot: lastMenuBarEffectiveSnapshot,
+                officialTextYOffset: lastMenuBarOfficialTextYOffset
+            )
+        }
     }
 
     func updateMenu(input: MenuInput) {
@@ -605,13 +703,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func applyMenuBarContentFrames(
         button: NSStatusBarButton,
+        buttonSize: NSSize? = nil,
         geometry: MenuBarGeometry,
         iconViewYOffset: CGFloat,
         effectiveSnapshot: Snapshot,
         officialTextYOffset: CGFloat
     ) {
         let frames = MenuBarLayout.frames(
-            buttonSize: NSSize(width: button.bounds.width, height: button.bounds.height),
+            buttonSize: buttonSize ?? NSSize(width: button.bounds.width, height: button.bounds.height),
             geometry: geometry,
             iconViewYOffset: iconViewYOffset,
             iconOffset: NSSize(

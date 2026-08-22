@@ -62,6 +62,23 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(switching.contains("com.ccswitch.desktop"))
     }
 
+    @MainActor
+    func testMenuBarWidthCoalescerFlushesLatestValueAndCancelsPendingWork() {
+        var applied: [CGFloat] = []
+        let coalescer = MenuBarWidthDisplayCoalescer { applied.append($0) }
+
+        coalescer.submit(3.1)
+        coalescer.submit(7.4)
+        coalescer.flush()
+
+        XCTAssertEqual(applied, [7.4])
+
+        coalescer.submit(12.6)
+        coalescer.cancel()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(applied, [7.4])
+    }
+
     func testLifecycleGateInstallsAndTearsDownExactlyOnce() {
         let lifecycle = ApplicationLifecycleState()
 

@@ -161,6 +161,24 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.2, accuracy: 0.001)
     }
 
+    func testMenuBarStatusItemWidthAdjustmentSessionDoesNotPersistDuringDrag() {
+        var session = MenuBarStatusItemWidthAdjustmentSession()
+
+        XCTAssertNil(session.transientValue)
+        XCTAssertEqual(session.update(7.44), 7.4, accuracy: 0.001)
+        XCTAssertEqual(session.transientValue ?? .nan, 7.4, accuracy: 0.001)
+
+        var persistedValues: [Double] = []
+        let finalValue = session.finish(20.06) { persistedValues.append($0) }
+        XCTAssertEqual(finalValue, 20, accuracy: 0.001)
+        XCTAssertEqual(persistedValues, [20])
+        XCTAssertNil(session.transientValue)
+
+        _ = session.update(12.3)
+        session.cancel()
+        XCTAssertNil(session.transientValue)
+    }
+
     func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

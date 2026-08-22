@@ -126,6 +126,16 @@ final class DashboardPreferencePages {
         )
     }
 
+    func finishMenuBarWidthAdjustment(
+        _ widthAdjustment: Double,
+        horizontalPadding: CGFloat
+    ) {
+        menuBarPage.finishWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: horizontalPadding
+        )
+    }
+
     func restoreRequiredMenuBarToggle(identifier: String) {
         menuBarPage.restoreRequiredToggle(identifier: identifier)
     }

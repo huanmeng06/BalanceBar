@@ -191,6 +191,32 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(wide.content.midX - base.content.midX, 5, accuracy: 0.001)
     }
 
+    func testStatusItemWidthAdjustmentPreservesTenthPointSteps() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 43.2, height: 13.1),
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+        let baseLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: 0
+        )
+
+        XCTAssertEqual(
+            MenuBarLayout.statusItemLength(
+                contentWidth: geometry.contentWidth,
+                horizontalPadding: 10,
+                widthAdjustment: 0.3
+            ),
+            baseLength + 0.3,
+            accuracy: 0.001
+        )
+    }
+
     func testStatusItemWidthAdjustmentNeverShrinksBelowNaturalContent() {
         XCTAssertEqual(
             MenuBarLayout.statusItemLength(
