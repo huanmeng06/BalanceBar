@@ -91,18 +91,27 @@ final class ProviderBalanceProgressStore {
     }
 
     static let storageKey = "balancebar.providerBalanceProgress.v1"
-    // Keep sub-ten-cent recharge baselines visually empty for now. This is a
-    // fixed policy until a future settings surface makes it configurable.
+    // Keep the default aligned with AppPreferences for users who have not
+    // changed the setting yet. The effective value is read from shared
+    // UserDefaults for every balance update so the Dashboard setting applies
+    // without rebuilding the coordinator.
     static let minimumProgressBaselineCents = 10
     // A third-party zero balance should still render a visible red sliver.
     static let minimumVisibleProgressPercentage = 1.0
 
     private let defaults: UserDefaults
+    private let minimumProgressBaselineCentsProvider: () -> Int
     private let lock = NSLock()
     private var states: [String: State]
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        minimumProgressBaselineCentsProvider: (() -> Int)? = nil
+    ) {
         self.defaults = defaults
+        self.minimumProgressBaselineCentsProvider = minimumProgressBaselineCentsProvider ?? {
+            AppPreferences.balanceDisplayThresholdCents(defaults: defaults)
+        }
         if let data = defaults.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode([String: State].self, from: data) {
             states = decoded.filter { _, state in
@@ -156,7 +165,7 @@ final class ProviderBalanceProgressStore {
 
         states[key] = next
         persist()
-        return .success(Self.percentage(currentCents: cents, baselineCents: next.baselineCents))
+        return .success(percentage(currentCents: cents, baselineCents: next.baselineCents))
     }
 
     private func persist() {
@@ -184,14 +193,18 @@ final class ProviderBalanceProgressStore {
         return cents.intValue
     }
 
-    private static func percentage(currentCents: Int, baselineCents: Int) -> Double {
-        guard baselineCents >= minimumProgressBaselineCents else {
-            return minimumVisibleProgressPercentage
+    private func percentage(currentCents: Int, baselineCents: Int) -> Double {
+        let minimumBaselineCents = max(
+            1,
+            minimumProgressBaselineCentsProvider()
+        )
+        guard baselineCents >= minimumBaselineCents else {
+            return Self.minimumVisibleProgressPercentage
         }
         let percentage = min(
             100,
             max(0, Double(currentCents) / Double(baselineCents) * 100)
         )
-        return percentage == 0 ? minimumVisibleProgressPercentage : percentage
+        return percentage == 0 ? Self.minimumVisibleProgressPercentage : percentage
     }
 }

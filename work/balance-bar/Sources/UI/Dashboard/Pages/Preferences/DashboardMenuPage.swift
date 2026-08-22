@@ -1,16 +1,68 @@
 import AppKit
 
-final class DashboardMenuPage {
+final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     struct Input {
         let preferences: AppPreferences
         let relay: DashboardPreferencePageRelay
         let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
+        let onBalanceDisplayThresholdChanged: (Double) -> Void
     }
 
+    private weak var balanceDisplayThresholdField: NSTextField?
     private var statusSubtitleLabel: NSTextField?
     private var statusLinksEditor: StatusLinksEditorHostingView?
+    private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
+    private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
 
     func make(_ input: Input) -> NSView {
+        balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
+        onBalanceDisplayThresholdChanged = input.onBalanceDisplayThresholdChanged
+
+        let balanceDisplayThreshold = NSTextField()
+        balanceDisplayThreshold.identifier = NSUserInterfaceItemIdentifier(
+            AppPreferences.balanceDisplayThresholdKey
+        )
+        balanceDisplayThreshold.stringValue = Self.formattedBalanceDisplayThreshold(
+            balanceDisplayThresholdValue
+        )
+        balanceDisplayThreshold.placeholderString = Self.formattedBalanceDisplayThreshold(
+            AppPreferences.defaultBalanceDisplayThreshold
+        )
+        balanceDisplayThreshold.alignment = .right
+        balanceDisplayThreshold.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        balanceDisplayThreshold.isEditable = true
+        balanceDisplayThreshold.isSelectable = true
+        balanceDisplayThreshold.usesSingleLineMode = true
+        balanceDisplayThreshold.delegate = self
+        balanceDisplayThreshold.toolTip = tr(
+            "请输入大于等于 0.01 的金额，最多保留两位小数",
+            "Enter an amount of at least 0.01 with up to two decimal places",
+            "請輸入大於等於 0.01 的金額，最多保留兩位小數",
+            "0.01 以上の金額を小数点以下 2 桁まで入力してください"
+        )
+        balanceDisplayThreshold.widthAnchor.constraint(equalToConstant: 92).isActive = true
+        balanceDisplayThreshold.setContentHuggingPriority(.required, for: .horizontal)
+        balanceDisplayThreshold.setContentCompressionResistancePriority(.required, for: .horizontal)
+        balanceDisplayThresholdField = balanceDisplayThreshold
+
+        let balanceDisplay = DashboardSettingsComponents.makeSettingsSection(
+            tr("余额显示", "Balance Display", "餘額顯示", "残高表示"),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("低余额显示阈值", "Low Balance Display Threshold", "低餘額顯示閾值", "低残高表示のしきい値"),
+                    subtitle: tr(
+                        "充值后余额仍未达到此金额时，进度条保持红色状态",
+                        "After a recharge, keep the progress bar red while the balance remains below this amount",
+                        "充值後餘額仍未達到此金額時，進度條保持紅色狀態",
+                        "チャージ後の残高がこの金額に達しない場合、進捗バーを赤色で表示"
+                    ),
+                    control: balanceDisplayThreshold,
+                    minimumHeight: 76,
+                    verticalPadding: 10
+                )
+            ]
+        )
+
         let quickSwitch = DashboardSettingsComponents.makeSwitch(
             identifier: "showQuickSwitchMenu",
             isOn: input.preferences.showQuickSwitchMenu,
@@ -124,7 +176,22 @@ final class DashboardMenuPage {
         DispatchQueue.main.async { [weak editor] in
             editor?.logGeometry(label: "initial")
         }
-        return DashboardSettingsComponents.makeSettingsPage([items, projects])
+        return DashboardSettingsComponents.makeSettingsPage([balanceDisplay, items, projects])
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField,
+              field === balanceDisplayThresholdField else { return }
+
+        guard let normalized = Self.parseBalanceDisplayThreshold(field.stringValue) else {
+            field.stringValue = Self.formattedBalanceDisplayThreshold(balanceDisplayThresholdValue)
+            return
+        }
+
+        field.stringValue = Self.formattedBalanceDisplayThreshold(normalized)
+        guard abs(normalized - balanceDisplayThresholdValue) > 0.000001 else { return }
+        balanceDisplayThresholdValue = normalized
+        onBalanceDisplayThresholdChanged?(normalized)
     }
 
     func updateStatusVisibility(_ visible: Bool, animated: Bool) {
@@ -135,8 +202,26 @@ final class DashboardMenuPage {
     }
 
     func teardown() {
+        balanceDisplayThresholdField?.delegate = nil
+        balanceDisplayThresholdField = nil
+        onBalanceDisplayThresholdChanged = nil
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusSubtitleLabel = nil
+    }
+
+    private static func parseBalanceDisplayThreshold(_ text: String) -> Double? {
+        let normalizedText = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(normalizedText), value.isFinite,
+              value >= AppPreferences.minimumBalanceDisplayThreshold,
+              value <= Double(Int.max) / 100 else { return nil }
+        let normalized = AppPreferences.normalizedBalanceDisplayThreshold(value)
+        return normalized >= AppPreferences.minimumBalanceDisplayThreshold ? normalized : nil
+    }
+
+    private static func formattedBalanceDisplayThreshold(_ value: Double) -> String {
+        String(format: "%.2f", value)
     }
 }

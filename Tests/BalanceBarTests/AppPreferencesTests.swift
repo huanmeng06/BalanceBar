@@ -76,6 +76,33 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarHorizontalPadding, 14)
     }
 
+    func testBalanceDisplayThresholdDefaultsRoundsAndRejectsInvalidValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(
+            preferences.balanceDisplayThreshold,
+            AppPreferences.defaultBalanceDisplayThreshold,
+            accuracy: 0.000001
+        )
+
+        preferences.balanceDisplayThreshold = 0.256
+        XCTAssertEqual(preferences.balanceDisplayThreshold, 0.26, accuracy: 0.000001)
+
+        defaults.set(0, forKey: AppPreferences.balanceDisplayThresholdKey)
+        XCTAssertEqual(
+            preferences.balanceDisplayThreshold,
+            AppPreferences.defaultBalanceDisplayThreshold,
+            accuracy: 0.000001
+        )
+        preferences.balanceDisplayThreshold = 0.001
+        XCTAssertEqual(
+            preferences.balanceDisplayThreshold,
+            AppPreferences.defaultBalanceDisplayThreshold,
+            accuracy: 0.000001
+        )
+    }
+
     func testMenuBarElementOffsetsDefaultRoundTripAndClamp() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

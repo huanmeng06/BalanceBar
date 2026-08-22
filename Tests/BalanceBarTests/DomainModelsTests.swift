@@ -312,6 +312,38 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(try progress(store, amount: 0, unit: "USD", identity: zeroIdentity), 1)
     }
 
+    func testProviderBalanceProgressUsesThePersistedDisplayThreshold() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.balanceDisplayThreshold = 1.00
+
+        let query = makeBalanceProgressQuery()
+        let identity = ProviderBalanceProgressIdentity(
+            client: .codex,
+            providerID: "provider-threshold",
+            query: query
+        )
+        let store = ProviderBalanceProgressStore(defaults: defaults)
+
+        XCTAssertEqual(try progress(store, amount: 0.50, unit: "USD", identity: identity), 1)
+        XCTAssertEqual(try progress(store, amount: 0.75, unit: "USD", identity: identity), 1)
+
+        preferences.balanceDisplayThreshold = 0.10
+        XCTAssertEqual(
+            try progress(store, amount: 0.75, unit: "USD", identity: identity),
+            100,
+            accuracy: 0.000001
+        )
+
+        let restored = ProviderBalanceProgressStore(defaults: defaults)
+        XCTAssertEqual(
+            try progress(restored, amount: 0.75, unit: "USD", identity: identity),
+            100,
+            accuracy: 0.000001
+        )
+    }
+
     func testOpenCodexCardPresentationDoesNotExposeModelIdentity() {
         let date = Date(timeIntervalSince1970: 1_700_000_123)
         let currentOfficial = OpenCodexModelCard(
