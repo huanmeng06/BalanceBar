@@ -1060,7 +1060,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         controller.start(
             snapshot: .official("OpenAI Official", 83, "7-Day Quota", "2 hours", date),
             refreshDate: date,
-            menuInput: input(account: OpenAIAccountPresentation(email: longEmail)),
+            menuInput: input(account: OpenAIAccountPresentation(email: longEmail, subscription: .proFiveX)),
             settings: settings
         )
 
@@ -1075,9 +1075,37 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(accountLabel.lineBreakMode, .byTruncatingTail)
         XCTAssertEqual(
             accountLabel.frame,
-            try XCTUnwrap(OpenCodexCardLayout.frames(for: .quota, includesAccount: true).account)
+            try XCTUnwrap(
+                OpenCodexCardLayout.frames(
+                    for: .quota,
+                    includesAccount: true,
+                    includesSubscription: true
+                ).account
+            )
         )
         XCTAssertLessThanOrEqual(accountLabel.frame.maxX, overview.bounds.maxX)
+        let subscriptionLabel = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.stringValue == "Pro · 5x"
+            }
+        )
+        XCTAssertEqual(subscriptionLabel.font?.pointSize, 13)
+        XCTAssertEqual(subscriptionLabel.textColor, .secondaryLabelColor)
+        XCTAssertEqual(subscriptionLabel.alignment, .center)
+        XCTAssertEqual(subscriptionLabel.lineBreakMode, .byTruncatingTail)
+        let subscriptionBadge = try XCTUnwrap(subscriptionLabel.superview)
+        let subscriptionFrame = try XCTUnwrap(
+            OpenCodexCardLayout.frames(
+                for: .quota,
+                includesAccount: true,
+                includesSubscription: true
+            ).subscription
+        )
+        XCTAssertEqual(subscriptionBadge.frame, subscriptionFrame)
+        XCTAssertEqual(subscriptionBadge.layer?.cornerRadius, subscriptionFrame.height / 2)
+        XCTAssertEqual(subscriptionBadge.layer?.borderWidth, 1)
+        XCTAssertEqual(subscriptionBadge.frame.maxX, overview.bounds.width - 14)
+        XCTAssertLessThanOrEqual(accountLabel.frame.maxX, subscriptionBadge.frame.minX)
         XCTAssertNotNil(
             allControls(of: overview, as: NSTextField.self).first {
                 $0.stringValue == "83%"
@@ -1085,7 +1113,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         controller.updateMenu(
-            input: input(account: OpenAIAccountPresentation(email: "person@example.com"))
+            input: input(account: OpenAIAccountPresentation(email: "person@example.com", subscription: .proTwentyX))
         )
         let switchedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         XCTAssertNil(
@@ -1098,6 +1126,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.stringValue == "person@example.com"
             }?.stringValue,
             "person@example.com"
+        )
+        XCTAssertNotNil(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue == "Pro · 20x"
+            }
+        )
+        XCTAssertNil(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue == "Pro · 5x"
+            }
         )
 
         controller.updateMenu(

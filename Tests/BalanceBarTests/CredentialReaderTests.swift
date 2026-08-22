@@ -13,7 +13,7 @@ final class CredentialReaderTests: XCTestCase {
     }
 
     func testCodexReaderExtractsEmailFromIDTokenWithoutUsingTokenMaterial() {
-        let idToken = Self.makeJWT(payload: #"{"email":"person@example.com"}"#)
+        let idToken = Self.makeJWT(payload: #"{"email":"person@example.com","https://api.openai.com/auth":{"chatgpt_plan_type":"prolite"}}"#)
         let blankEmailToken = Self.makeJWT(payload: #"{"email":"   "}"#)
         XCTAssertEqual(
             CredentialReader.codexAccountEmail(
@@ -26,6 +26,18 @@ final class CredentialReaderTests: XCTestCase {
                 from: Data(#"{"tokens":{"id_token":{"email":"person@example.com"}}}"#.utf8)
             ),
             "person@example.com"
+        )
+        XCTAssertEqual(
+            CredentialReader.codexAccountProfile(
+                from: Data("{\"tokens\":{\"id_token\":\"\(idToken)\"}}".utf8)
+            ),
+            CodexAccountProfile(email: "person@example.com", planType: "prolite")
+        )
+        XCTAssertEqual(
+            CredentialReader.codexAccountProfile(
+                from: Data(#"{"tokens":{"id_token":{"email":"person@example.com","chatgpt_plan_type":"pro"}}}"#.utf8)
+            ),
+            CodexAccountProfile(email: "person@example.com", planType: "pro")
         )
         XCTAssertNil(
             CredentialReader.codexAccountEmail(
@@ -52,6 +64,10 @@ final class CredentialReaderTests: XCTestCase {
             )
         )
         XCTAssertEqual(reader.codexAccountEmail(), "person@example.com")
+        XCTAssertEqual(
+            reader.codexAccountProfile(),
+            CodexAccountProfile(email: "person@example.com", planType: "prolite")
+        )
     }
 
     private static func makeJWT(payload: String) -> String {

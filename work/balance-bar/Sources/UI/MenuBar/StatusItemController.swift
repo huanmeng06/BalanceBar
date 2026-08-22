@@ -796,7 +796,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let layout = OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
-            includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil
+            includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
+            includesSubscription: snapshot.kind == .official && menuInput.openAIAccount?.subscription != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -818,6 +819,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             accountLabel.textColor = .secondaryLabelColor
             accountLabel.frame = accountFrame
             view.addSubview(accountLabel)
+        }
+        if let subscription = menuInput.openAIAccount?.subscription,
+           let subscriptionFrame = layout.subscription {
+            view.addSubview(makeSubscriptionBadge(subscription.text, frame: subscriptionFrame))
         }
         if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
             let progress = QuotaProgressView(percentage: percentage)
@@ -985,7 +990,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let message = snapshot.overviewReset(refreshDate: nil, formatter: Self.timeFormatter)
         let frames = ErrorCardLayout.errorFrames(
             for: message,
-            includesAccount: menuInput.openAIAccount != nil
+            includesAccount: menuInput.openAIAccount != nil,
+            includesSubscription: menuInput.openAIAccount?.subscription != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
@@ -999,6 +1005,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             accountLabel.textColor = .secondaryLabelColor
             accountLabel.frame = accountFrame
             view.addSubview(accountLabel)
+        }
+        if let subscription = menuInput.openAIAccount?.subscription,
+           let subscriptionFrame = frames.subscription {
+            view.addSubview(makeSubscriptionBadge(subscription.text, frame: subscriptionFrame))
         }
         let timeText = refreshDate.map { Self.timeFormatter.string(from: $0) } ?? "--:--:--"
         let refreshTime = ErrorCardLayout.makeRefreshTimeLabel(
@@ -1030,6 +1040,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
         return label
+    }
+
+    private func makeSubscriptionBadge(_ text: String, frame: NSRect) -> NSView {
+        let badge = NSView(frame: frame)
+        badge.wantsLayer = true
+        badge.layer?.cornerRadius = frame.height / 2
+        badge.layer?.borderWidth = 1
+        badge.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
+        badge.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.35).cgColor
+
+        let label = makeOverviewLabel(text, font: .systemFont(ofSize: 13, weight: .regular))
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.frame = badge.bounds.insetBy(dx: 5, dy: 0)
+        badge.addSubview(label)
+        return badge
     }
 
     static func formatBalanceSummary(_ amount: Double, unit: String) -> String {

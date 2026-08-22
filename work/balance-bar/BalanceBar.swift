@@ -458,12 +458,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func makeStatusItemMenuInput() -> StatusItemController.MenuInput {
         let currentProvider = ccSwitchRepository.loadCurrent(appType: activeClient.appType)
         let isOfficialOpenAICodex = activeClient == .codex && currentProvider?.isOfficial == true
+        let accountProfile = isOfficialOpenAICodex
+            ? officialQuotaClient.codexAccountProfile()
+            : nil
         let openAIAccount = OpenAIAccountPresentation.current(
             activeClient: activeClient,
             providerIsOfficial: isOfficialOpenAICodex,
-            email: isOfficialOpenAICodex
-                ? officialQuotaClient.codexAccountEmail()
-                : nil
+            email: accountProfile?.email,
+            subscription: OpenAISubscriptionTier(planType: accountProfile?.planType)
         )
         return StatusItemController.MenuInput(
             openCodexCards: openCodexCards,
@@ -1360,6 +1362,8 @@ enum ErrorCardLayout {
     static let amountX: CGFloat = cardWidth - horizontalInset - amountWidth
     static let refreshTimeWidth: CGFloat = 81
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
+    static let subscriptionBadgeWidth: CGFloat = 78
+    static let subscriptionGap: CGFloat = 8
 
     // Match the compact third-party balance card for a single-line error.
     static let minimumCardHeight: CGFloat = 86
@@ -1376,6 +1380,7 @@ enum ErrorCardLayout {
         let title: NSRect
         let refreshTime: NSRect
         let account: NSRect?
+        let subscription: NSRect?
         let quotaDetail: NSRect
         let amount: NSRect
         let detail: NSRect
@@ -1438,12 +1443,17 @@ enum ErrorCardLayout {
     /// the rows above upward by only the extra measured height.
     static func errorFrames(
         for message: String,
-        includesAccount: Bool = false
+        includesAccount: Bool = false,
+        includesSubscription: Bool = false
     ) -> ErrorFrames {
         let text = detailText(for: message, width: detailWidth)
         let detailH = measuredHeight(of: text, width: detailWidth)
         let extraDetailHeight = max(0, detailH - singleLineDetailHeight)
-        let accountShift: CGFloat = includesAccount ? 19 : 0
+        let hasSubscription = includesAccount && includesSubscription
+        let accountShift: CGFloat = includesAccount ? (hasSubscription ? 20 : 19) : 0
+        let accountWidth = hasSubscription
+            ? contentWidth - subscriptionBadgeWidth - subscriptionGap
+            : contentWidth
         let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
         // of the left status/detail region. As that region grows, move the
@@ -1454,7 +1464,15 @@ enum ErrorCardLayout {
             title: NSRect(x: horizontalInset, y: 58 + extraDetailHeight + accountShift, width: 127, height: 20),
             refreshTime: NSRect(x: refreshTimeX, y: 59 + extraDetailHeight + accountShift, width: refreshTimeWidth, height: 17),
             account: includesAccount
-                ? NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: contentWidth, height: 17)
+                ? NSRect(x: horizontalInset, y: 58 + extraDetailHeight, width: accountWidth, height: 17)
+                : nil,
+            subscription: hasSubscription
+                ? NSRect(
+                    x: cardWidth - horizontalInset - subscriptionBadgeWidth,
+                    y: 55 + extraDetailHeight,
+                    width: subscriptionBadgeWidth,
+                    height: 22
+                )
                 : nil,
             quotaDetail: NSRect(x: horizontalInset, y: 31 + extraDetailHeight, width: 128, height: 18),
             amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),

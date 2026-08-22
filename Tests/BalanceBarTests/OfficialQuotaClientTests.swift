@@ -122,21 +122,21 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     private struct FixtureCredentialReader: OfficialQuotaCredentialReading {
         let codexToken: String?
-        let codexAccountEmailValue: String?
+        let codexAccountProfileValue: CodexAccountProfile?
         let claudeToken: String?
 
         init(
             codexToken: String?,
-            codexAccountEmail: String? = nil,
+            codexAccountProfile: CodexAccountProfile? = nil,
             claudeToken: String?
         ) {
             self.codexToken = codexToken
-            self.codexAccountEmailValue = codexAccountEmail
+            self.codexAccountProfileValue = codexAccountProfile
             self.claudeToken = claudeToken
         }
 
         func codexAccessToken() -> String? { codexToken }
-        func codexAccountEmail() -> String? { codexAccountEmailValue }
+        func codexAccountProfile() -> CodexAccountProfile? { codexAccountProfileValue }
         func claudeAccessToken() -> String? { claudeToken }
     }
 
@@ -222,10 +222,15 @@ final class OfficialQuotaClientTests: XCTestCase {
         )
     }
 
-    func testCodexAccountEmailUsesTheOfficialCredentialReaderSource() {
-        let client = makeClient(codexAccountEmail: "person@example.com")
+    func testCodexAccountProfileUsesTheOfficialCredentialReaderSource() {
+        let client = makeClient(
+            codexAccountProfile: CodexAccountProfile(email: "person@example.com", planType: "prolite")
+        )
 
-        XCTAssertEqual(client.codexAccountEmail(), "person@example.com")
+        XCTAssertEqual(
+            client.codexAccountProfile(),
+            CodexAccountProfile(email: "person@example.com", planType: "prolite")
+        )
     }
 
     func testOverlappingCredentialSourcesDoNotShareTransport() throws {
@@ -468,13 +473,13 @@ final class OfficialQuotaClientTests: XCTestCase {
     private func makeClient(
         codexToken: String? = nil,
         claudeToken: String? = nil,
-        codexAccountEmail: String? = nil
+        codexAccountProfile: CodexAccountProfile? = nil
     ) -> OfficialQuotaClient {
         OfficialQuotaClient(
             session: session,
             credentialReader: FixtureCredentialReader(
                 codexToken: codexToken,
-                codexAccountEmail: codexAccountEmail,
+                codexAccountProfile: codexAccountProfile,
                 claudeToken: claudeToken
             ),
             parser: DefaultOfficialQuotaParser {

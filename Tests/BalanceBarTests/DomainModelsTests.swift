@@ -19,9 +19,11 @@ final class DomainModelsTests: XCTestCase {
         let available = OpenAIAccountPresentation.current(
             activeClient: .codex,
             providerIsOfficial: true,
-            email: "person@example.com"
+            email: "person@example.com",
+            subscription: .proFiveX
         )
         XCTAssertEqual(available?.state, .available("person@example.com"))
+        XCTAssertEqual(available?.subscription, .proFiveX)
         XCTAssertEqual(available?.text(language: .simplifiedChinese), "person@example.com")
         XCTAssertEqual(available?.text(language: .traditionalChinese), "person@example.com")
         XCTAssertEqual(available?.text(language: .japanese), "person@example.com")
@@ -52,6 +54,19 @@ final class DomainModelsTests: XCTestCase {
                 email: "should-not-leak@example.com"
             )
         )
+    }
+
+    func testOpenAISubscriptionTierMapsOfficialPlanClaimsToTheRequestedBadgeText() {
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "plus"), .plus)
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "prolite"), .proFiveX)
+        XCTAssertEqual(OpenAISubscriptionTier(planType: "PRO"), .proTwentyX)
+        XCTAssertEqual(OpenAISubscriptionTier(planType: " pro_20x "), .proTwentyX)
+        XCTAssertNil(OpenAISubscriptionTier(planType: "team"))
+        XCTAssertNil(OpenAISubscriptionTier(planType: nil))
+
+        XCTAssertEqual(OpenAISubscriptionTier.plus.text, "PLUS")
+        XCTAssertEqual(OpenAISubscriptionTier.proFiveX.text, "Pro · 5x")
+        XCTAssertEqual(OpenAISubscriptionTier.proTwentyX.text, "Pro · 20x")
     }
 
     func testPlaceholderAndOfficialSnapshotFormatting() {

@@ -1101,6 +1101,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(official.title, CGRect(x: 14, y: 75, width: 189, height: 20))
         XCTAssertEqual(official.refreshTime, CGRect(x: 209, y: 76, width: 81, height: 17))
         XCTAssertNil(official.account)
+        XCTAssertNil(official.subscription)
         XCTAssertEqual(official.quotaDetail, CGRect(x: 14, y: 47, width: 128, height: 18))
         XCTAssertEqual(official.reset, CGRect(x: 14, y: 28, width: 128, height: 17))
         XCTAssertEqual(official.amount, CGRect(x: 149, y: 18, width: 141, height: 48))
@@ -1113,6 +1114,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(balance.title, CGRect(x: 14, y: 58, width: 189, height: 20))
         XCTAssertEqual(balance.refreshTime, CGRect(x: 209, y: 59, width: 81, height: 17))
         XCTAssertNil(balance.account)
+        XCTAssertNil(balance.subscription)
         XCTAssertEqual(balance.quotaDetail, CGRect(x: 14, y: 31, width: 128, height: 18))
         XCTAssertNil(balance.reset)
         XCTAssertEqual(balance.amount, CGRect(x: 149, y: 5, width: 141, height: 48))
@@ -1132,6 +1134,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(frames.title, CGRect(x: 14, y: 94, width: 189, height: 20))
         XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 95, width: 81, height: 17))
         XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 276, height: 17))
+        XCTAssertNil(frames.subscription)
         XCTAssertEqual(frames.quotaDetail, CGRect(x: 14, y: 47, width: 128, height: 18))
         XCTAssertEqual(frames.reset, CGRect(x: 14, y: 28, width: 128, height: 17))
         XCTAssertEqual(frames.amount, CGRect(x: 149, y: 18, width: 141, height: 48))
@@ -1139,6 +1142,33 @@ final class OpenCodexRepositoryTests: XCTestCase {
 
         XCTAssertLessThan(frames.quotaDetail.maxY, frames.account?.minY ?? 0)
         XCTAssertLessThan(frames.progress?.maxY ?? 0, frames.reset?.minY ?? 0)
+    }
+
+    func testOpenAISubscriptionBadgeReservesRightAlignedSpaceBesideAccount() {
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true
+        )
+
+        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 122))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 190, height: 17))
+        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 72, width: 78, height: 22))
+        XCTAssertEqual(frames.title, CGRect(x: 14, y: 95, width: 189, height: 20))
+        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 96, width: 81, height: 17))
+        XCTAssertLessThanOrEqual(frames.account?.maxX ?? 0, frames.subscription?.minX ?? 0)
+        XCTAssertLessThanOrEqual(frames.subscription?.maxX ?? 0, frames.cardSize.width - 14)
+        XCTAssertLessThan(frames.subscription?.maxY ?? 0, frames.title.minY)
+
+        let errorFrames = ErrorCardLayout.errorFrames(
+            for: "quota unavailable",
+            includesAccount: true,
+            includesSubscription: true
+        )
+        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 190, height: 17))
+        XCTAssertEqual(errorFrames.subscription, CGRect(x: 212, y: 55, width: 78, height: 22))
+        XCTAssertLessThanOrEqual(errorFrames.account?.maxX ?? 0, errorFrames.subscription?.minX ?? 0)
+        XCTAssertLessThan(errorFrames.subscription?.maxY ?? 0, errorFrames.title.minY)
     }
 
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {
