@@ -8,6 +8,8 @@ struct DashboardPreferencePageActions {
     let onLanguage: (AppLanguage) -> Void
     let onOpenCCSwitch: () -> Void
     let onManualRefresh: () -> Void
+    let onCheckForUpdates: () -> Void
+    let onInstallUpdate: () -> Void
     let onOpenOpenCodex: () -> Void
     let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
     let onOpenCodexModeChanged: (OpenCodexDashboardMode) -> Void
@@ -19,6 +21,7 @@ final class DashboardPreferencePages {
     private let devBundleIdentifier: String
     private let actions: DashboardPreferencePageActions
     private let relay = DashboardPreferencePageRelay()
+    private let generalPage = DashboardGeneralPage()
     private let menuPage = DashboardMenuPage()
     private let menuBarPage = DashboardMenuBarPage()
     private let advancedPage = DashboardAdvancedPage()
@@ -35,6 +38,8 @@ final class DashboardPreferencePages {
         relay.onLanguage = actions.onLanguage
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
         relay.onManualRefresh = actions.onManualRefresh
+        relay.onCheckForUpdates = actions.onCheckForUpdates
+        relay.onInstallUpdate = actions.onInstallUpdate
         relay.onOpenOpenCodex = actions.onOpenOpenCodex
         relay.onRevealLog = { [weak self] in self?.logsPage.reveal() }
         relay.onRefreshLog = { [weak self] in self?.logsPage.refresh() }
@@ -48,14 +53,16 @@ final class DashboardPreferencePages {
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
         iconImage: NSImage?,
         currentOpenCodexResolution: OpenCodexDashboardResolution?,
-        runtimeCandidate: OpenCodexEndpointCandidate?
+        runtimeCandidate: OpenCodexEndpointCandidate?,
+        updateState: UpdateCheckState
     ) -> NSView {
         switch section {
         case .general:
-            return DashboardGeneralPage.make(.init(
+            return generalPage.make(.init(
                 preferences: preferences,
                 currentProviderName: currentProviderName,
-                relay: relay
+                relay: relay,
+                updateState: updateState
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -121,6 +128,10 @@ final class DashboardPreferencePages {
 
     func refreshLogs() {
         logsPage.refresh()
+    }
+
+    func refreshUpdateState(_ updateState: UpdateCheckState) {
+        generalPage.refresh(updateState: updateState)
     }
 
     func revealLogs() {

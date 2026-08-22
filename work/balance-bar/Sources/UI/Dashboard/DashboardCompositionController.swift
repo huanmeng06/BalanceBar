@@ -15,6 +15,7 @@ struct DashboardCompositionState {
     let iconImage: () -> NSImage?
     let currentOpenCodexResolution: () -> OpenCodexDashboardResolution?
     let runtimeCandidate: () -> OpenCodexEndpointCandidate?
+    let updateState: () -> UpdateCheckState
     let statusLinks: () -> [StatusLink]
     let defaultStatusLinks: () -> [StatusLink]
     let setStatusLinks: ([StatusLink]) -> Void
@@ -33,6 +34,8 @@ struct DashboardCompositionActions {
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onOpenCCSwitch: () -> Void
+    let onCheckForUpdates: () -> Void
+    let onInstallUpdate: () -> Void
     let onOpenOpenCodex: () -> Void
     let onOpenCodexModeChanged: (OpenCodexDashboardMode) -> Void
     let onClamp: () -> Void
@@ -70,6 +73,8 @@ final class DashboardCompositionController {
             onLanguage: actions.onLanguage,
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onManualRefresh: actions.onManualRefresh,
+            onCheckForUpdates: actions.onCheckForUpdates,
+            onInstallUpdate: actions.onInstallUpdate,
             onOpenOpenCodex: actions.onOpenOpenCodex,
             makeStatusLinksEditor: { [weak self] in
                 self?.makeStatusLinksEditor()
@@ -161,6 +166,10 @@ final class DashboardCompositionController {
         )
     }
 
+    func refreshUpdateState() {
+        dashboardPreferencePages.refreshUpdateState(state.updateState())
+    }
+
     func updateMenuStatusVisibility(_ visible: Bool, animated: Bool) {
         dashboardPreferencePages.updateMenuStatusVisibility(visible, animated: animated)
     }
@@ -216,7 +225,8 @@ final class DashboardCompositionController {
             menuBarSnapshot: state.menuBarSnapshot,
             iconImage: state.iconImage(),
             currentOpenCodexResolution: state.currentOpenCodexResolution(),
-            runtimeCandidate: state.runtimeCandidate()
+            runtimeCandidate: state.runtimeCandidate(),
+            updateState: state.updateState()
         )
     }
 

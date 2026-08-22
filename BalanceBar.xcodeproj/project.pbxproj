@@ -81,6 +81,9 @@
 		A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DB /* ProviderSwitchCoordinator.swift */; };
 		A100000000000000000000DC /* DashboardCompositionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DD /* DashboardCompositionController.swift */; };
 		A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */; };
+		A100000000000000000000E5 /* UpdateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E6 /* UpdateModels.swift */; };
+		A100000000000000000000E7 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E8 /* UpdateService.swift */; };
+		A100000000000000000000E9 /* UpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EA /* UpdateTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -159,6 +162,9 @@
 		A100000000000000000000DB /* ProviderSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSwitchCoordinator.swift; sourceTree = "<group>"; };
 		A100000000000000000000DD /* DashboardCompositionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCompositionController.swift; sourceTree = "<group>"; };
 		A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinatorTests.swift; sourceTree = "<group>"; };
+		A100000000000000000000E6 /* UpdateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateModels.swift; sourceTree = "<group>"; };
+		A100000000000000000000E8 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
+		A100000000000000000000EA /* UpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -270,6 +276,7 @@
 				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
 				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
+				A100000000000000000000EA /* UpdateTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -282,6 +289,7 @@
 				A10000000000000000000050 /* ProviderModels.swift */,
 				A10000000000000000000051 /* Snapshot.swift */,
 				A10000000000000000000052 /* StatusLink.swift */,
+				A100000000000000000000E6 /* UpdateModels.swift */,
 			);
 			name = Domain;
 			path = "Sources/Domain";
@@ -299,6 +307,7 @@
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
 				A10000000000000000000068 /* OpenCodexRepository.swift */,
 				A10000000000000000000071 /* OfficialQuotaClient.swift */,
+				A100000000000000000000E8 /* UpdateService.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
@@ -521,6 +530,7 @@
 				A1000000000000000000004A /* ProviderModels.swift in Sources */,
 				A1000000000000000000004B /* Snapshot.swift in Sources */,
 				A1000000000000000000004C /* StatusLink.swift in Sources */,
+				A100000000000000000000E5 /* UpdateModels.swift in Sources */,
 				A1000000000000000000006C /* DashboardScrollClamping.swift in Sources */,
 				A10000000000000000000055 /* ResponseParsers.swift in Sources */,
 				A1000000000000000000005B /* CCSwitchRepository.swift in Sources */,
@@ -554,6 +564,7 @@
 				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
 				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
 				A100000000000000000000DC /* DashboardCompositionController.swift in Sources */,
+				A100000000000000000000E7 /* UpdateService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -582,6 +593,7 @@
 				A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */,
 				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 				A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */,
+				A100000000000000000000E9 /* UpdateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
