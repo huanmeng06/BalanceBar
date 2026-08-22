@@ -12,6 +12,8 @@ final class AccountMarqueeView: NSView {
     private(set) var measuredTextWidth: CGFloat = 0
     private(set) var isScrollable = false
     private(set) var showsEdgeFade = false
+    private(set) var edgeFadeInset: CGFloat = 0
+    private(set) var scrollOverflow: CGFloat = 0
 
     private var edgeFadeMask: CAGradientLayer?
 
@@ -64,8 +66,19 @@ final class AccountMarqueeView: NSView {
     private func configureContent() {
         measuredTextWidth = Self.textWidth(of: accountLabel.stringValue, font: accountLabel.font ?? .systemFont(ofSize: 13))
         isScrollable = measuredTextWidth > bounds.width + 0.5
-        let contentWidth = max(bounds.width, measuredTextWidth)
-        accountLabel.frame = NSRect(x: 0, y: 0, width: contentWidth, height: bounds.height)
+        edgeFadeInset = isScrollable && bounds.width > 0
+            ? min(Self.edgeFadeWidth, bounds.width / 4)
+            : 0
+        let contentWidth = isScrollable
+            ? measuredTextWidth + edgeFadeInset
+            : max(bounds.width, measuredTextWidth)
+        accountLabel.frame = NSRect(
+            x: edgeFadeInset,
+            y: 0,
+            width: contentWidth,
+            height: bounds.height
+        )
+        scrollOverflow = max(0, accountLabel.frame.maxX - bounds.width)
 
         guard isScrollable, bounds.width > 0 else {
             layer?.mask = nil
@@ -81,7 +94,7 @@ final class AccountMarqueeView: NSView {
             NSColor.black.cgColor,
             NSColor.clear.cgColor
         ]
-        let fadeWidth = min(Self.edgeFadeWidth, bounds.width / 4)
+        let fadeWidth = edgeFadeInset
         let fadeFraction = fadeWidth / bounds.width
         mask.locations = [
             0,
@@ -103,7 +116,7 @@ final class AccountMarqueeView: NSView {
             return
         }
 
-        let overflow = max(0, measuredTextWidth - bounds.width)
+        let overflow = scrollOverflow
         guard overflow > 0 else { return }
 
         let animation = Self.scrollAnimation(forOverflow: overflow)
