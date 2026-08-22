@@ -59,6 +59,15 @@ final class AppPreferences {
     static let menuBarIconOffsetYKey = "menuBarIconOffsetY"
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
+    static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
+    /// The width slider is zero-based and only widens the status item above
+    /// its actual -20pt baseline.
+    static let menuBarStatusItemWidthAdjustmentRange = 0.0...20.0
+    static let menuBarStatusItemWidthAdjustmentStep: Double = menuBarOffsetStep
+    /// The actual status-item width baseline. The persisted/user-facing
+    /// adjustment remains zero-based, so logical 0pt applies -20pt to the
+    /// outer status-item footprint.
+    static let menuBarStatusItemWidthBaseline: Double = -20.0
 
     /// Point offsets for the menu bar Agent icon. Positive X moves right,
     /// positive Y moves up. Values are clamped to `menuBarOffsetRange`.
@@ -80,6 +89,20 @@ final class AppPreferences {
     var menuBarAmountOffsetY: Double {
         get { clampedMenuBarOffset(Self.menuBarAmountOffsetYKey) }
         set { defaults.set(roundedMenuBarOffset(newValue), forKey: Self.menuBarAmountOffsetYKey) }
+    }
+
+    /// Additional points applied to the complete menu bar status item width.
+    /// This is a user-facing adjustment relative to the -20pt baseline.
+    /// Positive values widen the status item symmetrically; negative values
+    /// narrow it without changing the icon/text spacing inside the item.
+    var menuBarStatusItemWidthAdjustment: Double {
+        get { clampedMenuBarStatusItemWidthAdjustment() }
+        set {
+            defaults.set(
+                roundedMenuBarStatusItemWidthAdjustment(newValue),
+                forKey: Self.menuBarStatusItemWidthAdjustmentKey
+            )
+        }
     }
 
     /// An optional local-only Dashboard port override. The value is deliberately
@@ -149,6 +172,49 @@ final class AppPreferences {
     private func clampedMenuBarOffset(_ key: String) -> Double {
         guard let number = defaults.object(forKey: key) as? NSNumber else { return 0 }
         return roundedMenuBarOffset(number.doubleValue)
+    }
+
+    private func roundedMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
+        Self.normalizedMenuBarStatusItemWidthAdjustment(value)
+    }
+
+    static func normalizedMenuBarStatusItemWidthAdjustment(_ value: Double) -> Double {
+        let clamped = min(
+            max(value, menuBarStatusItemWidthAdjustmentRange.lowerBound),
+            menuBarStatusItemWidthAdjustmentRange.upperBound
+        )
+        let scale = 1 / menuBarStatusItemWidthAdjustmentStep
+        return (clamped * scale).rounded() / scale
+    }
+
+    private func clampedMenuBarStatusItemWidthAdjustment() -> Double {
+        guard let number = defaults.object(
+            forKey: Self.menuBarStatusItemWidthAdjustmentKey
+        ) as? NSNumber else { return 0 }
+        return roundedMenuBarStatusItemWidthAdjustment(number.doubleValue)
+    }
+}
+
+/// Holds the in-progress value of the width slider without treating every
+/// mouse-tracking event as a persisted preference change.
+struct MenuBarStatusItemWidthAdjustmentSession {
+    private(set) var transientValue: Double?
+
+    mutating func update(_ value: Double) -> Double {
+        let normalized = AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(value)
+        transientValue = normalized
+        return normalized
+    }
+
+    mutating func finish(_ value: Double, persist: (Double) -> Void) -> Double {
+        let normalized = AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(value)
+        transientValue = nil
+        persist(normalized)
+        return normalized
+    }
+
+    mutating func cancel() {
+        transientValue = nil
     }
 }
 

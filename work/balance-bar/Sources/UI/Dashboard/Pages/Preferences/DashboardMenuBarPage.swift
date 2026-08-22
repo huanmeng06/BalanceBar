@@ -187,11 +187,33 @@ final class RepeatOffsetButton: NSButton {
     }
 }
 
+final class MenuBarWidthSlider: NSSlider {
+    var onEditingEnded: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        onEditingEnded?()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        super.keyDown(with: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        super.keyUp(with: event)
+        onEditingEnded?()
+    }
+}
+
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
+    static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
+    static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
+    static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
+    static let widthAdjustmentSliderWidth: CGFloat = 140
     /// Extra default lift for the amount text in the Dashboard preview only
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
@@ -233,6 +255,11 @@ final class DashboardMenuBarPage {
         let relay: DashboardPreferencePageRelay
     }
 
+    private struct WidthSliderControls {
+        let view: NSView
+        let slider: NSSlider
+    }
+
     private let previewIcon = PassthroughImageView()
     private let previewIconSlot = NSView()
     private let previewText = MenuBarTextView()
@@ -246,8 +273,11 @@ final class DashboardMenuBarPage {
     private var textWidthConstraint: NSLayoutConstraint?
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
+    private var widthAdjustmentSummaryLabel: NSTextField?
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
+    private weak var widthAdjustmentSlider: NSSlider?
+    private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -331,13 +361,18 @@ final class DashboardMenuBarPage {
         previewCapsule.translatesAutoresizingMaskIntoConstraints = false
         previewContent.addSubview(previewCapsule)
         previewContent.addSubview(previewRow)
+        let initialCapsuleInset = Self.previewCapsuleHorizontalInset(
+            horizontalPadding: input.preferences.menuBarHorizontalPadding,
+            widthAdjustment: input.preferences.menuBarStatusItemWidthAdjustment
+                + AppPreferences.menuBarStatusItemWidthBaseline
+        )
         let capsuleLeading = previewCapsule.leadingAnchor.constraint(
             equalTo: previewRow.leadingAnchor,
-            constant: -(input.preferences.menuBarHorizontalPadding + chromeInset)
+            constant: -initialCapsuleInset
         )
         let capsuleTrailing = previewCapsule.trailingAnchor.constraint(
             equalTo: previewRow.trailingAnchor,
-            constant: input.preferences.menuBarHorizontalPadding + chromeInset
+            constant: initialCapsuleInset
         )
         capsuleLeadingConstraint = capsuleLeading
         capsuleTrailingConstraint = capsuleTrailing
@@ -391,6 +426,10 @@ final class DashboardMenuBarPage {
         iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
         let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
         amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
+        let widthAdjustment = transientWidthAdjustment
+            ?? input.preferences.menuBarStatusItemWidthAdjustment
+        let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(widthAdjustment))
+        widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
         let iconOffsetControls = makeOffsetControls(
             keyX: AppPreferences.menuBarIconOffsetXKey,
             keyY: AppPreferences.menuBarIconOffsetYKey,
@@ -403,10 +442,17 @@ final class DashboardMenuBarPage {
             resetIdentifier: Self.amountOffsetsResetIdentifier,
             relay: input.relay
         )
+        let widthAdjustmentControls = makeWidthSliderControls(
+            value: widthAdjustment,
+            key: AppPreferences.menuBarStatusItemWidthAdjustmentKey,
+            relay: input.relay
+        )
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
+        widthAdjustmentSummaryLabel = widthAdjustmentSummary
         iconOffsetButtons = iconOffsetControls
         amountOffsetButtons = amountOffsetControls
+        widthAdjustmentSlider = widthAdjustmentControls.slider
         let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
             tr("细节微调", "Fine Tuning", "細節微調", "微調整"),
             rows: [
@@ -422,6 +468,13 @@ final class DashboardMenuBarPage {
                     subtitle: Self.offsetSummaryText(x: 0, y: 0),
                     subtitleLabel: amountOffsetSummary,
                     control: makeOffsetControlStack(buttons: amountOffsetControls),
+                    minimumHeight: 66
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("宽度", "Width", "寬度", "幅"),
+                    subtitle: Self.widthAdjustmentSummaryText(widthAdjustment),
+                    subtitleLabel: widthAdjustmentSummary,
+                    control: widthAdjustmentControls.view,
                     minimumHeight: 66
                 )
             ]
@@ -472,8 +525,6 @@ final class DashboardMenuBarPage {
             hasSecondary: hasSecondary
         )
         textWidthConstraint?.constant = geometry.textWidth
-        capsuleLeadingConstraint?.constant = -(preferences.menuBarHorizontalPadding + chromeInset)
-        capsuleTrailingConstraint?.constant = preferences.menuBarHorizontalPadding + chromeInset
         previewIcon.image = iconImage
         previewIcon.contentTintColor = .labelColor
         let iconOffsetX = preferences.menuBarIconOffsetX
@@ -484,6 +535,13 @@ final class DashboardMenuBarPage {
         amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
+        let widthAdjustment = transientWidthAdjustment
+            ?? preferences.menuBarStatusItemWidthAdjustment
+        applyWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: preferences.menuBarHorizontalPadding,
+            synchronizeSlider: transientWidthAdjustment == nil
+        )
         let iconVisualX = CGFloat(iconOffsetX)
         let iconVisualY = CGFloat(iconOffsetY)
         let amountVisualX = CGFloat(amountOffsetX)
@@ -544,6 +602,55 @@ final class DashboardMenuBarPage {
         }
     }
 
+    /// Refreshes only the width-specific presentation while a continuous
+    /// slider is moving. The full page refresh also resolves snapshots and
+    /// reapplies icon/text transforms, which is unnecessary for this field.
+    func refreshWidthAdjustment(
+        _ widthAdjustment: Double,
+        horizontalPadding: CGFloat,
+        synchronizeSlider: Bool = false
+    ) {
+        transientWidthAdjustment = AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(widthAdjustment)
+        applyWidthAdjustment(
+            transientWidthAdjustment ?? 0,
+            horizontalPadding: horizontalPadding,
+            synchronizeSlider: synchronizeSlider
+        )
+    }
+
+    func finishWidthAdjustment(
+        _ widthAdjustment: Double,
+        horizontalPadding: CGFloat
+    ) {
+        transientWidthAdjustment = nil
+        applyWidthAdjustment(
+            AppPreferences.normalizedMenuBarStatusItemWidthAdjustment(widthAdjustment),
+            horizontalPadding: horizontalPadding,
+            synchronizeSlider: true
+        )
+    }
+
+    private func applyWidthAdjustment(
+        _ widthAdjustment: Double,
+        horizontalPadding: CGFloat,
+        synchronizeSlider: Bool
+    ) {
+        guard isBuilt else { return }
+        MenuBarWidthPerformance.measure("dashboard-preview") {
+            let capsuleInset = Self.previewCapsuleHorizontalInset(
+                horizontalPadding: horizontalPadding,
+                widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+            )
+            capsuleLeadingConstraint?.constant = -capsuleInset
+            capsuleTrailingConstraint?.constant = capsuleInset
+            widthAdjustmentSummaryLabel?.stringValue = Self.widthAdjustmentSummaryText(widthAdjustment)
+            if synchronizeSlider {
+                widthAdjustmentSlider?.doubleValue = widthAdjustment
+            }
+            widthAdjustmentSlider?.isEnabled = true
+        }
+    }
+
     func restoreRequiredToggle(identifier: String) {
         switch identifier {
         case "showMenuBarIcon":
@@ -557,6 +664,23 @@ final class DashboardMenuBarPage {
 
     private static func offsetSummaryText(x: Double, y: Double) -> String {
         String(format: "X %.1f · Y %.1f", x, y)
+    }
+
+    private static func widthAdjustmentSummaryText(_ value: Double) -> String {
+        let valueText = String(format: "%+.1f pt", value)
+        return tr(
+            "横向范围 \(valueText)",
+            "Horizontal range \(valueText)",
+            "橫向範圍 \(valueText)",
+            "横幅 \(valueText)"
+        )
+    }
+
+    private static func previewCapsuleHorizontalInset(
+        horizontalPadding: CGFloat,
+        widthAdjustment: Double
+    ) -> CGFloat {
+        horizontalPadding + 10 + (CGFloat(widthAdjustment) / 2)
     }
 
     private func makeOffsetControls(
@@ -592,6 +716,67 @@ final class DashboardMenuBarPage {
             ),
             makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
         ]
+    }
+
+    private func makeWidthSliderControls(
+        value: Double,
+        key: String,
+        relay: DashboardPreferencePageRelay
+    ) -> WidthSliderControls {
+        let range = AppPreferences.menuBarStatusItemWidthAdjustmentRange
+        let slider = MenuBarWidthSlider()
+        slider.identifier = NSUserInterfaceItemIdentifier(key)
+        slider.minValue = range.lowerBound
+        slider.maxValue = range.upperBound
+        slider.doubleValue = value
+        slider.isContinuous = true
+        slider.numberOfTickMarks = 21
+        slider.tickMarkPosition = .below
+        slider.allowsTickMarkValuesOnly = false
+        slider.target = relay
+        slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
+        slider.toolTip = tr(
+            "从 0pt 向右放大，最大 +20pt",
+            "Drag right to widen from 0pt up to +20pt",
+            "從 0pt 向右放大，最大 +20pt",
+            "0pt から右へ広げ、最大 +20pt"
+        )
+        slider.onEditingEnded = { [weak relay, weak slider] in
+            guard let relay, let slider else { return }
+            relay.finishOffsetValue(slider)
+        }
+        slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
+
+        let minimumLabel = makeWidthSliderEndpointLabel(
+            range.lowerBound == 0
+                ? "0"
+                : String(format: "%+.0f", range.lowerBound),
+            identifier: Self.widthAdjustmentSliderMinimumIdentifier
+        )
+        let maximumLabel = makeWidthSliderEndpointLabel(
+            String(format: "%+.0f", range.upperBound),
+            identifier: Self.widthAdjustmentSliderMaximumIdentifier
+        )
+        let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return WidthSliderControls(view: stack, slider: slider)
+    }
+
+    private func makeWidthSliderEndpointLabel(
+        _ title: String,
+        identifier: String
+    ) -> NSTextField {
+        let label = NSTextField(labelWithString: title)
+        label.identifier = NSUserInterfaceItemIdentifier(identifier)
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return label
     }
 
     private func makeOffsetButton(

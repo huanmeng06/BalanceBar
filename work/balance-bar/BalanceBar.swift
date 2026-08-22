@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -191,6 +191,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
             onOffsetAdjust: { [weak self] identifier, delta in
                 self?.handleDashboardOffsetAdjust(identifier: identifier, delta: delta)
+            },
+            onOffsetValue: { [weak self] identifier, value in
+                self?.handleDashboardOffsetValue(identifier: identifier, value: value)
+            },
+            onOffsetValueEnded: { [weak self] identifier, value in
+                self?.handleDashboardOffsetValueEnded(identifier: identifier, value: value)
             },
             onOffsetReset: { [weak self] identifier in
                 self?.handleDashboardOffsetReset(identifier: identifier)
@@ -283,6 +289,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarIconOffsetY: Double { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
     private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
+    private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
+    private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
+        self?.applyMenuBarWidthAdjustmentFrame(value)
+    }
+    private var menuBarStatusItemWidthAdjustment: Double {
+        menuBarStatusItemWidthAdjustmentSession.transientValue
+            ?? preferences.menuBarStatusItemWidthAdjustment
+    }
+    private var menuBarStatusItemPhysicalWidthAdjustment: Double {
+        menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+    }
     private var openCodexDashboardPortOverride: Int? {
         get { preferences.openCodexDashboardPortOverride }
         set { preferences.openCodexDashboardPortOverride = newValue }
@@ -515,7 +532,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconOffsetX: CGFloat(menuBarIconOffsetX),
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
-            amountOffsetY: CGFloat(menuBarAmountOffsetY)
+            amountOffsetY: CGFloat(menuBarAmountOffsetY),
+            widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
         )
     }
 
@@ -593,6 +611,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         SwitchLog.write("session terminating", category: "lifecycle")
         timer?.invalidate()
         activityCoordinator.stop()
+        menuBarWidthAdjustmentCoalescer.cancel()
+        menuBarStatusItemWidthAdjustmentSession.cancel()
         dashboardComposition.teardown()
         statusItemController.teardown()
         databaseWatcher.stop()
@@ -854,10 +874,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             return
         }
         SwitchLog.write(
-            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardOffsetValue(identifier: String, value: Double) {
+        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+            return
+        }
+        // NSSlider sends this action continuously. Keep the value transient:
+        // UserDefaults and logging belong to the editing-ended path, not the
+        // mouse-tracking hot path.
+        let transientValue = menuBarStatusItemWidthAdjustmentSession.update(value)
+        MenuBarWidthPerformance.measure("slider-action") {
+            menuBarWidthAdjustmentCoalescer.submit(CGFloat(transientValue))
+        }
+    }
+
+    private func handleDashboardOffsetValueEnded(identifier: String, value: Double) {
+        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+            return
+        }
+        let appPreferences = preferences
+        let finalValue = menuBarStatusItemWidthAdjustmentSession.finish(value) { finalValue in
+            appPreferences.menuBarStatusItemWidthAdjustment = finalValue
+        }
+        menuBarWidthAdjustmentCoalescer.submit(CGFloat(finalValue))
+        menuBarWidthAdjustmentCoalescer.flush()
+        finishDashboardMenuBarWidthAdjustment(finalValue)
+        SwitchLog.write(
+            "preference changed; key=\(identifier); value=\(menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
+            category: "configuration"
+        )
+    }
+
+    private func applyMenuBarWidthAdjustmentFrame(_ widthAdjustment: CGFloat) {
+        let physicalWidthAdjustment = widthAdjustment
+            + CGFloat(AppPreferences.menuBarStatusItemWidthBaseline)
+        MenuBarWidthPerformance.measure("menu-bar-width-frame") {
+            statusItemController.updateWidthAdjustment(physicalWidthAdjustment)
+            refreshDashboardMenuBarWidthAdjustment(Double(widthAdjustment))
+        }
     }
 
     private func handleDashboardOffsetReset(identifier: String) {
@@ -872,7 +931,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             return
         }
         SwitchLog.write(
-            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
@@ -920,6 +979,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func refreshDashboardMenuBarPage() {
         dashboardComposition.refreshMenuBarPage(snapshot: snapshot)
+    }
+
+    private func refreshDashboardMenuBarWidthAdjustment(_ widthAdjustment: Double) {
+        dashboardComposition.refreshMenuBarWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: menuBarHorizontalPadding
+        )
+    }
+
+    private func finishDashboardMenuBarWidthAdjustment(_ widthAdjustment: Double) {
+        dashboardComposition.finishMenuBarWidthAdjustment(
+            widthAdjustment,
+            horizontalPadding: menuBarHorizontalPadding
+        )
     }
 
     private func refreshDashboardOpenCodexSettings() {

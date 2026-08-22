@@ -14,6 +14,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onRefreshLog: (() -> Void)?
     var onRevealLog: (() -> Void)?
     var onOffsetAdjust: ((String, Int) -> Void)?
+    var onOffsetValue: ((String, Double) -> Void)?
+    var onOffsetValueEnded: ((String, Double) -> Void)?
     var onOffsetReset: ((String) -> Void)?
 
     @objc func toggle(_ sender: NSSwitch) {
@@ -64,6 +66,16 @@ final class DashboardPreferencePageRelay: NSObject {
     @objc func adjustOffset(_ sender: NSButton) {
         guard let identifier = sender.identifier?.rawValue else { return }
         onOffsetAdjust?(identifier, sender.tag)
+    }
+
+    @objc func adjustOffsetValue(_ sender: NSSlider) {
+        guard let identifier = sender.identifier?.rawValue else { return }
+        onOffsetValue?(identifier, sender.doubleValue)
+    }
+
+    @objc func finishOffsetValue(_ sender: NSSlider) {
+        guard let identifier = sender.identifier?.rawValue else { return }
+        onOffsetValueEnded?(identifier, sender.doubleValue)
     }
 
     @objc func resetOffset(_ sender: NSButton) {

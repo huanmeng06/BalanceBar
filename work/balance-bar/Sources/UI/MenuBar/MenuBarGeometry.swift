@@ -127,6 +127,7 @@ enum MenuBarLayout {
     static let iconTextSpacing: CGFloat = 6
     static let textRowSpacing: CGFloat = -2
     static let textWidthSlack: CGFloat = 5
+    static let minimumStatusItemLength: CGFloat = 30
 
     // Fixed API single-line baseline. Keep these independent from the
     // official two-line layout so provider switches cannot alter the result.
@@ -142,6 +143,27 @@ enum MenuBarLayout {
 
     static func officialTextYOffset(hasSecondary: Bool) -> CGFloat {
         hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
+    }
+
+    /// Returns the complete horizontal footprint of the BalanceBar status
+    /// item. The adjustment belongs to the outer NSStatusItem length, so it
+    /// changes the space allocated beside neighboring status items without
+    /// changing the icon/text spacing inside this item. Keep the natural
+    /// content width as a hard lower bound so a narrow setting cannot clip it.
+    static func statusItemLength(
+        contentWidth: CGFloat,
+        horizontalPadding: CGFloat,
+        widthAdjustment: CGFloat = 0
+    ) -> CGFloat {
+        let safeContentWidth = max(0, contentWidth)
+        let safePadding = max(0, horizontalPadding)
+        // Keep the user-visible 0.1pt step in the actual footprint. The
+        // natural content width is already measured in whole points; rounding
+        // the complete result here would turn a continuous slider into 1pt
+        // jumps.
+        let requestedLength = safeContentWidth + (safePadding * 2) + widthAdjustment
+        let safeMinimum = max(minimumStatusItemLength, safeContentWidth)
+        return max(safeMinimum, requestedLength)
     }
 
     static func geometry(
