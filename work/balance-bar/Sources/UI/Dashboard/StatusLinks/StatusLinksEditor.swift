@@ -6,6 +6,19 @@ enum StatusLinkField: Equatable {
     case url
 }
 
+enum StatusLinksEditorAnimation {
+    static let visibilityDuration: TimeInterval = 0.20
+    static let visibilityTimingFunctionName = "easeInEaseOut"
+
+    static func configure(_ context: NSAnimationContext) {
+        context.duration = visibilityDuration
+        context.timingFunction = CAMediaTimingFunction(
+            name: CAMediaTimingFunctionName(rawValue: visibilityTimingFunctionName)
+        )
+        context.allowsImplicitAnimation = true
+    }
+}
+
 /// An inert AppKit marker gives regression tests the frame of the actual
 /// SwiftUI title/header content without adding another hosting view.
 private struct StatusLinksGeometryAnchor: NSViewRepresentable {
@@ -299,10 +312,9 @@ final class StatusLinksEditorHostingView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = true
+        layer?.backgroundColor = NSColor.clear.cgColor
         clipsToBounds = true
         translatesAutoresizingMaskIntoConstraints = false
-        hostingView.wantsLayer = true
-        hostingView.layer?.masksToBounds = true
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hostingView)
         NSLayoutConstraint.activate([
@@ -386,9 +398,7 @@ final class StatusLinksEditorHostingView: NSView {
         }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.20
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
+                StatusLinksEditorAnimation.configure(context)
                 self.heightConstraint?.animator().constant = targetHeight
                 self.synchronizeAncestorCardHeight(animated: true, editorHeight: targetHeight)
                 self.superview?.layoutSubtreeIfNeeded()
@@ -407,6 +417,7 @@ final class StatusLinksEditorHostingView: NSView {
         let targetHeight: CGFloat = visible ? layoutHeight : 0
         let applyLayout = { [weak self] in
             guard let self else { return }
+            self.alphaValue = visible ? 1 : 0
             self.heightConstraint?.constant = targetHeight
             self.hostingHeightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
@@ -420,26 +431,16 @@ final class StatusLinksEditorHostingView: NSView {
             return
         }
 
-        if visible {
-            // Establish the final frame first. Only opacity is animated, so
-            // the editor never travels through the rows above it.
-            alphaValue = 0
-            applyLayout()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                self.animator().alphaValue = 1
-            }
-            return
-        }
-
+        let ancestorInfo = ancestorCardInfo(editorHeight: targetHeight)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.14
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            self.animator().alphaValue = 0
+            StatusLinksEditorAnimation.configure(context)
+            self.animator().alphaValue = visible ? 1 : 0
+            self.heightConstraint?.animator().constant = targetHeight
+            self.hostingHeightConstraint?.animator().constant = targetHeight
+            ancestorInfo?.1.animator().constant = ancestorInfo?.2 ?? 0
+            self.superview?.layoutSubtreeIfNeeded()
         } completionHandler: { [weak self] in
             guard let self, self.visibilityGeneration == generation else { return }
-            self.alphaValue = 0
             applyLayout()
         }
     }

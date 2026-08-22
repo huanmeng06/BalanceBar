@@ -114,6 +114,69 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(editor.isTornDown)
     }
 
+    func testVisibilityAnimationUsesSharedDurationAndCurve() {
+        XCTAssertEqual(StatusLinksEditorAnimation.visibilityDuration, 0.20, accuracy: 0.001)
+        XCTAssertEqual(
+            StatusLinksEditorAnimation.visibilityTimingFunctionName,
+            "easeInEaseOut"
+        )
+    }
+
+    func testHostingViewRapidVisibilityReversalSettlesWithOneBoundedHostedTree() {
+        let editor = StatusLinksEditorHostingView(
+            links: [StatusLink(title: "One", url: "https://one.example")],
+            onChange: { _, _, _ in },
+            onAdd: {},
+            onRemove: { _ in },
+            onReset: {}
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 260),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let contentView = NSView()
+        window.contentView = contentView
+        contentView.addSubview(editor)
+        NSLayoutConstraint.activate([
+            editor.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            editor.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            editor.topAnchor.constraint(equalTo: contentView.topAnchor)
+        ])
+        window.layoutIfNeeded()
+        defer { window.orderOut(nil) }
+
+        editor.setVisible(false, animated: false)
+        window.layoutIfNeeded()
+        XCTAssertEqual(editor.alphaValue, 0, accuracy: 0.001)
+        XCTAssertEqual(editor.frame.height, 0, accuracy: 0.5)
+        XCTAssertEqual(editor.subviews.count, 1)
+
+        editor.setVisible(true, animated: true)
+        editor.setVisible(false, animated: true)
+        editor.setVisible(true, animated: true)
+
+        let deadline = Date().addingTimeInterval(1)
+        while !editor.isVisible && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            window.layoutIfNeeded()
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+        window.layoutIfNeeded()
+
+        XCTAssertTrue(editor.isVisible)
+        XCTAssertEqual(editor.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.frame.height, editor.layoutHeight, accuracy: 0.5)
+        XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
+        XCTAssertEqual(editor.subviews.count, 1)
+
+        editor.setVisible(false, animated: true)
+        editor.teardown()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+        XCTAssertTrue(editor.isTornDown)
+    }
+
     func testHostingViewCanBeTornDownAndReleasedAfterRepeatedRebuilds() {
         weak var releasedEditor: StatusLinksEditorHostingView?
 
