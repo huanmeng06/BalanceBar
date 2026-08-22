@@ -140,6 +140,12 @@ enum MenuBarLayout {
     static let officialAmountOnlyTextYOffset: CGFloat = 0.5
     static let officialSecondaryTextYOffset: CGFloat = -0.1
 
+    // The rendered status-item capsule/shadow is optically centered two points
+    // to the right of the nominal status-item bounds. Keep this shared by the
+    // real menu bar and Dashboard preview; it is a layout baseline, not a
+    // persisted user offset.
+    static let menuBarOpticalCenterNudgeX: CGFloat = 2
+
     static func officialTextYOffset(hasSecondary: Bool) -> CGFloat {
         hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
     }
@@ -272,13 +278,13 @@ enum MenuBarLayout {
 
     /// Equal translation for the outer content container that compensates for
     /// independent icon/amount X offsets. The baseline and adjusted bounds
-    /// are both measured using the actual background geometry, so the
-    /// existing pixel-aligned default remains unchanged while a user offset
-    /// changes only the relative arrangement and not the group's center. If
-    /// only one component is visible, its configured X offset is compensated
-    /// so the sole visible component remains centered; the preference value
-    /// itself is retained and becomes visible again when both components are
-    /// shown.
+    /// are both measured using the actual background geometry. The target
+    /// center includes the fixed 2pt optical correction for the rendered
+    /// capsule/shadow. A user offset changes only the relative arrangement and
+    /// not the group's corrected center. If only one component is visible,
+    /// its configured X offset is compensated so the sole visible component
+    /// remains centered; the preference value itself is retained and becomes
+    /// visible again when both components are shown.
     ///
     /// This helper deliberately does not allocate width. The caller supplies
     /// the real status-item/card bounds; a future width setting therefore
@@ -289,8 +295,7 @@ enum MenuBarLayout {
         iconOffsetX: CGFloat,
         textOffsetX: CGFloat
     ) -> CGFloat {
-        guard (geometry.iconWidth > 0 || geometry.textWidth > 0),
-              iconOffsetX != 0 || textOffsetX != 0 else {
+        guard geometry.iconWidth > 0 || geometry.textWidth > 0 else {
             return 0
         }
 
@@ -315,6 +320,8 @@ enum MenuBarLayout {
         ) else {
             return 0
         }
-        return baseBounds.midX - adjustedBounds.midX
+        return baseBounds.midX
+            + menuBarOpticalCenterNudgeX
+            - adjustedBounds.midX
     }
 }

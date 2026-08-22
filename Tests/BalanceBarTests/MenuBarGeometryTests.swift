@@ -174,7 +174,7 @@ final class MenuBarGeometryTests: XCTestCase {
                 iconOffsetX: 0,
                 textOffsetX: 0
             ),
-            0,
+            MenuBarLayout.menuBarOpticalCenterNudgeX,
             accuracy: 0.001
         )
 
@@ -214,7 +214,7 @@ final class MenuBarGeometryTests: XCTestCase {
 
             XCTAssertEqual(
                 centeredBounds.midX,
-                baseBounds.midX,
+                baseBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
                 accuracy: 0.001,
                 "icon=\(iconOffsetX), amount=\(textOffsetX)"
             )
@@ -312,7 +312,11 @@ final class MenuBarGeometryTests: XCTestCase {
             // A two-component layout preserves the explicit relative offset;
             // a single visible component remains centered even when its
             // stored offset is non-zero.
-            XCTAssertEqual(centeredBounds.midX, baseBounds.midX, accuracy: 0.001)
+            XCTAssertEqual(
+                centeredBounds.midX,
+                baseBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
+                accuracy: 0.001
+            )
             XCTAssertGreaterThan(centeredBounds.width, 0)
             XCTAssertLessThanOrEqual(centeredBounds.minX, backgroundBounds.maxX)
             XCTAssertGreaterThanOrEqual(centeredBounds.maxX, backgroundBounds.minX)
@@ -337,7 +341,7 @@ final class MenuBarGeometryTests: XCTestCase {
                 iconOffsetX: 0,
                 textOffsetX: 10
             ),
-            -10,
+            -8,
             accuracy: 0.001
         )
 
@@ -356,7 +360,7 @@ final class MenuBarGeometryTests: XCTestCase {
                 iconOffsetX: -4,
                 textOffsetX: 0
             ),
-            4,
+            6,
             accuracy: 0.001
         )
     }
@@ -398,7 +402,7 @@ final class MenuBarGeometryTests: XCTestCase {
                 iconOffsetX: 0,
                 textOffsetX: 0
             ),
-            0,
+            MenuBarLayout.menuBarOpticalCenterNudgeX,
             accuracy: 0.001
         )
     }
