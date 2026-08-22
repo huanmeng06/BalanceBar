@@ -122,6 +122,50 @@ final class StatusLinksTests: XCTestCase {
         )
     }
 
+    func testResetButtonUsesTheNativeAutomaticBezelStyle() throws {
+        let editor = StatusLinksEditorHostingView(
+            links: [StatusLink(title: "One", url: "https://one.example")],
+            onChange: { _, _, _ in },
+            onAdd: {},
+            onRemove: { _ in },
+            onReset: {}
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 260),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let contentView = NSView()
+        window.contentView = contentView
+        contentView.addSubview(editor)
+        NSLayoutConstraint.activate([
+            editor.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            editor.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            editor.topAnchor.constraint(equalTo: contentView.topAnchor)
+        ])
+        window.layoutIfNeeded()
+        defer { window.orderOut(nil) }
+
+        func findResetButton(in view: NSView) -> NSButton? {
+            if let button = view as? NSButton,
+               button.identifier?.rawValue == "statusLinks.reset" {
+                return button
+            }
+            for child in view.subviews {
+                if let button = findResetButton(in: child) {
+                    return button
+                }
+            }
+            return nil
+        }
+
+        let resetButton = try XCTUnwrap(findResetButton(in: editor))
+        let nativeActionButton = NSButton(title: "Reference", target: nil, action: nil)
+        XCTAssertEqual(resetButton.bezelStyle, nativeActionButton.bezelStyle)
+        XCTAssertEqual(resetButton.isBordered, nativeActionButton.isBordered)
+    }
+
     func testHostingViewRapidVisibilityReversalSettlesWithOneBoundedHostedTree() {
         let editor = StatusLinksEditorHostingView(
             links: [StatusLink(title: "One", url: "https://one.example")],

@@ -192,7 +192,10 @@ private struct StatusLinksResetButton: NSViewRepresentable {
         button.title = title
         button.target = coordinator
         button.action = #selector(Coordinator.reset)
-        button.bezelStyle = .rounded
+        // Match the native settings action buttons (for example, “立即刷新”)
+        // by letting AppKit's automatic bezel choose the appearance for the
+        // containing window and theme.
+        button.bezelStyle = .automatic
         button.controlSize = .small
         button.font = .systemFont(ofSize: 12)
         button.identifier = NSUserInterfaceItemIdentifier("statusLinks.reset")
