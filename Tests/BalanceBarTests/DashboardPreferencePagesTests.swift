@@ -385,7 +385,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .allSatisfy { $0.isEnabled })
     }
 
-    func testMenuBarFontSizeControlsKeepRowsIndependentAndRefreshPreview() throws {
+    func testMenuBarFontSizeControlKeepsDefaultRatioAndRefreshesPreview() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english
@@ -396,34 +396,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = AppPreferences(defaults: defaults)
-        preferences.menuBarPrimaryFontSize = 14.2
-        preferences.menuBarSecondaryFontSize = 9.6
+        preferences.menuBarFontSize = 14.2
         let relay = DashboardPreferencePageRelay()
         relay.onOffsetValue = { identifier, value in
-            switch identifier {
-            case AppPreferences.menuBarPrimaryFontSizeKey:
-                preferences.menuBarPrimaryFontSize = AppPreferences.normalizedMenuBarFontSize(
-                    value,
-                    range: AppPreferences.menuBarPrimaryFontSizeRange
-                )
-            case AppPreferences.menuBarSecondaryFontSizeKey:
-                preferences.menuBarSecondaryFontSize = AppPreferences.normalizedMenuBarFontSize(
-                    value,
-                    range: AppPreferences.menuBarSecondaryFontSizeRange
-                )
-            default:
-                break
+            guard identifier == AppPreferences.menuBarFontSizeKey else {
+                return
             }
+            preferences.menuBarFontSize = AppPreferences.normalizedMenuBarFontSize(
+                value,
+                range: AppPreferences.menuBarFontSizeRange
+            )
         }
         relay.onOffsetReset = { identifier in
-            switch identifier {
-            case DashboardMenuBarPage.primaryFontSizeResetIdentifier:
-                preferences.menuBarPrimaryFontSize = AppPreferences.menuBarPrimaryFontSizeDefault
-            case DashboardMenuBarPage.secondaryFontSizeResetIdentifier:
-                preferences.menuBarSecondaryFontSize = AppPreferences.menuBarSecondaryFontSizeDefault
-            default:
-                break
+            guard identifier == DashboardMenuBarPage.fontSizeResetIdentifier else {
+                return
             }
+            preferences.menuBarFontSize = AppPreferences.menuBarFontSizeDefault
         }
         let controller = DashboardMenuBarPage()
         let page = controller.make(.init(
@@ -435,35 +423,28 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ))
 
         let sliders = descendants(of: page).compactMap { $0 as? NSSlider }
-        let primarySlider = try XCTUnwrap(sliders.first {
-            $0.identifier?.rawValue == AppPreferences.menuBarPrimaryFontSizeKey
+        let fontSliders = sliders.filter {
+            $0.identifier?.rawValue == AppPreferences.menuBarFontSizeKey
+        }
+        XCTAssertEqual(fontSliders.count, 1)
+        let fontSlider = try XCTUnwrap(fontSliders.first)
+        XCTAssertTrue(fontSlider is MenuBarFontSizeSlider)
+        XCTAssertTrue(sliders.allSatisfy {
+            $0.identifier?.rawValue != AppPreferences.menuBarPrimaryFontSizeKey
+                && $0.identifier?.rawValue != AppPreferences.menuBarSecondaryFontSizeKey
         })
-        let secondarySlider = try XCTUnwrap(sliders.first {
-            $0.identifier?.rawValue == AppPreferences.menuBarSecondaryFontSizeKey
-        })
-        XCTAssertTrue(primarySlider is MenuBarFontSizeSlider)
-        XCTAssertTrue(secondarySlider is MenuBarFontSizeSlider)
-        XCTAssertEqual(primarySlider.minValue, 10, accuracy: 0.001)
-        XCTAssertEqual(primarySlider.maxValue, 16, accuracy: 0.001)
-        XCTAssertEqual(secondarySlider.minValue, 8, accuracy: 0.001)
-        XCTAssertEqual(secondarySlider.maxValue, 13, accuracy: 0.001)
-        XCTAssertEqual(primarySlider.doubleValue, 14.2, accuracy: 0.001)
-        XCTAssertEqual(secondarySlider.doubleValue, 9.6, accuracy: 0.001)
-        XCTAssertTrue(primarySlider.isContinuous)
-        XCTAssertTrue(secondarySlider.isContinuous)
-        XCTAssertFalse(primarySlider.allowsTickMarkValuesOnly)
-        XCTAssertFalse(secondarySlider.allowsTickMarkValuesOnly)
-        XCTAssertTrue(primarySlider.toolTip?.contains("0.1pt") == true)
-        XCTAssertTrue(secondarySlider.toolTip?.contains("0.1pt") == true)
+        XCTAssertEqual(fontSlider.minValue, 10.4, accuracy: 0.001)
+        XCTAssertEqual(fontSlider.maxValue, 16, accuracy: 0.001)
+        XCTAssertEqual(fontSlider.doubleValue, 14.2, accuracy: 0.001)
+        XCTAssertTrue(fontSlider.isContinuous)
+        XCTAssertFalse(fontSlider.allowsTickMarkValuesOnly)
+        XCTAssertTrue(fontSlider.toolTip?.contains("13:10") == true)
+        XCTAssertTrue(fontSlider.toolTip?.contains("0.1pt") == true)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertEqual(
-            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.primaryFontSizeSummaryIdentifier }?.stringValue,
-            "14.2 pt"
-        )
-        XCTAssertEqual(
-            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.secondaryFontSizeSummaryIdentifier }?.stringValue,
-            "9.6 pt"
+            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.fontSizeSummaryIdentifier }?.stringValue,
+            "14.2 / 10.9 pt"
         )
 
         let previewPrimary = try XCTUnwrap(
@@ -477,35 +458,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
             } as? NSTextField
         )
         XCTAssertEqual(previewPrimary.font?.pointSize ?? .nan, 14.2, accuracy: 0.001)
-        XCTAssertEqual(previewSecondary.font?.pointSize ?? .nan, 9.6, accuracy: 0.001)
+        XCTAssertEqual(
+            previewSecondary.font?.pointSize ?? .nan,
+            14.2 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.001
+        )
         XCTAssertEqual(previewPrimary.frame.minX, previewSecondary.frame.minX, accuracy: 0.001)
         XCTAssertEqual(previewPrimary.frame.width, previewSecondary.frame.width, accuracy: 0.001)
 
-        primarySlider.doubleValue = 15.04
-        XCTAssertTrue(primarySlider.sendAction(primarySlider.action, to: primarySlider.target))
-        XCTAssertEqual(preferences.menuBarPrimaryFontSize, 15.0, accuracy: 0.001)
-        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 9.6, accuracy: 0.001)
-        secondarySlider.doubleValue = 8.95
-        XCTAssertTrue(secondarySlider.sendAction(secondarySlider.action, to: secondarySlider.target))
-        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 9.0, accuracy: 0.001)
-        XCTAssertEqual(preferences.menuBarPrimaryFontSize, 15.0, accuracy: 0.001)
-
-        let primaryReset = try XCTUnwrap(descendants(of: page)
-            .compactMap { $0 as? NSButton }
-            .first { $0.identifier?.rawValue == DashboardMenuBarPage.primaryFontSizeResetIdentifier })
-        relay.resetOffset(primaryReset)
-        XCTAssertEqual(
-            preferences.menuBarPrimaryFontSize,
-            AppPreferences.menuBarPrimaryFontSizeDefault,
-            accuracy: 0.001
-        )
-        let secondaryReset = try XCTUnwrap(descendants(of: page)
-            .compactMap { $0 as? NSButton }
-            .first { $0.identifier?.rawValue == DashboardMenuBarPage.secondaryFontSizeResetIdentifier })
-        relay.resetOffset(secondaryReset)
+        fontSlider.doubleValue = 15.04
+        XCTAssertTrue(fontSlider.sendAction(fontSlider.action, to: fontSlider.target))
+        XCTAssertEqual(preferences.menuBarFontSize, 15.0, accuracy: 0.001)
         XCTAssertEqual(
             preferences.menuBarSecondaryFontSize,
-            AppPreferences.menuBarSecondaryFontSizeDefault,
+            15.0 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.001
+        )
+
+        let fontSizeReset = try XCTUnwrap(descendants(of: page)
+            .compactMap { $0 as? NSButton }
+            .first { $0.identifier?.rawValue == DashboardMenuBarPage.fontSizeResetIdentifier })
+        relay.resetOffset(fontSizeReset)
+        XCTAssertEqual(
+            preferences.menuBarFontSize,
+            AppPreferences.menuBarFontSizeDefault,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            10,
             accuracy: 0.001
         )
 
@@ -518,10 +499,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let refreshedSliders = descendants(of: page).compactMap { $0 as? NSSlider }
         XCTAssertTrue(refreshedSliders
-            .filter { $0.identifier?.rawValue == AppPreferences.menuBarPrimaryFontSizeKey }
-            .allSatisfy { !$0.isEnabled })
-        XCTAssertTrue(refreshedSliders
-            .filter { $0.identifier?.rawValue == AppPreferences.menuBarSecondaryFontSizeKey }
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarFontSizeKey }
             .allSatisfy { !$0.isEnabled })
     }
 

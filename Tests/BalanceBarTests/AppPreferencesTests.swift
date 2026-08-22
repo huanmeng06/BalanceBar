@@ -206,59 +206,75 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(session.transientValue)
     }
 
-    func testMenuBarFontSizesDefaultRoundTripNormalizeAndClamp() {
+    func testMenuBarFontSizeUsesOneSliderAndPreservesDefaultRatio() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
 
         XCTAssertEqual(
-            preferences.menuBarPrimaryFontSize,
-            AppPreferences.menuBarPrimaryFontSizeDefault,
+            preferences.menuBarFontSize,
+            AppPreferences.menuBarFontSizeDefault,
             accuracy: 0.001
         )
         XCTAssertEqual(
             preferences.menuBarSecondaryFontSize,
-            AppPreferences.menuBarSecondaryFontSizeDefault,
+            10,
             accuracy: 0.001
         )
-
-        preferences.menuBarPrimaryFontSize = 14.26
-        preferences.menuBarSecondaryFontSize = 9.64
-        XCTAssertEqual(preferences.menuBarPrimaryFontSize, 14.3, accuracy: 0.001)
-        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 9.6, accuracy: 0.001)
         XCTAssertEqual(
-            defaults.double(forKey: AppPreferences.menuBarPrimaryFontSizeKey),
+            preferences.menuBarSecondaryFontSize / preferences.menuBarFontSize,
+            AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.000_001
+        )
+
+        preferences.menuBarFontSize = 14.26
+        XCTAssertEqual(preferences.menuBarFontSize, 14.3, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 11.0, accuracy: 0.001)
+        XCTAssertEqual(
+            defaults.double(forKey: AppPreferences.menuBarFontSizeKey),
             14.3,
             accuracy: 0.001
         )
-        XCTAssertEqual(
-            defaults.double(forKey: AppPreferences.menuBarSecondaryFontSizeKey),
-            9.6,
-            accuracy: 0.001
-        )
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarPrimaryFontSizeKey))
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarSecondaryFontSizeKey))
 
-        preferences.menuBarPrimaryFontSize = -100
-        preferences.menuBarSecondaryFontSize = 100
+        preferences.menuBarFontSize = -100
         XCTAssertEqual(
-            preferences.menuBarPrimaryFontSize,
-            AppPreferences.menuBarPrimaryFontSizeRange.lowerBound,
+            preferences.menuBarFontSize,
+            AppPreferences.menuBarFontSizeRange.lowerBound,
             accuracy: 0.001
         )
         XCTAssertEqual(
             preferences.menuBarSecondaryFontSize,
-            AppPreferences.menuBarSecondaryFontSizeRange.upperBound,
+            8,
             accuracy: 0.001
         )
 
-        defaults.set(Double.nan, forKey: AppPreferences.menuBarPrimaryFontSizeKey)
-        defaults.set(Double.infinity, forKey: AppPreferences.menuBarSecondaryFontSizeKey)
+        preferences.menuBarFontSize = 100
         XCTAssertEqual(
-            preferences.menuBarPrimaryFontSize,
-            AppPreferences.menuBarPrimaryFontSizeRange.lowerBound,
+            preferences.menuBarFontSize,
+            AppPreferences.menuBarFontSizeRange.upperBound,
             accuracy: 0.001
         )
         XCTAssertEqual(
             preferences.menuBarSecondaryFontSize,
-            AppPreferences.menuBarSecondaryFontSizeRange.lowerBound,
+            16 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.001
+        )
+
+        defaults.removeObject(forKey: AppPreferences.menuBarFontSizeKey)
+        defaults.set(14.2, forKey: AppPreferences.menuBarPrimaryFontSizeKey)
+        defaults.set(9.6, forKey: AppPreferences.menuBarSecondaryFontSizeKey)
+        XCTAssertEqual(preferences.menuBarFontSize, 14.2, accuracy: 0.001)
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            14.2 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.001
+        )
+
+        defaults.set(Double.nan, forKey: AppPreferences.menuBarFontSizeKey)
+        XCTAssertEqual(
+            preferences.menuBarFontSize,
+            AppPreferences.menuBarFontSizeRange.lowerBound,
             accuracy: 0.001
         )
     }
@@ -389,8 +405,12 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.showOpenCodexMenu)
         XCTAssertEqual(preferences.openCodexDashboardPortOverride, 23456)
         XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
-        XCTAssertEqual(preferences.menuBarPrimaryFontSize, 14.2, accuracy: 0.001)
-        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 9.6, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarFontSize, 14.2, accuracy: 0.001)
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            14.2 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.001
+        )
         defaults.set(true, forKey: "showMenuBarIcon")
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: ["showMenuBarIcon": false], localDomain: [:])
         XCTAssertTrue(preferences.showMenuBarIcon)

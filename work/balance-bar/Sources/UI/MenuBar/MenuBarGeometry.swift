@@ -123,10 +123,12 @@ enum MenuBarOffsetLayout {
 
 enum MenuBarLayout {
     static let primaryFontPointSize: CGFloat = CGFloat(
-        AppPreferences.menuBarPrimaryFontSizeDefault
+        AppPreferences.menuBarFontSizeDefault
     )
     static let secondaryFontPointSize: CGFloat = CGFloat(
-        AppPreferences.menuBarSecondaryFontSizeDefault
+        AppPreferences.secondaryMenuBarFontSize(
+            for: AppPreferences.menuBarFontSizeDefault
+        )
     )
 
     static var primaryFont: NSFont {

@@ -222,19 +222,15 @@ final class MenuBarFontSizeSlider: NSSlider {
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
-    static let primaryFontSizeResetIdentifier = "menuBarPrimaryFontSizeReset"
-    static let secondaryFontSizeResetIdentifier = "menuBarSecondaryFontSizeReset"
+    static let fontSizeResetIdentifier = "menuBarFontSizeReset"
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
-    static let primaryFontSizeSummaryIdentifier = "menuBarPrimaryFontSizeSummary"
-    static let secondaryFontSizeSummaryIdentifier = "menuBarSecondaryFontSizeSummary"
+    static let fontSizeSummaryIdentifier = "menuBarFontSizeSummary"
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
-    static let primaryFontSizeSliderMinimumIdentifier = "menuBarPrimaryFontSizeMinimum"
-    static let primaryFontSizeSliderMaximumIdentifier = "menuBarPrimaryFontSizeMaximum"
-    static let secondaryFontSizeSliderMinimumIdentifier = "menuBarSecondaryFontSizeMinimum"
-    static let secondaryFontSizeSliderMaximumIdentifier = "menuBarSecondaryFontSizeMaximum"
+    static let fontSizeSliderMinimumIdentifier = "menuBarFontSizeMinimum"
+    static let fontSizeSliderMaximumIdentifier = "menuBarFontSizeMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
     static let fontSizeSliderWidth: CGFloat = 140
     /// Extra default lift for the amount text in the Dashboard preview only
@@ -307,15 +303,12 @@ final class DashboardMenuBarPage {
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
-    private var primaryFontSizeSummaryLabel: NSTextField?
-    private var secondaryFontSizeSummaryLabel: NSTextField?
+    private var fontSizeSummaryLabel: NSTextField?
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
-    private weak var primaryFontSizeSlider: NSSlider?
-    private weak var secondaryFontSizeSlider: NSSlider?
-    private var primaryFontSizeResetButton: NSButton?
-    private var secondaryFontSizeResetButton: NSButton?
+    private weak var fontSizeSlider: NSSlider?
+    private var fontSizeResetButton: NSButton?
     private var transientWidthAdjustment: Double?
     private var previewTextCenteringReserve: CGFloat = 0
     private let chromeInset: CGFloat = 10
@@ -490,77 +483,52 @@ final class DashboardMenuBarPage {
             key: AppPreferences.menuBarStatusItemWidthAdjustmentKey,
             relay: input.relay
         )
-        let primaryFontSize = input.preferences.menuBarPrimaryFontSize
+        let fontSize = input.preferences.menuBarFontSize
         let secondaryFontSize = input.preferences.menuBarSecondaryFontSize
-        let primaryFontSizeSummary = NSTextField(
-            labelWithString: Self.fontSizeSummaryText(primaryFontSize)
+        let fontSizeSummary = NSTextField(
+            labelWithString: Self.fontSizeSummaryText(
+                primary: fontSize,
+                secondary: secondaryFontSize
+            )
         )
-        primaryFontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
-            Self.primaryFontSizeSummaryIdentifier
+        fontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
+            Self.fontSizeSummaryIdentifier
         )
-        let secondaryFontSizeSummary = NSTextField(
-            labelWithString: Self.fontSizeSummaryText(secondaryFontSize)
-        )
-        secondaryFontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
-            Self.secondaryFontSizeSummaryIdentifier
-        )
-        let primaryFontSizeControls = makeFontSizeSliderControls(
-            value: primaryFontSize,
-            key: AppPreferences.menuBarPrimaryFontSizeKey,
-            resetIdentifier: Self.primaryFontSizeResetIdentifier,
-            range: AppPreferences.menuBarPrimaryFontSizeRange,
+        let fontSizeControls = makeFontSizeSliderControls(
+            value: fontSize,
+            key: AppPreferences.menuBarFontSizeKey,
+            resetIdentifier: Self.fontSizeResetIdentifier,
+            range: AppPreferences.menuBarFontSizeRange,
             relay: input.relay,
             toolTip: tr(
-                "主行字号，10.0–16.0pt，每次 0.1pt",
-                "Primary row size, 10.0–16.0pt in 0.1pt steps",
-                "主行字號，10.0–16.0pt，每次 0.1pt",
-                "主行のサイズ、10.0–16.0pt、0.1pt刻み"
+                "两行按 13:10 比例同步调整，10.4–16.0pt，每次 0.1pt",
+                "Both rows scale together at the 13:10 ratio, 10.4–16.0pt in 0.1pt steps",
+                "兩行按 13:10 比例同步調整，10.4–16.0pt，每次 0.1pt",
+                "2行を13:10の比率で同期調整、10.4–16.0pt、0.1pt刻み"
             ),
-            minimumIdentifier: Self.primaryFontSizeSliderMinimumIdentifier,
-            maximumIdentifier: Self.primaryFontSizeSliderMaximumIdentifier
-        )
-        let secondaryFontSizeControls = makeFontSizeSliderControls(
-            value: secondaryFontSize,
-            key: AppPreferences.menuBarSecondaryFontSizeKey,
-            resetIdentifier: Self.secondaryFontSizeResetIdentifier,
-            range: AppPreferences.menuBarSecondaryFontSizeRange,
-            relay: input.relay,
-            toolTip: tr(
-                "副行字号，8.0–13.0pt，每次 0.1pt",
-                "Secondary row size, 8.0–13.0pt in 0.1pt steps",
-                "副行字號，8.0–13.0pt，每次 0.1pt",
-                "副行のサイズ、8.0–13.0pt、0.1pt刻み"
-            ),
-            minimumIdentifier: Self.secondaryFontSizeSliderMinimumIdentifier,
-            maximumIdentifier: Self.secondaryFontSizeSliderMaximumIdentifier
+            minimumIdentifier: Self.fontSizeSliderMinimumIdentifier,
+            maximumIdentifier: Self.fontSizeSliderMaximumIdentifier
         )
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
         widthAdjustmentSummaryLabel = widthAdjustmentSummary
-        primaryFontSizeSummaryLabel = primaryFontSizeSummary
-        secondaryFontSizeSummaryLabel = secondaryFontSizeSummary
+        fontSizeSummaryLabel = fontSizeSummary
         iconOffsetButtons = iconOffsetControls
         amountOffsetButtons = amountOffsetControls
         widthAdjustmentSlider = widthAdjustmentControls.slider
-        primaryFontSizeSlider = primaryFontSizeControls.slider
-        secondaryFontSizeSlider = secondaryFontSizeControls.slider
-        primaryFontSizeResetButton = primaryFontSizeControls.resetButton
-        secondaryFontSizeResetButton = secondaryFontSizeControls.resetButton
+        fontSizeSlider = fontSizeControls.slider
+        fontSizeResetButton = fontSizeControls.resetButton
         let fontSizeSection = DashboardSettingsComponents.makeSettingsSection(
             tr("字号", "Font Size", "字號", "フォントサイズ"),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("主行", "Primary Row", "主行", "主行"),
-                    subtitle: Self.fontSizeSummaryText(primaryFontSize),
-                    subtitleLabel: primaryFontSizeSummary,
-                    control: primaryFontSizeControls.view,
-                    minimumHeight: 66
-                ),
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr("副行", "Secondary Row", "副行", "副行"),
-                    subtitle: Self.fontSizeSummaryText(secondaryFontSize),
-                    subtitleLabel: secondaryFontSizeSummary,
-                    control: secondaryFontSizeControls.view,
+                    tr("菜单栏", "Menu Bar", "選單列", "メニューバー"),
+                    subtitle: Self.fontSizeSummaryText(
+                        primary: fontSize,
+                        secondary: secondaryFontSize
+                    ),
+                    subtitleLabel: fontSizeSummary,
+                    control: fontSizeControls.view,
                     minimumHeight: 66
                 )
             ]
@@ -612,11 +580,13 @@ final class DashboardMenuBarPage {
         previewText.isHidden = !preferences.showMenuBarAmount
         iconSwitch?.isEnabled = preferences.showMenuBarAmount
         amountSwitch?.isEnabled = preferences.showMenuBarIcon
+        let fontSize = preferences.menuBarFontSize
+        let secondaryFontSize = preferences.menuBarSecondaryFontSize
         previewPrimary.font = MenuBarLayout.primaryFont(
-            size: CGFloat(preferences.menuBarPrimaryFontSize)
+            size: CGFloat(fontSize)
         )
         previewSecondary.font = MenuBarLayout.secondaryFont(
-            size: CGFloat(preferences.menuBarSecondaryFontSize)
+            size: CGFloat(secondaryFontSize)
         )
         let presentation = Self.presentation(
             for: snapshot,
@@ -657,18 +627,13 @@ final class DashboardMenuBarPage {
         amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
-        primaryFontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
-            preferences.menuBarPrimaryFontSize
+        fontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
+            primary: fontSize,
+            secondary: secondaryFontSize
         )
-        secondaryFontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
-            preferences.menuBarSecondaryFontSize
-        )
-        primaryFontSizeSlider?.doubleValue = preferences.menuBarPrimaryFontSize
-        secondaryFontSizeSlider?.doubleValue = preferences.menuBarSecondaryFontSize
-        primaryFontSizeSlider?.isEnabled = preferences.showMenuBarAmount
-        secondaryFontSizeSlider?.isEnabled = preferences.showMenuBarAmount
-        primaryFontSizeResetButton?.isEnabled = preferences.showMenuBarAmount
-        secondaryFontSizeResetButton?.isEnabled = preferences.showMenuBarAmount
+        fontSizeSlider?.doubleValue = fontSize
+        fontSizeSlider?.isEnabled = preferences.showMenuBarAmount
+        fontSizeResetButton?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
         applyWidthAdjustment(
@@ -843,8 +808,8 @@ final class DashboardMenuBarPage {
         )
     }
 
-    private static func fontSizeSummaryText(_ value: Double) -> String {
-        String(format: "%.1f pt", value)
+    private static func fontSizeSummaryText(primary: Double, secondary: Double) -> String {
+        String(format: "%.1f / %.1f pt", primary, secondary)
     }
 
     private static func previewCapsuleHorizontalInset(
@@ -881,11 +846,11 @@ final class DashboardMenuBarPage {
         slider.widthAnchor.constraint(equalToConstant: Self.fontSizeSliderWidth).isActive = true
 
         let minimumLabel = makeFontSizeSliderEndpointLabel(
-            String(format: "%.0f", range.lowerBound),
+            String(format: "%.1f", range.lowerBound),
             identifier: minimumIdentifier
         )
         let maximumLabel = makeFontSizeSliderEndpointLabel(
-            String(format: "%.0f", range.upperBound),
+            String(format: "%.1f", range.upperBound),
             identifier: maximumIdentifier
         )
         let resetButton = NSButton(

@@ -291,8 +291,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amountOffsetX: CGFloat
         let amountOffsetY: CGFloat
         var widthAdjustment: CGFloat
-        let primaryFontSize: CGFloat
-        let secondaryFontSize: CGFloat
+        /// Shared logical AppKit point size for both official rows and the
+        /// single-line third-party amount. The secondary row is derived from
+        /// the default 13:10 ratio in the renderer.
+        let fontSize: CGFloat
 
         init(
             showIcon: Bool,
@@ -305,8 +307,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             amountOffsetX: CGFloat = 0,
             amountOffsetY: CGFloat = 0,
             widthAdjustment: CGFloat = 0,
-            primaryFontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
-            secondaryFontSize: CGFloat = MenuBarLayout.secondaryFontPointSize
+            fontSize: CGFloat = MenuBarLayout.primaryFontPointSize
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -318,8 +319,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.amountOffsetX = amountOffsetX
             self.amountOffsetY = amountOffsetY
             self.widthAdjustment = widthAdjustment
-            self.primaryFontSize = primaryFontSize
-            self.secondaryFontSize = secondaryFontSize
+            self.fontSize = CGFloat(
+                AppPreferences.normalizedMenuBarFontSize(
+                    Double(fontSize),
+                    range: AppPreferences.menuBarFontSizeRange
+                )
+            )
         }
     }
 
@@ -881,10 +886,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func applyMenuBarFonts() {
         menuBarPrimaryLabel.font = MenuBarLayout.primaryFont(
-            size: settings.primaryFontSize
+            size: settings.fontSize
         )
         menuBarSecondaryLabel.font = MenuBarLayout.secondaryFont(
-            size: settings.secondaryFontSize
+            size: CGFloat(
+                AppPreferences.secondaryMenuBarFontSize(for: Double(settings.fontSize))
+            )
         )
     }
 

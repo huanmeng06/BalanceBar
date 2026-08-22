@@ -132,8 +132,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             showReset: true,
             horizontalPadding: 6,
             keepMenuOpenAfterRefresh: true,
-            primaryFontSize: 14.2,
-            secondaryFontSize: 9.6
+            fontSize: 14.2
         )
 
         controller.start(
@@ -156,7 +155,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
         XCTAssertEqual(
             controller.menuBarFontPointSizesForTesting?.secondary ?? .nan,
-            9.6,
+            14.2 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
             accuracy: 0.001
         )
 

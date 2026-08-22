@@ -233,16 +233,14 @@ final class MenuBarGeometryTests: XCTestCase {
         let primaryText = "100% remaining"
         let secondaryText = "Reset in 99h 23m"
 
-        for primarySize in stride(
-            from: AppPreferences.menuBarPrimaryFontSizeRange.lowerBound,
-            through: AppPreferences.menuBarPrimaryFontSizeRange.upperBound,
-            by: AppPreferences.menuBarFontSizeStep
-        ) {
-            for secondarySize in stride(
-                from: AppPreferences.menuBarSecondaryFontSizeRange.lowerBound,
-                through: AppPreferences.menuBarSecondaryFontSizeRange.upperBound,
-                by: AppPreferences.menuBarFontSizeStep
-            ) {
+        let range = AppPreferences.menuBarFontSizeRange
+        let stepCount = Int(
+            ((range.upperBound - range.lowerBound) / AppPreferences.menuBarFontSizeStep).rounded()
+        )
+        for stepIndex in 0...stepCount {
+                let primarySize = range.lowerBound
+                    + Double(stepIndex) * AppPreferences.menuBarFontSizeStep
+                let secondarySize = AppPreferences.secondaryMenuBarFontSize(for: primarySize)
                 let primary = NSTextField(labelWithString: primaryText)
                 primary.font = MenuBarLayout.primaryFont(size: CGFloat(primarySize))
                 let secondary = NSTextField(labelWithString: secondaryText)
@@ -323,15 +321,16 @@ final class MenuBarGeometryTests: XCTestCase {
                     backgroundBounds.maxX + 0.001,
                     "text right clipped at primary=\(primarySize), secondary=\(secondarySize)"
                 )
-            }
         }
     }
 
-    func testChangingOnlyOneFontSizeChangesItsMetricsWithoutChangingSharedRowOrigin() {
+    func testSharedFontSizeChangesBothRowsAtDefaultRatioAndKeepsRowOrigin() {
         let primary = NSTextField(labelWithString: "72%")
         let secondary = NSTextField(labelWithString: "Reset 2h")
         primary.font = MenuBarLayout.primaryFont(size: 13)
-        secondary.font = MenuBarLayout.secondaryFont(size: 10)
+        secondary.font = MenuBarLayout.secondaryFont(
+            size: CGFloat(AppPreferences.secondaryMenuBarFontSize(for: 13))
+        )
         let baseline = MenuBarLayout.geometry(
             primarySize: primary.intrinsicContentSize,
             secondarySize: secondary.intrinsicContentSize,
@@ -340,10 +339,11 @@ final class MenuBarGeometryTests: XCTestCase {
             hasSecondary: true,
             isBalance: false
         )
-        let baselinePrimaryWidth = primary.intrinsicContentSize.width
-        let baselineSecondaryWidth = secondary.intrinsicContentSize.width
 
         primary.font = MenuBarLayout.primaryFont(size: 15)
+        secondary.font = MenuBarLayout.secondaryFont(
+            size: CGFloat(AppPreferences.secondaryMenuBarFontSize(for: 15))
+        )
         let enlargedPrimary = MenuBarLayout.geometry(
             primarySize: primary.intrinsicContentSize,
             secondarySize: secondary.intrinsicContentSize,
@@ -353,22 +353,18 @@ final class MenuBarGeometryTests: XCTestCase {
             isBalance: false
         )
         XCTAssertGreaterThan(enlargedPrimary.primaryHeight, baseline.primaryHeight)
-        XCTAssertEqual(enlargedPrimary.secondaryHeight, baseline.secondaryHeight)
-        XCTAssertGreaterThan(primary.intrinsicContentSize.width, baselinePrimaryWidth)
-
-        primary.font = MenuBarLayout.primaryFont(size: 13)
-        secondary.font = MenuBarLayout.secondaryFont(size: 12)
-        let enlargedSecondary = MenuBarLayout.geometry(
-            primarySize: primary.intrinsicContentSize,
-            secondarySize: secondary.intrinsicContentSize,
-            showIcon: true,
-            showAmount: true,
-            hasSecondary: true,
-            isBalance: false
+        XCTAssertGreaterThanOrEqual(enlargedPrimary.secondaryHeight, baseline.secondaryHeight)
+        XCTAssertEqual(primary.font?.pointSize ?? .nan, 15, accuracy: 0.001)
+        XCTAssertEqual(
+            secondary.font?.pointSize ?? .nan,
+            15 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.001
         )
-        XCTAssertEqual(enlargedSecondary.primaryHeight, baseline.primaryHeight)
-        XCTAssertGreaterThan(enlargedSecondary.secondaryHeight, baseline.secondaryHeight)
-        XCTAssertGreaterThan(secondary.intrinsicContentSize.width, baselineSecondaryWidth)
+        XCTAssertEqual(
+            (secondary.font?.pointSize ?? .nan) / (primary.font?.pointSize ?? .nan),
+            AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.000_001
+        )
 
         let container = MenuBarTextView()
         let primaryLabel = NSTextField(labelWithString: "72%")
@@ -377,7 +373,7 @@ final class MenuBarGeometryTests: XCTestCase {
             container: container,
             primary: primaryLabel,
             secondary: secondaryLabel,
-            geometry: enlargedSecondary,
+            geometry: enlargedPrimary,
             showAmount: true,
             hasSecondary: true
         )
