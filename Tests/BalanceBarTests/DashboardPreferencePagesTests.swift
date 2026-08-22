@@ -51,6 +51,81 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 5)
     }
 
+    func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.BalanceDisplayThreshold.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        var changedValues: [Double] = []
+        let pageController = DashboardMenuPage()
+        let page = pageController.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { value in
+                changedValues.append(value)
+                preferences.balanceDisplayThreshold = value
+            }
+        ))
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertEqual(labels.first { $0.stringValue == "余额显示" }?.stringValue, "余额显示")
+        XCTAssertEqual(labels.first { $0.stringValue == "低余额显示阈值" }?.stringValue, "低余额显示阈值")
+        XCTAssertEqual(
+            labels.first { $0.stringValue == "充值后余额仍未达到此金额时，进度条保持红色状态" }?.stringValue,
+            "充值后余额仍未达到此金额时，进度条保持红色状态"
+        )
+
+        guard let field = descendants(of: page)
+            .compactMap({ $0 as? NSTextField })
+            .first(where: { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }) else {
+            return XCTFail("Expected balance display threshold field")
+        }
+        XCTAssertEqual(field.stringValue, "0.10")
+
+        guard let thresholdRow = field.superview,
+        let quickSwitchRow = descendants(of: page)
+            .first(where: { view in
+                guard let view = view as? NSSwitch else { return false }
+                return view.identifier?.rawValue == "showQuickSwitchMenu"
+            })?.superview else {
+            return XCTFail("Expected both balance display and dropdown-menu rows")
+        }
+        XCTAssertEqual(
+            equalHeightConstraint(in: thresholdRow),
+            equalHeightConstraint(in: quickSwitchRow),
+            "Balance display row must use the same height as the dropdown-menu rows"
+        )
+        XCTAssertEqual(
+            verticalLabelPadding(in: thresholdRow),
+            verticalLabelPadding(in: quickSwitchRow),
+            "Balance display row must use the same vertical padding as the dropdown-menu rows"
+        )
+
+        field.stringValue = "0.25"
+        pageController.controlTextDidEndEditing(
+            Notification(name: NSNotification.Name("BalanceBarTests.textDidEndEditing"), object: field)
+        )
+        XCTAssertEqual(changedValues, [0.25])
+        XCTAssertEqual(preferences.balanceDisplayThreshold, 0.25, accuracy: 0.000001)
+        XCTAssertEqual(field.stringValue, "0.25")
+
+        field.stringValue = "0"
+        pageController.controlTextDidEndEditing(
+            Notification(name: NSNotification.Name("BalanceBarTests.textDidEndEditing"), object: field)
+        )
+        XCTAssertEqual(changedValues, [0.25])
+        XCTAssertEqual(field.stringValue, "0.25")
+    }
+
     func testMenuBarPreviewPresentationUsesSharedSnapshotValues() {
         let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
         let presentation = DashboardMenuBarPage.presentation(

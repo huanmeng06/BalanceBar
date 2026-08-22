@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -189,6 +189,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             setSortAlphabetically: { [weak self] enabled in self?.sortProvidersAlphabetically = enabled },
             onToggle: { [weak self] identifier, enabled in self?.handleDashboardToggle(identifier: identifier, enabled: enabled) },
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
+            onBalanceDisplayThresholdChanged: { [weak self] value in
+                self?.handleDashboardBalanceDisplayThresholdChanged(value)
+            },
             onOffsetAdjust: { [weak self] identifier, delta in
                 self?.handleDashboardOffsetAdjust(identifier: identifier, delta: delta)
             },
@@ -263,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private let ccSwitchRepository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient = BalanceAPIClient()
+    private let balanceProgressStore = ProviderBalanceProgressStore()
     private var providerRefreshCoordinator: ProviderRefreshCoordinator!
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
@@ -344,6 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             repository: repository,
             officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient,
+            balanceProgressStore: balanceProgressStore,
             queue: DispatchQueue(label: "local.balancebar.provider-refresh"),
             actions: ProviderRefreshActions(
                 currentProvider: { [weak self] client in
@@ -371,6 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             repository: repository,
             officialQuotaClient: officialQuotaClient,
             balanceAPIClient: balanceAPIClient,
+            balanceProgressStore: balanceProgressStore,
             openCodexRepository: openCodexRepository,
             queue: DispatchQueue(label: "local.balancebar.open-codex-refresh"),
             actions: OpenCodexRefreshActions(
@@ -831,6 +837,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         default:
             break
         }
+    }
+
+    private func handleDashboardBalanceDisplayThresholdChanged(_ value: Double) {
+        let normalized = AppPreferences.normalizedBalanceDisplayThreshold(value)
+        preferences.balanceDisplayThreshold = normalized
+        let formatted = String(format: "%.2f", normalized)
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.balanceDisplayThresholdKey); value=\(formatted)",
+            category: "configuration"
+        )
+        refresh(reason: .configurationChanged)
     }
 
     private func handleDashboardInterval(identifier: String, value: TimeInterval) {

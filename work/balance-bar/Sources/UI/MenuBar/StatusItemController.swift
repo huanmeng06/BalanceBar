@@ -1255,7 +1255,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         provider.frame = layout.title
         let updatedAt: Date?
         switch card.data {
-        case .official(_, _, _, let date), .balance(_, _, _, let date):
+        case .official(_, _, _, let date), .balance(_, _, _, _, let date):
             updatedAt = date
         case .loading, .unavailable:
             updatedAt = nil
@@ -1288,7 +1288,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             secondary.textColor = .secondaryLabelColor
             secondary.frame = layout.reset ?? .zero
-        case .balance(let amount, let unit, let websiteURL, _):
+        case .balance(let amount, let unit, let progressPercentage, let websiteURL, _):
+            progress = QuotaProgressView(percentage: progressPercentage)
+            progress?.frame = layout.progress ?? .zero
             primary = makeOverviewLabel(Self.formatBalanceSummary(amount, unit: unit), font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
             primary.alignment = .right
             primary.frame = layout.amount

@@ -4,6 +4,9 @@ final class AppPreferences {
     static let showOpenCodexMenuKey = "showOpenCodexMenu"
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
     static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
+    static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
+    static let defaultBalanceDisplayThreshold = 0.10
+    static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
 
     private let defaults: UserDefaults
@@ -48,6 +51,20 @@ final class AppPreferences {
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }
     var showStatusMenu: Bool { get { bool("showStatusMenu", default: true) } set { defaults.set(newValue, forKey: "showStatusMenu") } }
     var keepMenuOpenAfterRefresh: Bool { get { bool("keepMenuOpenAfterRefresh", default: true) } set { defaults.set(newValue, forKey: "keepMenuOpenAfterRefresh") } }
+    var balanceDisplayThreshold: Double {
+        get {
+            Self.normalizedBalanceDisplayThreshold(
+                (defaults.object(forKey: Self.balanceDisplayThresholdKey) as? NSNumber)?.doubleValue
+                    ?? Self.defaultBalanceDisplayThreshold
+            )
+        }
+        set {
+            defaults.set(
+                Self.normalizedBalanceDisplayThreshold(newValue),
+                forKey: Self.balanceDisplayThresholdKey
+            )
+        }
+    }
     var sortProvidersAlphabetically: Bool { get { defaults.bool(forKey: "sortProvidersAlphabetically") } set { defaults.set(newValue, forKey: "sortProvidersAlphabetically") } }
     var menuBarHorizontalPadding: CGFloat { get { CGFloat(positiveDouble("menuBarHorizontalPadding", default: 10)) } set { defaults.set(Double(newValue), forKey: "menuBarHorizontalPadding") } }
 
@@ -159,6 +176,26 @@ final class AppPreferences {
             return normalized
         }
         set { if let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: "statusLinks") } }
+    }
+
+    static func normalizedBalanceDisplayThreshold(_ value: Double) -> Double {
+        guard value.isFinite,
+              value >= minimumBalanceDisplayThreshold,
+              value <= Double(Int.max) / 100 else {
+            return defaultBalanceDisplayThreshold
+        }
+        let cents = value * 100
+        guard cents.isFinite, cents >= 1, cents <= Double(Int.max) else {
+            return defaultBalanceDisplayThreshold
+        }
+        return cents.rounded() / 100
+    }
+
+    static func balanceDisplayThresholdCents(defaults: UserDefaults) -> Int {
+        let storedValue = (defaults.object(forKey: balanceDisplayThresholdKey) as? NSNumber)?.doubleValue
+            ?? defaultBalanceDisplayThreshold
+        let normalized = normalizedBalanceDisplayThreshold(storedValue)
+        return Int((normalized * 100).rounded())
     }
 
     private func bool(_ key: String, default fallback: Bool) -> Bool { defaults.object(forKey: key) as? Bool ?? fallback }

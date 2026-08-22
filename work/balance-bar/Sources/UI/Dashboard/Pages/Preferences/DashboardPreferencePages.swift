@@ -3,6 +3,7 @@ import AppKit
 struct DashboardPreferencePageActions {
     let onToggle: (String, Bool) -> Void
     let onInterval: (String, TimeInterval) -> Void
+    let onBalanceDisplayThresholdChanged: (Double) -> Void
     let onOffsetAdjust: (String, Int) -> Void
     let onOffsetValue: (String, Double) -> Void
     let onOffsetValueEnded: (String, Double) -> Void
@@ -80,7 +81,8 @@ final class DashboardPreferencePages {
             return menuPage.make(.init(
                 preferences: preferences,
                 relay: relay,
-                makeStatusLinksEditor: actions.makeStatusLinksEditor
+                makeStatusLinksEditor: actions.makeStatusLinksEditor,
+                onBalanceDisplayThresholdChanged: actions.onBalanceDisplayThresholdChanged
             ))
         case .advanced:
             return advancedPage.make(.init(

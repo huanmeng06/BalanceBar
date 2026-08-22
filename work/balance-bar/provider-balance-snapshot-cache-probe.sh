@@ -8,7 +8,7 @@ probe_binary="$probe_dir/provider-balance-snapshot-cache-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
 {
-    printf '%s\n' 'import Foundation' 'func tr(_ chinese: String, _ english: String) -> String { english }'
+    printf '%s\n' 'import Foundation' 'func tr(_ chinese: String, _ english: String, _ traditional: String, _ japanese: String) -> String { english }'
     cat "$source_dir/Sources/Domain/Snapshot.swift"
     awk '
         /^struct ProviderBalanceSnapshotCache \{/ { capture = 1 }

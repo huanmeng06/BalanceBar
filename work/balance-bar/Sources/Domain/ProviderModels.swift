@@ -234,6 +234,7 @@ enum OpenCodexCardData: Equatable {
     case balance(
         amount: Double,
         unit: String,
+        progressPercentage: Double,
         websiteURL: URL?,
         updatedAt: Date
     )
@@ -468,13 +469,14 @@ enum OpenCodexCardPresentation {
                 reset,
                 updatedAt
             )
-        case .balance(let amount, let unit, let websiteURL, let updatedAt):
+        case .balance(let amount, let unit, let progressPercentage, let websiteURL, let updatedAt):
             return .balance(
                 card.provider,
                 amount,
                 unit,
                 websiteURL,
-                updatedAt
+                updatedAt,
+                progressPercentage: progressPercentage
             )
         case .loading:
             return .placeholder
@@ -582,17 +584,17 @@ enum OpenCodexCardLayout {
             let linkWidth: CGFloat = linkPrefixWidth == 62 ? 148 : 136
             let linkX: CGFloat = horizontalInset + linkPrefixWidth - 1
             return OpenCodexCardFrames(
-                cardSize: CGSize(width: cardWidth, height: 86),
-                title: CGRect(x: horizontalInset, y: 58, width: 189, height: 20),
-                refreshTime: CGRect(x: refreshTimeX, y: 59, width: 81, height: 17),
+                cardSize: CGSize(width: cardWidth, height: 102),
+                title: CGRect(x: horizontalInset, y: 75, width: 189, height: 20),
+                refreshTime: CGRect(x: refreshTimeX, y: 76, width: 81, height: 17),
                 account: nil,
                 subscription: nil,
-                quotaDetail: CGRect(x: horizontalInset, y: 31, width: 128, height: 18),
+                quotaDetail: CGRect(x: horizontalInset, y: 47, width: 128, height: 18),
                 reset: nil,
-                amount: CGRect(x: amountX, y: 5, width: amountWidth, height: 48),
-                progress: nil,
-                linkPrefix: CGRect(x: horizontalInset, y: 7, width: linkPrefixWidth, height: 17),
-                link: CGRect(x: linkX, y: 7, width: linkWidth, height: 17)
+                amount: CGRect(x: amountX, y: 18, width: amountWidth, height: 48),
+                progress: CGRect(x: horizontalInset, y: 8, width: contentWidth, height: 5),
+                linkPrefix: CGRect(x: horizontalInset, y: 28, width: linkPrefixWidth, height: 17),
+                link: CGRect(x: linkX, y: 28, width: linkWidth, height: 17)
             )
         }
     }
