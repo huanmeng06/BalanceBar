@@ -338,6 +338,7 @@ final class DashboardMenuBarPage {
         let initialCapsuleInset = Self.previewCapsuleHorizontalInset(
             horizontalPadding: input.preferences.menuBarHorizontalPadding,
             widthAdjustment: input.preferences.menuBarStatusItemWidthAdjustment
+                + AppPreferences.menuBarStatusItemWidthBaseline
         )
         let capsuleLeading = previewCapsule.leadingAnchor.constraint(
             equalTo: previewRow.leadingAnchor,
@@ -500,7 +501,7 @@ final class DashboardMenuBarPage {
         let widthAdjustment = preferences.menuBarStatusItemWidthAdjustment
         let capsuleInset = Self.previewCapsuleHorizontalInset(
             horizontalPadding: preferences.menuBarHorizontalPadding,
-            widthAdjustment: widthAdjustment
+            widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
         )
         capsuleLeadingConstraint?.constant = -capsuleInset
         capsuleTrailingConstraint?.constant = capsuleInset
@@ -661,7 +662,7 @@ final class DashboardMenuBarPage {
                 delta: 1,
                 relay: relay
             ),
-            makeWidthResetButton(identifier: resetIdentifier, relay: relay)
+            makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
         ]
     }
 
@@ -691,22 +692,6 @@ final class DashboardMenuBarPage {
     ) -> NSButton {
         let button = NSButton(
             title: tr("归零", "Reset", "歸零", "リセット"),
-            target: relay,
-            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
-        )
-        button.identifier = NSUserInterfaceItemIdentifier(identifier)
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 11)
-        return button
-    }
-
-    private func makeWidthResetButton(
-        identifier: String,
-        relay: DashboardPreferencePageRelay
-    ) -> NSButton {
-        let button = NSButton(
-            title: tr("重置", "Reset", "重設", "リセット"),
             target: relay,
             action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
         )

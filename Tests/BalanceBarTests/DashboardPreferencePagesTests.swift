@@ -189,7 +189,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentResetIdentifier }?.title,
-            "重置"
+            "归零"
         )
         XCTAssertEqual(
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.isEnabled,
@@ -273,8 +273,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { AppLanguage.selected = previousLanguage }
 
         let cases: [(AppLanguage, String, String)] = [
-            (.simplifiedChinese, "宽度", "重置"),
-            (.traditionalChinese, "寬度", "重設"),
+            (.simplifiedChinese, "宽度", "归零"),
+            (.traditionalChinese, "寬度", "歸零"),
             (.japanese, "幅", "リセット"),
             (.english, "Width", "Reset")
         ]

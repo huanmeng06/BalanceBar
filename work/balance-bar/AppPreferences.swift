@@ -60,7 +60,10 @@ final class AppPreferences {
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
     static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
-    static let menuBarStatusItemWidthAdjustmentDefault: Double = -10.0
+    /// The actual status-item width baseline. The persisted/user-facing
+    /// adjustment remains zero-based, so logical 0pt applies -10pt to the
+    /// outer status-item footprint.
+    static let menuBarStatusItemWidthBaseline: Double = -10.0
 
     /// Point offsets for the menu bar Agent icon. Positive X moves right,
     /// positive Y moves up. Values are clamped to `menuBarOffsetRange`.
@@ -85,15 +88,11 @@ final class AppPreferences {
     }
 
     /// Additional points applied to the complete menu bar status item width.
+    /// This is a user-facing adjustment relative to the -10pt baseline.
     /// Positive values widen the status item symmetrically; negative values
     /// narrow it without changing the icon/text spacing inside the item.
     var menuBarStatusItemWidthAdjustment: Double {
-        get {
-            clampedMenuBarOffset(
-                Self.menuBarStatusItemWidthAdjustmentKey,
-                default: Self.menuBarStatusItemWidthAdjustmentDefault
-            )
-        }
+        get { clampedMenuBarOffset(Self.menuBarStatusItemWidthAdjustmentKey) }
         set {
             defaults.set(
                 roundedMenuBarOffset(newValue),
@@ -166,10 +165,8 @@ final class AppPreferences {
     private func roundedMenuBarOffset(_ value: Double) -> Double {
         (clampMenuBarOffset(value) * 10).rounded() / 10
     }
-    private func clampedMenuBarOffset(_ key: String, default fallback: Double = 0) -> Double {
-        guard let number = defaults.object(forKey: key) as? NSNumber else {
-            return roundedMenuBarOffset(fallback)
-        }
+    private func clampedMenuBarOffset(_ key: String) -> Double {
+        guard let number = defaults.object(forKey: key) as? NSNumber else { return 0 }
         return roundedMenuBarOffset(number.doubleValue)
     }
 }

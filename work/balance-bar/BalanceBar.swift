@@ -286,6 +286,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         get { preferences.menuBarStatusItemWidthAdjustment }
         set { preferences.menuBarStatusItemWidthAdjustment = newValue }
     }
+    private var menuBarStatusItemPhysicalWidthAdjustment: Double {
+        menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+    }
     private var openCodexDashboardPortOverride: Int? {
         get { preferences.openCodexDashboardPortOverride }
         set { preferences.openCodexDashboardPortOverride = newValue }
@@ -502,7 +505,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
             amountOffsetY: CGFloat(menuBarAmountOffsetY),
-            widthAdjustment: CGFloat(menuBarStatusItemWidthAdjustment)
+            widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
         )
     }
 
@@ -922,7 +925,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             return
         }
         SwitchLog.write(
-            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment)",
+            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
@@ -937,12 +940,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
         case DashboardMenuBarPage.widthAdjustmentResetIdentifier:
-            menuBarStatusItemWidthAdjustment = AppPreferences.menuBarStatusItemWidthAdjustmentDefault
+            menuBarStatusItemWidthAdjustment = 0
         default:
             return
         }
         SwitchLog.write(
-            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment)",
+            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment); width_physical=\(menuBarStatusItemPhysicalWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
