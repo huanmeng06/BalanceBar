@@ -8,7 +8,16 @@ probe_binary="$probe_dir/preferences-migration-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
 {
-    printf '%s\n' 'import Foundation' 'enum AppPreferences { static let showOpenCodexMenuKey = "showOpenCodexMenu" }'
+    printf '%s\n' \
+        'import Foundation' \
+        'enum AppPreferences {' \
+        '    static let showOpenCodexMenuKey = "showOpenCodexMenu"' \
+        '    static let menuBarIconOffsetXKey = "menuBarIconOffsetX"' \
+        '    static let menuBarIconOffsetYKey = "menuBarIconOffsetY"' \
+        '    static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"' \
+        '    static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"' \
+        '    static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"' \
+        '}'
     awk '
         /^struct PreferencesMigrationPlan \{/ { capture = 1 }
         /^private func migrateLegacyPreferencesIfNeeded/ { exit }
@@ -23,6 +32,7 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
 let production: [String: Any] = [
     "showMenuBarIcon": NSNumber(value: false),
     "activityPollInterval": NSNumber(value: 0.5),
+    "menuBarStatusItemWidthAdjustment": NSNumber(value: 0.7),
     "appLanguage": "en",
     "unknownSecret": "must not migrate",
     "NSStatusItem Preferred Position Item-0": "must not migrate"
@@ -42,6 +52,7 @@ let selected = PreferencesMigrationPlan.selectedValues(
 )
 require((selected["showMenuBarIcon"] as? NSNumber)?.boolValue == false, "production wins")
 require((selected["activityPollInterval"] as? NSNumber)?.doubleValue == 0.5, "production value migrates")
+require((selected["menuBarStatusItemWidthAdjustment"] as? NSNumber)?.doubleValue == 0.7, "width adjustment migrates")
 require((selected["showMenuBarReset"] as? NSNumber)?.boolValue == false, "local fills missing production key")
 require((selected["showMenuBarAmount"] as? NSNumber)?.boolValue == true, "local fallback value migrates")
 require(selected["unknownSecret"] == nil, "unknown production key is excluded")

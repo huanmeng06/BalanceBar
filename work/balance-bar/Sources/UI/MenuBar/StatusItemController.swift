@@ -26,6 +26,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let iconOffsetY: CGFloat
         let amountOffsetX: CGFloat
         let amountOffsetY: CGFloat
+        let widthAdjustment: CGFloat
 
         init(
             showIcon: Bool,
@@ -36,7 +37,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             iconOffsetX: CGFloat = 0,
             iconOffsetY: CGFloat = 0,
             amountOffsetX: CGFloat = 0,
-            amountOffsetY: CGFloat = 0
+            amountOffsetY: CGFloat = 0,
+            widthAdjustment: CGFloat = 0
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -47,6 +49,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.iconOffsetY = iconOffsetY
             self.amountOffsetX = amountOffsetX
             self.amountOffsetY = amountOffsetY
+            self.widthAdjustment = widthAdjustment
         }
     }
 
@@ -476,9 +479,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hasSecondary: hasSecondary
         )
 
-        statusItem.length = max(
-            30,
-            ceil(geometry.contentWidth + (settings.horizontalPadding * 2))
+        statusItem.length = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: settings.horizontalPadding,
+            widthAdjustment: settings.widthAdjustment
         )
         button.layoutSubtreeIfNeeded()
 

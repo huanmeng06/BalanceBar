@@ -122,6 +122,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         preferences.menuBarIconOffsetY = -0.3
         preferences.menuBarAmountOffsetX = -0.4
         preferences.menuBarAmountOffsetY = 0.5
+        preferences.menuBarStatusItemWidthAdjustment = 0.6
         let relay = DashboardPreferencePageRelay()
         relay.onOffsetAdjust = { identifier, delta in
             let pointDelta = Double(delta) * AppPreferences.menuBarOffsetStep
@@ -134,6 +135,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 preferences.menuBarAmountOffsetX += pointDelta
             case AppPreferences.menuBarAmountOffsetYKey:
                 preferences.menuBarAmountOffsetY += pointDelta
+            case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
+                preferences.menuBarStatusItemWidthAdjustment += pointDelta
             default:
                 break
             }
@@ -153,10 +156,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let iconYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
         let amountXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
         let amountYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
+        let widthButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey }
         XCTAssertEqual(iconXButtons.count, 2)
         XCTAssertEqual(iconYButtons.count, 2)
         XCTAssertEqual(amountXButtons.count, 2)
         XCTAssertEqual(amountYButtons.count, 2)
+        XCTAssertEqual(widthButtons.count, 2)
         XCTAssertEqual(
             Set(iconXButtons.map(\.tag)),
             [-1, 1]
@@ -165,10 +170,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             Set(amountYButtons.map(\.tag)),
             [-1, 1]
         )
+        XCTAssertEqual(Set(widthButtons.map(\.tag)), [-1, 1])
         XCTAssertTrue(iconXButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertTrue(iconYButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertTrue(amountXButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertTrue(amountYButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(widthButtons.allSatisfy { $0 is RepeatOffsetButton })
         XCTAssertFalse(buttons.first {
             $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier
         } is RepeatOffsetButton)
@@ -181,6 +188,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "归零"
         )
         XCTAssertEqual(
+            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentResetIdentifier }?.title,
+            "归零"
+        )
+        XCTAssertEqual(
             buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.isEnabled,
             true
         )
@@ -190,9 +201,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
         XCTAssertEqual(iconSummary?.stringValue, "X 0.2 · Y -0.3")
         XCTAssertEqual(amountSummary?.stringValue, "X -0.4 · Y 0.5")
+        XCTAssertEqual(
+            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
+            "横向范围 +0.6 pt"
+        )
         XCTAssertEqual(labels.first { $0.stringValue == "细节微调" }?.stringValue, "细节微调")
         XCTAssertEqual(labels.first { $0.stringValue == "图标" }?.stringValue, "图标")
         XCTAssertEqual(labels.first { $0.stringValue == "金额" }?.stringValue, "金额")
+        XCTAssertEqual(labels.first { $0.stringValue == "宽度" }?.stringValue, "宽度")
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
@@ -218,6 +234,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.adjustOffset(rightButton)
         XCTAssertEqual(preferences.menuBarIconOffsetX, 0.3, accuracy: 0.001)
 
+        guard let widthButton = widthButtons.first(where: { $0.tag == 1 }) else {
+            return XCTFail("Expected a widen button for the status item width")
+        }
+        relay.adjustOffset(widthButton)
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.7, accuracy: 0.001)
+
         preferences.showMenuBarIcon = false
         controller.refresh(
             snapshot: snapshot,
@@ -241,6 +263,46 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
             .allSatisfy { $0.isEnabled })
+        XCTAssertTrue(refreshedButtons
+            .filter { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey }
+            .allSatisfy { $0.isEnabled })
+    }
+
+    func testMenuBarWidthFineTuneLabelLocalizesAcrossSupportedLanguages() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "宽度"),
+            (.traditionalChinese, "寬度"),
+            (.japanese, "幅"),
+            (.english, "Width")
+        ]
+
+        for (language, expectedTitle) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.MenuBarWidthLocalization.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            let preferences = AppPreferences(defaults: defaults)
+            let page = DashboardMenuBarPage().make(.init(
+                preferences: preferences,
+                snapshot: .balance("Provider", 12.34, "USD", nil, Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay()
+            ))
+
+            XCTAssertEqual(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first(where: { $0.stringValue == expectedTitle })?
+                    .stringValue,
+                expectedTitle,
+                "width title for \(language)"
+            )
+            defaults.removePersistentDomain(forName: suiteName)
+        }
     }
 
     func testMenuBarOfficialPreviewAppliesDefaultTextBaseline() {

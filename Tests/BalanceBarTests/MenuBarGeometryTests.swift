@@ -145,6 +145,71 @@ final class MenuBarGeometryTests: XCTestCase {
         ))
     }
 
+    func testStatusItemWidthAdjustmentChangesOuterFootprintOnly() {
+        let geometry = MenuBarLayout.geometry(
+            primarySize: NSSize(width: 43.2, height: 13.1),
+            secondarySize: .zero,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true
+        )
+        let baseLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: 0
+        )
+        let narrowLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: -10
+        )
+        let wideLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: 10
+        )
+
+        XCTAssertEqual(baseLength, 93)
+        XCTAssertEqual(narrowLength, 83)
+        XCTAssertEqual(wideLength, 103)
+
+        let base = MenuBarLayout.frames(
+            buttonSize: NSSize(width: baseLength, height: 24),
+            geometry: geometry,
+            iconViewYOffset: MenuBarLayout.singleLineIconYOffset
+        )
+        let wide = MenuBarLayout.frames(
+            buttonSize: NSSize(width: wideLength, height: 24),
+            geometry: geometry,
+            iconViewYOffset: MenuBarLayout.singleLineIconYOffset
+        )
+
+        XCTAssertEqual(wide.content.width, base.content.width)
+        XCTAssertEqual(wide.icon, base.icon)
+        XCTAssertEqual(wide.text, base.text)
+        XCTAssertEqual(wide.content.midX - base.content.midX, 5, accuracy: 0.001)
+    }
+
+    func testStatusItemWidthAdjustmentNeverShrinksBelowNaturalContent() {
+        XCTAssertEqual(
+            MenuBarLayout.statusItemLength(
+                contentWidth: 80,
+                horizontalPadding: 1,
+                widthAdjustment: -10
+            ),
+            80
+        )
+        XCTAssertEqual(
+            MenuBarLayout.statusItemLength(
+                contentWidth: 18,
+                horizontalPadding: 10,
+                widthAdjustment: -100
+            ),
+            MenuBarLayout.minimumStatusItemLength
+        )
+    }
+
     func testOfficialTextDefaultOffsetsFollowResetVisibility() {
         XCTAssertEqual(
             MenuBarLayout.officialTextYOffset(hasSecondary: false),

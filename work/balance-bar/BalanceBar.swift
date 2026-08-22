@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -282,6 +282,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarIconOffsetY: Double { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
     private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
+    private var menuBarStatusItemWidthAdjustment: Double {
+        get { preferences.menuBarStatusItemWidthAdjustment }
+        set { preferences.menuBarStatusItemWidthAdjustment = newValue }
+    }
     private var openCodexDashboardPortOverride: Int? {
         get { preferences.openCodexDashboardPortOverride }
         set { preferences.openCodexDashboardPortOverride = newValue }
@@ -497,7 +501,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconOffsetX: CGFloat(menuBarIconOffsetX),
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
-            amountOffsetY: CGFloat(menuBarAmountOffsetY)
+            amountOffsetY: CGFloat(menuBarAmountOffsetY),
+            widthAdjustment: CGFloat(menuBarStatusItemWidthAdjustment)
         )
     }
 
@@ -911,11 +916,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences.menuBarAmountOffsetX += pointDelta
         case AppPreferences.menuBarAmountOffsetYKey:
             preferences.menuBarAmountOffsetY += pointDelta
+        case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
+            menuBarStatusItemWidthAdjustment += pointDelta
         default:
             return
         }
         SwitchLog.write(
-            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            "preference changed; key=\(identifier); delta=\(delta) step; point_delta=\(pointDelta); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
@@ -929,11 +936,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case DashboardMenuBarPage.amountOffsetsResetIdentifier:
             preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
+        case DashboardMenuBarPage.widthAdjustmentResetIdentifier:
+            menuBarStatusItemWidthAdjustment = 0
         default:
             return
         }
         SwitchLog.write(
-            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY)",
+            "preference reset; identifier=\(identifier); icon_x=\(preferences.menuBarIconOffsetX); icon_y=\(preferences.menuBarIconOffsetY); amount_x=\(preferences.menuBarAmountOffsetX); amount_y=\(preferences.menuBarAmountOffsetY); width=\(preferences.menuBarStatusItemWidthAdjustment)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)

@@ -59,6 +59,7 @@ final class AppPreferences {
     static let menuBarIconOffsetYKey = "menuBarIconOffsetY"
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
+    static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
 
     /// Point offsets for the menu bar Agent icon. Positive X moves right,
     /// positive Y moves up. Values are clamped to `menuBarOffsetRange`.
@@ -80,6 +81,19 @@ final class AppPreferences {
     var menuBarAmountOffsetY: Double {
         get { clampedMenuBarOffset(Self.menuBarAmountOffsetYKey) }
         set { defaults.set(roundedMenuBarOffset(newValue), forKey: Self.menuBarAmountOffsetYKey) }
+    }
+
+    /// Additional points applied to the complete menu bar status item width.
+    /// Positive values widen the status item symmetrically; negative values
+    /// narrow it without changing the icon/text spacing inside the item.
+    var menuBarStatusItemWidthAdjustment: Double {
+        get { clampedMenuBarOffset(Self.menuBarStatusItemWidthAdjustmentKey) }
+        set {
+            defaults.set(
+                roundedMenuBarOffset(newValue),
+                forKey: Self.menuBarStatusItemWidthAdjustmentKey
+            )
+        }
     }
 
     /// An optional local-only Dashboard port override. The value is deliberately

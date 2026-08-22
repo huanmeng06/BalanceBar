@@ -119,6 +119,29 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarIconOffsetY, 0.7, accuracy: 0.001)
     }
 
+    func testMenuBarStatusItemWidthAdjustmentDefaultsPersistsAndClamps() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0, accuracy: 0.001)
+
+        preferences.menuBarStatusItemWidthAdjustment = 0.3
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.3, accuracy: 0.001)
+        XCTAssertEqual(
+            defaults.double(forKey: AppPreferences.menuBarStatusItemWidthAdjustmentKey),
+            0.3,
+            accuracy: 0.001
+        )
+
+        preferences.menuBarStatusItemWidthAdjustment = 100
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 10, accuracy: 0.001)
+        preferences.menuBarStatusItemWidthAdjustment = -100
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, -10, accuracy: 0.001)
+
+        defaults.set(0.15, forKey: AppPreferences.menuBarStatusItemWidthAdjustmentKey)
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.2, accuracy: 0.001)
+    }
+
     func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
