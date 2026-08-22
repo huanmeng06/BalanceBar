@@ -190,53 +190,23 @@ enum MenuBarLayout {
     /// Returns the complete horizontal footprint of the BalanceBar status
     /// item. The adjustment belongs to the outer NSStatusItem length, so it
     /// changes the space allocated beside neighboring status items without
-    /// changing the icon/text spacing inside this item. An optional leading
-    /// reserve is part of that outer footprint when a layout centers a text
-    /// column while keeping an icon leading it. Keep the natural footprint as
-    /// a hard lower bound so a narrow setting cannot clip visible content.
+    /// changing the icon/text spacing inside this item. Keep the natural
+    /// footprint as a hard lower bound so a narrow setting cannot clip
+    /// visible content.
     static func statusItemLength(
         contentWidth: CGFloat,
         horizontalPadding: CGFloat,
-        widthAdjustment: CGFloat = 0,
-        leadingContentReserve: CGFloat = 0
+        widthAdjustment: CGFloat = 0
     ) -> CGFloat {
         let safeContentWidth = max(0, contentWidth)
         let safePadding = max(0, horizontalPadding)
-        let safeLeadingReserve = max(0, leadingContentReserve)
-        let safeFootprint = safeContentWidth + safeLeadingReserve
         // Keep the user-visible 0.1pt step in the actual footprint. The
         // natural content width is already measured in whole points; rounding
         // the complete result here would turn a continuous slider into 1pt
         // jumps.
-        let requestedLength = safeFootprint + (safePadding * 2) + widthAdjustment
-        let safeMinimum = max(minimumStatusItemLength, safeFootprint)
+        let requestedLength = safeContentWidth + (safePadding * 2) + widthAdjustment
+        let safeMinimum = max(minimumStatusItemLength, safeContentWidth)
         return max(safeMinimum, requestedLength)
-    }
-
-    /// The official two-line card keeps the icon at the leading side while
-    /// centering the amount text block itself. AppKit's status-item window
-    /// already provides symmetric side chrome around the button, so only the
-    /// small residual reserve needed for the rounded/floored text frame is
-    /// added to `NSStatusItem.length`. The full icon/gap width must not be
-    /// added here: doing so changes the existing #135 default card width.
-    static func textCenteringLeadingReserve(for geometry: MenuBarGeometry) -> CGFloat {
-        guard geometry.secondaryHeight > 0,
-              geometry.iconWidth > 0,
-              geometry.textWidth > 0 else {
-            return 0
-        }
-        let textFrameSlack = max(
-            0,
-            geometry.textWidth - geometry.measuredTextWidth
-        )
-        let requiredInsideButton = geometry.iconWidth
-            + geometry.gap
-            - textFrameSlack
-            - (menuBarStatusItemVisualOverhangX * 2)
-        // Keep a 1pt safety margin for AppKit's floor-aligned content origin
-        // and fractional slider values. This is a structural constant, not a
-        // user-facing width adjustment.
-        return max(0, ceil(requiredInsideButton) + 1)
     }
 
     static func geometry(
@@ -392,26 +362,26 @@ enum MenuBarLayout {
 
     /// Equal translation for the outer content container that compensates for
     /// independent icon/amount X offsets. The baseline and adjusted bounds
-    /// are both measured using the actual background geometry. By default the
-    /// visible icon/text union is centered; `centerTextBlock` instead centers
-    /// the measured text column itself. The target center includes the fixed
-    /// 2pt optical correction for the rendered capsule/shadow. A user offset
-    /// changes only the relative arrangement and not the selected target
-    /// center. If only one component is visible, its configured X offset is
-    /// compensated so the sole visible component remains centered; the
-    /// preference value itself is retained and becomes visible again when both
-    /// components are shown.
+    /// are both measured using the actual background geometry. The visible
+    /// icon/text union is centered, including the existing 2pt optical
+    /// correction for the rendered capsule/shadow. Official two-line layouts
+    /// can opt into the actual background midpoint so fractional frame
+    /// flooring cannot move the union by half a point when the shared font
+    /// size changes. A user offset changes only the relative arrangement and
+    /// not the selected target center. If only one component is visible, its
+    /// configured X offset is compensated so the sole visible component
+    /// remains centered; the preference value itself is retained and becomes
+    /// visible again when both components are shown.
     ///
     /// This helper deliberately does not allocate width. The caller supplies
-    /// the real status-item/card bounds (including any leading reserve); a
-    /// width setting therefore changes the centering reference without being
-    /// reimplemented here.
+    /// the real status-item/card bounds; a width setting therefore changes the
+    /// centering reference without being reimplemented here.
     static func horizontalCenteringCompensation(
         backgroundBounds: NSRect,
         geometry: MenuBarGeometry,
         iconOffsetX: CGFloat,
         textOffsetX: CGFloat,
-        centerTextBlock: Bool = false
+        centerVisibleUnionOnBackground: Bool = false
     ) -> CGFloat {
         guard geometry.iconWidth > 0 || geometry.textWidth > 0 else {
             return 0
@@ -429,36 +399,21 @@ enum MenuBarLayout {
             iconOffset: NSSize(width: iconOffsetX, height: 0),
             textOffset: NSSize(width: textOffsetX, height: 0)
         )
-        let baseBounds: NSRect?
-        let adjustedBounds: NSRect?
-        if centerTextBlock {
-            baseBounds = visibleTextBounds(
-                for: baseFrames,
-                geometry: geometry,
-                in: backgroundBounds
-            )
-            adjustedBounds = visibleTextBounds(
-                for: adjustedFrames,
-                geometry: geometry,
-                in: backgroundBounds
-            )
-        } else {
-            baseBounds = visibleContentBounds(
-                for: baseFrames,
-                in: backgroundBounds
-            )
-            adjustedBounds = visibleContentBounds(
-                for: adjustedFrames,
-                in: backgroundBounds
-            )
-        }
+        let baseBounds = visibleContentBounds(
+            for: baseFrames,
+            in: backgroundBounds
+        )
+        let adjustedBounds = visibleContentBounds(
+            for: adjustedFrames,
+            in: backgroundBounds
+        )
         guard let baseBounds, let adjustedBounds else {
             return 0
         }
         let opticalCenterNudgeX = geometry.iconWidth > 0 && geometry.textWidth == 0
             ? menuBarIconOnlyOpticalCenterNudgeX
             : menuBarOpticalCenterNudgeX
-        let targetCenter = centerTextBlock
+        let targetCenter = centerVisibleUnionOnBackground
             ? backgroundBounds.midX
             : baseBounds.midX
         return targetCenter

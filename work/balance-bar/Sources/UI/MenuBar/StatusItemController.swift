@@ -500,10 +500,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let requestedLength = MenuBarLayout.statusItemLength(
             contentWidth: geometry.contentWidth,
             horizontalPadding: settings.horizontalPadding,
-            widthAdjustment: widthAdjustment,
-            leadingContentReserve: MenuBarLayout.textCenteringLeadingReserve(
-                for: geometry
-            )
+            widthAdjustment: widthAdjustment
         )
         guard requestedLength != statusItem.length else { return }
         MenuBarWidthPerformance.measure("statusItem.length") {
@@ -817,10 +814,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.length = MenuBarLayout.statusItemLength(
             contentWidth: geometry.contentWidth,
             horizontalPadding: settings.horizontalPadding,
-            widthAdjustment: settings.widthAdjustment,
-            leadingContentReserve: MenuBarLayout.textCenteringLeadingReserve(
-                for: geometry
-            )
+            widthAdjustment: settings.widthAdjustment
         )
         button.layoutSubtreeIfNeeded()
 
@@ -933,7 +927,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             geometry: geometry,
             iconOffsetX: settings.iconOffsetX,
             textOffsetX: settings.amountOffsetX,
-            centerTextBlock: geometry.secondaryHeight > 0
+            centerVisibleUnionOnBackground: geometry.secondaryHeight > 0
         )
         menuBarContentStack.frame = frames.content.offsetBy(
             dx: horizontalCenteringCompensation,

@@ -712,7 +712,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             geometry: previewGeometry,
             iconOffsetX: 0,
             textOffsetX: 0,
-            centerTextBlock: true
+            centerVisibleUnionOnBackground: true
         )
         let centeredPreviewFrames = MenuBarLayoutFrames(
             content: previewFrames.content.offsetBy(dx: previewCompensation, dy: 0),
@@ -720,15 +720,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
             icon: previewFrames.icon,
             text: previewFrames.text
         )
-        let centeredPreviewTextBounds = try! XCTUnwrap(
-            MenuBarLayout.visibleTextBounds(
+        let centeredPreviewVisibleBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
                 for: centeredPreviewFrames,
-                geometry: previewGeometry,
                 in: previewBackgroundBounds
             )
         )
         XCTAssertEqual(
-            centeredPreviewTextBounds.midX,
+            centeredPreviewVisibleBounds.midX,
             previewBackgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
             accuracy: 0.001
         )

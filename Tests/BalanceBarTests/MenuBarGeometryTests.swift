@@ -120,7 +120,7 @@ final class MenuBarGeometryTests: XCTestCase {
             geometry: geometry,
             iconOffsetX: 0,
             textOffsetX: 0,
-            centerTextBlock: true
+            centerVisibleUnionOnBackground: true
         )
         let centeredFrames = MenuBarLayoutFrames(
             content: frames.content.offsetBy(dx: compensation, dy: 0),
@@ -128,10 +128,9 @@ final class MenuBarGeometryTests: XCTestCase {
             icon: frames.icon,
             text: frames.text
         )
-        let centeredTextBounds = try! XCTUnwrap(
-            MenuBarLayout.visibleTextBounds(
+        let centeredVisibleBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
                 for: centeredFrames,
-                geometry: geometry,
                 in: backgroundBounds
             )
         )
@@ -142,13 +141,13 @@ final class MenuBarGeometryTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(
-            centeredTextBounds.midX,
+            centeredVisibleBounds.midX,
             backgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
             accuracy: 0.001
         )
     }
 
-    func testOfficialTwoLineTextBlockCentersAndReservesLeadingIcon() {
+    func testOfficialTwoLineVisibleUnionCentersAndPreservesLeadingIcon() {
         let primary = NSTextField(labelWithString: "87%")
         primary.font = MenuBarLayout.primaryFont(size: 13)
         let secondary = NSTextField(labelWithString: "6d12h")
@@ -161,15 +160,13 @@ final class MenuBarGeometryTests: XCTestCase {
             hasSecondary: true,
             isBalance: false
         )
-        let leadingReserve = MenuBarLayout.textCenteringLeadingReserve(for: geometry)
         let backgroundBounds = NSRect(
             x: 0,
             y: 0,
             width: MenuBarLayout.statusItemLength(
                 contentWidth: geometry.contentWidth,
                 horizontalPadding: 10,
-                widthAdjustment: -20,
-                leadingContentReserve: leadingReserve
+                widthAdjustment: -20
             ),
             height: 42
         )
@@ -190,7 +187,7 @@ final class MenuBarGeometryTests: XCTestCase {
             geometry: geometry,
             iconOffsetX: 1.5,
             textOffsetX: -2.5,
-            centerTextBlock: true
+            centerVisibleUnionOnBackground: true
         )
         let centeredFrames = MenuBarLayoutFrames(
             content: adjustedFrames.content.offsetBy(dx: compensation, dy: 0),
@@ -198,10 +195,9 @@ final class MenuBarGeometryTests: XCTestCase {
             icon: adjustedFrames.icon,
             text: adjustedFrames.text
         )
-        let centeredTextBounds = try! XCTUnwrap(
-            MenuBarLayout.visibleTextBounds(
+        let centeredVisibleBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
                 for: centeredFrames,
-                geometry: geometry,
                 in: backgroundBounds
             )
         )
@@ -219,23 +215,21 @@ final class MenuBarGeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            centeredTextBounds.midX,
+            centeredVisibleBounds.midX,
             backgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
             accuracy: 0.001
         )
         XCTAssertGreaterThanOrEqual(centeredIconBounds.minX, visualCardBounds.minX)
         XCTAssertLessThanOrEqual(centeredIconBounds.maxX, visualCardBounds.maxX)
-        XCTAssertGreaterThanOrEqual(centeredTextBounds.minX, visualCardBounds.minX)
-        XCTAssertLessThanOrEqual(centeredTextBounds.maxX, visualCardBounds.maxX)
+        XCTAssertGreaterThanOrEqual(centeredVisibleBounds.minX, visualCardBounds.minX)
+        XCTAssertLessThanOrEqual(centeredVisibleBounds.maxX, visualCardBounds.maxX)
         XCTAssertEqual(
             (adjustedFrames.text.minX - adjustedFrames.icon.minX)
                 - (baseFrames.text.minX - baseFrames.icon.minX),
             -2.5 - 1.5,
             accuracy: 0.001
         )
-        XCTAssertEqual(leadingReserve, 4, accuracy: 0.001)
-        XCTAssertLessThan(leadingReserve, geometry.iconWidth + geometry.gap)
-        XCTAssertEqual(backgroundBounds.width, geometry.contentWidth + leadingReserve, accuracy: 0.001)
+        XCTAssertEqual(backgroundBounds.width, geometry.contentWidth, accuracy: 0.001)
     }
 
     func testOfficialTwoLineWidthBaselinePreservesPhysicalDefaultAndUserDeltas() {
@@ -251,35 +245,31 @@ final class MenuBarGeometryTests: XCTestCase {
             hasSecondary: true,
             isBalance: false
         )
-        let leadingReserve = MenuBarLayout.textCenteringLeadingReserve(for: geometry)
         let defaultPhysicalAdjustment = CGFloat(
             AppPreferences.menuBarStatusItemWidthBaseline
         )
         let defaultLength = MenuBarLayout.statusItemLength(
             contentWidth: geometry.contentWidth,
             horizontalPadding: 10,
-            widthAdjustment: defaultPhysicalAdjustment,
-            leadingContentReserve: leadingReserve
+            widthAdjustment: defaultPhysicalAdjustment
         )
         let plusTenLength = MenuBarLayout.statusItemLength(
             contentWidth: geometry.contentWidth,
             horizontalPadding: 10,
-            widthAdjustment: defaultPhysicalAdjustment + 10,
-            leadingContentReserve: leadingReserve
+            widthAdjustment: defaultPhysicalAdjustment + 10
         )
         let plusTwentyLength = MenuBarLayout.statusItemLength(
             contentWidth: geometry.contentWidth,
             horizontalPadding: 10,
-            widthAdjustment: defaultPhysicalAdjustment + 20,
-            leadingContentReserve: leadingReserve
+            widthAdjustment: defaultPhysicalAdjustment + 20
         )
 
         XCTAssertEqual(defaultPhysicalAdjustment, -20, accuracy: 0.001)
         XCTAssertEqual(
             defaultLength,
-            geometry.contentWidth + leadingReserve,
+            geometry.contentWidth,
             accuracy: 0.001,
-            "logical 0pt keeps the -20pt physical baseline while retaining only the structural reserve"
+            "logical 0pt keeps the -20pt physical baseline without an extra centering reserve"
         )
         XCTAssertEqual(plusTenLength - defaultLength, 10, accuracy: 0.001)
         XCTAssertEqual(plusTwentyLength - defaultLength, 20, accuracy: 0.001)
@@ -288,6 +278,64 @@ final class MenuBarGeometryTests: XCTestCase {
             10,
             accuracy: 0.001
         )
+
+        for (label, length) in [
+            ("default", defaultLength),
+            ("plus-ten", plusTenLength),
+            ("plus-twenty", plusTwentyLength)
+        ] {
+            let backgroundBounds = NSRect(
+                x: 0,
+                y: 0,
+                width: length,
+                height: 42
+            )
+            let frames = MenuBarLayout.frames(
+                buttonSize: backgroundBounds.size,
+                geometry: geometry,
+                iconViewYOffset: 0
+            )
+            let compensation = MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: 0,
+                textOffsetX: 0,
+                centerVisibleUnionOnBackground: true
+            )
+            let centeredFrames = MenuBarLayoutFrames(
+                content: frames.content.offsetBy(dx: compensation, dy: 0),
+                iconSlot: frames.iconSlot,
+                icon: frames.icon,
+                text: frames.text
+            )
+            let visibleBounds = try! XCTUnwrap(
+                MenuBarLayout.visibleContentBounds(
+                    for: centeredFrames,
+                    in: backgroundBounds
+                )
+            )
+            let visualCardBounds = backgroundBounds.insetBy(
+                dx: -MenuBarLayout.menuBarStatusItemVisualOverhangX,
+                dy: 0
+            )
+
+            XCTAssertEqual(
+                visibleBounds.midX,
+                backgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
+                accuracy: 0.001,
+                "visible union drifted at width \(label)"
+            )
+            XCTAssertGreaterThanOrEqual(
+                visibleBounds.minX,
+                visualCardBounds.minX - 0.001,
+                "visible union clipped left at width \(label)"
+            )
+            XCTAssertLessThanOrEqual(
+                visibleBounds.maxX,
+                visualCardBounds.maxX + 0.001,
+                "visible union clipped right at width \(label)"
+            )
+        }
     }
 
     func testOfficialTwoLineFontRangeStaysInsideCenteredCardAtWidthBaseline() {
@@ -314,15 +362,13 @@ final class MenuBarGeometryTests: XCTestCase {
                     hasSecondary: true,
                     isBalance: false
                 )
-                let leadingReserve = MenuBarLayout.textCenteringLeadingReserve(for: geometry)
                 let backgroundBounds = NSRect(
                     x: 0,
                     y: 0,
                     width: MenuBarLayout.statusItemLength(
                         contentWidth: geometry.contentWidth,
                         horizontalPadding: 10,
-                        widthAdjustment: CGFloat(AppPreferences.menuBarStatusItemWidthBaseline),
-                        leadingContentReserve: leadingReserve
+                        widthAdjustment: CGFloat(AppPreferences.menuBarStatusItemWidthBaseline)
                     ),
                     height: 42
                 )
@@ -336,7 +382,7 @@ final class MenuBarGeometryTests: XCTestCase {
                     geometry: geometry,
                     iconOffsetX: 0,
                     textOffsetX: 0,
-                    centerTextBlock: true
+                    centerVisibleUnionOnBackground: true
                 )
                 let centeredFrames = MenuBarLayoutFrames(
                     content: frames.content.offsetBy(dx: compensation, dy: 0),
@@ -344,10 +390,9 @@ final class MenuBarGeometryTests: XCTestCase {
                     icon: frames.icon,
                     text: frames.text
                 )
-                let textBounds = try! XCTUnwrap(
-                    MenuBarLayout.visibleTextBounds(
+                let visibleBounds = try! XCTUnwrap(
+                    MenuBarLayout.visibleContentBounds(
                         for: centeredFrames,
-                        geometry: geometry,
                         in: backgroundBounds
                     )
                 )
@@ -361,7 +406,7 @@ final class MenuBarGeometryTests: XCTestCase {
                 )
 
                 XCTAssertEqual(
-                    textBounds.midX,
+                    visibleBounds.midX,
                     backgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
                     accuracy: 0.001,
                     "primary=\(primarySize), secondary=\(secondarySize)"
@@ -377,14 +422,21 @@ final class MenuBarGeometryTests: XCTestCase {
                     "icon right clipped at primary=\(primarySize), secondary=\(secondarySize)"
                 )
                 XCTAssertGreaterThanOrEqual(
-                    textBounds.minX,
+                    visibleBounds.minX,
                     visualCardBounds.minX - 0.001,
                     "text left clipped at primary=\(primarySize), secondary=\(secondarySize)"
                 )
                 XCTAssertLessThanOrEqual(
-                    textBounds.maxX,
+                    visibleBounds.maxX,
                     visualCardBounds.maxX + 0.001,
                     "text right clipped at primary=\(primarySize), secondary=\(secondarySize)"
+                )
+                XCTAssertEqual(
+                    (visibleBounds.minX - visualCardBounds.minX)
+                        - (visualCardBounds.maxX - visibleBounds.maxX),
+                    MenuBarLayout.menuBarOpticalCenterNudgeX * 2,
+                    accuracy: 0.001,
+                    "visible union lost optical centering at primary=\(primarySize), secondary=\(secondarySize)"
                 )
         }
     }
@@ -804,27 +856,33 @@ final class MenuBarGeometryTests: XCTestCase {
             geometry: geometry,
             iconViewYOffset: 0
         )
-        let visibleTextBounds = try! XCTUnwrap(
+        let visibleContentBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
+                for: frames,
+                in: backgroundBounds
+            )
+        )
+
+        XCTAssertEqual(frames.text.minX, 0, accuracy: 0.001)
+        let measuredTextBounds = try! XCTUnwrap(
             MenuBarLayout.visibleTextBounds(
                 for: frames,
                 geometry: geometry,
                 in: backgroundBounds
             )
         )
-
-        XCTAssertEqual(frames.text.minX, 0, accuracy: 0.001)
-        XCTAssertEqual(visibleTextBounds.width, geometry.measuredTextWidth, accuracy: 0.001)
+        XCTAssertEqual(measuredTextBounds.width, geometry.measuredTextWidth, accuracy: 0.001)
         XCTAssertEqual(
             MenuBarLayout.horizontalCenteringCompensation(
                 backgroundBounds: backgroundBounds,
                 geometry: geometry,
                 iconOffsetX: 0,
                 textOffsetX: 0,
-                centerTextBlock: true
+                centerVisibleUnionOnBackground: true
             ),
             backgroundBounds.midX
                 + MenuBarLayout.menuBarOpticalCenterNudgeX
-                - visibleTextBounds.midX,
+                - visibleContentBounds.midX,
             accuracy: 0.001
         )
     }

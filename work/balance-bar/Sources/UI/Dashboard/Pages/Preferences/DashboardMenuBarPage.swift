@@ -310,7 +310,6 @@ final class DashboardMenuBarPage {
     private weak var fontSizeSlider: NSSlider?
     private var fontSizeResetButton: NSButton?
     private var transientWidthAdjustment: Double?
-    private var previewTextCenteringReserve: CGFloat = 0
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -614,9 +613,6 @@ final class DashboardMenuBarPage {
             showAmount: preferences.showMenuBarAmount,
             hasSecondary: hasSecondary
         )
-        previewTextCenteringReserve = MenuBarLayout.textCenteringLeadingReserve(
-            for: geometry
-        )
         textWidthConstraint?.constant = geometry.textWidth
         previewIcon.image = iconImage
         previewIcon.contentTintColor = .labelColor
@@ -663,7 +659,7 @@ final class DashboardMenuBarPage {
             geometry: geometry,
             iconOffsetX: iconVisualX,
             textOffsetX: amountVisualX,
-            centerTextBlock: hasSecondary
+            centerVisibleUnionOnBackground: hasSecondary
         )
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
@@ -772,8 +768,7 @@ final class DashboardMenuBarPage {
             let capsuleInset = Self.previewCapsuleHorizontalInset(
                 horizontalPadding: horizontalPadding,
                 widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
-                additionalWidth: (MenuBarLayout.menuBarStatusItemVisualOverhangX * 2)
-                    + previewTextCenteringReserve
+                additionalWidth: MenuBarLayout.menuBarStatusItemVisualOverhangX * 2
             )
             capsuleLeadingConstraint?.constant = -capsuleInset
             capsuleTrailingConstraint?.constant = capsuleInset
