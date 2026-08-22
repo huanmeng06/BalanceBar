@@ -8,6 +8,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onLanguage: ((AppLanguage) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
     var onManualRefresh: (() -> Void)?
+    var onCheckForUpdates: (() -> Void)?
+    var onInstallUpdate: (() -> Void)?
     var onOpenOpenCodex: (() -> Void)?
     var onRefreshLog: (() -> Void)?
     var onRevealLog: (() -> Void)?
@@ -37,6 +39,14 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func manualRefresh(_ sender: NSButton) {
         onManualRefresh?()
+    }
+
+    @objc func update(_ sender: NSButton) {
+        if sender.tag == 1 {
+            onInstallUpdate?()
+        } else {
+            onCheckForUpdates?()
+        }
     }
 
     @objc func openOpenCodex(_ sender: NSButton) {

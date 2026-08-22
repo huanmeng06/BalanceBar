@@ -175,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconImage: { [weak self] in self?.statusItemController?.iconImage },
             currentOpenCodexResolution: { [weak self] in self?.currentOpenCodexDashboardResolution() },
             runtimeCandidate: { [weak self] in self?.openCodexState?.state.candidate },
+            updateState: { [weak self] in self?.updateService.state ?? .failed(.invalidCurrentVersion) },
             statusLinks: { [weak self] in self?.statusLinks ?? [] },
             defaultStatusLinks: { [weak self] in self?.defaultStatusLinks ?? [] },
             setStatusLinks: { [weak self] links in self?.statusLinks = links }
@@ -196,6 +197,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
             onOpenCCSwitch: { [weak self] in self?.openCCSwitch() },
+            onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
+            onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
             onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
             onOpenCodexModeChanged: { [weak self] mode in
                 self?.openCodexDashboardAutomaticDetection = mode.automaticDetection
@@ -257,6 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
+    private let updateService: UpdateService
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
     private var showMenuBarAmount: Bool { get { preferences.showMenuBarAmount } set { preferences.showMenuBarAmount = newValue } }
@@ -296,10 +300,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     init(
         repository: CCSwitchRepository = CCSwitchRepository(),
         officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
-        openCodexRepository: OpenCodexRepository = OpenCodexRepository()
+        openCodexRepository: OpenCodexRepository = OpenCodexRepository(),
+        updateService: UpdateService? = nil
     ) {
         self.ccSwitchRepository = repository
+        self.updateService = updateService ?? UpdateService()
         super.init()
+        self.updateService.onStateChange = { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                self?.dashboardComposition.refreshUpdateState()
+            }
+        }
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
             onChange: { [weak self] in

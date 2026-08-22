@@ -1,13 +1,110 @@
 import AppKit
 
-enum DashboardGeneralPage {
+struct DashboardUpdatePresentation: Equatable {
+    let subtitle: String
+    let buttonTitle: String
+    let buttonEnabled: Bool
+    let performsInstall: Bool
+
+    static func make(for state: UpdateCheckState, language: AppLanguage = .selected) -> DashboardUpdatePresentation {
+        switch state {
+        case .idle:
+            return DashboardUpdatePresentation(
+                subtitle: tr(
+                    "点击检查 GitHub Releases",
+                    "Click to check GitHub Releases",
+                    "點擊檢查 GitHub Releases",
+                    "クリックして GitHub Releases を確認",
+                    language: language
+                ),
+                buttonTitle: tr("检查更新", "Check for Updates", "檢查更新", "アップデートを確認", language: language),
+                buttonEnabled: true,
+                performsInstall: false
+            )
+        case .checking:
+            return DashboardUpdatePresentation(
+                subtitle: tr("正在检查更新…", "Checking for updates…", "正在檢查更新…", "アップデートを確認中…", language: language),
+                buttonTitle: tr("检查中…", "Checking…", "檢查中…", "確認中…", language: language),
+                buttonEnabled: false,
+                performsInstall: false
+            )
+        case .latest:
+            return DashboardUpdatePresentation(
+                subtitle: tr("当前为最新版本", "You are up to date", "目前為最新版本", "最新バージョンです", language: language),
+                buttonTitle: tr("最新版本", "Up to Date", "最新版本", "最新バージョン", language: language),
+                buttonEnabled: false,
+                performsInstall: false
+            )
+        case .available(let current, let latest):
+            return DashboardUpdatePresentation(
+                subtitle: tr(
+                    "新版本可用：\(current) -> \(latest)",
+                    "New version available: \(current) -> \(latest)",
+                    "新版本可用：\(current) -> \(latest)",
+                    "新しいバージョンがあります：\(current) -> \(latest)",
+                    language: language
+                ),
+                buttonTitle: tr("下载并安装", "Download and Install", "下載並安裝", "ダウンロードしてインストール", language: language),
+                buttonEnabled: true,
+                performsInstall: true
+            )
+        case .downloading(_, _, let progress):
+            return DashboardUpdatePresentation(
+                subtitle: tr("正在下载新版本…", "Downloading the new version…", "正在下載新版本…", "新しいバージョンをダウンロード中…", language: language),
+                buttonTitle: tr("下载中 \(progress)% …", "Downloading \(progress)% …", "下載中 \(progress)% …", "ダウンロード中 \(progress)% …", language: language),
+                buttonEnabled: false,
+                performsInstall: false
+            )
+        case .installing(_, _, let progress):
+            return DashboardUpdatePresentation(
+                subtitle: tr("正在安装新版本…", "Installing the new version…", "正在安裝新版本…", "新しいバージョンをインストール中…", language: language),
+                buttonTitle: tr("安装中 \(progress)% …", "Installing \(progress)% …", "安裝中 \(progress)% …", "インストール中 \(progress)% …", language: language),
+                buttonEnabled: false,
+                performsInstall: false
+            )
+        case .restarting:
+            return DashboardUpdatePresentation(
+                subtitle: tr("安装完成，正在重新启动…", "Installed; restarting…", "安裝完成，正在重新啟動…", "インストール完了。再起動中…", language: language),
+                buttonTitle: tr("重新启动中…", "Restarting…", "重新啟動中…", "再起動中…", language: language),
+                buttonEnabled: false,
+                performsInstall: false
+            )
+        case .failed(let failure):
+            let subtitle: String
+            switch failure {
+            case .assetUnavailable:
+                subtitle = tr("没有可验证的安装包，请重试", "No verifiable installer is available; try again", "沒有可驗證的安裝包，請重試", "検証可能なインストーラーがありません。再試行してください", language: language)
+            case .verificationFailed:
+                subtitle = tr("下载校验失败，当前版本未更改", "Download verification failed; the current version was not changed", "下載驗證失敗，目前版本未變更", "ダウンロードの検証に失敗しました。現在のバージョンは変更されていません", language: language)
+            case .installationFailed:
+                subtitle = tr("安装失败，当前版本未更改，请重试", "Installation failed; the current version was not changed", "安裝失敗，目前版本未變更，請重試", "インストールに失敗しました。現在のバージョンは変更されていません", language: language)
+            case .invalidCurrentVersion:
+                subtitle = tr("无法读取当前版本，请重试", "The current version could not be read; try again", "無法讀取目前版本，請重試", "現在のバージョンを読み取れません。再試行してください", language: language)
+            default:
+                subtitle = tr("检查更新失败，请重试", "Update check failed; try again", "檢查更新失敗，請重試", "アップデートの確認に失敗しました。再試行してください", language: language)
+            }
+            return DashboardUpdatePresentation(
+                subtitle: subtitle,
+                buttonTitle: tr("重试", "Retry", "重試", "再試行", language: language),
+                buttonEnabled: true,
+                performsInstall: false
+            )
+        }
+    }
+}
+
+final class DashboardGeneralPage {
     struct Input {
         let preferences: AppPreferences
         let currentProviderName: String
         let relay: DashboardPreferencePageRelay
+        let updateState: UpdateCheckState
     }
 
-    static func make(_ input: Input) -> NSView {
+    private var updateSubtitleLabel: NSTextField?
+    private var updateButton: NSButton?
+
+    func make(_ input: Input) -> NSView {
         let openButton = NSButton(
             title: tr("打开 CC Switch", "Open CC Switch", "開啟 CC Switch", "CC Switch を開く"),
             target: input.relay,
@@ -112,14 +209,51 @@ enum DashboardGeneralPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.language(_:))
         )
+        let updatePresentation = DashboardUpdatePresentation.make(for: input.updateState)
+        let updateSubtitle = NSTextField(wrappingLabelWithString: updatePresentation.subtitle)
+        updateSubtitle.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesSubtitle")
+        let updateButton = NSButton(
+            title: updatePresentation.buttonTitle,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.update(_:))
+        )
+        updateButton.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesButton")
+        updateButton.bezelStyle = .rounded
+        apply(updatePresentation, to: updateButton, subtitle: updateSubtitle)
+        self.updateSubtitleLabel = updateSubtitle
+        self.updateButton = updateButton
+
         let app = DashboardSettingsComponents.makeSettingsSection(tr("应用", "Application", "應用程式", "アプリ"), rows: [
             DashboardSettingsComponents.makeSettingsRow(
                 tr("语言", "Language", "語言", "言語"),
                 subtitle: tr("更改后立即应用到整个界面", "Changes apply to the entire interface immediately", "更改後立即套用到整個介面", "変更後すぐにすべての画面に適用されます"),
                 control: languagePopup
+            ),
+            DashboardSettingsComponents.makeSettingsRow(
+                tr("检查更新", "Check for Updates", "檢查更新", "アップデートを確認"),
+                subtitle: updatePresentation.subtitle,
+                subtitleLabel: updateSubtitle,
+                control: updateButton
             )
         ])
         return DashboardSettingsComponents.makeSettingsPage([system, refreshing, app])
+    }
+
+    func refresh(updateState: UpdateCheckState) {
+        let presentation = DashboardUpdatePresentation.make(for: updateState)
+        guard let updateSubtitleLabel, let updateButton else { return }
+        apply(presentation, to: updateButton, subtitle: updateSubtitleLabel)
+    }
+
+    private func apply(
+        _ presentation: DashboardUpdatePresentation,
+        to button: NSButton,
+        subtitle: NSTextField
+    ) {
+        button.title = presentation.buttonTitle
+        button.isEnabled = presentation.buttonEnabled
+        button.tag = presentation.performsInstall ? 1 : 0
+        subtitle.stringValue = presentation.subtitle
     }
 }
 
