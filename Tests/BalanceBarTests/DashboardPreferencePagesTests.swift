@@ -348,6 +348,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        page.layoutSubtreeIfNeeded()
         let previewIconX = previewIcon?.layer?.affineTransform().tx ?? CGFloat.nan
         let previewTextX = previewText?.layer?.affineTransform().tx ?? CGFloat.nan
         XCTAssertEqual(previewIconX - previewTextX, 0.6, accuracy: 0.001)
@@ -359,11 +368,29 @@ final class DashboardPreferencePagesTests: XCTestCase {
             -0.3 + MenuBarLayout.singleLineIconYOffset,
             accuracy: 0.001
         )
+        let previewPrimary = try! XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+            } as? NSTextField
+        )
+        let previewBackground = try! XCTUnwrap(previewBackgroundAncestor(of: previewPrimary))
+        let primaryInk = try! XCTUnwrap(
+            MenuBarLayout.appKitRenderedTextBounds(
+                for: previewPrimary,
+                frameSize: previewPrimary.bounds.size
+            )
+        )
+        let renderedPrimaryInk = primaryInk
+            .offsetBy(
+                dx: previewPrimary.convert(primaryInk, to: previewBackground).minX - primaryInk.minX
+                    + (previewText?.layer?.affineTransform().tx ?? 0),
+                dy: previewPrimary.convert(primaryInk, to: previewBackground).minY - primaryInk.minY
+                    + (previewText?.layer?.affineTransform().ty ?? 0)
+            )
         XCTAssertEqual(
-            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            0.5 - MenuBarLayout.singleLineTextYOffset
-                + DashboardMenuBarPage.previewAmountDefaultYOffset,
-            accuracy: 0.001
+            renderedPrimaryInk.midY,
+            previewBackground.bounds.midY + preferences.menuBarAmountOffsetY,
+            accuracy: 0.5
         )
 
         widthSlider.doubleValue = 0.7
@@ -669,13 +696,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previewText = descendants(of: page).first {
             $0.identifier?.rawValue == "menuBarPreviewText"
         }
-        // Percentage-only official text defaults to 0.5pt higher.
-        XCTAssertEqual(
-            previewText?.layer?.affineTransform().ty ?? CGFloat.nan,
-            DashboardMenuBarPage.previewAmountDefaultYOffset
-                - MenuBarLayout.officialAmountOnlyTextYOffset,
-            accuracy: 0.001
-        )
+        // Percentage-only official text is now aligned by measured primary
+        // ink; its old baseline transform is intentionally not asserted.
+        XCTAssertNotNil(previewText)
 
         preferences.showMenuBarReset = true
         controller.refresh(
@@ -770,6 +793,114 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 + DashboardMenuBarPage.previewAmountDefaultYOffset,
             accuracy: 0.001
         )
+    }
+
+    func testMenuBarSingleLinePreviewAnchorsPrimaryInkForOfficialAndThirdParty() throws {
+        let suiteName = "DashboardPreferencePagesTests.MenuBarSingleLineAnchor.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showMenuBarReset = false
+        preferences.showMenuBarAmount = true
+        preferences.showMenuBarIcon = true
+        let relay = DashboardPreferencePageRelay()
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .official("OpenAI", 48, "7-day", nil, Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+
+        let primary = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+            } as? NSTextField
+        )
+        let icon = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == "menuBarPreviewIcon"
+            } as? NSImageView
+        )
+        let previewTextView = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == "menuBarPreviewText"
+            }
+        )
+        let background = try XCTUnwrap(previewBackgroundAncestor(of: primary))
+
+        let scenarios: [(Snapshot, Bool)] = [
+            (.official("OpenAI", 48, "7-day", nil, Date(timeIntervalSince1970: 1)), false),
+            (.balance("Provider", 123456.78, "USD", nil, Date(timeIntervalSince1970: 1)), true)
+        ]
+        for (snapshot, isBalance) in scenarios {
+            for showIcon in [false, true] {
+                preferences.showMenuBarIcon = showIcon
+                var centers: [CGFloat] = []
+                for preset in MenuBarFontSizePreset.allCases {
+                    preferences.menuBarFontSizePreset = preset
+                    controller.refresh(
+                        snapshot: snapshot,
+                        preferences: preferences,
+                        menuBarSnapshot: { $0 },
+                        iconImage: nil
+                    )
+                    page.layoutSubtreeIfNeeded()
+                    background.layoutSubtreeIfNeeded()
+
+                    let ink = try XCTUnwrap(
+                        MenuBarLayout.appKitRenderedTextBounds(
+                            for: primary,
+                            frameSize: primary.bounds.size
+                        )
+                    )
+                    let renderedInk = primary
+                        .convert(ink, to: background)
+                        .offsetBy(
+                            dx: previewTextView.layer?.affineTransform().tx ?? 0,
+                            dy: previewTextView.layer?.affineTransform().ty ?? 0
+                        )
+                    let targetX = MenuBarLayout.singleLinePrimaryAnchorX(
+                        backgroundBounds: background.bounds,
+                        primaryText: primary.stringValue,
+                        showIcon: showIcon,
+                        isBalance: isBalance
+                    )
+                    centers.append(renderedInk.midX)
+                    XCTAssertEqual(
+                        renderedInk.midX,
+                        targetX,
+                        accuracy: 0.5,
+                        "preview primary X drifted"
+                    )
+                    XCTAssertEqual(
+                        renderedInk.midY,
+                        background.bounds.midY,
+                        accuracy: 0.5,
+                        "preview primary Y drifted"
+                    )
+                    if showIcon {
+                        let iconFrame = icon
+                            .convert(icon.bounds, to: background)
+                            .offsetBy(
+                                dx: icon.layer?.affineTransform().tx ?? 0,
+                                dy: icon.layer?.affineTransform().ty ?? 0
+                            )
+                        XCTAssertEqual(iconFrame.midY, renderedInk.midY, accuracy: 0.5)
+                    }
+                }
+                XCTAssertLessThanOrEqual(
+                    (centers.max() ?? 0) - (centers.min() ?? 0),
+                    0.5,
+                    "preview primary X must stay fixed across font presets"
+                )
+            }
+        }
     }
 
     func testMenuBarOffsetRepeatPolicyDelaysAndAccelerates() {
@@ -1244,6 +1375,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
         if view.identifier?.rawValue == identifier { return view }
         for child in view.subviews {
             if let match = descendant(withIdentifier: identifier, in: child) { return match }
+        }
+        return nil
+    }
+
+    private func previewBackgroundAncestor(of view: NSView) -> NSView? {
+        var current = view.superview
+        while let candidate = current {
+            if candidate.bounds.height >= 40,
+               candidate.bounds.height <= 44,
+               candidate.bounds.width >= 180 {
+                return candidate
+            }
+            current = candidate.superview
         }
         return nil
     }

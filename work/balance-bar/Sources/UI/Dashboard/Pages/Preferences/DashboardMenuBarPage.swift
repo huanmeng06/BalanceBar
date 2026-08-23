@@ -628,16 +628,109 @@ final class DashboardMenuBarPage {
             fallbackWidth: geometry.contentWidth
                 + (preferences.menuBarHorizontalPadding + chromeInset) * 2
         )
-        let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
-            backgroundBounds: previewBackgroundBounds,
-            geometry: geometry,
-            iconOffsetX: iconVisualX,
-            textOffsetX: amountVisualX,
-            centerVisibleUnionOnBackground: hasSecondary
-        )
+        let singleLineBackgroundBounds = previewBackgroundBounds.height > 0
+            ? previewBackgroundBounds
+            : NSRect(
+                x: previewBackgroundBounds.minX,
+                y: previewBackgroundBounds.minY,
+                width: previewBackgroundBounds.width,
+                height: 42
+            )
+        let isSingleLinePrimaryAnchorMode = preferences.showMenuBarAmount
+            && !hasSecondary
+            && (presentation.isOfficial || presentation.isBalance)
+        let horizontalCenteringCompensation = isSingleLinePrimaryAnchorMode
+            ? 0
+            : MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: previewBackgroundBounds,
+                geometry: geometry,
+                iconOffsetX: iconVisualX,
+                textOffsetX: amountVisualX,
+                centerVisibleUnionOnBackground: hasSecondary
+            )
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
-        if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
+        if isSingleLinePrimaryAnchorMode {
+            let iconTranslationY: CGFloat
+            let textTranslationY: CGFloat
+            if presentation.isBalance,
+               preferences.showMenuBarIcon,
+               preferences.showMenuBarAmount {
+                iconTranslationY = MenuBarOffsetLayout.yDelta(
+                    visualY: iconVisualY,
+                    in: .unflippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: MenuBarLayout.singleLineIconYOffset,
+                    in: .unflippedLayer
+                )
+                textTranslationY = MenuBarOffsetLayout.yDelta(
+                    visualY: amountVisualY,
+                    in: .unflippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: MenuBarLayout.singleLineTextYOffset,
+                    in: .flippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: Self.previewAmountDefaultYOffset,
+                    in: .unflippedLayer
+                )
+            } else {
+                iconTranslationY = MenuBarOffsetLayout.yDelta(
+                    visualY: iconVisualY,
+                    in: .unflippedLayer
+                )
+                textTranslationY = MenuBarOffsetLayout.yDelta(
+                    visualY: amountVisualY,
+                    in: .unflippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: officialTextYOffset,
+                    in: .flippedLayer
+                ) + MenuBarOffsetLayout.yDelta(
+                    visualY: Self.previewAmountDefaultYOffset,
+                    in: .unflippedLayer
+                )
+            }
+            let userAmountTranslationY = MenuBarOffsetLayout.yDelta(
+                visualY: amountVisualY,
+                in: .unflippedLayer
+            )
+            let zeroUserTextTranslationY = textTranslationY - userAmountTranslationY
+            previewIcon.layer?.setAffineTransform(CGAffineTransform(
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX),
+                y: iconTranslationY
+            ))
+            previewText.layer?.setAffineTransform(CGAffineTransform(
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX),
+                y: zeroUserTextTranslationY
+            ))
+            previewBackground?.layoutSubtreeIfNeeded()
+
+            var horizontalCorrection: CGFloat = 0
+            var verticalCorrection: CGFloat = 0
+            if let previewBackground,
+               previewBackground.bounds.width > 0,
+               previewBackground.bounds.height > 0,
+               let primaryInk = previewPrimaryInkBounds(in: previewBackground) {
+                let targetX = MenuBarLayout.singleLinePrimaryAnchorX(
+                    backgroundBounds: singleLineBackgroundBounds,
+                    primaryText: presentation.primary,
+                    showIcon: preferences.showMenuBarIcon,
+                    isBalance: presentation.isBalance
+                )
+                horizontalCorrection = targetX - primaryInk.midX
+                let targetY = singleLineBackgroundBounds.midY + userAmountTranslationY
+                verticalCorrection = targetY - primaryInk.midY
+            }
+            previewIcon.layer?.setAffineTransform(CGAffineTransform(
+                translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX)
+                    + horizontalCorrection,
+                y: iconTranslationY
+            ))
+            previewText.layer?.setAffineTransform(CGAffineTransform(
+                translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX)
+                    + horizontalCorrection,
+                y: zeroUserTextTranslationY + verticalCorrection
+            ))
+        } else if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
                 translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX)
                     + horizontalCenteringCompensation,
@@ -685,6 +778,20 @@ final class DashboardMenuBarPage {
                 )
             ))
         }
+    }
+
+    private func previewPrimaryInkBounds(in background: NSView) -> NSRect? {
+        let frameSize = previewPrimary.bounds.size
+        guard frameSize.width > 0, frameSize.height > 0,
+              let localBounds = MenuBarLayout.appKitRenderedTextBounds(
+                  for: previewPrimary,
+                  frameSize: frameSize
+              ) else {
+            return nil
+        }
+        let baseBounds = previewPrimary.convert(localBounds, to: background)
+        let textTransform = previewText.layer?.affineTransform() ?? .identity
+        return baseBounds.offsetBy(dx: textTransform.tx, dy: textTransform.ty)
     }
 
     private func resolvedPreviewBackgroundBounds(fallbackWidth: CGFloat) -> NSRect {

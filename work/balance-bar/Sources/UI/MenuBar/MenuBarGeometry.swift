@@ -209,6 +209,39 @@ enum MenuBarLayout {
         return max(safeMinimum, requestedLength)
     }
 
+    /// Returns the outer footprint for the amount-only modes whose visible
+    /// primary text must keep one screen-space anchor while its font changes.
+    /// The reserve is deliberately based on the current amount and icon mode:
+    /// a hidden icon is never included in an amount-only footprint.
+    static func singleLineStatusItemLength(
+        primaryText: String,
+        showIcon: Bool,
+        isBalance: Bool,
+        horizontalPadding: CGFloat,
+        widthAdjustment: CGFloat = 0
+    ) -> CGFloat {
+        let widestContentWidth = MenuBarFontSizePreset.allCases
+            .map { preset -> CGFloat in
+                let label = NSTextField(labelWithString: primaryText)
+                label.font = primaryFont(size: CGFloat(preset.primarySize))
+                let geometry = geometry(
+                    primarySize: label.intrinsicContentSize,
+                    secondarySize: .zero,
+                    showIcon: showIcon,
+                    showAmount: true,
+                    hasSecondary: false,
+                    isBalance: isBalance
+                )
+                return geometry.contentWidth
+            }
+            .max() ?? 0
+        return statusItemLength(
+            contentWidth: widestContentWidth,
+            horizontalPadding: horizontalPadding,
+            widthAdjustment: widthAdjustment
+        )
+    }
+
     static func geometry(
         primarySize: NSSize,
         secondarySize: NSSize,
@@ -358,6 +391,150 @@ enum MenuBarLayout {
             width: min(frames.text.width, geometry.measuredTextWidth),
             height: frames.text.height
         )
+    }
+
+    /// Measures the actual primary glyph ink without treating the label's
+    /// anti-clipping frame slack as visible content. This is intentionally a
+    /// narrow AppKit measurement used by amount-only single-line layout; the
+    /// existing two-line geometry continues to use its established frame
+    /// metrics.
+    static func appKitRenderedTextBounds(
+        for label: NSTextField,
+        frameSize: NSSize
+    ) -> NSRect? {
+        guard frameSize.width > 0, frameSize.height > 0,
+              let cell = label.cell else {
+            return nil
+        }
+
+        let rasterScale: CGFloat = 4
+        let pixelsWide = max(1, Int(ceil(frameSize.width * rasterScale)))
+        let pixelsHigh = max(1, Int(ceil(frameSize.height * rasterScale)))
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: bitmap),
+        let bitmapData = bitmap.bitmapData else {
+            return nil
+        }
+
+        let previousFrame = label.frame
+        label.frame = NSRect(origin: .zero, size: frameSize)
+        NSGraphicsContext.saveGraphicsState()
+        defer {
+            NSGraphicsContext.restoreGraphicsState()
+            label.frame = previousFrame
+        }
+        NSGraphicsContext.current = context
+        context.cgContext.clear(CGRect(
+            x: 0,
+            y: 0,
+            width: pixelsWide,
+            height: pixelsHigh
+        ))
+        cell.drawInterior(withFrame: label.bounds, in: label)
+        context.flushGraphics()
+
+        var minimumX = pixelsWide
+        var minimumY = pixelsHigh
+        var maximumX = -1
+        var maximumY = -1
+        for y in 0..<pixelsHigh {
+            let row = y * bitmap.bytesPerRow
+            for x in 0..<pixelsWide {
+                let alpha = bitmapData[row + x * 4 + 3]
+                guard alpha > 12 else { continue }
+                minimumX = min(minimumX, x)
+                minimumY = min(minimumY, y)
+                maximumX = max(maximumX, x)
+                maximumY = max(maximumY, y)
+            }
+        }
+        guard maximumX >= minimumX, maximumY >= minimumY else {
+            return nil
+        }
+
+        let x = CGFloat(minimumX) / rasterScale
+        let width = CGFloat(maximumX - minimumX + 1) / rasterScale
+        let height = CGFloat(maximumY - minimumY + 1) / rasterScale
+        let y = label.isFlipped
+            ? frameSize.height - CGFloat(maximumY + 1) / rasterScale
+            : CGFloat(minimumY) / rasterScale
+        return NSRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// Maps the measured primary ink into the supplied status-item/card
+    /// coordinate space. `frames.text` still includes the anti-clipping slack;
+    /// only the returned bounds represent visible glyph ink.
+    static func singleLinePrimaryInkBounds(
+        for label: NSTextField,
+        frames: MenuBarLayoutFrames,
+        geometry: MenuBarGeometry,
+        in backgroundBounds: NSRect
+    ) -> NSRect? {
+        guard geometry.secondaryHeight == 0,
+              let localBounds = appKitRenderedTextBounds(
+            for: label,
+            frameSize: NSSize(width: frames.text.width, height: geometry.primaryHeight)
+        ) else {
+            return nil
+        }
+        let contentOrigin = NSPoint(
+            x: backgroundBounds.minX + frames.content.minX,
+            y: backgroundBounds.minY + frames.content.minY
+        )
+        return localBounds.offsetBy(
+            dx: contentOrigin.x + frames.text.minX,
+            dy: contentOrigin.y + frames.text.minY
+        )
+    }
+
+    /// Establishes the primary-ink X anchor from the widest preset while the
+    /// current mode's icon visibility and amount remain unchanged. The
+    /// existing optical correction is retained as the final translation; no
+    /// new single-line-specific screen constant is introduced.
+    static func singleLinePrimaryAnchorX(
+        backgroundBounds: NSRect,
+        primaryText: String,
+        showIcon: Bool,
+        isBalance: Bool
+    ) -> CGFloat {
+        let referencePreset = MenuBarFontSizePreset.allCases.max {
+            $0.primarySize < $1.primarySize
+        } ?? .large
+        let referenceLabel = NSTextField(labelWithString: primaryText)
+        referenceLabel.font = primaryFont(size: CGFloat(referencePreset.primarySize))
+        let referenceGeometry = geometry(
+            primarySize: referenceLabel.intrinsicContentSize,
+            secondarySize: .zero,
+            showIcon: showIcon,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: isBalance
+        )
+        let referenceFrames = frames(
+            buttonSize: backgroundBounds.size,
+            geometry: referenceGeometry,
+            iconViewYOffset: showIcon && isBalance ? singleLineIconYOffset : 0
+        )
+        guard let referenceInk = singleLinePrimaryInkBounds(
+            for: referenceLabel,
+            frames: referenceFrames,
+            geometry: referenceGeometry,
+            in: backgroundBounds
+        ) else {
+            return backgroundBounds.midX + menuBarOpticalCenterNudgeX
+        }
+        return referenceInk.midX + menuBarOpticalCenterNudgeX
     }
 
     /// Equal translation for the outer content container that compensates for

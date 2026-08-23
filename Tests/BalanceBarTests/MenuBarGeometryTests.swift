@@ -1140,6 +1140,330 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(apiCenter, 11.75, accuracy: 0.001)
     }
 
+    func testSingleLineReserveUsesCurrentTextAndIconModeAcrossAllPresets() {
+        let primaryText = "USD 123,456.78"
+        let padding: CGFloat = 10
+
+        for isBalance in [false, true] {
+            let iconLength = MenuBarLayout.singleLineStatusItemLength(
+                primaryText: primaryText,
+                showIcon: true,
+                isBalance: isBalance,
+                horizontalPadding: padding
+            )
+            let amountOnlyLength = MenuBarLayout.singleLineStatusItemLength(
+                primaryText: primaryText,
+                showIcon: false,
+                isBalance: isBalance,
+                horizontalPadding: padding
+            )
+
+            XCTAssertGreaterThan(
+                iconLength,
+                amountOnlyLength,
+                "hidden icons must not be reserved in amount-only mode"
+            )
+            XCTAssertEqual(
+                iconLength,
+                MenuBarLayout.singleLineStatusItemLength(
+                    primaryText: primaryText,
+                    showIcon: true,
+                    isBalance: isBalance,
+                    horizontalPadding: padding,
+                    widthAdjustment: 0
+                ),
+                accuracy: 0.001
+            )
+
+            for showIcon in [false, true] {
+                let reservedLength = MenuBarLayout.singleLineStatusItemLength(
+                    primaryText: primaryText,
+                    showIcon: showIcon,
+                    isBalance: isBalance,
+                    horizontalPadding: padding
+                )
+                for preset in MenuBarFontSizePreset.allCases {
+                    let label = NSTextField(labelWithString: primaryText)
+                    label.font = MenuBarLayout.primaryFont(
+                        size: CGFloat(preset.primarySize)
+                    )
+                    let geometry = MenuBarLayout.geometry(
+                        primarySize: label.intrinsicContentSize,
+                        secondarySize: .zero,
+                        showIcon: showIcon,
+                        showAmount: true,
+                        hasSecondary: false,
+                        isBalance: isBalance
+                    )
+                    let presetLength = MenuBarLayout.statusItemLength(
+                        contentWidth: geometry.contentWidth,
+                        horizontalPadding: padding
+                    )
+                    XCTAssertGreaterThanOrEqual(
+                        reservedLength,
+                        presetLength,
+                        "single-line preset must fit reserved width"
+                    )
+                }
+            }
+
+            let plusTen = MenuBarLayout.singleLineStatusItemLength(
+                primaryText: primaryText,
+                showIcon: true,
+                isBalance: isBalance,
+                horizontalPadding: padding,
+                widthAdjustment: 10
+            )
+            let plusTwenty = MenuBarLayout.singleLineStatusItemLength(
+                primaryText: primaryText,
+                showIcon: true,
+                isBalance: isBalance,
+                horizontalPadding: padding,
+                widthAdjustment: 20
+            )
+            XCTAssertEqual(plusTen - iconLength, 10, accuracy: 0.001)
+            XCTAssertEqual(plusTwenty - plusTen, 10, accuracy: 0.001)
+        }
+    }
+
+    func testSingleLinePrimaryInkCentersIndependentlyFromSlackAcrossMatrix() {
+        let scenarios: [(String, Bool)] = [
+            ("48%", false),
+            ("USD 123,456.78", true)
+        ]
+
+        for (primaryText, isBalance) in scenarios {
+            for showIcon in [false, true] {
+                let length = MenuBarLayout.singleLineStatusItemLength(
+                    primaryText: primaryText,
+                    showIcon: showIcon,
+                    isBalance: isBalance,
+                    horizontalPadding: 10
+                )
+                let backgroundBounds = NSRect(
+                    x: 0,
+                    y: 0,
+                    width: length,
+                    height: 24
+                )
+                let targetX = MenuBarLayout.singleLinePrimaryAnchorX(
+                    backgroundBounds: backgroundBounds,
+                    primaryText: primaryText,
+                    showIcon: showIcon,
+                    isBalance: isBalance
+                )
+                var correctedBounds: [(MenuBarFontSizePreset, NSRect)] = []
+
+                for preset in MenuBarFontSizePreset.allCases {
+                    let label = NSTextField(labelWithString: primaryText)
+                    label.font = MenuBarLayout.primaryFont(
+                        size: CGFloat(preset.primarySize)
+                    )
+                    let geometry = MenuBarLayout.geometry(
+                        primarySize: label.intrinsicContentSize,
+                        secondarySize: .zero,
+                        showIcon: showIcon,
+                        showAmount: true,
+                        hasSecondary: false,
+                        isBalance: isBalance
+                    )
+                    let frames = MenuBarLayout.frames(
+                        buttonSize: backgroundBounds.size,
+                        geometry: geometry,
+                        iconViewYOffset: showIcon && isBalance
+                            ? MenuBarLayout.singleLineIconYOffset
+                            : 0,
+                        textOffset: NSSize(
+                            width: 0,
+                            height: isBalance
+                                ? 0
+                                : MenuBarLayout.officialAmountOnlyTextYOffset
+                        )
+                    )
+                    let primaryInk = try! XCTUnwrap(
+                        MenuBarLayout.singleLinePrimaryInkBounds(
+                            for: label,
+                            frames: frames,
+                            geometry: geometry,
+                            in: backgroundBounds
+                        ),
+                        "single-line primary ink must be measurable"
+                    )
+                    XCTAssertLessThan(
+                        primaryInk.width,
+                        frames.text.width,
+                        "anti-clipping slack must not be counted as glyph ink"
+                    )
+
+                    // This is the exact narrow correction applied by the live
+                    // single-line path: horizontal translation follows the
+                    // stable widest-preset primary anchor; vertical
+                    // translation follows primary ink alone and leaves the
+                    // icon frame untouched.
+                    let corrected = primaryInk.offsetBy(
+                        dx: targetX - primaryInk.midX,
+                        dy: backgroundBounds.midY - primaryInk.midY
+                    )
+                    XCTAssertEqual(corrected.midX, targetX, accuracy: 0.001)
+                    XCTAssertEqual(corrected.midY, backgroundBounds.midY, accuracy: 0.001)
+                    correctedBounds.append((preset, corrected))
+
+                    let iconFrame = frames.icon.offsetBy(
+                        dx: frames.content.minX,
+                        dy: frames.content.minY
+                    )
+                    let iconCenterBefore = iconFrame.midY
+                    let iconCenterAfter = iconFrame.midY
+                    XCTAssertEqual(
+                        iconCenterAfter,
+                        iconCenterBefore,
+                        accuracy: 0.001,
+                        "primary correction must not move the icon"
+                    )
+                }
+
+                let centers = correctedBounds.map { $0.1.midX }
+                XCTAssertLessThanOrEqual(
+                    (centers.max() ?? 0) - (centers.min() ?? 0),
+                    0.5,
+                    "single-line primary ink X drifted"
+                )
+                let verticalCenters = correctedBounds.map { $0.1.midY }
+                XCTAssertLessThanOrEqual(
+                    (verticalCenters.max() ?? 0) - (verticalCenters.min() ?? 0),
+                    0.5,
+                    "single-line primary ink Y drifted"
+                )
+
+                let large = try! XCTUnwrap(
+                    correctedBounds.first { $0.0 == .large }?.1
+                )
+                let small = try! XCTUnwrap(
+                    correctedBounds.first { $0.0 == .small }?.1
+                )
+                XCTAssertGreaterThanOrEqual(
+                    large.width,
+                    small.width,
+                    "smaller glyphs must contract around the anchor"
+                )
+                XCTAssertGreaterThan(
+                    abs(large.maxX - targetX),
+                    abs(small.maxX - targetX) - 0.5,
+                    "small preset kept a fixed right edge instead of shrinking around center"
+                )
+
+                let visualCardBounds = backgroundBounds.insetBy(
+                    dx: -MenuBarLayout.menuBarStatusItemVisualOverhangX,
+                    dy: 0
+                )
+                for (_, bounds) in correctedBounds {
+                    XCTAssertGreaterThanOrEqual(
+                        bounds.minX,
+                        visualCardBounds.minX - 0.001,
+                        "single-line primary ink clipped left"
+                    )
+                    XCTAssertLessThanOrEqual(
+                        bounds.maxX,
+                        visualCardBounds.maxX + 0.001,
+                        "single-line primary ink clipped right"
+                    )
+                }
+            }
+        }
+    }
+
+    func testSingleLinePrimaryInkMeasurementSupportsLightAndDarkAppearance() throws {
+        let backgroundBounds = NSRect(x: 0, y: 0, width: 180, height: 24)
+        let appearances: [(String, NSAppearance?)] = [
+            ("light", NSAppearance(named: .aqua)),
+            ("dark", NSAppearance(named: .darkAqua))
+        ]
+
+        for (name, appearance) in appearances {
+            let label = NSTextField(labelWithString: "USD 123,456.78")
+            label.appearance = appearance
+            label.font = MenuBarLayout.primaryFont(
+                size: CGFloat(MenuBarFontSizePreset.large.primarySize)
+            )
+            let geometry = MenuBarLayout.geometry(
+                primarySize: label.intrinsicContentSize,
+                secondarySize: .zero,
+                showIcon: true,
+                showAmount: true,
+                hasSecondary: false,
+                isBalance: true
+            )
+            let frames = MenuBarLayout.frames(
+                buttonSize: backgroundBounds.size,
+                geometry: geometry,
+                iconViewYOffset: MenuBarLayout.singleLineIconYOffset
+            )
+            let ink = try XCTUnwrap(
+                MenuBarLayout.singleLinePrimaryInkBounds(
+                    for: label,
+                    frames: frames,
+                    geometry: geometry,
+                    in: backgroundBounds
+                ),
+                "primary ink should be measurable in \(name) appearance"
+            )
+            XCTAssertLessThan(ink.width, frames.text.width)
+            XCTAssertGreaterThan(ink.height, 0)
+        }
+    }
+
+    func testOfficialTwoLineGeometryDoesNotUseSingleLinePrimaryAnchor() {
+        let primary = NSTextField(labelWithString: "87%")
+        primary.font = MenuBarLayout.primaryFont(size: 13)
+        let secondary = NSTextField(labelWithString: "6d12h")
+        secondary.font = MenuBarLayout.secondaryFont(size: 10)
+        let geometry = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: secondary.intrinsicContentSize,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let backgroundBounds = NSRect(x: 0, y: 0, width: 120, height: 24)
+        let frames = MenuBarLayout.frames(
+            buttonSize: backgroundBounds.size,
+            geometry: geometry,
+            iconViewYOffset: 0
+        )
+        let compensation = MenuBarLayout.horizontalCenteringCompensation(
+            backgroundBounds: backgroundBounds,
+            geometry: geometry,
+            iconOffsetX: 0,
+            textOffsetX: 0,
+            centerVisibleUnionOnBackground: true
+        )
+        let centered = MenuBarLayoutFrames(
+            content: frames.content.offsetBy(dx: compensation, dy: 0),
+            iconSlot: frames.iconSlot,
+            icon: frames.icon,
+            text: frames.text
+        )
+        let visible = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
+                for: centered,
+                in: backgroundBounds
+            )
+        )
+
+        XCTAssertGreaterThan(geometry.secondaryHeight, 0)
+        XCTAssertEqual(visible.midX, backgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX, accuracy: 0.001)
+        XCTAssertNil(
+            MenuBarLayout.singleLinePrimaryInkBounds(
+                for: primary,
+                frames: frames,
+                geometry: geometry,
+                in: backgroundBounds
+            ),
+            "protected two-line layout must not be measured as a single-line primary"
+        )
+    }
+
     func testPassthroughViewsDoNotCaptureHitTests() {
         XCTAssertNil(PassthroughTextField(labelWithString: "text").hitTest(.zero))
         XCTAssertNil(PassthroughImageView(frame: NSRect(x: 0, y: 0, width: 16, height: 16)).hitTest(.zero))
