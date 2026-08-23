@@ -215,7 +215,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
     }
 
-    func testMenuBarFineTuneSectionRendersControlsAndPreviewOffsets() {
+    func testMenuBarTypographyAndPositionSectionRendersControlsAndPreviewOffsets() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -335,16 +335,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
-        XCTAssertEqual(iconSummary?.stringValue, "X 0.2 · Y -0.3")
-        XCTAssertEqual(amountSummary?.stringValue, "X -0.4 · Y 0.5")
+        XCTAssertEqual(iconSummary?.stringValue, "微调图标上下像素位置：Y 轴 - 0.3 pt (上下偏移量)")
+        XCTAssertEqual(amountSummary?.stringValue, "微调金额上下像素位置：Y 轴 + 0.5 pt (上下偏移量)")
         XCTAssertEqual(
             labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
             "横向范围 +0.6 pt"
         )
-        XCTAssertEqual(labels.first { $0.stringValue == "细节微调" }?.stringValue, "细节微调")
-        XCTAssertEqual(labels.first { $0.stringValue == "图标" }?.stringValue, "图标")
-        XCTAssertEqual(labels.first { $0.stringValue == "金额" }?.stringValue, "金额")
-        XCTAssertEqual(labels.first { $0.stringValue == "宽度" }?.stringValue, "宽度")
+        let labelStrings = labels.map(\.stringValue)
+        XCTAssertTrue(labelStrings.contains("字号与位置"))
+        XCTAssertFalse(labelStrings.contains("字号"))
+        XCTAssertFalse(labelStrings.contains("细节微调"))
+        XCTAssertTrue(labelStrings.contains("调整菜单栏字体大小"))
+        let rowTitles = ["菜单栏字号", "图标偏移", "金额偏移", "状态项宽度（建议）"]
+        let rowIndices = rowTitles.compactMap { labelStrings.firstIndex(of: $0) }
+        XCTAssertEqual(rowIndices.count, rowTitles.count)
+        XCTAssertEqual(rowIndices, rowIndices.sorted())
+        XCTAssertFalse(labelStrings.contains("10.4 / 8.0 pt"))
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
@@ -427,6 +433,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(refreshedSliders
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey }
             .allSatisfy { $0.isEnabled })
+
+        preferences.menuBarIconOffsetY = 0.7
+        preferences.menuBarAmountOffsetY = -0.8
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        let refreshedLabels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertEqual(
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }?.stringValue,
+            "微调图标上下像素位置：Y 轴 + 0.7 pt (上下偏移量)"
+        )
+        XCTAssertEqual(
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }?.stringValue,
+            "微调金额上下像素位置：Y 轴 - 0.8 pt (上下偏移量)"
+        )
     }
 
     func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {
@@ -486,10 +510,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(fontPresetControl.toolTip?.contains("11.7/9") == true)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-        XCTAssertEqual(
-            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.fontSizeSummaryIdentifier }?.stringValue,
-            "11.7 / 9.0 pt"
-        )
+        XCTAssertTrue(labels.contains { $0.stringValue == "Font Size & Position" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Font Size" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Adjusts the menu bar font size" })
+        XCTAssertFalse(labels.contains { $0.stringValue == "11.7 / 9.0 pt" })
 
         let previewPrimary = try XCTUnwrap(
             descendants(of: page).first {
@@ -615,18 +639,54 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(slider.doubleValue, 7.4, accuracy: 0.001)
     }
 
-    func testMenuBarWidthFineTuneLabelLocalizesAcrossSupportedLanguages() {
+    func testMenuBarTypographyAndPositionLabelsLocalizeAcrossSupportedLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String, String)] = [
-            (.simplifiedChinese, "宽度", "从 0pt 向右放大，最大 +20pt"),
-            (.traditionalChinese, "寬度", "從 0pt 向右放大，最大 +20pt"),
-            (.japanese, "幅", "0pt から右へ広げ、最大 +20pt"),
-            (.english, "Width", "Drag right to widen from 0pt up to +20pt")
+        let cases: [(AppLanguage, [String], [String], String)] = [
+            (
+                .simplifiedChinese,
+                ["字号与位置", "菜单栏字号", "图标偏移", "金额偏移", "状态项宽度（建议）"],
+                [
+                    "调整菜单栏字体大小",
+                    "微调图标上下像素位置：Y 轴 + 0.0 pt (上下偏移量)",
+                    "微调金额上下像素位置：Y 轴 + 0.0 pt (上下偏移量)"
+                ],
+                "从 0pt 向右放大，最大 +20pt"
+            ),
+            (
+                .traditionalChinese,
+                ["字號與位置", "選單列字號", "圖示偏移", "金額偏移", "狀態項寬度（建議）"],
+                [
+                    "調整選單列字體大小",
+                    "微調圖示上下像素位置：Y 軸 + 0.0 pt (上下偏移量)",
+                    "微調金額上下像素位置：Y 軸 + 0.0 pt (上下偏移量)"
+                ],
+                "從 0pt 向右放大，最大 +20pt"
+            ),
+            (
+                .japanese,
+                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの位置調整", "金額の位置調整", "ステータス項目の幅（推奨）"],
+                [
+                    "メニューバーのフォントサイズを調整",
+                    "アイコンの上下位置を微調整：Y 軸 + 0.0 pt（上下のオフセット）",
+                    "金額の上下位置を微調整：Y 軸 + 0.0 pt（上下のオフセット）"
+                ],
+                "0pt から右へ広げ、最大 +20pt"
+            ),
+            (
+                .english,
+                ["Font Size & Position", "Menu Bar Font Size", "Icon Offset", "Amount Offset", "Status Item Width (Recommended)"],
+                [
+                    "Adjusts the menu bar font size",
+                    "Fine-tune the icon's vertical position: Y axis + 0.0 pt (vertical offset)",
+                    "Fine-tune the amount's vertical position: Y axis + 0.0 pt (vertical offset)"
+                ],
+                "Drag right to widen from 0pt up to +20pt"
+            )
         ]
 
-        for (language, expectedTitle, expectedToolTip) in cases {
+        for (language, expectedTitles, expectedSubtitles, expectedToolTip) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarWidthLocalization.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -640,14 +700,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 relay: DashboardPreferencePageRelay()
             ))
 
-            XCTAssertEqual(
-                descendants(of: page)
-                    .compactMap { $0 as? NSTextField }
-                    .first(where: { $0.stringValue == expectedTitle })?
-                    .stringValue,
-                expectedTitle,
-                "width title for \(language)"
-            )
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            let labelStrings = labels.map(\.stringValue)
+            for expectedTitle in expectedTitles {
+                XCTAssertTrue(
+                    labelStrings.contains(expectedTitle),
+                    "localized title \(expectedTitle) for \(language)"
+                )
+            }
+            for expectedSubtitle in expectedSubtitles {
+                XCTAssertTrue(
+                    labelStrings.contains(expectedSubtitle),
+                    "localized subtitle \(expectedSubtitle) for \(language)"
+                )
+            }
+            let rowIndices = expectedTitles.dropFirst().compactMap { labelStrings.firstIndex(of: $0) }
+            XCTAssertEqual(rowIndices.count, expectedTitles.count - 1)
+            XCTAssertEqual(rowIndices, rowIndices.sorted(), "row order for \(language)")
             XCTAssertFalse(
                 descendants(of: page).contains {
                     $0.identifier?.rawValue == "menuBarStatusItemWidthAdjustmentReset"

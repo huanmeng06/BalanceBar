@@ -211,7 +211,6 @@ final class DashboardMenuBarPage {
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
-    static let fontSizeSummaryIdentifier = "menuBarFontSizeSummary"
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
@@ -289,7 +288,6 @@ final class DashboardMenuBarPage {
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
-    private var fontSizeSummaryLabel: NSTextField?
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
@@ -445,9 +443,13 @@ final class DashboardMenuBarPage {
             DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount", "額度數字", "残高の数値"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance", "顯示百分比或 API 餘額", "パーセンテージまたは API 残高を表示"), control: amountToggle),
             DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown", "重設倒數計時", "リセットカウントダウン"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available", "僅在官方額度可用時顯示", "公式クォータが利用可能な場合のみ表示"), control: resetToggle)
         ])
-        let iconOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        let iconOffsetSummary = NSTextField(
+            labelWithString: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY)
+        )
         iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
-        let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        let amountOffsetSummary = NSTextField(
+            labelWithString: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY)
+        )
         amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
         let widthAdjustment = transientWidthAdjustment
             ?? input.preferences.menuBarStatusItemWidthAdjustment
@@ -469,17 +471,6 @@ final class DashboardMenuBarPage {
             relay: input.relay
         )
         let fontSizePreset = input.preferences.menuBarFontSizePreset
-        let fontSize = fontSizePreset.primarySize
-        let secondaryFontSize = fontSizePreset.secondarySize
-        let fontSizeSummary = NSTextField(
-            labelWithString: Self.fontSizeSummaryText(
-                primary: fontSize,
-                secondary: secondaryFontSize
-            )
-        )
-        fontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
-            Self.fontSizeSummaryIdentifier
-        )
         let fontSizeControls = makeFontSizePresetControls(
             value: fontSizePreset,
             relay: input.relay
@@ -487,45 +478,40 @@ final class DashboardMenuBarPage {
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
         widthAdjustmentSummaryLabel = widthAdjustmentSummary
-        fontSizeSummaryLabel = fontSizeSummary
         iconOffsetButtons = iconOffsetControls
         amountOffsetButtons = amountOffsetControls
         widthAdjustmentSlider = widthAdjustmentControls.slider
         fontSizePresetControl = fontSizeControls.control
-        let fontSizeSection = DashboardSettingsComponents.makeSettingsSection(
-            tr("字号", "Font Size", "字號", "フォントサイズ"),
+        let typographyAndPositionSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("字号与位置", "Font Size & Position", "字號與位置", "フォントサイズと位置"),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("菜单栏", "Menu Bar", "選單列", "メニューバー"),
-                    subtitle: Self.fontSizeSummaryText(
-                        primary: fontSize,
-                        secondary: secondaryFontSize
+                    tr("菜单栏字号", "Menu Bar Font Size", "選單列字號", "メニューバーのフォントサイズ"),
+                    subtitle: tr(
+                        "调整菜单栏字体大小",
+                        "Adjusts the menu bar font size",
+                        "調整選單列字體大小",
+                        "メニューバーのフォントサイズを調整"
                     ),
-                    subtitleLabel: fontSizeSummary,
                     control: fontSizeControls.view,
                     minimumHeight: 66
-                )
-            ]
-        )
-        let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
-            tr("细节微调", "Fine Tuning", "細節微調", "微調整"),
-            rows: [
+                ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("图标", "Icon", "圖示", "アイコン"),
-                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    tr("图标偏移", "Icon Offset", "圖示偏移", "アイコンの位置調整"),
+                    subtitle: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY),
                     subtitleLabel: iconOffsetSummary,
                     control: makeOffsetControlStack(buttons: iconOffsetControls),
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("金额", "Amount", "金額", "金額"),
-                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    tr("金额偏移", "Amount Offset", "金額偏移", "金額の位置調整"),
+                    subtitle: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY),
                     subtitleLabel: amountOffsetSummary,
                     control: makeOffsetControlStack(buttons: amountOffsetControls),
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("宽度", "Width", "寬度", "幅"),
+                    tr("状态项宽度（建议）", "Status Item Width (Recommended)", "狀態項寬度（建議）", "ステータス項目の幅（推奨）"),
                     subtitle: Self.widthAdjustmentSummaryText(widthAdjustment),
                     subtitleLabel: widthAdjustmentSummary,
                     control: widthAdjustmentControls.view,
@@ -538,8 +524,7 @@ final class DashboardMenuBarPage {
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
             displaySection,
-            fontSizeSection,
-            fineTuneSection
+            typographyAndPositionSection
         ])
     }
 
@@ -595,14 +580,10 @@ final class DashboardMenuBarPage {
         let iconOffsetY = preferences.menuBarIconOffsetY
         let amountOffsetX = preferences.menuBarAmountOffsetX
         let amountOffsetY = preferences.menuBarAmountOffsetY
-        iconOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: iconOffsetX, y: iconOffsetY)
-        amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
+        iconOffsetSummaryLabel?.stringValue = Self.iconOffsetSummaryText(y: iconOffsetY)
+        amountOffsetSummaryLabel?.stringValue = Self.amountOffsetSummaryText(y: amountOffsetY)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
-        fontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
-            primary: fontSize,
-            secondary: secondaryFontSize
-        )
         fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
@@ -880,8 +861,29 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private static func offsetSummaryText(x: Double, y: Double) -> String {
-        String(format: "X %.1f · Y %.1f", x, y)
+    private static func signedPointText(_ value: Double) -> String {
+        let sign = value < 0 ? "-" : "+"
+        return "\(sign) \(String(format: "%.1f", abs(value))) pt"
+    }
+
+    private static func iconOffsetSummaryText(y: Double) -> String {
+        let valueText = signedPointText(y)
+        return tr(
+            "微调图标上下像素位置：Y 轴 \(valueText) (上下偏移量)",
+            "Fine-tune the icon's vertical position: Y axis \(valueText) (vertical offset)",
+            "微調圖示上下像素位置：Y 軸 \(valueText) (上下偏移量)",
+            "アイコンの上下位置を微調整：Y 軸 \(valueText)（上下のオフセット）"
+        )
+    }
+
+    private static func amountOffsetSummaryText(y: Double) -> String {
+        let valueText = signedPointText(y)
+        return tr(
+            "微调金额上下像素位置：Y 轴 \(valueText) (上下偏移量)",
+            "Fine-tune the amount's vertical position: Y axis \(valueText) (vertical offset)",
+            "微調金額上下像素位置：Y 軸 \(valueText) (上下偏移量)",
+            "金額の上下位置を微調整：Y 軸 \(valueText)（上下のオフセット）"
+        )
     }
 
     private static func widthAdjustmentSummaryText(_ value: Double) -> String {
@@ -892,10 +894,6 @@ final class DashboardMenuBarPage {
             "橫向範圍 \(valueText)",
             "横幅 \(valueText)"
         )
-    }
-
-    private static func fontSizeSummaryText(primary: Double, secondary: Double) -> String {
-        String(format: "%.1f / %.1f pt", primary, secondary)
     }
 
     private static func previewCapsuleHorizontalInset(
