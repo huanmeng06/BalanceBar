@@ -17,6 +17,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"' \
         '    static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"' \
         '    static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"' \
+        '    static let menuBarFontSizePresetKey = "menuBarFontSizePreset"' \
         '    static let menuBarFontSizeKey = "menuBarFontSize"' \
         '    static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"' \
         '    static let menuBarSecondaryFontSizeKey = "menuBarSecondaryFontSize"' \
@@ -36,6 +37,7 @@ let production: [String: Any] = [
     "showMenuBarIcon": NSNumber(value: false),
     "activityPollInterval": NSNumber(value: 0.5),
     "menuBarStatusItemWidthAdjustment": NSNumber(value: 0.7),
+    "menuBarFontSizePreset": "medium",
     "menuBarFontSize": NSNumber(value: 14.2),
     "menuBarPrimaryFontSize": NSNumber(value: 14.2),
     "menuBarSecondaryFontSize": NSNumber(value: 9.6),
@@ -59,6 +61,7 @@ let selected = PreferencesMigrationPlan.selectedValues(
 require((selected["showMenuBarIcon"] as? NSNumber)?.boolValue == false, "production wins")
 require((selected["activityPollInterval"] as? NSNumber)?.doubleValue == 0.5, "production value migrates")
 require((selected["menuBarStatusItemWidthAdjustment"] as? NSNumber)?.doubleValue == 0.7, "width adjustment migrates")
+require((selected["menuBarFontSizePreset"] as? String) == "medium", "font size preset migrates")
 require((selected["menuBarFontSize"] as? NSNumber)?.doubleValue == 14.2, "shared font size migrates")
 require((selected["menuBarPrimaryFontSize"] as? NSNumber)?.doubleValue == 14.2, "primary font size migrates")
 require((selected["menuBarSecondaryFontSize"] as? NSNumber)?.doubleValue == 9.6, "secondary font size migrates")

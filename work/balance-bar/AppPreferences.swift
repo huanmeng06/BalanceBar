@@ -1,5 +1,51 @@
 import Foundation
 
+enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
+    case large
+    case medium
+    case small
+
+    var primarySize: Double {
+        switch self {
+        case .large: return 13.0
+        case .medium: return 11.7
+        case .small: return 10.4
+        }
+    }
+
+    var secondarySize: Double {
+        switch self {
+        case .large: return 10.0
+        case .medium: return 9.0
+        case .small: return 8.0
+        }
+    }
+
+    var segmentIndex: Int {
+        switch self {
+        case .large: return 0
+        case .medium: return 1
+        case .small: return 2
+        }
+    }
+
+    init?(segmentIndex: Int) {
+        switch segmentIndex {
+        case 0: self = .large
+        case 1: self = .medium
+        case 2: self = .small
+        default: return nil
+        }
+    }
+
+    static func nearest(to primarySize: Double) -> Self {
+        guard primarySize.isFinite else { return .large }
+        return allCases.min {
+            abs($0.primarySize - primarySize) < abs($1.primarySize - primarySize)
+        } ?? .large
+    }
+}
+
 final class AppPreferences {
     static let showOpenCodexMenuKey = "showOpenCodexMenu"
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
@@ -77,25 +123,22 @@ final class AppPreferences {
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
     static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
-    /// The single persisted menu-bar font-size preference. The primary row is
-    /// the slider's logical AppKit point value; the secondary row is always
-    /// derived from the default 13pt:10pt ratio.
+    /// The persisted menu-bar font-size preset. The numeric key below remains
+    /// as a migration source for versions that exposed a continuous slider.
+    static let menuBarFontSizePresetKey = "menuBarFontSizePreset"
+    static let menuBarFontSizePresetDefault: MenuBarFontSizePreset = .large
     static let menuBarFontSizeKey = "menuBarFontSize"
     /// Legacy keys kept in the migration whitelist. They are read only as a
     /// fallback for installations that used the short-lived independent-row
     /// controls and are removed when the shared preference is written.
     static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"
     static let menuBarSecondaryFontSizeKey = "menuBarSecondaryFontSize"
-    /// Menu-bar font sizes are AppKit logical points, independent of the
-    /// display backing scale. The bounds keep the two-line preview inside its
-    /// fixed 42pt card while leaving useful room on either side of the
-    /// current 13pt/10pt defaults.
-    /// The lower bound is 10.4pt so the derived secondary row remains at or
-    /// above its previous safe 8pt floor while the upper bound remains within
-    /// the fixed 42pt card for long official text.
+    /// These numeric bounds and step are retained only for legacy numeric
+    /// preference migration and compatibility helpers. The current UI exposes
+    /// the three presets above instead of a continuous slider.
     static let menuBarFontSizeRange = 10.4...16.0
     static let menuBarFontSizeStep: Double = 0.1
-    static let menuBarFontSizeDefault: Double = 13.0
+    static let menuBarFontSizeDefault: Double = menuBarFontSizePresetDefault.primarySize
     static let menuBarSecondaryToPrimaryFontRatio: Double = 10.0 / 13.0
     /// The width slider is zero-based and only widens the status item above
     /// its actual -20pt baseline.
@@ -142,33 +185,37 @@ final class AppPreferences {
         }
     }
 
-    /// The shared official/third-party menu-bar text size in logical AppKit
-    /// points. The value drives both official rows and the single-line
-    /// third-party balance path.
-    var menuBarFontSize: Double {
+    /// The selected menu-bar font-size preset drives both official rows and
+    /// the single-line third-party balance path.
+    var menuBarFontSizePreset: MenuBarFontSizePreset {
         get {
+            if let rawValue = defaults.string(forKey: Self.menuBarFontSizePresetKey),
+               let preset = MenuBarFontSizePreset(rawValue: rawValue) {
+                return preset
+            }
             if let stored = storedMenuBarFontSize(for: Self.menuBarFontSizeKey) {
-                return stored
+                return MenuBarFontSizePreset.nearest(to: stored)
             }
             // An earlier build briefly exposed independent row controls. Use
-            // its primary value as the migration source and deliberately
-            // ignore the old secondary value so the default ratio is restored.
+            // its primary value as the migration source and restore the
+            // nearest supported preset.
             if let legacy = storedMenuBarFontSize(for: Self.menuBarPrimaryFontSizeKey) {
-                return legacy
+                return MenuBarFontSizePreset.nearest(to: legacy)
             }
-            return Self.menuBarFontSizeDefault
+            return Self.menuBarFontSizePresetDefault
         }
         set {
-            defaults.set(
-                Self.normalizedMenuBarFontSize(
-                    newValue,
-                    range: Self.menuBarFontSizeRange
-                ),
-                forKey: Self.menuBarFontSizeKey
-            )
+            defaults.set(newValue.rawValue, forKey: Self.menuBarFontSizePresetKey)
+            defaults.removeObject(forKey: Self.menuBarFontSizeKey)
             defaults.removeObject(forKey: Self.menuBarPrimaryFontSizeKey)
             defaults.removeObject(forKey: Self.menuBarSecondaryFontSizeKey)
         }
+    }
+
+    /// The selected primary-row size in logical AppKit points.
+    var menuBarFontSize: Double {
+        get { menuBarFontSizePreset.primarySize }
+        set { menuBarFontSizePreset = MenuBarFontSizePreset.nearest(to: newValue) }
     }
 
     /// The actual primary row size used by the menu-bar renderer.
@@ -177,7 +224,7 @@ final class AppPreferences {
     /// The actual secondary row size used by the official two-line renderer.
     /// It is derived, never independently persisted or adjustable.
     var menuBarSecondaryFontSize: Double {
-        Self.secondaryMenuBarFontSize(for: menuBarFontSize)
+        menuBarFontSizePreset.secondarySize
     }
 
     static func secondaryMenuBarFontSize(for primarySize: Double) -> Double {
