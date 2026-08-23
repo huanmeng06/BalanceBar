@@ -190,6 +190,31 @@ final class RepeatOffsetButton: NSButton {
 final class MenuBarWidthSlider: NSSlider {
     var onEditingEnded: (() -> Void)?
 
+    static func centeredTrackFillRange(
+        value: Double,
+        minimum: Double,
+        maximum: Double,
+        track: NSRect
+    ) -> NSRect? {
+        guard maximum > minimum, track.width > 0 else { return nil }
+        let clampedValue = min(max(value, minimum), maximum)
+        let fraction = (clampedValue - minimum) / (maximum - minimum)
+        let thumbX = track.minX + (track.width * CGFloat(fraction))
+        let neutralX = track.midX
+        let start = min(thumbX, neutralX)
+        let end = max(thumbX, neutralX)
+        guard end > start else { return nil }
+        return NSRect(x: start, y: track.minY, width: end - start, height: track.height)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        if #available(macOS 26.0, *) {
+            return
+        }
+        drawLegacyCenteredTrack()
+    }
+
     override func mouseDown(with event: NSEvent) {
         super.mouseDown(with: event)
         onEditingEnded?()
@@ -202,6 +227,68 @@ final class MenuBarWidthSlider: NSSlider {
     override func keyUp(with event: NSEvent) {
         super.keyUp(with: event)
         onEditingEnded?()
+    }
+
+    private func drawLegacyCenteredTrack() {
+        guard !isVertical, bounds.width > 0, bounds.height > 0 else { return }
+
+        let knobRect = (cell as? NSSliderCell)?.knobRect(flipped: isFlipped)
+            ?? NSRect(x: bounds.midX - 7, y: bounds.midY - 7, width: 14, height: 14)
+        let trackHeight = min(4.0, max(2.0, bounds.height / 4.0))
+        let trackInset = max(6.0, knobRect.width / 2.0)
+        let track = NSRect(
+            x: bounds.minX + trackInset,
+            y: bounds.midY - trackHeight / 2,
+            width: max(0, bounds.width - trackInset * 2),
+            height: trackHeight
+        )
+        guard track.width > 0 else { return }
+
+        let exclusion = knobRect.insetBy(dx: 1, dy: 0)
+        var segments: [NSRect] = []
+        let leftEnd = min(track.maxX, exclusion.minX)
+        if leftEnd > track.minX {
+            segments.append(NSRect(
+                x: track.minX,
+                y: track.minY,
+                width: leftEnd - track.minX,
+                height: track.height
+            ))
+        }
+        let rightStart = max(track.minX, exclusion.maxX)
+        if track.maxX > rightStart {
+            segments.append(NSRect(
+                x: rightStart,
+                y: track.minY,
+                width: track.maxX - rightStart,
+                height: track.height
+            ))
+        }
+        drawTrackSegments(segments, color: .quaternaryLabelColor)
+
+        guard let fill = Self.centeredTrackFillRange(
+            value: doubleValue,
+            minimum: minValue,
+            maximum: maxValue,
+            track: track
+        ) else {
+            return
+        }
+        let blueSegments = segments.compactMap { segment -> NSRect? in
+            let start = max(segment.minX, fill.minX)
+            let end = min(segment.maxX, fill.maxX)
+            guard end > start else { return nil }
+            return NSRect(x: start, y: segment.minY, width: end - start, height: segment.height)
+        }
+        drawTrackSegments(blueSegments, color: .controlAccentColor)
+    }
+
+    private func drawTrackSegments(_ segments: [NSRect], color: NSColor) {
+        color.setFill()
+        for segment in segments {
+            let radius = segment.height / 2
+            NSBezierPath(roundedRect: segment, xRadius: radius, yRadius: radius).fill()
+        }
     }
 }
 
@@ -869,20 +956,20 @@ final class DashboardMenuBarPage {
     private static func iconOffsetSummaryText(y: Double) -> String {
         let valueText = signedPointText(y)
         return tr(
-            "微调图标上下像素位置：Y 轴 \(valueText) (上下偏移量)",
-            "Fine-tune the icon's vertical position: Y axis \(valueText) (vertical offset)",
-            "微調圖示上下像素位置：Y 軸 \(valueText) (上下偏移量)",
-            "アイコンの上下位置を微調整：Y 軸 \(valueText)（上下のオフセット）"
+            "微调图标上下像素位置：Y 轴 \(valueText)",
+            "Fine-tune the icon's vertical position: Y axis \(valueText)",
+            "微調圖示上下像素位置：Y 軸 \(valueText)",
+            "アイコンの上下位置を微調整：Y 軸 \(valueText)"
         )
     }
 
     private static func amountOffsetSummaryText(y: Double) -> String {
         let valueText = signedPointText(y)
         return tr(
-            "微调金额上下像素位置：Y 轴 \(valueText) (上下偏移量)",
-            "Fine-tune the amount's vertical position: Y axis \(valueText) (vertical offset)",
-            "微調金額上下像素位置：Y 軸 \(valueText) (上下偏移量)",
-            "金額の上下位置を微調整：Y 軸 \(valueText)（上下のオフセット）"
+            "微调金额上下像素位置：Y 轴 \(valueText)",
+            "Fine-tune the amount's vertical position: Y axis \(valueText)",
+            "微調金額上下像素位置：Y 軸 \(valueText)",
+            "金額の上下位置を微調整：Y 軸 \(valueText)"
         )
     }
 
@@ -973,6 +1060,11 @@ final class DashboardMenuBarPage {
         slider.identifier = NSUserInterfaceItemIdentifier(key)
         slider.minValue = range.lowerBound
         slider.maxValue = range.upperBound
+        if #available(macOS 26.0, *) {
+            slider.neutralValue = (range.lowerBound + range.upperBound) / 2
+            slider.tintProminence = .primary
+        }
+        slider.trackFillColor = .controlAccentColor
         slider.doubleValue = value
         slider.isContinuous = true
         slider.numberOfTickMarks = 21
@@ -981,10 +1073,10 @@ final class DashboardMenuBarPage {
         slider.target = relay
         slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
         slider.toolTip = tr(
-            "从 0pt 向右放大，最大 +20pt",
-            "Drag right to widen from 0pt up to +20pt",
-            "從 0pt 向右放大，最大 +20pt",
-            "0pt から右へ広げ、最大 +20pt"
+            "从窄到宽调整菜单栏宽度，默认 + 10.0 pt",
+            "Adjusts menu bar width from narrow to wide; default + 10.0 pt",
+            "從窄到寬調整選單列寬度，預設 + 10.0 pt",
+            "メニューバーの幅を狭い方から広い方へ調整（デフォルト + 10.0 pt）"
         )
         slider.onEditingEnded = { [weak relay, weak slider] in
             guard let relay, let slider else { return }
@@ -993,13 +1085,11 @@ final class DashboardMenuBarPage {
         slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
 
         let minimumLabel = makeWidthSliderEndpointLabel(
-            range.lowerBound == 0
-                ? "0"
-                : String(format: "%+.0f", range.lowerBound),
+            tr("窄", "Narrow", "窄", "狭い"),
             identifier: Self.widthAdjustmentSliderMinimumIdentifier
         )
         let maximumLabel = makeWidthSliderEndpointLabel(
-            String(format: "%+.0f", range.upperBound),
+            tr("宽", "Wide", "寬", "広い"),
             identifier: Self.widthAdjustmentSliderMaximumIdentifier
         )
         let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])

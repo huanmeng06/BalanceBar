@@ -152,13 +152,14 @@ final class AppPreferences {
     static let menuBarFontSizeStep: Double = 0.1
     static let menuBarFontSizeDefault: Double = menuBarFontSizePresetDefault.primarySize
     static let menuBarSecondaryToPrimaryFontRatio: Double = 10.0 / 13.0
-    /// The width slider is zero-based and only widens the status item above
-    /// its actual -20pt baseline.
+    /// The width slider uses a 0...20 range, with the system default at its
+    /// midpoint. Existing stored values remain unchanged when this default is
+    /// raised from the former zero-based presentation.
     static let menuBarStatusItemWidthAdjustmentRange = 0.0...20.0
     static let menuBarStatusItemWidthAdjustmentStep: Double = menuBarOffsetStep
+    static let menuBarStatusItemWidthAdjustmentDefault: Double = 10.0
     /// The actual status-item width baseline. The persisted/user-facing
-    /// adjustment remains zero-based, so logical 0pt applies -20pt to the
-    /// outer status-item footprint.
+    /// adjustment is relative to the actual status-item footprint.
     static let menuBarStatusItemWidthBaseline: Double = -20.0
 
     /// Point offsets for the menu bar Agent icon. Positive X moves right,
@@ -362,7 +363,7 @@ final class AppPreferences {
     private func clampedMenuBarStatusItemWidthAdjustment() -> Double {
         guard let number = defaults.object(
             forKey: Self.menuBarStatusItemWidthAdjustmentKey
-        ) as? NSNumber else { return 0 }
+        ) as? NSNumber else { return Self.menuBarStatusItemWidthAdjustmentDefault }
         return roundedMenuBarStatusItemWidthAdjustment(number.doubleValue)
     }
 
