@@ -251,6 +251,125 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(presentation.isBalance)
     }
 
+    func testCodexActivityAnimationBelongsToMenuBarWithLocalizedSectionOrder() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, String, String)] = [
+            (.simplifiedChinese, "动画", "任务进行时播放图标动画"),
+            (.english, "Animation", "Play the icon animation while a task is running"),
+            (.traditionalChinese, "動畫", "任務進行時播放圖示動畫"),
+            (.japanese, "アニメーション", "タスク実行中にアイコンアニメーションを再生")
+        ]
+
+        for (language, animationSectionTitle, animationRowTitle) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.CodexActivityAnimation.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            let preferences = AppPreferences(defaults: defaults)
+            let menuBarPage = DashboardMenuBarPage().make(.init(
+                preferences: preferences,
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay()
+            ))
+
+            let labels = descendants(of: menuBarPage).compactMap { $0 as? NSTextField }
+            let labelStrings = labels.map(\.stringValue)
+            guard let previewIndex = labelStrings.firstIndex(of: tr("预览", "Preview", "預覽", "プレビュー", language: language)),
+                  let animationIndex = labelStrings.firstIndex(of: animationSectionTitle),
+                  let displayIndex = labelStrings.firstIndex(of: tr("显示项目", "Display Items", "顯示項目", "表示項目", language: language)) else {
+                defaults.removePersistentDomain(forName: suiteName)
+                return XCTFail("Expected menu bar section headings for \(language)")
+            }
+            XCTAssertLessThan(previewIndex, animationIndex)
+            XCTAssertLessThan(animationIndex, displayIndex)
+            XCTAssertEqual(labelStrings.filter { $0 == animationSectionTitle }.count, 1)
+            XCTAssertEqual(labelStrings.filter { $0 == animationRowTitle }.count, 1)
+
+            let animationSwitches = descendants(of: menuBarPage)
+                .compactMap { $0 as? NSSwitch }
+                .filter { $0.identifier?.rawValue == "animateCodexActivity" }
+            XCTAssertEqual(animationSwitches.count, 1)
+
+            let mode = OpenCodexDashboardMode(automaticDetection: true, manualPort: nil)
+            let advancedPage = DashboardAdvancedPage().make(.init(
+                preferences: preferences,
+                mode: mode,
+                currentResolution: OpenCodexDashboardResolver.resolve(manualPort: nil, runtimeCandidate: nil),
+                runtimeCandidate: nil,
+                relay: DashboardPreferencePageRelay(),
+                logViewer: NSView(),
+                onModeChanged: { _ in },
+                onClamp: {}
+            ))
+            let advancedLabels = descendants(of: advancedPage).compactMap { $0 as? NSTextField }
+            XCTAssertFalse(advancedLabels.contains { $0.stringValue == tr("任务状态", "Task Status", "任務狀態", "タスクステータス", language: language) })
+            XCTAssertTrue(
+                descendants(of: advancedPage)
+                    .compactMap { $0 as? NSSwitch }
+                    .filter { $0.identifier?.rawValue == "animateCodexActivity" }
+                    .isEmpty
+            )
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+    }
+
+    func testCodexActivityAnimationRelayPersistsTheExistingPreference() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.CodexActivityAnimation.Persistence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertTrue(preferences.animateCodexActivity)
+        let relay = DashboardPreferencePageRelay()
+        relay.onToggle = { identifier, enabled in
+            guard identifier == "animateCodexActivity" else { return }
+            preferences.animateCodexActivity = enabled
+        }
+        let page = DashboardMenuBarPage().make(.init(
+            preferences: preferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        let animationSwitches = descendants(of: page)
+            .compactMap { $0 as? NSSwitch }
+            .filter { $0.identifier?.rawValue == "animateCodexActivity" }
+        XCTAssertEqual(animationSwitches.count, 1)
+        let animationSwitch = try XCTUnwrap(animationSwitches.first)
+        XCTAssertEqual(animationSwitch.state, .on)
+
+        animationSwitch.state = .off
+        relay.toggle(animationSwitch)
+        XCTAssertFalse(preferences.animateCodexActivity)
+        XCTAssertFalse(AppPreferences(defaults: defaults).animateCodexActivity)
+
+        let reloadedPage = DashboardMenuBarPage().make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        XCTAssertEqual(
+            try XCTUnwrap(
+                descendants(of: reloadedPage)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == "animateCodexActivity" }
+            ).state,
+            .off
+        )
+    }
+
     func testRelayRoutesOffsetAdjustAndResetOnce() {
         let relay = DashboardPreferencePageRelay()
         var adjustments: [(String, Int)] = []
