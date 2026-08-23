@@ -662,6 +662,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "The font-size section should only expose the native preset popup"
         )
 
+        controller.refresh(
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        XCTAssertEqual(fontPresetControl.indexOfSelectedItem, MenuBarFontSizePreset.small.segmentIndex)
+
         preferences.showMenuBarAmount = false
         controller.refresh(
             snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),

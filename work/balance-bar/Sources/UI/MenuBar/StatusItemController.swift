@@ -294,7 +294,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// Shared logical AppKit point size for both official rows and the
         /// single-line third-party amount. The secondary row is derived from
         /// the default 13:10 ratio in the renderer.
-        let fontSize: CGFloat
+        var fontSize: CGFloat
 
         init(
             showIcon: Bool,
@@ -504,6 +504,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func updateWidthAdjustment(_ widthAdjustment: CGFloat) {
         settings.widthAdjustment = widthAdjustment
         applyPendingWidthAdjustment(widthAdjustment)
+    }
+
+    /// Applies a discrete font-size change without rebuilding the status menu.
+    /// The menu contents are independent of typography, so keeping this on the
+    /// cached layout path avoids an unnecessary status-item redraw while the
+    /// native Dashboard popup is closing.
+    func updateFontSize(_ fontSize: CGFloat) {
+        settings.fontSize = CGFloat(
+            AppPreferences.normalizedMenuBarFontSize(
+                Double(fontSize),
+                range: AppPreferences.menuBarFontSizeRange
+            )
+        )
+        layoutStatusItem(for: snapshot)
     }
 
     private func applyPendingWidthAdjustment(_ widthAdjustment: CGFloat) {

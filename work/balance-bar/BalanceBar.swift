@@ -922,8 +922,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             guard let preset = MenuBarFontSizePreset(segmentIndex: Int(value.rounded())) else {
                 return
             }
+            guard preferences.menuBarFontSizePreset != preset else {
+                return
+            }
             preferences.menuBarFontSizePreset = preset
-            updateStatusItem(for: snapshot)
+            statusItemController.updateFontSize(CGFloat(preset.primarySize))
+            refreshDashboardMenuBarPage()
         case AppPreferences.menuBarFontSizeKey:
             // Keep the numeric route for migration-era callers. The current
             // settings page sends the discrete preset key above.

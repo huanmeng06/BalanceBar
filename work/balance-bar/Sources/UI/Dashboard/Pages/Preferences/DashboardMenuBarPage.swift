@@ -707,7 +707,9 @@ final class DashboardMenuBarPage {
         amountOffsetSlider?.doubleValue = amountOffsetY
         iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
         amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
-        fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        if fontSizePresetControl?.indexOfSelectedItem != fontSizePreset.segmentIndex {
+            fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
