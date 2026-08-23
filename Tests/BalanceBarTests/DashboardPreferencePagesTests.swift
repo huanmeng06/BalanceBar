@@ -426,6 +426,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
         XCTAssertEqual(fontPresetControls.count, 1)
         let fontPresetControl = try XCTUnwrap(fontPresetControls.first)
+        let fontPresetWidthConstraint = try XCTUnwrap(fontPresetControl.constraints.first {
+            $0.firstAttribute == .width && $0.relation == .equal
+        })
+        XCTAssertEqual(fontPresetWidthConstraint.constant, DashboardMenuBarPage.fontSizePresetWidth, accuracy: 0.001)
         XCTAssertEqual(
             (fontPresetControl.selectedItem?.representedObject as? NSNumber)?.intValue,
             MenuBarFontSizePreset.medium.segmentIndex
@@ -481,6 +485,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let fontSizeReset = try XCTUnwrap(descendants(of: page)
             .compactMap { $0 as? NSButton }
             .first { $0.identifier?.rawValue == DashboardMenuBarPage.fontSizeResetIdentifier })
+        let fontSizeResetWidthConstraint = try XCTUnwrap(fontSizeReset.constraints.first {
+            $0.firstAttribute == .width && $0.relation == .equal
+        })
+        XCTAssertEqual(fontSizeResetWidthConstraint.constant, DashboardMenuBarPage.fontSizeResetButtonWidth, accuracy: 0.001)
+        XCTAssertEqual(fontSizeReset.controlSize, .regular)
         relay.resetOffset(fontSizeReset)
         XCTAssertEqual(
             preferences.menuBarFontSize,

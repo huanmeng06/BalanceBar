@@ -217,7 +217,11 @@ final class DashboardMenuBarPage {
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
-    static let fontSizePresetWidth: CGFloat = 180
+    // Match the compact native popup used by the Application settings page.
+    // Screenshots are commonly captured at 2x scale, so this is 100 points
+    // (about 200 pixels), not the previous 180-point control.
+    static let fontSizePresetWidth: CGFloat = 100
+    static let fontSizeResetButtonWidth: CGFloat = 76
     /// Extra default lift for the amount text in the Dashboard preview only
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
@@ -829,8 +833,10 @@ final class DashboardMenuBarPage {
         )
         resetButton.identifier = NSUserInterfaceItemIdentifier(resetIdentifier)
         resetButton.bezelStyle = .rounded
-        resetButton.controlSize = .small
-        resetButton.font = .systemFont(ofSize: 11)
+        // Use the same regular native button metrics as the General page's
+        // “Check for Updates” action, rather than the smaller offset-button
+        // treatment used elsewhere in this page.
+        resetButton.widthAnchor.constraint(equalToConstant: Self.fontSizeResetButtonWidth).isActive = true
 
         let stack = NSStackView(views: [control, resetButton])
         stack.orientation = .horizontal
