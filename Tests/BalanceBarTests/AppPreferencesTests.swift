@@ -165,12 +165,22 @@ final class AppPreferencesTests: XCTestCase {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0, accuracy: 0.001)
+        XCTAssertEqual(AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound, -10, accuracy: 0.001)
+        XCTAssertEqual(AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound, 10, accuracy: 0.001)
+        XCTAssertEqual(AppPreferences.menuBarStatusItemWidthAdjustmentDefault, 0, accuracy: 0.001)
         XCTAssertEqual(
-            preferences.menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
-            -20,
+            preferences.menuBarStatusItemWidthAdjustment,
+            AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
             accuracy: 0.001
         )
+        XCTAssertEqual(
+            preferences.menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
+            0,
+            accuracy: 0.001
+        )
+
+        defaults.set(0, forKey: AppPreferences.menuBarStatusItemWidthAdjustmentKey)
+        XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0, accuracy: 0.001)
 
         preferences.menuBarStatusItemWidthAdjustment = 0.3
         XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.3, accuracy: 0.001)
@@ -192,10 +202,10 @@ final class AppPreferencesTests: XCTestCase {
             AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound,
             accuracy: 0.001
         )
-        preferences.menuBarStatusItemWidthAdjustment = 20
+        preferences.menuBarStatusItemWidthAdjustment = 10
         XCTAssertEqual(
             preferences.menuBarStatusItemWidthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
-            0,
+            10,
             accuracy: 0.001
         )
 
@@ -212,8 +222,8 @@ final class AppPreferencesTests: XCTestCase {
 
         var persistedValues: [Double] = []
         let finalValue = session.finish(20.06) { persistedValues.append($0) }
-        XCTAssertEqual(finalValue, 20, accuracy: 0.001)
-        XCTAssertEqual(persistedValues, [20])
+        XCTAssertEqual(finalValue, 10, accuracy: 0.001)
+        XCTAssertEqual(persistedValues, [10])
         XCTAssertNil(session.transientValue)
 
         _ = session.update(12.3)

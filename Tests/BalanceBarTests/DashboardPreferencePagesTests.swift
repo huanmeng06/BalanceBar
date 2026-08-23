@@ -189,7 +189,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         widthSlider.minValue = AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound
         widthSlider.maxValue = AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound
-        widthSlider.doubleValue = 12.3
+        widthSlider.doubleValue = 7.3
         relay.adjustOffsetValue(widthSlider)
         relay.finishOffsetValue(widthSlider)
 
@@ -208,14 +208,71 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(adjustments[1].1, -1)
         XCTAssertEqual(values.count, 1)
         XCTAssertEqual(values.first?.0, AppPreferences.menuBarStatusItemWidthAdjustmentKey)
-        XCTAssertEqual(values.first?.1 ?? .nan, 12.3, accuracy: 0.001)
+        XCTAssertEqual(values.first?.1 ?? .nan, 7.3, accuracy: 0.001)
         XCTAssertEqual(endedValues.count, 1)
         XCTAssertEqual(endedValues.first?.0, AppPreferences.menuBarStatusItemWidthAdjustmentKey)
-        XCTAssertEqual(endedValues.first?.1 ?? .nan, 12.3, accuracy: 0.001)
+        XCTAssertEqual(endedValues.first?.1 ?? .nan, 7.3, accuracy: 0.001)
         XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
     }
 
-    func testMenuBarFineTuneSectionRendersControlsAndPreviewOffsets() {
+    func testMenuBarWidthSliderIdentifiesIntegerBoundariesInBothDirections() {
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 0.2,
+                to: 3.4,
+                minimum: -10,
+                maximum: 10
+            ),
+            [1, 2, 3]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 3.4,
+                to: 0.2,
+                minimum: -10,
+                maximum: 10
+            ),
+            [3, 2, 1]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 1.0,
+                to: 1.8,
+                minimum: -10,
+                maximum: 10
+            ),
+            []
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 0.8,
+                to: 1.0,
+                minimum: -10,
+                maximum: 10
+            ),
+            [1]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: -0.2,
+                to: 0.1,
+                minimum: -10,
+                maximum: 10
+            ),
+            [0]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: -9.4,
+                to: -10.0,
+                minimum: -10,
+                maximum: 10
+            ),
+            [-10]
+        )
+    }
+
+    func testMenuBarTypographyAndPositionSectionRendersControlsAndPreviewOffsets() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -250,8 +307,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
         }
         relay.onOffsetValue = { identifier, value in
-            if identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey {
+            switch identifier {
+            case AppPreferences.menuBarIconOffsetYKey:
+                preferences.menuBarIconOffsetY = value
+            case AppPreferences.menuBarAmountOffsetYKey:
+                preferences.menuBarAmountOffsetY = value
+            case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
                 preferences.menuBarStatusItemWidthAdjustment = value
+            default:
+                break
             }
         }
         let controller = DashboardMenuBarPage()
@@ -266,9 +330,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let buttons = descendants(of: page).compactMap { $0 as? NSButton }
         let iconXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
-        let iconYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
         let amountXButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
-        let amountYButtons = buttons.filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
         XCTAssertTrue(iconXButtons.isEmpty)
         let sliders = descendants(of: page).compactMap { $0 as? NSSlider }
         guard let widthSlider = sliders.first(where: {
@@ -276,15 +338,36 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }) else {
             return XCTFail("Expected a status item width slider")
         }
-        XCTAssertEqual(iconYButtons.count, 2)
+        guard let iconOffsetSlider = sliders.first(where: {
+            $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey
+        }), let amountOffsetSlider = sliders.first(where: {
+            $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey
+        }) else {
+            return XCTFail("Expected icon and amount offset sliders")
+        }
         XCTAssertTrue(amountXButtons.isEmpty)
-        XCTAssertEqual(amountYButtons.count, 2)
-        XCTAssertEqual(
-            Set(amountYButtons.map(\.tag)),
-            [-1, 1]
-        )
-        XCTAssertTrue(iconYButtons.allSatisfy { $0 is RepeatOffsetButton })
-        XCTAssertTrue(amountYButtons.allSatisfy { $0 is RepeatOffsetButton })
+        XCTAssertTrue(iconOffsetSlider is MenuBarWidthSlider)
+        XCTAssertTrue(amountOffsetSlider is MenuBarWidthSlider)
+        for offsetSlider in [iconOffsetSlider, amountOffsetSlider] {
+            XCTAssertEqual(
+                offsetSlider.minValue,
+                AppPreferences.menuBarOffsetRange.lowerBound,
+                accuracy: 0.001
+            )
+            XCTAssertEqual(
+                offsetSlider.maxValue,
+                AppPreferences.menuBarOffsetRange.upperBound,
+                accuracy: 0.001
+            )
+            XCTAssertTrue(offsetSlider.isContinuous)
+            XCTAssertFalse(offsetSlider.allowsTickMarkValuesOnly)
+            XCTAssertEqual(offsetSlider.numberOfTickMarks, 21)
+            if #available(macOS 26.0, *) {
+                XCTAssertEqual(offsetSlider.neutralValue, 0, accuracy: 0.001)
+            }
+        }
+        XCTAssertEqual(iconOffsetSlider.doubleValue, -0.3, accuracy: 0.001)
+        XCTAssertEqual(amountOffsetSlider.doubleValue, 0.5, accuracy: 0.001)
         XCTAssertEqual(
             widthSlider.minValue,
             AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound,
@@ -300,6 +383,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(widthSlider.isContinuous)
         XCTAssertFalse(widthSlider.allowsTickMarkValuesOnly)
         XCTAssertEqual(widthSlider.numberOfTickMarks, 21)
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(
+                widthSlider.neutralValue,
+                0,
+                accuracy: 0.001
+            )
+        }
         XCTAssertEqual(
             widthSlider.constraints.first(where: { $0.firstAttribute == .width })?.constant ?? .nan,
             DashboardMenuBarPage.widthAdjustmentSliderWidth,
@@ -311,40 +401,55 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let widthMaximumLabel = descendants(of: page)
             .compactMap { $0 as? NSTextField }
             .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSliderMaximumIdentifier }
-        XCTAssertEqual(widthMinimumLabel?.stringValue, "0")
-        XCTAssertEqual(widthMaximumLabel?.stringValue, "+20")
-        XCTAssertFalse(buttons.first {
-            $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier
-        } is RepeatOffsetButton)
-        XCTAssertEqual(
-            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.title,
-            "归零"
-        )
-        XCTAssertEqual(
-            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetsResetIdentifier }?.title,
-            "归零"
-        )
+        XCTAssertEqual(widthMinimumLabel?.stringValue, "窄")
+        XCTAssertEqual(widthMaximumLabel?.stringValue, "宽")
         XCTAssertFalse(buttons.contains {
             $0.identifier?.rawValue == "menuBarStatusItemWidthAdjustmentReset"
         })
         XCTAssertEqual(
-            buttons.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }?.isEnabled,
-            true
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSliderMinimumIdentifier }?.stringValue,
+            "下"
+        )
+        XCTAssertEqual(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSliderMaximumIdentifier }?.stringValue,
+            "上"
+        )
+        XCTAssertEqual(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSliderMinimumIdentifier }?.stringValue,
+            "下"
+        )
+        XCTAssertEqual(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSliderMaximumIdentifier }?.stringValue,
+            "上"
         )
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
-        XCTAssertEqual(iconSummary?.stringValue, "X 0.2 · Y -0.3")
-        XCTAssertEqual(amountSummary?.stringValue, "X -0.4 · Y 0.5")
+        XCTAssertEqual(iconSummary?.stringValue, "微调图标上下像素位置：Y 轴 - 0.3 pt")
+        XCTAssertEqual(amountSummary?.stringValue, "微调金额上下像素位置：Y 轴 + 0.5 pt")
         XCTAssertEqual(
             labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
-            "横向范围 +0.6 pt"
+            "调整 BalanceBar 与其他项目的空隙：宽度 + 0.6 pt"
         )
-        XCTAssertEqual(labels.first { $0.stringValue == "细节微调" }?.stringValue, "细节微调")
-        XCTAssertEqual(labels.first { $0.stringValue == "图标" }?.stringValue, "图标")
-        XCTAssertEqual(labels.first { $0.stringValue == "金额" }?.stringValue, "金额")
-        XCTAssertEqual(labels.first { $0.stringValue == "宽度" }?.stringValue, "宽度")
+        let labelStrings = labels.map(\.stringValue)
+        XCTAssertTrue(labelStrings.contains("字号与位置"))
+        XCTAssertFalse(labelStrings.contains("字号"))
+        XCTAssertFalse(labelStrings.contains("细节微调"))
+        XCTAssertTrue(labelStrings.contains("调整菜单栏字体大小"))
+        let rowTitles = ["菜单栏字号", "图标偏移", "金额偏移", "菜单栏宽度"]
+        let rowIndices = rowTitles.compactMap { labelStrings.firstIndex(of: $0) }
+        XCTAssertEqual(rowIndices.count, rowTitles.count)
+        XCTAssertEqual(rowIndices, rowIndices.sorted())
+        XCTAssertFalse(labelStrings.contains("10.4 / 8.0 pt"))
 
         let previewIcon = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
         let previewText = descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
@@ -400,6 +505,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         widthSlider.doubleValue = 0.7
         relay.adjustOffsetValue(widthSlider)
         XCTAssertEqual(preferences.menuBarStatusItemWidthAdjustment, 0.7, accuracy: 0.001)
+        iconOffsetSlider.doubleValue = 0.7
+        relay.adjustOffsetValue(iconOffsetSlider)
+        amountOffsetSlider.doubleValue = -0.8
+        relay.adjustOffsetValue(amountOffsetSlider)
+        XCTAssertEqual(preferences.menuBarIconOffsetY, 0.7, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarAmountOffsetY, -0.8, accuracy: 0.001)
         preferences.showMenuBarIcon = false
         controller.refresh(
             snapshot: snapshot,
@@ -412,21 +523,46 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetXKey }
             .isEmpty)
-        XCTAssertTrue(refreshedButtons
+        XCTAssertTrue(refreshedSliders
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }
-            .allSatisfy { !$0.isEnabled })
-        XCTAssertTrue(refreshedButtons
-            .filter { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetsResetIdentifier }
             .allSatisfy { !$0.isEnabled })
         XCTAssertTrue(refreshedButtons
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetXKey }
             .isEmpty)
-        XCTAssertTrue(refreshedButtons
+        XCTAssertTrue(refreshedSliders
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }
             .allSatisfy { $0.isEnabled })
         XCTAssertTrue(refreshedSliders
             .filter { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey }
             .allSatisfy { $0.isEnabled })
+
+        preferences.menuBarIconOffsetY = 0.7
+        preferences.menuBarAmountOffsetY = -0.8
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        let refreshedLabels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertEqual(
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }?.stringValue,
+            "微调图标上下像素位置：Y 轴 + 0.7 pt"
+        )
+        XCTAssertEqual(
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }?.stringValue,
+            "微调金额上下像素位置：Y 轴 - 0.8 pt"
+        )
+        XCTAssertEqual(
+            refreshedSliders.first { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }?.doubleValue ?? .nan,
+            0.7,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            refreshedSliders.first { $0.identifier?.rawValue == AppPreferences.menuBarAmountOffsetYKey }?.doubleValue ?? .nan,
+            -0.8,
+            accuracy: 0.001
+        )
     }
 
     func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {
@@ -486,10 +622,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(fontPresetControl.toolTip?.contains("11.7/9") == true)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-        XCTAssertEqual(
-            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.fontSizeSummaryIdentifier }?.stringValue,
-            "11.7 / 9.0 pt"
-        )
+        XCTAssertTrue(labels.contains { $0.stringValue == "Font Size & Position" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Font Size" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Adjusts the menu bar font size" })
+        XCTAssertFalse(labels.contains { $0.stringValue == "11.7 / 9.0 pt" })
 
         let previewPrimary = try XCTUnwrap(
             descendants(of: page).first {
@@ -525,6 +661,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .contains { $0.title == "Default" },
             "The font-size section should only expose the native preset popup"
         )
+
+        controller.refresh(
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        XCTAssertEqual(fontPresetControl.indexOfSelectedItem, MenuBarFontSizePreset.small.segmentIndex)
 
         preferences.showMenuBarAmount = false
         controller.refresh(
@@ -569,8 +713,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let summary = descendants(of: page)
             .compactMap { $0 as? NSTextField }
             .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
-        XCTAssertEqual(slider?.doubleValue ?? .nan, 0, accuracy: 0.001)
-        XCTAssertEqual(summary?.stringValue, "横向范围 +7.4 pt")
+        XCTAssertEqual(
+            slider?.doubleValue ?? .nan,
+            AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(summary?.stringValue, "调整 BalanceBar 与其他项目的空隙：宽度 + 7.4 pt")
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
         XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
@@ -615,18 +763,58 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(slider.doubleValue, 7.4, accuracy: 0.001)
     }
 
-    func testMenuBarWidthFineTuneLabelLocalizesAcrossSupportedLanguages() {
+    func testMenuBarTypographyAndPositionLabelsLocalizeAcrossSupportedLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String, String)] = [
-            (.simplifiedChinese, "宽度", "从 0pt 向右放大，最大 +20pt"),
-            (.traditionalChinese, "寬度", "從 0pt 向右放大，最大 +20pt"),
-            (.japanese, "幅", "0pt から右へ広げ、最大 +20pt"),
-            (.english, "Width", "Drag right to widen from 0pt up to +20pt")
+        let cases: [(AppLanguage, [String], [String], String)] = [
+            (
+                .simplifiedChinese,
+                ["字号与位置", "菜单栏字号", "图标偏移", "金额偏移", "菜单栏宽度"],
+                [
+                    "调整菜单栏字体大小",
+                    "微调图标上下像素位置：Y 轴 + 0.0 pt",
+                    "微调金额上下像素位置：Y 轴 + 0.0 pt",
+                    "调整 BalanceBar 与其他项目的空隙：宽度 + 0.0 pt"
+                ],
+                "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt"
+            ),
+            (
+                .traditionalChinese,
+                ["字號與位置", "選單列字號", "圖示偏移", "金額偏移", "選單列寬度"],
+                [
+                    "調整選單列字體大小",
+                    "微調圖示上下像素位置：Y 軸 + 0.0 pt",
+                    "微調金額上下像素位置：Y 軸 + 0.0 pt",
+                    "調整 BalanceBar 與其他項目的間距：寬度 + 0.0 pt"
+                ],
+                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt"
+            ),
+            (
+                .japanese,
+                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの位置調整", "金額の位置調整", "メニューバーの幅"],
+                [
+                    "メニューバーのフォントサイズを調整",
+                    "アイコンの上下位置を微調整：Y 軸 + 0.0 pt",
+                    "金額の上下位置を微調整：Y 軸 + 0.0 pt",
+                    "BalanceBar と他の項目との間隔を調整：幅 + 0.0 pt"
+                ],
+                "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
+            ),
+            (
+                .english,
+                ["Font Size & Position", "Menu Bar Font Size", "Icon Offset", "Amount Offset", "Menu Bar Width"],
+                [
+                    "Adjusts the menu bar font size",
+                    "Fine-tune the icon's vertical position: Y axis + 0.0 pt",
+                    "Fine-tune the amount's vertical position: Y axis + 0.0 pt",
+                    "Adjusts the gap between BalanceBar and other items: Width + 0.0 pt"
+                ],
+                "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt"
+            )
         ]
 
-        for (language, expectedTitle, expectedToolTip) in cases {
+        for (language, expectedTitles, expectedSubtitles, expectedToolTip) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarWidthLocalization.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -640,14 +828,73 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 relay: DashboardPreferencePageRelay()
             ))
 
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            let labelStrings = labels.map(\.stringValue)
+            let expectedEndpointLabels: (minimum: String, maximum: String)
+            switch language {
+            case .simplifiedChinese:
+                expectedEndpointLabels = ("窄", "宽")
+            case .traditionalChinese:
+                expectedEndpointLabels = ("窄", "寬")
+            case .japanese:
+                expectedEndpointLabels = ("狭い", "広い")
+            case .english:
+                expectedEndpointLabels = ("Narrow", "Wide")
+            case .system:
+                expectedEndpointLabels = ("窄", "宽")
+            }
+            let expectedOffsetEndpointLabels: (minimum: String, maximum: String)
+            switch language {
+            case .simplifiedChinese, .traditionalChinese, .japanese, .system:
+                expectedOffsetEndpointLabels = ("下", "上")
+            case .english:
+                expectedOffsetEndpointLabels = ("Down", "Up")
+            }
             XCTAssertEqual(
-                descendants(of: page)
-                    .compactMap { $0 as? NSTextField }
-                    .first(where: { $0.stringValue == expectedTitle })?
-                    .stringValue,
-                expectedTitle,
-                "width title for \(language)"
+                labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSliderMinimumIdentifier }?.stringValue,
+                expectedEndpointLabels.minimum,
+                "minimum width endpoint for \(language)"
             )
+            XCTAssertEqual(
+                labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSliderMaximumIdentifier }?.stringValue,
+                expectedEndpointLabels.maximum,
+                "maximum width endpoint for \(language)"
+            )
+            XCTAssertEqual(
+                labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSliderMinimumIdentifier }?.stringValue,
+                expectedOffsetEndpointLabels.minimum,
+                "minimum icon offset endpoint for \(language)"
+            )
+            XCTAssertEqual(
+                labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSliderMaximumIdentifier }?.stringValue,
+                expectedOffsetEndpointLabels.maximum,
+                "maximum icon offset endpoint for \(language)"
+            )
+            XCTAssertEqual(
+                labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSliderMinimumIdentifier }?.stringValue,
+                expectedOffsetEndpointLabels.minimum,
+                "minimum amount offset endpoint for \(language)"
+            )
+            XCTAssertEqual(
+                labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSliderMaximumIdentifier }?.stringValue,
+                expectedOffsetEndpointLabels.maximum,
+                "maximum amount offset endpoint for \(language)"
+            )
+            for expectedTitle in expectedTitles {
+                XCTAssertTrue(
+                    labelStrings.contains(expectedTitle),
+                    "localized title \(expectedTitle) for \(language)"
+                )
+            }
+            for expectedSubtitle in expectedSubtitles {
+                XCTAssertTrue(
+                    labelStrings.contains(expectedSubtitle),
+                    "localized subtitle \(expectedSubtitle) for \(language)"
+                )
+            }
+            let rowIndices = expectedTitles.dropFirst().compactMap { labelStrings.firstIndex(of: $0) }
+            XCTAssertEqual(rowIndices.count, expectedTitles.count - 1)
+            XCTAssertEqual(rowIndices, rowIndices.sorted(), "row order for \(language)")
             XCTAssertFalse(
                 descendants(of: page).contains {
                     $0.identifier?.rawValue == "menuBarStatusItemWidthAdjustmentReset"
@@ -659,11 +906,43 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == AppPreferences.menuBarStatusItemWidthAdjustmentKey }
             XCTAssertEqual(
                 slider?.doubleValue ?? .nan,
-                0,
+                AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
                 accuracy: 0.001,
                 "width slider default for \(language)"
             )
             XCTAssertEqual(slider?.toolTip, expectedToolTip, "width slider tooltip for \(language)")
+            if language == .english {
+                page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+                page.layoutSubtreeIfNeeded()
+                let labelsByIdentifier: [String: NSTextField] = Dictionary(
+                    uniqueKeysWithValues: labels.compactMap { label in
+                        guard let identifier = label.identifier?.rawValue else { return nil }
+                        return (identifier, label)
+                    }
+                )
+                guard
+                    let iconMinimum = labelsByIdentifier[DashboardMenuBarPage.iconOffsetSliderMinimumIdentifier],
+                    let amountMinimum = labelsByIdentifier[DashboardMenuBarPage.amountOffsetSliderMinimumIdentifier],
+                    let widthMinimum = labelsByIdentifier[DashboardMenuBarPage.widthAdjustmentSliderMinimumIdentifier],
+                    let iconMaximum = labelsByIdentifier[DashboardMenuBarPage.iconOffsetSliderMaximumIdentifier],
+                    let amountMaximum = labelsByIdentifier[DashboardMenuBarPage.amountOffsetSliderMaximumIdentifier],
+                    let widthMaximum = labelsByIdentifier[DashboardMenuBarPage.widthAdjustmentSliderMaximumIdentifier]
+                else {
+                    XCTFail("Expected all English slider endpoint labels")
+                    defaults.removePersistentDomain(forName: suiteName)
+                    continue
+                }
+                let minimumFrames = [iconMinimum, amountMinimum, widthMinimum].map {
+                    $0.convert($0.bounds, to: page)
+                }
+                let maximumFrames = [iconMaximum, amountMaximum, widthMaximum].map {
+                    $0.convert($0.bounds, to: page)
+                }
+                XCTAssertEqual(minimumFrames[0].minX, minimumFrames[1].minX, accuracy: 0.01)
+                XCTAssertEqual(minimumFrames[1].minX, minimumFrames[2].minX, accuracy: 0.01)
+                XCTAssertEqual(maximumFrames[0].maxX, maximumFrames[1].maxX, accuracy: 0.01)
+                XCTAssertEqual(maximumFrames[1].maxX, maximumFrames[2].maxX, accuracy: 0.01)
+            }
             defaults.removePersistentDomain(forName: suiteName)
         }
     }

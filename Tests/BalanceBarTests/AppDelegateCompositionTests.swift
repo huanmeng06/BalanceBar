@@ -175,6 +175,23 @@ final class AppDelegateCompositionTests: XCTestCase {
             "continuous width updates must not rebuild the status menu"
         )
 
+        controller.updateFontSize(CGFloat(MenuBarFontSizePreset.small.primarySize))
+        XCTAssertEqual(
+            controller.menuBarFontPointSizesForTesting?.primary ?? .nan,
+            MenuBarFontSizePreset.small.primarySize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuBarFontPointSizesForTesting?.secondary ?? .nan,
+            MenuBarFontSizePreset.small.secondarySize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            menuItemIdentities,
+            "font-size updates must not rebuild the status menu"
+        )
+
         controller.teardown()
         controller.teardown()
     }

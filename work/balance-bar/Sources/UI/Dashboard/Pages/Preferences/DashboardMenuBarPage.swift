@@ -190,9 +190,60 @@ final class RepeatOffsetButton: NSButton {
 final class MenuBarWidthSlider: NSSlider {
     var onEditingEnded: (() -> Void)?
 
+    private var isPointerTracking = false
+    private var lastPointerValue: Double?
+
+    static func integerValuesCrossed(
+        from previousValue: Double,
+        to currentValue: Double,
+        minimum: Double,
+        maximum: Double
+    ) -> [Int] {
+        guard previousValue != currentValue else { return [] }
+
+        let previous = snappedIntegerValue(previousValue)
+        let current = snappedIntegerValue(currentValue)
+        let first: Int
+        let last: Int
+
+        if current > previous {
+            // Include an integer when arriving at it, but not when leaving
+            // an integer that was already reached at the start of the drag.
+            first = Int(floor(previous)) + 1
+            last = Int(floor(current))
+        } else {
+            // Reverse the same rule for a leftward drag.
+            first = Int(ceil(current))
+            last = Int(ceil(previous)) - 1
+        }
+
+        let lowerBound = Int(ceil(minimum))
+        let upperBound = Int(floor(maximum))
+        guard first <= last else { return [] }
+
+        let clampedFirst = max(first, lowerBound)
+        let clampedLast = min(last, upperBound)
+        guard clampedFirst <= clampedLast else { return [] }
+
+        let values = Array(clampedFirst...clampedLast)
+        return current > previous ? values : Array(values.reversed())
+    }
+
     override func mouseDown(with event: NSEvent) {
+        isPointerTracking = true
+        lastPointerValue = doubleValue
         super.mouseDown(with: event)
+        notifyIntegerBoundaryIfNeeded(for: doubleValue)
+        isPointerTracking = false
+        lastPointerValue = nil
         onEditingEnded?()
+    }
+
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        if isPointerTracking {
+            notifyIntegerBoundaryIfNeeded(for: doubleValue)
+        }
+        return super.sendAction(action, to: target)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -203,6 +254,34 @@ final class MenuBarWidthSlider: NSSlider {
         super.keyUp(with: event)
         onEditingEnded?()
     }
+
+    private func notifyIntegerBoundaryIfNeeded(for value: Double) {
+        guard let previousValue = lastPointerValue else {
+            lastPointerValue = value
+            return
+        }
+
+        let crossedValues = Self.integerValuesCrossed(
+            from: previousValue,
+            to: value,
+            minimum: minValue,
+            maximum: maxValue
+        )
+        for _ in crossedValues {
+            // The system performer silently suppresses this on devices that
+            // do not provide Force Touch, such as a regular mouse.
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                .alignment,
+                performanceTime: .now
+            )
+        }
+        lastPointerValue = value
+    }
+
+    private static func snappedIntegerValue(_ value: Double) -> Double {
+        let rounded = value.rounded()
+        return abs(value - rounded) < 0.000_001 ? rounded : value
+    }
 }
 
 final class DashboardMenuBarPage {
@@ -211,11 +290,30 @@ final class DashboardMenuBarPage {
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
-    static let fontSizeSummaryIdentifier = "menuBarFontSizeSummary"
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
+    static let iconOffsetSliderMinimumIdentifier = "menuBarIconOffsetSliderMinimum"
+    static let iconOffsetSliderMaximumIdentifier = "menuBarIconOffsetSliderMaximum"
+    static let amountOffsetSliderMinimumIdentifier = "menuBarAmountOffsetSliderMinimum"
+    static let amountOffsetSliderMaximumIdentifier = "menuBarAmountOffsetSliderMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
+    private static let englishMinimumSliderEndpointLabelWidth: CGFloat = {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11)
+        ]
+        let downWidth = NSString(string: "Down").size(withAttributes: attributes).width
+        let narrowWidth = NSString(string: "Narrow").size(withAttributes: attributes).width
+        return ceil(max(downWidth, narrowWidth))
+    }()
+    private static let englishMaximumSliderEndpointLabelWidth: CGFloat = {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11)
+        ]
+        let upWidth = NSString(string: "Up").size(withAttributes: attributes).width
+        let wideWidth = NSString(string: "Wide").size(withAttributes: attributes).width
+        return ceil(max(upWidth, wideWidth))
+    }()
     // Match the compact native popup used by the Application settings page.
     // Screenshots are commonly captured at 2x scale, so this is 100 points
     // (about 200 pixels), not the previous 180-point control.
@@ -263,7 +361,7 @@ final class DashboardMenuBarPage {
         let relay: DashboardPreferencePageRelay
     }
 
-    private struct WidthSliderControls {
+    private struct CenteredSliderControls {
         let view: NSView
         let slider: NSSlider
     }
@@ -289,9 +387,8 @@ final class DashboardMenuBarPage {
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
-    private var fontSizeSummaryLabel: NSTextField?
-    private var iconOffsetButtons: [NSButton] = []
-    private var amountOffsetButtons: [NSButton] = []
+    private weak var iconOffsetSlider: NSSlider?
+    private weak var amountOffsetSlider: NSSlider?
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
     private var transientWidthAdjustment: Double?
@@ -445,22 +542,48 @@ final class DashboardMenuBarPage {
             DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount", "額度數字", "残高の数値"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance", "顯示百分比或 API 餘額", "パーセンテージまたは API 残高を表示"), control: amountToggle),
             DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown", "重設倒數計時", "リセットカウントダウン"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available", "僅在官方額度可用時顯示", "公式クォータが利用可能な場合のみ表示"), control: resetToggle)
         ])
-        let iconOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        let iconOffsetSummary = NSTextField(
+            labelWithString: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY)
+        )
         iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
-        let amountOffsetSummary = NSTextField(labelWithString: Self.offsetSummaryText(x: 0, y: 0))
+        let amountOffsetSummary = NSTextField(
+            labelWithString: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY)
+        )
         amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
         let widthAdjustment = transientWidthAdjustment
             ?? input.preferences.menuBarStatusItemWidthAdjustment
         let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(widthAdjustment))
         widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
-        let iconOffsetControls = makeOffsetControls(
-            keyY: AppPreferences.menuBarIconOffsetYKey,
-            resetIdentifier: Self.iconOffsetsResetIdentifier,
+        let iconOffsetControls = makeCenteredSliderControls(
+            value: input.preferences.menuBarIconOffsetY,
+            key: AppPreferences.menuBarIconOffsetYKey,
+            range: AppPreferences.menuBarOffsetRange,
+            minimumTitle: tr("下", "Down", "下", "下"),
+            maximumTitle: tr("上", "Up", "上", "上"),
+            minimumIdentifier: Self.iconOffsetSliderMinimumIdentifier,
+            maximumIdentifier: Self.iconOffsetSliderMaximumIdentifier,
+            tooltip: tr(
+                "从 -10.0 pt（下）调整到 +10.0 pt（上），默认 0 pt",
+                "Adjusts vertical position from -10.0 pt (down) to +10.0 pt (up); default 0 pt",
+                "從 -10.0 pt（下）調整到 +10.0 pt（上），預設 0 pt",
+                "Y 軸を -10.0 pt（下）から +10.0 pt（上）まで調整（デフォルト 0 pt）"
+            ),
             relay: input.relay
         )
-        let amountOffsetControls = makeOffsetControls(
-            keyY: AppPreferences.menuBarAmountOffsetYKey,
-            resetIdentifier: Self.amountOffsetsResetIdentifier,
+        let amountOffsetControls = makeCenteredSliderControls(
+            value: input.preferences.menuBarAmountOffsetY,
+            key: AppPreferences.menuBarAmountOffsetYKey,
+            range: AppPreferences.menuBarOffsetRange,
+            minimumTitle: tr("下", "Down", "下", "下"),
+            maximumTitle: tr("上", "Up", "上", "上"),
+            minimumIdentifier: Self.amountOffsetSliderMinimumIdentifier,
+            maximumIdentifier: Self.amountOffsetSliderMaximumIdentifier,
+            tooltip: tr(
+                "从 -10.0 pt（下）调整到 +10.0 pt（上），默认 0 pt",
+                "Adjusts vertical position from -10.0 pt (down) to +10.0 pt (up); default 0 pt",
+                "從 -10.0 pt（下）調整到 +10.0 pt（上），預設 0 pt",
+                "Y 軸を -10.0 pt（下）から +10.0 pt（上）まで調整（デフォルト 0 pt）"
+            ),
             relay: input.relay
         )
         let widthAdjustmentControls = makeWidthSliderControls(
@@ -469,17 +592,6 @@ final class DashboardMenuBarPage {
             relay: input.relay
         )
         let fontSizePreset = input.preferences.menuBarFontSizePreset
-        let fontSize = fontSizePreset.primarySize
-        let secondaryFontSize = fontSizePreset.secondarySize
-        let fontSizeSummary = NSTextField(
-            labelWithString: Self.fontSizeSummaryText(
-                primary: fontSize,
-                secondary: secondaryFontSize
-            )
-        )
-        fontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
-            Self.fontSizeSummaryIdentifier
-        )
         let fontSizeControls = makeFontSizePresetControls(
             value: fontSizePreset,
             relay: input.relay
@@ -487,45 +599,40 @@ final class DashboardMenuBarPage {
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
         widthAdjustmentSummaryLabel = widthAdjustmentSummary
-        fontSizeSummaryLabel = fontSizeSummary
-        iconOffsetButtons = iconOffsetControls
-        amountOffsetButtons = amountOffsetControls
+        iconOffsetSlider = iconOffsetControls.slider
+        amountOffsetSlider = amountOffsetControls.slider
         widthAdjustmentSlider = widthAdjustmentControls.slider
         fontSizePresetControl = fontSizeControls.control
-        let fontSizeSection = DashboardSettingsComponents.makeSettingsSection(
-            tr("字号", "Font Size", "字號", "フォントサイズ"),
+        let typographyAndPositionSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("字号与位置", "Font Size & Position", "字號與位置", "フォントサイズと位置"),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("菜单栏", "Menu Bar", "選單列", "メニューバー"),
-                    subtitle: Self.fontSizeSummaryText(
-                        primary: fontSize,
-                        secondary: secondaryFontSize
+                    tr("菜单栏字号", "Menu Bar Font Size", "選單列字號", "メニューバーのフォントサイズ"),
+                    subtitle: tr(
+                        "调整菜单栏字体大小",
+                        "Adjusts the menu bar font size",
+                        "調整選單列字體大小",
+                        "メニューバーのフォントサイズを調整"
                     ),
-                    subtitleLabel: fontSizeSummary,
                     control: fontSizeControls.view,
                     minimumHeight: 66
-                )
-            ]
-        )
-        let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
-            tr("细节微调", "Fine Tuning", "細節微調", "微調整"),
-            rows: [
+                ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("图标", "Icon", "圖示", "アイコン"),
-                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    tr("图标偏移", "Icon Offset", "圖示偏移", "アイコンの位置調整"),
+                    subtitle: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY),
                     subtitleLabel: iconOffsetSummary,
-                    control: makeOffsetControlStack(buttons: iconOffsetControls),
+                    control: iconOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("金额", "Amount", "金額", "金額"),
-                    subtitle: Self.offsetSummaryText(x: 0, y: 0),
+                    tr("金额偏移", "Amount Offset", "金額偏移", "金額の位置調整"),
+                    subtitle: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY),
                     subtitleLabel: amountOffsetSummary,
-                    control: makeOffsetControlStack(buttons: amountOffsetControls),
+                    control: amountOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("宽度", "Width", "寬度", "幅"),
+                    tr("菜单栏宽度", "Menu Bar Width", "選單列寬度", "メニューバーの幅"),
                     subtitle: Self.widthAdjustmentSummaryText(widthAdjustment),
                     subtitleLabel: widthAdjustmentSummary,
                     control: widthAdjustmentControls.view,
@@ -538,8 +645,7 @@ final class DashboardMenuBarPage {
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
             displaySection,
-            fontSizeSection,
-            fineTuneSection
+            typographyAndPositionSection
         ])
     }
 
@@ -595,15 +701,15 @@ final class DashboardMenuBarPage {
         let iconOffsetY = preferences.menuBarIconOffsetY
         let amountOffsetX = preferences.menuBarAmountOffsetX
         let amountOffsetY = preferences.menuBarAmountOffsetY
-        iconOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: iconOffsetX, y: iconOffsetY)
-        amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
-        iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
-        amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
-        fontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
-            primary: fontSize,
-            secondary: secondaryFontSize
-        )
-        fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        iconOffsetSummaryLabel?.stringValue = Self.iconOffsetSummaryText(y: iconOffsetY)
+        amountOffsetSummaryLabel?.stringValue = Self.amountOffsetSummaryText(y: amountOffsetY)
+        iconOffsetSlider?.doubleValue = iconOffsetY
+        amountOffsetSlider?.doubleValue = amountOffsetY
+        iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
+        amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
+        if fontSizePresetControl?.indexOfSelectedItem != fontSizePreset.segmentIndex {
+            fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
@@ -880,22 +986,39 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private static func offsetSummaryText(x: Double, y: Double) -> String {
-        String(format: "X %.1f · Y %.1f", x, y)
+    private static func signedPointText(_ value: Double) -> String {
+        let sign = value < 0 ? "-" : "+"
+        return "\(sign) \(String(format: "%.1f", abs(value))) pt"
     }
 
-    private static func widthAdjustmentSummaryText(_ value: Double) -> String {
-        let valueText = String(format: "%+.1f pt", value)
+    private static func iconOffsetSummaryText(y: Double) -> String {
+        let valueText = signedPointText(y)
         return tr(
-            "横向范围 \(valueText)",
-            "Horizontal range \(valueText)",
-            "橫向範圍 \(valueText)",
-            "横幅 \(valueText)"
+            "微调图标上下像素位置：Y 轴 \(valueText)",
+            "Fine-tune the icon's vertical position: Y axis \(valueText)",
+            "微調圖示上下像素位置：Y 軸 \(valueText)",
+            "アイコンの上下位置を微調整：Y 軸 \(valueText)"
         )
     }
 
-    private static func fontSizeSummaryText(primary: Double, secondary: Double) -> String {
-        String(format: "%.1f / %.1f pt", primary, secondary)
+    private static func amountOffsetSummaryText(y: Double) -> String {
+        let valueText = signedPointText(y)
+        return tr(
+            "微调金额上下像素位置：Y 轴 \(valueText)",
+            "Fine-tune the amount's vertical position: Y axis \(valueText)",
+            "微調金額上下像素位置：Y 軸 \(valueText)",
+            "金額の上下位置を微調整：Y 軸 \(valueText)"
+        )
+    }
+
+    private static func widthAdjustmentSummaryText(_ value: Double) -> String {
+        let valueText = signedPointText(value)
+        return tr(
+            "调整 BalanceBar 与其他项目的空隙：宽度 \(valueText)",
+            "Adjusts the gap between BalanceBar and other items: Width \(valueText)",
+            "調整 BalanceBar 與其他項目的間距：寬度 \(valueText)",
+            "BalanceBar と他の項目との間隔を調整：幅 \(valueText)"
+        )
     }
 
     private static func previewCapsuleHorizontalInset(
@@ -943,38 +1066,49 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private func makeOffsetControls(
-        keyY: String,
-        resetIdentifier: String,
-        relay: DashboardPreferencePageRelay
-    ) -> [NSButton] {
-        [
-            makeOffsetButton(
-                title: tr("上", "Up", "上", "上"),
-                key: keyY,
-                delta: 1,
-                relay: relay
-            ),
-            makeOffsetButton(
-                title: tr("下", "Down", "下", "下"),
-                key: keyY,
-                delta: -1,
-                relay: relay
-            ),
-            makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
-        ]
-    }
-
     private func makeWidthSliderControls(
         value: Double,
         key: String,
         relay: DashboardPreferencePageRelay
-    ) -> WidthSliderControls {
-        let range = AppPreferences.menuBarStatusItemWidthAdjustmentRange
+    ) -> CenteredSliderControls {
+        makeCenteredSliderControls(
+            value: value,
+            key: key,
+            range: AppPreferences.menuBarStatusItemWidthAdjustmentRange,
+            minimumTitle: tr("窄", "Narrow", "窄", "狭い"),
+            maximumTitle: tr("宽", "Wide", "寬", "広い"),
+            minimumIdentifier: Self.widthAdjustmentSliderMinimumIdentifier,
+            maximumIdentifier: Self.widthAdjustmentSliderMaximumIdentifier,
+            tooltip: tr(
+                "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt",
+                "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt",
+                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt",
+                "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
+            ),
+            relay: relay
+        )
+    }
+
+    private func makeCenteredSliderControls(
+        value: Double,
+        key: String,
+        range: ClosedRange<Double>,
+        minimumTitle: String,
+        maximumTitle: String,
+        minimumIdentifier: String,
+        maximumIdentifier: String,
+        tooltip: String,
+        relay: DashboardPreferencePageRelay
+    ) -> CenteredSliderControls {
         let slider = MenuBarWidthSlider()
         slider.identifier = NSUserInterfaceItemIdentifier(key)
         slider.minValue = range.lowerBound
         slider.maxValue = range.upperBound
+        if #available(macOS 26.0, *) {
+            slider.neutralValue = 0
+            slider.tintProminence = .primary
+        }
+        slider.trackFillColor = .controlAccentColor
         slider.doubleValue = value
         slider.isContinuous = true
         slider.numberOfTickMarks = 21
@@ -982,91 +1116,55 @@ final class DashboardMenuBarPage {
         slider.allowsTickMarkValuesOnly = false
         slider.target = relay
         slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
-        slider.toolTip = tr(
-            "从 0pt 向右放大，最大 +20pt",
-            "Drag right to widen from 0pt up to +20pt",
-            "從 0pt 向右放大，最大 +20pt",
-            "0pt から右へ広げ、最大 +20pt"
-        )
+        slider.toolTip = tooltip
         slider.onEditingEnded = { [weak relay, weak slider] in
             guard let relay, let slider else { return }
             relay.finishOffsetValue(slider)
         }
         slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
 
+        let englishEndpointAlignment = AppLanguage.resolved == .english
         let minimumLabel = makeWidthSliderEndpointLabel(
-            range.lowerBound == 0
-                ? "0"
-                : String(format: "%+.0f", range.lowerBound),
-            identifier: Self.widthAdjustmentSliderMinimumIdentifier
+            minimumTitle,
+            identifier: minimumIdentifier,
+            width: englishEndpointAlignment
+                ? Self.englishMinimumSliderEndpointLabelWidth
+                : nil,
+            alignment: englishEndpointAlignment ? .left : .center
         )
         let maximumLabel = makeWidthSliderEndpointLabel(
-            String(format: "%+.0f", range.upperBound),
-            identifier: Self.widthAdjustmentSliderMaximumIdentifier
+            maximumTitle,
+            identifier: maximumIdentifier,
+            width: englishEndpointAlignment
+                ? Self.englishMaximumSliderEndpointLabelWidth
+                : nil,
+            alignment: englishEndpointAlignment ? .right : .center
         )
         let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 6
         stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return WidthSliderControls(view: stack, slider: slider)
+        return CenteredSliderControls(view: stack, slider: slider)
     }
 
     private func makeWidthSliderEndpointLabel(
         _ title: String,
-        identifier: String
+        identifier: String,
+        width: CGFloat?,
+        alignment: NSTextAlignment
     ) -> NSTextField {
         let label = NSTextField(labelWithString: title)
         label.identifier = NSUserInterfaceItemIdentifier(identifier)
         label.font = .systemFont(ofSize: 11)
         label.textColor = .secondaryLabelColor
-        label.alignment = .center
+        label.alignment = alignment
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        if let width {
+            label.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
         return label
     }
 
-    private func makeOffsetButton(
-        title: String,
-        key: String,
-        delta: Int,
-        relay: DashboardPreferencePageRelay
-    ) -> NSButton {
-        let button = RepeatOffsetButton(
-            title: title,
-            policy: MenuBarOffsetRepeatPolicy.standard,
-            target: relay,
-            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
-        )
-        button.identifier = NSUserInterfaceItemIdentifier(key)
-        button.tag = delta
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 11)
-        return button
-    }
-
-    private func makeOffsetResetButton(
-        identifier: String,
-        relay: DashboardPreferencePageRelay
-    ) -> NSButton {
-        let button = NSButton(
-            title: tr("归零", "Reset", "歸零", "リセット"),
-            target: relay,
-            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
-        )
-        button.identifier = NSUserInterfaceItemIdentifier(identifier)
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 11)
-        return button
-    }
-
-    private func makeOffsetControlStack(buttons: [NSButton]) -> NSStackView {
-        let stack = NSStackView(views: buttons)
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 6
-        return stack
-    }
 }
