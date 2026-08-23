@@ -215,6 +215,63 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
     }
 
+    func testMenuBarWidthSliderIdentifiesIntegerBoundariesInBothDirections() {
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 0.2,
+                to: 3.4,
+                minimum: -10,
+                maximum: 10
+            ),
+            [1, 2, 3]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 3.4,
+                to: 0.2,
+                minimum: -10,
+                maximum: 10
+            ),
+            [3, 2, 1]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 1.0,
+                to: 1.8,
+                minimum: -10,
+                maximum: 10
+            ),
+            []
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: 0.8,
+                to: 1.0,
+                minimum: -10,
+                maximum: 10
+            ),
+            [1]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: -0.2,
+                to: 0.1,
+                minimum: -10,
+                maximum: 10
+            ),
+            [0]
+        )
+        XCTAssertEqual(
+            MenuBarWidthSlider.integerValuesCrossed(
+                from: -9.4,
+                to: -10.0,
+                minimum: -10,
+                maximum: 10
+            ),
+            [-10]
+        )
+    }
+
     func testMenuBarTypographyAndPositionSectionRendersControlsAndPreviewOffsets() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

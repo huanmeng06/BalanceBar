@@ -190,9 +190,60 @@ final class RepeatOffsetButton: NSButton {
 final class MenuBarWidthSlider: NSSlider {
     var onEditingEnded: (() -> Void)?
 
+    private var isPointerTracking = false
+    private var lastPointerValue: Double?
+
+    static func integerValuesCrossed(
+        from previousValue: Double,
+        to currentValue: Double,
+        minimum: Double,
+        maximum: Double
+    ) -> [Int] {
+        guard previousValue != currentValue else { return [] }
+
+        let previous = snappedIntegerValue(previousValue)
+        let current = snappedIntegerValue(currentValue)
+        let first: Int
+        let last: Int
+
+        if current > previous {
+            // Include an integer when arriving at it, but not when leaving
+            // an integer that was already reached at the start of the drag.
+            first = Int(floor(previous)) + 1
+            last = Int(floor(current))
+        } else {
+            // Reverse the same rule for a leftward drag.
+            first = Int(ceil(current))
+            last = Int(ceil(previous)) - 1
+        }
+
+        let lowerBound = Int(ceil(minimum))
+        let upperBound = Int(floor(maximum))
+        guard first <= last else { return [] }
+
+        let clampedFirst = max(first, lowerBound)
+        let clampedLast = min(last, upperBound)
+        guard clampedFirst <= clampedLast else { return [] }
+
+        let values = Array(clampedFirst...clampedLast)
+        return current > previous ? values : Array(values.reversed())
+    }
+
     override func mouseDown(with event: NSEvent) {
+        isPointerTracking = true
+        lastPointerValue = doubleValue
         super.mouseDown(with: event)
+        notifyIntegerBoundaryIfNeeded(for: doubleValue)
+        isPointerTracking = false
+        lastPointerValue = nil
         onEditingEnded?()
+    }
+
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        if isPointerTracking {
+            notifyIntegerBoundaryIfNeeded(for: doubleValue)
+        }
+        return super.sendAction(action, to: target)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -204,6 +255,33 @@ final class MenuBarWidthSlider: NSSlider {
         onEditingEnded?()
     }
 
+    private func notifyIntegerBoundaryIfNeeded(for value: Double) {
+        guard let previousValue = lastPointerValue else {
+            lastPointerValue = value
+            return
+        }
+
+        let crossedValues = Self.integerValuesCrossed(
+            from: previousValue,
+            to: value,
+            minimum: minValue,
+            maximum: maxValue
+        )
+        for _ in crossedValues {
+            // The system performer silently suppresses this on devices that
+            // do not provide Force Touch, such as a regular mouse.
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                .alignment,
+                performanceTime: .now
+            )
+        }
+        lastPointerValue = value
+    }
+
+    private static func snappedIntegerValue(_ value: Double) -> Double {
+        let rounded = value.rounded()
+        return abs(value - rounded) < 0.000_001 ? rounded : value
+    }
 }
 
 final class DashboardMenuBarPage {
