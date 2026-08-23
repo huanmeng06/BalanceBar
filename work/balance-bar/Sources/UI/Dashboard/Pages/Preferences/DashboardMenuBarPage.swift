@@ -639,7 +639,7 @@ final class DashboardMenuBarPage {
             Self.overflowWarningSettingsButtonIdentifier
         )
         overflowWarningSettingsButton.bezelStyle = .rounded
-        overflowWarningSettingsButton.controlSize = .small
+        overflowWarningSettingsButton.controlSize = .regular
         overflowWarningSettingsButton.toolTip = Self.overflowWarningSettingsButtonText()
         overflowWarningSettingsButton.setAccessibilityLabel(
             Self.overflowWarningSettingsButtonText()

@@ -318,7 +318,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertEqual(settingsButton.title, expectedButtonTitle)
             XCTAssertEqual(settingsButton.bezelStyle, .rounded)
-            XCTAssertEqual(settingsButton.controlSize, .small)
+            XCTAssertEqual(settingsButton.controlSize, .regular)
             XCTAssertEqual(
                 settingsButton.action,
                 #selector(DashboardPreferencePageRelay.openSystemMenuBarSettings(_:))
