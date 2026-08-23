@@ -778,7 +778,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "調整選單列字體大小",
                     "微調圖示上下像素位置：Y 軸 + 0.0 pt",
                     "微調金額上下像素位置：Y 軸 + 0.0 pt",
-                    "調整 BalanceBar 與其他選單列項目的間距：寬度 + 0.0 pt"
+                    "調整 BalanceBar 與其他項目的間距：寬度 + 0.0 pt"
                 ],
                 "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt"
             ),
@@ -789,7 +789,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "メニューバーのフォントサイズを調整",
                     "アイコンの上下位置を微調整：Y 軸 + 0.0 pt",
                     "金額の上下位置を微調整：Y 軸 + 0.0 pt",
-                    "BalanceBar と他のメニューバー項目との間隔を調整：幅 + 0.0 pt"
+                    "BalanceBar と他の項目との間隔を調整：幅 + 0.0 pt"
                 ],
                 "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
             ),
@@ -800,7 +800,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "Adjusts the menu bar font size",
                     "Fine-tune the icon's vertical position: Y axis + 0.0 pt",
                     "Fine-tune the amount's vertical position: Y axis + 0.0 pt",
-                    "Adjusts the gap between BalanceBar and other menu bar items: Width + 0.0 pt"
+                    "Adjusts the gap between BalanceBar and other items: Width + 0.0 pt"
                 ],
                 "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt"
             )

@@ -997,9 +997,9 @@ final class DashboardMenuBarPage {
         let valueText = signedPointText(value)
         return tr(
             "调整 BalanceBar 与其他项目的空隙：宽度 \(valueText)",
-            "Adjusts the gap between BalanceBar and other menu bar items: Width \(valueText)",
-            "調整 BalanceBar 與其他選單列項目的間距：寬度 \(valueText)",
-            "BalanceBar と他のメニューバー項目との間隔を調整：幅 \(valueText)"
+            "Adjusts the gap between BalanceBar and other items: Width \(valueText)",
+            "調整 BalanceBar 與其他項目的間距：寬度 \(valueText)",
+            "BalanceBar と他の項目との間隔を調整：幅 \(valueText)"
         )
     }
 
