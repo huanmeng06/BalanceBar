@@ -903,6 +903,38 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 "width slider default for \(language)"
             )
             XCTAssertEqual(slider?.toolTip, expectedToolTip, "width slider tooltip for \(language)")
+            if language == .english {
+                page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+                page.layoutSubtreeIfNeeded()
+                let labelsByIdentifier: [String: NSTextField] = Dictionary(
+                    uniqueKeysWithValues: labels.compactMap { label in
+                        guard let identifier = label.identifier?.rawValue else { return nil }
+                        return (identifier, label)
+                    }
+                )
+                guard
+                    let iconMinimum = labelsByIdentifier[DashboardMenuBarPage.iconOffsetSliderMinimumIdentifier],
+                    let amountMinimum = labelsByIdentifier[DashboardMenuBarPage.amountOffsetSliderMinimumIdentifier],
+                    let widthMinimum = labelsByIdentifier[DashboardMenuBarPage.widthAdjustmentSliderMinimumIdentifier],
+                    let iconMaximum = labelsByIdentifier[DashboardMenuBarPage.iconOffsetSliderMaximumIdentifier],
+                    let amountMaximum = labelsByIdentifier[DashboardMenuBarPage.amountOffsetSliderMaximumIdentifier],
+                    let widthMaximum = labelsByIdentifier[DashboardMenuBarPage.widthAdjustmentSliderMaximumIdentifier]
+                else {
+                    XCTFail("Expected all English slider endpoint labels")
+                    defaults.removePersistentDomain(forName: suiteName)
+                    continue
+                }
+                let minimumFrames = [iconMinimum, amountMinimum, widthMinimum].map {
+                    $0.convert($0.bounds, to: page)
+                }
+                let maximumFrames = [iconMaximum, amountMaximum, widthMaximum].map {
+                    $0.convert($0.bounds, to: page)
+                }
+                XCTAssertEqual(minimumFrames[0].minX, minimumFrames[1].minX, accuracy: 0.01)
+                XCTAssertEqual(minimumFrames[1].minX, minimumFrames[2].minX, accuracy: 0.01)
+                XCTAssertEqual(maximumFrames[0].maxX, maximumFrames[1].maxX, accuracy: 0.01)
+                XCTAssertEqual(maximumFrames[1].maxX, maximumFrames[2].maxX, accuracy: 0.01)
+            }
             defaults.removePersistentDomain(forName: suiteName)
         }
     }

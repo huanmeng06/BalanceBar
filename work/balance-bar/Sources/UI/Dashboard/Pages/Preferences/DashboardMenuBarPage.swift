@@ -298,6 +298,22 @@ final class DashboardMenuBarPage {
     static let amountOffsetSliderMinimumIdentifier = "menuBarAmountOffsetSliderMinimum"
     static let amountOffsetSliderMaximumIdentifier = "menuBarAmountOffsetSliderMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
+    private static let englishMinimumSliderEndpointLabelWidth: CGFloat = {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11)
+        ]
+        let downWidth = NSString(string: "Down").size(withAttributes: attributes).width
+        let narrowWidth = NSString(string: "Narrow").size(withAttributes: attributes).width
+        return ceil(max(downWidth, narrowWidth))
+    }()
+    private static let englishMaximumSliderEndpointLabelWidth: CGFloat = {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11)
+        ]
+        let upWidth = NSString(string: "Up").size(withAttributes: attributes).width
+        let wideWidth = NSString(string: "Wide").size(withAttributes: attributes).width
+        return ceil(max(upWidth, wideWidth))
+    }()
     // Match the compact native popup used by the Application settings page.
     // Screenshots are commonly captured at 2x scale, so this is 100 points
     // (about 200 pixels), not the previous 180-point control.
@@ -1105,13 +1121,22 @@ final class DashboardMenuBarPage {
         }
         slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
 
+        let englishEndpointAlignment = AppLanguage.resolved == .english
         let minimumLabel = makeWidthSliderEndpointLabel(
             minimumTitle,
-            identifier: minimumIdentifier
+            identifier: minimumIdentifier,
+            width: englishEndpointAlignment
+                ? Self.englishMinimumSliderEndpointLabelWidth
+                : nil,
+            alignment: englishEndpointAlignment ? .left : .center
         )
         let maximumLabel = makeWidthSliderEndpointLabel(
             maximumTitle,
-            identifier: maximumIdentifier
+            identifier: maximumIdentifier,
+            width: englishEndpointAlignment
+                ? Self.englishMaximumSliderEndpointLabelWidth
+                : nil,
+            alignment: englishEndpointAlignment ? .right : .center
         )
         let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])
         stack.orientation = .horizontal
@@ -1123,15 +1148,20 @@ final class DashboardMenuBarPage {
 
     private func makeWidthSliderEndpointLabel(
         _ title: String,
-        identifier: String
+        identifier: String,
+        width: CGFloat?,
+        alignment: NSTextAlignment
     ) -> NSTextField {
         let label = NSTextField(labelWithString: title)
         label.identifier = NSUserInterfaceItemIdentifier(identifier)
         label.font = .systemFont(ofSize: 11)
         label.textColor = .secondaryLabelColor
-        label.alignment = .center
+        label.alignment = alignment
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        if let width {
+            label.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
         return label
     }
 
