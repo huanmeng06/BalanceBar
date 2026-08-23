@@ -152,15 +152,14 @@ final class AppPreferences {
     static let menuBarFontSizeStep: Double = 0.1
     static let menuBarFontSizeDefault: Double = menuBarFontSizePresetDefault.primarySize
     static let menuBarSecondaryToPrimaryFontRatio: Double = 10.0 / 13.0
-    /// The width slider uses a 0...20 range, with the system default at its
-    /// midpoint. Existing stored values remain unchanged when this default is
-    /// raised from the former zero-based presentation.
-    static let menuBarStatusItemWidthAdjustmentRange = 0.0...20.0
+    /// The width slider is centered on the system-default footprint: negative
+    /// values narrow the item and positive values widen it.
+    static let menuBarStatusItemWidthAdjustmentRange = -10.0...10.0
     static let menuBarStatusItemWidthAdjustmentStep: Double = menuBarOffsetStep
-    static let menuBarStatusItemWidthAdjustmentDefault: Double = 10.0
-    /// The actual status-item width baseline. The persisted/user-facing
-    /// adjustment is relative to the actual status-item footprint.
-    static let menuBarStatusItemWidthBaseline: Double = -20.0
+    static let menuBarStatusItemWidthAdjustmentDefault: Double = 0.0
+    /// Retained as the physical mapping hook used by the renderer and preview.
+    /// The centered user-facing range maps directly to the status-item width.
+    static let menuBarStatusItemWidthBaseline: Double = 0.0
 
     /// Point offsets for the menu bar Agent icon. Positive X moves right,
     /// positive Y moves up. Values are clamped to `menuBarOffsetRange`.
@@ -185,9 +184,8 @@ final class AppPreferences {
     }
 
     /// Additional points applied to the complete menu bar status item width.
-    /// This is a user-facing adjustment relative to the -20pt baseline.
-    /// Positive values widen the status item symmetrically; negative values
-    /// narrow it without changing the icon/text spacing inside the item.
+    /// Positive values widen the status item; negative values narrow it
+    /// without changing the icon/text spacing inside the item.
     var menuBarStatusItemWidthAdjustment: Double {
         get { clampedMenuBarStatusItemWidthAdjustment() }
         set {

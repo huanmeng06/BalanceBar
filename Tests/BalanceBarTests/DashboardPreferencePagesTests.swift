@@ -189,7 +189,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         widthSlider.minValue = AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound
         widthSlider.maxValue = AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound
-        widthSlider.doubleValue = 12.3
+        widthSlider.doubleValue = 7.3
         relay.adjustOffsetValue(widthSlider)
         relay.finishOffsetValue(widthSlider)
 
@@ -208,10 +208,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(adjustments[1].1, -1)
         XCTAssertEqual(values.count, 1)
         XCTAssertEqual(values.first?.0, AppPreferences.menuBarStatusItemWidthAdjustmentKey)
-        XCTAssertEqual(values.first?.1 ?? .nan, 12.3, accuracy: 0.001)
+        XCTAssertEqual(values.first?.1 ?? .nan, 7.3, accuracy: 0.001)
         XCTAssertEqual(endedValues.count, 1)
         XCTAssertEqual(endedValues.first?.0, AppPreferences.menuBarStatusItemWidthAdjustmentKey)
-        XCTAssertEqual(endedValues.first?.1 ?? .nan, 12.3, accuracy: 0.001)
+        XCTAssertEqual(endedValues.first?.1 ?? .nan, 7.3, accuracy: 0.001)
         XCTAssertEqual(resets, [DashboardMenuBarPage.iconOffsetsResetIdentifier])
     }
 
@@ -303,36 +303,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         if #available(macOS 26.0, *) {
             XCTAssertEqual(
                 widthSlider.neutralValue,
-                (AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound
-                    + AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound) / 2,
+                0,
                 accuracy: 0.001
             )
         }
-        let track = NSRect(x: 0, y: 0, width: 100, height: 4)
-        XCTAssertNil(
-            MenuBarWidthSlider.centeredTrackFillRange(
-                value: AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
-                minimum: AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound,
-                maximum: AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound,
-                track: track
-            )
-        )
-        let leftFill = MenuBarWidthSlider.centeredTrackFillRange(
-            value: 5,
-            minimum: AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound,
-            maximum: AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound,
-            track: track
-        )
-        XCTAssertEqual(leftFill?.minX ?? .nan, 25, accuracy: 0.001)
-        XCTAssertEqual(leftFill?.maxX ?? .nan, 50, accuracy: 0.001)
-        let rightFill = MenuBarWidthSlider.centeredTrackFillRange(
-            value: 15,
-            minimum: AppPreferences.menuBarStatusItemWidthAdjustmentRange.lowerBound,
-            maximum: AppPreferences.menuBarStatusItemWidthAdjustmentRange.upperBound,
-            track: track
-        )
-        XCTAssertEqual(rightFill?.minX ?? .nan, 50, accuracy: 0.001)
-        XCTAssertEqual(rightFill?.maxX ?? .nan, 75, accuracy: 0.001)
         XCTAssertEqual(
             widthSlider.constraints.first(where: { $0.firstAttribute == .width })?.constant ?? .nan,
             DashboardMenuBarPage.widthAdjustmentSliderWidth,
@@ -688,9 +662,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "调整菜单栏字体大小",
                     "微调图标上下像素位置：Y 轴 + 0.0 pt",
                     "微调金额上下像素位置：Y 轴 + 0.0 pt",
-                    "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 10.0 pt"
+                    "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 0.0 pt"
                 ],
-                "从窄到宽调整菜单栏宽度，默认 + 10.0 pt"
+                "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt"
             ),
             (
                 .traditionalChinese,
@@ -699,9 +673,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "調整選單列字體大小",
                     "微調圖示上下像素位置：Y 軸 + 0.0 pt",
                     "微調金額上下像素位置：Y 軸 + 0.0 pt",
-                    "調整 BalanceBar 與其他選單列項目的間距：寬度 + 10.0 pt"
+                    "調整 BalanceBar 與其他選單列項目的間距：寬度 + 0.0 pt"
                 ],
-                "從窄到寬調整選單列寬度，預設 + 10.0 pt"
+                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt"
             ),
             (
                 .japanese,
@@ -710,9 +684,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "メニューバーのフォントサイズを調整",
                     "アイコンの上下位置を微調整：Y 軸 + 0.0 pt",
                     "金額の上下位置を微調整：Y 軸 + 0.0 pt",
-                    "BalanceBar と他のメニューバー項目との間隔を調整：幅 + 10.0 pt"
+                    "BalanceBar と他のメニューバー項目との間隔を調整：幅 + 0.0 pt"
                 ],
-                "メニューバーの幅を狭い方から広い方へ調整（デフォルト + 10.0 pt）"
+                "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
             ),
             (
                 .english,
@@ -721,9 +695,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "Adjusts the menu bar font size",
                     "Fine-tune the icon's vertical position: Y axis + 0.0 pt",
                     "Fine-tune the amount's vertical position: Y axis + 0.0 pt",
-                    "Adjusts the gap between BalanceBar and other menu bar items: Width + 10.0 pt"
+                    "Adjusts the gap between BalanceBar and other menu bar items: Width + 0.0 pt"
                 ],
-                "Adjusts menu bar width from narrow to wide; default + 10.0 pt"
+                "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt"
             )
         ]
 

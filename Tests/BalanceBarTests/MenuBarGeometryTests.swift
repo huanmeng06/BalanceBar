@@ -256,7 +256,7 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(backgroundBounds.width, geometry.contentWidth, accuracy: 0.001)
     }
 
-    func testOfficialTwoLineWidthBaselinePreservesPhysicalDefaultAndUserDeltas() {
+    func testOfficialTwoLineWidthAdjustmentUsesCenteredPhysicalRange() {
         let primary = NSTextField(labelWithString: "85%")
         primary.font = MenuBarLayout.primaryFont(size: 13)
         let secondary = NSTextField(labelWithString: "6d11h")
@@ -277,36 +277,36 @@ final class MenuBarGeometryTests: XCTestCase {
             horizontalPadding: 10,
             widthAdjustment: defaultPhysicalAdjustment
         )
-        let plusTenLength = MenuBarLayout.statusItemLength(
+        let narrowLength = MenuBarLayout.statusItemLength(
+            contentWidth: geometry.contentWidth,
+            horizontalPadding: 10,
+            widthAdjustment: defaultPhysicalAdjustment - 10
+        )
+        let wideLength = MenuBarLayout.statusItemLength(
             contentWidth: geometry.contentWidth,
             horizontalPadding: 10,
             widthAdjustment: defaultPhysicalAdjustment + 10
         )
-        let plusTwentyLength = MenuBarLayout.statusItemLength(
-            contentWidth: geometry.contentWidth,
-            horizontalPadding: 10,
-            widthAdjustment: defaultPhysicalAdjustment + 20
-        )
 
-        XCTAssertEqual(defaultPhysicalAdjustment, -20, accuracy: 0.001)
+        XCTAssertEqual(defaultPhysicalAdjustment, 0, accuracy: 0.001)
         XCTAssertEqual(
             defaultLength,
-            geometry.contentWidth,
+            geometry.contentWidth + 20,
             accuracy: 0.001,
-            "logical 0pt keeps the -20pt physical baseline without an extra centering reserve"
+            "logical 0pt keeps the native status-item footprint"
         )
-        XCTAssertEqual(plusTenLength - defaultLength, 10, accuracy: 0.001)
-        XCTAssertEqual(plusTwentyLength - defaultLength, 20, accuracy: 0.001)
+        XCTAssertEqual(narrowLength - defaultLength, -10, accuracy: 0.001)
+        XCTAssertEqual(wideLength - defaultLength, 10, accuracy: 0.001)
         XCTAssertEqual(
-            plusTwentyLength - plusTenLength,
-            10,
+            wideLength - narrowLength,
+            20,
             accuracy: 0.001
         )
 
         for (label, length) in [
             ("default", defaultLength),
-            ("plus-ten", plusTenLength),
-            ("plus-twenty", plusTwentyLength)
+            ("narrow", narrowLength),
+            ("wide", wideLength)
         ] {
             let backgroundBounds = NSRect(
                 x: 0,

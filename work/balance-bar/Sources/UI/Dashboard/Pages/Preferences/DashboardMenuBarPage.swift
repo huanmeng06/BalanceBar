@@ -190,31 +190,6 @@ final class RepeatOffsetButton: NSButton {
 final class MenuBarWidthSlider: NSSlider {
     var onEditingEnded: (() -> Void)?
 
-    static func centeredTrackFillRange(
-        value: Double,
-        minimum: Double,
-        maximum: Double,
-        track: NSRect
-    ) -> NSRect? {
-        guard maximum > minimum, track.width > 0 else { return nil }
-        let clampedValue = min(max(value, minimum), maximum)
-        let fraction = (clampedValue - minimum) / (maximum - minimum)
-        let thumbX = track.minX + (track.width * CGFloat(fraction))
-        let neutralX = track.midX
-        let start = min(thumbX, neutralX)
-        let end = max(thumbX, neutralX)
-        guard end > start else { return nil }
-        return NSRect(x: start, y: track.minY, width: end - start, height: track.height)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        if #available(macOS 26.0, *) {
-            return
-        }
-        drawLegacyCenteredTrack()
-    }
-
     override func mouseDown(with event: NSEvent) {
         super.mouseDown(with: event)
         onEditingEnded?()
@@ -229,67 +204,6 @@ final class MenuBarWidthSlider: NSSlider {
         onEditingEnded?()
     }
 
-    private func drawLegacyCenteredTrack() {
-        guard !isVertical, bounds.width > 0, bounds.height > 0 else { return }
-
-        let knobRect = (cell as? NSSliderCell)?.knobRect(flipped: isFlipped)
-            ?? NSRect(x: bounds.midX - 7, y: bounds.midY - 7, width: 14, height: 14)
-        let trackHeight = min(4.0, max(2.0, bounds.height / 4.0))
-        let trackInset = max(6.0, knobRect.width / 2.0)
-        let track = NSRect(
-            x: bounds.minX + trackInset,
-            y: bounds.midY - trackHeight / 2,
-            width: max(0, bounds.width - trackInset * 2),
-            height: trackHeight
-        )
-        guard track.width > 0 else { return }
-
-        let exclusion = knobRect.insetBy(dx: 1, dy: 0)
-        var segments: [NSRect] = []
-        let leftEnd = min(track.maxX, exclusion.minX)
-        if leftEnd > track.minX {
-            segments.append(NSRect(
-                x: track.minX,
-                y: track.minY,
-                width: leftEnd - track.minX,
-                height: track.height
-            ))
-        }
-        let rightStart = max(track.minX, exclusion.maxX)
-        if track.maxX > rightStart {
-            segments.append(NSRect(
-                x: rightStart,
-                y: track.minY,
-                width: track.maxX - rightStart,
-                height: track.height
-            ))
-        }
-        drawTrackSegments(segments, color: .quaternaryLabelColor)
-
-        guard let fill = Self.centeredTrackFillRange(
-            value: doubleValue,
-            minimum: minValue,
-            maximum: maxValue,
-            track: track
-        ) else {
-            return
-        }
-        let blueSegments = segments.compactMap { segment -> NSRect? in
-            let start = max(segment.minX, fill.minX)
-            let end = min(segment.maxX, fill.maxX)
-            guard end > start else { return nil }
-            return NSRect(x: start, y: segment.minY, width: end - start, height: segment.height)
-        }
-        drawTrackSegments(blueSegments, color: .controlAccentColor)
-    }
-
-    private func drawTrackSegments(_ segments: [NSRect], color: NSColor) {
-        color.setFill()
-        for segment in segments {
-            let radius = segment.height / 2
-            NSBezierPath(roundedRect: segment, xRadius: radius, yRadius: radius).fill()
-        }
-    }
 }
 
 final class DashboardMenuBarPage {
@@ -1061,7 +975,7 @@ final class DashboardMenuBarPage {
         slider.minValue = range.lowerBound
         slider.maxValue = range.upperBound
         if #available(macOS 26.0, *) {
-            slider.neutralValue = (range.lowerBound + range.upperBound) / 2
+            slider.neutralValue = 0
             slider.tintProminence = .primary
         }
         slider.trackFillColor = .controlAccentColor
@@ -1073,10 +987,10 @@ final class DashboardMenuBarPage {
         slider.target = relay
         slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
         slider.toolTip = tr(
-            "从窄到宽调整菜单栏宽度，默认 + 10.0 pt",
-            "Adjusts menu bar width from narrow to wide; default + 10.0 pt",
-            "從窄到寬調整選單列寬度，預設 + 10.0 pt",
-            "メニューバーの幅を狭い方から広い方へ調整（デフォルト + 10.0 pt）"
+            "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt",
+            "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt",
+            "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt",
+            "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
         )
         slider.onEditingEnded = { [weak relay, weak slider] in
             guard let relay, let slider else { return }
