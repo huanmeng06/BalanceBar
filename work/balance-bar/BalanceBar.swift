@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey]
+    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -293,6 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarIconOffsetY: Double { get { preferences.menuBarIconOffsetY } set { preferences.menuBarIconOffsetY = newValue } }
     private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
+    private var menuBarFontSize: Double { get { preferences.menuBarFontSize } set { preferences.menuBarFontSize = newValue } }
     private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
     private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
         self?.applyMenuBarWidthAdjustmentFrame(value)
@@ -539,7 +540,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
             amountOffsetY: CGFloat(menuBarAmountOffsetY),
-            widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment)
+            widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment),
+            fontSize: CGFloat(menuBarFontSize)
         )
     }
 
@@ -898,15 +900,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func handleDashboardOffsetValue(identifier: String, value: Double) {
-        guard identifier == AppPreferences.menuBarStatusItemWidthAdjustmentKey else {
+        switch identifier {
+        case AppPreferences.menuBarFontSizePresetKey:
+            guard let preset = MenuBarFontSizePreset(segmentIndex: Int(value.rounded())) else {
+                return
+            }
+            preferences.menuBarFontSizePreset = preset
+            updateStatusItem(for: snapshot)
+        case AppPreferences.menuBarFontSizeKey:
+            // Keep the numeric route for migration-era callers. The current
+            // settings page sends the discrete preset key above.
+            menuBarFontSize = value
+            updateStatusItem(for: snapshot)
+        case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
+            // NSSlider sends this action continuously. Keep the value transient:
+            // UserDefaults and logging belong to the editing-ended path, not the
+            // mouse-tracking hot path.
+            let transientValue = menuBarStatusItemWidthAdjustmentSession.update(value)
+            MenuBarWidthPerformance.measure("slider-action") {
+                menuBarWidthAdjustmentCoalescer.submit(CGFloat(transientValue))
+            }
+        default:
             return
-        }
-        // NSSlider sends this action continuously. Keep the value transient:
-        // UserDefaults and logging belong to the editing-ended path, not the
-        // mouse-tracking hot path.
-        let transientValue = menuBarStatusItemWidthAdjustmentSession.update(value)
-        MenuBarWidthPerformance.measure("slider-action") {
-            menuBarWidthAdjustmentCoalescer.submit(CGFloat(transientValue))
         }
     }
 

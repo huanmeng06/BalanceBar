@@ -385,6 +385,118 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .allSatisfy { $0.isEnabled })
     }
 
+    func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarFontSize.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.menuBarFontSizePreset = .medium
+        let relay = DashboardPreferencePageRelay()
+        relay.onOffsetValue = { identifier, value in
+            guard identifier == AppPreferences.menuBarFontSizePresetKey,
+                  let preset = MenuBarFontSizePreset(segmentIndex: Int(value.rounded())) else {
+                return
+            }
+            preferences.menuBarFontSizePreset = preset
+        }
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let popupControls = descendants(of: page).compactMap { $0 as? NSPopUpButton }
+        let fontPresetControls = popupControls.filter {
+            $0.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey
+        }
+        XCTAssertEqual(fontPresetControls.count, 1)
+        let fontPresetControl = try XCTUnwrap(fontPresetControls.first)
+        let fontPresetWidthConstraint = try XCTUnwrap(fontPresetControl.constraints.first {
+            $0.firstAttribute == .width && $0.relation == .equal
+        })
+        XCTAssertEqual(fontPresetWidthConstraint.constant, DashboardMenuBarPage.fontSizePresetWidth, accuracy: 0.001)
+        XCTAssertEqual(
+            (fontPresetControl.selectedItem?.representedObject as? NSNumber)?.intValue,
+            MenuBarFontSizePreset.medium.segmentIndex
+        )
+        XCTAssertEqual(
+            fontPresetControl.numberOfItems,
+            MenuBarFontSizePreset.allCases.count
+        )
+        XCTAssertEqual(fontPresetControl.itemTitle(at: 0), "Large")
+        XCTAssertEqual(fontPresetControl.itemTitle(at: 1), "Medium")
+        XCTAssertEqual(fontPresetControl.itemTitle(at: 2), "Small")
+        XCTAssertTrue(popupControls.allSatisfy {
+            $0.identifier?.rawValue != AppPreferences.menuBarPrimaryFontSizeKey
+                && $0.identifier?.rawValue != AppPreferences.menuBarSecondaryFontSizeKey
+        })
+        XCTAssertTrue(fontPresetControl.toolTip?.contains("11.7/9") == true)
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertEqual(
+            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.fontSizeSummaryIdentifier }?.stringValue,
+            "11.7 / 9.0 pt"
+        )
+
+        let previewPrimary = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+            } as? NSTextField
+        )
+        let previewSecondary = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewSecondaryIdentifier
+            } as? NSTextField
+        )
+        XCTAssertEqual(previewPrimary.font?.pointSize ?? .nan, 11.7, accuracy: 0.001)
+        XCTAssertEqual(
+            previewSecondary.font?.pointSize ?? .nan,
+            9.0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(previewPrimary.frame.minX, previewSecondary.frame.minX, accuracy: 0.001)
+        XCTAssertEqual(previewPrimary.frame.width, previewSecondary.frame.width, accuracy: 0.001)
+
+        fontPresetControl.selectItem(at: MenuBarFontSizePreset.small.segmentIndex)
+        relay.selectMenuBarFontSizePreset(fontPresetControl)
+        XCTAssertEqual(preferences.menuBarFontSizePreset, .small)
+        XCTAssertEqual(preferences.menuBarFontSize, 10.4, accuracy: 0.001)
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            8.0,
+            accuracy: 0.001
+        )
+        XCTAssertFalse(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .contains { $0.title == "Default" },
+            "The font-size section should only expose the native preset popup"
+        )
+
+        preferences.showMenuBarAmount = false
+        controller.refresh(
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        let refreshedFontPresetControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey }
+        )
+        XCTAssertFalse(refreshedFontPresetControl.isEnabled)
+    }
+
     func testMenuBarWidthOnlyRefreshUpdatesSummaryWithoutFightingSlider() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -558,6 +670,70 @@ final class DashboardPreferencePagesTests: XCTestCase {
             preferences: preferences,
             menuBarSnapshot: { $0 },
             iconImage: nil
+        )
+        let previewIcon = try! XCTUnwrap(
+            descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" }
+        )
+        let previewTextView = try! XCTUnwrap(
+            descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewText" }
+        )
+        let previewPrimary = try! XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier
+            } as? NSTextField
+        )
+        let previewSecondary = try! XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == DashboardMenuBarPage.previewSecondaryIdentifier
+            } as? NSTextField
+        )
+        let previewGeometry = MenuBarLayout.geometry(
+            primarySize: previewPrimary.intrinsicContentSize,
+            secondarySize: previewSecondary.intrinsicContentSize,
+            showIcon: true,
+            showAmount: true,
+            hasSecondary: true,
+            isBalance: false
+        )
+        let previewBackgroundBounds = NSRect(x: 0, y: 0, width: 190, height: 42)
+        let previewFrames = MenuBarLayout.frames(
+            buttonSize: previewBackgroundBounds.size,
+            geometry: previewGeometry,
+            iconViewYOffset: 0
+        )
+        let previewCompensation = MenuBarLayout.horizontalCenteringCompensation(
+            backgroundBounds: previewBackgroundBounds,
+            geometry: previewGeometry,
+            iconOffsetX: 0,
+            textOffsetX: 0,
+            centerVisibleUnionOnBackground: true
+        )
+        let centeredPreviewFrames = MenuBarLayoutFrames(
+            content: previewFrames.content.offsetBy(dx: previewCompensation, dy: 0),
+            iconSlot: previewFrames.iconSlot,
+            icon: previewFrames.icon,
+            text: previewFrames.text
+        )
+        let centeredPreviewVisibleBounds = try! XCTUnwrap(
+            MenuBarLayout.visibleContentBounds(
+                for: centeredPreviewFrames,
+                in: previewBackgroundBounds
+            )
+        )
+        XCTAssertEqual(
+            centeredPreviewVisibleBounds.midX,
+            previewBackgroundBounds.midX + MenuBarLayout.menuBarOpticalCenterNudgeX,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            previewTextView.layer?.affineTransform().tx ?? .nan,
+            previewCompensation,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            previewIcon.layer?.affineTransform().tx ?? .nan,
+            previewCompensation,
+            accuracy: 0.001
         )
         // With reset time shown the text block defaults to 0.1pt lower.
         XCTAssertEqual(

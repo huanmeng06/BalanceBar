@@ -73,6 +73,15 @@ final class DashboardPreferencePageRelay: NSObject {
         onOffsetValue?(identifier, sender.doubleValue)
     }
 
+    @objc func selectMenuBarFontSizePreset(_ sender: NSPopUpButton) {
+        guard sender.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey,
+              let segmentIndex = (sender.selectedItem?.representedObject as? NSNumber)?.intValue,
+              let preset = MenuBarFontSizePreset(segmentIndex: segmentIndex) else {
+            return
+        }
+        onOffsetValue?(AppPreferences.menuBarFontSizePresetKey, Double(preset.segmentIndex))
+    }
+
     @objc func finishOffsetValue(_ sender: NSSlider) {
         guard let identifier = sender.identifier?.rawValue else { return }
         onOffsetValueEnded?(identifier, sender.doubleValue)

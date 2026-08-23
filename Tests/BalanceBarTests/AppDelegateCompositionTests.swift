@@ -131,7 +131,8 @@ final class AppDelegateCompositionTests: XCTestCase {
             showAmount: true,
             showReset: true,
             horizontalPadding: 6,
-            keepMenuOpenAfterRefresh: true
+            keepMenuOpenAfterRefresh: true,
+            fontSize: 14.2
         )
 
         controller.start(
@@ -147,6 +148,16 @@ final class AppDelegateCompositionTests: XCTestCase {
             settings: settings
         )
         XCTAssertEqual(controller.statusItemInstallCount, 1)
+        XCTAssertEqual(
+            controller.menuBarFontPointSizesForTesting?.primary ?? .nan,
+            14.2,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuBarFontPointSizesForTesting?.secondary ?? .nan,
+            14.2 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.001
+        )
 
         let initialLength = try XCTUnwrap(controller.statusItemLengthForTesting)
         let menuItemIdentities = controller.menuItemsForTesting.map { ObjectIdentifier($0) }

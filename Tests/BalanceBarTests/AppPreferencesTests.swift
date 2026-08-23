@@ -206,6 +206,79 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(session.transientValue)
     }
 
+    func testMenuBarFontSizePresetsPersistAndPreserveDefaultRatio() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(
+            preferences.menuBarFontSizePreset,
+            AppPreferences.menuBarFontSizePresetDefault
+        )
+        XCTAssertEqual(
+            preferences.menuBarFontSize,
+            AppPreferences.menuBarFontSizeDefault,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            10,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize / preferences.menuBarFontSize,
+            AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+            accuracy: 0.000_001
+        )
+
+        for preset in MenuBarFontSizePreset.allCases {
+            preferences.menuBarFontSizePreset = preset
+            XCTAssertEqual(preferences.menuBarFontSizePreset, preset)
+            XCTAssertEqual(preferences.menuBarFontSize, preset.primarySize, accuracy: 0.001)
+            XCTAssertEqual(preferences.menuBarSecondaryFontSize, preset.secondarySize, accuracy: 0.001)
+            XCTAssertEqual(
+                preferences.menuBarSecondaryFontSize / preferences.menuBarFontSize,
+                AppPreferences.menuBarSecondaryToPrimaryFontRatio,
+                accuracy: 0.000_001
+            )
+            XCTAssertEqual(
+                defaults.string(forKey: AppPreferences.menuBarFontSizePresetKey),
+                preset.rawValue
+            )
+        }
+
+        preferences.menuBarFontSize = 12.0
+        XCTAssertEqual(preferences.menuBarFontSizePreset, .medium)
+        XCTAssertEqual(preferences.menuBarFontSize, 11.7, accuracy: 0.001)
+        XCTAssertEqual(preferences.menuBarSecondaryFontSize, 9.0, accuracy: 0.001)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBarFontSizePresetKey),
+            MenuBarFontSizePreset.medium.rawValue
+        )
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarFontSizeKey))
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarPrimaryFontSizeKey))
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarSecondaryFontSizeKey))
+
+        defaults.removeObject(forKey: AppPreferences.menuBarFontSizePresetKey)
+        defaults.removeObject(forKey: AppPreferences.menuBarFontSizeKey)
+        defaults.set(14.2, forKey: AppPreferences.menuBarPrimaryFontSizeKey)
+        defaults.set(9.6, forKey: AppPreferences.menuBarSecondaryFontSizeKey)
+        XCTAssertEqual(preferences.menuBarFontSizePreset, .large)
+        XCTAssertEqual(preferences.menuBarFontSize, 13.0, accuracy: 0.001)
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            10.0,
+            accuracy: 0.001
+        )
+
+        defaults.removeObject(forKey: AppPreferences.menuBarFontSizePresetKey)
+        defaults.removeObject(forKey: AppPreferences.menuBarPrimaryFontSizeKey)
+        defaults.set(Double.nan, forKey: AppPreferences.menuBarFontSizeKey)
+        XCTAssertEqual(
+            preferences.menuBarFontSizePreset,
+            .small
+        )
+    }
+
     func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -322,7 +395,10 @@ final class AppPreferencesTests: XCTestCase {
             "activityPollInterval": 4.0,
             AppPreferences.showOpenCodexMenuKey: false,
             AppPreferences.openCodexDashboardPortOverrideKey: 23456,
-            AppPreferences.openCodexDashboardAutomaticDetectionKey: false
+            AppPreferences.openCodexDashboardAutomaticDetectionKey: false,
+            AppPreferences.menuBarFontSizePresetKey: MenuBarFontSizePreset.medium.rawValue,
+            AppPreferences.menuBarPrimaryFontSizeKey: 14.2,
+            AppPreferences.menuBarSecondaryFontSizeKey: 9.6
         ] as [String: Any]
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: source, localDomain: [:])
         XCTAssertFalse(preferences.showMenuBarIcon)
@@ -330,6 +406,13 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.showOpenCodexMenu)
         XCTAssertEqual(preferences.openCodexDashboardPortOverride, 23456)
         XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
+        XCTAssertEqual(preferences.menuBarFontSizePreset, .medium)
+        XCTAssertEqual(preferences.menuBarFontSize, 11.7, accuracy: 0.001)
+        XCTAssertEqual(
+            preferences.menuBarSecondaryFontSize,
+            9.0,
+            accuracy: 0.001
+        )
         defaults.set(true, forKey: "showMenuBarIcon")
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: ["showMenuBarIcon": false], localDomain: [:])
         XCTAssertTrue(preferences.showMenuBarIcon)

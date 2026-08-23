@@ -211,13 +211,21 @@ final class DashboardMenuBarPage {
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
+    static let fontSizeSummaryIdentifier = "menuBarFontSizeSummary"
+    static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
+    // Match the compact native popup used by the Application settings page.
+    // Screenshots are commonly captured at 2x scale, so this is 100 points
+    // (about 200 pixels), not the previous 180-point control.
+    static let fontSizePresetWidth: CGFloat = 100
     /// Extra default lift for the amount text in the Dashboard preview only
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
     static let previewAmountDefaultYOffset: CGFloat = 0.5
+    static let previewPrimaryIdentifier = "menuBarPreviewPrimary"
+    static let previewSecondaryIdentifier = "menuBarPreviewSecondary"
 
     struct Presentation: Equatable {
         let primary: String
@@ -260,6 +268,11 @@ final class DashboardMenuBarPage {
         let slider: NSSlider
     }
 
+    private struct FontPresetControls {
+        let view: NSView
+        let control: NSPopUpButton
+    }
+
     private let previewIcon = PassthroughImageView()
     private let previewIconSlot = NSView()
     private let previewText = MenuBarTextView()
@@ -276,9 +289,11 @@ final class DashboardMenuBarPage {
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
+    private var fontSizeSummaryLabel: NSTextField?
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
+    private weak var fontSizePresetControl: NSPopUpButton?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
@@ -326,8 +341,10 @@ final class DashboardMenuBarPage {
         previewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewPrimary.font = MenuBarLayout.primaryFont
         previewPrimary.textColor = .labelColor
+        previewPrimary.identifier = NSUserInterfaceItemIdentifier(Self.previewPrimaryIdentifier)
         previewSecondary.font = MenuBarLayout.secondaryFont
         previewSecondary.textColor = .labelColor
+        previewSecondary.identifier = NSUserInterfaceItemIdentifier(Self.previewSecondaryIdentifier)
         previewText.addSubview(previewPrimary)
         previewText.addSubview(previewSecondary)
         previewText.wantsLayer = true
@@ -369,7 +386,8 @@ final class DashboardMenuBarPage {
         let initialCapsuleInset = Self.previewCapsuleHorizontalInset(
             horizontalPadding: input.preferences.menuBarHorizontalPadding,
             widthAdjustment: input.preferences.menuBarStatusItemWidthAdjustment
-                + AppPreferences.menuBarStatusItemWidthBaseline
+                + AppPreferences.menuBarStatusItemWidthBaseline,
+            additionalWidth: MenuBarLayout.menuBarStatusItemVisualOverhangX * 2
         )
         let capsuleLeading = previewCapsule.leadingAnchor.constraint(
             equalTo: previewRow.leadingAnchor,
@@ -450,12 +468,45 @@ final class DashboardMenuBarPage {
             key: AppPreferences.menuBarStatusItemWidthAdjustmentKey,
             relay: input.relay
         )
+        let fontSizePreset = input.preferences.menuBarFontSizePreset
+        let fontSize = fontSizePreset.primarySize
+        let secondaryFontSize = fontSizePreset.secondarySize
+        let fontSizeSummary = NSTextField(
+            labelWithString: Self.fontSizeSummaryText(
+                primary: fontSize,
+                secondary: secondaryFontSize
+            )
+        )
+        fontSizeSummary.identifier = NSUserInterfaceItemIdentifier(
+            Self.fontSizeSummaryIdentifier
+        )
+        let fontSizeControls = makeFontSizePresetControls(
+            value: fontSizePreset,
+            relay: input.relay
+        )
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
         widthAdjustmentSummaryLabel = widthAdjustmentSummary
+        fontSizeSummaryLabel = fontSizeSummary
         iconOffsetButtons = iconOffsetControls
         amountOffsetButtons = amountOffsetControls
         widthAdjustmentSlider = widthAdjustmentControls.slider
+        fontSizePresetControl = fontSizeControls.control
+        let fontSizeSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("字号", "Font Size", "字號", "フォントサイズ"),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr("菜单栏", "Menu Bar", "選單列", "メニューバー"),
+                    subtitle: Self.fontSizeSummaryText(
+                        primary: fontSize,
+                        secondary: secondaryFontSize
+                    ),
+                    subtitleLabel: fontSizeSummary,
+                    control: fontSizeControls.view,
+                    minimumHeight: 66
+                )
+            ]
+        )
         let fineTuneSection = DashboardSettingsComponents.makeSettingsSection(
             tr("细节微调", "Fine Tuning", "細節微調", "微調整"),
             rows: [
@@ -487,6 +538,7 @@ final class DashboardMenuBarPage {
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
             displaySection,
+            fontSizeSection,
             fineTuneSection
         ])
     }
@@ -502,6 +554,15 @@ final class DashboardMenuBarPage {
         previewText.isHidden = !preferences.showMenuBarAmount
         iconSwitch?.isEnabled = preferences.showMenuBarAmount
         amountSwitch?.isEnabled = preferences.showMenuBarIcon
+        let fontSizePreset = preferences.menuBarFontSizePreset
+        let fontSize = fontSizePreset.primarySize
+        let secondaryFontSize = fontSizePreset.secondarySize
+        previewPrimary.font = MenuBarLayout.primaryFont(
+            size: CGFloat(fontSize)
+        )
+        previewSecondary.font = MenuBarLayout.secondaryFont(
+            size: CGFloat(secondaryFontSize)
+        )
         let presentation = Self.presentation(
             for: snapshot,
             showAmount: preferences.showMenuBarAmount,
@@ -538,6 +599,12 @@ final class DashboardMenuBarPage {
         amountOffsetSummaryLabel?.stringValue = Self.offsetSummaryText(x: amountOffsetX, y: amountOffsetY)
         iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
         amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
+        fontSizeSummaryLabel?.stringValue = Self.fontSizeSummaryText(
+            primary: fontSize,
+            secondary: secondaryFontSize
+        )
+        fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
         applyWidthAdjustment(
@@ -565,7 +632,8 @@ final class DashboardMenuBarPage {
             backgroundBounds: previewBackgroundBounds,
             geometry: geometry,
             iconOffsetX: iconVisualX,
-            textOffsetX: amountVisualX
+            textOffsetX: amountVisualX,
+            centerVisibleUnionOnBackground: hasSecondary
         )
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
@@ -673,7 +741,8 @@ final class DashboardMenuBarPage {
         MenuBarWidthPerformance.measure("dashboard-preview") {
             let capsuleInset = Self.previewCapsuleHorizontalInset(
                 horizontalPadding: horizontalPadding,
-                widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline
+                widthAdjustment: widthAdjustment + AppPreferences.menuBarStatusItemWidthBaseline,
+                additionalWidth: MenuBarLayout.menuBarStatusItemVisualOverhangX * 2
             )
             capsuleLeadingConstraint?.constant = -capsuleInset
             capsuleTrailingConstraint?.constant = capsuleInset
@@ -710,11 +779,53 @@ final class DashboardMenuBarPage {
         )
     }
 
+    private static func fontSizeSummaryText(primary: Double, secondary: Double) -> String {
+        String(format: "%.1f / %.1f pt", primary, secondary)
+    }
+
     private static func previewCapsuleHorizontalInset(
         horizontalPadding: CGFloat,
-        widthAdjustment: Double
+        widthAdjustment: Double,
+        additionalWidth: CGFloat = 0
     ) -> CGFloat {
-        horizontalPadding + 10 + (CGFloat(widthAdjustment) / 2)
+        horizontalPadding
+            + 10
+            + (CGFloat(widthAdjustment) / 2)
+            + (max(0, additionalWidth) / 2)
+    }
+
+    private func makeFontSizePresetControls(
+        value: MenuBarFontSizePreset,
+        relay: DashboardPreferencePageRelay
+    ) -> FontPresetControls {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.fontSizePresetIdentifier,
+            items: MenuBarFontSizePreset.allCases.map { preset in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.fontSizePresetLabel(preset),
+                    representedObject: NSNumber(value: preset.segmentIndex)
+                )
+            },
+            selectedIndex: value.segmentIndex,
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.selectMenuBarFontSizePreset(_:))
+        )
+        control.toolTip = tr(
+            "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt",
+            "Large 13/10 pt; Medium 11.7/9 pt; Small 10.4/8 pt",
+            "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt",
+            "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt"
+        )
+        control.widthAnchor.constraint(equalToConstant: Self.fontSizePresetWidth).isActive = true
+        return FontPresetControls(view: control, control: control)
+    }
+
+    private static func fontSizePresetLabel(_ preset: MenuBarFontSizePreset) -> String {
+        switch preset {
+        case .large: return tr("大", "Large", "大", "大")
+        case .medium: return tr("中", "Medium", "中", "中")
+        case .small: return tr("小", "Small", "小", "小")
+        }
     }
 
     private func makeOffsetControls(

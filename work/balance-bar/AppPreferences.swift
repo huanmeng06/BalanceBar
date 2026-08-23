@@ -1,5 +1,51 @@
 import Foundation
 
+enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
+    case large
+    case medium
+    case small
+
+    var primarySize: Double {
+        switch self {
+        case .large: return 13.0
+        case .medium: return 11.7
+        case .small: return 10.4
+        }
+    }
+
+    var secondarySize: Double {
+        switch self {
+        case .large: return 10.0
+        case .medium: return 9.0
+        case .small: return 8.0
+        }
+    }
+
+    var segmentIndex: Int {
+        switch self {
+        case .large: return 0
+        case .medium: return 1
+        case .small: return 2
+        }
+    }
+
+    init?(segmentIndex: Int) {
+        switch segmentIndex {
+        case 0: self = .large
+        case 1: self = .medium
+        case 2: self = .small
+        default: return nil
+        }
+    }
+
+    static func nearest(to primarySize: Double) -> Self {
+        guard primarySize.isFinite else { return .large }
+        return allCases.min {
+            abs($0.primarySize - primarySize) < abs($1.primarySize - primarySize)
+        } ?? .large
+    }
+}
+
 final class AppPreferences {
     static let showOpenCodexMenuKey = "showOpenCodexMenu"
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
@@ -77,6 +123,23 @@ final class AppPreferences {
     static let menuBarAmountOffsetXKey = "menuBarAmountOffsetX"
     static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"
     static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"
+    /// The persisted menu-bar font-size preset. The numeric key below remains
+    /// as a migration source for versions that exposed a continuous slider.
+    static let menuBarFontSizePresetKey = "menuBarFontSizePreset"
+    static let menuBarFontSizePresetDefault: MenuBarFontSizePreset = .large
+    static let menuBarFontSizeKey = "menuBarFontSize"
+    /// Legacy keys kept in the migration whitelist. They are read only as a
+    /// fallback for installations that used the short-lived independent-row
+    /// controls and are removed when the shared preference is written.
+    static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"
+    static let menuBarSecondaryFontSizeKey = "menuBarSecondaryFontSize"
+    /// These numeric bounds and step are retained only for legacy numeric
+    /// preference migration and compatibility helpers. The current UI exposes
+    /// the three presets above instead of a continuous slider.
+    static let menuBarFontSizeRange = 10.4...16.0
+    static let menuBarFontSizeStep: Double = 0.1
+    static let menuBarFontSizeDefault: Double = menuBarFontSizePresetDefault.primarySize
+    static let menuBarSecondaryToPrimaryFontRatio: Double = 10.0 / 13.0
     /// The width slider is zero-based and only widens the status item above
     /// its actual -20pt baseline.
     static let menuBarStatusItemWidthAdjustmentRange = 0.0...20.0
@@ -120,6 +183,56 @@ final class AppPreferences {
                 forKey: Self.menuBarStatusItemWidthAdjustmentKey
             )
         }
+    }
+
+    /// The selected menu-bar font-size preset drives both official rows and
+    /// the single-line third-party balance path.
+    var menuBarFontSizePreset: MenuBarFontSizePreset {
+        get {
+            if let rawValue = defaults.string(forKey: Self.menuBarFontSizePresetKey),
+               let preset = MenuBarFontSizePreset(rawValue: rawValue) {
+                return preset
+            }
+            if let stored = storedMenuBarFontSize(for: Self.menuBarFontSizeKey) {
+                return MenuBarFontSizePreset.nearest(to: stored)
+            }
+            // An earlier build briefly exposed independent row controls. Use
+            // its primary value as the migration source and restore the
+            // nearest supported preset.
+            if let legacy = storedMenuBarFontSize(for: Self.menuBarPrimaryFontSizeKey) {
+                return MenuBarFontSizePreset.nearest(to: legacy)
+            }
+            return Self.menuBarFontSizePresetDefault
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarFontSizePresetKey)
+            defaults.removeObject(forKey: Self.menuBarFontSizeKey)
+            defaults.removeObject(forKey: Self.menuBarPrimaryFontSizeKey)
+            defaults.removeObject(forKey: Self.menuBarSecondaryFontSizeKey)
+        }
+    }
+
+    /// The selected primary-row size in logical AppKit points.
+    var menuBarFontSize: Double {
+        get { menuBarFontSizePreset.primarySize }
+        set { menuBarFontSizePreset = MenuBarFontSizePreset.nearest(to: newValue) }
+    }
+
+    /// The actual primary row size used by the menu-bar renderer.
+    var menuBarPrimaryFontSize: Double { menuBarFontSize }
+
+    /// The actual secondary row size used by the official two-line renderer.
+    /// It is derived, never independently persisted or adjustable.
+    var menuBarSecondaryFontSize: Double {
+        menuBarFontSizePreset.secondarySize
+    }
+
+    static func secondaryMenuBarFontSize(for primarySize: Double) -> Double {
+        let normalizedPrimary = normalizedMenuBarFontSize(
+            primarySize,
+            range: menuBarFontSizeRange
+        )
+        return normalizedPrimary * menuBarSecondaryToPrimaryFontRatio
     }
 
     /// An optional local-only Dashboard port override. The value is deliberately
@@ -224,11 +337,28 @@ final class AppPreferences {
         return (clamped * scale).rounded() / scale
     }
 
+    static func normalizedMenuBarFontSize(
+        _ value: Double,
+        range: ClosedRange<Double>
+    ) -> Double {
+        let finiteValue = value.isFinite ? value : range.lowerBound
+        let clamped = min(max(finiteValue, range.lowerBound), range.upperBound)
+        let scale = 1 / menuBarFontSizeStep
+        return (clamped * scale).rounded() / scale
+    }
+
     private func clampedMenuBarStatusItemWidthAdjustment() -> Double {
         guard let number = defaults.object(
             forKey: Self.menuBarStatusItemWidthAdjustmentKey
         ) as? NSNumber else { return 0 }
         return roundedMenuBarStatusItemWidthAdjustment(number.doubleValue)
+    }
+
+    private func storedMenuBarFontSize(for key: String) -> Double? {
+        guard let number = defaults.object(forKey: key) as? NSNumber else {
+            return nil
+        }
+        return Self.normalizedMenuBarFontSize(number.doubleValue, range: Self.menuBarFontSizeRange)
     }
 }
 
