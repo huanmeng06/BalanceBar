@@ -2,7 +2,6 @@ import AppKit
 
 enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
-    static let settingsPageHorizontalInset: CGFloat = 34
 
     struct PopUpItem {
         let title: String
@@ -80,22 +79,13 @@ enum DashboardSettingsComponents {
             // The document top is the native legal top; no duplicate titlebar
             // or document inset is placed in the scrollable content range.
             stack.topAnchor.constraint(equalTo: documentView.topAnchor),
-            stack.leadingAnchor.constraint(
-                equalTo: documentView.leadingAnchor,
-                constant: settingsPageHorizontalInset
-            ),
-            stack.trailingAnchor.constraint(
-                equalTo: documentView.trailingAnchor,
-                constant: -settingsPageHorizontalInset
-            ),
+            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 34),
+            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -34),
             // The stack must fit inside the document, but it should keep its
             // natural height when the page is shorter than the viewport.
             // Using an equality here makes AppKit stretch the first row to
             // consume all remaining space.
-            stack.bottomAnchor.constraint(
-                lessThanOrEqualTo: documentView.bottomAnchor,
-                constant: -settingsPageHorizontalInset
-            )
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -34)
         ])
         for section in sections {
             section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true

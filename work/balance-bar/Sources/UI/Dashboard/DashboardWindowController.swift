@@ -141,10 +141,6 @@ enum DashboardWindowDragPolicy {
 }
 
 final class DashboardWindowController: NSObject, NSWindowDelegate {
-    static let sidebarWidth: CGFloat = 216
-    static let minimumWindowSize = NSSize(width: 800, height: 540)
-    static let minimumContentHostWidth = minimumWindowSize.width - sidebarWidth
-
     private let actions: DashboardWindowControllerActions
     private(set) var window: NSWindow?
     private(set) var contentHost = NSView()
@@ -208,7 +204,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = DashboardSection.general.title
-        window.minSize = Self.minimumWindowSize
+        window.minSize = NSSize(width: 800, height: 540)
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
@@ -403,7 +399,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             sidebar.topAnchor.constraint(equalTo: root.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: Self.sidebarWidth),
+            sidebar.widthAnchor.constraint(equalToConstant: 216),
             contentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             contentHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             contentHost.topAnchor.constraint(equalTo: root.topAnchor),
