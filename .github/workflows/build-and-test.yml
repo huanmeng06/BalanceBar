@@ -17,12 +17,23 @@ concurrency:
 jobs:
   build-and-test:
     name: macOS build and test
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 20
+    env:
+      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
+      BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Verify macOS 26 build environment
+        run: |
+          set -Eeuo pipefail
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
+          echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
 
       - name: CLI fresh build
         run: ./work/balance-bar/build.sh

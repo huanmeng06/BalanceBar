@@ -18,12 +18,14 @@ jobs:
   release:
     name: Package and publish Release
     if: github.event.pull_request.merged == true
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 35
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
+      BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
 
     steps:
       - name: Check out the merge commit
@@ -36,6 +38,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Verify macOS 26 build environment
+        run: |
+          set -Eeuo pipefail
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
+          echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
 
       - name: Detect version change in the merged PR
         id: release_context
