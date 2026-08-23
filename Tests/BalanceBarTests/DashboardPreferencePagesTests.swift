@@ -301,6 +301,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(warningLabel.usesSingleLineMode)
             XCTAssertEqual(warningLabel.maximumNumberOfLines, 1)
             XCTAssertEqual(warningLabel.lineBreakMode, .byTruncatingTail)
+            XCTAssertEqual(warningLabel.font?.pointSize ?? .nan, 12, accuracy: 0.001)
+            let warningRowHeight = try XCTUnwrap(
+                warningRow.constraints.first {
+                    $0.firstAttribute == .height && $0.relation == .equal
+                }?.constant
+            )
+            XCTAssertEqual(warningRowHeight, DashboardMenuBarPage.previewRowHeight)
 
             let settingsButton = try XCTUnwrap(
                 descendants(of: page)

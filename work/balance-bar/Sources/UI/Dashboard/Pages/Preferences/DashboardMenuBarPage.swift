@@ -322,6 +322,7 @@ final class DashboardMenuBarPage {
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
     static let previewAmountDefaultYOffset: CGFloat = 0.5
+    static let previewRowHeight: CGFloat = 66
     static let previewPrimaryIdentifier = "menuBarPreviewPrimary"
     static let previewSecondaryIdentifier = "menuBarPreviewSecondary"
     static let overflowWarningIdentifier = "menuBarOverflowWarning"
@@ -453,7 +454,7 @@ final class DashboardMenuBarPage {
         let row = NSView()
         row.identifier = NSUserInterfaceItemIdentifier(Self.overflowWarningRowIdentifier)
         row.translatesAutoresizingMaskIntoConstraints = false
-        row.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        row.heightAnchor.constraint(equalToConstant: Self.previewRowHeight).isActive = true
         label.translatesAutoresizingMaskIntoConstraints = false
         settingsButton.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(label)
@@ -619,7 +620,7 @@ final class DashboardMenuBarPage {
         overflowWarningLabel.identifier = NSUserInterfaceItemIdentifier(
             Self.overflowWarningIdentifier
         )
-        overflowWarningLabel.font = .systemFont(ofSize: 11)
+        overflowWarningLabel.font = .systemFont(ofSize: 12)
         overflowWarningLabel.textColor = .secondaryLabelColor
         overflowWarningLabel.lineBreakMode = .byTruncatingTail
         overflowWarningLabel.usesSingleLineMode = true
@@ -661,7 +662,7 @@ final class DashboardMenuBarPage {
                 tr("当前布局", "Current Layout", "目前版面", "現在のレイアウト"),
                 subtitle: tr("菜单栏会随供应商数据实时更新", "The menu bar updates with Provider data in real time", "選單列會隨供應商資料即時更新", "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"),
                 control: preview,
-                minimumHeight: 66
+                minimumHeight: Self.previewRowHeight
             ),
             overflowWarningRow
         ], onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
