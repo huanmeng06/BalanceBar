@@ -116,11 +116,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         var projectRows: [NSView] = [
             DashboardSettingsComponents.makeSettingsRow(
                 tr("打开主窗口", "Open Main Window", "開啟主視窗", "メインウインドウを開く"),
+                subtitle: tr("balance bar", "balance bar", "balance bar", "balance bar"),
                 control: openMainWindow
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 ChatGPT", "Open ChatGPT", "開啟 ChatGPT", "ChatGPT を開く"),
-                subtitle: tr("显示 ChatGPT 启动项", "Show the ChatGPT launch item", "顯示 ChatGPT 啟動項目", "ChatGPT 起動項目を表示"),
+                subtitle: tr("显示ChatGPT", "Show ChatGPT", "顯示 ChatGPT", "ChatGPT を表示"),
                 control: DashboardSettingsComponents.makeSwitch(
                     identifier: "showOpenChatGPTMenu",
                     isOn: input.preferences.showOpenChatGPTMenu,
@@ -130,12 +131,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 CC Switch", "Open CC Switch", "開啟 CC Switch", "CC Switch を開く"),
-                subtitle: tr("显示 CC Switch 启动项", "Show the CC Switch launch item", "顯示 CC Switch 啟動項目", "CC Switch 起動項目を表示"),
+                subtitle: tr("显示CC switch 主面板", "Show the CC Switch main panel", "顯示 CC switch 主面板", "CC Switch のメインパネルを表示"),
                 control: openCC
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 OpenCodex", "Open OpenCodex", "開啟 OpenCodex", "OpenCodex を開く"),
-                subtitle: tr("显示 OpenCodex 启动项", "Show the OpenCodex launch item", "顯示 OpenCodex 啟動項目", "OpenCodex 起動項目を表示"),
+                subtitle: tr("显示 OpenCodex 仪表盘", "Show the OpenCodex dashboard", "顯示 OpenCodex 儀表板", "OpenCodex ダッシュボードを表示"),
                 control: openCodex
             )
         ]

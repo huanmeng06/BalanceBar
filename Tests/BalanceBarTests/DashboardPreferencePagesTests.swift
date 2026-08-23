@@ -139,6 +139,100 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(field.stringValue, "0.25")
     }
 
+    func testMenuEntryRowsLocalizeSubtitlesAndPreserveControlsAcrossLanguages() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, [String], [String])] = [
+            (
+                .simplifiedChinese,
+                ["打开主窗口", "打开 ChatGPT", "打开 CC Switch", "打开 OpenCodex"],
+                ["balance bar", "显示ChatGPT", "显示CC switch 主面板", "显示 OpenCodex 仪表盘"]
+            ),
+            (
+                .traditionalChinese,
+                ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
+                ["balance bar", "顯示 ChatGPT", "顯示 CC switch 主面板", "顯示 OpenCodex 儀表板"]
+            ),
+            (
+                .japanese,
+                ["メインウインドウを開く", "ChatGPT を開く", "CC Switch を開く", "OpenCodex を開く"],
+                ["balance bar", "ChatGPT を表示", "CC Switch のメインパネルを表示", "OpenCodex ダッシュボードを表示"]
+            ),
+            (
+                .english,
+                ["Open Main Window", "Open ChatGPT", "Open CC Switch", "Open OpenCodex"],
+                ["balance bar", "Show ChatGPT", "Show the CC Switch main panel", "Show the OpenCodex dashboard"]
+            )
+        ]
+
+        for (language, expectedTitles, expectedSubtitles) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.MenuEntryRows.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let preferences = AppPreferences(defaults: defaults)
+            preferences.showOpenChatGPTMenu = false
+            preferences.showOpenCCSwitchMenu = true
+            preferences.showOpenCodexMenu = false
+            let relay = DashboardPreferencePageRelay()
+            let page = DashboardMenuPage().make(.init(
+                preferences: preferences,
+                relay: relay,
+                makeStatusLinksEditor: {
+                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                },
+                onBalanceDisplayThresholdChanged: { _ in }
+            ))
+
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            let labelStrings = labels.map(\.stringValue)
+            for title in expectedTitles {
+                XCTAssertTrue(labelStrings.contains(title), "localized title \(title) for \(language)")
+            }
+            for (title, subtitle) in zip(expectedTitles, expectedSubtitles) {
+                guard let subtitleLabel = labels.first(where: { $0.stringValue == subtitle }) else {
+                    return XCTFail("Expected localized subtitle \(subtitle) for \(language)")
+                }
+                XCTAssertFalse(subtitleLabel.isHidden)
+                guard let row = subtitleLabel.superview?.superview else {
+                    return XCTFail("Expected row for localized subtitle \(subtitle) for \(language)")
+                }
+                XCTAssertEqual(nonEmptyTextFields(in: row), [title, subtitle])
+                XCTAssertEqual(equalHeightConstraint(in: row), 62)
+            }
+
+            let legacySubtitles = [
+                "显示 ChatGPT 启动项", "Show the ChatGPT launch item", "顯示 ChatGPT 啟動項目", "ChatGPT 起動項目を表示",
+                "显示 CC Switch 启动项", "Show the CC Switch launch item", "顯示 CC Switch 啟動項目", "CC Switch 起動項目を表示",
+                "显示 OpenCodex 启动项", "Show the OpenCodex launch item", "顯示 OpenCodex 啟動項目", "OpenCodex 起動項目を表示"
+            ]
+            XCTAssertTrue(
+                legacySubtitles.allSatisfy { !labelStrings.contains($0) },
+                "legacy menu-entry copy for \(language)"
+            )
+
+            let expectedControls: [(String, NSSwitch.StateValue, Bool)] = [
+                ("showOpenDashboardMenu", .on, false),
+                ("showOpenChatGPTMenu", .off, true),
+                ("showOpenCCSwitchMenu", .on, true),
+                (AppPreferences.showOpenCodexMenuKey, .off, true)
+            ]
+            let switches = descendants(of: page).compactMap { $0 as? NSSwitch }
+            for (identifier, state, isEnabled) in expectedControls {
+                guard let control = switches.first(where: { $0.identifier?.rawValue == identifier }) else {
+                    return XCTFail("Expected menu-entry switch \(identifier) for \(language)")
+                }
+                XCTAssertEqual(control.state, state, "state for \(identifier) in \(language)")
+                XCTAssertEqual(control.isEnabled, isEnabled, "enabled state for \(identifier) in \(language)")
+                XCTAssertTrue(control.target === relay, "relay target for \(identifier) in \(language)")
+                XCTAssertEqual(control.action, #selector(DashboardPreferencePageRelay.toggle(_:)))
+            }
+        }
+    }
+
     func testMenuBarPreviewPresentationUsesSharedSnapshotValues() {
         let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
         let presentation = DashboardMenuBarPage.presentation(
