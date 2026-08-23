@@ -959,8 +959,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case DashboardMenuBarPage.amountOffsetsResetIdentifier:
             preferences.menuBarAmountOffsetX = 0
             preferences.menuBarAmountOffsetY = 0
-        case DashboardMenuBarPage.fontSizeResetIdentifier:
-            preferences.menuBarFontSizePreset = AppPreferences.menuBarFontSizePresetDefault
         default:
             return
         }

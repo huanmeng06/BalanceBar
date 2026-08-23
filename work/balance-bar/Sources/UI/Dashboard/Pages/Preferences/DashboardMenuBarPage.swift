@@ -208,7 +208,6 @@ final class MenuBarWidthSlider: NSSlider {
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
-    static let fontSizeResetIdentifier = "menuBarFontSizeReset"
     static let iconOffsetSummaryIdentifier = "menuBarIconOffsetSummary"
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
@@ -221,7 +220,6 @@ final class DashboardMenuBarPage {
     // Screenshots are commonly captured at 2x scale, so this is 100 points
     // (about 200 pixels), not the previous 180-point control.
     static let fontSizePresetWidth: CGFloat = 100
-    static let fontSizeResetButtonWidth: CGFloat = 76
     /// Extra default lift for the amount text in the Dashboard preview only
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
@@ -273,7 +271,6 @@ final class DashboardMenuBarPage {
     private struct FontPresetControls {
         let view: NSView
         let control: NSPopUpButton
-        let resetButton: NSButton
     }
 
     private let previewIcon = PassthroughImageView()
@@ -297,7 +294,6 @@ final class DashboardMenuBarPage {
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
-    private var fontSizeResetButton: NSButton?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
@@ -486,7 +482,6 @@ final class DashboardMenuBarPage {
         )
         let fontSizeControls = makeFontSizePresetControls(
             value: fontSizePreset,
-            resetIdentifier: Self.fontSizeResetIdentifier,
             relay: input.relay
         )
         iconOffsetSummaryLabel = iconOffsetSummary
@@ -497,7 +492,6 @@ final class DashboardMenuBarPage {
         amountOffsetButtons = amountOffsetControls
         widthAdjustmentSlider = widthAdjustmentControls.slider
         fontSizePresetControl = fontSizeControls.control
-        fontSizeResetButton = fontSizeControls.resetButton
         let fontSizeSection = DashboardSettingsComponents.makeSettingsSection(
             tr("字号", "Font Size", "字號", "フォントサイズ"),
             rows: [
@@ -611,7 +605,6 @@ final class DashboardMenuBarPage {
         )
         fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
-        fontSizeResetButton?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
         applyWidthAdjustment(
@@ -803,7 +796,6 @@ final class DashboardMenuBarPage {
 
     private func makeFontSizePresetControls(
         value: MenuBarFontSizePreset,
-        resetIdentifier: String,
         relay: DashboardPreferencePageRelay
     ) -> FontPresetControls {
         let control = DashboardSettingsComponents.makePopUpButton(
@@ -825,25 +817,7 @@ final class DashboardMenuBarPage {
             "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt"
         )
         control.widthAnchor.constraint(equalToConstant: Self.fontSizePresetWidth).isActive = true
-
-        let resetButton = NSButton(
-            title: tr("恢复默认", "Default", "恢復預設", "デフォルト"),
-            target: relay,
-            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
-        )
-        resetButton.identifier = NSUserInterfaceItemIdentifier(resetIdentifier)
-        resetButton.bezelStyle = .rounded
-        // Use the same regular native button metrics as the General page's
-        // “Check for Updates” action, rather than the smaller offset-button
-        // treatment used elsewhere in this page.
-        resetButton.widthAnchor.constraint(equalToConstant: Self.fontSizeResetButtonWidth).isActive = true
-
-        let stack = NSStackView(views: [control, resetButton])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 6
-        stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return FontPresetControls(view: stack, control: control, resetButton: resetButton)
+        return FontPresetControls(view: control, control: control)
     }
 
     private static func fontSizePresetLabel(_ preset: MenuBarFontSizePreset) -> String {

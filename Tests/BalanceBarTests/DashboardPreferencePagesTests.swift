@@ -405,12 +405,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
             preferences.menuBarFontSizePreset = preset
         }
-        relay.onOffsetReset = { identifier in
-            guard identifier == DashboardMenuBarPage.fontSizeResetIdentifier else {
-                return
-            }
-            preferences.menuBarFontSizePreset = AppPreferences.menuBarFontSizePresetDefault
-        }
         let controller = DashboardMenuBarPage()
         let page = controller.make(.init(
             preferences: preferences,
@@ -481,25 +475,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             8.0,
             accuracy: 0.001
         )
-
-        let fontSizeReset = try XCTUnwrap(descendants(of: page)
-            .compactMap { $0 as? NSButton }
-            .first { $0.identifier?.rawValue == DashboardMenuBarPage.fontSizeResetIdentifier })
-        let fontSizeResetWidthConstraint = try XCTUnwrap(fontSizeReset.constraints.first {
-            $0.firstAttribute == .width && $0.relation == .equal
-        })
-        XCTAssertEqual(fontSizeResetWidthConstraint.constant, DashboardMenuBarPage.fontSizeResetButtonWidth, accuracy: 0.001)
-        XCTAssertEqual(fontSizeReset.controlSize, .regular)
-        relay.resetOffset(fontSizeReset)
-        XCTAssertEqual(
-            preferences.menuBarFontSize,
-            AppPreferences.menuBarFontSizeDefault,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            preferences.menuBarSecondaryFontSize,
-            10,
-            accuracy: 0.001
+        XCTAssertFalse(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .contains { $0.title == "Default" },
+            "The font-size section should only expose the native preset popup"
         )
 
         preferences.showMenuBarAmount = false
