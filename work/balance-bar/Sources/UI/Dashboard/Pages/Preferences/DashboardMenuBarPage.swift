@@ -527,6 +527,12 @@ final class DashboardMenuBarPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
+        let animationToggle = DashboardSettingsComponents.makeSwitch(
+            identifier: "animateCodexActivity",
+            isOn: input.preferences.animateCodexActivity,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
         iconSwitch = iconToggle
         amountSwitch = amountToggle
         let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview", "預覽", "プレビュー"), rows: [
@@ -537,6 +543,20 @@ final class DashboardMenuBarPage {
                 minimumHeight: 66
             )
         ])
+        let animationSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("动画", "Animation", "動畫", "アニメーション"),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(
+                        "任务进行时播放图标动画",
+                        "Play the icon animation while a task is running",
+                        "任務進行時播放圖示動畫",
+                        "タスク実行中にアイコンアニメーションを再生"
+                    ),
+                    control: animationToggle
+                )
+            ]
+        )
         let displaySection = DashboardSettingsComponents.makeSettingsSection(tr("显示项目", "Display Items", "顯示項目", "表示項目"), rows: [
             DashboardSettingsComponents.makeSettingsRow(tr("Agent 图标", "Agent Icon", "Agent 圖示", "エージェントアイコン"), subtitle: tr("显示当前任务运行状态", "Shows the current task status", "顯示目前任務執行狀態", "現在のタスク実行状態を表示"), control: iconToggle),
             DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount", "額度數字", "残高の数値"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance", "顯示百分比或 API 餘額", "パーセンテージまたは API 残高を表示"), control: amountToggle),
@@ -644,6 +664,7 @@ final class DashboardMenuBarPage {
         refresh(snapshot: input.snapshot, preferences: input.preferences, menuBarSnapshot: input.menuBarSnapshot, iconImage: input.iconImage)
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
+            animationSection,
             displaySection,
             typographyAndPositionSection
         ])
