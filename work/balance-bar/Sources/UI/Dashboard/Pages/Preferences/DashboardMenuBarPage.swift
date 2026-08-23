@@ -293,6 +293,10 @@ final class DashboardMenuBarPage {
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
+    static let iconOffsetSliderMinimumIdentifier = "menuBarIconOffsetSliderMinimum"
+    static let iconOffsetSliderMaximumIdentifier = "menuBarIconOffsetSliderMaximum"
+    static let amountOffsetSliderMinimumIdentifier = "menuBarAmountOffsetSliderMinimum"
+    static let amountOffsetSliderMaximumIdentifier = "menuBarAmountOffsetSliderMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
     // Match the compact native popup used by the Application settings page.
     // Screenshots are commonly captured at 2x scale, so this is 100 points
@@ -341,7 +345,7 @@ final class DashboardMenuBarPage {
         let relay: DashboardPreferencePageRelay
     }
 
-    private struct WidthSliderControls {
+    private struct CenteredSliderControls {
         let view: NSView
         let slider: NSSlider
     }
@@ -367,8 +371,8 @@ final class DashboardMenuBarPage {
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
-    private var iconOffsetButtons: [NSButton] = []
-    private var amountOffsetButtons: [NSButton] = []
+    private weak var iconOffsetSlider: NSSlider?
+    private weak var amountOffsetSlider: NSSlider?
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
     private var transientWidthAdjustment: Double?
@@ -534,14 +538,36 @@ final class DashboardMenuBarPage {
             ?? input.preferences.menuBarStatusItemWidthAdjustment
         let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(widthAdjustment))
         widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
-        let iconOffsetControls = makeOffsetControls(
-            keyY: AppPreferences.menuBarIconOffsetYKey,
-            resetIdentifier: Self.iconOffsetsResetIdentifier,
+        let iconOffsetControls = makeCenteredSliderControls(
+            value: input.preferences.menuBarIconOffsetY,
+            key: AppPreferences.menuBarIconOffsetYKey,
+            range: AppPreferences.menuBarOffsetRange,
+            minimumTitle: tr("下", "Down", "下", "下"),
+            maximumTitle: tr("上", "Up", "上", "上"),
+            minimumIdentifier: Self.iconOffsetSliderMinimumIdentifier,
+            maximumIdentifier: Self.iconOffsetSliderMaximumIdentifier,
+            tooltip: tr(
+                "从 -10.0 pt（下）调整到 +10.0 pt（上），默认 0 pt",
+                "Adjusts vertical position from -10.0 pt (down) to +10.0 pt (up); default 0 pt",
+                "從 -10.0 pt（下）調整到 +10.0 pt（上），預設 0 pt",
+                "Y 軸を -10.0 pt（下）から +10.0 pt（上）まで調整（デフォルト 0 pt）"
+            ),
             relay: input.relay
         )
-        let amountOffsetControls = makeOffsetControls(
-            keyY: AppPreferences.menuBarAmountOffsetYKey,
-            resetIdentifier: Self.amountOffsetsResetIdentifier,
+        let amountOffsetControls = makeCenteredSliderControls(
+            value: input.preferences.menuBarAmountOffsetY,
+            key: AppPreferences.menuBarAmountOffsetYKey,
+            range: AppPreferences.menuBarOffsetRange,
+            minimumTitle: tr("下", "Down", "下", "下"),
+            maximumTitle: tr("上", "Up", "上", "上"),
+            minimumIdentifier: Self.amountOffsetSliderMinimumIdentifier,
+            maximumIdentifier: Self.amountOffsetSliderMaximumIdentifier,
+            tooltip: tr(
+                "从 -10.0 pt（下）调整到 +10.0 pt（上），默认 0 pt",
+                "Adjusts vertical position from -10.0 pt (down) to +10.0 pt (up); default 0 pt",
+                "從 -10.0 pt（下）調整到 +10.0 pt（上），預設 0 pt",
+                "Y 軸を -10.0 pt（下）から +10.0 pt（上）まで調整（デフォルト 0 pt）"
+            ),
             relay: input.relay
         )
         let widthAdjustmentControls = makeWidthSliderControls(
@@ -557,8 +583,8 @@ final class DashboardMenuBarPage {
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
         widthAdjustmentSummaryLabel = widthAdjustmentSummary
-        iconOffsetButtons = iconOffsetControls
-        amountOffsetButtons = amountOffsetControls
+        iconOffsetSlider = iconOffsetControls.slider
+        amountOffsetSlider = amountOffsetControls.slider
         widthAdjustmentSlider = widthAdjustmentControls.slider
         fontSizePresetControl = fontSizeControls.control
         let typographyAndPositionSection = DashboardSettingsComponents.makeSettingsSection(
@@ -579,14 +605,14 @@ final class DashboardMenuBarPage {
                     tr("图标偏移", "Icon Offset", "圖示偏移", "アイコンの位置調整"),
                     subtitle: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY),
                     subtitleLabel: iconOffsetSummary,
-                    control: makeOffsetControlStack(buttons: iconOffsetControls),
+                    control: iconOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
                     tr("金额偏移", "Amount Offset", "金額偏移", "金額の位置調整"),
                     subtitle: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY),
                     subtitleLabel: amountOffsetSummary,
-                    control: makeOffsetControlStack(buttons: amountOffsetControls),
+                    control: amountOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
@@ -661,8 +687,10 @@ final class DashboardMenuBarPage {
         let amountOffsetY = preferences.menuBarAmountOffsetY
         iconOffsetSummaryLabel?.stringValue = Self.iconOffsetSummaryText(y: iconOffsetY)
         amountOffsetSummaryLabel?.stringValue = Self.amountOffsetSummaryText(y: amountOffsetY)
-        iconOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarIcon }
-        amountOffsetButtons.forEach { $0.isEnabled = preferences.showMenuBarAmount }
+        iconOffsetSlider?.doubleValue = iconOffsetY
+        amountOffsetSlider?.doubleValue = amountOffsetY
+        iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
+        amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
         fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
@@ -1020,34 +1048,40 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private func makeOffsetControls(
-        keyY: String,
-        resetIdentifier: String,
-        relay: DashboardPreferencePageRelay
-    ) -> [NSButton] {
-        [
-            makeOffsetButton(
-                title: tr("上", "Up", "上", "上"),
-                key: keyY,
-                delta: 1,
-                relay: relay
-            ),
-            makeOffsetButton(
-                title: tr("下", "Down", "下", "下"),
-                key: keyY,
-                delta: -1,
-                relay: relay
-            ),
-            makeOffsetResetButton(identifier: resetIdentifier, relay: relay)
-        ]
-    }
-
     private func makeWidthSliderControls(
         value: Double,
         key: String,
         relay: DashboardPreferencePageRelay
-    ) -> WidthSliderControls {
-        let range = AppPreferences.menuBarStatusItemWidthAdjustmentRange
+    ) -> CenteredSliderControls {
+        makeCenteredSliderControls(
+            value: value,
+            key: key,
+            range: AppPreferences.menuBarStatusItemWidthAdjustmentRange,
+            minimumTitle: tr("窄", "Narrow", "窄", "狭い"),
+            maximumTitle: tr("宽", "Wide", "寬", "広い"),
+            minimumIdentifier: Self.widthAdjustmentSliderMinimumIdentifier,
+            maximumIdentifier: Self.widthAdjustmentSliderMaximumIdentifier,
+            tooltip: tr(
+                "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt",
+                "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt",
+                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt",
+                "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
+            ),
+            relay: relay
+        )
+    }
+
+    private func makeCenteredSliderControls(
+        value: Double,
+        key: String,
+        range: ClosedRange<Double>,
+        minimumTitle: String,
+        maximumTitle: String,
+        minimumIdentifier: String,
+        maximumIdentifier: String,
+        tooltip: String,
+        relay: DashboardPreferencePageRelay
+    ) -> CenteredSliderControls {
         let slider = MenuBarWidthSlider()
         slider.identifier = NSUserInterfaceItemIdentifier(key)
         slider.minValue = range.lowerBound
@@ -1064,12 +1098,7 @@ final class DashboardMenuBarPage {
         slider.allowsTickMarkValuesOnly = false
         slider.target = relay
         slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
-        slider.toolTip = tr(
-            "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt",
-            "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt",
-            "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt",
-            "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
-        )
+        slider.toolTip = tooltip
         slider.onEditingEnded = { [weak relay, weak slider] in
             guard let relay, let slider else { return }
             relay.finishOffsetValue(slider)
@@ -1077,19 +1106,19 @@ final class DashboardMenuBarPage {
         slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
 
         let minimumLabel = makeWidthSliderEndpointLabel(
-            tr("窄", "Narrow", "窄", "狭い"),
-            identifier: Self.widthAdjustmentSliderMinimumIdentifier
+            minimumTitle,
+            identifier: minimumIdentifier
         )
         let maximumLabel = makeWidthSliderEndpointLabel(
-            tr("宽", "Wide", "寬", "広い"),
-            identifier: Self.widthAdjustmentSliderMaximumIdentifier
+            maximumTitle,
+            identifier: maximumIdentifier
         )
         let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 6
         stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return WidthSliderControls(view: stack, slider: slider)
+        return CenteredSliderControls(view: stack, slider: slider)
     }
 
     private func makeWidthSliderEndpointLabel(
@@ -1106,47 +1135,4 @@ final class DashboardMenuBarPage {
         return label
     }
 
-    private func makeOffsetButton(
-        title: String,
-        key: String,
-        delta: Int,
-        relay: DashboardPreferencePageRelay
-    ) -> NSButton {
-        let button = RepeatOffsetButton(
-            title: title,
-            policy: MenuBarOffsetRepeatPolicy.standard,
-            target: relay,
-            action: #selector(DashboardPreferencePageRelay.adjustOffset(_:))
-        )
-        button.identifier = NSUserInterfaceItemIdentifier(key)
-        button.tag = delta
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 11)
-        return button
-    }
-
-    private func makeOffsetResetButton(
-        identifier: String,
-        relay: DashboardPreferencePageRelay
-    ) -> NSButton {
-        let button = NSButton(
-            title: tr("归零", "Reset", "歸零", "リセット"),
-            target: relay,
-            action: #selector(DashboardPreferencePageRelay.resetOffset(_:))
-        )
-        button.identifier = NSUserInterfaceItemIdentifier(identifier)
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 11)
-        return button
-    }
-
-    private func makeOffsetControlStack(buttons: [NSButton]) -> NSStackView {
-        let stack = NSStackView(views: buttons)
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 6
-        return stack
-    }
 }

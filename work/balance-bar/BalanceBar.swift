@@ -929,6 +929,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             // settings page sends the discrete preset key above.
             menuBarFontSize = value
             updateStatusItem(for: snapshot)
+        case AppPreferences.menuBarIconOffsetYKey:
+            preferences.menuBarIconOffsetY = value
+            updateStatusItem(for: snapshot)
+        case AppPreferences.menuBarAmountOffsetYKey:
+            preferences.menuBarAmountOffsetY = value
+            updateStatusItem(for: snapshot)
         case AppPreferences.menuBarStatusItemWidthAdjustmentKey:
             // NSSlider sends this action continuously. Keep the value transient:
             // UserDefaults and logging belong to the editing-ended path, not the
