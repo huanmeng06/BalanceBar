@@ -56,6 +56,21 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.sortProvidersAlphabetically)
     }
 
+    func testUpdateChannelDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.updateChannel, .stable)
+        preferences.updateChannel = .beta
+        XCTAssertEqual(preferences.updateChannel, .beta)
+        XCTAssertEqual(defaults.string(forKey: AppPreferences.updateChannelKey), UpdateChannel.beta.rawValue)
+
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.updateChannel, .beta)
+        defaults.set("unknown-channel", forKey: AppPreferences.updateChannelKey)
+        XCTAssertEqual(reloaded.updateChannel, .stable)
+    }
+
     func testNumericPreferencesDefaultsBoundsAndRoundTrips() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -391,6 +406,7 @@ final class AppPreferencesTests: XCTestCase {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = [
+            AppPreferences.updateChannelKey: UpdateChannel.beta.rawValue,
             "showMenuBarIcon": false,
             "activityPollInterval": 4.0,
             AppPreferences.showOpenCodexMenuKey: false,
@@ -402,6 +418,7 @@ final class AppPreferencesTests: XCTestCase {
         ] as [String: Any]
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: source, localDomain: [:])
         XCTAssertFalse(preferences.showMenuBarIcon)
+        XCTAssertEqual(preferences.updateChannel, .beta)
         XCTAssertEqual(preferences.activityPollInterval, 4)
         XCTAssertFalse(preferences.showOpenCodexMenu)
         XCTAssertEqual(preferences.openCodexDashboardPortOverride, 23456)

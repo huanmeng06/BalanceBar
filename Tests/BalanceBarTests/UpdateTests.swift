@@ -77,16 +77,45 @@ final class UpdateTests: XCTestCase {
 
     private final class StubReleaseFetcher: GitHubReleaseFetching {
         private(set) var requestCount = 0
-        private var completion: ((Result<GitHubRelease, GitHubReleaseClientError>) -> Void)?
+        private var completion: ((Result<[GitHubRelease], GitHubReleaseClientError>) -> Void)?
 
-        func fetchLatestRelease(completion: @escaping (Result<GitHubRelease, GitHubReleaseClientError>) -> Void) {
+        func fetchReleases(completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void) {
             requestCount += 1
             self.completion = completion
         }
 
-        func resolve(_ result: Result<GitHubRelease, GitHubReleaseClientError>) {
+        func resolve(_ result: Result<[GitHubRelease], GitHubReleaseClientError>) {
             completion?(result)
             completion = nil
+        }
+    }
+
+    private final class StubUpdateScheduler: UpdateScheduling {
+        private struct ScheduledAction {
+            let date: TimeInterval
+            let action: () -> Void
+        }
+
+        private(set) var scheduledDelays: [TimeInterval] = []
+        var onSchedule: ((TimeInterval) -> Void)?
+        var now: TimeInterval
+        private var scheduledActions: [ScheduledAction] = []
+
+        init(now: TimeInterval = 1_000) {
+            self.now = now
+        }
+
+        func schedule(after delay: TimeInterval, _ action: @escaping () -> Void) {
+            scheduledDelays.append(delay)
+            scheduledActions.append(ScheduledAction(date: now + delay, action: action))
+            onSchedule?(delay)
+        }
+
+        func advance(by interval: TimeInterval) {
+            now += interval
+            let ready = scheduledActions.filter { $0.date <= now }
+            scheduledActions.removeAll { $0.date <= now }
+            ready.forEach { $0.action() }
         }
     }
 
@@ -263,25 +292,27 @@ final class UpdateTests: XCTestCase {
         ).stableVersion)
     }
 
-    func testGitHubReleaseClientUsesLatestEndpointAndPublicHeaders() throws {
-        let endpoint = URL(string: "https://api.github.test/repos/huanmeng06/BalanceBar/releases/latest")!
+    func testGitHubReleaseClientUsesReleaseListEndpointAndPublicHeaders() throws {
+        let endpoint = URL(string: "https://api.github.test/repos/huanmeng06/BalanceBar/releases")!
         StubURLProtocol.setHandler { _ in
-            StubURLResult(data: self.releaseBody(tag: "v1.0.1", assets: []))
+            StubURLResult(data: self.releaseListBody(tag: "v1.0.1", assets: []))
         }
         let client = GitHubReleaseClient(session: session, endpoint: endpoint)
         let expectation = expectation(description: "release fetched")
-        var result: Result<GitHubRelease, GitHubReleaseClientError>?
-        client.fetchLatestRelease { value in
+        var result: Result<[GitHubRelease], GitHubReleaseClientError>?
+        client.fetchReleases { value in
             result = value
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 2)
-        guard case .success(let release) = result else {
+        guard case .success(let releases) = result,
+              let release = releases.first else {
             return XCTFail("expected decoded release, got \(String(describing: result))")
         }
         XCTAssertEqual(release.tagName, "v1.0.1")
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
-        XCTAssertEqual(request.url, endpoint)
+        XCTAssertEqual(request.url?.path, endpoint.path)
+        XCTAssertEqual(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "per_page" })?.value, "100")
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/vnd.github+json")
         XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), "BalanceBar")
@@ -292,8 +323,8 @@ final class UpdateTests: XCTestCase {
             StubURLResult(statusCode: 503, data: Data(#"{"message":"unavailable"}"#.utf8))
         }
         let httpExpectation = expectation(description: "http failure")
-        var httpResult: Result<GitHubRelease, GitHubReleaseClientError>?
-        GitHubReleaseClient(session: session).fetchLatestRelease {
+        var httpResult: Result<[GitHubRelease], GitHubReleaseClientError>?
+        GitHubReleaseClient(session: session).fetchReleases {
             httpResult = $0
             httpExpectation.fulfill()
         }
@@ -304,8 +335,8 @@ final class UpdateTests: XCTestCase {
 
         StubURLProtocol.setHandler { _ in StubURLResult(data: Data("not-json".utf8)) }
         let jsonExpectation = expectation(description: "json failure")
-        var jsonResult: Result<GitHubRelease, GitHubReleaseClientError>?
-        GitHubReleaseClient(session: session).fetchLatestRelease {
+        var jsonResult: Result<[GitHubRelease], GitHubReleaseClientError>?
+        GitHubReleaseClient(session: session).fetchReleases {
             jsonResult = $0
             jsonExpectation.fulfill()
         }
@@ -427,7 +458,7 @@ final class UpdateTests: XCTestCase {
             return false
         }
         service.checkForUpdates()
-        fetcher.resolve(.success(makeRelease(tag: "v1.0.0")))
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
         wait(for: [firstLatest], timeout: 2)
         XCTAssertEqual(fetcher.requestCount, 1)
 
@@ -436,7 +467,7 @@ final class UpdateTests: XCTestCase {
             return false
         }
         service.checkForUpdates()
-        fetcher.resolve(.success(makeRelease(tag: "v9.0.0", draft: true)))
+        fetcher.resolve(.success([makeRelease(tag: "v9.0.0", draft: true)]))
         wait(for: [draftLatest], timeout: 2)
 
         let prereleaseLatest = waitForState(service, queue: queue) { state in
@@ -444,10 +475,152 @@ final class UpdateTests: XCTestCase {
             return false
         }
         service.checkForUpdates()
-        fetcher.resolve(.success(makeRelease(tag: "v9.0.0", prerelease: true)))
+        fetcher.resolve(.success([makeRelease(tag: "v9.0.0", prerelease: true)]))
         wait(for: [prereleaseLatest], timeout: 2)
         XCTAssertEqual(downloader.requestCount, 0)
         XCTAssertEqual(installer.installCount, 0)
+    }
+
+    func testUpdateServiceStableChannelChoosesNewestInstallableStableRelease() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.stable-channel")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.0.0",
+            updateChannel: .stable,
+            callbackQueue: queue,
+            workQueue: queue
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.0.5")
+            }
+            return false
+        }
+
+        let invalid = GitHubRelease(
+            tagName: "not-semver",
+            draft: false,
+            prerelease: false,
+            assets: []
+        )
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v3.0.0", prerelease: true),
+            makeRelease(tag: "v2.0.0", draft: true),
+            makeRelease(tag: "v1.0.4", assets: []),
+            makeRelease(tag: "v1.0.5"),
+            invalid
+        ]))
+
+        wait(for: [available], timeout: 2)
+        guard case .available(_, let latest) = service.state else {
+            return XCTFail("expected stable update to be available")
+        }
+        XCTAssertEqual(latest, AppSemanticVersion("1.0.5"))
+    }
+
+    func testUpdateServiceBetaChannelCanSelectAValidPrereleaseAboveStable() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.beta-channel")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.0.0",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("2.0.0-beta.1")
+            }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.1.0"),
+            makeRelease(tag: "v2.0.0-beta.1", prerelease: true),
+            makeRelease(tag: "v9.0.0", prerelease: true, assets: []),
+            makeRelease(tag: "v8.0.0", draft: true)
+        ]))
+
+        wait(for: [available], timeout: 2)
+        guard case .available(_, let latest) = service.state else {
+            return XCTFail("expected beta update to be available")
+        }
+        XCTAssertEqual(latest, AppSemanticVersion("2.0.0-beta.1"))
+    }
+
+    func testUpdateServiceLatestStateAllowsRetry() {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.latest-retry")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue
+        )
+        let firstLatest = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [firstLatest], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 1)
+
+        let secondChecking = waitForState(service, queue: queue) { state in
+            if case .checking = state { return true }
+            return false
+        }
+        service.checkForUpdates()
+        wait(for: [secondChecking], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 2)
+
+        let secondLatest = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [secondLatest], timeout: 2)
+    }
+
+    func testUpdateServiceFailureStateAllowsRetry() {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.failure-retry")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue
+        )
+        let firstFailure = waitForState(service, queue: queue) { state in
+            if case .failed(.network) = state { return true }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.transport))
+        wait(for: [firstFailure], timeout: 2)
+
+        let secondChecking = waitForState(service, queue: queue) { state in
+            if case .checking = state { return true }
+            return false
+        }
+        service.checkForUpdates()
+        wait(for: [secondChecking], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 2)
+
+        let secondLatest = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [secondLatest], timeout: 2)
     }
 
     func testUpdateServiceRejectsInvalidStableReleaseVersion() throws {
@@ -471,7 +644,7 @@ final class UpdateTests: XCTestCase {
             return false
         }
         service.checkForUpdates()
-        fetcher.resolve(.success(release))
+        fetcher.resolve(.success([release]))
         wait(for: [failure], timeout: 2)
     }
 
@@ -483,10 +656,11 @@ final class UpdateTests: XCTestCase {
             installer: StubInstaller(),
             currentVersionString: "1.0.6",
             callbackQueue: DispatchQueue.main,
-            workQueue: DispatchQueue.main
+            workQueue: DispatchQueue.main,
+            minimumCheckingDuration: 0
         )
         service.checkForUpdates()
-        fetcher.resolve(.success(makeRelease(tag: "v1.0.0")))
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
         let settled = expectation(description: "latest state")
         DispatchQueue.main.async {
             if case .latest = service.state { settled.fulfill() }
@@ -516,7 +690,7 @@ final class UpdateTests: XCTestCase {
             if case .failed(.assetUnavailable) = $0 { return true }
             return false
         }
-        fetcher.resolve(.success(makeRelease(tag: "v1.0.1", assets: [])))
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.1", assets: [])]))
         wait(for: [failure], timeout: 2)
     }
 
@@ -537,7 +711,7 @@ final class UpdateTests: XCTestCase {
             workQueue: queue
         )
         service.checkForUpdates()
-        fetcher.resolve(.success(makeRelease(tag: "v1.0.1")))
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.1")]))
         let available = waitForState(service, queue: queue) {
             if case .available = $0 { return true }
             return false
@@ -586,7 +760,7 @@ final class UpdateTests: XCTestCase {
             workQueue: queue
         )
         service.checkForUpdates()
-        fetcher.resolve(.success(makeRelease(tag: "v1.0.1")))
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.1")]))
         let available = waitForState(service, queue: queue) {
             if case .available = $0 { return true }
             return false
@@ -721,6 +895,148 @@ final class UpdateTests: XCTestCase {
 
     // MARK: - Dashboard state/action wiring and localization
 
+    func testDashboardRetryActionKeepsCheckingVisibleForOneSecondAndGuardsDuplicateRequests() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "UpdateTests.UI.retry-state.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: .main,
+            workQueue: .main,
+            scheduler: scheduler
+        )
+        let relay = DashboardPreferencePageRelay()
+        let pageController = DashboardGeneralPage()
+        var latestCount = 0
+        let firstLatest = expectation(description: "first check settles")
+        let secondLatest = expectation(description: "second check settles")
+        let firstMinimumDurationScheduled = expectation(description: "first minimum checking duration scheduled")
+        let secondMinimumDurationScheduled = expectation(description: "second minimum checking duration scheduled")
+        scheduler.onSchedule = { _ in
+            switch scheduler.scheduledDelays.count {
+            case 1:
+                firstMinimumDurationScheduled.fulfill()
+            case 2:
+                secondMinimumDurationScheduled.fulfill()
+            default:
+                XCTFail("unexpected extra minimum checking duration")
+            }
+        }
+        service.onStateChange = { state in
+            pageController.refresh(updateState: state)
+            guard case .latest = state else { return }
+            latestCount += 1
+            if latestCount == 1 {
+                firstLatest.fulfill()
+            } else if latestCount == 2 {
+                secondLatest.fulfill()
+            }
+        }
+        relay.onCheckForUpdates = { service.checkForUpdates() }
+
+        let page = pageController.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: service.state
+        ))
+        let updateButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 1)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 1, "duplicate action during checking must stay guarded")
+
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [firstMinimumDurationScheduled], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+        scheduler.advance(by: 0.999)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 1, "duplicate action during the minimum checking duration must stay guarded")
+        scheduler.advance(by: 0.001)
+        wait(for: [firstLatest], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查更新")
+        XCTAssertTrue(updateButton.isEnabled)
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 2)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 2, "duplicate action during the retry must stay guarded")
+
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [secondMinimumDurationScheduled], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+        scheduler.advance(by: 1.0)
+        wait(for: [secondLatest], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查更新")
+        XCTAssertTrue(updateButton.isEnabled)
+    }
+
+    func testUpdateServiceMinimumCheckingDurationDelaysFastFailureAndKeepsRetryGuarded() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.minimum-duration.failure")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler
+        )
+        let scheduled = expectation(description: "minimum checking duration scheduled")
+        scheduler.onSchedule = { delay in
+            XCTAssertEqual(delay, 1.0, accuracy: 0.001)
+            scheduled.fulfill()
+        }
+        let failed = waitForState(service, queue: queue) {
+            if case .failed(.network) = $0 { return true }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.transport))
+        wait(for: [scheduled], timeout: 2)
+        if case .checking = service.state {
+            // The fast failure must not replace the visible checking state yet.
+        } else {
+            XCTFail("fast failure must remain in checking state during the minimum presentation duration")
+        }
+
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 1, "duplicate check during the minimum duration must stay guarded")
+        scheduler.advance(by: 0.999)
+        if case .failed = service.state {
+            XCTFail("fast failure must remain pending until the minimum checking duration elapses")
+        }
+        scheduler.advance(by: 0.001)
+        wait(for: [failed], timeout: 2)
+        guard case .failed(.network) = service.state else {
+            return XCTFail("expected the delayed network failure")
+        }
+    }
+
     func testDashboardGeneralUpdateRowUsesSharedSettingsRowAndRelayActions() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -734,6 +1050,8 @@ final class UpdateTests: XCTestCase {
         var installCount = 0
         relay.onCheckForUpdates = { checkCount += 1 }
         relay.onInstallUpdate = { installCount += 1 }
+        var selectedChannel: UpdateChannel?
+        relay.onUpdateChannelChanged = { selectedChannel = $0 }
         let pageController = DashboardGeneralPage()
         let page = pageController.make(.init(
             preferences: preferences,
@@ -743,16 +1061,30 @@ final class UpdateTests: XCTestCase {
         ))
         let buttons = updateTestDescendants(of: page).compactMap { $0 as? NSButton }
         let updateButton = try XCTUnwrap(buttons.first { $0.identifier?.rawValue == "checkForUpdatesButton" })
-        XCTAssertEqual(updateButton.title, "最新版本")
-        XCTAssertFalse(updateButton.isEnabled)
-        let row = try XCTUnwrap(updateButton.superview)
+        XCTAssertEqual(updateButton.title, "检查更新")
+        XCTAssertTrue(updateButton.isEnabled)
+        let channelPopup = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppPreferences.updateChannelKey }
+        )
+        XCTAssertEqual(channelPopup.itemTitles, ["正式版", "Beta 测试版"])
+        XCTAssertEqual(channelPopup.selectedItem?.representedObject as? String, UpdateChannel.stable.rawValue)
+        channelPopup.selectItem(at: UpdateChannel.allCases.firstIndex(of: .beta)!)
+        relay.updateChannel(channelPopup)
+        XCTAssertEqual(selectedChannel, .beta)
+
+        let row = try XCTUnwrap(updateButton.superview?.superview)
         XCTAssertEqual(equalHeightConstraint(in: row), 62)
+
+        relay.update(updateButton)
+        XCTAssertEqual(checkCount, 1)
 
         pageController.refresh(updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))))
         XCTAssertEqual(updateButton.title, "检查更新")
         XCTAssertTrue(updateButton.isEnabled)
         relay.update(updateButton)
-        XCTAssertEqual(checkCount, 1)
+        XCTAssertEqual(checkCount, 2)
 
         pageController.refresh(updateState: .available(
             current: try XCTUnwrap(AppSemanticVersion("1.0.6")),
@@ -831,7 +1163,30 @@ final class UpdateTests: XCTestCase {
                 for: .latest(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
                 language: language
             )
-            XCTAssertFalse(latest.buttonEnabled)
+            XCTAssertEqual(
+                latest.buttonTitle,
+                language == .simplifiedChinese ? "检查更新" :
+                    language == .traditionalChinese ? "檢查更新" :
+                    language == .japanese ? "アップデートを確認" : "Check for Updates"
+            )
+            XCTAssertTrue(latest.buttonEnabled)
+            XCTAssertEqual(
+                UpdateChannel.stable.localizedTitle(using: language),
+                language == .simplifiedChinese ? "正式版" :
+                    language == .traditionalChinese ? "正式版" :
+                    language == .japanese ? "正式版" : "Stable"
+            )
+            XCTAssertEqual(
+                UpdateChannel.beta.localizedTitle(using: language),
+                language == .simplifiedChinese ? "Beta 测试版" :
+                    language == .traditionalChinese ? "Beta 測試版" :
+                    language == .japanese ? "ベータテスト" : "Beta Test"
+            )
+            let failure = DashboardUpdatePresentation.make(
+                for: .failed(.network),
+                language: language
+            )
+            XCTAssertTrue(failure.buttonEnabled)
         }
     }
 
@@ -850,6 +1205,18 @@ final class UpdateTests: XCTestCase {
             "assets": assets
         ]
         return try! JSONSerialization.data(withJSONObject: object, options: [])
+    }
+
+    private func releaseListBody(
+        tag: String,
+        draft: Bool = false,
+        prerelease: Bool = false,
+        assets: [[String: Any]]
+    ) -> Data {
+        let release = try! JSONSerialization.jsonObject(
+            with: releaseBody(tag: tag, draft: draft, prerelease: prerelease, assets: assets)
+        )
+        return try! JSONSerialization.data(withJSONObject: [release], options: [])
     }
 
     private func makeRelease(

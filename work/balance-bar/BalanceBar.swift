@@ -140,7 +140,7 @@ private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
 struct PreferencesMigrationPlan {
-    static let keys = ["appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -205,6 +205,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 self?.handleDashboardOffsetReset(identifier: identifier)
             },
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
+            onUpdateChannelChanged: { [weak self] channel in
+                self?.handleUpdateChannelChanged(channel)
+            },
             onOpenCCSwitch: { [weak self] in self?.openCCSwitch() },
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
@@ -328,11 +331,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
-        self.updateService = updateService ?? UpdateService()
+        self.updateService = updateService ?? UpdateService(updateChannel: preferences.updateChannel)
         super.init()
         self.updateService.onStateChange = { [weak self] _ in
-            DispatchQueue.main.async { [weak self] in
-                self?.dashboardComposition.refreshUpdateState()
+            guard let self else { return }
+            if Thread.isMainThread {
+                self.dashboardComposition.refreshUpdateState()
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.dashboardComposition.refreshUpdateState()
+                }
             }
         }
         databaseWatcher = CCSwitchDatabaseWatcher(
@@ -850,6 +858,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         refresh(reason: .configurationChanged)
+    }
+
+    private func handleUpdateChannelChanged(_ channel: UpdateChannel) {
+        preferences.updateChannel = channel
+        updateService.updateChannel = channel
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.updateChannelKey); value=\(channel.rawValue)",
+            category: "configuration"
+        )
     }
 
     private func handleDashboardInterval(identifier: String, value: TimeInterval) {

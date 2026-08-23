@@ -47,6 +47,8 @@ enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
 }
 
 final class AppPreferences {
+    static let updateChannelKey = "updateChannel"
+    static let defaultUpdateChannel: UpdateChannel = .stable
     static let showOpenCodexMenuKey = "showOpenCodexMenu"
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
     static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
@@ -97,6 +99,16 @@ final class AppPreferences {
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }
     var showStatusMenu: Bool { get { bool("showStatusMenu", default: true) } set { defaults.set(newValue, forKey: "showStatusMenu") } }
     var keepMenuOpenAfterRefresh: Bool { get { bool("keepMenuOpenAfterRefresh", default: true) } set { defaults.set(newValue, forKey: "keepMenuOpenAfterRefresh") } }
+    var updateChannel: UpdateChannel {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.updateChannelKey),
+                  let channel = UpdateChannel(rawValue: rawValue) else {
+                return Self.defaultUpdateChannel
+            }
+            return channel
+        }
+        set { defaults.set(newValue.rawValue, forKey: Self.updateChannelKey) }
+    }
     var balanceDisplayThreshold: Double {
         get {
             Self.normalizedBalanceDisplayThreshold(

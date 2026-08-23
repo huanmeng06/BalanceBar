@@ -35,6 +35,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 preferences.codexUsageRefreshInterval = value
             }
         }
+        relay.onUpdateChannelChanged = { channel in
+            preferences.updateChannel = channel
+        }
 
         let toggle = NSSwitch()
         toggle.identifier = NSUserInterfaceItemIdentifier("showQuickSwitchMenu")
@@ -47,8 +50,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
         interval.selectItem(at: 0)
         relay.interval(interval)
 
+        let channel = NSPopUpButton()
+        channel.identifier = NSUserInterfaceItemIdentifier(AppPreferences.updateChannelKey)
+        channel.addItem(withTitle: "Stable")
+        channel.item(at: 0)?.representedObject = UpdateChannel.stable.rawValue
+        channel.addItem(withTitle: "Beta Test")
+        channel.item(at: 1)?.representedObject = UpdateChannel.beta.rawValue
+        channel.selectItem(at: 1)
+        relay.updateChannel(channel)
+
         XCTAssertFalse(preferences.showQuickSwitchMenu)
         XCTAssertEqual(preferences.codexUsageRefreshInterval, 5)
+        XCTAssertEqual(preferences.updateChannel, .beta)
     }
 
     func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() {

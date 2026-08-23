@@ -1,5 +1,16 @@
 import AppKit
 
+extension UpdateChannel {
+    func localizedTitle(using language: AppLanguage = .selected) -> String {
+        switch self {
+        case .stable:
+            return tr("正式版", "Stable", "正式版", "正式版", language: language)
+        case .beta:
+            return tr("Beta 测试版", "Beta Test", "Beta 測試版", "ベータテスト", language: language)
+        }
+    }
+}
+
 struct DashboardUpdatePresentation: Equatable {
     let subtitle: String
     let buttonTitle: String
@@ -31,8 +42,8 @@ struct DashboardUpdatePresentation: Equatable {
         case .latest:
             return DashboardUpdatePresentation(
                 subtitle: tr("当前为最新版本", "You are up to date", "目前為最新版本", "最新バージョンです", language: language),
-                buttonTitle: tr("最新版本", "Up to Date", "最新版本", "最新バージョン", language: language),
-                buttonEnabled: false,
+                buttonTitle: tr("检查更新", "Check for Updates", "檢查更新", "アップデートを確認", language: language),
+                buttonEnabled: true,
                 performsInstall: false
             )
         case .available(let current, let latest):
@@ -220,6 +231,23 @@ final class DashboardGeneralPage {
         updateButton.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesButton")
         updateButton.bezelStyle = .rounded
         apply(updatePresentation, to: updateButton, subtitle: updateSubtitle)
+        let updateChannelPopup = DashboardSettingsComponents.makePopUpButton(
+            identifier: AppPreferences.updateChannelKey,
+            items: UpdateChannel.allCases.map {
+                DashboardSettingsComponents.PopUpItem(
+                    title: $0.localizedTitle(),
+                    representedObject: $0.rawValue
+                )
+            },
+            selectedIndex: UpdateChannel.allCases.firstIndex(of: input.preferences.updateChannel),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.updateChannel(_:))
+        )
+        updateChannelPopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
+        let updateControls = NSStackView(views: [updateChannelPopup, updateButton])
+        updateControls.orientation = .horizontal
+        updateControls.alignment = .centerY
+        updateControls.spacing = 8
         self.updateSubtitleLabel = updateSubtitle
         self.updateButton = updateButton
 
@@ -233,7 +261,7 @@ final class DashboardGeneralPage {
                 tr("检查更新", "Check for Updates", "檢查更新", "アップデートを確認"),
                 subtitle: updatePresentation.subtitle,
                 subtitleLabel: updateSubtitle,
-                control: updateButton
+                control: updateControls
             )
         ])
         return DashboardSettingsComponents.makeSettingsPage([system, refreshing, app])

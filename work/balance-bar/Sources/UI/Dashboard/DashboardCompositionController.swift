@@ -36,6 +36,7 @@ struct DashboardCompositionActions {
     let onOffsetValueEnded: (String, Double) -> Void
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
+    let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
@@ -77,6 +78,7 @@ final class DashboardCompositionController {
             onOffsetValueEnded: actions.onOffsetValueEnded,
             onOffsetReset: actions.onOffsetReset,
             onLanguage: actions.onLanguage,
+            onUpdateChannelChanged: actions.onUpdateChannelChanged,
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onManualRefresh: actions.onManualRefresh,
             onCheckForUpdates: actions.onCheckForUpdates,

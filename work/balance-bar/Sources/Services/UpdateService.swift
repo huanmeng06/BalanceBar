@@ -11,13 +11,39 @@ enum GitHubReleaseClientError: Error {
 }
 
 protocol GitHubReleaseFetching {
+    /// Kept as a compatibility seam for callers that only need the previous
+    /// single-release behavior. UpdateService uses the list method below.
     func fetchLatestRelease(completion: @escaping (Result<GitHubRelease, GitHubReleaseClientError>) -> Void)
+    func fetchReleases(completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void)
 }
 
-/// Reads only the public latest-release endpoint. Authentication is not
-/// needed, and no user credentials are ever attached to this request.
+extension GitHubReleaseFetching {
+    func fetchLatestRelease(completion: @escaping (Result<GitHubRelease, GitHubReleaseClientError>) -> Void) {
+        fetchReleases { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success(let releases):
+                guard let release = releases.first else {
+                    completion(.failure(.invalidResponse))
+                    return
+                }
+                completion(.success(release))
+            }
+        }
+    }
+
+    func fetchReleases(completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void) {
+        fetchLatestRelease { result in
+            completion(result.map { [$0] })
+        }
+    }
+}
+
+/// Reads the public release list endpoint. Authentication is not needed, and
+/// no user credentials are ever attached to this request.
 final class GitHubReleaseClient: GitHubReleaseFetching {
-    static let endpoint = URL(string: "https://api.github.com/repos/huanmeng06/BalanceBar/releases/latest")!
+    static let endpoint = URL(string: "https://api.github.com/repos/huanmeng06/BalanceBar/releases")!
 
     private let session: URLSession
     private let endpoint: URL
@@ -27,8 +53,16 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
         self.endpoint = endpoint
     }
 
-    func fetchLatestRelease(completion: @escaping (Result<GitHubRelease, GitHubReleaseClientError>) -> Void) {
-        var request = URLRequest(url: endpoint)
+    func fetchReleases(completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void) {
+        var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)
+        var queryItems = components?.queryItems ?? []
+        if !endpoint.path.hasSuffix("/latest"),
+           !queryItems.contains(where: { $0.name == "per_page" }) {
+            queryItems.append(URLQueryItem(name: "per_page", value: "100"))
+        }
+        components?.queryItems = queryItems
+        let requestURL = components?.url ?? endpoint
+        var request = URLRequest(url: requestURL)
         request.httpMethod = "GET"
         request.timeoutInterval = 15
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -46,13 +80,17 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
                 completion(.failure(.httpStatus(httpResponse.statusCode)))
                 return
             }
-            guard let data,
-                  let release = try? JSONDecoder().decode(GitHubRelease.self, from: data)
-            else {
+            guard let data else {
                 completion(.failure(.invalidResponse))
                 return
             }
-            completion(.success(release))
+            if let releases = try? JSONDecoder().decode([GitHubRelease].self, from: data) {
+                completion(.success(releases))
+            } else if let release = try? JSONDecoder().decode(GitHubRelease.self, from: data) {
+                completion(.success([release]))
+            } else {
+                completion(.failure(.invalidResponse))
+            }
         }.resume()
     }
 }
@@ -689,6 +727,27 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
     }
 }
 
+protocol UpdateScheduling {
+    var now: TimeInterval { get }
+    func schedule(after delay: TimeInterval, _ action: @escaping () -> Void)
+}
+
+struct DispatchUpdateScheduler: UpdateScheduling {
+    let queue: DispatchQueue
+
+    init(queue: DispatchQueue = .main) {
+        self.queue = queue
+    }
+
+    var now: TimeInterval {
+        Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
+    }
+
+    func schedule(after delay: TimeInterval, _ action: @escaping () -> Void) {
+        queue.asyncAfter(deadline: .now() + delay, execute: action)
+    }
+}
+
 /// Coordinates release lookup, asset download, installation and UI-visible
 /// state transitions. All side effects are injected so tests never require
 /// GitHub access, a real DMG, or the production app path.
@@ -701,9 +760,13 @@ final class UpdateService {
     private let currentBundleIdentifier: String?
     private let callbackQueue: DispatchQueue
     private let workQueue: DispatchQueue
+    private let scheduler: UpdateScheduling
+    private let minimumCheckingDuration: TimeInterval
     private var availableRelease: GitHubRelease?
+    private var checkingStartedAt: TimeInterval?
 
     private(set) var state: UpdateCheckState
+    var updateChannel: UpdateChannel
     var onStateChange: ((UpdateCheckState) -> Void)?
 
     init(
@@ -713,8 +776,11 @@ final class UpdateService {
         currentVersionString: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
         currentApplicationURL: URL = Bundle.main.bundleURL,
         currentBundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        updateChannel: UpdateChannel = .stable,
         callbackQueue: DispatchQueue = .main,
-        workQueue: DispatchQueue = DispatchQueue(label: "local.balancebar.update-install", qos: .userInitiated)
+        workQueue: DispatchQueue = DispatchQueue(label: "local.balancebar.update-install", qos: .userInitiated),
+        scheduler: UpdateScheduling = DispatchUpdateScheduler(),
+        minimumCheckingDuration: TimeInterval = 1.0
     ) {
         self.releaseFetcher = releaseFetcher
         self.downloader = downloader
@@ -722,8 +788,11 @@ final class UpdateService {
         self.currentVersion = currentVersionString.flatMap(AppSemanticVersion.init)
         self.currentApplicationURL = currentApplicationURL
         self.currentBundleIdentifier = currentBundleIdentifier
+        self.updateChannel = updateChannel
         self.callbackQueue = callbackQueue
         self.workQueue = workQueue
+        self.scheduler = scheduler
+        self.minimumCheckingDuration = max(0, minimumCheckingDuration)
         if let currentVersion = self.currentVersion {
             self.state = .idle(current: currentVersion)
         } else {
@@ -735,12 +804,46 @@ final class UpdateService {
         guard let currentVersion,
               !isBusy
         else { return }
+        let updateChannel = self.updateChannel
         availableRelease = nil
+        checkingStartedAt = scheduler.now
         transition(to: .checking(current: currentVersion))
-        releaseFetcher.fetchLatestRelease { [weak self] result in
+        releaseFetcher.fetchReleases { [weak self] result in
             guard let self else { return }
             self.callbackQueue.async {
-                self.handleReleaseResult(result, currentVersion: currentVersion)
+                self.finishReleaseResultAfterMinimumCheckingDuration(
+                    result,
+                    currentVersion: currentVersion,
+                    updateChannel: updateChannel
+                )
+            }
+        }
+    }
+
+    private func finishReleaseResultAfterMinimumCheckingDuration(
+        _ result: Result<[GitHubRelease], GitHubReleaseClientError>,
+        currentVersion: AppSemanticVersion,
+        updateChannel: UpdateChannel
+    ) {
+        guard case .checking = state else { return }
+        let elapsed = checkingStartedAt.map { scheduler.now - $0 } ?? minimumCheckingDuration
+        let remaining = max(0, minimumCheckingDuration - elapsed)
+        guard remaining > 0 else {
+            checkingStartedAt = nil
+            handleReleaseResult(result, currentVersion: currentVersion, updateChannel: updateChannel)
+            return
+        }
+
+        scheduler.schedule(after: remaining) { [weak self] in
+            guard let self else { return }
+            self.callbackQueue.async {
+                guard case .checking = self.state else { return }
+                self.checkingStartedAt = nil
+                self.handleReleaseResult(
+                    result,
+                    currentVersion: currentVersion,
+                    updateChannel: updateChannel
+                )
             }
         }
     }
@@ -792,8 +895,9 @@ final class UpdateService {
     }
 
     private func handleReleaseResult(
-        _ result: Result<GitHubRelease, GitHubReleaseClientError>,
-        currentVersion: AppSemanticVersion
+        _ result: Result<[GitHubRelease], GitHubReleaseClientError>,
+        currentVersion: AppSemanticVersion,
+        updateChannel: UpdateChannel
     ) {
         switch result {
         case .failure(let error):
@@ -805,29 +909,37 @@ final class UpdateService {
             case .invalidResponse:
                 transition(to: .failed(.invalidResponse))
             }
-        case .success(let release):
-            guard !release.draft, !release.prerelease else {
-                availableRelease = nil
-                transition(to: .latest(current: currentVersion))
-                return
+        case .success(let releases):
+            var candidates: [UpdateReleaseCandidate] = []
+            var hasInvalidNewerRelease = false
+            var hasUnavailableNewerRelease = false
+
+            for release in releases where updateChannel.accepts(release) {
+                guard let version = release.version else {
+                    hasInvalidNewerRelease = true
+                    continue
+                }
+                guard version > currentVersion else { continue }
+                guard release.matchingAsset(for: version) != nil else {
+                    hasUnavailableNewerRelease = true
+                    continue
+                }
+                candidates.append(UpdateReleaseCandidate(release: release, version: version))
             }
-            guard let latestVersion = AppSemanticVersion(release.tagName) else {
+
+            if let candidate = candidates.max(by: { $0.version < $1.version }) {
+                availableRelease = candidate.release
+                transition(to: .available(current: currentVersion, latest: candidate.version))
+            } else {
                 availableRelease = nil
-                transition(to: .failed(.invalidReleaseVersion))
-                return
+                if hasUnavailableNewerRelease {
+                    transition(to: .failed(.assetUnavailable))
+                } else if hasInvalidNewerRelease {
+                    transition(to: .failed(.invalidReleaseVersion))
+                } else {
+                    transition(to: .latest(current: currentVersion))
+                }
             }
-            guard latestVersion > currentVersion else {
-                availableRelease = nil
-                transition(to: .latest(current: currentVersion))
-                return
-            }
-            guard release.matchingAsset(for: latestVersion) != nil else {
-                availableRelease = nil
-                transition(to: .failed(.assetUnavailable))
-                return
-            }
-            availableRelease = release
-            transition(to: .available(current: currentVersion, latest: latestVersion))
         }
     }
 
