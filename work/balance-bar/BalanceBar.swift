@@ -334,8 +334,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         self.updateService = updateService ?? UpdateService(updateChannel: preferences.updateChannel)
         super.init()
         self.updateService.onStateChange = { [weak self] _ in
-            DispatchQueue.main.async { [weak self] in
-                self?.dashboardComposition.refreshUpdateState()
+            guard let self else { return }
+            if Thread.isMainThread {
+                self.dashboardComposition.refreshUpdateState()
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.dashboardComposition.refreshUpdateState()
+                }
             }
         }
         databaseWatcher = CCSwitchDatabaseWatcher(

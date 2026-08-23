@@ -865,6 +865,78 @@ final class UpdateTests: XCTestCase {
 
     // MARK: - Dashboard state/action wiring and localization
 
+    func testDashboardRetryActionShowsCheckingBeforeSecondFetchAndGuardsDuplicateRequests() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "UpdateTests.UI.retry-state.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let fetcher = StubReleaseFetcher()
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: .main,
+            workQueue: .main
+        )
+        let relay = DashboardPreferencePageRelay()
+        let pageController = DashboardGeneralPage()
+        var latestCount = 0
+        let firstLatest = expectation(description: "first check settles")
+        let secondLatest = expectation(description: "second check settles")
+        service.onStateChange = { state in
+            pageController.refresh(updateState: state)
+            guard case .latest = state else { return }
+            latestCount += 1
+            if latestCount == 1 {
+                firstLatest.fulfill()
+            } else if latestCount == 2 {
+                secondLatest.fulfill()
+            }
+        }
+        relay.onCheckForUpdates = { service.checkForUpdates() }
+
+        let page = pageController.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: service.state
+        ))
+        let updateButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 1)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 1, "duplicate action during checking must stay guarded")
+
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [firstLatest], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查更新")
+        XCTAssertTrue(updateButton.isEnabled)
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 2)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 2, "duplicate action during the retry must stay guarded")
+
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [secondLatest], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查更新")
+        XCTAssertTrue(updateButton.isEnabled)
+    }
+
     func testDashboardGeneralUpdateRowUsesSharedSettingsRowAndRelayActions() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
