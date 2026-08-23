@@ -615,17 +615,16 @@ final class DashboardMenuBarPage {
         iconSwitch = iconToggle
         amountSwitch = amountToggle
         let overflowWarningLabel = NSTextField(
-            labelWithString: Self.overflowWarningText()
+            wrappingLabelWithString: Self.overflowWarningText()
         )
         overflowWarningLabel.identifier = NSUserInterfaceItemIdentifier(
             Self.overflowWarningIdentifier
         )
         overflowWarningLabel.font = .systemFont(ofSize: 12)
         overflowWarningLabel.textColor = .secondaryLabelColor
-        overflowWarningLabel.lineBreakMode = .byTruncatingTail
-        overflowWarningLabel.usesSingleLineMode = true
-        overflowWarningLabel.maximumNumberOfLines = 1
-        overflowWarningLabel.allowsDefaultTighteningForTruncation = true
+        overflowWarningLabel.lineBreakMode = .byWordWrapping
+        overflowWarningLabel.usesSingleLineMode = false
+        overflowWarningLabel.maximumNumberOfLines = 0
         overflowWarningLabel.setContentCompressionResistancePriority(
             .defaultLow,
             for: .horizontal

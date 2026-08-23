@@ -298,9 +298,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(warningLabel.stringValue, expectedText)
             XCTAssertFalse(warningLabel.isHidden)
             XCTAssertFalse(warningRow.isHidden)
-            XCTAssertTrue(warningLabel.usesSingleLineMode)
-            XCTAssertEqual(warningLabel.maximumNumberOfLines, 1)
-            XCTAssertEqual(warningLabel.lineBreakMode, .byTruncatingTail)
+            XCTAssertFalse(warningLabel.usesSingleLineMode)
+            XCTAssertEqual(warningLabel.maximumNumberOfLines, 0)
+            XCTAssertEqual(warningLabel.lineBreakMode, .byWordWrapping)
             XCTAssertEqual(warningLabel.font?.pointSize ?? .nan, 12, accuracy: 0.001)
             let warningRowHeight = try XCTUnwrap(
                 warningRow.constraints.first {
