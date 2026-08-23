@@ -23,6 +23,57 @@ function sourceKey(source) {
   return `${source.kind}:${source.number}`;
 }
 
+function buildIssueCatalog(input) {
+  const issues = new Map();
+  for (const pullRequest of input.pullRequests ?? []) {
+    for (const issue of pullRequest.closingIssues ?? []) {
+      issues.set(issue.number, issue);
+    }
+  }
+  return issues;
+}
+
+/**
+ * Remove only unlinked Issue citations when the same item still has another
+ * source. A PR body can mention an issue number without creating a GitHub
+ * closing-issue relationship; that prose is not sufficient evidence for an
+ * Issue link in the published notes. Items with no valid source still fail in
+ * validateReleaseNotes below.
+ */
+export function sanitizeReleaseNotes(input, notes) {
+  const issues = buildIssueCatalog(input);
+  const sanitized = { ...notes };
+
+  for (const section of SECTION_DEFINITIONS) {
+    if (!Array.isArray(notes?.[section.key])) {
+      continue;
+    }
+
+    sanitized[section.key] = notes[section.key].map((item, index) => ({
+      ...item,
+      sources: Array.isArray(item?.sources)
+        ? item.sources.filter((source) => {
+          if (source?.kind !== "issue") {
+            return true;
+          }
+          if (issues.has(source.number)) {
+            return true;
+          }
+          if (Number.isInteger(source.number) && source.number > 0) {
+            console.warn(
+              `render-release-notes: ignoring unlinked Issue #${source.number} in ${section.key}[${index}]; preserving other validated sources`,
+            );
+            return false;
+          }
+          return true;
+        })
+        : item?.sources,
+    }));
+  }
+
+  return sanitized;
+}
+
 function oneLine(value, fieldName) {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${fieldName} must be a non-empty string`);
@@ -54,12 +105,7 @@ export function validateReleaseNotes(input, notes) {
   const pullRequests = new Map(
     (input.pullRequests ?? []).map((pullRequest) => [pullRequest.number, pullRequest]),
   );
-  const issues = new Map();
-  for (const pullRequest of pullRequests.values()) {
-    for (const issue of pullRequest.closingIssues ?? []) {
-      issues.set(issue.number, issue);
-    }
-  }
+  const issues = buildIssueCatalog(input);
 
   const coveredPullRequests = new Set();
   let itemCount = 0;
@@ -142,10 +188,11 @@ function renderSection(input, notes, definition) {
 }
 
 export function renderReleaseNotes(input, notes) {
-  validateReleaseNotes(input, notes);
+  const sanitizedNotes = sanitizeReleaseNotes(input, notes);
+  validateReleaseNotes(input, sanitizedNotes);
 
   const sections = SECTION_DEFINITIONS
-    .map((definition) => renderSection(input, notes, definition));
+    .map((definition) => renderSection(input, sanitizedNotes, definition));
   const installation = [
     "## 📦 安装",
     "",

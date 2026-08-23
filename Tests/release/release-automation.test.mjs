@@ -254,6 +254,16 @@ test("renderer preserves the BalanceBar release layout and links every row", () 
   assert.doesNotMatch(rendered, /## 📚 文档|架构说明|开发工作流/);
 });
 
+test("renderer ignores an unlinked Issue when the item has a valid PR source", () => {
+  const notes = fixtureNotes();
+  notes.features[0].sources.push({ kind: "issue", number: 143 });
+
+  const rendered = renderReleaseNotes(fixtureInput(), notes);
+
+  assert.match(rendered, /\[PR #141\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/141\)/);
+  assert.doesNotMatch(rendered, /\[Issue #143\]/);
+});
+
 test("validator rejects an item that omits a merged PR", () => {
   const notes = fixtureNotes();
   notes.features[0].sources = [{ kind: "issue", number: 136 }];
