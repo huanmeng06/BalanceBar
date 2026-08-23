@@ -389,7 +389,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
         XCTAssertEqual(
             renderedPrimaryInk.midY,
-            previewBackground.bounds.midY + preferences.menuBarAmountOffsetY,
+            previewBackground.bounds.midY
+                + preferences.menuBarAmountOffsetY
+                + MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                    fontSize: CGFloat(preferences.menuBarFontSizePreset.primarySize)
+                ),
             accuracy: 0.5
         )
 
@@ -895,7 +899,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                                 dx: icon.layer?.affineTransform().tx ?? 0,
                                 dy: icon.layer?.affineTransform().ty ?? 0
                             )
-                        XCTAssertEqual(iconFrame.midY, renderedInk.midY, accuracy: 0.5)
+                        XCTAssertEqual(
+                            iconFrame.midY,
+                            background.bounds.midY,
+                            accuracy: 0.5,
+                            "preview icon must stay on the card center while primary ink is calibrated independently"
+                        )
                     }
                 }
                 XCTAssertLessThanOrEqual(

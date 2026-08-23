@@ -72,7 +72,7 @@ final class MenuBarGeometryTests: XCTestCase {
             MenuBarLayout.singleLinePrimaryAutomaticYOffset(
                 fontSize: CGFloat(MenuBarFontSizePreset.large.primarySize)
             ),
-            MenuBarLayout.officialAmountOnlyTextYOffset,
+            MenuBarLayout.officialAmountOnlyTextYOffset * 2,
             accuracy: 0.001
         )
         XCTAssertEqual(
@@ -1361,10 +1361,17 @@ final class MenuBarGeometryTests: XCTestCase {
                     "single-line primary ink X drifted"
                 )
                 let verticalCenters = correctedBounds.map { $0.1.midY }
-                XCTAssertLessThanOrEqual(
+                let expectedAutomaticYOffsets = MenuBarFontSizePreset.allCases.map {
+                    MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                        fontSize: CGFloat($0.primarySize)
+                    )
+                }
+                XCTAssertEqual(
                     (verticalCenters.max() ?? 0) - (verticalCenters.min() ?? 0),
-                    0.5,
-                    "single-line primary ink Y drifted"
+                    (expectedAutomaticYOffsets.max() ?? 0)
+                        - (expectedAutomaticYOffsets.min() ?? 0),
+                    accuracy: 0.001,
+                    "single-line primary ink must follow the explicit per-preset optical calibration"
                 )
 
                 let large = try! XCTUnwrap(
