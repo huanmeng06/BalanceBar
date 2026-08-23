@@ -405,6 +405,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // tests without exposing the underlying NSStatusItem.
     var statusItemLengthForTesting: CGFloat? { statusItem?.length }
 
+    // Live AppKit geometry used by the single-line regression tests. These
+    // are the rendered primary ink and icon bounds, not the anti-clipping
+    // label/frame allocation.
+    var menuBarPrimaryInkBoundsForTesting: NSRect? {
+        menuBarPrimaryInkBounds(in: statusItem?.button)
+    }
+
+    var menuBarIconFrameForTesting: NSRect? {
+        guard let button = statusItem?.button else { return nil }
+        return menuBarIconView.convert(menuBarIconView.bounds, to: button)
+    }
+
+    var menuBarButtonBoundsForTesting: NSRect? {
+        statusItem?.button?.bounds
+    }
+
     // Exposes the controller's actual menu for headless production-path tests.
     // The application still owns and renders this same NSMenu instance.
     var menuItemsForTesting: [NSMenuItem] { statusMenu.items }
@@ -497,11 +513,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
 
-        let requestedLength = MenuBarLayout.statusItemLength(
-            contentWidth: geometry.contentWidth,
-            horizontalPadding: settings.horizontalPadding,
-            widthAdjustment: widthAdjustment
-        )
+        let requestedLength: CGFloat
+        if isSingleLineAmountMode(
+            effectiveSnapshot: lastMenuBarEffectiveSnapshot,
+            geometry: geometry
+        ) {
+            requestedLength = MenuBarLayout.singleLineStatusItemLength(
+                primaryText: lastMenuBarEffectiveSnapshot.menuBarPrimary,
+                showIcon: settings.showIcon,
+                isBalance: lastMenuBarEffectiveSnapshot.kind == .balance,
+                horizontalPadding: settings.horizontalPadding,
+                widthAdjustment: widthAdjustment
+            )
+        } else {
+            requestedLength = MenuBarLayout.statusItemLength(
+                contentWidth: geometry.contentWidth,
+                horizontalPadding: settings.horizontalPadding,
+                widthAdjustment: widthAdjustment
+            )
+        }
         guard requestedLength != statusItem.length else { return }
         MenuBarWidthPerformance.measure("statusItem.length") {
             statusItem.length = requestedLength
@@ -811,11 +841,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hasSecondary: hasSecondary
         )
 
-        statusItem.length = MenuBarLayout.statusItemLength(
-            contentWidth: geometry.contentWidth,
-            horizontalPadding: settings.horizontalPadding,
-            widthAdjustment: settings.widthAdjustment
-        )
+        if isSingleLineAmountMode(
+            effectiveSnapshot: effectiveSnapshot,
+            geometry: geometry
+        ) {
+            statusItem.length = MenuBarLayout.singleLineStatusItemLength(
+                primaryText: effectiveSnapshot.menuBarPrimary,
+                showIcon: settings.showIcon,
+                isBalance: effectiveSnapshot.kind == .balance,
+                horizontalPadding: settings.horizontalPadding,
+                widthAdjustment: settings.widthAdjustment
+            )
+        } else {
+            statusItem.length = MenuBarLayout.statusItemLength(
+                contentWidth: geometry.contentWidth,
+                horizontalPadding: settings.horizontalPadding,
+                widthAdjustment: settings.widthAdjustment
+            )
+        }
         button.layoutSubtreeIfNeeded()
 
         let buttonHeight = button.bounds.height
@@ -922,17 +965,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 height: settings.amountOffsetY + officialTextYOffset
             )
         )
-        let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
-            backgroundBounds: backgroundBounds,
-            geometry: geometry,
-            iconOffsetX: settings.iconOffsetX,
-            textOffsetX: settings.amountOffsetX,
-            centerVisibleUnionOnBackground: geometry.secondaryHeight > 0
+        let isSingleLine = isSingleLineAmountMode(
+            effectiveSnapshot: effectiveSnapshot,
+            geometry: geometry
         )
-        menuBarContentStack.frame = frames.content.offsetBy(
-            dx: horizontalCenteringCompensation,
-            dy: 0
-        )
+        // Install the unadjusted hierarchy first. The narrow single-line path
+        // measures the actual primary ink after AppKit has applied its cell
+        // drawing and the existing balance text transform; the icon remains
+        // in this same outer stack for horizontal translation only.
+        menuBarContentStack.frame = frames.content
         menuBarIconSlot.frame = frames.iconSlot
         menuBarIconView.frame = frames.icon
         menuBarTextStack.frame = frames.text
@@ -945,6 +986,111 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 y: -MenuBarLayout.singleLineTextYOffset
             ))
         }
+
+        if isSingleLine {
+            // Establish the zero-user-offset baseline first. The final
+            // correction below then targets the same primary ink plus the
+            // requested amountOffsetY, so the user adjustment cannot be
+            // consumed by the baseline measurement.
+            let zeroUserTextFrame = MenuBarLayout.frames(
+                buttonSize: backgroundBounds.size,
+                geometry: geometry,
+                iconViewYOffset: iconViewYOffset,
+                iconOffset: NSSize(
+                    width: settings.iconOffsetX,
+                    height: settings.iconOffsetY
+                ),
+                textOffset: NSSize(
+                    width: settings.amountOffsetX,
+                    height: officialTextYOffset
+                )
+            ).text
+            menuBarTextStack.frame = zeroUserTextFrame
+            let horizontalCorrection: CGFloat
+            if let primaryInk = menuBarPrimaryInkBounds(in: button) {
+                let targetX = MenuBarLayout.singleLinePrimaryAnchorX(
+                    backgroundBounds: backgroundBounds,
+                    primaryText: effectiveSnapshot.menuBarPrimary,
+                    showIcon: settings.showIcon,
+                    isBalance: effectiveSnapshot.kind == .balance
+                )
+                horizontalCorrection = targetX - primaryInk.midX
+            } else {
+                horizontalCorrection = 0
+            }
+            menuBarContentStack.frame = frames.content.offsetBy(
+                dx: horizontalCorrection,
+                dy: 0
+            )
+
+            // The icon must not follow this Y correction. It is the primary
+            // glyph's measured ink—not the icon/text union—that is aligned to
+            // the button center. The user amount offset is the target visual
+            // displacement, while official/balance baseline constants are
+            // absorbed by this measured correction.
+            if let primaryInk = menuBarPrimaryInkBounds(in: button) {
+                let automaticTextYOffset = MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                    fontSize: settings.fontSize
+                )
+                let targetY = button.bounds.midY + MenuBarOffsetLayout.yDelta(
+                    visualY: settings.amountOffsetY + automaticTextYOffset,
+                    in: .flippedFrame
+                )
+                let verticalCorrection = targetY - primaryInk.midY
+                menuBarTextStack.frame = zeroUserTextFrame.offsetBy(
+                    dx: 0,
+                    dy: verticalCorrection
+                )
+            }
+        } else {
+            // Keep the established official two-line and icon-only layout
+            // path byte-for-byte in behavior, including its background
+            // compensation and frame relationships.
+            let horizontalCenteringCompensation = MenuBarLayout.horizontalCenteringCompensation(
+                backgroundBounds: backgroundBounds,
+                geometry: geometry,
+                iconOffsetX: settings.iconOffsetX,
+                textOffsetX: settings.amountOffsetX,
+                centerVisibleUnionOnBackground: geometry.secondaryHeight > 0
+            )
+            menuBarContentStack.frame = frames.content.offsetBy(
+                dx: horizontalCenteringCompensation,
+                dy: 0
+            )
+        }
+    }
+
+    private func isSingleLineAmountMode(
+        effectiveSnapshot: Snapshot,
+        geometry: MenuBarGeometry
+    ) -> Bool {
+        guard settings.showAmount, geometry.secondaryHeight == 0 else {
+            return false
+        }
+        switch effectiveSnapshot.kind {
+        case .official, .balance:
+            return true
+        case .placeholder, .openCodex, .error:
+            return false
+        }
+    }
+
+    private func menuBarPrimaryInkBounds(in button: NSStatusBarButton?) -> NSRect? {
+        guard let button,
+              settings.showAmount,
+              let geometry = lastMenuBarGeometry,
+              menuBarPrimaryLabel.frame.width > 0,
+              geometry.primaryHeight > 0,
+              let localBounds = MenuBarLayout.appKitRenderedTextBounds(
+                  for: menuBarPrimaryLabel,
+                  frameSize: NSSize(
+                      width: menuBarPrimaryLabel.bounds.width,
+                      height: geometry.primaryHeight
+                  )
+              ) else {
+            return nil
+        }
+        return menuBarPrimaryLabel.convert(localBounds, to: button)
     }
 
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {

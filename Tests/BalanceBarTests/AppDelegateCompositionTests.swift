@@ -179,6 +179,210 @@ final class AppDelegateCompositionTests: XCTestCase {
         controller.teardown()
     }
 
+    @MainActor
+    func testLiveStatusItemOfficialAmountOnlyKeepsPrimaryInkAnchored() throws {
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true
+        )
+        let scenarios: [(Snapshot, Bool)] = [
+            (
+                Snapshot.official(
+                    "OpenAI",
+                    48,
+                    "7-day",
+                    nil,
+                    Date(timeIntervalSince1970: 1)
+                ),
+                false
+            ),
+            (
+                Snapshot.balance(
+                    "Provider",
+                    123456.78,
+                    "USD",
+                    nil,
+                    Date(timeIntervalSince1970: 1)
+                ),
+                true
+            ),
+            (
+                Snapshot.balance(
+                    "Provider",
+                    0.10,
+                    "USD",
+                    nil,
+                    Date(timeIntervalSince1970: 1)
+                ),
+                true
+            )
+        ]
+        defer { controller.teardown() }
+
+        for (snapshot, isBalance) in scenarios {
+            for showIcon in [true, false] {
+            var observations: [(MenuBarFontSizePreset, NSRect, NSRect)] = []
+            var previousLength: CGFloat?
+            for preset in MenuBarFontSizePreset.allCases {
+                let settings = StatusItemController.MenuBarSettings(
+                    showIcon: showIcon,
+                    showAmount: true,
+                    showReset: false,
+                    horizontalPadding: 10,
+                    keepMenuOpenAfterRefresh: true,
+                    widthAdjustment: 0,
+                    fontSize: CGFloat(preset.primarySize)
+                )
+                if controller.statusItemInstallCount == 0 {
+                    controller.start(
+                        snapshot: snapshot,
+                        refreshDate: nil,
+                        menuInput: input,
+                        settings: settings
+                    )
+                } else {
+                    controller.update(
+                        snapshot: snapshot,
+                        refreshDate: nil,
+                        menuInput: input,
+                        settings: settings
+                    )
+                }
+                RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+
+                let ink = try XCTUnwrap(controller.menuBarPrimaryInkBoundsForTesting)
+                let button = try XCTUnwrap(controller.menuBarButtonBoundsForTesting)
+                observations.append((preset, ink, button))
+                let expectedLength = MenuBarLayout.singleLineStatusItemLength(
+                    primaryText: snapshot.menuBarPrimary,
+                    showIcon: showIcon,
+                    isBalance: isBalance,
+                    horizontalPadding: 10
+                )
+                XCTAssertEqual(
+                    controller.statusItemLengthForTesting ?? .nan,
+                    expectedLength,
+                    accuracy: 0.5,
+                    "single-line reserve was not applied"
+                )
+                if let previousLength {
+                    XCTAssertEqual(
+                        controller.statusItemLengthForTesting ?? .nan,
+                        previousLength,
+                        accuracy: 0.5,
+                        "official amount-only width changed at \(preset), icon=\(showIcon)"
+                    )
+                }
+                previousLength = controller.statusItemLengthForTesting
+                let automaticYOffset = MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                    fontSize: settings.fontSize
+                )
+                XCTAssertEqual(
+                    ink.midY,
+                    button.midY - automaticYOffset,
+                    accuracy: 0.5,
+                    "primary ink has an unexpected vertical baseline, icon=\(showIcon), preset=\(preset)"
+                )
+                if showIcon {
+                    let icon = try XCTUnwrap(controller.menuBarIconFrameForTesting)
+                    XCTAssertEqual(
+                        icon.midY,
+                        button.midY,
+                        accuracy: 0.5,
+                        "icon alignment changed, preset=\(preset)"
+                    )
+                }
+            }
+
+            let primaryCenters = observations.map { $0.1.midX }
+            XCTAssertLessThanOrEqual(
+                (primaryCenters.max() ?? 0) - (primaryCenters.min() ?? 0),
+                0.5,
+                "official primary ink X drifted with icon=\(showIcon)"
+            )
+            let large = try XCTUnwrap(observations.first { $0.0 == .large }?.1)
+            let small = try XCTUnwrap(observations.first { $0.0 == .small }?.1)
+            XCTAssertGreaterThanOrEqual(large.width, small.width)
+            XCTAssertGreaterThan(
+                abs(large.maxX - large.midX),
+                abs(small.maxX - small.midX) - 0.5,
+                "shrinking the font must move both edges around primary center"
+            )
+
+            let baseLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+            controller.updateWidthAdjustment(10)
+            XCTAssertEqual(
+                controller.statusItemLengthForTesting ?? .nan,
+                baseLength + 10,
+                accuracy: 0.5
+            )
+            controller.updateWidthAdjustment(20)
+            XCTAssertEqual(
+                controller.statusItemLengthForTesting ?? .nan,
+                baseLength + 20,
+                accuracy: 0.5
+            )
+            controller.updateWidthAdjustment(0)
+
+            let adjustedSettings = StatusItemController.MenuBarSettings(
+                showIcon: showIcon,
+                showAmount: true,
+                showReset: false,
+                horizontalPadding: 10,
+                keepMenuOpenAfterRefresh: true,
+                amountOffsetY: 0.75,
+                widthAdjustment: 0,
+                fontSize: CGFloat(MenuBarFontSizePreset.large.primarySize)
+            )
+            controller.update(
+                snapshot: snapshot,
+                refreshDate: nil,
+                menuInput: input,
+                settings: adjustedSettings
+            )
+            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+            let adjustedInk = try XCTUnwrap(controller.menuBarPrimaryInkBoundsForTesting)
+            let adjustedButton = try XCTUnwrap(controller.menuBarButtonBoundsForTesting)
+                XCTAssertEqual(
+                    adjustedInk.midY,
+                    adjustedButton.midY
+                        - MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                            fontSize: adjustedSettings.fontSize
+                        )
+                        - 0.75,
+                    accuracy: 0.5,
+                    "user amount Y adjustment must remain visible"
+                )
+            }
+        }
+    }
+
     func testDatabaseWatcherStartAndStopAreIdempotent() {
         let watcher = CCSwitchDatabaseWatcher(
             databaseURL: URL(fileURLWithPath: "/nonexistent/issue-30-watcher.db"),
