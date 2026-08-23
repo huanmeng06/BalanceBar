@@ -438,7 +438,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(amountSummary?.stringValue, "微调金额上下像素位置：Y 轴 + 0.5 pt")
         XCTAssertEqual(
             labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
-            "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 0.6 pt"
+            "调整 BalanceBar 与其他项目的空隙：宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
         XCTAssertTrue(labelStrings.contains("字号与位置"))
@@ -710,7 +710,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
             accuracy: 0.001
         )
-        XCTAssertEqual(summary?.stringValue, "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 7.4 pt")
+        XCTAssertEqual(summary?.stringValue, "调整 BalanceBar 与其他项目的空隙：宽度 + 7.4 pt")
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
         XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
@@ -767,7 +767,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "调整菜单栏字体大小",
                     "微调图标上下像素位置：Y 轴 + 0.0 pt",
                     "微调金额上下像素位置：Y 轴 + 0.0 pt",
-                    "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 0.0 pt"
+                    "调整 BalanceBar 与其他项目的空隙：宽度 + 0.0 pt"
                 ],
                 "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt"
             ),
