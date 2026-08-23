@@ -6,6 +6,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onToggle: ((String, Bool) -> Void)?
     var onInterval: ((String, TimeInterval) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
+    var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
     var onManualRefresh: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
@@ -33,6 +34,13 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let language = AppLanguage(rawValue: rawValue) else { return }
         onLanguage?(language)
+    }
+
+    @objc func updateChannel(_ sender: NSPopUpButton) {
+        guard sender.identifier?.rawValue == AppPreferences.updateChannelKey,
+              let rawValue = sender.selectedItem?.representedObject as? String,
+              let channel = UpdateChannel(rawValue: rawValue) else { return }
+        onUpdateChannelChanged?(channel)
     }
 
     @objc func openCCSwitch(_ sender: NSButton) {

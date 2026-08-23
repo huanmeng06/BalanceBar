@@ -157,6 +157,18 @@ struct GitHubReleaseAsset: Decodable, Equatable {
     }
 }
 
+enum UpdateChannel: String, CaseIterable, Equatable {
+    case stable
+    case beta
+
+    /// Stable is the default channel. Beta is deliberately opt-in and may
+    /// include both GitHub prereleases and ordinary releases.
+    func accepts(_ release: GitHubRelease) -> Bool {
+        guard !release.draft else { return false }
+        return self == .beta || !release.prerelease
+    }
+}
+
 struct GitHubRelease: Decodable, Equatable {
     let tagName: String
     let draft: Bool
@@ -170,9 +182,21 @@ struct GitHubRelease: Decodable, Equatable {
         case assets
     }
 
+    var version: AppSemanticVersion? {
+        AppSemanticVersion(tagName)
+    }
+
     var stableVersion: AppSemanticVersion? {
-        guard !draft, !prerelease else { return nil }
-        return AppSemanticVersion(tagName)
+        guard UpdateChannel.stable.accepts(self) else { return nil }
+        return version
+    }
+
+    func candidate(for channel: UpdateChannel) -> UpdateReleaseCandidate? {
+        guard channel.accepts(self),
+              let version,
+              matchingAsset(for: version) != nil
+        else { return nil }
+        return UpdateReleaseCandidate(release: self, version: version)
     }
 
     func matchingAsset(for version: AppSemanticVersion) -> GitHubReleaseAsset? {
@@ -181,6 +205,11 @@ struct GitHubRelease: Decodable, Equatable {
             $0.name == expectedName && $0.browserDownloadURL != nil
         }
     }
+}
+
+struct UpdateReleaseCandidate: Equatable {
+    let release: GitHubRelease
+    let version: AppSemanticVersion
 }
 
 enum UpdateFailure: Equatable {
