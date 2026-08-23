@@ -11,6 +11,7 @@ trap 'rm -rf "$probe_dir"' EXIT
     printf '%s\n' \
         'import Foundation' \
         'enum AppPreferences {' \
+        '    static let updateChannelKey = "updateChannel"' \
         '    static let showOpenCodexMenuKey = "showOpenCodexMenu"' \
         '    static let menuBarIconOffsetXKey = "menuBarIconOffsetX"' \
         '    static let menuBarIconOffsetYKey = "menuBarIconOffsetY"' \

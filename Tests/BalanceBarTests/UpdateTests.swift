@@ -90,6 +90,35 @@ final class UpdateTests: XCTestCase {
         }
     }
 
+    private final class StubUpdateScheduler: UpdateScheduling {
+        private struct ScheduledAction {
+            let date: TimeInterval
+            let action: () -> Void
+        }
+
+        private(set) var scheduledDelays: [TimeInterval] = []
+        var onSchedule: ((TimeInterval) -> Void)?
+        var now: TimeInterval
+        private var scheduledActions: [ScheduledAction] = []
+
+        init(now: TimeInterval = 1_000) {
+            self.now = now
+        }
+
+        func schedule(after delay: TimeInterval, _ action: @escaping () -> Void) {
+            scheduledDelays.append(delay)
+            scheduledActions.append(ScheduledAction(date: now + delay, action: action))
+            onSchedule?(delay)
+        }
+
+        func advance(by interval: TimeInterval) {
+            now += interval
+            let ready = scheduledActions.filter { $0.date <= now }
+            scheduledActions.removeAll { $0.date <= now }
+            ready.forEach { $0.action() }
+        }
+    }
+
     private final class StubDownloader: UpdateAssetDownloading {
         private(set) var requestCount = 0
         private(set) var cleanedURLs: [URL] = []
@@ -627,7 +656,8 @@ final class UpdateTests: XCTestCase {
             installer: StubInstaller(),
             currentVersionString: "1.0.6",
             callbackQueue: DispatchQueue.main,
-            workQueue: DispatchQueue.main
+            workQueue: DispatchQueue.main,
+            minimumCheckingDuration: 0
         )
         service.checkForUpdates()
         fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
@@ -865,7 +895,7 @@ final class UpdateTests: XCTestCase {
 
     // MARK: - Dashboard state/action wiring and localization
 
-    func testDashboardRetryActionShowsCheckingBeforeSecondFetchAndGuardsDuplicateRequests() throws {
+    func testDashboardRetryActionKeepsCheckingVisibleForOneSecondAndGuardsDuplicateRequests() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -875,17 +905,31 @@ final class UpdateTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
         let service = UpdateService(
             releaseFetcher: fetcher,
             currentVersionString: "1.0.0",
             callbackQueue: .main,
-            workQueue: .main
+            workQueue: .main,
+            scheduler: scheduler
         )
         let relay = DashboardPreferencePageRelay()
         let pageController = DashboardGeneralPage()
         var latestCount = 0
         let firstLatest = expectation(description: "first check settles")
         let secondLatest = expectation(description: "second check settles")
+        let firstMinimumDurationScheduled = expectation(description: "first minimum checking duration scheduled")
+        let secondMinimumDurationScheduled = expectation(description: "second minimum checking duration scheduled")
+        scheduler.onSchedule = { _ in
+            switch scheduler.scheduledDelays.count {
+            case 1:
+                firstMinimumDurationScheduled.fulfill()
+            case 2:
+                secondMinimumDurationScheduled.fulfill()
+            default:
+                XCTFail("unexpected extra minimum checking duration")
+            }
+        }
         service.onStateChange = { state in
             pageController.refresh(updateState: state)
             guard case .latest = state else { return }
@@ -919,6 +963,15 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(fetcher.requestCount, 1, "duplicate action during checking must stay guarded")
 
         fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [firstMinimumDurationScheduled], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+        scheduler.advance(by: 0.999)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 1, "duplicate action during the minimum checking duration must stay guarded")
+        scheduler.advance(by: 0.001)
         wait(for: [firstLatest], timeout: 2)
         XCTAssertEqual(updateButton.title, "检查更新")
         XCTAssertTrue(updateButton.isEnabled)
@@ -932,9 +985,56 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(fetcher.requestCount, 2, "duplicate action during the retry must stay guarded")
 
         fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [secondMinimumDurationScheduled], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查中…")
+        XCTAssertFalse(updateButton.isEnabled)
+        scheduler.advance(by: 1.0)
         wait(for: [secondLatest], timeout: 2)
         XCTAssertEqual(updateButton.title, "检查更新")
         XCTAssertTrue(updateButton.isEnabled)
+    }
+
+    func testUpdateServiceMinimumCheckingDurationDelaysFastFailureAndKeepsRetryGuarded() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.minimum-duration.failure")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler
+        )
+        let scheduled = expectation(description: "minimum checking duration scheduled")
+        scheduler.onSchedule = { delay in
+            XCTAssertEqual(delay, 1.0, accuracy: 0.001)
+            scheduled.fulfill()
+        }
+        let failed = waitForState(service, queue: queue) {
+            if case .failed(.network) = $0 { return true }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.failure(.transport))
+        wait(for: [scheduled], timeout: 2)
+        if case .checking = service.state {
+            // The fast failure must not replace the visible checking state yet.
+        } else {
+            XCTFail("fast failure must remain in checking state during the minimum presentation duration")
+        }
+
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 1, "duplicate check during the minimum duration must stay guarded")
+        scheduler.advance(by: 0.999)
+        if case .failed = service.state {
+            XCTFail("fast failure must remain pending until the minimum checking duration elapses")
+        }
+        scheduler.advance(by: 0.001)
+        wait(for: [failed], timeout: 2)
+        guard case .failed(.network) = service.state else {
+            return XCTFail("expected the delayed network failure")
+        }
     }
 
     func testDashboardGeneralUpdateRowUsesSharedSettingsRowAndRelayActions() throws {

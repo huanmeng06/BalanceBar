@@ -727,6 +727,27 @@ final class UpdateApplicationInstaller: UpdateApplicationInstalling {
     }
 }
 
+protocol UpdateScheduling {
+    var now: TimeInterval { get }
+    func schedule(after delay: TimeInterval, _ action: @escaping () -> Void)
+}
+
+struct DispatchUpdateScheduler: UpdateScheduling {
+    let queue: DispatchQueue
+
+    init(queue: DispatchQueue = .main) {
+        self.queue = queue
+    }
+
+    var now: TimeInterval {
+        Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
+    }
+
+    func schedule(after delay: TimeInterval, _ action: @escaping () -> Void) {
+        queue.asyncAfter(deadline: .now() + delay, execute: action)
+    }
+}
+
 /// Coordinates release lookup, asset download, installation and UI-visible
 /// state transitions. All side effects are injected so tests never require
 /// GitHub access, a real DMG, or the production app path.
@@ -739,7 +760,10 @@ final class UpdateService {
     private let currentBundleIdentifier: String?
     private let callbackQueue: DispatchQueue
     private let workQueue: DispatchQueue
+    private let scheduler: UpdateScheduling
+    private let minimumCheckingDuration: TimeInterval
     private var availableRelease: GitHubRelease?
+    private var checkingStartedAt: TimeInterval?
 
     private(set) var state: UpdateCheckState
     var updateChannel: UpdateChannel
@@ -754,7 +778,9 @@ final class UpdateService {
         currentBundleIdentifier: String? = Bundle.main.bundleIdentifier,
         updateChannel: UpdateChannel = .stable,
         callbackQueue: DispatchQueue = .main,
-        workQueue: DispatchQueue = DispatchQueue(label: "local.balancebar.update-install", qos: .userInitiated)
+        workQueue: DispatchQueue = DispatchQueue(label: "local.balancebar.update-install", qos: .userInitiated),
+        scheduler: UpdateScheduling = DispatchUpdateScheduler(),
+        minimumCheckingDuration: TimeInterval = 1.0
     ) {
         self.releaseFetcher = releaseFetcher
         self.downloader = downloader
@@ -765,6 +791,8 @@ final class UpdateService {
         self.updateChannel = updateChannel
         self.callbackQueue = callbackQueue
         self.workQueue = workQueue
+        self.scheduler = scheduler
+        self.minimumCheckingDuration = max(0, minimumCheckingDuration)
         if let currentVersion = self.currentVersion {
             self.state = .idle(current: currentVersion)
         } else {
@@ -778,10 +806,39 @@ final class UpdateService {
         else { return }
         let updateChannel = self.updateChannel
         availableRelease = nil
+        checkingStartedAt = scheduler.now
         transition(to: .checking(current: currentVersion))
         releaseFetcher.fetchReleases { [weak self] result in
             guard let self else { return }
             self.callbackQueue.async {
+                self.finishReleaseResultAfterMinimumCheckingDuration(
+                    result,
+                    currentVersion: currentVersion,
+                    updateChannel: updateChannel
+                )
+            }
+        }
+    }
+
+    private func finishReleaseResultAfterMinimumCheckingDuration(
+        _ result: Result<[GitHubRelease], GitHubReleaseClientError>,
+        currentVersion: AppSemanticVersion,
+        updateChannel: UpdateChannel
+    ) {
+        guard case .checking = state else { return }
+        let elapsed = checkingStartedAt.map { scheduler.now - $0 } ?? minimumCheckingDuration
+        let remaining = max(0, minimumCheckingDuration - elapsed)
+        guard remaining > 0 else {
+            checkingStartedAt = nil
+            handleReleaseResult(result, currentVersion: currentVersion, updateChannel: updateChannel)
+            return
+        }
+
+        scheduler.schedule(after: remaining) { [weak self] in
+            guard let self else { return }
+            self.callbackQueue.async {
+                guard case .checking = self.state else { return }
+                self.checkingStartedAt = nil
                 self.handleReleaseResult(
                     result,
                     currentVersion: currentVersion,
