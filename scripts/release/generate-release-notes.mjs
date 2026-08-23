@@ -54,6 +54,7 @@ const RELEASE_NOTES_INSTRUCTIONS = [
   "Use only the pull-request and issue numbers present in the payload.",
   "An issue is a valid source only when it appears in that pull request's closingIssues array; an issue number mentioned in prose is not a valid source. When in doubt, cite the pull request.",
   "Classify every merged pull request exactly once: product additions belong in features; fixes, refinements, performance work, tests, and maintenance belong in fixes.",
+  "When a category has no actual changes, return an empty array for that category. Never create a placeholder item such as 暂无.",
   "Every output item must cite at least one source, and every merged pull request must be cited by at least one output item.",
   "Write concise factual Chinese text. Do not invent behavior, test results, issue numbers, or links.",
   "Do not produce a 文档 section, installation section, headings, Markdown tables, pipes, or line breaks inside title or description; the renderer owns that format.",

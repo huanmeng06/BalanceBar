@@ -254,6 +254,31 @@ test("renderer preserves the BalanceBar release layout and links every row", () 
   assert.doesNotMatch(rendered, /## 📚 文档|架构说明|开发工作流/);
 });
 
+test("renderer omits empty feature or fix sections", () => {
+  const featurelessInput = fixtureInput();
+  featurelessInput.pullRequests = featurelessInput.pullRequests
+    .filter((pullRequest) => pullRequest.number === 140);
+  const featurelessNotes = fixtureNotes();
+  featurelessNotes.features = [];
+  const featurelessRendered = renderReleaseNotes(featurelessInput, featurelessNotes);
+
+  assert.doesNotMatch(featurelessRendered, /## ✨ 新功能/);
+  assert.doesNotMatch(featurelessRendered, /暂无/);
+  assert.match(featurelessRendered, /## 🛠 修复与体验优化/);
+  assert.match(featurelessRendered, /## 📦 安装/);
+
+  const fixlessInput = fixtureInput();
+  fixlessInput.pullRequests = fixlessInput.pullRequests
+    .filter((pullRequest) => pullRequest.number === 141);
+  const fixlessNotes = fixtureNotes();
+  fixlessNotes.fixes = [];
+  const fixlessRendered = renderReleaseNotes(fixlessInput, fixlessNotes);
+
+  assert.match(fixlessRendered, /## ✨ 新功能/);
+  assert.doesNotMatch(fixlessRendered, /## 🛠 修复与体验优化/);
+  assert.doesNotMatch(fixlessRendered, /暂无/);
+});
+
 test("renderer ignores an unlinked Issue when the item has a valid PR source", () => {
   const notes = fixtureNotes();
   notes.features[0].sources.push({ kind: "issue", number: 143 });
