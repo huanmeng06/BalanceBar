@@ -77,16 +77,17 @@ final class UpdateTests: XCTestCase {
 
     private final class StubReleaseFetcher: GitHubReleaseFetching {
         private(set) var requestCount = 0
-        private var completion: ((Result<[GitHubRelease], GitHubReleaseClientError>) -> Void)?
+        private var completions: [((Result<[GitHubRelease], GitHubReleaseClientError>) -> Void)] = []
 
         func fetchReleases(completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void) {
             requestCount += 1
-            self.completion = completion
+            completions.append(completion)
         }
 
         func resolve(_ result: Result<[GitHubRelease], GitHubReleaseClientError>) {
-            completion?(result)
-            completion = nil
+            guard !completions.isEmpty else { return }
+            let completion = completions.removeFirst()
+            completion(result)
         }
     }
 
@@ -556,6 +557,177 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(latest, AppSemanticVersion("2.0.0-beta.1"))
     }
 
+    func testUpdateServiceChannelSwitchResetsCandidatesInBothDirectionsAndAllowsRecheck() throws {
+        let fetcher = StubReleaseFetcher()
+        let downloader = StubDownloader()
+        let queue = DispatchQueue(label: "UpdateTests.channel-switch")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: downloader,
+            currentVersionString: "1.0.0",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let stableRelease = makeRelease(tag: "v1.1.0")
+        let betaRelease = makeRelease(tag: "v2.0.0-beta.1", prerelease: true)
+
+        let betaAvailable = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("2.0.0-beta.1")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([stableRelease, betaRelease]))
+        wait(for: [betaAvailable], timeout: 2)
+
+        let resetToStable = waitForState(service, queue: queue) { state in
+            if case .idle(let current) = state {
+                return current == AppSemanticVersion("1.0.0")
+            }
+            return false
+        }
+        service.updateChannel = .stable
+        wait(for: [resetToStable], timeout: 2)
+        XCTAssertEqual(service.updateChannel, .stable)
+        service.installAvailableUpdate()
+        XCTAssertEqual(downloader.requestCount, 0, "switching channel must invalidate the old Beta candidate")
+
+        let stableAvailable = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.1.0")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([stableRelease, betaRelease]))
+        wait(for: [stableAvailable], timeout: 2)
+
+        let resetToBeta = waitForState(service, queue: queue) { state in
+            if case .idle(let current) = state {
+                return current == AppSemanticVersion("1.0.0")
+            }
+            return false
+        }
+        service.updateChannel = .beta
+        wait(for: [resetToBeta], timeout: 2)
+        XCTAssertEqual(service.updateChannel, .beta)
+        service.installAvailableUpdate()
+        XCTAssertEqual(downloader.requestCount, 0, "switching channel must invalidate the old Stable candidate")
+
+        let betaAvailableAgain = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("2.0.0-beta.1")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([stableRelease, betaRelease]))
+        wait(for: [betaAvailableAgain], timeout: 2)
+    }
+
+    func testUpdateServiceIgnoresInFlightResponseFromPreviousChannel() {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.channel-switch.in-flight")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 1)
+
+        let reset = waitForState(service, queue: queue) { state in
+            if case .idle = state { return true }
+            return false
+        }
+        service.updateChannel = .stable
+        wait(for: [reset], timeout: 2)
+
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 2)
+        if case .checking = service.state {
+            // The new Stable request owns the visible checking state.
+        } else {
+            XCTFail("the new channel check should be visible as checking")
+        }
+
+        fetcher.resolve(.success([makeRelease(tag: "v2.0.0-beta.1", prerelease: true)]))
+        queue.sync {}
+        if case .checking = service.state {
+            // The stale Beta response must not settle the new Stable check.
+        } else {
+            XCTFail("a stale Beta response changed the new Stable state")
+        }
+
+        let latest = waitForState(service, queue: queue) { state in
+            if case .latest(let current) = state {
+                return current == AppSemanticVersion("1.0.0")
+            }
+            return false
+        }
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [latest], timeout: 2)
+    }
+
+    func testUpdateServiceKeepsInstallTransactionWhenChannelChanges() {
+        let fetcher = StubReleaseFetcher()
+        let downloader = StubDownloader()
+        let installer = StubInstaller()
+        let queue = DispatchQueue(label: "UpdateTests.channel-switch.transaction")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: downloader,
+            installer: installer,
+            currentVersionString: "1.0.0",
+            currentApplicationURL: URL(fileURLWithPath: "/tmp/BalanceBar-test.app"),
+            currentBundleIdentifier: "com.huanmeng06.BalanceBar.app",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.0.1")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.1", prerelease: true)]))
+        wait(for: [available], timeout: 2)
+
+        service.installAvailableUpdate()
+        if case .downloading = service.state {
+            // The existing download remains active across a channel change.
+        } else {
+            XCTFail("expected the update download to be active")
+        }
+        service.updateChannel = .stable
+        if case .downloading = service.state {
+            // Channel selection must not cancel an already started transaction.
+        } else {
+            XCTFail("channel switching cancelled an active update transaction")
+        }
+
+        let restarting = waitForState(service, queue: queue) { state in
+            if case .restarting(_, let latest) = state {
+                return latest == AppSemanticVersion("1.0.1")
+            }
+            return false
+        }
+        downloader.resolve(.success(URL(fileURLWithPath: "/tmp/verified-BalanceBar-1.0.1.dmg")))
+        wait(for: [restarting], timeout: 2)
+        XCTAssertEqual(installer.installCount, 1)
+    }
+
     func testUpdateServiceLatestStateAllowsRetry() {
         let fetcher = StubReleaseFetcher()
         let queue = DispatchQueue(label: "UpdateTests.latest-retry")
@@ -990,6 +1162,98 @@ final class UpdateTests: XCTestCase {
         XCTAssertFalse(updateButton.isEnabled)
         scheduler.advance(by: 1.0)
         wait(for: [secondLatest], timeout: 2)
+        XCTAssertEqual(updateButton.title, "检查更新")
+        XCTAssertTrue(updateButton.isEnabled)
+    }
+
+    func testDashboardChannelSwitchRefreshesButtonAndAllowsCurrentChannelCheck() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "UpdateTests.UI.channel-switch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.updateChannel = .beta
+
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            updateChannel: .beta,
+            callbackQueue: .main,
+            workQueue: .main,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0
+        )
+        let relay = DashboardPreferencePageRelay()
+        let pageController = DashboardGeneralPage()
+        relay.onCheckForUpdates = { service.checkForUpdates() }
+        relay.onInstallUpdate = { service.installAvailableUpdate() }
+        relay.onUpdateChannelChanged = { channel in
+            preferences.updateChannel = channel
+            service.updateChannel = channel
+        }
+
+        let page = pageController.make(.init(
+            preferences: preferences,
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: service.state
+        ))
+        let updateButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+        let channelPopup = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppPreferences.updateChannelKey }
+        )
+
+        let betaAvailable = expectation(description: "Beta update is available")
+        service.onStateChange = { state in
+            DispatchQueue.main.async {
+                pageController.refresh(updateState: state)
+                if case .available = state { betaAvailable.fulfill() }
+            }
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v2.0.0-beta.1", prerelease: true)]))
+        wait(for: [betaAvailable], timeout: 2)
+        XCTAssertEqual(updateButton.title, "下载并安装")
+        XCTAssertTrue(updateButton.isEnabled)
+        XCTAssertEqual(updateButton.tag, 1)
+
+        let resetToStable = expectation(description: "Dashboard resets after channel switch")
+        service.onStateChange = { state in
+            DispatchQueue.main.async {
+                pageController.refresh(updateState: state)
+                if case .idle = state { resetToStable.fulfill() }
+            }
+        }
+        channelPopup.selectItem(at: UpdateChannel.allCases.firstIndex(of: .stable)!)
+        relay.updateChannel(channelPopup)
+        wait(for: [resetToStable], timeout: 2)
+        XCTAssertEqual(preferences.updateChannel, .stable)
+        XCTAssertEqual(updateButton.title, "检查更新")
+        XCTAssertTrue(updateButton.isEnabled)
+        XCTAssertEqual(updateButton.tag, 0)
+
+        relay.update(updateButton)
+        XCTAssertEqual(fetcher.requestCount, 2)
+        let stableLatest = expectation(description: "Stable recheck settles")
+        service.onStateChange = { state in
+            DispatchQueue.main.async {
+                pageController.refresh(updateState: state)
+                if case .latest = state { stableLatest.fulfill() }
+            }
+        }
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [stableLatest], timeout: 2)
         XCTAssertEqual(updateButton.title, "检查更新")
         XCTAssertTrue(updateButton.isEnabled)
     }

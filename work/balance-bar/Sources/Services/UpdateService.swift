@@ -764,9 +764,27 @@ final class UpdateService {
     private let minimumCheckingDuration: TimeInterval
     private var availableRelease: GitHubRelease?
     private var checkingStartedAt: TimeInterval?
+    private var updateCheckGeneration: UInt64 = 0
 
     private(set) var state: UpdateCheckState
-    var updateChannel: UpdateChannel
+    var updateChannel: UpdateChannel {
+        didSet {
+            guard oldValue != updateChannel else { return }
+            updateCheckGeneration &+= 1
+            availableRelease = nil
+            checkingStartedAt = nil
+
+            guard let currentVersion else { return }
+            switch state {
+            case .downloading, .installing, .restarting:
+                // An update transaction already in progress is independent of
+                // the channel selected for the next check.
+                break
+            default:
+                transition(to: .idle(current: currentVersion))
+            }
+        }
+    }
     var onStateChange: ((UpdateCheckState) -> Void)?
 
     init(
@@ -805,6 +823,7 @@ final class UpdateService {
               !isBusy
         else { return }
         let updateChannel = self.updateChannel
+        let updateCheckGeneration = self.updateCheckGeneration
         availableRelease = nil
         checkingStartedAt = scheduler.now
         transition(to: .checking(current: currentVersion))
@@ -814,7 +833,8 @@ final class UpdateService {
                 self.finishReleaseResultAfterMinimumCheckingDuration(
                     result,
                     currentVersion: currentVersion,
-                    updateChannel: updateChannel
+                    updateChannel: updateChannel,
+                    updateCheckGeneration: updateCheckGeneration
                 )
             }
         }
@@ -823,26 +843,35 @@ final class UpdateService {
     private func finishReleaseResultAfterMinimumCheckingDuration(
         _ result: Result<[GitHubRelease], GitHubReleaseClientError>,
         currentVersion: AppSemanticVersion,
-        updateChannel: UpdateChannel
+        updateChannel: UpdateChannel,
+        updateCheckGeneration: UInt64
     ) {
-        guard case .checking = state else { return }
+        guard self.updateCheckGeneration == updateCheckGeneration,
+              case .checking = state else { return }
         let elapsed = checkingStartedAt.map { scheduler.now - $0 } ?? minimumCheckingDuration
         let remaining = max(0, minimumCheckingDuration - elapsed)
         guard remaining > 0 else {
             checkingStartedAt = nil
-            handleReleaseResult(result, currentVersion: currentVersion, updateChannel: updateChannel)
+            handleReleaseResult(
+                result,
+                currentVersion: currentVersion,
+                updateChannel: updateChannel,
+                updateCheckGeneration: updateCheckGeneration
+            )
             return
         }
 
         scheduler.schedule(after: remaining) { [weak self] in
             guard let self else { return }
             self.callbackQueue.async {
-                guard case .checking = self.state else { return }
+                guard self.updateCheckGeneration == updateCheckGeneration,
+                      case .checking = self.state else { return }
                 self.checkingStartedAt = nil
                 self.handleReleaseResult(
                     result,
                     currentVersion: currentVersion,
-                    updateChannel: updateChannel
+                    updateChannel: updateChannel,
+                    updateCheckGeneration: updateCheckGeneration
                 )
             }
         }
@@ -897,8 +926,11 @@ final class UpdateService {
     private func handleReleaseResult(
         _ result: Result<[GitHubRelease], GitHubReleaseClientError>,
         currentVersion: AppSemanticVersion,
-        updateChannel: UpdateChannel
+        updateChannel: UpdateChannel,
+        updateCheckGeneration: UInt64
     ) {
+        guard self.updateCheckGeneration == updateCheckGeneration,
+              case .checking = state else { return }
         switch result {
         case .failure(let error):
             switch error {
