@@ -1408,7 +1408,17 @@ final class MenuBarGeometryTests: XCTestCase {
                 "primary ink should be measurable in \(name) appearance"
             )
             XCTAssertLessThan(ink.width, frames.text.width)
+            XCTAssertGreaterThan(
+                ink.width,
+                frames.text.width / 2,
+                "raster scale must preserve the logical glyph width"
+            )
             XCTAssertGreaterThan(ink.height, 0)
+            XCTAssertGreaterThan(
+                ink.height,
+                5,
+                "raster scale must preserve the logical glyph height"
+            )
         }
     }
 

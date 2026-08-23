@@ -441,7 +441,10 @@ enum MenuBarLayout {
             width: pixelsWide,
             height: pixelsHigh
         ))
+        context.cgContext.saveGState()
+        context.cgContext.scaleBy(x: rasterScale, y: rasterScale)
         cell.drawInterior(withFrame: label.bounds, in: label)
+        context.cgContext.restoreGState()
         context.flushGraphics()
 
         var minimumX = pixelsWide
