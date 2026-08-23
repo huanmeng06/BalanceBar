@@ -420,21 +420,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
             relay: relay
         ))
 
-        let segmentedControls = descendants(of: page).compactMap { $0 as? NSSegmentedControl }
-        let fontPresetControls = segmentedControls.filter {
+        let popupControls = descendants(of: page).compactMap { $0 as? NSPopUpButton }
+        let fontPresetControls = popupControls.filter {
             $0.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey
         }
         XCTAssertEqual(fontPresetControls.count, 1)
         let fontPresetControl = try XCTUnwrap(fontPresetControls.first)
-        XCTAssertEqual(fontPresetControl.selectedSegment, MenuBarFontSizePreset.medium.segmentIndex)
         XCTAssertEqual(
-            fontPresetControl.segmentCount,
+            (fontPresetControl.selectedItem?.representedObject as? NSNumber)?.intValue,
+            MenuBarFontSizePreset.medium.segmentIndex
+        )
+        XCTAssertEqual(
+            fontPresetControl.numberOfItems,
             MenuBarFontSizePreset.allCases.count
         )
-        XCTAssertEqual(fontPresetControl.label(forSegment: 0), "Large")
-        XCTAssertEqual(fontPresetControl.label(forSegment: 1), "Medium")
-        XCTAssertEqual(fontPresetControl.label(forSegment: 2), "Small")
-        XCTAssertTrue(segmentedControls.allSatisfy {
+        XCTAssertEqual(fontPresetControl.itemTitle(at: 0), "Large")
+        XCTAssertEqual(fontPresetControl.itemTitle(at: 1), "Medium")
+        XCTAssertEqual(fontPresetControl.itemTitle(at: 2), "Small")
+        XCTAssertTrue(popupControls.allSatisfy {
             $0.identifier?.rawValue != AppPreferences.menuBarPrimaryFontSizeKey
                 && $0.identifier?.rawValue != AppPreferences.menuBarSecondaryFontSizeKey
         })
@@ -465,7 +468,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(previewPrimary.frame.minX, previewSecondary.frame.minX, accuracy: 0.001)
         XCTAssertEqual(previewPrimary.frame.width, previewSecondary.frame.width, accuracy: 0.001)
 
-        fontPresetControl.selectedSegment = MenuBarFontSizePreset.small.segmentIndex
+        fontPresetControl.selectItem(at: MenuBarFontSizePreset.small.segmentIndex)
         relay.selectMenuBarFontSizePreset(fontPresetControl)
         XCTAssertEqual(preferences.menuBarFontSizePreset, .small)
         XCTAssertEqual(preferences.menuBarFontSize, 10.4, accuracy: 0.001)
@@ -499,7 +502,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let refreshedFontPresetControl = try XCTUnwrap(
             descendants(of: page)
-                .compactMap { $0 as? NSSegmentedControl }
+                .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey }
         )
         XCTAssertFalse(refreshedFontPresetControl.isEnabled)

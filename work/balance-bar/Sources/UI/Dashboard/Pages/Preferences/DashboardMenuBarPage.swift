@@ -268,7 +268,7 @@ final class DashboardMenuBarPage {
 
     private struct FontPresetControls {
         let view: NSView
-        let control: NSSegmentedControl
+        let control: NSPopUpButton
         let resetButton: NSButton
     }
 
@@ -292,7 +292,7 @@ final class DashboardMenuBarPage {
     private var iconOffsetButtons: [NSButton] = []
     private var amountOffsetButtons: [NSButton] = []
     private weak var widthAdjustmentSlider: NSSlider?
-    private weak var fontSizePresetControl: NSSegmentedControl?
+    private weak var fontSizePresetControl: NSPopUpButton?
     private var fontSizeResetButton: NSButton?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
@@ -605,7 +605,7 @@ final class DashboardMenuBarPage {
             primary: fontSize,
             secondary: secondaryFontSize
         )
-        fontSizePresetControl?.selectedSegment = fontSizePreset.segmentIndex
+        fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         fontSizeResetButton?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
@@ -802,19 +802,18 @@ final class DashboardMenuBarPage {
         resetIdentifier: String,
         relay: DashboardPreferencePageRelay
     ) -> FontPresetControls {
-        let control = NSSegmentedControl(
-            labels: [
-                tr("大", "Large", "大", "大"),
-                tr("中", "Medium", "中", "中"),
-                tr("小", "Small", "小", "小")
-            ],
-            trackingMode: .selectOne,
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.fontSizePresetIdentifier,
+            items: MenuBarFontSizePreset.allCases.map { preset in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.fontSizePresetLabel(preset),
+                    representedObject: NSNumber(value: preset.segmentIndex)
+                )
+            },
+            selectedIndex: value.segmentIndex,
             target: relay,
             action: #selector(DashboardPreferencePageRelay.selectMenuBarFontSizePreset(_:))
         )
-        control.identifier = NSUserInterfaceItemIdentifier(Self.fontSizePresetIdentifier)
-        control.selectedSegment = value.segmentIndex
-        control.segmentDistribution = .fillEqually
         control.toolTip = tr(
             "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt",
             "Large 13/10 pt; Medium 11.7/9 pt; Small 10.4/8 pt",
@@ -839,6 +838,14 @@ final class DashboardMenuBarPage {
         stack.spacing = 6
         stack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return FontPresetControls(view: stack, control: control, resetButton: resetButton)
+    }
+
+    private static func fontSizePresetLabel(_ preset: MenuBarFontSizePreset) -> String {
+        switch preset {
+        case .large: return tr("大", "Large", "大", "大")
+        case .medium: return tr("中", "Medium", "中", "中")
+        case .small: return tr("小", "Small", "小", "小")
+        }
     }
 
     private func makeOffsetControls(

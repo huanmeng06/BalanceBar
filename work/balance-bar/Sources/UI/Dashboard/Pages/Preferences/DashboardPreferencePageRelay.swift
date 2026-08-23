@@ -73,9 +73,10 @@ final class DashboardPreferencePageRelay: NSObject {
         onOffsetValue?(identifier, sender.doubleValue)
     }
 
-    @objc func selectMenuBarFontSizePreset(_ sender: NSSegmentedControl) {
+    @objc func selectMenuBarFontSizePreset(_ sender: NSPopUpButton) {
         guard sender.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey,
-              let preset = MenuBarFontSizePreset(segmentIndex: sender.selectedSegment) else {
+              let segmentIndex = (sender.selectedItem?.representedObject as? NSNumber)?.intValue,
+              let preset = MenuBarFontSizePreset(segmentIndex: segmentIndex) else {
             return
         }
         onOffsetValue?(AppPreferences.menuBarFontSizePresetKey, Double(preset.segmentIndex))
