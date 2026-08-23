@@ -511,7 +511,7 @@ final class DashboardMenuBarPage {
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("状态项宽度（建议）", "Status Item Width (Recommended)", "狀態項寬度（建議）", "ステータス項目の幅（推奨）"),
+                    tr("菜单栏宽度", "Menu Bar Width", "選單列寬度", "メニューバーの幅"),
                     subtitle: Self.widthAdjustmentSummaryText(widthAdjustment),
                     subtitleLabel: widthAdjustmentSummary,
                     control: widthAdjustmentControls.view,
@@ -887,12 +887,12 @@ final class DashboardMenuBarPage {
     }
 
     private static func widthAdjustmentSummaryText(_ value: Double) -> String {
-        let valueText = String(format: "%+.1f pt", value)
+        let valueText = signedPointText(value)
         return tr(
-            "横向范围 \(valueText)",
-            "Horizontal range \(valueText)",
-            "橫向範圍 \(valueText)",
-            "横幅 \(valueText)"
+            "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 \(valueText)",
+            "Adjusts the gap between BalanceBar and other menu bar items: Width \(valueText)",
+            "調整 BalanceBar 與其他選單列項目的間距：寬度 \(valueText)",
+            "BalanceBar と他のメニューバー項目との間隔を調整：幅 \(valueText)"
         )
     }
 

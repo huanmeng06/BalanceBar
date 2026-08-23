@@ -339,14 +339,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(amountSummary?.stringValue, "微调金额上下像素位置：Y 轴 + 0.5 pt (上下偏移量)")
         XCTAssertEqual(
             labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
-            "横向范围 +0.6 pt"
+            "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
         XCTAssertTrue(labelStrings.contains("字号与位置"))
         XCTAssertFalse(labelStrings.contains("字号"))
         XCTAssertFalse(labelStrings.contains("细节微调"))
         XCTAssertTrue(labelStrings.contains("调整菜单栏字体大小"))
-        let rowTitles = ["菜单栏字号", "图标偏移", "金额偏移", "状态项宽度（建议）"]
+        let rowTitles = ["菜单栏字号", "图标偏移", "金额偏移", "菜单栏宽度"]
         let rowIndices = rowTitles.compactMap { labelStrings.firstIndex(of: $0) }
         XCTAssertEqual(rowIndices.count, rowTitles.count)
         XCTAssertEqual(rowIndices, rowIndices.sorted())
@@ -594,7 +594,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .compactMap { $0 as? NSTextField }
             .first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
         XCTAssertEqual(slider?.doubleValue ?? .nan, 0, accuracy: 0.001)
-        XCTAssertEqual(summary?.stringValue, "横向范围 +7.4 pt")
+        XCTAssertEqual(summary?.stringValue, "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 7.4 pt")
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
         XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
@@ -646,41 +646,45 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, [String], [String], String)] = [
             (
                 .simplifiedChinese,
-                ["字号与位置", "菜单栏字号", "图标偏移", "金额偏移", "状态项宽度（建议）"],
+                ["字号与位置", "菜单栏字号", "图标偏移", "金额偏移", "菜单栏宽度"],
                 [
                     "调整菜单栏字体大小",
                     "微调图标上下像素位置：Y 轴 + 0.0 pt (上下偏移量)",
-                    "微调金额上下像素位置：Y 轴 + 0.0 pt (上下偏移量)"
+                    "微调金额上下像素位置：Y 轴 + 0.0 pt (上下偏移量)",
+                    "调整 BalanceBar 与其他菜单栏项目的空隙：宽度 + 0.0 pt"
                 ],
                 "从 0pt 向右放大，最大 +20pt"
             ),
             (
                 .traditionalChinese,
-                ["字號與位置", "選單列字號", "圖示偏移", "金額偏移", "狀態項寬度（建議）"],
+                ["字號與位置", "選單列字號", "圖示偏移", "金額偏移", "選單列寬度"],
                 [
                     "調整選單列字體大小",
                     "微調圖示上下像素位置：Y 軸 + 0.0 pt (上下偏移量)",
-                    "微調金額上下像素位置：Y 軸 + 0.0 pt (上下偏移量)"
+                    "微調金額上下像素位置：Y 軸 + 0.0 pt (上下偏移量)",
+                    "調整 BalanceBar 與其他選單列項目的間距：寬度 + 0.0 pt"
                 ],
                 "從 0pt 向右放大，最大 +20pt"
             ),
             (
                 .japanese,
-                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの位置調整", "金額の位置調整", "ステータス項目の幅（推奨）"],
+                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの位置調整", "金額の位置調整", "メニューバーの幅"],
                 [
                     "メニューバーのフォントサイズを調整",
                     "アイコンの上下位置を微調整：Y 軸 + 0.0 pt（上下のオフセット）",
-                    "金額の上下位置を微調整：Y 軸 + 0.0 pt（上下のオフセット）"
+                    "金額の上下位置を微調整：Y 軸 + 0.0 pt（上下のオフセット）",
+                    "BalanceBar と他のメニューバー項目との間隔を調整：幅 + 0.0 pt"
                 ],
                 "0pt から右へ広げ、最大 +20pt"
             ),
             (
                 .english,
-                ["Font Size & Position", "Menu Bar Font Size", "Icon Offset", "Amount Offset", "Status Item Width (Recommended)"],
+                ["Font Size & Position", "Menu Bar Font Size", "Icon Offset", "Amount Offset", "Menu Bar Width"],
                 [
                     "Adjusts the menu bar font size",
                     "Fine-tune the icon's vertical position: Y axis + 0.0 pt (vertical offset)",
-                    "Fine-tune the amount's vertical position: Y axis + 0.0 pt (vertical offset)"
+                    "Fine-tune the amount's vertical position: Y axis + 0.0 pt (vertical offset)",
+                    "Adjusts the gap between BalanceBar and other menu bar items: Width + 0.0 pt"
                 ],
                 "Drag right to widen from 0pt up to +20pt"
             )
