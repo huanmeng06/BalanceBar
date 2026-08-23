@@ -58,6 +58,27 @@ executable_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
 executable="$executable_dir/BalanceBar"
 
+balancebar_deployment_target="${BALANCEBAR_DEPLOYMENT_TARGET:-14.0}"
+balancebar_build_arch="${BALANCEBAR_BUILD_ARCH:-$(uname -m)}"
+balancebar_required_sdk_major="${BALANCEBAR_REQUIRED_SDK_MAJOR:-}"
+
+[[ "$balancebar_deployment_target" =~ ^[0-9]+\.[0-9]+([.][0-9]+)?$ ]] \
+    || die "invalid BALANCEBAR_DEPLOYMENT_TARGET: $balancebar_deployment_target"
+case "$balancebar_build_arch" in
+    arm64|x86_64) ;;
+    *) die "unsupported BALANCEBAR_BUILD_ARCH: $balancebar_build_arch" ;;
+esac
+
+balancebar_sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
+balancebar_sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+balancebar_sdk_major="${balancebar_sdk_version%%.*}"
+balancebar_swift_target="${balancebar_build_arch}-apple-macosx${balancebar_deployment_target}"
+
+if [[ -n "$balancebar_required_sdk_major" \
+      && "$balancebar_sdk_major" != "$balancebar_required_sdk_major" ]]; then
+    die "macOS SDK $balancebar_required_sdk_major.x is required; found $balancebar_sdk_version"
+fi
+
 trap 'status=$?; printf "build-balancebar: command failed at line %s (exit %s): %s\n" "$LINENO" "$status" "$BASH_COMMAND" >&2' ERR
 
 [[ -d "$source_dir" ]] || die "source directory does not exist: $source_dir"
@@ -90,9 +111,12 @@ done < <(find "$source_dir" -type f -name '*.swift' -print | LC_ALL=C sort)
 (( ${#swift_sources[@]} > 0 )) || die "no Swift source files found in $source_dir"
 
 printf 'build-balancebar: compiling %d Swift source file(s)\n' "${#swift_sources[@]}"
+printf 'build-balancebar: SDK %s; target %s\n' "$balancebar_sdk_version" "$balancebar_swift_target"
 printf '  %s\n' "${swift_sources[@]}"
 swiftc \
     -parse-as-library \
+    -sdk "$balancebar_sdk_path" \
+    -target "$balancebar_swift_target" \
     "${swift_sources[@]}" \
     -o "$executable" \
     -framework AppKit \
@@ -102,10 +126,25 @@ swiftc \
     -lsqlite3 \
     -module-cache-path "$module_cache_dir"
 
+balancebar_build_metadata="$(xcrun vtool -show-build "$executable")"
+balancebar_binary_minos="$(awk '$1 == "minos" { print $2; exit }' <<< "$balancebar_build_metadata")"
+balancebar_binary_sdk="$(awk '$1 == "sdk" { print $2; exit }' <<< "$balancebar_build_metadata")"
+[[ "$balancebar_binary_minos" == "$balancebar_deployment_target" ]] \
+    || die "binary minimum OS is $balancebar_binary_minos; expected $balancebar_deployment_target"
+balancebar_undefined_symbols="$(nm -u "$executable")"
+if grep -Fq 'NSGlassEffectView' <<< "$balancebar_undefined_symbols"; then
+    die "binary directly links NSGlassEffectView; runtime fallback would not be safe on older macOS"
+fi
+printf 'build-balancebar: verified binary minimum OS %s; SDK %s; macOS 26 glass remains runtime-linked\n' \
+    "$balancebar_binary_minos" "$balancebar_binary_sdk"
+
 printf 'build-balancebar: copying bundle metadata and resources\n'
 bundle_plist="$contents_dir/Info.plist"
 cp "$source_dir/Info.plist" "$bundle_plist"
 plutil -replace CFBundleIdentifier -string "$bundle_identifier" "$bundle_plist"
+bundle_minimum_system="$(plutil -extract LSMinimumSystemVersion raw -o - "$bundle_plist")"
+[[ "$bundle_minimum_system" == "$balancebar_deployment_target" ]] \
+    || die "Info.plist minimum OS is $bundle_minimum_system; expected $balancebar_deployment_target"
 if [[ "$variant" == "dev" ]]; then
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"

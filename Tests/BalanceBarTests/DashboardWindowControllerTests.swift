@@ -4,6 +4,20 @@ import XCTest
 
 @MainActor
 final class DashboardWindowControllerTests: XCTestCase {
+    func testGlassEffectFactoryMatchesRuntimeAvailability() throws {
+        let contentView = NSView()
+        let glassView = makeDashboardGlassEffectView(contentView: contentView, cornerRadius: 12)
+
+        if #available(macOS 26.0, *) {
+            let glassViewClass: AnyClass = try XCTUnwrap(NSClassFromString("NSGlassEffectView"))
+            let resolvedView = try XCTUnwrap(glassView)
+            XCTAssertTrue(resolvedView.isKind(of: glassViewClass))
+            XCTAssertTrue(resolvedView.value(forKey: "contentView") as? NSView === contentView)
+        } else {
+            XCTAssertNil(glassView)
+        }
+    }
+
     func testWindowDisablesNativeZoomButStaysResizable() throws {
         let controller = DashboardWindowController(
             actions: DashboardWindowControllerActions(
