@@ -58,6 +58,7 @@ final class DashboardPreferencePages {
         providerPollInterval: TimeInterval,
         snapshot: Snapshot,
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
+        statusItemVisibility: StatusItemVisibility,
         iconImage: NSImage?,
         currentOpenCodexResolution: OpenCodexDashboardResolution?,
         runtimeCandidate: OpenCodexEndpointCandidate?,
@@ -77,7 +78,8 @@ final class DashboardPreferencePages {
                 snapshot: snapshot,
                 menuBarSnapshot: menuBarSnapshot,
                 iconImage: iconImage,
-                relay: relay
+                relay: relay,
+                statusItemVisibility: statusItemVisibility
             ))
         case .menu:
             return menuPage.make(.init(
@@ -110,13 +112,15 @@ final class DashboardPreferencePages {
     func refreshMenuBar(
         snapshot: Snapshot,
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
+        statusItemVisibility: StatusItemVisibility,
         iconImage: NSImage?
     ) {
         menuBarPage.refresh(
             snapshot: snapshot,
             preferences: preferences,
             menuBarSnapshot: menuBarSnapshot,
-            iconImage: iconImage
+            iconImage: iconImage,
+            statusItemVisibility: statusItemVisibility
         )
     }
 

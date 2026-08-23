@@ -265,6 +265,41 @@ final class AccountMarqueeView: NSView {
     }
 }
 
+enum StatusItemVisibility: Equatable {
+    case unknown
+    case visible
+    case hiddenByMenuBarSpace
+
+    /// Classifies only the geometry that can prove a menu-bar overflow. A
+    /// missing window, screen, or visibility signal remains unknown so the
+    /// Dashboard cannot turn startup or teardown into a false warning.
+    static func resolved(
+        statusItemIsVisible: Bool,
+        windowIsVisible: Bool,
+        windowFrame: NSRect?,
+        screenFrame: NSRect?
+    ) -> StatusItemVisibility {
+        guard statusItemIsVisible,
+              windowIsVisible,
+              let windowFrame,
+              let screenFrame,
+              windowFrame.width > 0,
+              windowFrame.height > 0,
+              screenFrame.width > 0,
+              screenFrame.height > 0 else {
+            return .unknown
+        }
+
+        let isInMenuBarBand = windowFrame.maxY >= screenFrame.maxY - 4
+            && windowFrame.minY >= screenFrame.maxY - 48
+        guard isInMenuBarBand else { return .unknown }
+
+        let exceedsScreenHorizontally = windowFrame.minX < screenFrame.minX
+            || windowFrame.maxX > screenFrame.maxX
+        return exceedsScreenHorizontally ? .hiddenByMenuBarSpace : .visible
+    }
+}
+
 final class StatusItemController: NSObject, NSMenuDelegate {
     struct Actions {
         let manualRefresh: () -> Void
@@ -278,6 +313,35 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let openProviderWebsite: () -> Void
         let openStatusLink: (URL) -> Void
         let iconChanged: (NSImage?) -> Void
+        let visibilityChanged: (StatusItemVisibility) -> Void
+
+        init(
+            manualRefresh: @escaping () -> Void,
+            openDashboard: @escaping () -> Void,
+            openChatGPT: @escaping () -> Void,
+            openCCSwitch: @escaping () -> Void,
+            openOpenCodex: @escaping () -> Void,
+            quit: @escaping () -> Void,
+            switchProvider: @escaping (String) -> Void,
+            switchOpenCodexPreference: @escaping (OpenCodexPreference) -> Void,
+            openProviderWebsite: @escaping () -> Void,
+            openStatusLink: @escaping (URL) -> Void,
+            iconChanged: @escaping (NSImage?) -> Void,
+            visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
+        ) {
+            self.manualRefresh = manualRefresh
+            self.openDashboard = openDashboard
+            self.openChatGPT = openChatGPT
+            self.openCCSwitch = openCCSwitch
+            self.openOpenCodex = openOpenCodex
+            self.quit = quit
+            self.switchProvider = switchProvider
+            self.switchOpenCodexPreference = switchOpenCodexPreference
+            self.openProviderWebsite = openProviderWebsite
+            self.openStatusLink = openStatusLink
+            self.iconChanged = iconChanged
+            self.visibilityChanged = visibilityChanged
+        }
     }
 
     struct MenuBarSettings {
@@ -396,6 +460,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let actions: Actions
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
+    private(set) var statusItemVisibility: StatusItemVisibility = .unknown
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var isMenuTracking: Bool { isStatusMenuTracking }
@@ -466,6 +531,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func teardown() {
         lifecycleGeneration += 1
+        updateStatusItemVisibility(.unknown)
         statusItemAttachmentCheckScheduled = false
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
@@ -496,6 +562,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.settings = settings
         layoutStatusItem(for: snapshot)
         rebuildOrDeferMenu()
+        scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
 
     /// Applies one already-coalesced width value to the status item. The
@@ -567,6 +634,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         rebuildOrDeferMenu()
     }
 
+    private func updateStatusItemVisibility(_ visibility: StatusItemVisibility) {
+        guard statusItemVisibility != visibility else { return }
+        statusItemVisibility = visibility
+        actions.visibilityChanged(visibility)
+    }
+
     func updateActivity(
         activeClient: AssistantClient,
         codexTaskRunning: Bool,
@@ -607,6 +680,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func configureStatusItem() {
         guard let statusItem, let button = statusItem.button else { return }
+        updateStatusItemVisibility(.unknown)
         statusItem.isVisible = true
         statusItem.length = 56
         button.title = ""
@@ -684,19 +758,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         configureStatusItem()
     }
 
-    private func scheduleStatusItemAttachmentCheck(reason: String) {
+    private func scheduleStatusItemAttachmentCheck(
+        reason: String,
+        reanchor: Bool = true
+    ) {
         guard !statusItemAttachmentCheckScheduled else { return }
         statusItemAttachmentCheckScheduled = true
         let generation = lifecycleGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self, self.lifecycleGeneration == generation else { return }
             self.statusItemAttachmentCheckScheduled = false
-            self.verifyStatusItemAttachment(reason: reason)
+            self.verifyStatusItemAttachment(reason: reason, reanchor: reanchor)
         }
     }
 
-    private func verifyStatusItemAttachment(reason: String) {
+    private func verifyStatusItemAttachment(reason: String, reanchor: Bool) {
         guard let item = statusItem, let button = item.button else {
+            updateStatusItemVisibility(.unknown)
             SwitchLog.write(
                 "status item attachment failed; reason=missing item or button",
                 level: .error,
@@ -709,6 +787,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
         let screen = window?.screen
         let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
+        updateStatusItemVisibility(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: item.isVisible,
+                windowIsVisible: window?.isVisible ?? false,
+                windowFrame: window?.frame,
+                screenFrame: screen?.frame
+            )
+        )
         let attached = window.map { window in
             guard let screen else { return false }
             let frame = window.frame
@@ -732,6 +818,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             statusItemReanchorAttempts = 0
             return
         }
+        guard reanchor else { return }
         guard statusItemReanchorAttempts < 3 else {
             SwitchLog.write(
                 "status item attachment unresolved after retries; reason=\(reason); window_frame=\(windowFrame); screen_frame=\(screenFrame)",

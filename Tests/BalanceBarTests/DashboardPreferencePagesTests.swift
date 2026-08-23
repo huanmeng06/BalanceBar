@@ -251,6 +251,73 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(presentation.isBalance)
     }
 
+    func testMenuBarOverflowWarningUsesInjectedVisibilityAndFourLocalizations() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "菜单栏空间不足，BalanceBar 暂时不可见；请关闭或移除部分菜单栏图标后重试。"),
+            (.english, "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again."),
+            (.traditionalChinese, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。"),
+            (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。")
+        ]
+
+        for (language, expectedText) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.MenuBarOverflowWarning.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let controller = DashboardMenuBarPage()
+            let page = controller.make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay(),
+                statusItemVisibility: .hiddenByMenuBarSpace
+            ))
+            let warningLabel = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.overflowWarningIdentifier }
+            )
+            let warningRow = try XCTUnwrap(
+                descendants(of: page)
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.overflowWarningRowIdentifier }
+            )
+
+            XCTAssertEqual(warningLabel.stringValue, expectedText)
+            XCTAssertFalse(warningLabel.isHidden)
+            XCTAssertFalse(warningRow.isHidden)
+            XCTAssertTrue(warningLabel.usesSingleLineMode)
+            XCTAssertEqual(warningLabel.maximumNumberOfLines, 1)
+            XCTAssertEqual(warningLabel.lineBreakMode, .byTruncatingTail)
+
+            let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: AppPreferences(defaults: defaults),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                statusItemVisibility: .visible
+            )
+            XCTAssertTrue(warningLabel.isHidden)
+            XCTAssertTrue(warningRow.isHidden)
+
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: AppPreferences(defaults: defaults),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                statusItemVisibility: .unknown
+            )
+            XCTAssertTrue(warningLabel.isHidden)
+            XCTAssertTrue(warningRow.isHidden)
+        }
+    }
+
     func testCodexActivityAnimationBelongsToMenuBarWithLocalizedSectionOrder() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

@@ -173,6 +173,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             refreshDate: { [weak self] in self?.refreshDate(for: self?.snapshot ?? .placeholder) },
             menuBarSnapshot: { [weak self] snapshot in self?.menuBarSnapshot(for: snapshot) ?? snapshot },
             iconImage: { [weak self] in self?.statusItemController?.iconImage },
+            statusItemVisibility: { [weak self] in
+                self?.statusItemController?.statusItemVisibility ?? .unknown
+            },
             currentOpenCodexResolution: { [weak self] in self?.currentOpenCodexDashboardResolution() },
             runtimeCandidate: { [weak self] in self?.openCodexState?.state.candidate },
             updateState: { [weak self] in self?.updateService.state ?? .failed(.invalidCurrentVersion) },
@@ -480,6 +483,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     NSWorkspace.shared.open(url)
                 },
                 iconChanged: { [weak self] image in
+                    guard let self else { return }
+                    self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
+                },
+                visibilityChanged: { [weak self] _ in
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
                 }

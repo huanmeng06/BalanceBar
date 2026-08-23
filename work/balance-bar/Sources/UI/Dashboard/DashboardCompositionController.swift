@@ -13,6 +13,7 @@ struct DashboardCompositionState {
     let refreshDate: () -> Date?
     let menuBarSnapshot: (Snapshot) -> Snapshot
     let iconImage: () -> NSImage?
+    let statusItemVisibility: () -> StatusItemVisibility
     let currentOpenCodexResolution: () -> OpenCodexDashboardResolution?
     let runtimeCandidate: () -> OpenCodexEndpointCandidate?
     let updateState: () -> UpdateCheckState
@@ -162,6 +163,7 @@ final class DashboardCompositionController {
         dashboardPreferencePages.refreshMenuBar(
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
+            statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage()
         )
     }
@@ -252,6 +254,7 @@ final class DashboardCompositionController {
             providerPollInterval: state.providerPollInterval,
             snapshot: state.snapshot(),
             menuBarSnapshot: state.menuBarSnapshot,
+            statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
             currentOpenCodexResolution: state.currentOpenCodexResolution(),
             runtimeCandidate: state.runtimeCandidate(),
