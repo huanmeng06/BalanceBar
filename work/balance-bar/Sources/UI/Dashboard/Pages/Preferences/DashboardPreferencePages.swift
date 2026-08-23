@@ -11,6 +11,7 @@ struct DashboardPreferencePageActions {
     let onLanguage: (AppLanguage) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
+    let onOpenSystemMenuBarSettings: () -> Void
     let onManualRefresh: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
@@ -44,6 +45,7 @@ final class DashboardPreferencePages {
         relay.onLanguage = actions.onLanguage
         relay.onUpdateChannelChanged = actions.onUpdateChannelChanged
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
+        relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
         relay.onManualRefresh = actions.onManualRefresh
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate

@@ -39,6 +39,7 @@ struct DashboardCompositionActions {
     let onLanguage: (AppLanguage) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
+    let onOpenSystemMenuBarSettings: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenOpenCodex: () -> Void
@@ -81,6 +82,7 @@ final class DashboardCompositionController {
             onLanguage: actions.onLanguage,
             onUpdateChannelChanged: actions.onUpdateChannelChanged,
             onOpenCCSwitch: actions.onOpenCCSwitch,
+            onOpenSystemMenuBarSettings: actions.onOpenSystemMenuBarSettings,
             onManualRefresh: actions.onManualRefresh,
             onCheckForUpdates: actions.onCheckForUpdates,
             onInstallUpdate: actions.onInstallUpdate,

@@ -255,14 +255,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String)] = [
-            (.simplifiedChinese, "菜单栏空间不足，BalanceBar 暂时不可见；请关闭或移除部分菜单栏图标后重试。"),
-            (.english, "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again."),
-            (.traditionalChinese, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。"),
-            (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。")
+        let cases: [(AppLanguage, String, String)] = [
+            (.simplifiedChinese, "菜单栏空间不足，BalanceBar 暂时不可见；请关闭或移除部分菜单栏图标后重试。", "打开设置"),
+            (.english, "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again.", "Open Settings"),
+            (.traditionalChinese, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。", "開啟設定"),
+            (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。", "設定を開く")
         ]
+        XCTAssertEqual(
+            DashboardMenuBarPage.systemMenuBarSettingsURL.absoluteString,
+            "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension"
+        )
 
-        for (language, expectedText) in cases {
+        for (language, expectedText, expectedButtonTitle) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarOverflowWarning.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -270,12 +274,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer { defaults.removePersistentDomain(forName: suiteName) }
 
             let controller = DashboardMenuBarPage()
+            let relay = DashboardPreferencePageRelay()
+            var openCount = 0
+            relay.onOpenSystemMenuBarSettings = { openCount += 1 }
             let page = controller.make(.init(
                 preferences: AppPreferences(defaults: defaults),
                 snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
                 menuBarSnapshot: { $0 },
                 iconImage: nil,
-                relay: DashboardPreferencePageRelay(),
+                relay: relay,
                 statusItemVisibility: .hiddenByMenuBarSpace
             ))
             let warningLabel = try XCTUnwrap(
@@ -295,6 +302,25 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(warningLabel.maximumNumberOfLines, 1)
             XCTAssertEqual(warningLabel.lineBreakMode, .byTruncatingTail)
 
+            let settingsButton = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSButton }
+                    .first {
+                        $0.identifier?.rawValue == DashboardMenuBarPage.overflowWarningSettingsButtonIdentifier
+                    }
+            )
+            XCTAssertEqual(settingsButton.title, expectedButtonTitle)
+            XCTAssertEqual(settingsButton.bezelStyle, .rounded)
+            XCTAssertEqual(settingsButton.controlSize, .small)
+            XCTAssertEqual(
+                settingsButton.action,
+                #selector(DashboardPreferencePageRelay.openSystemMenuBarSettings(_:))
+            )
+            XCTAssertTrue(settingsButton.target === relay)
+            XCTAssertFalse(settingsButton.superview?.isHidden ?? true)
+            settingsButton.performClick(nil)
+            XCTAssertEqual(openCount, 1)
+
             let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
             controller.refresh(
                 snapshot: snapshot,
@@ -305,6 +331,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertTrue(warningLabel.isHidden)
             XCTAssertTrue(warningRow.isHidden)
+            XCTAssertTrue(settingsButton.superview?.isHidden ?? false)
 
             controller.refresh(
                 snapshot: snapshot,
@@ -315,6 +342,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertTrue(warningLabel.isHidden)
             XCTAssertTrue(warningRow.isHidden)
+            XCTAssertTrue(settingsButton.superview?.isHidden ?? false)
         }
     }
 

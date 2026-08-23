@@ -212,6 +212,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 self?.handleUpdateChannelChanged(channel)
             },
             onOpenCCSwitch: { [weak self] in self?.openCCSwitch() },
+            onOpenSystemMenuBarSettings: { [weak self] in
+                self?.openSystemMenuBarSettings()
+            },
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
             onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
@@ -716,6 +719,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSApp.windowsMenu = configuration.windowMenu
         NSApp.mainMenu = configuration.mainMenu
     }
+
+    private func openSystemMenuBarSettings() {
+        let opened = NSWorkspace.shared.open(
+            DashboardMenuBarPage.systemMenuBarSettingsURL
+        )
+        if !opened {
+            SwitchLog.write(
+                "failed to open system menu bar settings",
+                level: .warning,
+                category: "ui.dashboard"
+            )
+        }
+    }
+
     @objc private func openCCSwitch() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else { return }
         let configuration = NSWorkspace.OpenConfiguration()

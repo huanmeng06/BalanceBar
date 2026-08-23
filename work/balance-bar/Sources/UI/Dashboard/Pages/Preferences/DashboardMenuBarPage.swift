@@ -326,6 +326,10 @@ final class DashboardMenuBarPage {
     static let previewSecondaryIdentifier = "menuBarPreviewSecondary"
     static let overflowWarningIdentifier = "menuBarOverflowWarning"
     static let overflowWarningRowIdentifier = "menuBarOverflowWarningRow"
+    static let overflowWarningSettingsButtonIdentifier = "menuBarOverflowWarningSettingsButton"
+    static let systemMenuBarSettingsURL = URL(
+        string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension"
+    )!
 
     struct Presentation: Equatable {
         let primary: String
@@ -361,6 +365,18 @@ final class DashboardMenuBarPage {
             "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again.",
             "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。",
             "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。",
+            language: language
+        )
+    }
+
+    static func overflowWarningSettingsButtonText(
+        for language: AppLanguage = .selected
+    ) -> String {
+        tr(
+            "打开设置",
+            "Open Settings",
+            "開啟設定",
+            "設定を開く",
             language: language
         )
     }
@@ -410,6 +426,7 @@ final class DashboardMenuBarPage {
     private weak var amountSwitch: NSSwitch?
     private weak var previewBackground: NSView?
     private weak var overflowWarningLabel: NSTextField?
+    private weak var overflowWarningSettingsButton: NSButton?
     private weak var overflowWarningRow: NSView?
     private weak var previewRowsStack: NSStackView?
     private weak var previewCardHeightConstraint: NSLayoutConstraint?
@@ -429,19 +446,29 @@ final class DashboardMenuBarPage {
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
-    private static func makeOverflowWarningRow(label: NSTextField) -> NSView {
+    private static func makeOverflowWarningRow(
+        label: NSTextField,
+        settingsButton: NSButton
+    ) -> NSView {
         let row = NSView()
         row.identifier = NSUserInterfaceItemIdentifier(Self.overflowWarningRowIdentifier)
         row.translatesAutoresizingMaskIntoConstraints = false
         row.heightAnchor.constraint(equalToConstant: 42).isActive = true
         label.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(label)
+        row.addSubview(settingsButton)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+            label.trailingAnchor.constraint(
+                lessThanOrEqualTo: settingsButton.leadingAnchor,
+                constant: -12
+            ),
             label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             label.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: 8),
-            label.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -8)
+            label.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -8),
+            settingsButton.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+            settingsButton.centerYAnchor.constraint(equalTo: row.centerYAnchor)
         ])
         return row
     }
@@ -602,9 +629,32 @@ final class DashboardMenuBarPage {
             .defaultLow,
             for: .horizontal
         )
-        let overflowWarningRow = Self.makeOverflowWarningRow(label: overflowWarningLabel)
+        let overflowWarningSettingsButton = NSButton(
+            title: Self.overflowWarningSettingsButtonText(),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.openSystemMenuBarSettings(_:))
+        )
+        overflowWarningSettingsButton.identifier = NSUserInterfaceItemIdentifier(
+            Self.overflowWarningSettingsButtonIdentifier
+        )
+        overflowWarningSettingsButton.bezelStyle = .rounded
+        overflowWarningSettingsButton.controlSize = .small
+        overflowWarningSettingsButton.toolTip = Self.overflowWarningSettingsButtonText()
+        overflowWarningSettingsButton.setAccessibilityLabel(
+            Self.overflowWarningSettingsButtonText()
+        )
+        overflowWarningSettingsButton.setContentHuggingPriority(.required, for: .horizontal)
+        overflowWarningSettingsButton.setContentCompressionResistancePriority(
+            .required,
+            for: .horizontal
+        )
+        let overflowWarningRow = Self.makeOverflowWarningRow(
+            label: overflowWarningLabel,
+            settingsButton: overflowWarningSettingsButton
+        )
         overflowWarningRow.isHidden = input.statusItemVisibility != .hiddenByMenuBarSpace
         self.overflowWarningLabel = overflowWarningLabel
+        self.overflowWarningSettingsButton = overflowWarningSettingsButton
         self.overflowWarningRow = overflowWarningRow
         let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview", "預覽", "プレビュー"), rows: [
             DashboardSettingsComponents.makeSettingsRow(
@@ -1004,6 +1054,11 @@ final class DashboardMenuBarPage {
               let overflowWarningRow else { return }
         let shouldShow = statusItemVisibility == .hiddenByMenuBarSpace
         overflowWarningLabel.stringValue = Self.overflowWarningText()
+        overflowWarningSettingsButton?.title = Self.overflowWarningSettingsButtonText()
+        overflowWarningSettingsButton?.toolTip = Self.overflowWarningSettingsButtonText()
+        overflowWarningSettingsButton?.setAccessibilityLabel(
+            Self.overflowWarningSettingsButtonText()
+        )
         overflowWarningLabel.isHidden = !shouldShow
         overflowWarningRow.isHidden = !shouldShow
         if let separator = previewSeparators.first {
