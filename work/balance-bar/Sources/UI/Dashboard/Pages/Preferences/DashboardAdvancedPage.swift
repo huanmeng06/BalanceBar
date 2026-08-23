@@ -45,19 +45,6 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         portInputHasError = false
         settingsSeparators = []
 
-        let animation = DashboardSettingsComponents.makeSwitch(
-            identifier: "animateCodexActivity",
-            isOn: input.preferences.animateCodexActivity,
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.toggle(_:))
-        )
-        let activity = DashboardSettingsComponents.makeSettingsSection(tr("任务状态", "Task Status", "任務狀態", "タスクステータス"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("任务运行时播放图标动画", "Animate Icon While a Task Is Running", "任務執行時播放圖示動畫", "タスク実行中にアイコンをアニメーション表示"),
-                control: animation
-            )
-        ])
-
         let automaticDetection = input.preferences.openCodexDashboardAutomaticDetection
         let currentResolution = input.currentResolution
         let initialResolution = currentResolution ?? OpenCodexDashboardResolver.resolve(
@@ -159,7 +146,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             ),
             input.logViewer
         ])
-        return DashboardSettingsComponents.makeSettingsPage([activity, openCodex, logs])
+        return DashboardSettingsComponents.makeSettingsPage([openCodex, logs])
     }
 
     func handleAutomaticDetection(_ enabled: Bool) {

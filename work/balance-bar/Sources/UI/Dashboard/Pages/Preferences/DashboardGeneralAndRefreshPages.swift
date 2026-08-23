@@ -334,21 +334,6 @@ enum DashboardRefreshPage {
         activityRow.orientation = .horizontal
         activityRow.alignment = .centerY
 
-        let animationToggle = DashboardSettingsComponents.makeSwitch(
-            identifier: "animateCodexActivity",
-            isOn: input.preferences.animateCodexActivity,
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.toggle(_:))
-        )
-        let animationTitle = NSTextField(labelWithString: tr(
-            "Codex 有任务运行时旋转菜单栏图标",
-            "Rotate the menu bar icon while a Codex task is running",
-            "Codex 有任務執行時旋轉選單列圖示",
-            "Codex タスク実行中にメニューバーアイコンを回転"
-        ))
-        let animationRow = NSStackView(views: [animationTitle, NSView(), animationToggle])
-        animationRow.orientation = .horizontal
-        animationRow.alignment = .centerY
         let note = NSTextField(wrappingLabelWithString: tr(
             "供应商变化仍由 CC Switch 数据库事件即时触发；这里的秒数只是没有收到事件时的后备检查频率。",
             "Provider changes are still triggered immediately by CC Switch database events; this interval is only the fallback check frequency.",
@@ -358,12 +343,11 @@ enum DashboardRefreshPage {
         note.font = .systemFont(ofSize: 12)
         note.textColor = .secondaryLabelColor
 
-        let stack = NSStackView(views: [header, pollingRow, activityRow, animationRow, note])
+        let stack = NSStackView(views: [header, pollingRow, activityRow, note])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 18
         stack.setCustomSpacing(30, after: header)
-        stack.setCustomSpacing(24, after: activityRow)
         stack.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(stack)
         NSLayoutConstraint.activate([
