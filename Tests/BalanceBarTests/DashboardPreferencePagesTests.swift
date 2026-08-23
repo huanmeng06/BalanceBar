@@ -147,22 +147,22 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (
                 .simplifiedChinese,
                 ["打开主窗口", "打开 ChatGPT", "打开 CC Switch", "打开 OpenCodex"],
-                ["balance bar", "显示ChatGPT", "显示CC switch 主面板", "显示 OpenCodex 仪表盘"]
+                ["显示 BalanceBar 主窗口", "显示 ChatGPT", "显示 CC Switch 主窗口", "显示 OpenCodex 仪表盘"]
             ),
             (
                 .traditionalChinese,
                 ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
-                ["balance bar", "顯示 ChatGPT", "顯示 CC switch 主面板", "顯示 OpenCodex 儀表板"]
+                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 儀表板"]
             ),
             (
                 .japanese,
                 ["メインウインドウを開く", "ChatGPT を開く", "CC Switch を開く", "OpenCodex を開く"],
-                ["balance bar", "ChatGPT を表示", "CC Switch のメインパネルを表示", "OpenCodex ダッシュボードを表示"]
+                ["BalanceBar のメインウインドウを表示", "ChatGPT を表示", "CC Switch のメインウインドウを表示", "OpenCodex ダッシュボードを表示"]
             ),
             (
                 .english,
                 ["Open Main Window", "Open ChatGPT", "Open CC Switch", "Open OpenCodex"],
-                ["balance bar", "Show ChatGPT", "Show the CC Switch main panel", "Show the OpenCodex dashboard"]
+                ["Show the BalanceBar main window", "Show ChatGPT", "Show the CC Switch main window", "Show the OpenCodex dashboard"]
             )
         ]
 
@@ -205,6 +205,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
 
             let legacySubtitles = [
+                "balance bar", "顯示CC switch 主面板",
+                "显示ChatGPT", "显示CC switch 主面板",
+                "CC Switch のメインパネルを表示",
                 "显示 ChatGPT 启动项", "Show the ChatGPT launch item", "顯示 ChatGPT 啟動項目", "ChatGPT 起動項目を表示",
                 "显示 CC Switch 启动项", "Show the CC Switch launch item", "顯示 CC Switch 啟動項目", "CC Switch 起動項目を表示",
                 "显示 OpenCodex 启动项", "Show the OpenCodex launch item", "顯示 OpenCodex 啟動項目", "OpenCodex 起動項目を表示"

@@ -116,12 +116,17 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         var projectRows: [NSView] = [
             DashboardSettingsComponents.makeSettingsRow(
                 tr("打开主窗口", "Open Main Window", "開啟主視窗", "メインウインドウを開く"),
-                subtitle: tr("balance bar", "balance bar", "balance bar", "balance bar"),
+                subtitle: tr(
+                    "显示 BalanceBar 主窗口",
+                    "Show the BalanceBar main window",
+                    "顯示 BalanceBar 主視窗",
+                    "BalanceBar のメインウインドウを表示"
+                ),
                 control: openMainWindow
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 ChatGPT", "Open ChatGPT", "開啟 ChatGPT", "ChatGPT を開く"),
-                subtitle: tr("显示ChatGPT", "Show ChatGPT", "顯示 ChatGPT", "ChatGPT を表示"),
+                subtitle: tr("显示 ChatGPT", "Show ChatGPT", "顯示 ChatGPT", "ChatGPT を表示"),
                 control: DashboardSettingsComponents.makeSwitch(
                     identifier: "showOpenChatGPTMenu",
                     isOn: input.preferences.showOpenChatGPTMenu,
@@ -131,7 +136,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr("打开 CC Switch", "Open CC Switch", "開啟 CC Switch", "CC Switch を開く"),
-                subtitle: tr("显示CC switch 主面板", "Show the CC Switch main panel", "顯示 CC switch 主面板", "CC Switch のメインパネルを表示"),
+                subtitle: tr(
+                    "显示 CC Switch 主窗口",
+                    "Show the CC Switch main window",
+                    "顯示 CC Switch 主視窗",
+                    "CC Switch のメインウインドウを表示"
+                ),
                 control: openCC
             ),
             DashboardSettingsComponents.makeSettingsRow(
