@@ -5,6 +5,17 @@ on:
     types: [closed]
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing Release version to rebuild, without the v prefix
+        required: true
+        type: string
+      confirm_replace:
+        description: Replace the existing DMG and move its published tag to current main
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -17,7 +28,7 @@ concurrency:
 jobs:
   release:
     name: Package and publish Release
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
     runs-on: macos-26
     timeout-minutes: 35
     env:
@@ -187,12 +198,10 @@ jobs:
           set -Eeuo pipefail
           ./work/balance-bar/build.sh production
           dmg="$RUNNER_TEMP/BalanceBar-${VERSION}.dmg"
-          hdiutil create \
-            -volname "BalanceBar ${VERSION}" \
-            -srcfolder work/balance-bar/build/BalanceBar.app \
-            -ov \
-            -format UDZO \
-            "$dmg"
+          ./scripts/release/create-dmg.sh \
+            --app work/balance-bar/build/BalanceBar.app \
+            --version "$VERSION" \
+            --output "$dmg"
           echo "RELEASE_DMG=$dmg" >> "$GITHUB_ENV"
 
       - name: Create the Git tag
@@ -231,3 +240,63 @@ jobs:
 
           release_url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
           echo "Published $release_url"
+
+  rebuild-existing-release:
+    name: Rebuild an existing Release
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      BALANCEBAR_DEPLOYMENT_TARGET: "14.0"
+      BALANCEBAR_REQUIRED_SDK_MAJOR: "26"
+      REBUILD_VERSION: ${{ inputs.version }}
+      REBUILD_CONFIRM_REPLACE: ${{ inputs.confirm_replace }}
+
+    steps:
+      - name: Check out latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate destructive rebuild request
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] \
+            || { echo "This workflow must be dispatched from main." >&2; exit 1; }
+          [[ "$REBUILD_CONFIRM_REPLACE" == "true" ]] \
+            || { echo "confirm_replace=true is required." >&2; exit 1; }
+          [[ "$REBUILD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "Invalid release version: $REBUILD_VERSION" >&2; exit 1; }
+          plist_version="$(plutil -extract CFBundleShortVersionString raw \
+            -o - work/balance-bar/Info.plist)"
+          [[ "$REBUILD_VERSION" == "$plist_version" ]] \
+            || { echo "Requested $REBUILD_VERSION but main contains $plist_version." >&2; exit 1; }
+          gh release view "v${REBUILD_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null
+          echo "REBUILD_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Verify macOS 26 build environment
+        run: |
+          set -Eeuo pipefail
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
+          echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
+
+      - name: Build and verify replacement DMG
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./work/balance-bar/build.sh production
+          dmg="$RUNNER_TEMP/BalanceBar-${REBUILD_VERSION}.dmg"
+          ./scripts/release/create-dmg.sh \
+            --app work/balance-bar/build/BalanceBar.app \
+            --version "$REBUILD_VERSION" \
+            --output "$dmg"
+          echo "REBUILD_DMG=$dmg" >> "$GITHUB_ENV"
+
+      - name: Replace DMG and move published tag
+        run: ./scripts/release/rebuild-existing-release.sh
