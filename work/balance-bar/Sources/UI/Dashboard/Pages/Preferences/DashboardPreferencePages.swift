@@ -138,25 +138,6 @@ final class DashboardPreferencePages {
         )
     }
 
-    func refreshMenuBarFontSize(
-        _ fontSize: Double,
-        snapshot: Snapshot,
-        menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
-        iconImage: NSImage?
-    ) {
-        menuBarPage.refreshFontSize(
-            fontSize,
-            snapshot: snapshot,
-            preferences: preferences,
-            menuBarSnapshot: menuBarSnapshot,
-            iconImage: iconImage
-        )
-    }
-
-    func finishMenuBarFontSize() {
-        menuBarPage.finishFontSize()
-    }
-
     func restoreRequiredMenuBarToggle(identifier: String) {
         menuBarPage.restoreRequiredToggle(identifier: identifier)
     }

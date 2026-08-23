@@ -210,28 +210,12 @@ final class MenuBarWidthSlider: NSSlider {
 /// persistence, so programmatic callers and restored preferences are covered
 /// by the same rule.
 final class MenuBarFontSizeSlider: NSSlider {
-    var onEditingEnded: (() -> Void)?
-
     override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
         doubleValue = AppPreferences.normalizedMenuBarFontSize(
             doubleValue,
             range: minValue...maxValue
         )
         return super.sendAction(action, to: target)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
-        onEditingEnded?()
-    }
-
-    override func keyDown(with event: NSEvent) {
-        super.keyDown(with: event)
-    }
-
-    override func keyUp(with event: NSEvent) {
-        super.keyUp(with: event)
-        onEditingEnded?()
     }
 }
 
@@ -326,7 +310,6 @@ final class DashboardMenuBarPage {
     private weak var fontSizeSlider: NSSlider?
     private var fontSizeResetButton: NSButton?
     private var transientWidthAdjustment: Double?
-    private var transientFontSize: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
 
@@ -597,8 +580,8 @@ final class DashboardMenuBarPage {
         previewText.isHidden = !preferences.showMenuBarAmount
         iconSwitch?.isEnabled = preferences.showMenuBarAmount
         amountSwitch?.isEnabled = preferences.showMenuBarIcon
-        let fontSize = transientFontSize ?? preferences.menuBarFontSize
-        let secondaryFontSize = AppPreferences.secondaryMenuBarFontSize(for: fontSize)
+        let fontSize = preferences.menuBarFontSize
+        let secondaryFontSize = preferences.menuBarSecondaryFontSize
         previewPrimary.font = MenuBarLayout.primaryFont(
             size: CGFloat(fontSize)
         )
@@ -676,8 +659,7 @@ final class DashboardMenuBarPage {
             geometry: geometry,
             iconOffsetX: iconVisualX,
             textOffsetX: amountVisualX,
-            centerVisibleUnionOnBackground: hasSecondary,
-            backingScaleFactor: previewBackingScaleFactor
+            centerVisibleUnionOnBackground: hasSecondary
         )
         previewIcon.layer?.setAffineTransform(.identity)
         previewText.layer?.setAffineTransform(.identity)
@@ -746,41 +728,6 @@ final class DashboardMenuBarPage {
             width: width,
             height: max(0, height)
         )
-    }
-
-    private var previewBackingScaleFactor: CGFloat {
-        previewBackground?.window?.backingScaleFactor
-            ?? previewBackground?.window?.screen?.backingScaleFactor
-            ?? NSScreen.main?.backingScaleFactor
-            ?? 1
-    }
-
-    /// Refreshes only the font-size-dependent preview geometry while the
-    /// shared slider is being dragged. The persisted preference remains
-    /// untouched until the slider reports editing ended.
-    func refreshFontSize(
-        _ fontSize: Double,
-        snapshot: Snapshot,
-        preferences: AppPreferences,
-        menuBarSnapshot: (Snapshot) -> Snapshot,
-        iconImage: NSImage?
-    ) {
-        transientFontSize = AppPreferences.normalizedMenuBarFontSize(
-            fontSize,
-            range: AppPreferences.menuBarFontSizeRange
-        )
-        refresh(
-            snapshot: snapshot,
-            preferences: preferences,
-            menuBarSnapshot: menuBarSnapshot,
-            iconImage: iconImage
-        )
-    }
-
-    /// Clears the transient font value. The caller performs the one complete
-    /// persisted status-item/Dashboard refresh after this point.
-    func finishFontSize() {
-        transientFontSize = nil
     }
 
     /// Refreshes only the width-specific presentation while a continuous
@@ -893,10 +840,6 @@ final class DashboardMenuBarPage {
         slider.target = relay
         slider.action = #selector(DashboardPreferencePageRelay.adjustOffsetValue(_:))
         slider.toolTip = toolTip
-        slider.onEditingEnded = { [weak relay, weak slider] in
-            guard let relay, let slider else { return }
-            relay.finishOffsetValue(slider)
-        }
         slider.widthAnchor.constraint(equalToConstant: Self.fontSizeSliderWidth).isActive = true
 
         let minimumLabel = makeFontSizeSliderEndpointLabel(

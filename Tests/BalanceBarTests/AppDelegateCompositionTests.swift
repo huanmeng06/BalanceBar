@@ -80,45 +80,6 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertEqual(applied, [7.4])
     }
 
-    @MainActor
-    func testMenuBarCoalescerSkipsDuplicateNormalizedValues() {
-        var applied: [CGFloat] = []
-        let coalescer = MenuBarWidthDisplayCoalescer { applied.append($0) }
-
-        coalescer.submit(13.0)
-        coalescer.flush()
-        coalescer.submit(13.0)
-        coalescer.submit(13.0)
-        coalescer.flush()
-        coalescer.submit(13.1)
-        coalescer.submit(13.1)
-        coalescer.flush()
-
-        XCTAssertEqual(applied, [13.0, 13.1])
-    }
-
-    func testFontSizeDragDefersPersistenceAndFullRefreshUntilEditingEnds() throws {
-        let source = try balanceBarSource()
-        let hotPathStart = try XCTUnwrap(
-            source.range(of: "private func handleDashboardOffsetValue(identifier: String, value: Double)")
-        )
-        let hotPathEnd = try XCTUnwrap(
-            source.range(
-                of: "private func handleDashboardOffsetValueEnded(identifier: String, value: Double)",
-                range: hotPathStart.upperBound..<source.endIndex
-            )
-        )
-        let hotPath = String(source[hotPathStart.lowerBound..<hotPathEnd.lowerBound])
-        XCTAssertTrue(hotPath.contains("menuBarFontSizeAdjustmentSession.update"))
-        XCTAssertTrue(hotPath.contains("menuBarFontSizeCoalescer.submit"))
-        XCTAssertFalse(hotPath.contains("updateStatusItem(for:"))
-
-        let editingEndPath = String(source[hotPathEnd.lowerBound...])
-        XCTAssertTrue(editingEndPath.contains("menuBarFontSizeAdjustmentSession.finish"))
-        XCTAssertTrue(editingEndPath.contains("menuBarFontSizeCoalescer.flush"))
-        XCTAssertTrue(editingEndPath.contains("updateStatusItem(for: snapshot)"))
-    }
-
     func testLifecycleGateInstallsAndTearsDownExactlyOnce() {
         let lifecycle = ApplicationLifecycleState()
 
@@ -212,24 +173,6 @@ final class AppDelegateCompositionTests: XCTestCase {
             controller.menuItemsForTesting.map { ObjectIdentifier($0) },
             menuItemIdentities,
             "continuous width updates must not rebuild the status menu"
-        )
-
-        controller.updateFontSize(15.1)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        XCTAssertEqual(
-            controller.menuBarFontPointSizesForTesting?.primary ?? .nan,
-            15.1,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            controller.menuBarFontPointSizesForTesting?.secondary ?? .nan,
-            15.1 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
-            menuItemIdentities,
-            "continuous font updates must not rebuild the status menu"
         )
 
         controller.teardown()

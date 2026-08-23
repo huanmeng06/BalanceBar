@@ -206,24 +206,6 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(session.transientValue)
     }
 
-    func testMenuBarFontSizeAdjustmentSessionPersistsOnlyOnEditingEnd() {
-        var session = MenuBarFontSizeAdjustmentSession()
-
-        XCTAssertNil(session.transientValue)
-        XCTAssertEqual(session.update(14.24), 14.2, accuracy: 0.001)
-        XCTAssertEqual(session.transientValue ?? .nan, 14.2, accuracy: 0.001)
-
-        var persistedValues: [Double] = []
-        let finalValue = session.finish(15.06) { persistedValues.append($0) }
-        XCTAssertEqual(finalValue, 15.1, accuracy: 0.001)
-        XCTAssertEqual(persistedValues, [15.1])
-        XCTAssertNil(session.transientValue)
-
-        _ = session.update(12.3)
-        session.cancel()
-        XCTAssertNil(session.transientValue)
-    }
-
     func testMenuBarFontSizeUsesOneSliderAndPreservesDefaultRatio() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

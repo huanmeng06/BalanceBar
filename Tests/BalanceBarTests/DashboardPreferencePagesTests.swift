@@ -466,29 +466,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(previewPrimary.frame.minX, previewSecondary.frame.minX, accuracy: 0.001)
         XCTAssertEqual(previewPrimary.frame.width, previewSecondary.frame.width, accuracy: 0.001)
 
-        controller.refreshFontSize(
-            15.1,
-            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
-            preferences: preferences,
-            menuBarSnapshot: { $0 },
-            iconImage: nil
-        )
-        XCTAssertEqual(preferences.menuBarFontSize, 14.2, accuracy: 0.001)
-        XCTAssertEqual(previewPrimary.font?.pointSize ?? .nan, 15.1, accuracy: 0.001)
-        XCTAssertEqual(
-            previewSecondary.font?.pointSize ?? .nan,
-            15.1 * AppPreferences.menuBarSecondaryToPrimaryFontRatio,
-            accuracy: 0.001
-        )
-        controller.finishFontSize()
-        controller.refresh(
-            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
-            preferences: preferences,
-            menuBarSnapshot: { $0 },
-            iconImage: nil
-        )
-        XCTAssertEqual(previewPrimary.font?.pointSize ?? .nan, 14.2, accuracy: 0.001)
-
         fontSlider.doubleValue = 15.04
         XCTAssertTrue(fontSlider.sendAction(fontSlider.action, to: fontSlider.target))
         XCTAssertEqual(preferences.menuBarFontSize, 15.0, accuracy: 0.001)
@@ -724,21 +701,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             hasSecondary: true,
             isBalance: false
         )
-        let backingScaleFactor = NSScreen.main?.backingScaleFactor ?? 1
         let previewBackgroundBounds = NSRect(x: 0, y: 0, width: 190, height: 42)
         let previewFrames = MenuBarLayout.frames(
             buttonSize: previewBackgroundBounds.size,
             geometry: previewGeometry,
-            iconViewYOffset: 0,
-            backingScaleFactor: backingScaleFactor
+            iconViewYOffset: 0
         )
         let previewCompensation = MenuBarLayout.horizontalCenteringCompensation(
             backgroundBounds: previewBackgroundBounds,
             geometry: previewGeometry,
             iconOffsetX: 0,
             textOffsetX: 0,
-            centerVisibleUnionOnBackground: true,
-            backingScaleFactor: backingScaleFactor
+            centerVisibleUnionOnBackground: true
         )
         let centeredPreviewFrames = MenuBarLayoutFrames(
             content: previewFrames.content.offsetBy(dx: previewCompensation, dy: 0),
@@ -747,9 +721,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             text: previewFrames.text
         )
         let centeredPreviewVisibleBounds = try! XCTUnwrap(
-            MenuBarLayout.visibleMeasuredContentBounds(
+            MenuBarLayout.visibleContentBounds(
                 for: centeredPreviewFrames,
-                geometry: previewGeometry,
                 in: previewBackgroundBounds
             )
         )

@@ -1,18 +1,5 @@
 import AppKit
 
-enum MenuBarBackingAlignment {
-    /// Align a frame origin to a physical display pixel. The fallback keeps
-    /// the historical allocation behavior for callers that do not have a
-    /// rendered backing scale yet; the live menu bar and Dashboard preview
-    /// always provide their actual scale.
-    static func aligned(_ value: CGFloat, scale: CGFloat?) -> CGFloat {
-        guard let scale, scale.isFinite, scale > 0 else {
-            return floor(value)
-        }
-        return (value * scale).rounded() / scale
-    }
-}
-
 struct MenuBarGeometry {
     let iconWidth: CGFloat
     let gap: CGFloat
@@ -20,25 +7,12 @@ struct MenuBarGeometry {
     /// This is the horizontal metric used when the official two-line text
     /// block itself is centered; `textWidth` remains the actual label frame.
     let measuredTextWidth: CGFloat
-    /// Raw AppKit layout metrics. These are deliberately kept separate from
-    /// the ceil-rounded allocation metrics below so visual centering does not
-    /// jump when a font size crosses a fractional-height boundary.
-    let measuredPrimaryHeight: CGFloat
-    let measuredSecondaryHeight: CGFloat
-    let measuredTextHeight: CGFloat
     let textWidth: CGFloat
     let primaryHeight: CGFloat
     let secondaryHeight: CGFloat
     let textHeight: CGFloat
     let contentWidth: CGFloat
     let contentHeight: CGFloat
-
-    private static func backingAligned(_ value: CGFloat, scale: CGFloat?) -> CGFloat {
-        guard let scale, scale.isFinite, scale > 0 else {
-            return floor(value)
-        }
-        return (value * scale).rounded() / scale
-    }
 
     init(
         primarySize: NSSize,
@@ -58,11 +32,6 @@ struct MenuBarGeometry {
         measuredTextWidth = showAmount
             ? max(0, max(primarySize.width, secondarySize.width))
             : 0
-        measuredPrimaryHeight = showAmount ? max(0, primarySize.height) : 0
-        measuredSecondaryHeight = hasSecondary ? max(0, secondarySize.height) : 0
-        measuredTextHeight = showAmount
-            ? measuredPrimaryHeight + (hasSecondary ? textRowSpacing + measuredSecondaryHeight : 0)
-            : 0
         textWidth = showAmount
             ? ceil(measuredTextWidth) + textWidthSlack
             : 0
@@ -77,17 +46,10 @@ struct MenuBarGeometry {
 
     func iconCenterYInFlippedButton(
         buttonHeight: CGFloat,
-        iconViewYOffset: CGFloat,
-        backingScaleFactor: CGFloat? = nil
+        iconViewYOffset: CGFloat
     ) -> CGFloat {
-        let contentY = Self.backingAligned(
-            (buttonHeight - contentHeight) / 2,
-            scale: backingScaleFactor
-        )
-        let slotYFromTop = Self.backingAligned(
-            max(0, (contentHeight - iconWidth) / 2),
-            scale: backingScaleFactor
-        )
+        let contentY = floor((buttonHeight - contentHeight) / 2)
+        let slotYFromTop = floor(max(0, (contentHeight - iconWidth) / 2))
         // The status button and content stack are flipped while the icon slot
         // is not. Positive local icon Y therefore decreases button-space Y.
         return contentY + slotYFromTop - iconViewYOffset + (iconWidth / 2)
@@ -96,17 +58,14 @@ struct MenuBarGeometry {
     func iconViewYOffset(
         alignedTo reference: MenuBarGeometry,
         buttonHeight: CGFloat,
-        referenceIconViewYOffset: CGFloat,
-        backingScaleFactor: CGFloat? = nil
+        referenceIconViewYOffset: CGFloat
     ) -> CGFloat {
         iconCenterYInFlippedButton(
             buttonHeight: buttonHeight,
-            iconViewYOffset: 0,
-            backingScaleFactor: backingScaleFactor
+            iconViewYOffset: 0
         ) - reference.iconCenterYInFlippedButton(
             buttonHeight: buttonHeight,
-            iconViewYOffset: referenceIconViewYOffset,
-            backingScaleFactor: backingScaleFactor
+            iconViewYOffset: referenceIconViewYOffset
         )
     }
 }
@@ -312,27 +271,17 @@ enum MenuBarLayout {
         geometry: MenuBarGeometry,
         iconViewYOffset: CGFloat,
         iconOffset: NSSize = .zero,
-        textOffset: NSSize = .zero,
-        backingScaleFactor: CGFloat? = nil
+        textOffset: NSSize = .zero
     ) -> MenuBarLayoutFrames {
         let content = NSRect(
-            x: MenuBarBackingAlignment.aligned(
-                max(0, (buttonSize.width - geometry.contentWidth) / 2),
-                scale: backingScaleFactor
-            ),
-            y: MenuBarBackingAlignment.aligned(
-                (buttonSize.height - geometry.contentHeight) / 2,
-                scale: backingScaleFactor
-            ),
+            x: floor(max(0, (buttonSize.width - geometry.contentWidth) / 2)),
+            y: floor((buttonSize.height - geometry.contentHeight) / 2),
             width: geometry.contentWidth,
             height: geometry.contentHeight
         )
         let iconSlot = NSRect(
             x: 0,
-            y: MenuBarBackingAlignment.aligned(
-                max(0, (geometry.contentHeight - geometry.iconWidth) / 2),
-                scale: backingScaleFactor
-            ),
+            y: floor(max(0, (geometry.contentHeight - geometry.iconWidth) / 2)),
             width: geometry.iconWidth,
             height: geometry.iconWidth
         )
@@ -347,10 +296,7 @@ enum MenuBarLayout {
         )
         let text = NSRect(
             x: geometry.iconWidth + geometry.gap + MenuBarOffsetLayout.xDelta(visualX: textOffset.width),
-            y: MenuBarBackingAlignment.aligned(
-                max(0, (geometry.contentHeight - geometry.textHeight) / 2),
-                scale: backingScaleFactor
-            )
+            y: floor(max(0, (geometry.contentHeight - geometry.textHeight) / 2))
                 + MenuBarOffsetLayout.yDelta(
                     visualY: textOffset.height,
                     in: .flippedFrame
@@ -408,41 +354,10 @@ enum MenuBarLayout {
         )
         return NSRect(
             x: contentOrigin.x + frames.text.minX,
-            y: contentOrigin.y
-                + frames.text.minY
-                + max(0, (frames.text.height - geometry.measuredTextHeight) / 2),
+            y: contentOrigin.y + frames.text.minY,
             width: min(frames.text.width, geometry.measuredTextWidth),
-            height: min(frames.text.height, geometry.measuredTextHeight)
+            height: frames.text.height
         )
-    }
-
-    /// Returns the visible union using actual measured text bounds rather than
-    /// the padded label allocation. The 5pt label slack remains available for
-    /// clipping safety, but never contributes to visual centering.
-    static func visibleMeasuredContentBounds(
-        for frames: MenuBarLayoutFrames,
-        geometry: MenuBarGeometry,
-        in backgroundBounds: NSRect
-    ) -> NSRect? {
-        let contentOrigin = NSPoint(
-            x: backgroundBounds.minX + frames.content.minX,
-            y: backgroundBounds.minY + frames.content.minY
-        )
-        var result: NSRect?
-        if frames.icon.width > 0, frames.icon.height > 0 {
-            result = frames.icon.offsetBy(
-                dx: contentOrigin.x,
-                dy: contentOrigin.y
-            )
-        }
-        if let textBounds = visibleTextBounds(
-            for: frames,
-            geometry: geometry,
-            in: backgroundBounds
-        ) {
-            result = result.map { $0.union(textBounds) } ?? textBounds
-        }
-        return result
     }
 
     /// Equal translation for the outer content container that compensates for
@@ -466,8 +381,7 @@ enum MenuBarLayout {
         geometry: MenuBarGeometry,
         iconOffsetX: CGFloat,
         textOffsetX: CGFloat,
-        centerVisibleUnionOnBackground: Bool = false,
-        backingScaleFactor: CGFloat? = nil
+        centerVisibleUnionOnBackground: Bool = false
     ) -> CGFloat {
         guard geometry.iconWidth > 0 || geometry.textWidth > 0 else {
             return 0
@@ -476,39 +390,23 @@ enum MenuBarLayout {
         let baseFrames = frames(
             buttonSize: backgroundBounds.size,
             geometry: geometry,
-            iconViewYOffset: 0,
-            backingScaleFactor: backingScaleFactor
+            iconViewYOffset: 0
         )
         let adjustedFrames = frames(
             buttonSize: backgroundBounds.size,
             geometry: geometry,
             iconViewYOffset: 0,
             iconOffset: NSSize(width: iconOffsetX, height: 0),
-            textOffset: NSSize(width: textOffsetX, height: 0),
-            backingScaleFactor: backingScaleFactor
+            textOffset: NSSize(width: textOffsetX, height: 0)
         )
-        let bounds: (base: NSRect?, adjusted: NSRect?)
-        if centerVisibleUnionOnBackground {
-            bounds = (
-                visibleMeasuredContentBounds(
-                    for: baseFrames,
-                    geometry: geometry,
-                    in: backgroundBounds
-                ),
-                visibleMeasuredContentBounds(
-                    for: adjustedFrames,
-                    geometry: geometry,
-                    in: backgroundBounds
-                )
-            )
-        } else {
-            bounds = (
-                visibleContentBounds(for: baseFrames, in: backgroundBounds),
-                visibleContentBounds(for: adjustedFrames, in: backgroundBounds)
-            )
-        }
-        let baseBounds = bounds.base
-        let adjustedBounds = bounds.adjusted
+        let baseBounds = visibleContentBounds(
+            for: baseFrames,
+            in: backgroundBounds
+        )
+        let adjustedBounds = visibleContentBounds(
+            for: adjustedFrames,
+            in: backgroundBounds
+        )
         guard let baseBounds, let adjustedBounds else {
             return 0
         }
@@ -518,10 +416,8 @@ enum MenuBarLayout {
         let targetCenter = centerVisibleUnionOnBackground
             ? backgroundBounds.midX
             : baseBounds.midX
-        let rawCompensation = targetCenter
+        return targetCenter
             + opticalCenterNudgeX
             - adjustedBounds.midX
-        guard backingScaleFactor != nil else { return rawCompensation }
-        return MenuBarBackingAlignment.aligned(rawCompensation, scale: backingScaleFactor)
     }
 }

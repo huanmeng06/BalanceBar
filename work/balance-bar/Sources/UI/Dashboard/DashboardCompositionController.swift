@@ -185,20 +185,6 @@ final class DashboardCompositionController {
         )
     }
 
-    func refreshMenuBarFontSize(_ fontSize: Double) {
-        guard window?.isVisible == true, section == .menuBar else { return }
-        dashboardPreferencePages.refreshMenuBarFontSize(
-            fontSize,
-            snapshot: state.snapshot(),
-            menuBarSnapshot: state.menuBarSnapshot,
-            iconImage: state.iconImage()
-        )
-    }
-
-    func finishMenuBarFontSize() {
-        dashboardPreferencePages.finishMenuBarFontSize()
-    }
-
     func refreshOpenCodexSettings() {
         guard window?.isVisible == true, section == .advanced else { return }
         dashboardPreferencePages.refreshAdvanced(
