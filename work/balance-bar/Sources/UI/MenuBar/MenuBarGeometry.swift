@@ -187,6 +187,17 @@ enum MenuBarLayout {
         hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
     }
 
+    /// The large amount-only preset has a half-point AppKit optical baseline
+    /// residual after the primary ink is measured. Keep this correction scoped
+    /// to the single-line primary text; medium/small and every two-line path
+    /// retain their zero automatic adjustment.
+    static func singleLinePrimaryAutomaticYOffset(fontSize: CGFloat) -> CGFloat {
+        guard MenuBarFontSizePreset.nearest(to: Double(fontSize)) == .large else {
+            return 0
+        }
+        return officialAmountOnlyTextYOffset
+    }
+
     /// Returns the complete horizontal footprint of the BalanceBar status
     /// item. The adjustment belongs to the outer NSStatusItem length, so it
     /// changes the space allocated beside neighboring status items without

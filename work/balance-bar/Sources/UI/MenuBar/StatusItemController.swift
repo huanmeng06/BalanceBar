@@ -1029,8 +1029,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // displacement, while official/balance baseline constants are
             // absorbed by this measured correction.
             if let primaryInk = menuBarPrimaryInkBounds(in: button) {
+                let automaticTextYOffset = MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                    fontSize: settings.fontSize
+                )
                 let targetY = button.bounds.midY + MenuBarOffsetLayout.yDelta(
-                    visualY: settings.amountOffsetY,
+                    visualY: settings.amountOffsetY + automaticTextYOffset,
                     in: .flippedFrame
                 )
                 let verticalCorrection = targetY - primaryInk.midY

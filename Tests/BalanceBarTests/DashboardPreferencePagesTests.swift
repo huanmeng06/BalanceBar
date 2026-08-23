@@ -836,7 +836,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let scenarios: [(Snapshot, Bool)] = [
             (.official("OpenAI", 48, "7-day", nil, Date(timeIntervalSince1970: 1)), false),
-            (.balance("Provider", 123456.78, "USD", nil, Date(timeIntervalSince1970: 1)), true)
+            (.balance("Provider", 123456.78, "USD", nil, Date(timeIntervalSince1970: 1)), true),
+            (.balance("Provider", 0.10, "USD", nil, Date(timeIntervalSince1970: 1)), true)
         ]
         for (snapshot, isBalance) in scenarios {
             for showIcon in [false, true] {
@@ -880,7 +881,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     )
                     XCTAssertEqual(
                         renderedInk.midY,
-                        background.bounds.midY,
+                        background.bounds.midY
+                            + MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                                fontSize: CGFloat(preset.primarySize)
+                            ),
                         accuracy: 0.5,
                         "preview primary Y drifted"
                     )

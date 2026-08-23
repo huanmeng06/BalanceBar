@@ -231,6 +231,16 @@ final class AppDelegateCompositionTests: XCTestCase {
                     Date(timeIntervalSince1970: 1)
                 ),
                 true
+            ),
+            (
+                Snapshot.balance(
+                    "Provider",
+                    0.10,
+                    "USD",
+                    nil,
+                    Date(timeIntervalSince1970: 1)
+                ),
+                true
             )
         ]
         defer { controller.teardown() }
@@ -290,11 +300,14 @@ final class AppDelegateCompositionTests: XCTestCase {
                     )
                 }
                 previousLength = controller.statusItemLengthForTesting
+                let automaticYOffset = MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                    fontSize: settings.fontSize
+                )
                 XCTAssertEqual(
                     ink.midY,
-                    button.midY,
+                    button.midY - automaticYOffset,
                     accuracy: 0.5,
-                    "primary ink is not vertically centered, icon=\(showIcon), preset=\(preset)"
+                    "primary ink has an unexpected vertical baseline, icon=\(showIcon), preset=\(preset)"
                 )
                 if showIcon {
                     let icon = try XCTUnwrap(controller.menuBarIconFrameForTesting)
@@ -358,7 +371,11 @@ final class AppDelegateCompositionTests: XCTestCase {
             let adjustedButton = try XCTUnwrap(controller.menuBarButtonBoundsForTesting)
                 XCTAssertEqual(
                     adjustedInk.midY,
-                    adjustedButton.midY - 0.75,
+                    adjustedButton.midY
+                        - MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                            fontSize: adjustedSettings.fontSize
+                        )
+                        - 0.75,
                     accuracy: 0.5,
                     "user amount Y adjustment must remain visible"
                 )

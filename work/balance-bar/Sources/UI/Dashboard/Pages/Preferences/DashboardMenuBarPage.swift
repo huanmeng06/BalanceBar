@@ -717,7 +717,15 @@ final class DashboardMenuBarPage {
                     isBalance: presentation.isBalance
                 )
                 horizontalCorrection = targetX - primaryInk.midX
-                let targetY = singleLineBackgroundBounds.midY + userAmountTranslationY
+                let automaticAmountTranslationY = MenuBarOffsetLayout.yDelta(
+                    visualY: MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                        fontSize: CGFloat(fontSize)
+                    ),
+                    in: .unflippedLayer
+                )
+                let targetY = singleLineBackgroundBounds.midY
+                    + userAmountTranslationY
+                    + automaticAmountTranslationY
                 verticalCorrection = targetY - primaryInk.midY
             }
             previewIcon.layer?.setAffineTransform(CGAffineTransform(

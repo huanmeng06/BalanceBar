@@ -67,6 +67,30 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(MenuBarLayout.secondaryFont.pointSize, 10, accuracy: 0.001)
     }
 
+    func testSingleLinePrimaryAutomaticYOffsetOnlyAppliesToLargePreset() {
+        XCTAssertEqual(
+            MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                fontSize: CGFloat(MenuBarFontSizePreset.large.primarySize)
+            ),
+            MenuBarLayout.officialAmountOnlyTextYOffset,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                fontSize: CGFloat(MenuBarFontSizePreset.medium.primarySize)
+            ),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                fontSize: CGFloat(MenuBarFontSizePreset.small.primarySize)
+            ),
+            0,
+            accuracy: 0.001
+        )
+    }
+
     func testActualFontMetricsKeepOfficialRowsLeftAlignedAndCentered() {
         let primary = NSTextField(labelWithString: "100% remaining")
         primary.font = MenuBarLayout.primaryFont(size: 14.2)
@@ -1229,7 +1253,8 @@ final class MenuBarGeometryTests: XCTestCase {
     func testSingleLinePrimaryInkCentersIndependentlyFromSlackAcrossMatrix() {
         let scenarios: [(String, Bool)] = [
             ("48%", false),
-            ("USD 123,456.78", true)
+            ("USD 123,456.78", true),
+            ("$0.10", true)
         ]
 
         for (primaryText, isBalance) in scenarios {
@@ -1300,12 +1325,19 @@ final class MenuBarGeometryTests: XCTestCase {
                     // stable widest-preset primary anchor; vertical
                     // translation follows primary ink alone and leaves the
                     // icon frame untouched.
+                    let automaticYOffset = MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                        fontSize: CGFloat(preset.primarySize)
+                    )
                     let corrected = primaryInk.offsetBy(
                         dx: targetX - primaryInk.midX,
-                        dy: backgroundBounds.midY - primaryInk.midY
+                        dy: backgroundBounds.midY - automaticYOffset - primaryInk.midY
                     )
                     XCTAssertEqual(corrected.midX, targetX, accuracy: 0.001)
-                    XCTAssertEqual(corrected.midY, backgroundBounds.midY, accuracy: 0.001)
+                    XCTAssertEqual(
+                        corrected.midY,
+                        backgroundBounds.midY - automaticYOffset,
+                        accuracy: 0.001
+                    )
                     correctedBounds.append((preset, corrected))
 
                     let iconFrame = frames.icon.offsetBy(
