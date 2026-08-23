@@ -326,3 +326,31 @@ test("release input includes all PRs represented by compare commits", () => {
 
   assert.deepEqual(input.pullRequests.map((pullRequest) => pullRequest.number), [140, 141]);
 });
+
+test("manual rebuild is guarded and preserves a DMG-only Release", () => {
+  const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
+  const createDmgScript = fs.readFileSync("scripts/release/create-dmg.sh", "utf8");
+  const rebuildScript = fs.readFileSync(
+    "scripts/release/rebuild-existing-release.sh",
+    "utf8",
+  );
+
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /confirm_replace:/);
+  assert.match(workflow, /REBUILD_CONFIRM_REPLACE: \$\{\{ inputs\.confirm_replace \}\}/);
+  assert.match(workflow, /runs-on: macos-26/);
+  assert.match(workflow, /create-dmg\.sh/);
+  assert.match(workflow, /rebuild-existing-release\.sh/);
+
+  assert.match(createDmgScript, /ditto "\$app_path" "\$volume_root\/BalanceBar\.app"/);
+  assert.match(createDmgScript, /ln -s \/Applications "\$volume_root\/Applications"/);
+  assert.match(createDmgScript, /hdiutil verify "\$output_path"/);
+
+  assert.match(rebuildScript, /REBUILD_CONFIRM_REPLACE=true is required/);
+  assert.match(rebuildScript, /gh release download/);
+  assert.match(rebuildScript, /gh release upload[\s\S]+--clobber/);
+  assert.match(rebuildScript, /restoring tag/);
+  assert.match(rebuildScript, /restoring DMG/);
+  assert.match(rebuildScript, /must contain only \$asset_name after rebuilding/);
+  assert.doesNotMatch(rebuildScript, /\.sha256/);
+});
