@@ -145,6 +145,26 @@ final class AppDelegateCompositionTests: XCTestCase {
             ),
             .unknown
         )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: visibleFrame,
+                screenFrame: screen,
+                windowIsVisibleOnScreen: false
+            ),
+            .hiddenByMenuBarSpace
+        )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: visibleFrame,
+                screenFrame: screen,
+                buttonIsHidden: true
+            ),
+            .hiddenByMenuBarSpace
+        )
     }
 
     @MainActor
