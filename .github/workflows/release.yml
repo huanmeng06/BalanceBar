@@ -183,9 +183,7 @@ jobs:
             -ov \
             -format UDZO \
             "$dmg"
-          shasum -a 256 "$dmg" > "${dmg}.sha256"
           echo "RELEASE_DMG=$dmg" >> "$GITHUB_ENV"
-          echo "RELEASE_CHECKSUM=${dmg}.sha256" >> "$GITHUB_ENV"
 
       - name: Create the Git tag
         if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
@@ -215,7 +213,6 @@ jobs:
 
           gh release create "$TAG" \
             "$RELEASE_DMG" \
-            "$RELEASE_CHECKSUM" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "$title" \
