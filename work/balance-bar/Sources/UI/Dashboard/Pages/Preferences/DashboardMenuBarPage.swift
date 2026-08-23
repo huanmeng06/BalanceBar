@@ -323,6 +323,14 @@ final class DashboardMenuBarPage {
     /// fine-tune offsets stack on top.
     static let previewAmountDefaultYOffset: CGFloat = 0.5
     static let previewRowHeight: CGFloat = 66
+    /// Keep the preview card's unconstrained fitting width at the same
+    /// baseline as the Simplified Chinese page at the dashboard's minimum
+    /// window size. The required host-width constraints still take over when
+    /// the window is wider, so this only prevents localized copy from
+    /// enlarging the minimum window.
+    static let previewFittingRowWidth =
+        DashboardWindowController.minimumContentHostWidth
+        - (DashboardSettingsComponents.settingsPageHorizontalInset * 2)
     static let previewPrimaryIdentifier = "menuBarPreviewPrimary"
     static let previewSecondaryIdentifier = "menuBarPreviewSecondary"
     static let overflowWarningIdentifier = "menuBarOverflowWarning"
@@ -455,6 +463,9 @@ final class DashboardMenuBarPage {
         row.identifier = NSUserInterfaceItemIdentifier(Self.overflowWarningRowIdentifier)
         row.translatesAutoresizingMaskIntoConstraints = false
         row.heightAnchor.constraint(equalToConstant: Self.previewRowHeight).isActive = true
+        let fittingWidth = row.widthAnchor.constraint(equalToConstant: Self.previewFittingRowWidth)
+        fittingWidth.priority = .defaultHigh
+        fittingWidth.isActive = true
         label.translatesAutoresizingMaskIntoConstraints = false
         settingsButton.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(label)
@@ -656,19 +667,22 @@ final class DashboardMenuBarPage {
         self.overflowWarningLabel = overflowWarningLabel
         self.overflowWarningSettingsButton = overflowWarningSettingsButton
         self.overflowWarningRow = overflowWarningRow
-        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview", "預覽", "プレビュー"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr("当前布局", "Current Layout", "目前版面", "現在のレイアウト"),
-                subtitle: tr("菜单栏会随供应商数据实时更新", "The menu bar updates with Provider data in real time", "選單列會隨供應商資料即時更新", "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"),
-                control: preview,
-                minimumHeight: Self.previewRowHeight
-            ),
-            overflowWarningRow
-        ], onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-            self?.previewRowsStack = rowsStack
-            self?.previewCardHeightConstraint = cardHeightConstraint
-            self?.previewSeparators = separators
-        })
+        let previewLayoutRow = DashboardSettingsComponents.makeSettingsRow(
+            tr("当前布局", "Current Layout", "目前版面", "現在のレイアウト"),
+            subtitle: tr("菜单栏会随供应商数据实时更新", "The menu bar updates with Provider data in real time", "選單列會隨供應商資料即時更新", "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"),
+            control: preview,
+            minimumHeight: Self.previewRowHeight
+        )
+        let previewSection = DashboardSettingsComponents.makeSettingsSection(
+            tr("预览", "Preview", "預覽", "プレビュー"),
+            rows: [previewLayoutRow, overflowWarningRow],
+            rowWidthReference: previewLayoutRow,
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                self?.previewRowsStack = rowsStack
+                self?.previewCardHeightConstraint = cardHeightConstraint
+                self?.previewSeparators = separators
+            }
+        )
         let animationSection = DashboardSettingsComponents.makeSettingsSection(
             tr("动画", "Animation", "動畫", "アニメーション"),
             rows: [

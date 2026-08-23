@@ -39,6 +39,57 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
     }
 
+    func testMenuBarWindowMinimumWidthIsIndependentOfLocalization() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        var widths: [AppLanguage: CGFloat] = [:]
+        var fittingWidths: [AppLanguage: CGFloat] = [:]
+        for language in [
+            AppLanguage.simplifiedChinese,
+            .english,
+            .traditionalChinese,
+            .japanese
+        ] {
+            AppLanguage.selected = language
+            let appDelegate = AppDelegate(
+                repository: CCSwitchRepository(
+                    databaseURL: URL(fileURLWithPath: "/nonexistent/issue-165-\(language.rawValue).db")
+                )
+            )
+            defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+
+            let window = try XCTUnwrap(
+                appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menuBar)
+            )
+            window.setContentSize(DashboardWindowController.minimumWindowSize)
+            window.layoutIfNeeded()
+            window.displayIfNeeded()
+            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            widths[language] = window.frame.width
+            fittingWidths[language] = page.fittingSize.width
+        }
+
+        let simplifiedChineseWidth = try XCTUnwrap(widths[.simplifiedChinese])
+        let simplifiedChineseFittingWidth = try XCTUnwrap(fittingWidths[.simplifiedChinese])
+        for language in [AppLanguage.english, .traditionalChinese, .japanese] {
+            let localizedWidth = try XCTUnwrap(widths[language])
+            let localizedFittingWidth = try XCTUnwrap(fittingWidths[language])
+            XCTAssertEqual(
+                localizedWidth,
+                simplifiedChineseWidth,
+                accuracy: 1,
+                "Menu bar settings window width should not expand for \(language)"
+            )
+            XCTAssertEqual(
+                localizedFittingWidth,
+                simplifiedChineseFittingWidth,
+                accuracy: 1,
+                "Menu bar settings fitting width should not expand for \(language)"
+            )
+        }
+    }
+
     func testWindowZoomStateUsesTargetFrameAndRestoresRepeatedly() {
         let normalFrame = NSRect(x: 120, y: 180, width: 880, height: 620)
         let primaryVisibleFrame = NSRect(x: 0, y: 25, width: 1_440, height: 875)

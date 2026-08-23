@@ -2,6 +2,7 @@ import AppKit
 
 enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
+    static let settingsPageHorizontalInset: CGFloat = 34
 
     struct PopUpItem {
         let title: String
@@ -79,13 +80,22 @@ enum DashboardSettingsComponents {
             // The document top is the native legal top; no duplicate titlebar
             // or document inset is placed in the scrollable content range.
             stack.topAnchor.constraint(equalTo: documentView.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 34),
-            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -34),
+            stack.leadingAnchor.constraint(
+                equalTo: documentView.leadingAnchor,
+                constant: settingsPageHorizontalInset
+            ),
+            stack.trailingAnchor.constraint(
+                equalTo: documentView.trailingAnchor,
+                constant: -settingsPageHorizontalInset
+            ),
             // The stack must fit inside the document, but it should keep its
             // natural height when the page is shorter than the viewport.
             // Using an equality here makes AppKit stretch the first row to
             // consume all remaining space.
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -34)
+            stack.bottomAnchor.constraint(
+                lessThanOrEqualTo: documentView.bottomAnchor,
+                constant: -settingsPageHorizontalInset
+            )
         ])
         for section in sections {
             section.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -215,6 +225,11 @@ enum DashboardSettingsComponents {
         label.font = .systemFont(ofSize: 14, weight: .semibold)
         label.isEditable = false
         label.isSelectable = false
+        // Let localized titles/subtitles yield width to the row's control.
+        // Wrapping labels otherwise keep their full single-line intrinsic
+        // width, which can make a long translation enlarge the window's
+        // effective minimum width instead of wrapping inside the fixed row.
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let labels = NSStackView(views: [label])
         labels.orientation = .vertical
         labels.alignment = .leading
@@ -226,9 +241,11 @@ enum DashboardSettingsComponents {
             detail.textColor = .secondaryLabelColor
             detail.isEditable = false
             detail.isSelectable = false
+            detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             labels.addArrangedSubview(detail)
         }
         labels.translatesAutoresizingMaskIntoConstraints = false
+        labels.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         row.addSubview(labels)
         let padding = max(0, verticalPadding)
         var constraints = [
