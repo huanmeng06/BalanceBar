@@ -8,6 +8,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onLanguage: ((AppLanguage) -> Void)?
     var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
+    var onOpenSystemMenuBarSettings: (() -> Void)?
     var onManualRefresh: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
     var onInstallUpdate: (() -> Void)?
@@ -45,6 +46,10 @@ final class DashboardPreferencePageRelay: NSObject {
 
     @objc func openCCSwitch(_ sender: NSButton) {
         onOpenCCSwitch?()
+    }
+
+    @objc func openSystemMenuBarSettings(_ sender: NSButton) {
+        onOpenSystemMenuBarSettings?()
     }
 
     @objc func manualRefresh(_ sender: NSButton) {

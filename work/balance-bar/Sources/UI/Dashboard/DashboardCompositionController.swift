@@ -13,6 +13,7 @@ struct DashboardCompositionState {
     let refreshDate: () -> Date?
     let menuBarSnapshot: (Snapshot) -> Snapshot
     let iconImage: () -> NSImage?
+    let statusItemVisibility: () -> StatusItemVisibility
     let currentOpenCodexResolution: () -> OpenCodexDashboardResolution?
     let runtimeCandidate: () -> OpenCodexEndpointCandidate?
     let updateState: () -> UpdateCheckState
@@ -38,6 +39,7 @@ struct DashboardCompositionActions {
     let onLanguage: (AppLanguage) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
+    let onOpenSystemMenuBarSettings: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
     let onOpenOpenCodex: () -> Void
@@ -80,6 +82,7 @@ final class DashboardCompositionController {
             onLanguage: actions.onLanguage,
             onUpdateChannelChanged: actions.onUpdateChannelChanged,
             onOpenCCSwitch: actions.onOpenCCSwitch,
+            onOpenSystemMenuBarSettings: actions.onOpenSystemMenuBarSettings,
             onManualRefresh: actions.onManualRefresh,
             onCheckForUpdates: actions.onCheckForUpdates,
             onInstallUpdate: actions.onInstallUpdate,
@@ -162,6 +165,7 @@ final class DashboardCompositionController {
         dashboardPreferencePages.refreshMenuBar(
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
+            statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage()
         )
     }
@@ -252,6 +256,7 @@ final class DashboardCompositionController {
             providerPollInterval: state.providerPollInterval,
             snapshot: state.snapshot(),
             menuBarSnapshot: state.menuBarSnapshot,
+            statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
             currentOpenCodexResolution: state.currentOpenCodexResolution(),
             runtimeCandidate: state.runtimeCandidate(),
