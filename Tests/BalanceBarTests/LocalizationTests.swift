@@ -206,6 +206,11 @@ final class LocalizationTests: XCTestCase {
                 XCTAssertFalse(subtitle.text.contains(LocalizationSemanticMarker.semanticStart))
                 XCTAssertEqual(subtitle.semanticGroups.count, 1, "semantic group for \(language), value \(value)")
                 XCTAssertEqual(subtitle.atomicGroups.count, 1, "atomic interpolation for \(language), value \(value)")
+                XCTAssertEqual(
+                    subtitle.lineBreakBeforeSemanticGroups,
+                    subtitle.semanticGroups,
+                    "the complete dynamic suffix starts on its own line for \(language), value \(value)"
+                )
 
                 let text = subtitle.text as NSString
                 let semanticText = text.substring(with: try XCTUnwrap(subtitle.semanticGroups.first))
@@ -230,7 +235,7 @@ final class LocalizationTests: XCTestCase {
         let directory = root.appendingPathComponent("en.lproj")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let key = LocalizationKey.keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue.rawKey
-        let fixture = "\"\(key)\" = \"Future summary: [[balancebar.semantic]]Zukunft value[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]\";\n"
+        let fixture = "\"\(key)\" = \"Future summary: [[balancebar.break-before-semantic]][[balancebar.semantic]]Zukunft value[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]\";\n"
         try fixture.write(
             to: directory.appendingPathComponent("Localizable.strings"),
             atomically: true,
@@ -245,6 +250,7 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(subtitle.text, "Future summary: Zukunft value - 10.0 pt")
         XCTAssertEqual(subtitle.semanticGroups.count, 1)
         XCTAssertEqual(subtitle.atomicGroups.count, 1)
+        XCTAssertEqual(subtitle.lineBreakBeforeSemanticGroups, subtitle.semanticGroups)
         XCTAssertEqual(
             (subtitle.text as NSString).substring(with: try XCTUnwrap(subtitle.semanticGroups.first)),
             "Zukunft value - 10.0 pt"

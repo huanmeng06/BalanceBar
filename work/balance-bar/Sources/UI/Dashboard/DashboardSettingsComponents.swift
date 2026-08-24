@@ -55,12 +55,31 @@ private final class DashboardSettingsRowView: NSView {
 /// NSTextField keeps the source subtitle separate from the layout string.
 /// Semantic groups are converted to non-breaking layout tokens only when the
 /// complete group fits on one line; a group wider than the label is left
-/// available to the language's normal wrapping rules. The source string
-/// therefore remains suitable for accessibility, tests, and later updates.
+/// available to the language's normal wrapping rules. Explicit line-break
+/// metadata is applied to the layout copy only. The source string therefore
+/// remains suitable for accessibility, tests, and later updates.
 private final class DashboardSettingsSubtitleLabel: NSTextField {
     private var localizedSubtitle: LocalizedSubtitle?
     private var isApplyingLayoutText = false
     private var lastAppliedWidth: CGFloat = -1
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureSubtitleAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureSubtitleAppearance()
+    }
+
+    private func configureSubtitleAppearance() {
+        isBezeled = false
+        drawsBackground = false
+        backgroundColor = .clear
+        isEditable = false
+        isSelectable = false
+    }
 
     override var stringValue: String {
         didSet {
@@ -221,6 +240,15 @@ enum DashboardSettingsComponents {
         let source = subtitle.text as NSString
         var replacements: [(range: NSRange, text: String)] = []
 
+        for semanticRange in subtitle.lineBreakBeforeSemanticGroups {
+            guard sourceRangeIsValid(semanticRange, in: source),
+                  subtitle.semanticGroups.contains(where: { $0 == semanticRange }),
+                  let breakRange = lineBreakRange(before: semanticRange, in: source) else {
+                continue
+            }
+            replacements.append((breakRange, "\n"))
+        }
+
         for semanticRange in subtitle.semanticGroups {
             guard sourceRangeIsValid(semanticRange, in: source) else { continue }
             let groupText = source.substring(with: semanticRange)
@@ -299,6 +327,29 @@ enum DashboardSettingsComponents {
 
     private static func contains(_ outer: NSRange, inner: NSRange) -> Bool {
         outer.location <= inner.location && NSMaxRange(inner) <= NSMaxRange(outer)
+    }
+
+    private static func lineBreakRange(
+        before range: NSRange,
+        in source: NSString
+    ) -> NSRange? {
+        guard range.location > 0 else {
+            return NSRange(location: range.location, length: 0)
+        }
+
+        let prefix = source.substring(to: range.location)
+        var whitespaceLength = 0
+        for character in prefix.reversed() {
+            guard isSubtitleWhitespace(character) else { break }
+            whitespaceLength += character.utf16.count
+        }
+        if whitespaceLength > 0 {
+            return NSRange(
+                location: range.location - whitespaceLength,
+                length: whitespaceLength
+            )
+        }
+        return NSRange(location: range.location, length: 0)
     }
 
     private static func nonBreakingSemanticText(_ text: String) -> String {

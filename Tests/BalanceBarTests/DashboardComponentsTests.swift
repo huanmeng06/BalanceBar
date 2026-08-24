@@ -294,6 +294,7 @@ final class DashboardComponentsTests: XCTestCase {
             text
                 .replacingOccurrences(of: "\u{00A0}", with: " ")
                 .replacingOccurrences(of: "\u{2060}", with: "")
+                .replacingOccurrences(of: "\n", with: "")
         }
 
         func renderedLines(for field: NSTextField) -> [String] {
@@ -350,7 +351,8 @@ final class DashboardComponentsTests: XCTestCase {
             let content = LocalizedSubtitle(
                 text: fullText,
                 semanticGroups: [suffixRange],
-                atomicGroups: [atomicRange]
+                atomicGroups: [atomicRange],
+                lineBreakBeforeSemanticGroups: [suffixRange]
             )
             XCTAssertEqual(
                 DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: content),
@@ -367,6 +369,14 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(
                 displayText.contains("\u{00A0}"),
                 "a fitting semantic group should use non-breaking layout spacing for \(language)"
+            )
+            XCTAssertTrue(
+                displayText.contains("\n"),
+                "the explicit semantic line break must remain independent of available width for \(language)"
+            )
+            XCTAssertTrue(
+                displayText.split(separator: "\n").contains { normalized(String($0)) == normalized(suffix) },
+                "the complete semantic suffix must be the second line for \(language)"
             )
 
             let label = DashboardSettingsComponents.makeSubtitleLabel(content)
@@ -406,6 +416,18 @@ final class DashboardComponentsTests: XCTestCase {
 
             let narrow = try layout(at: 280)
             let normalizedSuffix = normalized(suffix)
+            XCTAssertEqual(label.font?.pointSize ?? 0, 12, accuracy: 0.01, "subtitle font for \(language)")
+            XCTAssertTrue(label.textColor?.isEqual(NSColor.secondaryLabelColor) == true, "subtitle color for \(language)")
+            XCTAssertFalse(label.isBezeled, "subtitle must not add a visual container for \(language)")
+            XCTAssertFalse(label.drawsBackground, "subtitle must not add a background for \(language)")
+            XCTAssertFalse(label.wantsLayer, "subtitle must not add a layer wrapper for \(language)")
+            XCTAssertTrue(label.superview is NSStackView, "subtitle remains a normal row label for \(language)")
+            let lines = renderedLines(for: label).map { normalized($0) }
+            let logicalRenderedText = normalized(label.stringValue)
+            XCTAssertTrue(
+                logicalRenderedText.contains(normalized(prefix.trimmingCharacters(in: .whitespacesAndNewlines))),
+                "the description must remain in the first semantic block for \(language): \(lines)"
+            )
             XCTAssertTrue(
                 renderedLines(for: label).contains { normalized($0).contains(normalizedSuffix) },
                 "semantic suffix must remain one line for \(language): \(renderedLines(for: label))"
@@ -435,7 +457,8 @@ final class DashboardComponentsTests: XCTestCase {
             let updated = LocalizedSubtitle(
                 text: prefix + suffix.replacingOccurrences(of: "10.0", with: "0.0"),
                 semanticGroups: [NSRange(location: prefix.utf16.count, length: suffix.replacingOccurrences(of: "10.0", with: "0.0").utf16.count)],
-                atomicGroups: [NSRange(location: prefix.utf16.count + (suffix.replacingOccurrences(of: "10.0", with: "0.0") as NSString).range(of: " - 0.0 pt").location, length: (" - 0.0 pt" as NSString).length)]
+                atomicGroups: [NSRange(location: prefix.utf16.count + (suffix.replacingOccurrences(of: "10.0", with: "0.0") as NSString).range(of: " - 0.0 pt").location, length: (" - 0.0 pt" as NSString).length)],
+                lineBreakBeforeSemanticGroups: [NSRange(location: prefix.utf16.count, length: suffix.replacingOccurrences(of: "10.0", with: "0.0").utf16.count)]
             )
             DashboardSettingsComponents.updateSubtitleLabel(label, with: updated)
             row.needsLayout = true
@@ -454,7 +477,8 @@ final class DashboardComponentsTests: XCTestCase {
         let longContent = LocalizedSubtitle(
             text: longText,
             semanticGroups: [longRange],
-            atomicGroups: [longAtomicRange]
+            atomicGroups: [longAtomicRange],
+            lineBreakBeforeSemanticGroups: [longRange]
         )
         let longDisplay = DashboardSettingsComponents.subtitleDisplayText(
             longContent,
@@ -464,6 +488,10 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(
             normalized(longDisplay).contains("- 10.0 pt"),
             "an oversized semantic group must retain its atomic numeric suffix"
+        )
+        XCTAssertTrue(
+            longDisplay.contains("\n"),
+            "an oversized suffix may wrap normally only after the complete suffix starts on line two"
         )
     }
 

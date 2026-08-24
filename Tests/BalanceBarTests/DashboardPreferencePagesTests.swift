@@ -983,12 +983,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调图标上下像素位置：Y 轴 + 0.7 pt"
+            "微调图标上下像素位置： Y 轴 + 0.7 pt"
         )
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调金额上下像素位置：Y 轴 - 0.8 pt"
+            "微调金额上下像素位置： Y 轴 - 0.8 pt"
         )
         XCTAssertEqual(
             refreshedSliders.first { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }?.doubleValue ?? .nan,
@@ -1088,6 +1088,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .japanese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "幅 + 0.0 pt"],
             .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"]
         ]
+        let expectedDescriptions: [AppLanguage: [String]] = [
+            .simplifiedChinese: ["微调图标上下像素位置：", "微调金额上下像素位置：", "调整 BalanceBar 与其他项目的空隙："],
+            .traditionalChinese: ["微調圖示上下像素位置：", "微調金額上下像素位置：", "調整 BalanceBar 與其他項目的間距："],
+            .japanese: ["アイコンの上下位置を微調整：", "金額の上下位置を微調整：", "BalanceBar と他の項目との間隔を調整："],
+            .english: ["Fine-tune the icon's vertical position:", "Fine-tune the amount's vertical position:", "Adjusts the gap between BalanceBar and other items:"]
+        ]
         let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
 
         for language in [
@@ -1130,6 +1136,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let card = try XCTUnwrap(rowsStack.superview)
             XCTAssertTrue(rows.allSatisfy { $0.superview === rowsStack })
             let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
+            let expectedDescriptionLines = try XCTUnwrap(expectedDescriptions[language])
             // Structured subtitles use word wrapping so AppKit honors the
             // marked range's non-breaking layout tokens. Unicode still
             // supplies CJK character-boundary opportunities in the prefix.
@@ -1146,10 +1153,34 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     XCTAssertEqual(summary.maximumNumberOfLines, 0, "unlimited lines for \(language)")
                     XCTAssertTrue(summary.cell?.wraps == true, "cell wrapping for \(language)")
                     if normalizeSettingsText(summary.stringValue).contains(expectedSuffixes[index]) {
-                        let renderedLines = renderedTextLines(for: summary)
+                        let renderedLines = renderedTextLines(for: summary).map {
+                            normalizeSettingsText($0).trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                        XCTAssertTrue(
+                            normalizeSettingsText(summary.stringValue).contains(expectedDescriptionLines[index]),
+                            "description must remain in the first semantic block for \(language): \(renderedLines)"
+                        )
+                        let suffixLineIndex = renderedLines.firstIndex {
+                            $0.contains(expectedSuffixes[index])
+                        }
+                        XCTAssertNotNil(
+                            suffixLineIndex,
+                            "complete semantic suffix must be rendered for \(language): \(renderedLines)"
+                        )
+                        if let suffixLineIndex {
+                            XCTAssertGreaterThan(
+                                suffixLineIndex,
+                                0,
+                                "complete semantic suffix must start after the description block for \(language): \(renderedLines)"
+                            )
+                            XCTAssertFalse(
+                                renderedLines[suffixLineIndex].contains(expectedDescriptionLines[index]),
+                                "description and dynamic suffix must not share a line for \(language): \(renderedLines)"
+                            )
+                        }
                         XCTAssertTrue(
                             renderedLines.contains {
-                                normalizeSettingsText($0).contains(expectedSuffixes[index])
+                                $0.contains(expectedSuffixes[index])
                             },
                             "signed descriptor/value suffix must stay together for \(language): \(renderedLines)"
                         )
@@ -1200,7 +1231,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 zip(wide.rowHeights, narrow.rowHeights).allSatisfy { $0 <= $1 + 0.5 },
                 "real slider rows must not grow when widened for \(language)"
             )
-            XCTAssertLessThan(wide.cardHeight, narrow.cardHeight, "card must shrink when widened for \(language)")
+            XCTAssertLessThanOrEqual(
+                wide.cardHeight,
+                narrow.cardHeight + 0.5,
+                "card must not grow when widened for \(language)"
+            )
             let narrowAgain = try layout(at: 516)
             for (restored, original) in zip(narrowAgain.rowHeights, narrow.rowHeights) {
                 XCTAssertEqual(restored, original, accuracy: 0.5)
@@ -2349,6 +2384,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         text
             .replacingOccurrences(of: "\u{00A0}", with: " ")
             .replacingOccurrences(of: "\u{2060}", with: "")
+            .replacingOccurrences(of: "\n", with: " ")
     }
 
     private func renderedTextLines(for field: NSTextField) -> [String] {

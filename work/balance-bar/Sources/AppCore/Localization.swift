@@ -125,26 +125,32 @@ enum AppLanguage: String, CaseIterable {
 /// `LocalizationSemanticMarker` pair. The ranges are kept separately from
 /// the rendered string so the settings subtitle component can decide whether
 /// a group fits on the current line without matching any language-specific
-/// text.
+/// text. A resource can also explicitly request a line break immediately
+/// before a semantic group; the layout component turns that metadata into a
+/// real line break without changing the logical localized text.
 struct LocalizedSubtitle: Equatable {
     let text: String
     let semanticGroups: [NSRange]
     let atomicGroups: [NSRange]
+    let lineBreakBeforeSemanticGroups: [NSRange]
 
     init(
         text: String,
         semanticGroups: [NSRange] = [],
-        atomicGroups: [NSRange] = []
+        atomicGroups: [NSRange] = [],
+        lineBreakBeforeSemanticGroups: [NSRange] = []
     ) {
         self.text = text
         self.semanticGroups = semanticGroups
         self.atomicGroups = atomicGroups
+        self.lineBreakBeforeSemanticGroups = lineBreakBeforeSemanticGroups
     }
 
     /// Compatibility-friendly aliases for callers that describe these as
     /// ranges rather than groups.
     var semanticGroupRanges: [NSRange] { semanticGroups }
     var atomicGroupRanges: [NSRange] { atomicGroups }
+    var semanticLineBreakRanges: [NSRange] { lineBreakBeforeSemanticGroups }
 }
 
 /// Markup understood by `LocalizationResourceStore`. These markers are a
@@ -152,6 +158,7 @@ struct LocalizedSubtitle: Equatable {
 /// group moves as one unit when it fits on a complete line; an atomic group
 /// remains bound when its containing semantic group is long enough to wrap.
 enum LocalizationSemanticMarker {
+    static let lineBreakBeforeSemantic = "[[balancebar.break-before-semantic]]"
     static let semanticStart = "[[balancebar.semantic]]"
     static let semanticEnd = "[[/balancebar.semantic]]"
     static let atomicStart = "[[balancebar.atomic]]"
@@ -303,21 +310,37 @@ final class LocalizationResourceStore {
     private struct SemanticMarkerFrame {
         let kind: SemanticMarkerKind
         let start: Int
+        let lineBreakBefore: Bool
     }
 
     private func parseSemanticMarkers(in rendered: String) -> LocalizedSubtitle? {
         var output = ""
         var semanticGroups: [NSRange] = []
         var atomicGroups: [NSRange] = []
+        var lineBreakBeforeSemanticGroups: [NSRange] = []
         var stack: [SemanticMarkerFrame] = []
+        var lineBreakBeforeNextSemantic = false
         var index = rendered.startIndex
 
         while index < rendered.endIndex {
+            if rendered[index...].hasPrefix(LocalizationSemanticMarker.lineBreakBeforeSemantic) {
+                guard stack.isEmpty, !lineBreakBeforeNextSemantic else {
+                    return nil
+                }
+                lineBreakBeforeNextSemantic = true
+                index = rendered.index(
+                    index,
+                    offsetBy: LocalizationSemanticMarker.lineBreakBeforeSemantic.count
+                )
+                continue
+            }
             if rendered[index...].hasPrefix(LocalizationSemanticMarker.semanticStart) {
                 stack.append(SemanticMarkerFrame(
                     kind: .semantic,
-                    start: output.utf16.count
+                    start: output.utf16.count,
+                    lineBreakBefore: lineBreakBeforeNextSemantic
                 ))
+                lineBreakBeforeNextSemantic = false
                 index = rendered.index(
                     index,
                     offsetBy: LocalizationSemanticMarker.semanticStart.count
@@ -327,7 +350,8 @@ final class LocalizationResourceStore {
             if rendered[index...].hasPrefix(LocalizationSemanticMarker.atomicStart) {
                 stack.append(SemanticMarkerFrame(
                     kind: .atomic,
-                    start: output.utf16.count
+                    start: output.utf16.count,
+                    lineBreakBefore: false
                 ))
                 index = rendered.index(
                     index,
@@ -345,6 +369,9 @@ final class LocalizationResourceStore {
                 )
                 guard range.length > 0 else { return nil }
                 semanticGroups.append(range)
+                if frame.lineBreakBefore {
+                    lineBreakBeforeSemanticGroups.append(range)
+                }
                 index = rendered.index(
                     index,
                     offsetBy: LocalizationSemanticMarker.semanticEnd.count
@@ -372,11 +399,12 @@ final class LocalizationResourceStore {
             index = rendered.index(after: index)
         }
 
-        guard stack.isEmpty else { return nil }
+        guard stack.isEmpty, !lineBreakBeforeNextSemantic else { return nil }
         return LocalizedSubtitle(
             text: output,
             semanticGroups: semanticGroups,
-            atomicGroups: atomicGroups
+            atomicGroups: atomicGroups,
+            lineBreakBeforeSemanticGroups: lineBreakBeforeSemanticGroups
         )
     }
 
