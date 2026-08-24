@@ -1273,7 +1273,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     func testLocalizedOverviewQuotaAndResetReuseAccountMarqueeLayout() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
-        AppLanguage.selected = .spanish
+        AppLanguage.selected = .german
 
         let controller = StatusItemController(
             actions: StatusItemController.Actions(
@@ -1317,10 +1317,42 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             showOpenCodexMenu: false,
             showStatusMenu: false
         )
-        let longQuota = String(repeating: "Cuota de 7 días ", count: 4)
-        let longReset = String(repeating: "Restablecimiento: ", count: 5)
+        let shortQuota = "7-Tage-Kontingent"
+        let shortResetValue = "6d14"
+        let shortReset = "Zurücksetzung: \(shortResetValue)"
+        let longQuota = String(repeating: "7-Tage-Kontingent ", count: 4)
+        let longReset = String(repeating: "6d14 ", count: 12)
         let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let baselineFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true
+        )
         controller.start(
+            snapshot: .official("OpenAI Official", 77, shortQuota, shortResetValue, date),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let shortOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let shortMarquees = shortOverview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let shortQuotaView = try XCTUnwrap(
+            shortMarquees.first { $0.accountLabel.stringValue == shortQuota }
+        )
+        let shortResetView = try XCTUnwrap(
+            shortMarquees.first { $0.accountLabel.stringValue.contains(shortReset) }
+        )
+        XCTAssertFalse(shortQuotaView.isScrollable)
+        XCTAssertFalse(shortQuotaView.showsEdgeFade)
+        XCTAssertFalse(shortResetView.isScrollable)
+        XCTAssertFalse(shortResetView.showsEdgeFade)
+        XCTAssertGreaterThan(shortQuotaView.bounds.width, baselineFrames.quotaDetail.width)
+        XCTAssertGreaterThan(shortResetView.bounds.width, try XCTUnwrap(baselineFrames.reset).width)
+        XCTAssertEqual(shortQuotaView.accountLabel.frame.width, shortQuotaView.bounds.width)
+        XCTAssertEqual(shortResetView.accountLabel.frame.width, shortResetView.bounds.width)
+
+        controller.update(
             snapshot: .official("OpenAI Official", 78, longQuota, longReset, date),
             refreshDate: date,
             menuInput: input,
@@ -1340,13 +1372,27 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertGreaterThan(quota.accountLabel.frame.width, quota.bounds.width)
         XCTAssertGreaterThan(reset.accountLabel.frame.width, reset.bounds.width)
 
-        let frames = OpenCodexCardLayout.frames(
-            for: .quota,
-            includesAccount: true,
-            includesSubscription: true
+        let amount = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first { $0.stringValue == "78%" }
         )
-        XCTAssertEqual(quota.frame, frames.quotaDetail)
-        XCTAssertEqual(reset.frame, try XCTUnwrap(frames.reset))
+        let frames = baselineFrames
+        let amountTextWidth = AccountMarqueeView.textWidth(
+            of: amount.stringValue,
+            font: try XCTUnwrap(amount.font)
+        )
+        let safeAmountMinX = max(amount.frame.minX, amount.frame.maxX - amountTextWidth)
+        let expectedRightEdge = safeAmountMinX - 8
+        XCTAssertEqual(quota.frame.minX, frames.quotaDetail.minX)
+        XCTAssertEqual(quota.frame.minY, frames.quotaDetail.minY)
+        XCTAssertEqual(quota.frame.height, frames.quotaDetail.height)
+        XCTAssertGreaterThan(quota.frame.width, frames.quotaDetail.width)
+        XCTAssertEqual(quota.frame.maxX, expectedRightEdge, accuracy: 0.5)
+        let resetFrame = try XCTUnwrap(frames.reset)
+        XCTAssertEqual(reset.frame.minX, resetFrame.minX)
+        XCTAssertEqual(reset.frame.minY, resetFrame.minY)
+        XCTAssertEqual(reset.frame.height, resetFrame.height)
+        XCTAssertGreaterThan(reset.frame.width, resetFrame.width)
+        XCTAssertEqual(reset.frame.maxX, expectedRightEdge, accuracy: 0.5)
     }
 
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {

@@ -1475,16 +1475,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(progress)
         }
 
+        let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
+        amount.alignment = .right
+        amount.frame = layout.amount
         let quotaDetail = makeMarqueeOverviewLabel(
             snapshot.overviewQuotaDetail,
             font: .systemFont(ofSize: 13, weight: .medium),
             textColor: .labelColor,
-            frame: layout.quotaDetail
+            frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: amount)
         )
-        let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-        amount.alignment = .right
         if isBalance {
-            amount.frame = layout.amount
             let linkPrefix = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
             linkPrefix.frame = layout.linkPrefix ?? .zero
@@ -1500,9 +1500,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter),
                 font: .systemFont(ofSize: 13, weight: .regular),
                 textColor: .secondaryLabelColor,
-                frame: layout.reset ?? .zero
+                frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: amount)
             )
-            amount.frame = layout.amount
             view.addSubview(reset)
         }
         [provider, quotaDetail, amount].forEach(view.addSubview)
@@ -1578,13 +1577,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 label,
                 font: .systemFont(ofSize: 13, weight: .medium),
                 textColor: .labelColor,
-                frame: layout.quotaDetail
+                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
             )
             secondary = makeMarqueeOverviewLabel(
                 reset.map { tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)]) } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
                 font: .systemFont(ofSize: 13, weight: .regular),
                 textColor: .secondaryLabelColor,
-                frame: layout.reset ?? .zero
+                frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: primary)
             )
         case .balance(let amount, let unit, let progressPercentage, let websiteURL, _):
             progress = QuotaProgressView(percentage: progressPercentage)
@@ -1596,7 +1595,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 tr(.keyStatusItemControllerRemainingBalance),
                 font: .systemFont(ofSize: 13, weight: .medium),
                 textColor: .labelColor,
-                frame: layout.quotaDetail
+                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
             )
             let linkPrefix = makeOverviewLabel(
                 tr(.keyStatusItemControllerOfficialLink2),
@@ -1619,13 +1618,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 category == .quota ? tr(.keyStatusItemControllerReadingQuota) : tr(.keyStatusItemControllerReadingBalance),
                 font: .systemFont(ofSize: 13, weight: .medium),
                 textColor: .labelColor,
-                frame: layout.quotaDetail
+                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
             )
             secondary = makeMarqueeOverviewLabel(
                 tr(.keyStatusItemControllerNoLiveDataReceivedYet),
                 font: .systemFont(ofSize: 13, weight: .regular),
                 textColor: .secondaryLabelColor,
-                frame: layout.reset ?? layout.linkPrefix ?? .zero
+                frame: overviewMarqueeFrame(layout.reset ?? layout.linkPrefix ?? .zero, avoiding: primary)
             )
         case .unavailable(_, let reason):
             primary = makeOverviewLabel("—", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
@@ -1635,13 +1634,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 category.unavailableTitle,
                 font: .systemFont(ofSize: 13, weight: .medium),
                 textColor: .labelColor,
-                frame: layout.quotaDetail
+                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
             )
             secondary = makeMarqueeOverviewLabel(
                 reason,
                 font: .systemFont(ofSize: 12, weight: .regular),
                 textColor: .secondaryLabelColor,
-                frame: layout.reset ?? layout.linkPrefix ?? .zero
+                frame: overviewMarqueeFrame(layout.reset ?? layout.linkPrefix ?? .zero, avoiding: primary)
             )
         }
         [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
@@ -1726,6 +1725,36 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             font: font,
             textColor: textColor,
             frame: frame
+        )
+    }
+
+    private func overviewMarqueeFrame(
+        _ baseFrame: NSRect,
+        avoiding amountLabel: NSTextField
+    ) -> NSRect {
+        guard baseFrame.width > 0 else { return baseFrame }
+
+        // The amount label is right-aligned. Its frame reserves the full
+        // primary column, but the rendered value often occupies only its
+        // rightmost portion (for example `77%`). Let localized detail text
+        // use that empty space. If the value itself reaches the column's
+        // leading edge, retain the original safe frame width and let the
+        // marquee scroll. This keeps scrolling as the overflow fallback,
+        // rather than the first response to a barely-overlong translation.
+        let amountFont = amountLabel.font ?? .systemFont(ofSize: 13)
+        let amountTextWidth = AccountMarqueeView.textWidth(
+            of: amountLabel.stringValue,
+            font: amountFont
+        )
+        let renderedAmountMinX = amountLabel.frame.maxX - amountTextWidth
+        let safeAmountMinX = max(amountLabel.frame.minX, renderedAmountMinX)
+        let availableWidth = safeAmountMinX - 8 - baseFrame.minX
+        let expandedWidth = max(baseFrame.width, availableWidth)
+        return NSRect(
+            x: baseFrame.minX,
+            y: baseFrame.minY,
+            width: expandedWidth,
+            height: baseFrame.height
         )
     }
 
