@@ -2,9 +2,6 @@ name: Build and Test
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -35,23 +32,44 @@ jobs:
           [[ "${sdk_version%%.*}" == "$BALANCEBAR_REQUIRED_SDK_MAJOR" ]]
           echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
 
-      - name: CLI fresh build
-        run: ./work/balance-bar/build.sh
+      - name: Independent build checks
+        run: |
+          set -Eeuo pipefail
 
-      - name: Localization probes
-        run: >-
-          ./work/balance-bar/balance-query-probe.sh
-          && ./work/balance-bar/balance-network-error-localization-probe.sh
+          cli_log="$RUNNER_TEMP/BalanceBar-cli-build.log"
+          probes_log="$RUNNER_TEMP/BalanceBar-localization-probes.log"
+          xcode_log="$RUNNER_TEMP/BalanceBar-xcode-build.log"
 
-      - name: Xcode Debug build
-        run: >-
-          xcodebuild
-          -project BalanceBar.xcodeproj
-          -scheme BalanceBar
-          -configuration Debug
-          -derivedDataPath "$RUNNER_TEMP/BalanceBar-Build-DerivedData"
-          CODE_SIGNING_ALLOWED=NO
-          build
+          ./work/balance-bar/build.sh >"$cli_log" 2>&1 &
+          cli_pid=$!
+
+          (
+            ./work/balance-bar/balance-query-probe.sh
+            ./work/balance-bar/balance-network-error-localization-probe.sh
+          ) >"$probes_log" 2>&1 &
+          probes_pid=$!
+
+          xcodebuild \
+            -project BalanceBar.xcodeproj \
+            -scheme BalanceBar \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData" \
+            -destination 'platform=macOS,arch=arm64' \
+            CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            build-for-testing >"$xcode_log" 2>&1 &
+          xcode_pid=$!
+
+          check_status=0
+          if ! wait "$cli_pid"; then check_status=1; fi
+          if ! wait "$probes_pid"; then check_status=1; fi
+          if ! wait "$xcode_pid"; then check_status=1; fi
+
+          cat "$cli_log"
+          cat "$probes_log"
+          cat "$xcode_log"
+          exit "$check_status"
 
       - name: XCTest
         run: >-
@@ -59,8 +77,10 @@ jobs:
           -project BalanceBar.xcodeproj
           -scheme BalanceBar
           -configuration Debug
-          -derivedDataPath "$RUNNER_TEMP/BalanceBar-Test-DerivedData"
+          -derivedDataPath "$RUNNER_TEMP/BalanceBar-DerivedData"
           -destination 'platform=macOS,arch=arm64'
           CODE_SIGNING_ALLOWED=NO
+          ARCHS=arm64
+          ONLY_ACTIVE_ARCH=YES
           -parallel-testing-enabled NO
-          test
+          test-without-building

@@ -130,12 +130,27 @@ xcodebuild \
   -project BalanceBar.xcodeproj \
   -scheme BalanceBar \
   -configuration Debug \
-  -derivedDataPath /tmp/BalanceBar-Test-DerivedData \
+  -derivedDataPath /tmp/BalanceBar-DerivedData \
+  -destination 'platform=macOS,arch=arm64' \
   CODE_SIGNING_ALLOWED=NO \
-  test
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
+  build-for-testing
+
+xcodebuild \
+  -project BalanceBar.xcodeproj \
+  -scheme BalanceBar \
+  -configuration Debug \
+  -derivedDataPath /tmp/BalanceBar-DerivedData \
+  -destination 'platform=macOS,arch=arm64' \
+  CODE_SIGNING_ALLOWED=NO \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
+  -parallel-testing-enabled NO \
+  test-without-building
 ```
 
-GitHub Actions 会在提交到 `main` 或创建 Pull Request 时执行 CLI 构建、Xcode Debug 构建和 XCTest。
+GitHub Actions 会在 Pull Request 更新时并行执行 CLI 构建、本地化探针和 Xcode 测试构建，全部通过后再串行执行 XCTest；也可以手动触发。
 
 进一步了解代码组织和贡献流程：
 
