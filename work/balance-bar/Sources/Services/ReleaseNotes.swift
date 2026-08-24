@@ -159,8 +159,8 @@ enum ReleaseNotesMarkdownRenderer {
     static func render(markdown: String) -> NSAttributedString {
         let baseFont = NSFont.systemFont(ofSize: 14)
         let baseParagraph = NSMutableParagraphStyle()
-        baseParagraph.lineSpacing = 3
-        baseParagraph.paragraphSpacing = 8
+        baseParagraph.lineSpacing = 2
+        baseParagraph.paragraphSpacing = 2
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: baseFont,
             .foregroundColor: NSColor.labelColor,
@@ -200,20 +200,22 @@ enum ReleaseNotesMarkdownRenderer {
             if let table = tableParts(in: lines, startingAt: index) {
                 appendTable(table, into: output, baseAttributes: baseAttributes)
                 index = table.nextIndex
-                if index < lines.count {
-                    output.append(NSAttributedString(string: "\n", attributes: baseAttributes))
-                }
                 continue
             }
 
             if rawLine.trimmingCharacters(in: .whitespaces).isEmpty {
-                output.append(NSAttributedString(string: "\n", attributes: baseAttributes))
+                index += 1
+                continue
+            }
+
+            if isHorizontalRule(rawLine) {
+                appendHorizontalRule(into: output, baseAttributes: baseAttributes)
                 index += 1
                 continue
             }
 
             if let heading = headingParts(rawLine) {
-                let paragraph = paragraphStyle(from: baseParagraph, spacing: 10)
+                let paragraph = headingParagraphStyle(from: baseParagraph)
                 let headingFont = NSFont.systemFont(
                     ofSize: max(15, 23 - CGFloat(heading.level * 2)),
                     weight: .semibold
@@ -278,14 +280,9 @@ enum ReleaseNotesMarkdownRenderer {
                     for: .border
                 )
                 block.setWidth(
-                    5,
+                    4,
                     type: .absoluteValueType,
                     for: .padding
-                )
-                block.setWidth(
-                    3,
-                    type: .absoluteValueType,
-                    for: .margin
                 )
                 block.setBorderColor(NSColor.separatorColor)
                 if rowIndex == 0 {
@@ -295,7 +292,10 @@ enum ReleaseNotesMarkdownRenderer {
                 let sourceParagraph = baseAttributes[.paragraphStyle] as? NSParagraphStyle
                     ?? NSParagraphStyle.default
                 let paragraph = paragraphStyle(from: sourceParagraph, spacing: 4)
-                paragraph.alignment = table.alignments[columnIndex]
+                paragraph.paragraphSpacing = 0
+                paragraph.alignment = rowIndex == 0
+                    ? .center
+                    : table.alignments[columnIndex]
                 paragraph.textBlocks = [block]
                 var attributes = baseAttributes
                 attributes[.paragraphStyle] = paragraph
@@ -312,6 +312,64 @@ enum ReleaseNotesMarkdownRenderer {
                 output.append(NSAttributedString(string: "\n", attributes: attributes))
             }
         }
+    }
+
+    private static func appendHorizontalRule(
+        into output: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any]
+    ) {
+        let paragraph = paragraphStyle(
+            from: baseAttributes[.paragraphStyle] as? NSParagraphStyle
+                ?? NSParagraphStyle.default,
+            spacing: 8
+        )
+        paragraph.paragraphSpacingBefore = 4
+        paragraph.textBlocks = [bottomBorderTextBlock()]
+        var attributes = baseAttributes
+        attributes[.paragraphStyle] = paragraph
+        output.append(NSAttributedString(string: " \n", attributes: attributes))
+    }
+
+    private static func headingParagraphStyle(
+        from source: NSParagraphStyle
+    ) -> NSMutableParagraphStyle {
+        let paragraph = paragraphStyle(from: source, spacing: 8)
+        paragraph.paragraphSpacingBefore = 8
+        paragraph.textBlocks = [bottomBorderTextBlock()]
+        return paragraph
+    }
+
+    private static func bottomBorderTextBlock() -> NSTextBlock {
+        let block = NSTextBlock()
+        block.setContentWidth(
+            100,
+            type: .percentageValueType
+        )
+        block.setWidth(
+            1,
+            type: .absoluteValueType,
+            for: .border
+        )
+        block.setBorderColor(NSColor.separatorColor, for: .minY)
+        block.setWidth(
+            8,
+            type: .absoluteValueType,
+            for: .padding,
+            edge: .minY
+        )
+        return block
+    }
+
+    private static func isHorizontalRule(_ line: String) -> Bool {
+        let characters = line
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .filter { !$0.isWhitespace }
+        guard characters.count >= 3,
+              let first = characters.first,
+              ["-", "*", "_"].contains(first) else {
+            return false
+        }
+        return characters.allSatisfy { $0 == first }
     }
 
     private static func tableParts(

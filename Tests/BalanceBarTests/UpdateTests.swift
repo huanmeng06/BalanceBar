@@ -1191,6 +1191,33 @@ final class UpdateTests: XCTestCase {
             "https"
         )
 
+        let blockLayout = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 修复与体验优化
+
+        ---
+
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+
+        ## 安装
+
+        1. 下载文件
+        """)
+        XCTAssertFalse(blockLayout.string.contains("\n\n"))
+        let headingRange = (blockLayout.string as NSString).range(of: "修复与体验优化")
+        let headingParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: headingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertFalse(headingParagraph.textBlocks.isEmpty)
+        let ruleRange = (blockLayout.string as NSString).range(of: " ")
+        let ruleParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: ruleRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertFalse(ruleParagraph.textBlocks.isEmpty)
+
         let safeRange = (rendered.string as NSString).range(of: "Safe")
         let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
         XCTAssertEqual((safeAttributes[.link] as? URL)?.scheme, "https")
@@ -1224,6 +1251,10 @@ final class UpdateTests: XCTestCase {
         let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
         XCTAssertTrue(notesTextView.string.contains("First presentation"))
         XCTAssertGreaterThan(notesTextView.frame.width, 1)
+        if #available(macOS 26.0, *) {
+            let glassViewClass = try XCTUnwrap(NSClassFromString("NSGlassEffectView"))
+            XCTAssertTrue(window.contentView?.isKind(of: glassViewClass) == true)
+        }
     }
 
     // MARK: - Dashboard state/action wiring and localization

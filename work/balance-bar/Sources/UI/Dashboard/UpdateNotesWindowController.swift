@@ -22,15 +22,18 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
-            styleMask: [.titled, .closable, .resizable],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = false
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 520, height: 400)
-        window.backgroundColor = .windowBackgroundColor
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
         window.appearance = nil
         super.init(window: window)
         window.delegate = self
@@ -109,7 +112,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = .lineBorder
         scrollView.scrollerStyle = .overlay
         scrollView.documentView = notesTextView
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -135,7 +138,27 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(header)
         root.addSubview(scrollView)
         root.addSubview(buttons)
-        window.contentView = root
+
+        let surface: NSView
+        if let glassSurface = makeDashboardGlassEffectView(contentView: root, cornerRadius: 18) {
+            surface = glassSurface
+        } else {
+            let visualEffectSurface = NSVisualEffectView()
+            visualEffectSurface.material = .windowBackground
+            visualEffectSurface.blendingMode = .behindWindow
+            visualEffectSurface.state = .active
+            root.translatesAutoresizingMaskIntoConstraints = false
+            visualEffectSurface.addSubview(root)
+            NSLayoutConstraint.activate([
+                root.topAnchor.constraint(equalTo: visualEffectSurface.topAnchor),
+                root.leadingAnchor.constraint(equalTo: visualEffectSurface.leadingAnchor),
+                root.trailingAnchor.constraint(equalTo: visualEffectSurface.trailingAnchor),
+                root.bottomAnchor.constraint(equalTo: visualEffectSurface.bottomAnchor)
+            ])
+            surface = visualEffectSurface
+        }
+        surface.autoresizingMask = [.width, .height]
+        window.contentView = surface
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
