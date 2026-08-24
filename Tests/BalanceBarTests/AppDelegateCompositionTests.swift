@@ -104,7 +104,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             StatusItemVisibility.resolved(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: visibleFrame,
+                statusItemFrame: visibleFrame,
                 screenFrame: screen
             ),
             .visible
@@ -113,7 +113,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             StatusItemVisibility.resolved(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: overflowFrame,
+                statusItemFrame: overflowFrame,
                 screenFrame: screen
             ),
             .hiddenByMenuBarSpace
@@ -122,7 +122,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             StatusItemVisibility.resolved(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: nonMenuBarFrame,
+                statusItemFrame: nonMenuBarFrame,
                 screenFrame: screen
             ),
             .unknown
@@ -131,7 +131,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             StatusItemVisibility.resolved(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: overflowFrame,
+                statusItemFrame: overflowFrame,
                 screenFrame: nil
             ),
             .unknown
@@ -140,7 +140,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             StatusItemVisibility.resolved(
                 statusItemIsVisible: false,
                 windowIsVisible: true,
-                windowFrame: overflowFrame,
+                statusItemFrame: overflowFrame,
                 screenFrame: screen
             ),
             .unknown
@@ -149,22 +149,52 @@ final class AppDelegateCompositionTests: XCTestCase {
             StatusItemVisibility.resolved(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: visibleFrame,
+                statusItemFrame: visibleFrame,
                 screenFrame: screen,
-                windowIsVisibleOnScreen: false
+                buttonIsHidden: false
             ),
-            .hiddenByMenuBarSpace
+            .visible,
+            "the containing status-bar window can report occluded while the item is visible"
         )
         XCTAssertEqual(
             StatusItemVisibility.resolved(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: visibleFrame,
+                statusItemFrame: visibleFrame,
                 screenFrame: screen,
                 buttonIsHidden: true
             ),
             .hiddenByMenuBarSpace
         )
+    }
+
+    func testStatusItemVisibilityRecoversFromOverflowToVisibleAndUnknown() {
+        let screen = NSRect(x: 0, y: 0, width: 1_000, height: 800)
+        let visibleFrame = NSRect(x: 840, y: 780, width: 100, height: 20)
+        let overflowFrame = NSRect(x: 940, y: 780, width: 100, height: 20)
+
+        let overflow = StatusItemVisibility.resolved(
+            statusItemIsVisible: true,
+            windowIsVisible: true,
+            statusItemFrame: overflowFrame,
+            screenFrame: screen
+        )
+        let recovered = StatusItemVisibility.resolved(
+            statusItemIsVisible: true,
+            windowIsVisible: true,
+            statusItemFrame: visibleFrame,
+            screenFrame: screen
+        )
+        let unavailable = StatusItemVisibility.resolved(
+            statusItemIsVisible: false,
+            windowIsVisible: true,
+            statusItemFrame: visibleFrame,
+            screenFrame: screen
+        )
+
+        XCTAssertEqual(overflow, .hiddenByMenuBarSpace)
+        XCTAssertEqual(recovered, .visible)
+        XCTAssertEqual(unavailable, .unknown)
     }
 
     @MainActor

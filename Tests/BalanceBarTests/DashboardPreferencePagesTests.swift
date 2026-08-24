@@ -359,7 +359,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(presentation.isBalance)
     }
 
-    func testMenuBarOverflowWarningUsesInjectedVisibilityAndFourLocalizations() throws {
+    func testMenuBarOverflowWarningUsesInjectedVisibilityAndSevenLocalizations() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
@@ -367,7 +367,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (.simplifiedChinese, "菜单栏空间不足，BalanceBar 暂时不可见；请关闭或移除部分菜单栏图标后重试。", "打开设置"),
             (.english, "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again.", "Open Settings"),
             (.traditionalChinese, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。", "開啟設定"),
-            (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。", "設定を開く")
+            (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。", "設定を開く"),
+            (.korean, "메뉴 막대 공간이 부족하여 BalanceBar가 일시적으로 숨겨졌습니다; 일부 메뉴 막대 아이콘을 숨기거나 제거한 후 다시 시도하세요.", "설정 열기"),
+            (.spanish, "No queda espacio en la barra de menús, por lo que BalanceBar está oculto temporalmente; oculta o elimina algunos iconos de la barra de menús y vuelve a intentarlo.", "Abrir ajustes"),
+            (.german, "Der Platz in der Menüleiste ist voll, daher ist BalanceBar vorübergehend ausgeblendet; weitere Menüleistensymbole ausblenden oder entfernen und erneut versuchen.", "Einstellungen öffnen")
         ]
         XCTAssertEqual(
             DashboardMenuBarPage.systemMenuBarSettingsURL.absoluteString,

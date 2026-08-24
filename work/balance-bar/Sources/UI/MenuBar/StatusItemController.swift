@@ -270,37 +270,36 @@ enum StatusItemVisibility: Equatable {
     case visible
     case hiddenByMenuBarSpace
 
-    /// Classifies only status-item/window evidence that can prove a menu-bar
-    /// overflow. A missing window, screen, or API visibility signal remains
-    /// unknown so the Dashboard cannot turn startup or teardown into a false
-    /// warning.
+    /// Classifies only status-item evidence that can prove a menu-bar
+    /// overflow. The status-bar host window's occlusion state is deliberately
+    /// not part of this decision: it describes the whole host window rather
+    /// than this individual status item and can report occluded while the item
+    /// is visibly rendered.
     static func resolved(
         statusItemIsVisible: Bool,
         windowIsVisible: Bool,
-        windowFrame: NSRect?,
+        statusItemFrame: NSRect?,
         screenFrame: NSRect?,
-        windowIsVisibleOnScreen: Bool = true,
         buttonIsHidden: Bool = false
     ) -> StatusItemVisibility {
         guard statusItemIsVisible,
               windowIsVisible,
-              let windowFrame,
+              let statusItemFrame,
               let screenFrame,
-              windowFrame.width > 0,
-              windowFrame.height > 0,
+              statusItemFrame.width > 0,
+              statusItemFrame.height > 0,
               screenFrame.width > 0,
               screenFrame.height > 0 else {
             return .unknown
         }
 
-        let isInMenuBarBand = windowFrame.maxY >= screenFrame.maxY - 4
-            && windowFrame.minY >= screenFrame.maxY - 48
+        let isInMenuBarBand = statusItemFrame.maxY >= screenFrame.maxY - 4
+            && statusItemFrame.minY >= screenFrame.maxY - 48
         guard isInMenuBarBand else { return .unknown }
 
-        let exceedsScreenHorizontally = windowFrame.minX < screenFrame.minX
-            || windowFrame.maxX > screenFrame.maxX
-        let isOccludedInMenuBar = !windowIsVisibleOnScreen || buttonIsHidden
-        return exceedsScreenHorizontally || isOccludedInMenuBar
+        let exceedsScreenHorizontally = statusItemFrame.minX < screenFrame.minX
+            || statusItemFrame.maxX > screenFrame.maxX
+        return exceedsScreenHorizontally || buttonIsHidden
             ? .hiddenByMenuBarSpace
             : .visible
     }
@@ -747,7 +746,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
             let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
             SwitchLog.write(
-                "status item presentation; visible=\(statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); window_visible_on_screen=\(statusWindow?.occlusionState.contains(.visible) ?? false); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); title=\(button.title); attributed_title=\(button.attributedTitle.string); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+                "status item presentation; visible=\(statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); title=\(button.title); attributed_title=\(button.attributedTitle.string); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
                 category: "ui.status-item"
             )
         }
@@ -793,13 +792,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
         let screen = window?.screen
         let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
+        let statusItemFrame = window.map {
+            $0.convertToScreen(button.convert(button.bounds, to: nil))
+        }
         updateStatusItemVisibility(
             StatusItemVisibility.resolved(
                 statusItemIsVisible: item.isVisible,
                 windowIsVisible: window?.isVisible ?? false,
-                windowFrame: window?.frame,
+                statusItemFrame: statusItemFrame,
                 screenFrame: screen?.frame,
-                windowIsVisibleOnScreen: window?.occlusionState.contains(.visible) ?? false,
                 buttonIsHidden: button.isHidden
             )
         )
@@ -815,7 +816,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } ?? false
 
         SwitchLog.write(
-            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); window_visible_on_screen=\(window?.occlusionState.contains(.visible) ?? false); button_hidden=\(button.isHidden); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
+            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); button_hidden=\(button.isHidden); status_item_frame=\(statusItemFrame.map { DashboardLogging.rect($0) } ?? "none"); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
             level: attached ? .debug : .warning,
             category: "ui.status-item",
             throttleKey: "status-item-attachment-\(reason)",
