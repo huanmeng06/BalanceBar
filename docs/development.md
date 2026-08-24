@@ -93,18 +93,31 @@ The Xcode app is written below
 
 ### 4. XCTest
 
-Run the project test target without parallel XCTest workers. This is the
-repository's CI command with a local DerivedData path:
+Build the project and run the test target with the same DerivedData path used
+by CI. The test runner stays serial because this target launches an AppKit
+host application and parallel runners conflict through macOS LaunchServices:
 
 ~~~sh
 xcodebuild -project BalanceBar.xcodeproj \
   -scheme BalanceBar \
   -configuration Debug \
-  -derivedDataPath /tmp/BalanceBar-Test-DerivedData \
+  -derivedDataPath /tmp/BalanceBar-DerivedData \
   -destination 'platform=macOS,arch=arm64' \
   CODE_SIGNING_ALLOWED=NO \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
+  build-for-testing
+
+xcodebuild -project BalanceBar.xcodeproj \
+  -scheme BalanceBar \
+  -configuration Debug \
+  -derivedDataPath /tmp/BalanceBar-DerivedData \
+  -destination 'platform=macOS,arch=arm64' \
+  CODE_SIGNING_ALLOWED=NO \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
   -parallel-testing-enabled NO \
-  test
+  test-without-building
 ~~~
 
 The test target is BalanceBarTests. Its files cover composition-root wiring,
@@ -146,15 +159,17 @@ by a filesystem check.
 
 The build-and-test job in
 [.github/workflows/build-and-test.yml](../.github/workflows/build-and-test.yml)
-runs on macos-15 for pull requests, pushes to main, and manual dispatch. It
-executes, in order:
+runs on macos-26 for pull requests and manual dispatch. It starts the
+independent build checks in parallel, then runs XCTest after they all pass:
 
-1. ./work/balance-bar/build.sh;
-2. ./work/balance-bar/balance-query-probe.sh and
-   ./work/balance-bar/balance-network-error-localization-probe.sh;
-3. an unsigned xcodebuild Debug build; and
-4. an unsigned, non-parallel xcodebuild test with destination
-   platform=macOS,arch=arm64.
+1. `./work/balance-bar/build.sh`, the two localization probes, and an unsigned
+   xcodebuild `build-for-testing` build run in parallel;
+2. an unsigned, serial `test-without-building` run with destination
+   platform=macOS,arch=arm64. The CI-only test build targets arm64 because
+   that is the test destination; release builds remain universal.
+
+The build and test commands share one DerivedData directory so the test run
+does not compile the app and test bundle a second time.
 
 Keep local verification aligned with those commands. Do not add a workflow
 change as part of a documentation or feature change unless the Issue explicitly
