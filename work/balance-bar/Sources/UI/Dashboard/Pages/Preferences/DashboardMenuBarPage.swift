@@ -671,17 +671,26 @@ final class DashboardMenuBarPage {
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageBalanceAmount), subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance), control: amountToggle),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageResetCountdown), subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable), control: resetToggle)
         ])
-        let iconOffsetSummary = NSTextField(
-            labelWithString: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY)
+        let iconOffsetSummaryContent = Self.iconOffsetSummarySubtitle(
+            y: input.preferences.menuBarIconOffsetY
+        )
+        let iconOffsetSummary = DashboardSettingsComponents.makeSubtitleLabel(
+            iconOffsetSummaryContent
         )
         iconOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.iconOffsetSummaryIdentifier)
-        let amountOffsetSummary = NSTextField(
-            labelWithString: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY)
+        let amountOffsetSummaryContent = Self.amountOffsetSummarySubtitle(
+            y: input.preferences.menuBarAmountOffsetY
+        )
+        let amountOffsetSummary = DashboardSettingsComponents.makeSubtitleLabel(
+            amountOffsetSummaryContent
         )
         amountOffsetSummary.identifier = NSUserInterfaceItemIdentifier(Self.amountOffsetSummaryIdentifier)
         let widthAdjustment = transientWidthAdjustment
             ?? input.preferences.menuBarStatusItemWidthAdjustment
-        let widthAdjustmentSummary = NSTextField(labelWithString: Self.widthAdjustmentSummaryText(widthAdjustment))
+        let widthAdjustmentSummaryContent = Self.widthAdjustmentSummarySubtitle(widthAdjustment)
+        let widthAdjustmentSummary = DashboardSettingsComponents.makeSubtitleLabel(
+            widthAdjustmentSummaryContent
+        )
         widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
         let iconOffsetControls = makeCenteredSliderControls(
             value: input.preferences.menuBarIconOffsetY,
@@ -733,21 +742,21 @@ final class DashboardMenuBarPage {
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuBarPageIconOffset),
-                    subtitle: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY),
+                    subtitleContent: iconOffsetSummaryContent,
                     subtitleLabel: iconOffsetSummary,
                     control: iconOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuBarPageAmountOffset),
-                    subtitle: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY),
+                    subtitleContent: amountOffsetSummaryContent,
                     subtitleLabel: amountOffsetSummary,
                     control: amountOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuBarPageMenuBarWidth),
-                    subtitle: Self.widthAdjustmentSummaryText(widthAdjustment),
+                    subtitleContent: widthAdjustmentSummaryContent,
                     subtitleLabel: widthAdjustmentSummary,
                     control: widthAdjustmentControls.view,
                     minimumHeight: 66
@@ -824,8 +833,14 @@ final class DashboardMenuBarPage {
         let iconOffsetY = preferences.menuBarIconOffsetY
         let amountOffsetX = preferences.menuBarAmountOffsetX
         let amountOffsetY = preferences.menuBarAmountOffsetY
-        iconOffsetSummaryLabel?.stringValue = Self.iconOffsetSummaryText(y: iconOffsetY)
-        amountOffsetSummaryLabel?.stringValue = Self.amountOffsetSummaryText(y: amountOffsetY)
+        DashboardSettingsComponents.updateSubtitleLabel(
+            iconOffsetSummaryLabel,
+            with: Self.iconOffsetSummarySubtitle(y: iconOffsetY)
+        )
+        DashboardSettingsComponents.updateSubtitleLabel(
+            amountOffsetSummaryLabel,
+            with: Self.amountOffsetSummarySubtitle(y: amountOffsetY)
+        )
         iconOffsetSlider?.doubleValue = iconOffsetY
         amountOffsetSlider?.doubleValue = amountOffsetY
         iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
@@ -1117,7 +1132,10 @@ final class DashboardMenuBarPage {
             )
             capsuleLeadingConstraint?.constant = -capsuleInset
             capsuleTrailingConstraint?.constant = capsuleInset
-            widthAdjustmentSummaryLabel?.stringValue = Self.widthAdjustmentSummaryText(widthAdjustment)
+            DashboardSettingsComponents.updateSubtitleLabel(
+                widthAdjustmentSummaryLabel,
+                with: Self.widthAdjustmentSummarySubtitle(widthAdjustment)
+            )
             if synchronizeSlider {
                 widthAdjustmentSlider?.doubleValue = widthAdjustment
             }
@@ -1148,19 +1166,25 @@ final class DashboardMenuBarPage {
         return "\(nonBreakingSpace)\(sign)\(nonBreakingSpace)\(String(format: "%.1f", abs(value)))\(nonBreakingSpace)pt"
     }
 
-    private static func iconOffsetSummaryText(y: Double) -> String {
-        let valueText = signedPointText(y)
-        return tr(.keyDashboardMenuBarPageFineTuneTheIconSVerticalPositionYaxisvalue, arguments: [String(describing: valueText)])
+    private static func iconOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
+        trSubtitle(
+            .keyDashboardMenuBarPageFineTuneTheIconSVerticalPositionYaxisvalue,
+            arguments: [signedPointText(y)]
+        )
     }
 
-    private static func amountOffsetSummaryText(y: Double) -> String {
-        let valueText = signedPointText(y)
-        return tr(.keyDashboardMenuBarPageFineTuneTheAmountSVerticalPositionYaxisvalue, arguments: [String(describing: valueText)])
+    private static func amountOffsetSummarySubtitle(y: Double) -> LocalizedSubtitle {
+        trSubtitle(
+            .keyDashboardMenuBarPageFineTuneTheAmountSVerticalPositionYaxisvalue,
+            arguments: [signedPointText(y)]
+        )
     }
 
-    private static func widthAdjustmentSummaryText(_ value: Double) -> String {
-        let valueText = signedPointText(value)
-        return tr(.keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue, arguments: [String(describing: valueText)])
+    private static func widthAdjustmentSummarySubtitle(_ value: Double) -> LocalizedSubtitle {
+        trSubtitle(
+            .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
+            arguments: [signedPointText(value)]
+        )
     }
 
     private static func previewCapsuleHorizontalInset(

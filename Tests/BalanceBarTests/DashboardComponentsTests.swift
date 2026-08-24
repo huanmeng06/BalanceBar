@@ -279,6 +279,194 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(short.cardHeight, 62, accuracy: 0.5)
     }
 
+    func testSemanticSubtitleGroupsUseScriptWrappingAndStayAtomicAcrossResizes() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, String, String)] = [
+            (.simplifiedChinese, "这是一段很长的本地化前缀，会在语义后缀之前换行：", "宽度 - 10.0 pt"),
+            (.traditionalChinese, "這是一段很長的本地化前綴，會在語義後綴之前換行：", "寬度 - 10.0 pt"),
+            (.japanese, "これは意味のある接尾辞の前で折り返す長いローカライズ済み接頭辞です：", "幅 - 10.0 pt"),
+            (.english, "This localized prefix deliberately wraps before the semantic suffix: ", "Width - 10.0 pt")
+        ]
+
+        func normalized(_ text: String) -> String {
+            text
+                .replacingOccurrences(of: "\u{00A0}", with: " ")
+                .replacingOccurrences(of: "\u{2060}", with: "")
+        }
+
+        func renderedLines(for field: NSTextField) -> [String] {
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.lineBreakMode = field.lineBreakMode
+            if #available(macOS 10.15, *) {
+                paragraphStyle.lineBreakStrategy = field.lineBreakStrategy
+            }
+            let storage = NSTextStorage(
+                string: field.stringValue,
+                attributes: [
+                    .font: field.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                    .paragraphStyle: paragraphStyle
+                ]
+            )
+            let layoutManager = NSLayoutManager()
+            let textContainer = NSTextContainer(
+                size: NSSize(width: max(1, field.bounds.width), height: .greatestFiniteMagnitude)
+            )
+            textContainer.lineFragmentPadding = 0
+            textContainer.lineBreakMode = field.lineBreakMode
+            layoutManager.addTextContainer(textContainer)
+            storage.addLayoutManager(layoutManager)
+            layoutManager.ensureLayout(for: textContainer)
+
+            var lines: [String] = []
+            var glyphIndex = 0
+            while glyphIndex < layoutManager.numberOfGlyphs {
+                var glyphRange = NSRange()
+                layoutManager.lineFragmentRect(
+                    forGlyphAt: glyphIndex,
+                    effectiveRange: &glyphRange,
+                    withoutAdditionalLayout: true
+                )
+                let characterRange = layoutManager.characterRange(
+                    forGlyphRange: glyphRange,
+                    actualGlyphRange: nil
+                )
+                lines.append((field.stringValue as NSString).substring(with: characterRange))
+                glyphIndex = NSMaxRange(glyphRange)
+            }
+            return lines
+        }
+
+        for (language, prefix, suffix) in cases {
+            AppLanguage.selected = language
+            let fullText = prefix + suffix
+            let fullNSString = fullText as NSString
+            let suffixRange = fullNSString.range(of: suffix)
+            let atomicRange = NSRange(
+                location: suffixRange.location + (suffix as NSString).range(of: " - 10.0 pt").location,
+                length: (" - 10.0 pt" as NSString).length
+            )
+            let content = LocalizedSubtitle(
+                text: fullText,
+                semanticGroups: [suffixRange],
+                atomicGroups: [atomicRange]
+            )
+            XCTAssertEqual(
+                DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: content),
+                .byWordWrapping,
+                "script wrapping for \(language)"
+            )
+
+            let groupWidth = suffix.size(withAttributes: [.font: NSFont.systemFont(ofSize: 12)]).width
+            let displayText = DashboardSettingsComponents.subtitleDisplayText(
+                content,
+                constrainedTo: groupWidth + 0.1,
+                font: .systemFont(ofSize: 12)
+            )
+            XCTAssertTrue(
+                displayText.contains("\u{00A0}"),
+                "a fitting semantic group should use non-breaking layout spacing for \(language)"
+            )
+
+            let label = DashboardSettingsComponents.makeSubtitleLabel(content)
+            let control = NSSwitch()
+            let row = DashboardSettingsComponents.makeSettingsRow(
+                "Semantic subtitle",
+                subtitleContent: content,
+                subtitleLabel: label,
+                control: control
+            )
+            var rowsStack: NSStackView?
+            var separators: [NSView] = []
+            let section = DashboardSettingsComponents.makeSettingsSection(
+                "Semantic fixture",
+                rows: [row],
+                onLayoutCreated: { stack, _, createdSeparators in
+                    rowsStack = stack
+                    separators = createdSeparators
+                }
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 280, height: 260),
+                styleMask: .borderless,
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = section
+            defer { window.orderOut(nil) }
+
+            func layout(at width: CGFloat) throws -> (rowHeight: CGFloat, cardHeight: CGFloat) {
+                window.setContentSize(NSSize(width: width, height: 260))
+                window.layoutIfNeeded()
+                let stack = try XCTUnwrap(rowsStack)
+                let card = try XCTUnwrap(stack.superview)
+                return (row.frame.height, card.frame.height)
+            }
+
+            let narrow = try layout(at: 280)
+            let normalizedSuffix = normalized(suffix)
+            XCTAssertTrue(
+                renderedLines(for: label).contains { normalized($0).contains(normalizedSuffix) },
+                "semantic suffix must remain one line for \(language): \(renderedLines(for: label))"
+            )
+            XCTAssertEqual(
+                control.frame.midY,
+                row.bounds.midY,
+                accuracy: 0.5,
+                "slider/control stays centered for \(language)"
+            )
+            XCTAssertEqual(
+                narrow.cardHeight,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: try XCTUnwrap(rowsStack),
+                    separators: separators
+                ),
+                accuracy: 0.5
+            )
+
+            let wide = try layout(at: 560)
+            XCTAssertLessThan(wide.rowHeight, narrow.rowHeight, "row shrinks when widened for \(language)")
+            XCTAssertLessThan(wide.cardHeight, narrow.cardHeight, "card shrinks when widened for \(language)")
+            let narrowAgain = try layout(at: 280)
+            XCTAssertEqual(narrowAgain.rowHeight, narrow.rowHeight, accuracy: 0.5)
+            XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5)
+
+            let updated = LocalizedSubtitle(
+                text: prefix + suffix.replacingOccurrences(of: "10.0", with: "0.0"),
+                semanticGroups: [NSRange(location: prefix.utf16.count, length: suffix.replacingOccurrences(of: "10.0", with: "0.0").utf16.count)],
+                atomicGroups: [NSRange(location: prefix.utf16.count + (suffix.replacingOccurrences(of: "10.0", with: "0.0") as NSString).range(of: " - 0.0 pt").location, length: (" - 0.0 pt" as NSString).length)]
+            )
+            DashboardSettingsComponents.updateSubtitleLabel(label, with: updated)
+            row.needsLayout = true
+            section.needsLayout = true
+            _ = try layout(at: 280)
+            XCTAssertTrue(normalized(label.stringValue).contains("0.0 pt"))
+        }
+
+        let longSuffix = "This semantic suffix is intentionally longer than one complete line before - 10.0 pt"
+        let longText = "Prefix: " + longSuffix
+        let longRange = (longText as NSString).range(of: longSuffix)
+        let longAtomicRange = NSRange(
+            location: longRange.location + (longSuffix as NSString).range(of: " - 10.0 pt").location,
+            length: (" - 10.0 pt" as NSString).length
+        )
+        let longContent = LocalizedSubtitle(
+            text: longText,
+            semanticGroups: [longRange],
+            atomicGroups: [longAtomicRange]
+        )
+        let longDisplay = DashboardSettingsComponents.subtitleDisplayText(
+            longContent,
+            constrainedTo: 90,
+            font: .systemFont(ofSize: 12)
+        )
+        XCTAssertTrue(
+            normalized(longDisplay).contains("- 10.0 pt"),
+            "an oversized semantic group must retain its atomic numeric suffix"
+        )
+    }
+
     func testNavigationRowAppliesSelectedAndInactiveStates() {
         let row = DashboardNavigationRowView()
         row.wantsLayer = true

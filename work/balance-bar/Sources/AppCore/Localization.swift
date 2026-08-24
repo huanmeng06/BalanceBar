@@ -119,6 +119,45 @@ enum AppLanguage: String, CaseIterable {
     }
 }
 
+/// A localized subtitle plus the semantic ranges declared by its resource.
+///
+/// Resources can wrap a static suffix and/or an interpolation in the
+/// `LocalizationSemanticMarker` pair. The ranges are kept separately from
+/// the rendered string so the settings subtitle component can decide whether
+/// a group fits on the current line without matching any language-specific
+/// text.
+struct LocalizedSubtitle: Equatable {
+    let text: String
+    let semanticGroups: [NSRange]
+    let atomicGroups: [NSRange]
+
+    init(
+        text: String,
+        semanticGroups: [NSRange] = [],
+        atomicGroups: [NSRange] = []
+    ) {
+        self.text = text
+        self.semanticGroups = semanticGroups
+        self.atomicGroups = atomicGroups
+    }
+
+    /// Compatibility-friendly aliases for callers that describe these as
+    /// ranges rather than groups.
+    var semanticGroupRanges: [NSRange] { semanticGroups }
+    var atomicGroupRanges: [NSRange] { atomicGroups }
+}
+
+/// Markup understood by `LocalizationResourceStore`. These markers are a
+/// resource/interpolation contract, not visible user-facing text. A semantic
+/// group moves as one unit when it fits on a complete line; an atomic group
+/// remains bound when its containing semantic group is long enough to wrap.
+enum LocalizationSemanticMarker {
+    static let semanticStart = "[[balancebar.semantic]]"
+    static let semanticEnd = "[[/balancebar.semantic]]"
+    static let atomicStart = "[[balancebar.atomic]]"
+    static let atomicEnd = "[[/balancebar.atomic]]"
+}
+
 /// Loads the explicit language sub-bundle instead of relying on the process
 /// bundle's localization fallback. The latter follows macOS preferences and
 /// cannot represent AppLanguage's runtime selection on macOS 14.
@@ -141,6 +180,20 @@ final class LocalizationResourceStore {
         arguments: [String] = [],
         preferredLanguages: [String] = Locale.preferredLanguages
     ) -> String {
+        localizedSubtitle(
+            key: key,
+            language: language,
+            arguments: arguments,
+            preferredLanguages: preferredLanguages
+        ).text
+    }
+
+    func localizedSubtitle(
+        key: LocalizationKey,
+        language: AppLanguage,
+        arguments: [String] = [],
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> LocalizedSubtitle {
         let resolvedLanguage = AppLanguage.resolved(
             for: language,
             preferredLanguages: preferredLanguages
@@ -170,7 +223,7 @@ final class LocalizationResourceStore {
         }
 
         NSLog("BalanceBar localization error: missing or invalid English key %@", key.rawKey)
-        return "⟦\(key.rawKey)⟧"
+        return LocalizedSubtitle(text: "⟦\(key.rawKey)⟧")
     }
 
     private func value(for key: LocalizationKey, localization: String) -> String? {
@@ -220,7 +273,7 @@ final class LocalizationResourceStore {
         _ format: String,
         key: LocalizationKey,
         arguments: [String]
-    ) -> String? {
+    ) -> LocalizedSubtitle? {
         guard let indices = placeholderIndices(in: format) else {
             return nil
         }
@@ -235,10 +288,96 @@ final class LocalizationResourceStore {
             return nil
         }
         guard !arguments.isEmpty || format.contains("%") else {
-            return format
+            return parseSemanticMarkers(in: format)
         }
         let cVarArguments: [CVarArg] = arguments.map { $0 as CVarArg }
-        return String(format: format, arguments: cVarArguments)
+        let rendered = String(format: format, arguments: cVarArguments)
+        return parseSemanticMarkers(in: rendered)
+    }
+
+    private enum SemanticMarkerKind {
+        case semantic
+        case atomic
+    }
+
+    private struct SemanticMarkerFrame {
+        let kind: SemanticMarkerKind
+        let start: Int
+    }
+
+    private func parseSemanticMarkers(in rendered: String) -> LocalizedSubtitle? {
+        var output = ""
+        var semanticGroups: [NSRange] = []
+        var atomicGroups: [NSRange] = []
+        var stack: [SemanticMarkerFrame] = []
+        var index = rendered.startIndex
+
+        while index < rendered.endIndex {
+            if rendered[index...].hasPrefix(LocalizationSemanticMarker.semanticStart) {
+                stack.append(SemanticMarkerFrame(
+                    kind: .semantic,
+                    start: output.utf16.count
+                ))
+                index = rendered.index(
+                    index,
+                    offsetBy: LocalizationSemanticMarker.semanticStart.count
+                )
+                continue
+            }
+            if rendered[index...].hasPrefix(LocalizationSemanticMarker.atomicStart) {
+                stack.append(SemanticMarkerFrame(
+                    kind: .atomic,
+                    start: output.utf16.count
+                ))
+                index = rendered.index(
+                    index,
+                    offsetBy: LocalizationSemanticMarker.atomicStart.count
+                )
+                continue
+            }
+            if rendered[index...].hasPrefix(LocalizationSemanticMarker.semanticEnd) {
+                guard let frame = stack.popLast(), frame.kind == .semantic else {
+                    return nil
+                }
+                let range = NSRange(
+                    location: frame.start,
+                    length: output.utf16.count - frame.start
+                )
+                guard range.length > 0 else { return nil }
+                semanticGroups.append(range)
+                index = rendered.index(
+                    index,
+                    offsetBy: LocalizationSemanticMarker.semanticEnd.count
+                )
+                continue
+            }
+            if rendered[index...].hasPrefix(LocalizationSemanticMarker.atomicEnd) {
+                guard let frame = stack.popLast(), frame.kind == .atomic else {
+                    return nil
+                }
+                let range = NSRange(
+                    location: frame.start,
+                    length: output.utf16.count - frame.start
+                )
+                guard range.length > 0 else { return nil }
+                atomicGroups.append(range)
+                index = rendered.index(
+                    index,
+                    offsetBy: LocalizationSemanticMarker.atomicEnd.count
+                )
+                continue
+            }
+
+            output.append(rendered[index])
+            index = rendered.index(after: index)
+        }
+
+        guard stack.isEmpty else { return nil }
+        return LocalizedSubtitle(
+            text: output,
+            semanticGroups: semanticGroups,
+            atomicGroups: atomicGroups
+        )
     }
 
     private func placeholderIndices(in format: String) -> Set<Int>? {
@@ -299,6 +438,20 @@ enum LocalizationRuntime {
             preferredLanguages: preferredLanguages
         )
     }
+
+    static func localizedSubtitle(
+        key: LocalizationKey,
+        language: AppLanguage = .selected,
+        arguments: [String] = [],
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> LocalizedSubtitle {
+        currentStore.localizedSubtitle(
+            key: key,
+            language: language,
+            arguments: arguments,
+            preferredLanguages: preferredLanguages
+        )
+    }
 }
 
 func tr(
@@ -307,4 +460,16 @@ func tr(
     language: AppLanguage = .selected
 ) -> String {
     LocalizationRuntime.localized(key: key, language: language, arguments: arguments)
+}
+
+func trSubtitle(
+    _ key: LocalizationKey,
+    arguments: [String] = [],
+    language: AppLanguage = .selected
+) -> LocalizedSubtitle {
+    LocalizationRuntime.localizedSubtitle(
+        key: key,
+        language: language,
+        arguments: arguments
+    )
 }

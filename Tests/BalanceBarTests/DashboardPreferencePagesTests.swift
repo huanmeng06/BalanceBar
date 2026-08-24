@@ -1130,10 +1130,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let card = try XCTUnwrap(rowsStack.superview)
             XCTAssertTrue(rows.allSatisfy { $0.superview === rowsStack })
             let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
-            // These live summaries contain an intentional non-breaking
-            // descriptor/value group, so they retain word/group wrapping in
-            // every locale. Ordinary CJK subtitles are covered separately by
-            // DashboardComponentsTests and use character wrapping.
+            // Structured subtitles use word wrapping so AppKit honors the
+            // marked range's non-breaking layout tokens. Unicode still
+            // supplies CJK character-boundary opportunities in the prefix.
             let expectedLineBreakMode: NSLineBreakMode = .byWordWrapping
 
             func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
@@ -2347,7 +2346,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
     }
 
     private func normalizeSettingsText(_ text: String) -> String {
-        text.replacingOccurrences(of: "\u{00A0}", with: " ")
+        text
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+            .replacingOccurrences(of: "\u{2060}", with: "")
     }
 
     private func renderedTextLines(for field: NSTextField) -> [String] {
