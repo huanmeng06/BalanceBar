@@ -1367,7 +1367,7 @@ final class UpdateTests: XCTestCase {
 
     func testDashboardUpdateCopyIsLocalizedAcrossAllSupportedLanguages() throws {
         let states: [AppLanguage] = [
-            .simplifiedChinese, .traditionalChinese, .japanese, .english,
+            .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .english,
             .korean, .spanish, .german
         ]
         for language in states {
@@ -1382,7 +1382,7 @@ final class UpdateTests: XCTestCase {
             case .simplifiedChinese:
                 XCTAssertEqual(presentation.subtitle, "新版本可用：1.0.6 -> 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "下载并安装")
-            case .traditionalChinese:
+            case .traditionalChineseTaiwan, .traditionalChineseHongKong:
                 XCTAssertEqual(presentation.subtitle, "新版本可用：1.0.6 -> 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "下載並安裝")
             case .japanese:
@@ -1423,7 +1423,7 @@ final class UpdateTests: XCTestCase {
             case .simplifiedChinese:
                 XCTAssertEqual(downloading.buttonTitle, "下载中 25% …")
                 XCTAssertEqual(installing.buttonTitle, "安装中 25% …")
-            case .traditionalChinese:
+            case .traditionalChineseTaiwan, .traditionalChineseHongKong:
                 XCTAssertEqual(downloading.buttonTitle, "下載中 25% …")
                 XCTAssertEqual(installing.buttonTitle, "安裝中 25% …")
             case .japanese:
@@ -1451,7 +1451,7 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(
                 latest.buttonTitle,
                 language == .simplifiedChinese ? "检查更新" :
-                    language == .traditionalChinese ? "檢查更新" :
+                (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "檢查更新" :
                     language == .japanese ? "アップデートを確認" :
                     language == .korean ? "업데이트 확인" :
                     language == .spanish ? "Buscar actualizaciones" :
@@ -1461,7 +1461,7 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(
                 UpdateChannel.stable.localizedTitle(using: language),
                 language == .simplifiedChinese ? "正式版" :
-                    language == .traditionalChinese ? "正式版" :
+                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "正式版" :
                     language == .japanese ? "正式版" :
                     language == .korean ? "정식 버전" :
                     language == .spanish ? "Estable" :
@@ -1470,7 +1470,7 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(
                 UpdateChannel.beta.localizedTitle(using: language),
                 language == .simplifiedChinese ? "Beta 测试版" :
-                    language == .traditionalChinese ? "Beta 測試版" :
+                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "Beta 測試版" :
                     language == .japanese ? "ベータテスト" :
                     language == .korean ? "베타 테스트" :
                     language == .spanish ? "Prueba beta" :

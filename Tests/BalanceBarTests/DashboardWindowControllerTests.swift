@@ -47,7 +47,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         for language in [
             AppLanguage.simplifiedChinese,
             .english,
-            .traditionalChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
             .japanese
         ] {
             AppLanguage.selected = language

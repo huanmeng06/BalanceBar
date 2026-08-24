@@ -4,18 +4,58 @@ import AppKit
 enum AppLanguage: String, CaseIterable {
     case system
     case simplifiedChinese
-    case traditionalChinese
+    case traditionalChineseTaiwan
+    case traditionalChineseHongKong
     case english
     case japanese
     case korean
     case spanish
     case german
 
+    /// Source compatibility for callers that used the pre-Issue-184 value.
+    /// It intentionally does not appear in `allCases`, so the picker exposes
+    /// only the two explicit regional choices.
+    static let traditionalChinese: AppLanguage = .traditionalChineseTaiwan
+    static let traditionalChineseTW: AppLanguage = .traditionalChineseTaiwan
+    static let traditionalChineseHK: AppLanguage = .traditionalChineseHongKong
+
+    private static let legacyTraditionalChineseRawValue = "traditionalChinese"
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case Self.legacyTraditionalChineseRawValue:
+            self = .traditionalChineseTaiwan
+        case "system":
+            self = .system
+        case "simplifiedChinese":
+            self = .simplifiedChinese
+        case "traditionalChineseTaiwan":
+            self = .traditionalChineseTaiwan
+        case "traditionalChineseHongKong":
+            self = .traditionalChineseHongKong
+        case "english":
+            self = .english
+        case "japanese":
+            self = .japanese
+        case "korean":
+            self = .korean
+        case "spanish":
+            self = .spanish
+        case "german":
+            self = .german
+        default:
+            return nil
+        }
+    }
+
     static var selected: AppLanguage {
         get {
             guard let rawValue = UserDefaults.standard.string(forKey: "appLanguage"),
                   let language = AppLanguage(rawValue: rawValue) else {
                 return .system
+            }
+            if rawValue == Self.legacyTraditionalChineseRawValue {
+                UserDefaults.standard.set(language.rawValue, forKey: "appLanguage")
             }
             return language
         }
@@ -39,8 +79,10 @@ enum AppLanguage: String, CaseIterable {
         switch language {
         case .simplifiedChinese:
             return .simplifiedChinese
-        case .traditionalChinese:
-            return .traditionalChinese
+        case .traditionalChineseTaiwan:
+            return .traditionalChineseTaiwan
+        case .traditionalChineseHongKong:
+            return .traditionalChineseHongKong
         case .japanese:
             return .japanese
         case .english:
@@ -54,8 +96,8 @@ enum AppLanguage: String, CaseIterable {
         case .system:
             for preferred in preferredLanguages {
                 let normalized = Self.normalizedPreferredLanguage(preferred)
-                if Self.isTraditionalChinese(normalized) {
-                    return .traditionalChinese
+                if let traditionalChinese = Self.traditionalChineseLanguage(for: normalized) {
+                    return traditionalChinese
                 }
                 if normalized.hasPrefix("zh") {
                     return .simplifiedChinese
@@ -84,7 +126,7 @@ enum AppLanguage: String, CaseIterable {
     /// so the Provider link starts at a consistent column in every language.
     var overviewLinkPrefixWidth: CGFloat {
         switch self {
-        case .simplifiedChinese, .traditionalChinese:
+        case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong:
             return 62
         case .english, .japanese, .korean, .spanish, .german, .system:
             return 72
@@ -101,8 +143,10 @@ enum AppLanguage: String, CaseIterable {
             return tr(.keyLocalizationFollowSystem, language: language)
         case .simplifiedChinese:
             return tr(.keyLocalizationSimplifiedChineseName, language: language)
-        case .traditionalChinese:
+        case .traditionalChineseTaiwan:
             return tr(.keyLocalizationTraditionalChineseName, language: language)
+        case .traditionalChineseHongKong:
+            return tr(.keyLocalizationTraditionalChineseHongKongName, language: language)
         case .japanese:
             return tr(.keyLocalizationJapaneseName, language: language)
         case .english:
@@ -122,8 +166,10 @@ enum AppLanguage: String, CaseIterable {
             return AppLanguage.resolved.resourceLocalization
         case .simplifiedChinese:
             return "zh-Hans"
-        case .traditionalChinese:
-            return "zh-Hant"
+        case .traditionalChineseTaiwan:
+            return "zh-Hant-TW"
+        case .traditionalChineseHongKong:
+            return "zh-Hant-HK"
         case .english:
             return "en"
         case .japanese:
@@ -138,14 +184,26 @@ enum AppLanguage: String, CaseIterable {
     }
 
     private static func normalizedPreferredLanguage(_ identifier: String) -> String {
-        identifier.lowercased().replacingOccurrences(of: "_", with: "-")
+        identifier
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
     }
 
-    private static func isTraditionalChinese(_ normalized: String) -> Bool {
-        normalized.hasPrefix("zh-hant")
-            || normalized.hasPrefix("zh-tw")
-            || normalized.hasPrefix("zh-hk")
-            || normalized.hasPrefix("zh-mo")
+    private static func traditionalChineseLanguage(for normalized: String) -> AppLanguage? {
+        guard normalized == "zh" || normalized.hasPrefix("zh-") else { return nil }
+        let components = normalized.split(separator: "-").map(String.init)
+        guard components.first == "zh" else { return nil }
+
+        // Region wins over script because macOS can emit both
+        // `zh-HK_Hant` and `zh-Hant-HK`.
+        if components.contains("hk") || components.contains("mo") {
+            return .traditionalChineseHongKong
+        }
+        if components.contains("tw") || components.contains("hant") {
+            return .traditionalChineseTaiwan
+        }
+        return nil
     }
 }
 
@@ -284,26 +342,66 @@ final class LocalizationResourceStore {
         }
         lock.unlock()
 
-        let bundle: Bundle? = if let resourceRoot {
-            Bundle(path: resourceRoot
-                .appendingPathComponent("\(localization).lproj", isDirectory: true)
-                .path)
-        } else if let path = bundle.path(forResource: localization, ofType: "lproj") {
-            Bundle(path: path)
-        } else {
-            ([Bundle(for: LocalizationResourceStore.self)] + Bundle.allBundles + Bundle.allFrameworks)
-                .lazy
-                .compactMap { candidate in
-                    candidate.path(forResource: localization, ofType: "lproj")
-                        .flatMap(Bundle.init(path:))
+        let lookupNames = Self.resourceLookupNames(for: localization)
+        let resolvedBundle: Bundle?
+        if let resourceRoot {
+            var found: Bundle?
+            for name in lookupNames {
+                let path = resourceRoot
+                    .appendingPathComponent("\(name).lproj", isDirectory: true)
+                    .path
+                if let candidate = Bundle(path: path) {
+                    found = candidate
+                    break
                 }
-                .first
+            }
+            resolvedBundle = found
+        } else {
+            var found: Bundle?
+            for name in lookupNames {
+                if let path = bundle.path(forResource: name, ofType: "lproj"),
+                   let candidate = Bundle(path: path) {
+                    found = candidate
+                    break
+                }
+            }
+            if found == nil {
+                let candidateBundles = [
+                    Bundle(for: LocalizationResourceStore.self)
+                ] + Bundle.allBundles + Bundle.allFrameworks
+                for candidateBundle in candidateBundles {
+                    for name in lookupNames {
+                        if let path = candidateBundle.path(forResource: name, ofType: "lproj"),
+                           let candidate = Bundle(path: path) {
+                            found = candidate
+                            break
+                        }
+                    }
+                    if found != nil { break }
+                }
+            }
+            resolvedBundle = found
         }
 
         lock.lock()
-        bundleCache[localization] = bundle
+        bundleCache[localization] = resolvedBundle
         lock.unlock()
-        return bundle
+        return resolvedBundle
+    }
+
+    private static func resourceLookupNames(for localization: String) -> [String] {
+        switch localization {
+        case "zh-Hant-TW":
+            // Keep older bundles with one generic Traditional resource
+            // readable as the Taiwan compatibility path.
+            return ["zh-Hant-TW", "zh-TW", "zh-Hant"]
+        case "zh-Hant-HK":
+            // Never use generic zh-Hant for Hong Kong: that would silently
+            // display Taiwan copy as Hong Kong copy.
+            return ["zh-Hant-HK", "zh-HK_Hant", "zh-HK"]
+        default:
+            return [localization]
+        }
     }
 
     private func render(

@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 resource_root="$source_dir/lang"
 bundle_root="${1:-}"
-localization_directories=(en.lproj zh-Hans.lproj zh-Hant.lproj ja.lproj ko.lproj es.lproj de.lproj)
+localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj)
 
 die() {
     printf 'localization-resource-probe: error: %s\n' "$*" >&2
