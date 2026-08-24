@@ -167,6 +167,22 @@ private func releaseNotesBackingScale(for view: NSView) -> CGFloat {
     max(1, view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
 }
 
+struct ReleaseNotesAppearanceColors {
+    let tableGrid: NSColor
+
+    static func resolved(for appearance: NSAppearance) -> ReleaseNotesAppearanceColors {
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if isDark {
+            return ReleaseNotesAppearanceColors(
+                tableGrid: NSColor.white.withAlphaComponent(0.32)
+            )
+        }
+        return ReleaseNotesAppearanceColors(
+            tableGrid: NSColor.black.withAlphaComponent(0.30)
+        )
+    }
+}
+
 final class ReleaseNotesTableCellBlock: NSTextTableBlock {
     let rowIndex: Int
     let columnIndex: Int
@@ -222,6 +238,7 @@ final class ReleaseNotesTableCellBlock: NSTextTableBlock {
         let top = snappedFrame.maxY
         let width = max(lineWidth, right - left)
         let height = max(lineWidth, top - bottom)
+        let colors = ReleaseNotesAppearanceColors.resolved(for: controlView.effectiveAppearance)
 
         if isHeader {
             NSColor.controlBackgroundColor.withAlphaComponent(0.72).setFill()
@@ -233,7 +250,7 @@ final class ReleaseNotesTableCellBlock: NSTextTableBlock {
             ).fill()
         }
 
-        NSColor.separatorColor.setFill()
+        colors.tableGrid.setFill()
 
         func horizontal(_ y: CGFloat) {
             NSRect(x: left, y: y, width: width, height: lineWidth).fill()

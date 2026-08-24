@@ -1266,6 +1266,38 @@ final class UpdateTests: XCTestCase {
         XCTAssertNil(rendered.attributes(at: htmlRange.location, effectiveRange: nil)[.link])
     }
 
+    func testReleaseNotesTableGridUsesVisibleLightAndDarkColors() throws {
+        let lightAppearance = try XCTUnwrap(NSAppearance(named: .aqua))
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        let lightColors = ReleaseNotesAppearanceColors.resolved(for: lightAppearance)
+        let darkColors = ReleaseNotesAppearanceColors.resolved(for: darkAppearance)
+
+        XCTAssertEqual(lightColors.tableGrid.alphaComponent, 0.30, accuracy: 0.001)
+        XCTAssertEqual(darkColors.tableGrid.alphaComponent, 0.32, accuracy: 0.001)
+        XCTAssertLessThan(lightColors.tableGrid.whiteComponent, 0.10)
+        XCTAssertGreaterThan(darkColors.tableGrid.whiteComponent, 0.90)
+
+        let markdown = """
+        项目 | 说明
+        --- | ---
+        修复 | 长文本用于验证表格在深色模式下仍有清晰网格。
+        """
+        for appearance in [lightAppearance, darkAppearance] {
+            let rendered = ReleaseNotesMarkdownRenderer.render(markdown: markdown)
+            let markerRange = (rendered.string as NSString).range(of: "项目")
+            let paragraph = try XCTUnwrap(
+                rendered.attributes(at: markerRange.location, effectiveRange: nil)[.paragraphStyle]
+                    as? NSParagraphStyle
+            )
+            let cell = try XCTUnwrap(paragraph.textBlocks.first as? ReleaseNotesTableCellBlock)
+            XCTAssertTrue(cell.drawsOuterLeftEdge)
+            XCTAssertTrue(cell.drawsOuterTopEdge)
+
+            let expected = ReleaseNotesAppearanceColors.resolved(for: appearance)
+            XCTAssertGreaterThanOrEqual(expected.tableGrid.alphaComponent, 0.30)
+        }
+    }
+
     func testUpdateNotesWindowLaysOutContentOnFirstPresentation() throws {
         let controller = UpdateNotesWindowController(onInstall: {})
         defer { controller.close() }
