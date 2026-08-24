@@ -241,6 +241,10 @@ final class StatusLinksEditorHostingView: NSView {
 
     var rowCount: Int { links.count }
     var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
+    /// The height currently owned by the editor's AppKit row. Unlike
+    /// `layoutHeight`, this is zero while the editor is hidden and therefore
+    /// is safe for mixed-card height calculation.
+    var currentHeight: CGFloat { max(0, heightConstraint?.constant ?? layoutHeight) }
     var isVisible: Bool {
         (heightConstraint?.constant ?? 0) > 0 && alphaValue > 0
     }
@@ -352,6 +356,10 @@ final class StatusLinksEditorHostingView: NSView {
         }
         linkUpdateGeneration &+= 1
         let updateGeneration = linkUpdateGeneration
+        // The editor owns the card height only while its own row is changing.
+        // Ordinary adaptive rows in the mixed card remain automatically
+        // measured before and after this transition.
+        setAncestorCardAutomaticHeightUpdates(false)
         let deferAddedRows = revealAddedRowsAtCompletion && newLinks.count > links.count
         links = newLinks
         // Deletion already has the desired motion: the removed row vanishes
@@ -382,6 +390,10 @@ final class StatusLinksEditorHostingView: NSView {
                 self.superview?.layoutSubtreeIfNeeded()
                 self.model.revealAddedRow(newLinks)
             }
+            self.setAncestorCardAutomaticHeightUpdates(true)
+            self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
+            self.superview?.needsLayout = true
+            self.superview?.layoutSubtreeIfNeeded()
             completion?()
         }
         if animated {
@@ -405,12 +417,17 @@ final class StatusLinksEditorHostingView: NSView {
         visibilityGeneration += 1
         let generation = visibilityGeneration
         let targetHeight: CGFloat = visible ? layoutHeight : 0
+        setAncestorCardAutomaticHeightUpdates(false)
         let applyLayout = { [weak self] in
             guard let self else { return }
             self.heightConstraint?.constant = targetHeight
             self.hostingHeightConstraint?.constant = targetHeight
             self.synchronizeAncestorCardHeight()
             self.needsLayout = true
+            self.superview?.needsLayout = true
+            self.superview?.layoutSubtreeIfNeeded()
+            self.setAncestorCardAutomaticHeightUpdates(true)
+            self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
             self.superview?.needsLayout = true
             self.superview?.layoutSubtreeIfNeeded()
         }
@@ -471,21 +488,15 @@ final class StatusLinksEditorHostingView: NSView {
     ) -> (NSView, NSLayoutConstraint, CGFloat)? {
         guard let rowsStack = superview as? NSStackView,
               let card = rowsStack.superview else { return nil }
-        let requiredHeight = max(1, ceil(rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
-            guard !row.isHidden else { return total }
-            if row is NSBox {
-                return total + 1
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let requiredHeight = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators,
+            rowHeight: { [weak self] row in
+                guard let self, row === self else { return nil }
+                return max(0, editorHeight ?? heightConstraint?.constant ?? layoutHeight)
             }
-            if row === self {
-                return total + max(0, editorHeight ?? heightConstraint?.constant ?? layoutHeight)
-            }
-            let explicit = row.constraints.first {
-                ($0.firstItem as? NSView) === row &&
-                    $0.firstAttribute == .height &&
-                    $0.relation == .equal
-            }?.constant
-            return total + max(1, explicit ?? row.fittingSize.height)
-        }))
+        )
         let constraint = card.constraints.first {
             ($0.firstItem as? NSView) === card &&
                 $0.firstAttribute == .height &&
@@ -506,5 +517,14 @@ final class StatusLinksEditorHostingView: NSView {
             info.1.constant = info.2
         }
         info.0.needsLayout = true
+    }
+
+    private func setAncestorCardAutomaticHeightUpdates(_ enabled: Bool) {
+        guard let rowsStack = superview as? NSStackView,
+              let card = rowsStack.superview else { return }
+        DashboardSettingsComponents.setSettingsCardAutomaticHeightUpdates(
+            for: card,
+            enabled: enabled
+        )
     }
 }

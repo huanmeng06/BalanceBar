@@ -1,7 +1,132 @@
 import AppKit
 
+private final class DashboardSettingsRowView: NSView {
+    let minimumHeight: CGFloat
+    let verticalPadding: CGFloat
+    weak var labelsView: NSStackView?
+    weak var controlView: NSView?
+    weak var cardView: DashboardSettingsCardView?
+    private var lastMeasuredWidth: CGFloat = -1
+    private var lastPreferredHeight: CGFloat = -1
+
+    init(minimumHeight: CGFloat, verticalPadding: CGFloat) {
+        self.minimumHeight = max(62, minimumHeight)
+        self.verticalPadding = max(0, verticalPadding)
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    var preferredRowHeight: CGFloat {
+        guard let labelsView, bounds.width > 0 else { return minimumHeight }
+
+        labelsView.layoutSubtreeIfNeeded()
+        let visibleLabels = labelsView.arrangedSubviews.filter { !$0.isHidden }
+        let labelHeight = visibleLabels.reduce(CGFloat(0)) { total, view in
+            let height = view.fittingSize.height
+            return total + height
+        } + max(0, CGFloat(visibleLabels.count - 1)) * labelsView.spacing
+        let controlHeight = controlView?.fittingSize.height ?? 0
+        return ceil(max(minimumHeight, max(labelHeight, controlHeight) + verticalPadding * 2))
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: preferredRowHeight)
+    }
+
+    override func layout() {
+        super.layout()
+        let currentWidth = bounds.width
+        let currentHeight = preferredRowHeight
+        let changed = abs(currentWidth - lastMeasuredWidth) > 0.5 ||
+            abs(currentHeight - lastPreferredHeight) > 0.5
+        lastMeasuredWidth = currentWidth
+        lastPreferredHeight = currentHeight
+        if changed {
+            cardView?.updateHeightIfNeeded()
+        }
+    }
+}
+
+private final class DashboardSettingsCardView: NSView {
+    weak var rowsStack: NSStackView?
+    weak var heightConstraint: NSLayoutConstraint?
+    var separators: [NSView] = []
+    var rowHeight: ((NSView) -> CGFloat?)?
+    // A custom provider owns an animated row's height (for example the
+    // Status Links editor) and synchronizes the card explicitly so the
+    // surrounding scroll anchors remain stable during that animation.
+    var automaticallyUpdatesHeight = true
+    private var isUpdatingHeight = false
+
+    override var intrinsicContentSize: NSSize {
+        guard let rowsStack, let heightConstraint else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: 1)
+        }
+        guard automaticallyUpdatesHeight else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: heightConstraint.constant)
+        }
+        return NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: rowsStack,
+                separators: separators,
+                rowHeight: rowHeight
+            )
+        )
+    }
+
+    override func layout() {
+        super.layout()
+        guard automaticallyUpdatesHeight, !isUpdatingHeight else { return }
+        rowsStack?.layoutSubtreeIfNeeded()
+        updateHeightIfNeeded()
+    }
+
+    func updateHeightIfNeeded() {
+        guard automaticallyUpdatesHeight,
+              !isUpdatingHeight,
+              let rowsStack,
+              let heightConstraint else { return }
+        let requiredHeight = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators,
+            rowHeight: rowHeight
+        )
+        guard abs(heightConstraint.constant - requiredHeight) > 0.5 else { return }
+        isUpdatingHeight = true
+        heightConstraint.constant = requiredHeight
+        invalidateIntrinsicContentSize()
+        isUpdatingHeight = false
+        superview?.needsLayout = true
+    }
+}
+
 enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
+
+    /// CJK UI copy is naturally breakable between characters. Word wrapping
+    /// treats a run without spaces as one large word, which leaves an entire
+    /// suffix stranded on the next line even though adaptive row height can
+    /// now accommodate the additional line. English keeps word wrapping so
+    /// Latin words are never laid out one letter at a time.
+    static func settingsSubtitleLineBreakMode(for subtitle: String) -> NSLineBreakMode {
+        // Numeric summaries intentionally use non-breaking spaces to keep a
+        // descriptor/value group together. Character wrapping would ignore
+        // that grouping and could split `0.0 pt` again.
+        if subtitle.contains("\u{00A0}") {
+            return .byWordWrapping
+        }
+        switch AppLanguage.resolved {
+        case .simplifiedChinese, .traditionalChinese, .japanese:
+            return .byCharWrapping
+        case .english, .system:
+            return .byWordWrapping
+        }
+    }
 
     struct PopUpItem {
         let title: String
@@ -105,7 +230,7 @@ enum DashboardSettingsComponents {
     ) -> NSView {
         let heading = NSTextField(labelWithString: title)
         heading.font = .systemFont(ofSize: 17, weight: .semibold)
-        let card = NSView()
+        let card = DashboardSettingsCardView()
         card.wantsLayer = true
         card.layer?.cornerRadius = 18
         card.layer?.backgroundColor = dashboardAdaptiveColor(
@@ -145,6 +270,7 @@ enum DashboardSettingsComponents {
         ])
         var separators: [NSView] = []
         for (index, row) in rows.enumerated() {
+            (row as? DashboardSettingsRowView)?.cardView = card
             rowsStack.addArrangedSubview(row)
             if let rowWidthReference, row !== rowWidthReference {
                 // Some arranged rows change their intrinsic width when they
@@ -168,23 +294,34 @@ enum DashboardSettingsComponents {
         }
 
         // NSView has no intrinsic height. Give the card the exact height of
-        // its rows so a short settings page cannot stretch the first row to
-        // fill the scroll viewport.
-        let visibleRows = rows.filter { !$0.isHidden }
-        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
-            let explicitHeight = row.constraints.first {
-                ($0.firstItem as? NSView) === row &&
-                    $0.firstAttribute == .height &&
-                    $0.relation == .equal
-            }?.constant
-            let fittingHeight = rowHeight?(row) ?? row.fittingSize.height
-            return partial + max(1, explicitHeight ?? fittingHeight)
-        }
-        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count) * settingsSeparatorHeight
+        // its current rows so a short settings page cannot stretch the first
+        // row to fill the scroll viewport. The card re-evaluates this value
+        // after layout because wrapping labels are width-sensitive, including
+        // when a custom provider owns one peer row.
         let cardHeightConstraint = card.heightAnchor.constraint(
-            equalToConstant: max(1, ceil(rowsHeight + separatorHeight))
+            equalToConstant: settingsCardHeight(
+                rowsStack: rowsStack,
+                separators: separators,
+                rowHeight: rowHeight
+            )
         )
+        // The arranged rows own required minimums. Keep the aggregate card
+        // height just below required so a visibility/content transition can
+        // pass through one layout transaction without asking AppKit to break
+        // a row floor while the stack is converging; the synchronized value
+        // remains the exact steady-state height after layout.
+        cardHeightConstraint.priority = NSLayoutConstraint.Priority(rawValue: 999)
         cardHeightConstraint.isActive = true
+        card.rowsStack = rowsStack
+        card.heightConstraint = cardHeightConstraint
+        card.separators = separators
+        card.rowHeight = rowHeight
+        card.setContentHuggingPriority(.required, for: .vertical)
+        card.setContentCompressionResistancePriority(.required, for: .vertical)
+        card.invalidateIntrinsicContentSize()
+        // A custom provider may own one row's height, but it must not disable
+        // adaptive remeasurement for the other rows in the same card.
+        card.automaticallyUpdatesHeight = true
         onLayoutCreated?(rowsStack, cardHeightConstraint, separators)
 
         let section = NSStackView(views: [heading, card])
@@ -206,9 +343,17 @@ enum DashboardSettingsComponents {
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11
     ) -> NSView {
-        let row = NSView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.heightAnchor.constraint(equalToConstant: max(62, minimumHeight)).isActive = true
+        let row = DashboardSettingsRowView(
+            minimumHeight: minimumHeight,
+            verticalPadding: verticalPadding
+        )
+        // Keep a required floor for short rows. The low-priority equality
+        // preserves the old compact geometry as a fallback while allowing
+        // the row's intrinsic content height to win when a subtitle wraps.
+        row.heightAnchor.constraint(greaterThanOrEqualToConstant: row.minimumHeight).isActive = true
+        let compactHeightConstraint = row.heightAnchor.constraint(equalToConstant: row.minimumHeight)
+        compactHeightConstraint.priority = .defaultLow
+        compactHeightConstraint.isActive = true
 
         let label = titleLabel ?? NSTextField(labelWithString: title)
         label.stringValue = title
@@ -231,11 +376,25 @@ enum DashboardSettingsComponents {
             detail.textColor = .secondaryLabelColor
             detail.isEditable = false
             detail.isSelectable = false
+            // `subtitleLabel` is part of the public row contract. Callers
+            // often create it with `labelWithString:` so they can update the
+            // summary later; that initializer is single-line/truncating by
+            // default. Normalize both supplied and internally-created labels
+            // here so every subtitle uses the available row width and can
+            // contribute its full fitting height.
+            detail.usesSingleLineMode = false
+            detail.lineBreakMode = Self.settingsSubtitleLineBreakMode(for: subtitle)
+            detail.maximumNumberOfLines = 0
+            detail.cell?.wraps = true
+            detail.cell?.isScrollable = false
             detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            detail.setContentHuggingPriority(.defaultLow, for: .horizontal)
             labels.addArrangedSubview(detail)
         }
         labels.translatesAutoresizingMaskIntoConstraints = false
         labels.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row.labelsView = labels
+        row.controlView = control
         row.addSubview(labels)
         let padding = max(0, verticalPadding)
         var constraints = [
@@ -257,6 +416,50 @@ enum DashboardSettingsComponents {
         }
         NSLayoutConstraint.activate(constraints)
         return row
+    }
+
+    static func setSettingsCardAutomaticHeightUpdates(
+        for view: NSView,
+        enabled: Bool
+    ) {
+        guard let card = view as? DashboardSettingsCardView else { return }
+        card.automaticallyUpdatesHeight = enabled
+        if enabled {
+            card.needsLayout = true
+            card.superview?.needsLayout = true
+        }
+    }
+
+    static func settingsRowHeight(
+        _ row: NSView,
+        rowHeight: ((NSView) -> CGFloat?)? = nil
+    ) -> CGFloat {
+        if let customHeight = rowHeight?(row) {
+            return max(1, customHeight)
+        }
+        if let adaptiveRow = row as? DashboardSettingsRowView {
+            return max(1, adaptiveRow.preferredRowHeight)
+        }
+        let explicitHeight = row.constraints.first {
+            ($0.firstItem as? NSView) === row &&
+                $0.firstAttribute == .height &&
+                $0.relation == .equal &&
+                $0.priority == .required
+        }?.constant
+        return max(1, explicitHeight ?? row.fittingSize.height)
+    }
+
+    static func settingsCardHeight(
+        rowsStack: NSStackView,
+        separators: [NSView],
+        rowHeight: ((NSView) -> CGFloat?)? = nil
+    ) -> CGFloat {
+        let rowsHeight = rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
+            guard !(row is NSBox), !row.isHidden else { return total }
+            return total + settingsRowHeight(row, rowHeight: rowHeight)
+        }
+        let separatorHeight = CGFloat(separators.filter { !$0.isHidden }.count) * settingsSeparatorHeight
+        return max(1, ceil(rowsHeight + separatorHeight))
     }
 
     static func makePageHeader(_ title: String, subtitle: String) -> NSStackView {

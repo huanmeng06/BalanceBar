@@ -101,6 +101,184 @@ final class DashboardComponentsTests: XCTestCase {
         )
     }
 
+    func testSettingsRowsAdaptToLocalizedSubtitleHeightAcrossWindowWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let fixtures: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "这是用于验证窗口缩放后副标题完整换行并同步更新卡片高度的长说明文字示例。"),
+            (.traditionalChinese, "這是用於驗證視窗縮放後副標題完整換行並同步更新卡片高度的長說明文字範例。"),
+            (.japanese, "これはウィンドウ幅の変更後も副題が完全に折り返され、カードの高さが更新されることを確認する説明文です。"),
+            (.english, "This subtitle verifies resized-window wrapping and keeps the full settings text visible.")
+        ]
+
+        for (language, longSubtitle) in fixtures {
+            AppLanguage.selected = language
+            let subtitle = NSTextField(wrappingLabelWithString: longSubtitle)
+            let control = NSSwitch()
+            let longRow = DashboardSettingsComponents.makeSettingsRow(
+                "Localized title",
+                subtitle: longSubtitle,
+                subtitleLabel: subtitle,
+                control: control
+            )
+            let shortRow = DashboardSettingsComponents.makeSettingsRow("Short title")
+            var rowsStack: NSStackView?
+            var separators: [NSView] = []
+            let section = DashboardSettingsComponents.makeSettingsSection(
+                "Localized settings",
+                rows: [longRow, shortRow],
+                onLayoutCreated: { stack, _, createdSeparators in
+                    rowsStack = stack
+                    separators = createdSeparators
+                }
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 516, height: 360),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = section
+            defer { window.orderOut(nil) }
+
+            func layout(at width: CGFloat) throws -> (rowHeight: CGFloat, cardHeight: CGFloat) {
+                window.setContentSize(NSSize(width: width, height: 360))
+                window.layoutIfNeeded()
+                let stack = try XCTUnwrap(rowsStack)
+                let card = try XCTUnwrap(stack.superview)
+                return (longRow.frame.height, card.frame.height)
+            }
+
+            let narrow = try layout(at: 516)
+            XCTAssertGreaterThan(narrow.rowHeight, 62, "(language) long subtitle should grow at narrow width")
+            XCTAssertEqual(
+                narrow.cardHeight,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: try XCTUnwrap(rowsStack),
+                    separators: separators
+                ),
+                accuracy: 0.5,
+                "(language) card height must follow visible row and separator heights"
+            )
+            XCTAssertEqual(shortRow.frame.height, 62, accuracy: 0.5, "(language) short row minimum height")
+
+            let labels = try XCTUnwrap(longRow.subviews.compactMap { $0 as? NSStackView }.first)
+            let subtitleFrame = subtitle.convert(subtitle.bounds, to: longRow)
+            let labelsFrame = labels.convert(labels.bounds, to: longRow)
+            XCTAssertTrue(longRow.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame), "(language) labels must stay in row")
+            XCTAssertEqual(
+                subtitle.lineBreakMode,
+                language == .english ? .byWordWrapping : .byCharWrapping,
+                "(language) subtitle should use the script-appropriate wrapping mode"
+            )
+            XCTAssertLessThanOrEqual(
+                subtitle.cell!.cellSize(
+                    forBounds: NSRect(x: 0, y: 0, width: subtitle.bounds.width, height: .greatestFiniteMagnitude)
+                ).height,
+                subtitleFrame.height + 0.5,
+                "(language) subtitle must fit its frame"
+            )
+            XCTAssertEqual(control.frame.midY, longRow.bounds.midY, accuracy: 0.5, "(language) control must stay centered")
+            XCTAssertEqual(separators.count, 1)
+            XCTAssertEqual(separators[0].frame.width, rowsStack!.frame.width, accuracy: 0.5)
+
+            let wide = try layout(at: 740)
+            XCTAssertLessThan(wide.rowHeight, narrow.rowHeight, "(language) row should shrink after widening")
+            XCTAssertLessThan(wide.cardHeight, narrow.cardHeight, "(language) card should shrink after widening")
+
+            let narrowAgain = try layout(at: 516)
+            XCTAssertEqual(narrowAgain.rowHeight, narrow.rowHeight, accuracy: 0.5, "(language) narrow layout must be reversible")
+            XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5, "(language) card height must be reversible")
+
+            subtitle.stringValue = "Short subtitle"
+            subtitle.invalidateIntrinsicContentSize()
+            longRow.needsLayout = true
+            section.needsLayout = true
+            window.layoutIfNeeded()
+            XCTAssertEqual(longRow.frame.height, 62, accuracy: 0.5, "(language) content changes must shrink the row")
+            XCTAssertEqual(shortRow.frame.height, 62, accuracy: 0.5, "(language) sibling minimum height must remain stable")
+        }
+    }
+
+    func testCallerProvidedSubtitleLabelsStayMultilineForFutureRows() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+        let longSubtitle = "This future settings entry has a deliberately long summary so a caller-created labelWithString label must wrap beside its control instead of truncating."
+        let subtitle = NSTextField(labelWithString: longSubtitle)
+        let row = DashboardSettingsComponents.makeSettingsRow(
+            "Future entry",
+            subtitle: longSubtitle,
+            subtitleLabel: subtitle,
+            control: NSSwitch()
+        )
+        var rowsStack: NSStackView?
+        var separators: [NSView] = []
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Future settings",
+            rows: [row],
+            onLayoutCreated: { stack, _, createdSeparators in
+                rowsStack = stack
+                separators = createdSeparators
+            }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 260),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = section
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) throws -> (rowHeight: CGFloat, cardHeight: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: 260))
+            window.layoutIfNeeded()
+            let stack = try XCTUnwrap(rowsStack)
+            let card = try XCTUnwrap(stack.superview)
+            return (row.frame.height, card.frame.height)
+        }
+
+        let narrow = try layout(at: 516)
+        XCTAssertFalse(subtitle.usesSingleLineMode)
+        XCTAssertEqual(subtitle.lineBreakMode, .byWordWrapping)
+        XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
+        XCTAssertTrue(subtitle.cell?.wraps == true)
+        XCTAssertGreaterThan(narrow.rowHeight, 62)
+        let subtitleFrame = subtitle.convert(subtitle.bounds, to: row)
+        XCTAssertLessThanOrEqual(
+            subtitle.cell!.cellSize(
+                forBounds: NSRect(
+                    x: 0,
+                    y: 0,
+                    width: subtitle.bounds.width,
+                    height: .greatestFiniteMagnitude
+                )
+            ).height,
+            subtitleFrame.height + 0.5
+        )
+        XCTAssertEqual(
+            narrow.cardHeight,
+            DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: try XCTUnwrap(rowsStack),
+                separators: separators
+            ),
+            accuracy: 0.5
+        )
+
+        let wide = try layout(at: 740)
+        XCTAssertLessThan(wide.rowHeight, narrow.rowHeight)
+        XCTAssertLessThan(wide.cardHeight, narrow.cardHeight)
+
+        subtitle.stringValue = "Short summary"
+        subtitle.invalidateIntrinsicContentSize()
+        row.needsLayout = true
+        section.needsLayout = true
+        let short = try layout(at: 516)
+        XCTAssertEqual(short.rowHeight, 62, accuracy: 0.5)
+        XCTAssertEqual(short.cardHeight, 62, accuracy: 0.5)
+    }
+
     func testNavigationRowAppliesSelectedAndInactiveStates() {
         let row = DashboardNavigationRowView()
         row.wantsLayer = true

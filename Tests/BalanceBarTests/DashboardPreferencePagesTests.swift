@@ -236,6 +236,114 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testMenuPageMixedStatusCardRemeasuresOrdinaryRowsAndRapidVisibilityChanges() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MixedStatusCard.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showStatusMenu = true
+        let controller = DashboardMenuPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [StatusLink(title: "Status", url: "https://status.example")],
+                    onChange: { _, _, _ in },
+                    onAdd: {},
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 820),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+
+        let subtitle = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.stringValue == "Show customizable service status links" }
+        )
+        let statusRow = try XCTUnwrap(subtitle.superview?.superview)
+        let rowsStack = try XCTUnwrap(statusRow.superview as? NSStackView)
+        let card = try XCTUnwrap(rowsStack.superview)
+        let editor = try XCTUnwrap(descendants(of: page).compactMap { $0 as? StatusLinksEditorHostingView }.first)
+        let statusSwitch = try XCTUnwrap(
+            descendants(of: statusRow)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "showStatusMenu" }
+        )
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+
+        func expectedCardHeight() -> CGFloat {
+            DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: rowsStack,
+                separators: separators,
+                rowHeight: { row in
+                    row === editor ? editor.currentHeight : nil
+                }
+            )
+        }
+
+        func layout(at width: CGFloat) -> (statusRowHeight: CGFloat, cardHeight: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: 820))
+            window.layoutIfNeeded()
+            XCTAssertEqual(card.frame.height, expectedCardHeight(), accuracy: 0.5)
+            XCTAssertEqual(statusSwitch.frame.midY, statusRow.bounds.midY, accuracy: 0.5)
+            XCTAssertEqual(editor.frame.height, editor.currentHeight, accuracy: 0.5)
+            return (statusRow.frame.height, card.frame.height)
+        }
+
+        let longSubtitle = "This status-link summary is intentionally long so the ordinary row in the mixed Open Project card must wrap beside its switch and remain fully visible after every width and content transition."
+        subtitle.stringValue = longSubtitle
+        subtitle.invalidateIntrinsicContentSize()
+        statusRow.needsLayout = true
+        let narrow = layout(at: 516)
+        XCTAssertFalse(subtitle.usesSingleLineMode)
+        XCTAssertEqual(subtitle.lineBreakMode, .byWordWrapping)
+        XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
+        XCTAssertTrue(subtitle.cell?.wraps == true)
+        XCTAssertGreaterThan(narrow.statusRowHeight, 62)
+        let wide = layout(at: 740)
+        XCTAssertLessThan(wide.statusRowHeight, narrow.statusRowHeight)
+        XCTAssertLessThan(wide.cardHeight, narrow.cardHeight)
+        let narrowAgain = layout(at: 516)
+        XCTAssertEqual(narrowAgain.statusRowHeight, narrow.statusRowHeight, accuracy: 0.5)
+        XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5)
+
+        subtitle.stringValue = "Short status summary"
+        subtitle.invalidateIntrinsicContentSize()
+        statusRow.needsLayout = true
+        let short = layout(at: 516)
+        XCTAssertLessThan(short.statusRowHeight, narrow.statusRowHeight)
+        subtitle.stringValue = longSubtitle
+        subtitle.invalidateIntrinsicContentSize()
+        statusRow.needsLayout = true
+        let restored = layout(at: 516)
+        XCTAssertEqual(restored.statusRowHeight, narrow.statusRowHeight, accuracy: 0.5)
+        XCTAssertEqual(restored.cardHeight, narrow.cardHeight, accuracy: 0.5)
+
+        for visible in [false, true, false, true, false, true] {
+            controller.updateStatusVisibility(visible, animated: false)
+            _ = layout(at: 516)
+        }
+        XCTAssertEqual(editor.currentHeight, editor.layoutHeight, accuracy: 0.5)
+        XCTAssertEqual(card.frame.height, expectedCardHeight(), accuracy: 0.5)
+    }
+
     func testMenuBarPreviewPresentationUsesSharedSnapshotValues() {
         let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
         let presentation = DashboardMenuBarPage.presentation(
@@ -752,10 +860,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
-        XCTAssertEqual(iconSummary?.stringValue, "微调图标上下像素位置：Y 轴 - 0.3 pt")
-        XCTAssertEqual(amountSummary?.stringValue, "微调金额上下像素位置：Y 轴 + 0.5 pt")
         XCTAssertEqual(
-            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
+            iconSummary.map { normalizeSettingsText($0.stringValue) },
+            "微调图标上下像素位置：Y 轴 - 0.3 pt"
+        )
+        XCTAssertEqual(
+            amountSummary.map { normalizeSettingsText($0.stringValue) },
+            "微调金额上下像素位置：Y 轴 + 0.5 pt"
+        )
+        XCTAssertEqual(
+            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
+                .map { normalizeSettingsText($0.stringValue) },
             "调整 BalanceBar 与其他项目的空隙：宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
@@ -864,11 +979,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let refreshedLabels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertEqual(
-            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }?.stringValue,
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
+                .map { normalizeSettingsText($0.stringValue) },
             "微调图标上下像素位置：Y 轴 + 0.7 pt"
         )
         XCTAssertEqual(
-            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }?.stringValue,
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
+                .map { normalizeSettingsText($0.stringValue) },
             "微调金额上下像素位置：Y 轴 - 0.8 pt"
         )
         XCTAssertEqual(
@@ -881,6 +998,227 @@ final class DashboardPreferencePagesTests: XCTestCase {
             -0.8,
             accuracy: 0.001
         )
+    }
+
+    func testMenuBarPreviewRowsAdaptForJapaneseAndEnglishWindowWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let suiteName = "DashboardPreferencePagesTests.MenuBarAdaptiveRows.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
+        for language in [AppLanguage.japanese, .english] {
+            AppLanguage.selected = language
+            let page = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: snapshot,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay()
+            ))
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 516, height: 520),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            defer { window.orderOut(nil) }
+
+            let subtitleText = language == .japanese
+                ? "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"
+                : "The menu bar updates with Provider data in real time"
+            let subtitle = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.stringValue == subtitleText }
+            )
+            let row = try XCTUnwrap(subtitle.superview?.superview)
+            let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
+            let card = try XCTUnwrap(rowsStack.superview)
+            let control = try XCTUnwrap(row.subviews.first { !($0 is NSStackView) })
+
+            window.layoutIfNeeded()
+            let narrowHeight = row.frame.height
+            XCTAssertGreaterThan(narrowHeight, DashboardMenuBarPage.previewRowHeight, "(language) preview must grow when its subtitle wraps")
+            XCTAssertLessThanOrEqual(
+                subtitle.cell!.cellSize(
+                    forBounds: NSRect(x: 0, y: 0, width: subtitle.bounds.width, height: .greatestFiniteMagnitude)
+                ).height,
+                subtitle.bounds.height + 0.5,
+                "(language) preview subtitle must not be clipped"
+            )
+            XCTAssertEqual(control.frame.midY, row.bounds.midY, accuracy: 0.5, "(language) preview control must remain centered")
+            XCTAssertEqual(
+                card.frame.height,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+                ),
+                accuracy: 0.5
+            )
+
+            window.setContentSize(NSSize(width: 740, height: 520))
+            window.layoutIfNeeded()
+            XCTAssertLessThan(row.frame.height, narrowHeight, "(language) preview row should shrink at wide width")
+            XCTAssertLessThan(card.frame.height, narrowHeight + DashboardSettingsComponents.settingsSeparatorHeight)
+
+            window.setContentSize(NSSize(width: 516, height: 520))
+            window.layoutIfNeeded()
+            XCTAssertEqual(row.frame.height, narrowHeight, accuracy: 0.5, "(language) preview row should recover at narrow width")
+        }
+    }
+
+    func testMenuBarTypographySummaryRowsWrapExternalLabelsAcrossWindowWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let summaryIdentifiers = [
+            DashboardMenuBarPage.iconOffsetSummaryIdentifier,
+            DashboardMenuBarPage.amountOffsetSummaryIdentifier,
+            DashboardMenuBarPage.widthAdjustmentSummaryIdentifier
+        ]
+        let expectedSignedSuffixes: [AppLanguage: [String]] = [
+            .simplifiedChinese: ["Y 轴 + 0.0 pt", "Y 轴 + 0.0 pt", "宽度 + 0.0 pt"],
+            .traditionalChinese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
+            .japanese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "幅 + 0.0 pt"],
+            .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"]
+        ]
+        let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
+
+        for language in [
+            AppLanguage.simplifiedChinese,
+            .traditionalChinese,
+            .japanese,
+            .english
+        ] {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.MenuBarExternalSummaries.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let page = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay()
+            ))
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 516, height: 700),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            defer { window.orderOut(nil) }
+
+            let summaries = try summaryIdentifiers.map { identifier in
+                try XCTUnwrap(
+                    descendants(of: page)
+                        .compactMap { $0 as? NSTextField }
+                        .first { $0.identifier?.rawValue == identifier }
+                )
+            }
+            let rows = try summaries.map { try XCTUnwrap($0.superview?.superview) }
+            let rowsStack = try XCTUnwrap(rows.first?.superview as? NSStackView)
+            let card = try XCTUnwrap(rowsStack.superview)
+            XCTAssertTrue(rows.allSatisfy { $0.superview === rowsStack })
+            let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
+            // These live summaries contain an intentional non-breaking
+            // descriptor/value group, so they retain word/group wrapping in
+            // every locale. Ordinary CJK subtitles are covered separately by
+            // DashboardComponentsTests and use character wrapping.
+            let expectedLineBreakMode: NSLineBreakMode = .byWordWrapping
+
+            func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
+                window.setContentSize(NSSize(width: width, height: 700))
+                window.layoutIfNeeded()
+                for index in summaries.indices {
+                    let summary = summaries[index]
+                    let row = rows[index]
+                    XCTAssertFalse(summary.usesSingleLineMode, "multiline mode for \(language)")
+                    XCTAssertEqual(summary.lineBreakMode, expectedLineBreakMode, "wrapping mode for \(language)")
+                    XCTAssertEqual(summary.maximumNumberOfLines, 0, "unlimited lines for \(language)")
+                    XCTAssertTrue(summary.cell?.wraps == true, "cell wrapping for \(language)")
+                    if normalizeSettingsText(summary.stringValue).contains(expectedSuffixes[index]) {
+                        let renderedLines = renderedTextLines(for: summary)
+                        XCTAssertTrue(
+                            renderedLines.contains {
+                                normalizeSettingsText($0).contains(expectedSuffixes[index])
+                            },
+                            "signed descriptor/value suffix must stay together for \(language): \(renderedLines)"
+                        )
+                    }
+                    let summaryFrame = summary.convert(summary.bounds, to: row)
+                    XCTAssertLessThanOrEqual(
+                        summary.cell!.cellSize(
+                            forBounds: NSRect(
+                                x: 0,
+                                y: 0,
+                                width: summary.bounds.width,
+                                height: .greatestFiniteMagnitude
+                            )
+                        ).height,
+                        summaryFrame.height + 0.5,
+                        "summary fitting height for \(language)"
+                    )
+                    let slider = try XCTUnwrap(
+                        descendants(of: row).compactMap { $0 as? NSSlider }.first
+                    )
+                    let sliderFrame = slider.convert(slider.bounds, to: row)
+                    XCTAssertEqual(
+                        sliderFrame.midY,
+                        row.bounds.midY,
+                        accuracy: 0.5,
+                        "slider remains centered for \(language)"
+                    )
+                }
+                XCTAssertEqual(
+                    card.frame.height,
+                    DashboardSettingsComponents.settingsCardHeight(
+                        rowsStack: rowsStack,
+                        separators: rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+                    ),
+                    accuracy: 0.5,
+                    "typography card height for \(language)"
+                )
+                return (rows.map(\.frame.height), card.frame.height)
+            }
+
+            let narrow = try layout(at: 516)
+            XCTAssertTrue(
+                narrow.rowHeights.contains { $0 > 66.5 },
+                "at least one real slider summary must grow at narrow width for \(language)"
+            )
+            let wide = try layout(at: 740)
+            XCTAssertTrue(
+                zip(wide.rowHeights, narrow.rowHeights).allSatisfy { $0 <= $1 + 0.5 },
+                "real slider rows must not grow when widened for \(language)"
+            )
+            XCTAssertLessThan(wide.cardHeight, narrow.cardHeight, "card must shrink when widened for \(language)")
+            let narrowAgain = try layout(at: 516)
+            for (restored, original) in zip(narrowAgain.rowHeights, narrow.rowHeights) {
+                XCTAssertEqual(restored, original, accuracy: 0.5)
+            }
+            XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5)
+
+            summaries[0].stringValue = "Short summary"
+            summaries[0].invalidateIntrinsicContentSize()
+            rows[0].needsLayout = true
+            page.needsLayout = true
+            let short = try layout(at: 516)
+            summaries[0].stringValue = longReplacement
+            summaries[0].invalidateIntrinsicContentSize()
+            rows[0].needsLayout = true
+            page.needsLayout = true
+            let changed = try layout(at: 516)
+            XCTAssertGreaterThan(changed.rowHeights[0], short.rowHeights[0], "content changes must grow the real row for \(language)")
+            XCTAssertGreaterThan(changed.cardHeight, short.cardHeight, "content changes must grow the real card for \(language)")
+        }
     }
 
     func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {
@@ -1036,7 +1374,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
             accuracy: 0.001
         )
-        XCTAssertEqual(summary?.stringValue, "调整 BalanceBar 与其他项目的空隙：宽度 + 7.4 pt")
+        XCTAssertEqual(
+            summary.map { normalizeSettingsText($0.stringValue) },
+            "调整 BalanceBar 与其他项目的空隙：宽度 + 7.4 pt"
+        )
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
         XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
@@ -1148,6 +1489,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             let labels = descendants(of: page).compactMap { $0 as? NSTextField }
             let labelStrings = labels.map(\.stringValue)
+            let normalizedLabelStrings = labelStrings.map(normalizeSettingsText)
             let expectedEndpointLabels: (minimum: String, maximum: String)
             switch language {
             case .simplifiedChinese:
@@ -1206,7 +1548,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
             for expectedSubtitle in expectedSubtitles {
                 XCTAssertTrue(
-                    labelStrings.contains(expectedSubtitle),
+                    normalizedLabelStrings.contains(expectedSubtitle),
                     "localized subtitle \(expectedSubtitle) for \(language)"
                 )
             }
@@ -2000,5 +2342,51 @@ final class DashboardPreferencePagesTests: XCTestCase {
             current = candidate.superview
         }
         return nil
+    }
+
+    private func normalizeSettingsText(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
+    private func renderedTextLines(for field: NSTextField) -> [String] {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = field.lineBreakMode
+        if #available(macOS 10.15, *) {
+            paragraphStyle.lineBreakStrategy = field.lineBreakStrategy
+        }
+        let storage = NSTextStorage(
+            string: field.stringValue,
+            attributes: [
+                .font: field.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                .paragraphStyle: paragraphStyle
+            ]
+        )
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(
+            size: NSSize(width: max(1, field.bounds.width), height: .greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 0
+        textContainer.lineBreakMode = field.lineBreakMode
+        layoutManager.addTextContainer(textContainer)
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        var lines: [String] = []
+        var glyphIndex = 0
+        while glyphIndex < layoutManager.numberOfGlyphs {
+            var glyphRange = NSRange()
+            layoutManager.lineFragmentRect(
+                forGlyphAt: glyphIndex,
+                effectiveRange: &glyphRange,
+                withoutAdditionalLayout: true
+            )
+            let characterRange = layoutManager.characterRange(
+                forGlyphRange: glyphRange,
+                actualGlyphRange: nil
+            )
+            lines.append((field.stringValue as NSString).substring(with: characterRange))
+            glyphIndex = NSMaxRange(glyphRange)
+        }
+        return lines
     }
 }

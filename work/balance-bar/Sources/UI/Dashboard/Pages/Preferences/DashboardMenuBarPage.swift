@@ -1070,21 +1070,10 @@ final class DashboardMenuBarPage {
     private func updatePreviewCardLayout() {
         guard let previewRowsStack,
               let previewCardHeightConstraint else { return }
-        previewRowsStack.layoutSubtreeIfNeeded()
-        let visibleRows = previewRowsStack.arrangedSubviews.filter {
-            !($0 is NSBox) && !$0.isHidden
-        }
-        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
-            let explicitHeight = row.constraints.first {
-                ($0.firstItem as? NSView) === row
-                    && $0.firstAttribute == .height
-                    && $0.relation == .equal
-            }?.constant
-            return partial + max(1, explicitHeight ?? row.fittingSize.height)
-        }
-        let separatorHeight = CGFloat(previewSeparators.filter { !$0.isHidden }.count)
-            * DashboardSettingsComponents.settingsSeparatorHeight
-        previewCardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
+        previewCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: previewRowsStack,
+            separators: previewSeparators
+        )
     }
 
     private func previewPrimaryInkBounds(in background: NSView) -> NSRect? {
@@ -1181,36 +1170,43 @@ final class DashboardMenuBarPage {
 
     private static func signedPointText(_ value: Double) -> String {
         let sign = value < 0 ? "-" : "+"
-        return "\(sign) \(String(format: "%.1f", abs(value))) pt"
+        // Keep the signed value as one layout word. AppKit's normal word
+        // wrapping can otherwise leave a trailing `0.0 pt` fragment on the
+        // next line while the localized descriptor (for example `幅 +` or
+        // `宽度 - 10.0`) remains on the previous line. Non-breaking spaces
+        // are visually identical to ordinary spaces, but make the complete
+        // descriptor/value group move together at narrow widths.
+        let nonBreakingSpace = "\u{00A0}"
+        return "\(nonBreakingSpace)\(sign)\(nonBreakingSpace)\(String(format: "%.1f", abs(value)))\(nonBreakingSpace)pt"
     }
 
     private static func iconOffsetSummaryText(y: Double) -> String {
         let valueText = signedPointText(y)
         return tr(
-            "微调图标上下像素位置：Y 轴 \(valueText)",
-            "Fine-tune the icon's vertical position: Y axis \(valueText)",
-            "微調圖示上下像素位置：Y 軸 \(valueText)",
-            "アイコンの上下位置を微調整：Y 軸 \(valueText)"
+            "微调图标上下像素位置：Y\u{00A0}轴\(valueText)",
+            "Fine-tune the icon's vertical position: Y\u{00A0}axis\(valueText)",
+            "微調圖示上下像素位置：Y\u{00A0}軸\(valueText)",
+            "アイコンの上下位置を微調整：Y\u{00A0}軸\(valueText)"
         )
     }
 
     private static func amountOffsetSummaryText(y: Double) -> String {
         let valueText = signedPointText(y)
         return tr(
-            "微调金额上下像素位置：Y 轴 \(valueText)",
-            "Fine-tune the amount's vertical position: Y axis \(valueText)",
-            "微調金額上下像素位置：Y 軸 \(valueText)",
-            "金額の上下位置を微調整：Y 軸 \(valueText)"
+            "微调金额上下像素位置：Y\u{00A0}轴\(valueText)",
+            "Fine-tune the amount's vertical position: Y\u{00A0}axis\(valueText)",
+            "微調金額上下像素位置：Y\u{00A0}軸\(valueText)",
+            "金額の上下位置を微調整：Y\u{00A0}軸\(valueText)"
         )
     }
 
     private static func widthAdjustmentSummaryText(_ value: Double) -> String {
         let valueText = signedPointText(value)
         return tr(
-            "调整 BalanceBar 与其他项目的空隙：宽度 \(valueText)",
-            "Adjusts the gap between BalanceBar and other items: Width \(valueText)",
-            "調整 BalanceBar 與其他項目的間距：寬度 \(valueText)",
-            "BalanceBar と他の項目との間隔を調整：幅 \(valueText)"
+            "调整 BalanceBar 与其他项目的空隙：宽度\(valueText)",
+            "Adjusts the gap between BalanceBar and other items: Width\(valueText)",
+            "調整 BalanceBar 與其他項目的間距：寬度\(valueText)",
+            "BalanceBar と他の項目との間隔を調整：幅\(valueText)"
         )
     }
 
