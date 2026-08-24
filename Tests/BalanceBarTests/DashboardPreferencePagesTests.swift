@@ -860,10 +860,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         let iconSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
-        XCTAssertEqual(iconSummary?.stringValue, "微调图标上下像素位置：Y 轴 - 0.3 pt")
-        XCTAssertEqual(amountSummary?.stringValue, "微调金额上下像素位置：Y 轴 + 0.5 pt")
         XCTAssertEqual(
-            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }?.stringValue,
+            iconSummary.map { normalizeSettingsText($0.stringValue) },
+            "微调图标上下像素位置：Y 轴 - 0.3 pt"
+        )
+        XCTAssertEqual(
+            amountSummary.map { normalizeSettingsText($0.stringValue) },
+            "微调金额上下像素位置：Y 轴 + 0.5 pt"
+        )
+        XCTAssertEqual(
+            labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
+                .map { normalizeSettingsText($0.stringValue) },
             "调整 BalanceBar 与其他项目的空隙：宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
@@ -972,11 +979,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let refreshedLabels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertEqual(
-            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }?.stringValue,
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
+                .map { normalizeSettingsText($0.stringValue) },
             "微调图标上下像素位置：Y 轴 + 0.7 pt"
         )
         XCTAssertEqual(
-            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }?.stringValue,
+            refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
+                .map { normalizeSettingsText($0.stringValue) },
             "微调金额上下像素位置：Y 轴 - 0.8 pt"
         )
         XCTAssertEqual(
@@ -1071,6 +1080,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             DashboardMenuBarPage.amountOffsetSummaryIdentifier,
             DashboardMenuBarPage.widthAdjustmentSummaryIdentifier
         ]
+        let expectedSignedSuffixes: [AppLanguage: [String]] = [
+            .simplifiedChinese: ["Y 轴 + 0.0 pt", "Y 轴 + 0.0 pt", "宽度 + 0.0 pt"],
+            .traditionalChinese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
+            .japanese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "幅 + 0.0 pt"],
+            .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"]
+        ]
         let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
 
         for language in [
@@ -1112,15 +1127,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let rowsStack = try XCTUnwrap(rows.first?.superview as? NSStackView)
             let card = try XCTUnwrap(rowsStack.superview)
             XCTAssertTrue(rows.allSatisfy { $0.superview === rowsStack })
+            let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
 
             func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
                 window.setContentSize(NSSize(width: width, height: 700))
                 window.layoutIfNeeded()
-                for (summary, row) in zip(summaries, rows) {
+                for index in summaries.indices {
+                    let summary = summaries[index]
+                    let row = rows[index]
                     XCTAssertFalse(summary.usesSingleLineMode, "multiline mode for \(language)")
                     XCTAssertEqual(summary.lineBreakMode, .byWordWrapping, "wrapping mode for \(language)")
                     XCTAssertEqual(summary.maximumNumberOfLines, 0, "unlimited lines for \(language)")
                     XCTAssertTrue(summary.cell?.wraps == true, "cell wrapping for \(language)")
+                    if normalizeSettingsText(summary.stringValue).contains(expectedSuffixes[index]) {
+                        let renderedLines = renderedTextLines(for: summary)
+                        XCTAssertTrue(
+                            renderedLines.contains {
+                                normalizeSettingsText($0).contains(expectedSuffixes[index])
+                            },
+                            "signed descriptor/value suffix must stay together for \(language): \(renderedLines)"
+                        )
+                    }
                     let summaryFrame = summary.convert(summary.bounds, to: row)
                     XCTAssertLessThanOrEqual(
                         summary.cell!.cellSize(
@@ -1342,7 +1369,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             AppPreferences.menuBarStatusItemWidthAdjustmentDefault,
             accuracy: 0.001
         )
-        XCTAssertEqual(summary?.stringValue, "调整 BalanceBar 与其他项目的空隙：宽度 + 7.4 pt")
+        XCTAssertEqual(
+            summary.map { normalizeSettingsText($0.stringValue) },
+            "调整 BalanceBar 与其他项目的空隙：宽度 + 7.4 pt"
+        )
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
         XCTAssertEqual(slider?.doubleValue ?? .nan, 7.4, accuracy: 0.001)
@@ -1454,6 +1484,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             let labels = descendants(of: page).compactMap { $0 as? NSTextField }
             let labelStrings = labels.map(\.stringValue)
+            let normalizedLabelStrings = labelStrings.map(normalizeSettingsText)
             let expectedEndpointLabels: (minimum: String, maximum: String)
             switch language {
             case .simplifiedChinese:
@@ -1512,7 +1543,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
             for expectedSubtitle in expectedSubtitles {
                 XCTAssertTrue(
-                    labelStrings.contains(expectedSubtitle),
+                    normalizedLabelStrings.contains(expectedSubtitle),
                     "localized subtitle \(expectedSubtitle) for \(language)"
                 )
             }
@@ -2306,5 +2337,51 @@ final class DashboardPreferencePagesTests: XCTestCase {
             current = candidate.superview
         }
         return nil
+    }
+
+    private func normalizeSettingsText(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
+    private func renderedTextLines(for field: NSTextField) -> [String] {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = field.lineBreakMode
+        if #available(macOS 10.15, *) {
+            paragraphStyle.lineBreakStrategy = field.lineBreakStrategy
+        }
+        let storage = NSTextStorage(
+            string: field.stringValue,
+            attributes: [
+                .font: field.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                .paragraphStyle: paragraphStyle
+            ]
+        )
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(
+            size: NSSize(width: max(1, field.bounds.width), height: .greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 0
+        textContainer.lineBreakMode = field.lineBreakMode
+        layoutManager.addTextContainer(textContainer)
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        var lines: [String] = []
+        var glyphIndex = 0
+        while glyphIndex < layoutManager.numberOfGlyphs {
+            var glyphRange = NSRange()
+            layoutManager.lineFragmentRect(
+                forGlyphAt: glyphIndex,
+                effectiveRange: &glyphRange,
+                withoutAdditionalLayout: true
+            )
+            let characterRange = layoutManager.characterRange(
+                forGlyphRange: glyphRange,
+                actualGlyphRange: nil
+            )
+            lines.append((field.stringValue as NSString).substring(with: characterRange))
+            glyphIndex = NSMaxRange(glyphRange)
+        }
+        return lines
     }
 }
