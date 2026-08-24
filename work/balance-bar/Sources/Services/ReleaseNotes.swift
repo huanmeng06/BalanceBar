@@ -146,6 +146,151 @@ extension AppLanguage {
     }
 }
 
+func releaseNotesPixelAligned(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+    (value * scale).rounded() / scale
+}
+
+func releaseNotesPixelAlignedRect(_ rect: NSRect, scale: CGFloat) -> NSRect {
+    let minX = releaseNotesPixelAligned(rect.minX, scale: scale)
+    let minY = releaseNotesPixelAligned(rect.minY, scale: scale)
+    let maxX = releaseNotesPixelAligned(rect.maxX, scale: scale)
+    let maxY = releaseNotesPixelAligned(rect.maxY, scale: scale)
+    return NSRect(
+        x: minX,
+        y: minY,
+        width: max(0, maxX - minX),
+        height: max(0, maxY - minY)
+    )
+}
+
+private func releaseNotesBackingScale(for view: NSView) -> CGFloat {
+    max(1, view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
+}
+
+final class ReleaseNotesHeadingBlock: NSTextBlock {
+    let level: Int
+    var drawsDivider: Bool { level <= 2 }
+    var dividerEdge: NSRectEdge { .maxY }
+
+    init(level: Int) {
+        self.level = level
+        super.init()
+        setContentWidth(100, type: .percentageValueType)
+        setWidth(8, type: .absoluteValueType, for: .padding, edge: .maxY)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func drawBackground(
+        withFrame frameRect: NSRect,
+        in controlView: NSView,
+        characterRange: NSRange,
+        layoutManager: NSLayoutManager
+    ) {
+        guard drawsDivider else { return }
+        let scale = releaseNotesBackingScale(for: controlView)
+        let lineWidth = 1 / scale
+        let snappedFrame = releaseNotesPixelAlignedRect(frameRect, scale: scale)
+        let left = snappedFrame.minX
+        let right = snappedFrame.maxX
+        let top = snappedFrame.maxY
+        NSColor.separatorColor.setFill()
+        NSRect(
+            x: left,
+            y: top - lineWidth,
+            width: max(lineWidth, right - left),
+            height: lineWidth
+        ).fill()
+    }
+}
+
+final class ReleaseNotesTableCellBlock: NSTextTableBlock {
+    let rowIndex: Int
+    let columnIndex: Int
+    let rowCount: Int
+    let columnCount: Int
+    let isHeader: Bool
+    var drawsOuterLeftEdge: Bool { columnIndex == 0 }
+    var drawsOuterRightEdge: Bool { columnIndex == columnCount - 1 }
+    var drawsOuterTopEdge: Bool { rowIndex == 0 }
+    var drawsOuterBottomEdge: Bool { rowIndex == rowCount - 1 }
+
+    init(
+        table: NSTextTable,
+        rowIndex: Int,
+        columnIndex: Int,
+        rowCount: Int,
+        columnCount: Int,
+        isHeader: Bool
+    ) {
+        self.rowIndex = rowIndex
+        self.columnIndex = columnIndex
+        self.rowCount = rowCount
+        self.columnCount = columnCount
+        self.isHeader = isHeader
+        super.init(
+            table: table,
+            startingRow: rowIndex,
+            rowSpan: 1,
+            startingColumn: columnIndex,
+            columnSpan: 1
+        )
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func drawBackground(
+        withFrame frameRect: NSRect,
+        in controlView: NSView,
+        characterRange: NSRange,
+        layoutManager: NSLayoutManager
+    ) {
+        let scale = releaseNotesBackingScale(for: controlView)
+        let lineWidth = 1 / scale
+        let snappedFrame = releaseNotesPixelAlignedRect(frameRect, scale: scale)
+        let left = snappedFrame.minX
+        let right = snappedFrame.maxX
+        let bottom = snappedFrame.minY
+        let top = snappedFrame.maxY
+        let width = max(lineWidth, right - left)
+        let height = max(lineWidth, top - bottom)
+
+        if isHeader {
+            NSColor.controlBackgroundColor.withAlphaComponent(0.72).setFill()
+            NSRect(
+                x: left + lineWidth,
+                y: bottom + lineWidth,
+                width: max(lineWidth, width - lineWidth * 2),
+                height: max(lineWidth, height - lineWidth * 2)
+            ).fill()
+        }
+
+        let gridColor = NSColor.separatorColor
+        gridColor.setFill()
+
+        func horizontal(_ y: CGFloat) {
+            NSRect(x: left, y: y, width: width, height: lineWidth).fill()
+        }
+
+        func vertical(_ x: CGFloat) {
+            NSRect(x: x, y: bottom, width: lineWidth, height: height).fill()
+        }
+
+        horizontal(bottom)
+        if drawsOuterTopEdge {
+            horizontal(top - lineWidth)
+        }
+        vertical(right - lineWidth)
+        if drawsOuterLeftEdge {
+            vertical(left)
+        }
+    }
+}
+
 /// A deliberately small native Markdown subset for release notes. The
 /// renderer builds attributed text directly, so HTML tags, javascript URLs,
 /// and scripts are displayed as ordinary text rather than interpreted.
@@ -156,55 +301,159 @@ enum ReleaseNotesMarkdownRenderer {
         let nextIndex: Int
     }
 
+    private struct ListItem {
+        let marker: String
+        let content: String
+    }
+
+    private enum BlockKind: Equatable {
+        case heading(level: Int)
+        case table
+        case list
+        case paragraph
+        case code
+        case blank
+    }
+
+    private enum Block {
+        case heading(level: Int, content: String)
+        case table(MarkdownTable)
+        case list([ListItem])
+        case paragraph([String])
+        case code([String])
+        case blank
+
+        var kind: BlockKind {
+            switch self {
+            case let .heading(level, _): return .heading(level: level)
+            case .table: return .table
+            case .list: return .list
+            case .paragraph: return .paragraph
+            case .code: return .code
+            case .blank: return .blank
+            }
+        }
+    }
+
+    private struct BlockSpacing {
+        let before: CGFloat
+        let after: CGFloat
+    }
+
     static func render(markdown: String) -> NSAttributedString {
         let baseFont = NSFont.systemFont(ofSize: 14)
         let baseParagraph = NSMutableParagraphStyle()
         baseParagraph.lineSpacing = 2
-        baseParagraph.paragraphSpacing = 2
+        baseParagraph.paragraphSpacing = 0
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: baseFont,
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: baseParagraph
         ]
         let output = NSMutableAttributedString()
-        var inCodeFence = false
 
+        let blocks = parseBlocks(markdown: markdown)
+        var previousKind: BlockKind?
+        for (blockIndex, block) in blocks.enumerated() {
+            let spacing = collapsedSpacing(
+                previous: previousKind,
+                current: block.kind
+            )
+            let hasFollowingBlock = blockIndex < blocks.count - 1
+            switch block {
+            case let .heading(level, content):
+                appendHeading(
+                    level: level,
+                    content: content,
+                    beforeSpacing: spacing,
+                    hasFollowingBlock: hasFollowingBlock,
+                    into: output,
+                    baseAttributes: baseAttributes,
+                    baseParagraph: baseParagraph
+                )
+            case let .table(table):
+                appendTable(
+                    table,
+                    beforeSpacing: spacing,
+                    into: output,
+                    baseAttributes: baseAttributes,
+                    baseParagraph: baseParagraph
+                )
+            case let .list(items):
+                appendList(
+                    items,
+                    beforeSpacing: spacing,
+                    hasFollowingBlock: hasFollowingBlock,
+                    into: output,
+                    baseAttributes: baseAttributes,
+                    baseParagraph: baseParagraph
+                )
+            case let .paragraph(lines):
+                appendParagraph(
+                    lines,
+                    beforeSpacing: spacing,
+                    hasFollowingBlock: hasFollowingBlock,
+                    into: output,
+                    baseAttributes: baseAttributes,
+                    baseParagraph: baseParagraph
+                )
+            case let .code(lines):
+                appendCode(
+                    lines,
+                    beforeSpacing: spacing,
+                    hasFollowingBlock: hasFollowingBlock,
+                    into: output,
+                    baseAttributes: baseAttributes,
+                    baseParagraph: baseParagraph
+                )
+            case .blank:
+                // Source blank lines are modeled explicitly, then collapsed
+                // into the surrounding block margins instead of becoming
+                // extra empty paragraphs in the text view.
+                continue
+            }
+            previousKind = block.kind
+        }
+
+        return output
+    }
+
+    private static func parseBlocks(markdown: String) -> [Block] {
         let normalized = markdown
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         let lines = normalized.components(separatedBy: "\n")
-
+        var blocks = [Block]()
         var index = 0
+
         while index < lines.count {
             let rawLine = lines[index]
             if rawLine.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                inCodeFence.toggle()
-                if index < lines.count - 1 {
-                    output.append(NSAttributedString(string: "\n", attributes: baseAttributes))
+                index += 1
+                var codeLines = [String]()
+                while index < lines.count,
+                      !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                    codeLines.append(lines[index])
+                    index += 1
+                }
+                if index < lines.count {
+                    index += 1
+                }
+                blocks.append(.code(codeLines))
+                continue
+            }
+
+            if rawLine.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !blocks.isEmpty, !isBlank(blocks.last!) {
+                    blocks.append(.blank)
                 }
                 index += 1
                 continue
             }
 
-            if inCodeFence {
-                appendLine(
-                    rawLine,
-                    into: output,
-                    attributes: codeAttributes(paragraph: baseParagraph),
-                    addNewline: index < lines.count - 1
-                )
-                index += 1
-                continue
-            }
-
             if let table = tableParts(in: lines, startingAt: index) {
-                appendTable(table, into: output, baseAttributes: baseAttributes)
+                blocks.append(.table(table))
                 index = table.nextIndex
-                continue
-            }
-
-            if rawLine.trimmingCharacters(in: .whitespaces).isEmpty {
-                index += 1
                 continue
             }
 
@@ -214,84 +463,213 @@ enum ReleaseNotesMarkdownRenderer {
             }
 
             if let heading = headingParts(rawLine) {
-                let paragraph = paragraphStyle(from: baseParagraph, spacing: 10)
-                let headingFont = NSFont.systemFont(
-                    ofSize: max(15, 23 - CGFloat(heading.level * 2)),
-                    weight: .semibold
-                )
-                var attributes = baseAttributes
-                attributes[.font] = headingFont
-                attributes[.paragraphStyle] = paragraph
-                appendLine(
-                    heading.content,
-                    into: output,
-                    attributes: attributes,
-                    addNewline: index < lines.count - 1
-                )
+                blocks.append(.heading(level: heading.level, content: heading.content))
                 index += 1
                 continue
             }
 
-            let list = listParts(rawLine)
-            let content = list?.content ?? rawLine.trimmingCharacters(in: .whitespaces)
-            var attributes = baseAttributes
-            if let list {
-                let paragraph = paragraphStyle(from: baseParagraph, spacing: 5)
-                paragraph.firstLineHeadIndent = 0
-                paragraph.headIndent = 20
-                attributes[.paragraphStyle] = paragraph
-                appendInline("\(list.marker) ", into: output, attributes: attributes)
+            if let list = listParts(rawLine) {
+                var items = [ListItem(marker: list.marker, content: list.content)]
+                index += 1
+                while index < lines.count,
+                      let nextList = listParts(lines[index]) {
+                    items.append(ListItem(marker: nextList.marker, content: nextList.content))
+                    index += 1
+                }
+                blocks.append(.list(items))
+                continue
             }
-            appendInline(content, into: output, attributes: attributes)
-            if index < lines.count - 1 {
-                output.append(NSAttributedString(string: "\n", attributes: attributes))
-            }
+
+            var paragraphLines = [rawLine.trimmingCharacters(in: .whitespaces)]
             index += 1
+            while index < lines.count,
+                  !lines[index].trimmingCharacters(in: .whitespaces).isEmpty,
+                  !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("```"),
+                  tableParts(in: lines, startingAt: index) == nil,
+                  !isHorizontalRule(lines[index]),
+                  headingParts(lines[index]) == nil,
+                  listParts(lines[index]) == nil {
+                paragraphLines.append(lines[index].trimmingCharacters(in: .whitespaces))
+                index += 1
+            }
+            blocks.append(.paragraph(paragraphLines))
         }
 
-        return output
+        while blocks.first.map({ isBlank($0) }) == true {
+            blocks.removeFirst()
+        }
+        while blocks.last.map({ isBlank($0) }) == true {
+            blocks.removeLast()
+        }
+        return blocks
+    }
+
+    private static func blockSpacing(for kind: BlockKind) -> BlockSpacing {
+        switch kind {
+        case .heading:
+            return BlockSpacing(before: 16, after: 16)
+        case .table:
+            return BlockSpacing(before: 12, after: 20)
+        case .list:
+            return BlockSpacing(before: 4, after: 4)
+        case .paragraph, .code:
+            return BlockSpacing(before: 8, after: 8)
+        case .blank:
+            return BlockSpacing(before: 0, after: 0)
+        }
+    }
+
+    private static func isBlank(_ block: Block) -> Bool {
+        if case .blank = block { return true }
+        return false
+    }
+
+    private static func collapsedSpacing(
+        previous: BlockKind?,
+        current: BlockKind
+    ) -> CGFloat {
+        guard let previous else { return 0 }
+        let previousSpacing = blockSpacing(for: previous).after
+        let currentSpacing = blockSpacing(for: current).before
+        return max(previousSpacing, currentSpacing)
+    }
+
+    private static func paragraphStyle(
+        from source: NSParagraphStyle,
+        beforeSpacing: CGFloat
+    ) -> NSMutableParagraphStyle {
+        let paragraph = source.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+        paragraph.paragraphSpacingBefore = beforeSpacing
+        paragraph.paragraphSpacing = 0
+        return paragraph
+    }
+
+    private static func appendHeading(
+        level: Int,
+        content: String,
+        beforeSpacing: CGFloat,
+        hasFollowingBlock: Bool,
+        into output: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any],
+        baseParagraph: NSParagraphStyle
+    ) {
+        let paragraph = paragraphStyle(from: baseParagraph, beforeSpacing: beforeSpacing)
+        paragraph.textBlocks = [ReleaseNotesHeadingBlock(level: level)]
+        let headingFont = NSFont.systemFont(
+            ofSize: max(15, 23 - CGFloat(level * 2)),
+            weight: .semibold
+        )
+        var attributes = baseAttributes
+        attributes[.font] = headingFont
+        attributes[.paragraphStyle] = paragraph
+        appendLine(
+            content,
+            into: output,
+            attributes: attributes,
+            addNewline: hasFollowingBlock
+        )
+    }
+
+    private static func appendParagraph(
+        _ lines: [String],
+        beforeSpacing: CGFloat,
+        hasFollowingBlock: Bool,
+        into output: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any],
+        baseParagraph: NSParagraphStyle
+    ) {
+        var attributes = baseAttributes
+        attributes[.paragraphStyle] = paragraphStyle(
+            from: baseParagraph,
+            beforeSpacing: beforeSpacing
+        )
+        appendInline(lines.joined(separator: "\n"), into: output, attributes: attributes)
+        if hasFollowingBlock {
+            output.append(NSAttributedString(string: "\n", attributes: attributes))
+        }
+    }
+
+    private static func appendList(
+        _ items: [ListItem],
+        beforeSpacing: CGFloat,
+        hasFollowingBlock: Bool,
+        into output: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any],
+        baseParagraph: NSParagraphStyle
+    ) {
+        for (index, item) in items.enumerated() {
+            let paragraph = paragraphStyle(
+                from: baseParagraph,
+                beforeSpacing: index == 0 ? beforeSpacing : 4
+            )
+            paragraph.firstLineHeadIndent = 0
+            paragraph.headIndent = 20
+            var attributes = baseAttributes
+            attributes[.paragraphStyle] = paragraph
+            appendInline("\(item.marker) \(item.content)", into: output, attributes: attributes)
+            if index < items.count - 1 || hasFollowingBlock {
+                output.append(NSAttributedString(string: "\n", attributes: attributes))
+            }
+        }
+    }
+
+    private static func appendCode(
+        _ lines: [String],
+        beforeSpacing: CGFloat,
+        hasFollowingBlock: Bool,
+        into output: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any],
+        baseParagraph: NSParagraphStyle
+    ) {
+        let source = paragraphStyle(from: baseParagraph, beforeSpacing: beforeSpacing)
+        let attributes = codeAttributes(paragraph: source)
+        for (index, line) in lines.enumerated() {
+            appendInline(line, into: output, attributes: attributes)
+            if index < lines.count - 1 || hasFollowingBlock {
+                output.append(NSAttributedString(string: "\n", attributes: attributes))
+            }
+        }
     }
 
     private static func appendTable(
         _ table: MarkdownTable,
+        beforeSpacing: CGFloat,
         into output: NSMutableAttributedString,
-        baseAttributes: [NSAttributedString.Key: Any]
+        baseAttributes: [NSAttributedString.Key: Any],
+        baseParagraph: NSParagraphStyle
     ) {
         let columnCount = max(1, table.alignments.count)
+        let rowCount = max(1, table.rows.count)
         let textTable = NSTextTable()
         textTable.numberOfColumns = columnCount
         textTable.layoutAlgorithm = .automaticLayoutAlgorithm
-        textTable.collapsesBorders = true
+        textTable.setContentWidth(100, type: .percentageValueType)
+        textTable.setValue(100, type: .percentageValueType, for: .maximumWidth)
+        textTable.collapsesBorders = false
         textTable.hidesEmptyCells = false
 
         for (rowIndex, row) in table.rows.enumerated() {
             for columnIndex in 0..<columnCount {
-                let block = NSTextTableBlock(
+                let block = ReleaseNotesTableCellBlock(
                     table: textTable,
-                    startingRow: rowIndex,
-                    rowSpan: 1,
-                    startingColumn: columnIndex,
-                    columnSpan: 1
-                )
-                block.setWidth(
-                    1,
-                    type: .absoluteValueType,
-                    for: .border
+                    rowIndex: rowIndex,
+                    columnIndex: columnIndex,
+                    rowCount: rowCount,
+                    columnCount: columnCount,
+                    isHeader: rowIndex == 0
                 )
                 block.setWidth(
                     4,
                     type: .absoluteValueType,
                     for: .padding
                 )
-                block.setBorderColor(NSColor.separatorColor)
-                if rowIndex == 0 {
-                    block.backgroundColor = NSColor.controlBackgroundColor
-                }
+                block.setWidth(0, type: .absoluteValueType, for: .border)
+                block.setWidth(0, type: .absoluteValueType, for: .margin)
 
-                let sourceParagraph = baseAttributes[.paragraphStyle] as? NSParagraphStyle
-                    ?? NSParagraphStyle.default
-                let paragraph = paragraphStyle(from: sourceParagraph, spacing: 4)
-                paragraph.paragraphSpacing = 0
+                let paragraph = paragraphStyle(
+                    from: baseParagraph,
+                    beforeSpacing: rowIndex == 0 && columnIndex == 0 ? beforeSpacing : 0
+                )
                 paragraph.alignment = rowIndex == 0
                     ? .center
                     : table.alignments[columnIndex]
@@ -555,20 +933,11 @@ enum ReleaseNotesMarkdownRenderer {
         return ("\(digits).", content.description)
     }
 
-    private static func paragraphStyle(
-        from source: NSParagraphStyle,
-        spacing: CGFloat
-    ) -> NSMutableParagraphStyle {
-        let paragraph = source.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-        paragraph.paragraphSpacing = spacing
-        return paragraph
-    }
-
     private static func codeAttributes(
         paragraph: NSParagraphStyle
     ) -> [NSAttributedString.Key: Any] {
         let codeParagraph = paragraph.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-        codeParagraph.paragraphSpacing = 4
+        codeParagraph.paragraphSpacing = 0
         return [
             .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
             .foregroundColor: NSColor.labelColor,

@@ -235,6 +235,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             width: width,
             height: max(minimumHeight, ceil(usedHeight + inset.height * 2))
         )
+        notesTextView.needsDisplay = true
     }
 
     private func relayoutAfterPresentation() {
@@ -251,6 +252,11 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
 
     func windowDidResize(_ notification: Notification) {
         updateTextViewFrame()
+    }
+
+    func windowDidChangeBackingProperties(_ notification: Notification) {
+        updateTextViewFrame()
+        notesTextView.needsDisplay = true
     }
 
     @objc private func later(_ sender: NSButton) {

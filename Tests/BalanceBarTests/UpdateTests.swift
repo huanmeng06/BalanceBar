@@ -1210,8 +1210,65 @@ final class UpdateTests: XCTestCase {
             blockLayout.attributes(at: headingRange.location, effectiveRange: nil)[.paragraphStyle]
                 as? NSParagraphStyle
         )
-        XCTAssertTrue(headingParagraph.textBlocks.isEmpty)
+        let headingBlock = try XCTUnwrap(
+            headingParagraph.textBlocks.first as? ReleaseNotesHeadingBlock
+        )
+        XCTAssertTrue(headingBlock.drawsDivider)
+        XCTAssertEqual(headingBlock.dividerEdge, .maxY)
         XCTAssertFalse(blockLayout.string.contains("---"))
+
+        let tableRange = (blockLayout.string as NSString).range(of: "项目")
+        let firstTableParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: tableRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        let firstCell = try XCTUnwrap(
+            firstTableParagraph.textBlocks.first as? ReleaseNotesTableCellBlock
+        )
+        XCTAssertEqual(firstCell.rowCount, 2)
+        XCTAssertEqual(firstCell.columnCount, 2)
+        XCTAssertTrue(firstCell.isHeader)
+        XCTAssertTrue(firstCell.drawsOuterLeftEdge)
+        XCTAssertFalse(firstCell.drawsOuterRightEdge)
+        XCTAssertTrue(firstCell.drawsOuterTopEdge)
+        XCTAssertFalse(firstCell.drawsOuterBottomEdge)
+
+        let bodyMarkerRange = (blockLayout.string as NSString).range(of: "修复", options: .backwards)
+        let bodyRange = (blockLayout.string as NSString).range(of: "说明", options: [], range: NSRange(
+            location: bodyMarkerRange.location + bodyMarkerRange.length,
+            length: blockLayout.length - bodyMarkerRange.location - bodyMarkerRange.length
+        ))
+        let bodyParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        let lastCell = try XCTUnwrap(
+            bodyParagraph.textBlocks.first as? ReleaseNotesTableCellBlock
+        )
+        XCTAssertFalse(lastCell.isHeader)
+        XCTAssertTrue(lastCell.drawsOuterRightEdge)
+        XCTAssertTrue(lastCell.drawsOuterBottomEdge)
+
+        let secondHeadingRange = (blockLayout.string as NSString).range(of: "安装")
+        let secondHeadingParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: secondHeadingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertGreaterThan(
+            secondHeadingParagraph.paragraphSpacingBefore,
+            firstTableParagraph.paragraphSpacingBefore
+        )
+
+        let subheading = ReleaseNotesMarkdownRenderer.render(markdown: "### 子标题")
+        let subheadingRange = (subheading.string as NSString).range(of: "子标题")
+        let subheadingParagraph = try XCTUnwrap(
+            subheading.attributes(at: subheadingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        let subheadingBlock = try XCTUnwrap(
+            subheadingParagraph.textBlocks.first as? ReleaseNotesHeadingBlock
+        )
+        XCTAssertFalse(subheadingBlock.drawsDivider)
 
         let safeRange = (rendered.string as NSString).range(of: "Safe")
         let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
@@ -1259,6 +1316,127 @@ final class UpdateTests: XCTestCase {
         let titleLabelFrame = titleLabel.convert(titleLabel.bounds, to: contentView)
         let topInset = contentView.bounds.maxY - titleLabelFrame.maxY
         XCTAssertGreaterThanOrEqual(topInset, titlebarHeight + 20)
+    }
+
+    func testReleaseNotesReflowsLongContentAcrossLanguagesAndWindowWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        let longList = (1...14)
+            .map { "\($0). 这是一段用于验证窄窗口滚动和重复打开的较长更新说明。" }
+            .joined(separator: "\n")
+        let release = GitHubRelease(
+            tagName: "v9.9.9",
+            draft: false,
+            prerelease: true,
+            assets: [],
+            body: """
+            ## 修复与体验优化
+
+            项目 | 说明
+            --- | ---
+            长文本 | This is a deliberately long English and 中文 paragraph used to verify wrapping at narrow widths. 日本語 한국어 Español Deutsch.
+
+            ## 安装
+
+            1. 下载 BalanceBar-9.9.9.dmg。
+            2. Open the DMG and move BalanceBar.app into Applications.
+            3. 从应用程序文件夹启动 BalanceBar。
+
+            \(longList)
+            """
+        )
+        let languages: [AppLanguage] = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .english,
+            .japanese,
+            .korean,
+            .spanish,
+            .german
+        ]
+
+        for language in languages {
+            AppLanguage.selected = language
+            controller.show(
+                currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+                release: release
+            )
+            let window = try XCTUnwrap(controller.window)
+            for width in [520, 900] {
+                var frame = window.frame
+                frame.size = NSSize(width: width, height: 560)
+                window.setFrame(frame, display: false)
+                window.contentView?.layoutSubtreeIfNeeded()
+                let contentView = try XCTUnwrap(window.contentView)
+                let scrollView = try XCTUnwrap(
+                    updateTestDescendants(of: contentView)
+                        .compactMap { $0 as? NSScrollView }
+                        .first
+                )
+                let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+                XCTAssertGreaterThan(notesTextView.frame.width, 1)
+                XCTAssertGreaterThanOrEqual(
+                    notesTextView.frame.height,
+                    scrollView.contentView.bounds.height
+                )
+                if width == 520 {
+                    XCTAssertGreaterThan(
+                        notesTextView.frame.height,
+                        scrollView.contentView.bounds.height
+                    )
+                    let maxScrollY = max(
+                        0,
+                        notesTextView.frame.height - scrollView.contentView.bounds.height
+                    )
+                    scrollView.contentView.scroll(to: NSPoint(x: 0, y: maxScrollY))
+                    scrollView.reflectScrolledClipView(scrollView.contentView)
+                }
+            }
+            controller.show(
+                currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+                release: release
+            )
+            controller.window?.contentView?.layoutSubtreeIfNeeded()
+            XCTAssertTrue(controller.window?.isVisible == true)
+            controller.close()
+        }
+
+        AppLanguage.selected = .english
+        controller.show(
+            currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+            release: release
+        )
+        let englishTitle = try XCTUnwrap(
+            updateTestDescendants(of: try XCTUnwrap(controller.window?.contentView))
+                .compactMap { $0 as? NSTextField }
+                .first
+        ).stringValue
+        AppLanguage.selected = .japanese
+        controller.refreshForCurrentLanguage()
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        let japaneseTitle = try XCTUnwrap(
+            updateTestDescendants(of: try XCTUnwrap(controller.window?.contentView))
+                .compactMap { $0 as? NSTextField }
+                .first
+        ).stringValue
+        XCTAssertNotEqual(englishTitle, japaneseTitle)
+        controller.close()
+
+        XCTAssertEqual(releaseNotesPixelAligned(10.24, scale: 2), 10, accuracy: 0.001)
+        XCTAssertEqual(releaseNotesPixelAligned(10.26, scale: 2), 10.5, accuracy: 0.001)
+        XCTAssertEqual(releaseNotesPixelAligned(10.17, scale: 3), 31.0 / 3.0, accuracy: 0.001)
+        let snappedRect = releaseNotesPixelAlignedRect(
+            NSRect(x: 0.24, y: 1.17, width: 10.26, height: 5.24),
+            scale: 2
+        )
+        XCTAssertEqual(snappedRect.minX * 2, (snappedRect.minX * 2).rounded(), accuracy: 0.001)
+        XCTAssertEqual(snappedRect.minY * 2, (snappedRect.minY * 2).rounded(), accuracy: 0.001)
+        XCTAssertEqual(snappedRect.maxX * 2, (snappedRect.maxX * 2).rounded(), accuracy: 0.001)
+        XCTAssertEqual(snappedRect.maxY * 2, (snappedRect.maxY * 2).rounded(), accuracy: 0.001)
     }
 
     // MARK: - Dashboard state/action wiring and localization
