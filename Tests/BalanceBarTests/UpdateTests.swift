@@ -1211,12 +1211,18 @@ final class UpdateTests: XCTestCase {
                 as? NSParagraphStyle
         )
         XCTAssertFalse(headingParagraph.textBlocks.isEmpty)
+        let headingBlock = try XCTUnwrap(headingParagraph.textBlocks.first)
+        XCTAssertNotNil(headingBlock.borderColor(for: .maxY))
+        XCTAssertNil(headingBlock.borderColor(for: .minY))
         let ruleRange = (blockLayout.string as NSString).range(of: " ")
         let ruleParagraph = try XCTUnwrap(
             blockLayout.attributes(at: ruleRange.location, effectiveRange: nil)[.paragraphStyle]
                 as? NSParagraphStyle
         )
         XCTAssertFalse(ruleParagraph.textBlocks.isEmpty)
+        let ruleBlock = try XCTUnwrap(ruleParagraph.textBlocks.first)
+        XCTAssertNotNil(ruleBlock.borderColor(for: .maxY))
+        XCTAssertNil(ruleBlock.borderColor(for: .minY))
 
         let safeRange = (rendered.string as NSString).range(of: "Safe")
         let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
@@ -1255,6 +1261,15 @@ final class UpdateTests: XCTestCase {
             let glassViewClass = try XCTUnwrap(NSClassFromString("NSGlassEffectView"))
             XCTAssertTrue(window.contentView?.isKind(of: glassViewClass) == true)
         }
+        let titleLabel = try XCTUnwrap(
+            updateTestDescendants(of: contentView)
+                .compactMap { $0 as? NSTextField }
+                .first
+        )
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        let titleLabelFrame = titleLabel.convert(titleLabel.bounds, to: contentView)
+        let topInset = contentView.bounds.maxY - titleLabelFrame.maxY
+        XCTAssertGreaterThanOrEqual(topInset, titlebarHeight + 20)
     }
 
     // MARK: - Dashboard state/action wiring and localization

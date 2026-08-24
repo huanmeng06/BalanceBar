@@ -74,6 +74,11 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         guard let window else { return }
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
+        root.wantsLayer = true
+        root.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.82),
+            dark: NSColor.black.withAlphaComponent(0.20)
+        ).cgColor
 
         titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
         titleLabel.textColor = .labelColor
@@ -144,7 +149,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             surface = glassSurface
         } else {
             let visualEffectSurface = NSVisualEffectView()
-            visualEffectSurface.material = .windowBackground
+            visualEffectSurface.material = .underWindowBackground
             visualEffectSurface.blendingMode = .behindWindow
             visualEffectSurface.state = .active
             root.translatesAutoresizingMaskIntoConstraints = false
@@ -159,9 +164,10 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         }
         surface.autoresizingMask = [.width, .height]
         window.contentView = surface
+        let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
+            header.topAnchor.constraint(equalTo: root.topAnchor, constant: titlebarHeight + 24),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
             header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
             scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 16),

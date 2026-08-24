@@ -350,12 +350,12 @@ enum ReleaseNotesMarkdownRenderer {
             type: .absoluteValueType,
             for: .border
         )
-        block.setBorderColor(NSColor.separatorColor, for: .minY)
+        block.setBorderColor(NSColor.separatorColor, for: .maxY)
         block.setWidth(
             8,
             type: .absoluteValueType,
             for: .padding,
-            edge: .minY
+            edge: .maxY
         )
         return block
     }
