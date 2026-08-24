@@ -1070,7 +1070,6 @@ final class DashboardMenuBarPage {
     private func updatePreviewCardLayout() {
         guard let previewRowsStack,
               let previewCardHeightConstraint else { return }
-        previewRowsStack.layoutSubtreeIfNeeded()
         previewCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
             rowsStack: previewRowsStack,
             separators: previewSeparators

@@ -62,10 +62,27 @@ private final class DashboardSettingsCardView: NSView {
     var automaticallyUpdatesHeight = true
     private var isUpdatingHeight = false
 
+    override var intrinsicContentSize: NSSize {
+        guard let rowsStack, let heightConstraint else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: 1)
+        }
+        guard automaticallyUpdatesHeight else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: heightConstraint.constant)
+        }
+        return NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: rowsStack,
+                separators: separators,
+                rowHeight: rowHeight
+            )
+        )
+    }
+
     override func layout() {
         super.layout()
-        guard automaticallyUpdatesHeight, !isUpdatingHeight, let rowsStack else { return }
-        rowsStack.layoutSubtreeIfNeeded()
+        guard automaticallyUpdatesHeight, !isUpdatingHeight else { return }
+        rowsStack?.layoutSubtreeIfNeeded()
         updateHeightIfNeeded()
     }
 
@@ -82,7 +99,7 @@ private final class DashboardSettingsCardView: NSView {
         guard abs(heightConstraint.constant - requiredHeight) > 0.5 else { return }
         isUpdatingHeight = true
         heightConstraint.constant = requiredHeight
-        superview?.layoutSubtreeIfNeeded()
+        invalidateIntrinsicContentSize()
         isUpdatingHeight = false
         superview?.needsLayout = true
     }
@@ -258,9 +275,9 @@ enum DashboardSettingsComponents {
 
         // NSView has no intrinsic height. Give the card the exact height of
         // its current rows so a short settings page cannot stretch the first
-        // row to fill the scroll viewport. Cards without a custom row-height
-        // provider re-evaluate this value after every layout pass because
-        // wrapping labels are width-sensitive.
+        // row to fill the scroll viewport. The card re-evaluates this value
+        // after layout because wrapping labels are width-sensitive, including
+        // when a custom provider owns one peer row.
         let cardHeightConstraint = card.heightAnchor.constraint(
             equalToConstant: settingsCardHeight(
                 rowsStack: rowsStack,
@@ -268,12 +285,23 @@ enum DashboardSettingsComponents {
                 rowHeight: rowHeight
             )
         )
+        // The arranged rows own required minimums. Keep the aggregate card
+        // height just below required so a visibility/content transition can
+        // pass through one layout transaction without asking AppKit to break
+        // a row floor while the stack is converging; the synchronized value
+        // remains the exact steady-state height after layout.
+        cardHeightConstraint.priority = NSLayoutConstraint.Priority(rawValue: 999)
         cardHeightConstraint.isActive = true
         card.rowsStack = rowsStack
         card.heightConstraint = cardHeightConstraint
         card.separators = separators
         card.rowHeight = rowHeight
-        card.automaticallyUpdatesHeight = rowHeight == nil
+        card.setContentHuggingPriority(.required, for: .vertical)
+        card.setContentCompressionResistancePriority(.required, for: .vertical)
+        card.invalidateIntrinsicContentSize()
+        // A custom provider may own one row's height, but it must not disable
+        // adaptive remeasurement for the other rows in the same card.
+        card.automaticallyUpdatesHeight = true
         onLayoutCreated?(rowsStack, cardHeightConstraint, separators)
 
         let section = NSStackView(views: [heading, card])
@@ -328,7 +356,19 @@ enum DashboardSettingsComponents {
             detail.textColor = .secondaryLabelColor
             detail.isEditable = false
             detail.isSelectable = false
+            // `subtitleLabel` is part of the public row contract. Callers
+            // often create it with `labelWithString:` so they can update the
+            // summary later; that initializer is single-line/truncating by
+            // default. Normalize both supplied and internally-created labels
+            // here so every subtitle uses the available row width and can
+            // contribute its full fitting height.
+            detail.usesSingleLineMode = false
+            detail.lineBreakMode = .byWordWrapping
+            detail.maximumNumberOfLines = 0
+            detail.cell?.wraps = true
+            detail.cell?.isScrollable = false
             detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            detail.setContentHuggingPriority(.defaultLow, for: .horizontal)
             labels.addArrangedSubview(detail)
         }
         labels.translatesAutoresizingMaskIntoConstraints = false
@@ -356,6 +396,18 @@ enum DashboardSettingsComponents {
         }
         NSLayoutConstraint.activate(constraints)
         return row
+    }
+
+    static func setSettingsCardAutomaticHeightUpdates(
+        for view: NSView,
+        enabled: Bool
+    ) {
+        guard let card = view as? DashboardSettingsCardView else { return }
+        card.automaticallyUpdatesHeight = enabled
+        if enabled {
+            card.needsLayout = true
+            card.superview?.needsLayout = true
+        }
     }
 
     static func settingsRowHeight(

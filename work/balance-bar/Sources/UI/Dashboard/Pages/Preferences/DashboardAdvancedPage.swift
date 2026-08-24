@@ -280,7 +280,6 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
     private func updateCardLayout() {
         guard let rowsStack = settingsRowsStack,
               let cardHeightConstraint = settingsCardHeightConstraint else { return }
-        rowsStack.layoutSubtreeIfNeeded()
         cardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
             rowsStack: rowsStack,
             separators: settingsSeparators

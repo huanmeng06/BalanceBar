@@ -179,7 +179,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             rows: projectRows,
             separatorIndices: [0, 1, 2, 3],
             rowHeight: { row in
-                (row as? StatusLinksEditorHostingView)?.layoutHeight
+                (row as? StatusLinksEditorHostingView)?.currentHeight
             }
         )
         DispatchQueue.main.async { [weak editor] in

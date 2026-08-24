@@ -192,6 +192,82 @@ final class DashboardComponentsTests: XCTestCase {
         }
     }
 
+    func testCallerProvidedSubtitleLabelsStayMultilineForFutureRows() throws {
+        let longSubtitle = "This future settings entry has a deliberately long summary so a caller-created labelWithString label must wrap beside its control instead of truncating."
+        let subtitle = NSTextField(labelWithString: longSubtitle)
+        let row = DashboardSettingsComponents.makeSettingsRow(
+            "Future entry",
+            subtitle: longSubtitle,
+            subtitleLabel: subtitle,
+            control: NSSwitch()
+        )
+        var rowsStack: NSStackView?
+        var separators: [NSView] = []
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Future settings",
+            rows: [row],
+            onLayoutCreated: { stack, _, createdSeparators in
+                rowsStack = stack
+                separators = createdSeparators
+            }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 260),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = section
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) throws -> (rowHeight: CGFloat, cardHeight: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: 260))
+            window.layoutIfNeeded()
+            let stack = try XCTUnwrap(rowsStack)
+            let card = try XCTUnwrap(stack.superview)
+            return (row.frame.height, card.frame.height)
+        }
+
+        let narrow = try layout(at: 516)
+        XCTAssertFalse(subtitle.usesSingleLineMode)
+        XCTAssertEqual(subtitle.lineBreakMode, .byWordWrapping)
+        XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
+        XCTAssertTrue(subtitle.cell?.wraps == true)
+        XCTAssertGreaterThan(narrow.rowHeight, 62)
+        let subtitleFrame = subtitle.convert(subtitle.bounds, to: row)
+        XCTAssertLessThanOrEqual(
+            subtitle.cell!.cellSize(
+                forBounds: NSRect(
+                    x: 0,
+                    y: 0,
+                    width: subtitle.bounds.width,
+                    height: .greatestFiniteMagnitude
+                )
+            ).height,
+            subtitleFrame.height + 0.5
+        )
+        XCTAssertEqual(
+            narrow.cardHeight,
+            DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: try XCTUnwrap(rowsStack),
+                separators: separators
+            ),
+            accuracy: 0.5
+        )
+
+        let wide = try layout(at: 740)
+        XCTAssertLessThan(wide.rowHeight, narrow.rowHeight)
+        XCTAssertLessThan(wide.cardHeight, narrow.cardHeight)
+
+        subtitle.stringValue = "Short summary"
+        subtitle.invalidateIntrinsicContentSize()
+        row.needsLayout = true
+        section.needsLayout = true
+        let short = try layout(at: 516)
+        XCTAssertEqual(short.rowHeight, 62, accuracy: 0.5)
+        XCTAssertEqual(short.cardHeight, 62, accuracy: 0.5)
+    }
+
     func testNavigationRowAppliesSelectedAndInactiveStates() {
         let row = DashboardNavigationRowView()
         row.wantsLayer = true
