@@ -1145,6 +1145,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
                 window.setContentSize(NSSize(width: width, height: 700))
                 window.layoutIfNeeded()
+                var sliderCenters: [CGFloat] = []
                 for index in summaries.indices {
                     let summary = summaries[index]
                     let row = rows[index]
@@ -1208,6 +1209,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         accuracy: 0.5,
                         "slider remains centered for \(language)"
                     )
+                    sliderCenters.append(sliderFrame.midX)
+                }
+                for center in sliderCenters.dropFirst() {
+                    XCTAssertEqual(
+                        center,
+                        sliderCenters[0],
+                        accuracy: 0.5,
+                        "slider tracks must share one horizontal alignment for \(language) at width \(width)"
+                    )
                 }
                 XCTAssertEqual(
                     card.frame.height,
@@ -1255,6 +1265,153 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertGreaterThan(changed.rowHeights[0], short.rowHeights[0], "content changes must grow the real row for \(language)")
             XCTAssertGreaterThan(changed.cardHeight, short.cardHeight, "content changes must grow the real card for \(language)")
         }
+    }
+
+    func testJapaneseMultilineSummariesKeepAllSliderTracksAlignedAcrossWidthsAndUpdates() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .japanese
+
+        let suiteName = "DashboardPreferencePagesTests.JapaneseSliderAlignment.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 700),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+
+        let summaryIdentifiers = [
+            DashboardMenuBarPage.iconOffsetSummaryIdentifier,
+            DashboardMenuBarPage.amountOffsetSummaryIdentifier,
+            DashboardMenuBarPage.widthAdjustmentSummaryIdentifier
+        ]
+        let summaries = try summaryIdentifiers.map { identifier in
+            try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == identifier }
+            )
+        }
+        let rows = try summaries.map { try XCTUnwrap($0.superview?.superview) }
+        let rowsStack = try XCTUnwrap(rows.first?.superview as? NSStackView)
+        let card = try XCTUnwrap(rowsStack.superview)
+        let sliders = try rows.map { row in
+            try XCTUnwrap(descendants(of: row).compactMap { $0 as? NSSlider }.first)
+        }
+
+        func controlGroup(for slider: NSSlider, in row: NSView) throws -> NSView {
+            var current: NSView = slider
+            while let parent = current.superview, parent !== row {
+                current = parent
+            }
+            return try XCTUnwrap(current.superview === row ? current : nil)
+        }
+
+        func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
+            window.setContentSize(NSSize(width: width, height: 700))
+            window.layoutIfNeeded()
+
+            var sliderCenters: [CGFloat] = []
+            for index in rows.indices {
+                let row = rows[index]
+                let summary = summaries[index]
+                let slider = sliders[index]
+                let group = try controlGroup(for: slider, in: row)
+                let sliderFrame = slider.convert(slider.bounds, to: row)
+                let groupFrame = group.convert(group.bounds, to: row)
+                let lines = renderedTextLines(for: summary)
+                XCTAssertGreaterThanOrEqual(
+                    lines.count,
+                    2,
+                    "Japanese summary must remain multiline at width \(width): \(lines)"
+                )
+                XCTAssertEqual(
+                    sliderFrame.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "Japanese slider \(index) must be vertically centered at width \(width)"
+                )
+                XCTAssertEqual(
+                    groupFrame.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "Japanese slider group \(index) must be vertically centered at width \(width)"
+                )
+                sliderCenters.append(sliderFrame.midX)
+            }
+            for center in sliderCenters.dropFirst() {
+                XCTAssertEqual(
+                    center,
+                    sliderCenters[0],
+                    accuracy: 0.5,
+                    "Japanese slider tracks must share one horizontal alignment at width \(width)"
+                )
+            }
+            XCTAssertEqual(
+                card.frame.height,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+                ),
+                accuracy: 0.5,
+                "Japanese card height must follow its rows at width \(width)"
+            )
+            return (rows.map(\.frame.height), card.frame.height)
+        }
+
+        let narrow = try layout(at: 516)
+        let wide = try layout(at: 740)
+        let narrowAgain = try layout(at: 516)
+        for (restored, original) in zip(narrowAgain.rowHeights, narrow.rowHeights) {
+            XCTAssertEqual(restored, original, accuracy: 0.5)
+        }
+        XCTAssertEqual(narrowAgain.cardHeight, narrow.cardHeight, accuracy: 0.5)
+        XCTAssertTrue(
+            zip(wide.rowHeights, narrow.rowHeights).allSatisfy { $0 <= $1 + 0.5 },
+            "Japanese rows must not grow when the window widens"
+        )
+
+        preferences.menuBarIconOffsetY = -0.7
+        preferences.menuBarAmountOffsetY = 0.8
+        preferences.menuBarStatusItemWidthAdjustment = -0.4
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        _ = try layout(at: 516)
+        XCTAssertEqual(
+            normalizeSettingsText(summaries[0].stringValue),
+            "アイコンの上下位置を微調整 Y 軸 - 0.7 pt"
+        )
+        XCTAssertEqual(
+            normalizeSettingsText(summaries[1].stringValue),
+            "金額の上下位置を微調整 Y 軸 + 0.8 pt"
+        )
+        XCTAssertEqual(
+            normalizeSettingsText(summaries[2].stringValue),
+            "BalanceBar と他の項目との間隔を調整 幅 - 0.4 pt"
+        )
+        XCTAssertEqual(sliders[0].doubleValue, -0.7, accuracy: 0.001)
+        XCTAssertEqual(sliders[1].doubleValue, 0.8, accuracy: 0.001)
+        XCTAssertEqual(sliders[2].doubleValue, -0.4, accuracy: 0.001)
     }
 
     func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {

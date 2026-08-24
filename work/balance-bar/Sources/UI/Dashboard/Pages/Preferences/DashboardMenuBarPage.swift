@@ -298,22 +298,32 @@ final class DashboardMenuBarPage {
     static let amountOffsetSliderMinimumIdentifier = "menuBarAmountOffsetSliderMinimum"
     static let amountOffsetSliderMaximumIdentifier = "menuBarAmountOffsetSliderMaximum"
     static let widthAdjustmentSliderWidth: CGFloat = 140
-    private static let englishMinimumSliderEndpointLabelWidth: CGFloat = {
+    private struct SliderEndpointWidths {
+        let minimum: CGFloat
+        let maximum: CGFloat
+    }
+
+    /// Every slider row uses the same endpoint slots for the current
+    /// localization. The width row has longer Japanese endpoints than the
+    /// offset rows; measuring each control group independently would move its
+    /// slider track horizontally. Deriving shared slots from the localized
+    /// titles keeps all tracks aligned without a language-specific branch and
+    /// lets new translated endpoint titles participate automatically.
+    private static func sliderEndpointWidths(
+        minimumTitles: [String],
+        maximumTitles: [String]
+    ) -> SliderEndpointWidths {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11)
         ]
-        let downWidth = NSString(string: "Down").size(withAttributes: attributes).width
-        let narrowWidth = NSString(string: "Narrow").size(withAttributes: attributes).width
-        return ceil(max(downWidth, narrowWidth))
-    }()
-    private static let englishMaximumSliderEndpointLabelWidth: CGFloat = {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11)
-        ]
-        let upWidth = NSString(string: "Up").size(withAttributes: attributes).width
-        let wideWidth = NSString(string: "Wide").size(withAttributes: attributes).width
-        return ceil(max(upWidth, wideWidth))
-    }()
+        func width(of title: String) -> CGFloat {
+            ceil(NSString(string: title).size(withAttributes: attributes).width)
+        }
+        return SliderEndpointWidths(
+            minimum: minimumTitles.map(width).max() ?? 0,
+            maximum: maximumTitles.map(width).max() ?? 0
+        )
+    }
     // Match the compact native popup used by the Application settings page.
     // Screenshots are commonly captured at 2x scale, so this is 100 points
     // (about 200 pixels), not the previous 180-point control.
@@ -692,31 +702,44 @@ final class DashboardMenuBarPage {
             widthAdjustmentSummaryContent
         )
         widthAdjustmentSummary.identifier = NSUserInterfaceItemIdentifier(Self.widthAdjustmentSummaryIdentifier)
+        let minimumOffsetTitle = tr(.keyDashboardMenuBarPageDown)
+        let maximumOffsetTitle = tr(.keyDashboardMenuBarPageUp)
+        let minimumAmountOffsetTitle = tr(.keyDashboardMenuBarPageDown2)
+        let maximumAmountOffsetTitle = tr(.keyDashboardMenuBarPageUp2)
+        let minimumWidthTitle = tr(.keyDashboardMenuBarPageNarrow)
+        let maximumWidthTitle = tr(.keyDashboardMenuBarPageWide)
+        let sliderEndpointWidths = Self.sliderEndpointWidths(
+            minimumTitles: [minimumOffsetTitle, minimumAmountOffsetTitle, minimumWidthTitle],
+            maximumTitles: [maximumOffsetTitle, maximumAmountOffsetTitle, maximumWidthTitle]
+        )
         let iconOffsetControls = makeCenteredSliderControls(
             value: input.preferences.menuBarIconOffsetY,
             key: AppPreferences.menuBarIconOffsetYKey,
             range: AppPreferences.menuBarOffsetRange,
-            minimumTitle: tr(.keyDashboardMenuBarPageDown),
-            maximumTitle: tr(.keyDashboardMenuBarPageUp),
+            minimumTitle: minimumOffsetTitle,
+            maximumTitle: maximumOffsetTitle,
             minimumIdentifier: Self.iconOffsetSliderMinimumIdentifier,
             maximumIdentifier: Self.iconOffsetSliderMaximumIdentifier,
             tooltip: tr(.keyDashboardMenuBarPageAdjustsVerticalPositionFrom100PtDownTo100PtUpDefault0Pt),
+            endpointWidths: sliderEndpointWidths,
             relay: input.relay
         )
         let amountOffsetControls = makeCenteredSliderControls(
             value: input.preferences.menuBarAmountOffsetY,
             key: AppPreferences.menuBarAmountOffsetYKey,
             range: AppPreferences.menuBarOffsetRange,
-            minimumTitle: tr(.keyDashboardMenuBarPageDown2),
-            maximumTitle: tr(.keyDashboardMenuBarPageUp2),
+            minimumTitle: minimumAmountOffsetTitle,
+            maximumTitle: maximumAmountOffsetTitle,
             minimumIdentifier: Self.amountOffsetSliderMinimumIdentifier,
             maximumIdentifier: Self.amountOffsetSliderMaximumIdentifier,
             tooltip: tr(.keyDashboardMenuBarPageAdjustsVerticalPositionFrom100PtDownTo100PtUpDefault0Pt2),
+            endpointWidths: sliderEndpointWidths,
             relay: input.relay
         )
         let widthAdjustmentControls = makeWidthSliderControls(
             value: widthAdjustment,
             key: AppPreferences.menuBarStatusItemWidthAdjustmentKey,
+            endpointWidths: sliderEndpointWidths,
             relay: input.relay
         )
         let fontSizePreset = input.preferences.menuBarFontSizePreset
@@ -1230,6 +1253,7 @@ final class DashboardMenuBarPage {
     private func makeWidthSliderControls(
         value: Double,
         key: String,
+        endpointWidths: SliderEndpointWidths,
         relay: DashboardPreferencePageRelay
     ) -> CenteredSliderControls {
         makeCenteredSliderControls(
@@ -1241,6 +1265,7 @@ final class DashboardMenuBarPage {
             minimumIdentifier: Self.widthAdjustmentSliderMinimumIdentifier,
             maximumIdentifier: Self.widthAdjustmentSliderMaximumIdentifier,
             tooltip: tr(.keyDashboardMenuBarPageAdjustsMenuBarWidthFrom100PtNarrowTo100PtWideDefault0Pt),
+            endpointWidths: endpointWidths,
             relay: relay
         )
     }
@@ -1254,6 +1279,7 @@ final class DashboardMenuBarPage {
         minimumIdentifier: String,
         maximumIdentifier: String,
         tooltip: String,
+        endpointWidths: SliderEndpointWidths,
         relay: DashboardPreferencePageRelay
     ) -> CenteredSliderControls {
         let slider = MenuBarWidthSlider()
@@ -1279,22 +1305,17 @@ final class DashboardMenuBarPage {
         }
         slider.widthAnchor.constraint(equalToConstant: Self.widthAdjustmentSliderWidth).isActive = true
 
-        let englishEndpointAlignment = AppLanguage.resolved == .english
         let minimumLabel = makeWidthSliderEndpointLabel(
             minimumTitle,
             identifier: minimumIdentifier,
-            width: englishEndpointAlignment
-                ? Self.englishMinimumSliderEndpointLabelWidth
-                : nil,
-            alignment: englishEndpointAlignment ? .left : .center
+            width: endpointWidths.minimum,
+            alignment: AppLanguage.resolved == .english ? .left : .center
         )
         let maximumLabel = makeWidthSliderEndpointLabel(
             maximumTitle,
             identifier: maximumIdentifier,
-            width: englishEndpointAlignment
-                ? Self.englishMaximumSliderEndpointLabelWidth
-                : nil,
-            alignment: englishEndpointAlignment ? .right : .center
+            width: endpointWidths.maximum,
+            alignment: AppLanguage.resolved == .english ? .right : .center
         )
         let stack = NSStackView(views: [minimumLabel, slider, maximumLabel])
         stack.orientation = .horizontal
