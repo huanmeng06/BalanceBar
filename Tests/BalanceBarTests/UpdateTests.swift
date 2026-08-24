@@ -1210,19 +1210,8 @@ final class UpdateTests: XCTestCase {
             blockLayout.attributes(at: headingRange.location, effectiveRange: nil)[.paragraphStyle]
                 as? NSParagraphStyle
         )
-        XCTAssertFalse(headingParagraph.textBlocks.isEmpty)
-        let headingBlock = try XCTUnwrap(headingParagraph.textBlocks.first)
-        XCTAssertNotNil(headingBlock.borderColor(for: .maxY))
-        XCTAssertNil(headingBlock.borderColor(for: .minY))
-        let ruleRange = (blockLayout.string as NSString).range(of: " ")
-        let ruleParagraph = try XCTUnwrap(
-            blockLayout.attributes(at: ruleRange.location, effectiveRange: nil)[.paragraphStyle]
-                as? NSParagraphStyle
-        )
-        XCTAssertFalse(ruleParagraph.textBlocks.isEmpty)
-        let ruleBlock = try XCTUnwrap(ruleParagraph.textBlocks.first)
-        XCTAssertNotNil(ruleBlock.borderColor(for: .maxY))
-        XCTAssertNil(ruleBlock.borderColor(for: .minY))
+        XCTAssertTrue(headingParagraph.textBlocks.isEmpty)
+        XCTAssertFalse(blockLayout.string.contains("---"))
 
         let safeRange = (rendered.string as NSString).range(of: "Safe")
         let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)

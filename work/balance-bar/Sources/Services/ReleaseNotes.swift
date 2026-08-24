@@ -209,13 +209,12 @@ enum ReleaseNotesMarkdownRenderer {
             }
 
             if isHorizontalRule(rawLine) {
-                appendHorizontalRule(into: output, baseAttributes: baseAttributes)
                 index += 1
                 continue
             }
 
             if let heading = headingParts(rawLine) {
-                let paragraph = headingParagraphStyle(from: baseParagraph)
+                let paragraph = paragraphStyle(from: baseParagraph, spacing: 10)
                 let headingFont = NSFont.systemFont(
                     ofSize: max(15, 23 - CGFloat(heading.level * 2)),
                     weight: .semibold
@@ -312,52 +311,6 @@ enum ReleaseNotesMarkdownRenderer {
                 output.append(NSAttributedString(string: "\n", attributes: attributes))
             }
         }
-    }
-
-    private static func appendHorizontalRule(
-        into output: NSMutableAttributedString,
-        baseAttributes: [NSAttributedString.Key: Any]
-    ) {
-        let paragraph = paragraphStyle(
-            from: baseAttributes[.paragraphStyle] as? NSParagraphStyle
-                ?? NSParagraphStyle.default,
-            spacing: 8
-        )
-        paragraph.paragraphSpacingBefore = 4
-        paragraph.textBlocks = [bottomBorderTextBlock()]
-        var attributes = baseAttributes
-        attributes[.paragraphStyle] = paragraph
-        output.append(NSAttributedString(string: " \n", attributes: attributes))
-    }
-
-    private static func headingParagraphStyle(
-        from source: NSParagraphStyle
-    ) -> NSMutableParagraphStyle {
-        let paragraph = paragraphStyle(from: source, spacing: 8)
-        paragraph.paragraphSpacingBefore = 8
-        paragraph.textBlocks = [bottomBorderTextBlock()]
-        return paragraph
-    }
-
-    private static func bottomBorderTextBlock() -> NSTextBlock {
-        let block = NSTextBlock()
-        block.setContentWidth(
-            100,
-            type: .percentageValueType
-        )
-        block.setWidth(
-            1,
-            type: .absoluteValueType,
-            for: .border
-        )
-        block.setBorderColor(NSColor.separatorColor, for: .maxY)
-        block.setWidth(
-            8,
-            type: .absoluteValueType,
-            for: .padding,
-            edge: .maxY
-        )
-        return block
     }
 
     private static func isHorizontalRule(_ line: String) -> Bool {
