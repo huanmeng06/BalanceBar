@@ -20,6 +20,87 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertNil(DashboardSection(rawValue: 5))
     }
 
+    func testSettingsSectionSeparatorsMatchRowsAndPreserveSelectionRules() throws {
+        let rows = [
+            DashboardSettingsComponents.makeSettingsRow("First"),
+            DashboardSettingsComponents.makeSettingsRow("Second"),
+            DashboardSettingsComponents.makeSettingsRow("Third")
+        ]
+        var rowsStack: NSStackView?
+        var separators: [NSView] = []
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Layout",
+            rows: rows,
+            onLayoutCreated: { stack, _, createdSeparators in
+                rowsStack = stack
+                separators = createdSeparators
+            }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 280),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentView = section
+        window.layoutIfNeeded()
+
+        let stack = try XCTUnwrap(rowsStack)
+        XCTAssertEqual(separators.count, rows.count - 1)
+        assertSettingsSeparatorWidths(
+            separators,
+            rows: rows,
+            matching: stack
+        )
+
+        window.setContentSize(NSSize(width: 680, height: 280))
+        window.layoutIfNeeded()
+        assertSettingsSeparatorWidths(
+            separators,
+            rows: rows,
+            matching: stack
+        )
+
+        let singleRow = DashboardSettingsComponents.makeSettingsRow("Single")
+        var singleSeparators: [NSView] = []
+        _ = DashboardSettingsComponents.makeSettingsSection(
+            "Single row",
+            rows: [singleRow],
+            onLayoutCreated: { _, _, createdSeparators in
+                singleSeparators = createdSeparators
+            }
+        )
+        XCTAssertTrue(singleSeparators.isEmpty)
+
+        let selectiveRows = [
+            DashboardSettingsComponents.makeSettingsRow("Visible"),
+            DashboardSettingsComponents.makeSettingsRow("Hidden"),
+            DashboardSettingsComponents.makeSettingsRow("Last")
+        ]
+        selectiveRows[1].isHidden = true
+        var selectiveStack: NSStackView?
+        var selectiveSeparators: [NSView] = []
+        let selectiveSection = DashboardSettingsComponents.makeSettingsSection(
+            "Selective",
+            rows: selectiveRows,
+            separatorIndices: [0],
+            onLayoutCreated: { stack, _, createdSeparators in
+                selectiveStack = stack
+                selectiveSeparators = createdSeparators
+            }
+        )
+        window.contentView = selectiveSection
+        window.layoutIfNeeded()
+
+        let selectiveRowsStack = try XCTUnwrap(selectiveStack)
+        XCTAssertEqual(selectiveSeparators.count, 1)
+        assertSettingsSeparatorWidths(
+            selectiveSeparators,
+            rows: selectiveRows,
+            matching: selectiveRowsStack
+        )
+    }
+
     func testNavigationRowAppliesSelectedAndInactiveStates() {
         let row = DashboardNavigationRowView()
         row.wantsLayer = true
@@ -208,6 +289,21 @@ final class DashboardComponentsTests: XCTestCase {
             fatalError("Expected to create a mouse event")
         }
         return event
+    }
+
+    private func assertSettingsSeparatorWidths(
+        _ separators: [NSView],
+        rows: [NSView],
+        matching rowsStack: NSStackView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        for row in rows {
+            XCTAssertEqual(row.frame.width, rowsStack.frame.width, accuracy: 0.5, file: file, line: line)
+        }
+        for separator in separators {
+            XCTAssertEqual(separator.frame.width, rowsStack.frame.width, accuracy: 0.5, file: file, line: line)
+        }
     }
 }
 

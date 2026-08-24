@@ -162,7 +162,7 @@ enum DashboardSettingsComponents {
                 separator.boxType = .separator
                 separator.heightAnchor.constraint(equalToConstant: settingsSeparatorHeight).isActive = true
                 rowsStack.addArrangedSubview(separator)
-                separator.widthAnchor.constraint(equalTo: rowsStack.widthAnchor, constant: -32).isActive = true
+                separator.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
                 separators.append(separator)
             }
         }
