@@ -281,16 +281,10 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         guard let rowsStack = settingsRowsStack,
               let cardHeightConstraint = settingsCardHeightConstraint else { return }
         rowsStack.layoutSubtreeIfNeeded()
-        let visibleRows = rowsStack.arrangedSubviews.filter { !($0 is NSBox) && !$0.isHidden }
-        let rowsHeight = visibleRows.reduce(CGFloat(0)) { partial, row in
-            let explicitHeight = row.constraints.first {
-                ($0.firstItem as? NSView) === row && $0.firstAttribute == .height && $0.relation == .equal
-            }?.constant
-            return partial + max(1, explicitHeight ?? row.fittingSize.height)
-        }
-        let separatorHeight = CGFloat(settingsSeparators.filter { !$0.isHidden }.count) *
-            DashboardSettingsComponents.settingsSeparatorHeight
-        cardHeightConstraint.constant = ceil(rowsHeight + separatorHeight)
+        cardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: settingsSeparators
+        )
         onClamp?()
     }
 

@@ -140,6 +140,48 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(documentOffset(secondScrollView), 0, accuracy: 1)
     }
 
+    @MainActor
+    func testAdaptiveSettingsCardUpdatesDocumentHeightAfterWindowResize() throws {
+        let subtitle = "This long settings subtitle must wrap at the narrow document width and then release its extra height when the window widens."
+        let row = DashboardSettingsComponents.makeSettingsRow(
+            "Adaptive row",
+            subtitle: subtitle,
+            control: NSSwitch()
+        )
+        let section = DashboardSettingsComponents.makeSettingsSection("Adaptive", rows: [row])
+        let page = DashboardSettingsComponents.makeSettingsPage([section])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 516, height: 160),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+
+        let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
+        window.layoutIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        let narrowDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
+        let narrowRowHeight = row.frame.height
+
+        window.setContentSize(NSSize(width: 740, height: 160))
+        window.layoutIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        let wideDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
+
+        XCTAssertGreaterThan(narrowRowHeight, 62)
+        XCTAssertLessThan(wideDocumentHeight, narrowDocumentHeight)
+        XCTAssertGreaterThan(scrollView.documentView!.bounds.height, scrollView.contentView.bounds.height)
+        XCTAssertEqual(documentOffset(scrollView), 0, accuracy: 1)
+
+        window.setContentSize(NSSize(width: 516, height: 160))
+        window.layoutIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        XCTAssertEqual(row.frame.height, narrowRowHeight, accuracy: 0.5)
+        XCTAssertEqual(scrollView.documentView!.bounds.height, narrowDocumentHeight, accuracy: 0.5)
+    }
+
     func testThreeRapidNativeSwipesPreserveLegalOriginsWithoutCustomOscillation() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 100),

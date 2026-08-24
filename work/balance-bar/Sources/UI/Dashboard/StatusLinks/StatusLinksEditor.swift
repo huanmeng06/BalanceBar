@@ -471,21 +471,15 @@ final class StatusLinksEditorHostingView: NSView {
     ) -> (NSView, NSLayoutConstraint, CGFloat)? {
         guard let rowsStack = superview as? NSStackView,
               let card = rowsStack.superview else { return nil }
-        let requiredHeight = max(1, ceil(rowsStack.arrangedSubviews.reduce(CGFloat(0)) { total, row in
-            guard !row.isHidden else { return total }
-            if row is NSBox {
-                return total + 1
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        let requiredHeight = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators,
+            rowHeight: { [weak self] row in
+                guard let self, row === self else { return nil }
+                return max(0, editorHeight ?? heightConstraint?.constant ?? layoutHeight)
             }
-            if row === self {
-                return total + max(0, editorHeight ?? heightConstraint?.constant ?? layoutHeight)
-            }
-            let explicit = row.constraints.first {
-                ($0.firstItem as? NSView) === row &&
-                    $0.firstAttribute == .height &&
-                    $0.relation == .equal
-            }?.constant
-            return total + max(1, explicit ?? row.fittingSize.height)
-        }))
+        )
         let constraint = card.constraints.first {
             ($0.firstItem as? NSView) === card &&
                 $0.firstAttribute == .height &&

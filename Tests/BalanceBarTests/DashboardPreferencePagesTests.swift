@@ -883,6 +883,77 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
+    func testMenuBarPreviewRowsAdaptForJapaneseAndEnglishWindowWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let suiteName = "DashboardPreferencePagesTests.MenuBarAdaptiveRows.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let snapshot = Snapshot.official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1))
+        for language in [AppLanguage.japanese, .english] {
+            AppLanguage.selected = language
+            let page = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: snapshot,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay()
+            ))
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 516, height: 520),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            defer { window.orderOut(nil) }
+
+            let subtitleText = language == .japanese
+                ? "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"
+                : "The menu bar updates with Provider data in real time"
+            let subtitle = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.stringValue == subtitleText }
+            )
+            let row = try XCTUnwrap(subtitle.superview?.superview)
+            let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
+            let card = try XCTUnwrap(rowsStack.superview)
+            let control = try XCTUnwrap(row.subviews.first { !($0 is NSStackView) })
+
+            window.layoutIfNeeded()
+            let narrowHeight = row.frame.height
+            XCTAssertGreaterThan(narrowHeight, DashboardMenuBarPage.previewRowHeight, "(language) preview must grow when its subtitle wraps")
+            XCTAssertLessThanOrEqual(
+                subtitle.cell!.cellSize(
+                    forBounds: NSRect(x: 0, y: 0, width: subtitle.bounds.width, height: .greatestFiniteMagnitude)
+                ).height,
+                subtitle.bounds.height + 0.5,
+                "(language) preview subtitle must not be clipped"
+            )
+            XCTAssertEqual(control.frame.midY, row.bounds.midY, accuracy: 0.5, "(language) preview control must remain centered")
+            XCTAssertEqual(
+                card.frame.height,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+                ),
+                accuracy: 0.5
+            )
+
+            window.setContentSize(NSSize(width: 740, height: 520))
+            window.layoutIfNeeded()
+            XCTAssertLessThan(row.frame.height, narrowHeight, "(language) preview row should shrink at wide width")
+            XCTAssertLessThan(card.frame.height, narrowHeight + DashboardSettingsComponents.settingsSeparatorHeight)
+
+            window.setContentSize(NSSize(width: 516, height: 520))
+            window.layoutIfNeeded()
+            XCTAssertEqual(row.frame.height, narrowHeight, accuracy: 0.5, "(language) preview row should recover at narrow width")
+        }
+    }
+
     func testMenuBarFontSizePresetControlKeepsDefaultRatioAndRefreshesPreview() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
