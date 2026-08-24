@@ -1270,6 +1270,131 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testLocalizedOverviewQuotaAndResetReuseAccountMarqueeLayout() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .german
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(
+                email: "person@example.com",
+                subscription: .proFiveX
+            ),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false
+        )
+        let shortQuota = "7-Tage-Kontingent"
+        let shortResetValue = "6d14"
+        let shortReset = "Zurücksetzung: \(shortResetValue)"
+        let longQuota = String(repeating: "7-Tage-Kontingent ", count: 4)
+        let longReset = String(repeating: "6d14 ", count: 12)
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let baselineFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true
+        )
+        controller.start(
+            snapshot: .official("OpenAI Official", 77, shortQuota, shortResetValue, date),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let shortOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let shortMarquees = shortOverview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let shortQuotaView = try XCTUnwrap(
+            shortMarquees.first { $0.accountLabel.stringValue == shortQuota }
+        )
+        let shortResetView = try XCTUnwrap(
+            shortMarquees.first { $0.accountLabel.stringValue.contains(shortReset) }
+        )
+        XCTAssertFalse(shortQuotaView.isScrollable)
+        XCTAssertFalse(shortQuotaView.showsEdgeFade)
+        XCTAssertFalse(shortResetView.isScrollable)
+        XCTAssertFalse(shortResetView.showsEdgeFade)
+        XCTAssertGreaterThan(shortQuotaView.bounds.width, baselineFrames.quotaDetail.width)
+        XCTAssertGreaterThan(shortResetView.bounds.width, try XCTUnwrap(baselineFrames.reset).width)
+        XCTAssertEqual(shortQuotaView.accountLabel.frame.width, shortQuotaView.bounds.width)
+        XCTAssertEqual(shortResetView.accountLabel.frame.width, shortResetView.bounds.width)
+
+        controller.update(
+            snapshot: .official("OpenAI Official", 78, longQuota, longReset, date),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let marquees = overview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let quota = try XCTUnwrap(
+            marquees.first { $0.accountLabel.stringValue == longQuota }
+        )
+        let reset = try XCTUnwrap(
+            marquees.first { $0.accountLabel.stringValue.contains(longReset) }
+        )
+        XCTAssertTrue(quota.isScrollable)
+        XCTAssertTrue(reset.isScrollable)
+        XCTAssertGreaterThan(quota.accountLabel.frame.width, quota.bounds.width)
+        XCTAssertGreaterThan(reset.accountLabel.frame.width, reset.bounds.width)
+
+        let amount = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first { $0.stringValue == "78%" }
+        )
+        let frames = baselineFrames
+        let amountTextWidth = AccountMarqueeView.textWidth(
+            of: amount.stringValue,
+            font: try XCTUnwrap(amount.font)
+        )
+        let safeAmountMinX = max(amount.frame.minX, amount.frame.maxX - amountTextWidth)
+        let expectedRightEdge = safeAmountMinX - 8
+        XCTAssertEqual(quota.frame.minX, frames.quotaDetail.minX)
+        XCTAssertEqual(quota.frame.minY, frames.quotaDetail.minY)
+        XCTAssertEqual(quota.frame.height, frames.quotaDetail.height)
+        XCTAssertGreaterThan(quota.frame.width, frames.quotaDetail.width)
+        XCTAssertEqual(quota.frame.maxX, expectedRightEdge, accuracy: 0.5)
+        let resetFrame = try XCTUnwrap(frames.reset)
+        XCTAssertEqual(reset.frame.minX, resetFrame.minX)
+        XCTAssertEqual(reset.frame.minY, resetFrame.minY)
+        XCTAssertEqual(reset.frame.height, resetFrame.height)
+        XCTAssertGreaterThan(reset.frame.width, resetFrame.width)
+        XCTAssertEqual(reset.frame.maxX, expectedRightEdge, accuracy: 0.5)
+    }
+
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
         for openCodexIsCurrent in [true, false] {
             for showOpenCodexMenu in [true, false] {

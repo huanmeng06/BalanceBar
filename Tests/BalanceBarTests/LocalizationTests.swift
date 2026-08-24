@@ -3,14 +3,18 @@ import XCTest
 
 final class LocalizationTests: XCTestCase {
     private let allLanguages: [AppLanguage] = [
-        .simplifiedChinese, .traditionalChinese, .japanese, .english
+        .simplifiedChinese, .traditionalChinese, .japanese, .english,
+        .korean, .spanish, .german
     ]
 
     private let resourceDirectories: [String: AppLanguage] = [
         "en": .english,
         "zh-Hans": .simplifiedChinese,
         "zh-Hant": .traditionalChinese,
-        "ja": .japanese
+        "ja": .japanese,
+        "ko": .korean,
+        "es": .spanish,
+        "de": .german
     ]
 
     private var testBundle: Bundle {
@@ -28,6 +32,9 @@ final class LocalizationTests: XCTestCase {
             XCTAssertEqual(AppLanguage.resolved(for: .traditionalChinese, preferredLanguages: [preferred]), .traditionalChinese)
             XCTAssertEqual(AppLanguage.resolved(for: .japanese, preferredLanguages: [preferred]), .japanese)
             XCTAssertEqual(AppLanguage.resolved(for: .english, preferredLanguages: [preferred]), .english)
+            XCTAssertEqual(AppLanguage.resolved(for: .korean, preferredLanguages: [preferred]), .korean)
+            XCTAssertEqual(AppLanguage.resolved(for: .spanish, preferredLanguages: [preferred]), .spanish)
+            XCTAssertEqual(AppLanguage.resolved(for: .german, preferredLanguages: [preferred]), .german)
         }
     }
 
@@ -61,9 +68,31 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testSystemSelectionMatchesNewLanguageIdentifiers() {
+        let cases: [(String, AppLanguage)] = [
+            ("ko", .korean),
+            ("ko-KR", .korean),
+            ("ko_KR", .korean),
+            ("es", .spanish),
+            ("es-ES", .spanish),
+            ("es_MX", .spanish),
+            ("de", .german),
+            ("de-DE", .german),
+            ("de_AT", .german)
+        ]
+
+        for (preferred, expected) in cases {
+            XCTAssertEqual(
+                AppLanguage.resolved(for: .system, preferredLanguages: [preferred]),
+                expected,
+                "expected \(preferred) to resolve to \(expected)"
+            )
+        }
+    }
+
     func testSystemSelectionFallsBackToEnglishForUnknownLanguages() {
         XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["fr-FR"]), .english)
-        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["de", "ko-KR"]), .english)
+        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["fr-FR", "it-IT"]), .english)
         XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: []), .english)
     }
 
@@ -106,7 +135,7 @@ final class LocalizationTests: XCTestCase {
     func testLanguagePickerOrder() {
         XCTAssertEqual(
             AppLanguage.allCases,
-            [.system, .simplifiedChinese, .traditionalChinese, .english, .japanese]
+            [.system, .simplifiedChinese, .traditionalChinese, .english, .japanese, .korean, .spanish, .german]
         )
     }
 
@@ -115,6 +144,9 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .traditionalChinese), "跟隨系統")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .japanese), "システムに従う")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .english), "Follow System")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .korean), "시스템 언어 사용")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .spanish), "Seguir el sistema")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .german), "System folgen")
 
         // Language options always keep their own original names; only
         // "Follow System" is localized into the current UI language.
@@ -123,6 +155,9 @@ final class LocalizationTests: XCTestCase {
             XCTAssertEqual(AppLanguage.traditionalChinese.localizedTitle(using: language), "繁體中文")
             XCTAssertEqual(AppLanguage.japanese.localizedTitle(using: language), "日本語")
             XCTAssertEqual(AppLanguage.english.localizedTitle(using: language), "English")
+            XCTAssertEqual(AppLanguage.korean.localizedTitle(using: language), "한국어")
+            XCTAssertEqual(AppLanguage.spanish.localizedTitle(using: language), "Español")
+            XCTAssertEqual(AppLanguage.german.localizedTitle(using: language), "Deutsch")
         }
     }
 
@@ -131,12 +166,15 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .traditionalChinese), "跟隨系統")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .japanese), "システムに従う")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .english), "Follow System")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .korean), "시스템 언어 사용")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .spanish), "Seguir el sistema")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .german), "System folgen")
     }
 
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 349)
+        XCTAssertEqual(expectedKeys.count, 352)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -158,6 +196,74 @@ final class LocalizationTests: XCTestCase {
             )
             XCTAssertEqual(actualKeys, expectedKeys, "resource keys for \(language)")
         }
+    }
+
+    func testNewLanguageBundlesLoadExplicitlyWithoutEnglishFallback() throws {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let expectations: [(AppLanguage, String, String)] = [
+            (.korean, "ko", "BalanceBar 정보"),
+            (.spanish, "es", "Acerca de BalanceBar"),
+            (.german, "de", "Über BalanceBar")
+        ]
+
+        for (language, directory, aboutTitle) in expectations {
+            XCTAssertNotNil(
+                testBundle.url(forResource: directory, withExtension: "lproj"),
+                "test bundle must package \(directory).lproj"
+            )
+            XCTAssertEqual(
+                store.localized(key: .keyAppAboutBalancebar, language: language),
+                aboutTitle,
+                "explicit resource bundle lookup for \(language)"
+            )
+            XCTAssertFalse(
+                store.localized(key: .keyAppAboutBalancebar, language: language).contains("⟦"),
+                "new-language lookup must not expose an internal key"
+            )
+        }
+    }
+
+    func testNewLanguageMissingKeyFallsBackToEnglishAndMissingEnglishIsDiagnosable() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BalanceBar-I181-Localization-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("en.lproj"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("ko.lproj"),
+            withIntermediateDirectories: true
+        )
+        try "\"app.about_balancebar\" = \"English fallback\";\n".write(
+            to: root.appendingPathComponent("en.lproj/Localizable.strings"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "\"localization.follow_system\" = \"시스템 언어 사용\";\n".write(
+            to: root.appendingPathComponent("ko.lproj/Localizable.strings"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let store = LocalizationResourceStore(resourceRoot: root)
+        XCTAssertEqual(
+            store.localized(key: .keyAppAboutBalancebar, language: .korean),
+            "English fallback"
+        )
+        XCTAssertEqual(
+            store.localized(key: .keyLocalizationFollowSystem, language: .korean),
+            "시스템 언어 사용"
+        )
+        XCTAssertEqual(
+            store.localized(key: .keyAppHideBalancebar, language: .korean),
+            "⟦app.hide_balancebar⟧"
+        )
+        XCTAssertTrue(
+            store.localized(key: .keyAppHideBalancebar, language: .korean).contains("app.hide_balancebar"),
+            "missing English resources remain diagnosable"
+        )
     }
 
     func testRefreshTerminologyUsesUnifiedTraditionalChineseValues() throws {
@@ -452,13 +558,19 @@ final class LocalizationTests: XCTestCase {
             let expected: [String] = {
                 switch language {
                 case .simplifiedChinese:
-                    return ["关于 BalanceBar", "跟随系统", "简体中文", "繁體中文", "日本語"]
+                    return ["关于 BalanceBar", "跟随系统", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
                 case .traditionalChinese:
-                    return ["關於 BalanceBar", "跟隨系統", "简体中文", "繁體中文", "日本語"]
+                    return ["關於 BalanceBar", "跟隨系統", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
                 case .japanese:
-                    return ["BalanceBar について", "システムに従う", "简体中文", "繁體中文", "日本語"]
+                    return ["BalanceBar について", "システムに従う", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
                 case .english:
-                    return ["About BalanceBar", "Follow System", "简体中文", "繁體中文", "日本語"]
+                    return ["About BalanceBar", "Follow System", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                case .korean:
+                    return ["BalanceBar 정보", "시스템 언어 사용", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                case .spanish:
+                    return ["Acerca de BalanceBar", "Seguir el sistema", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                case .german:
+                    return ["Über BalanceBar", "System folgen", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
                 case .system:
                     return []
                 }
@@ -482,6 +594,18 @@ final class LocalizationTests: XCTestCase {
             XCTAssertEqual(
                 AppLanguage.japanese.localizedTitle,
                 expected[4]
+            )
+            XCTAssertEqual(
+                AppLanguage.korean.localizedTitle,
+                expected[5]
+            )
+            XCTAssertEqual(
+                AppLanguage.spanish.localizedTitle,
+                expected[6]
+            )
+            XCTAssertEqual(
+                AppLanguage.german.localizedTitle,
+                expected[7]
             )
         }
     }

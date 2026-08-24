@@ -1366,7 +1366,10 @@ final class UpdateTests: XCTestCase {
     }
 
     func testDashboardUpdateCopyIsLocalizedAcrossAllSupportedLanguages() throws {
-        let states: [AppLanguage] = [.simplifiedChinese, .traditionalChinese, .japanese, .english]
+        let states: [AppLanguage] = [
+            .simplifiedChinese, .traditionalChinese, .japanese, .english,
+            .korean, .spanish, .german
+        ]
         for language in states {
             let presentation = DashboardUpdatePresentation.make(
                 for: .available(
@@ -1388,6 +1391,15 @@ final class UpdateTests: XCTestCase {
             case .english:
                 XCTAssertEqual(presentation.subtitle, "New version available: 1.0.6 -> 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "Download and Install")
+            case .korean:
+                XCTAssertEqual(presentation.subtitle, "새 버전 사용 가능: 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.buttonTitle, "다운로드 및 설치")
+            case .spanish:
+                XCTAssertEqual(presentation.subtitle, "Nueva versión disponible: 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.buttonTitle, "Descargar e instalar")
+            case .german:
+                XCTAssertEqual(presentation.subtitle, "Neue Version verfügbar: 1.0.6 -> 1.0.7")
+                XCTAssertEqual(presentation.buttonTitle, "Laden und installieren")
             case .system:
                 XCTFail("system is not part of this explicit localization matrix")
             }
@@ -1420,6 +1432,15 @@ final class UpdateTests: XCTestCase {
             case .english:
                 XCTAssertEqual(downloading.buttonTitle, "Downloading 25% …")
                 XCTAssertEqual(installing.buttonTitle, "Installing 25% …")
+            case .korean:
+                XCTAssertEqual(downloading.buttonTitle, "25% 다운로드 중 …")
+                XCTAssertEqual(installing.buttonTitle, "25% 설치 중 …")
+            case .spanish:
+                XCTAssertEqual(downloading.buttonTitle, "Descargando 25% …")
+                XCTAssertEqual(installing.buttonTitle, "Instalando 25% …")
+            case .german:
+                XCTAssertEqual(downloading.buttonTitle, "25% wird geladen …")
+                XCTAssertEqual(installing.buttonTitle, "25% wird installiert …")
             case .system:
                 XCTFail("system is not part of this explicit localization matrix")
             }
@@ -1431,20 +1452,29 @@ final class UpdateTests: XCTestCase {
                 latest.buttonTitle,
                 language == .simplifiedChinese ? "检查更新" :
                     language == .traditionalChinese ? "檢查更新" :
-                    language == .japanese ? "アップデートを確認" : "Check for Updates"
+                    language == .japanese ? "アップデートを確認" :
+                    language == .korean ? "업데이트 확인" :
+                    language == .spanish ? "Buscar actualizaciones" :
+                    language == .german ? "Nach Updates suchen" : "Check for Updates"
             )
             XCTAssertTrue(latest.buttonEnabled)
             XCTAssertEqual(
                 UpdateChannel.stable.localizedTitle(using: language),
                 language == .simplifiedChinese ? "正式版" :
                     language == .traditionalChinese ? "正式版" :
-                    language == .japanese ? "正式版" : "Stable"
+                    language == .japanese ? "正式版" :
+                    language == .korean ? "정식 버전" :
+                    language == .spanish ? "Estable" :
+                    language == .german ? "Stabil" : "Stable"
             )
             XCTAssertEqual(
                 UpdateChannel.beta.localizedTitle(using: language),
                 language == .simplifiedChinese ? "Beta 测试版" :
                     language == .traditionalChinese ? "Beta 測試版" :
-                    language == .japanese ? "ベータテスト" : "Beta Test"
+                    language == .japanese ? "ベータテスト" :
+                    language == .korean ? "베타 테스트" :
+                    language == .spanish ? "Prueba beta" :
+                    language == .german ? "Betatest" : "Beta Test"
             )
             let failure = DashboardUpdatePresentation.make(
                 for: .failed(.network),

@@ -66,6 +66,15 @@ jobs:
           if ! wait "$probes_pid"; then check_status=1; fi
           if ! wait "$xcode_pid"; then check_status=1; fi
 
+          if ! ./work/balance-bar/localization-resource-probe.sh \
+            work/balance-bar/build/BalanceBar.app; then
+            check_status=1
+          fi
+          if ! ./work/balance-bar/localization-resource-probe.sh \
+            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
+            check_status=1
+          fi
+
           cat "$cli_log"
           cat "$probes_log"
           cat "$xcode_log"
