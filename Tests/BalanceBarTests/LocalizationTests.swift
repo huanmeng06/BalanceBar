@@ -160,6 +160,143 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testRefreshTerminologyUsesUnifiedTraditionalChineseValues() throws {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let expectations: [
+            (key: LocalizationKey, surface: String, traditionalChinese: String, simplifiedChinese: String, english: String, japanese: String)
+        ] = [
+            (
+                .keySnapshotLastRefreshedValue,
+                "Snapshot status summary",
+                "最後刷新：10:00",
+                "最后刷新：10:00",
+                "Last refreshed: 10:00",
+                "最終更新：10:00"
+            ),
+            (
+                .keySnapshotWaitingToRefresh,
+                "Snapshot status summary",
+                "等待刷新",
+                "等待刷新",
+                "Waiting to Refresh",
+                "更新待ち"
+            ),
+            (
+                .keyDashboardGeneralAndRefreshPagesRefreshNow,
+                "Refresh settings button",
+                "立即刷新",
+                "立即刷新",
+                "Refresh Now",
+                "今すぐ更新"
+            ),
+            (
+                .keyDashboardGeneralAndRefreshPagesRefresh,
+                "Refresh settings title",
+                "刷新",
+                "刷新",
+                "Refresh",
+                "更新"
+            ),
+            (
+                .keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow,
+                "Refresh settings description",
+                "立即刷新目前供應商",
+                "立即重新读取当前供应商",
+                "Reload the current Provider now",
+                "現在のプロバイダーをすぐに再読み込み"
+            ),
+            (
+                .keyDashboardGeneralAndRefreshPagesRefreshSettings,
+                "Refresh settings title",
+                "刷新設定",
+                "刷新设置",
+                "Refresh Settings",
+                "更新設定"
+            ),
+            (
+                .keyDashboardLogsPageRefresh,
+                "Logs button",
+                "刷新",
+                "刷新",
+                "Refresh",
+                "更新"
+            ),
+            (
+                .keyDashboardLogsPageRefresh2,
+                "Logs button accessibility label",
+                "刷新",
+                "刷新",
+                "Refresh",
+                "更新"
+            ),
+            (
+                .keyDashboardMenuPageKeepOpenAfterRefresh,
+                "Menu settings title",
+                "刷新後保持展開",
+                "刷新后保持展开",
+                "Keep Open After Refresh",
+                "更新後も開いたままにする"
+            ),
+            (
+                .keyDashboardMenuPageReopenTheMenuAfterRefreshNow,
+                "Menu settings description",
+                "按一下立即刷新後重新開啟選單",
+                "点击立即刷新后重新打开菜单",
+                "Reopen the menu after Refresh Now",
+                "「今すぐ更新」後にメニューを再度開く"
+            ),
+            (
+                .keyDashboardProviderPagesRefreshNow,
+                "Provider detail and quick-switch button",
+                "立即刷新",
+                "立即刷新",
+                "Refresh Now",
+                "今すぐ更新"
+            ),
+            (
+                .keyStatusItemControllerRefreshNow,
+                "Menu bar refresh button",
+                "立即刷新",
+                "立即刷新",
+                "Refresh Now",
+                "今すぐ更新"
+            )
+        ]
+
+        for expectation in expectations {
+            let arguments = expectation.key == .keySnapshotLastRefreshedValue ? ["10:00"] : []
+            let values = [
+                (AppLanguage.traditionalChinese, expectation.traditionalChinese),
+                (AppLanguage.simplifiedChinese, expectation.simplifiedChinese),
+                (AppLanguage.english, expectation.english),
+                (AppLanguage.japanese, expectation.japanese)
+            ]
+            for (language, expected) in values {
+                XCTAssertEqual(
+                    store.localized(key: expectation.key, language: language, arguments: arguments),
+                    expected,
+                    "unexpected \(expectation.surface) value for \(expectation.key.rawKey) in \(language)"
+                )
+            }
+            XCTAssertFalse(
+                expectation.traditionalChinese.contains("重新整理"),
+                "confirmed Traditional Chinese value still contains the unconfirmed term for \(expectation.key.rawKey)"
+            )
+        }
+
+        let traditionalResourceURL = try XCTUnwrap(
+            testBundle.url(forResource: "zh-Hant", withExtension: "lproj")
+        ).appendingPathComponent("Localizable.strings")
+        let data = try Data(contentsOf: traditionalResourceURL)
+        let traditionalResource = try XCTUnwrap(
+            String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
+        )
+        XCTAssertFalse(
+            traditionalResource.contains("重新整理"),
+            "the Traditional Chinese resource must not retain the unconfirmed refresh term"
+        )
+    }
+
     func testParameterizedResourcesRenderAndValidatePlaceholderContracts() {
         let store = LocalizationResourceStore(bundle: testBundle)
         XCTAssertEqual(
