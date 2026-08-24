@@ -150,7 +150,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["显示 BalanceBar 主窗口", "显示 ChatGPT", "显示 CC Switch 主窗口", "显示 OpenCodex 仪表盘"]
             ),
             (
-                .traditionalChinese,
+                .traditionalChineseTaiwan,
+                ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
+                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 儀表板"]
+            ),
+            (
+                .traditionalChineseHongKong,
                 ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
                 ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 儀表板"]
             ),
@@ -366,7 +371,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, String, String)] = [
             (.simplifiedChinese, "菜单栏空间不足，BalanceBar 暂时不可见；请关闭或移除部分菜单栏图标后重试。", "打开设置"),
             (.english, "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again.", "Open Settings"),
-            (.traditionalChinese, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。", "開啟設定"),
+            (.traditionalChineseTaiwan, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。", "開啟設定"),
+            (.traditionalChineseHongKong, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後再試。", "開啟設定"),
             (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。", "設定を開く"),
             (.korean, "메뉴 막대 공간이 부족하여 BalanceBar가 일시적으로 숨겨졌습니다; 일부 메뉴 막대 아이콘을 숨기거나 제거한 후 다시 시도하세요.", "설정 열기"),
             (.spanish, "No queda espacio en la barra de menús, por lo que BalanceBar está oculto temporalmente; oculta o elimina algunos iconos de la barra de menús y vuelve a intentarlo.", "Abrir ajustes"),
@@ -471,7 +477,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, String, String)] = [
             (.simplifiedChinese, "动画", "任务进行时播放图标动画"),
             (.english, "Animation", "Play the icon animation while a task is running"),
-            (.traditionalChinese, "動畫", "任務進行時播放圖示動畫"),
+            (.traditionalChineseTaiwan, "動畫", "任務進行時播放圖示動畫"),
+            (.traditionalChineseHongKong, "動畫", "任務進行時播放圖示動畫"),
             (.japanese, "アニメーション", "タスク実行中にアイコンアニメーションを再生")
         ]
 
@@ -1087,7 +1094,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ]
         let expectedSignedSuffixes: [AppLanguage: [String]] = [
             .simplifiedChinese: ["Y 轴 + 0.0 pt", "Y 轴 + 0.0 pt", "宽度 + 0.0 pt"],
-            .traditionalChinese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
+            .traditionalChineseTaiwan: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
+            .traditionalChineseHongKong: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
             .japanese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "幅 + 0.0 pt"],
             .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"],
             .korean: ["Y 축 + 0.0 pt", "Y 축 + 0.0 pt", "너비 + 0.0 pt"],
@@ -1096,7 +1104,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ]
         let expectedDescriptions: [AppLanguage: [String]] = [
             .simplifiedChinese: ["微调图标上下像素位置", "微调金额上下像素位置", "调整 BalanceBar 与其他项目的空隙"],
-            .traditionalChinese: ["微調圖示上下像素位置", "微調金額上下像素位置", "調整 BalanceBar 與其他項目的間距"],
+            .traditionalChineseTaiwan: ["微調圖示上下像素位置", "微調金額上下像素位置", "調整 BalanceBar 與其他項目的間距"],
+            .traditionalChineseHongKong: ["微調圖示上下像素位置", "微調金額上下像素位置", "調整 BalanceBar 與其他項目的間距"],
             .japanese: ["アイコンの上下位置を微調整", "金額の上下位置を微調整", "BalanceBar と他の項目との間隔を調整"],
             .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjusts the gap between BalanceBar and other items"],
             .korean: ["아이콘의 세로 위치 미세 조정", "금액의 세로 위치 미세 조정", "BalanceBar와 다른 항목 사이 간격 조정"],
@@ -1107,7 +1116,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         for language in [
             AppLanguage.simplifiedChinese,
-            .traditionalChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
             .japanese,
             .english,
             .korean,
@@ -1644,10 +1654,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt"
             ),
             (
-                .traditionalChinese,
+                .traditionalChineseTaiwan,
                 ["字號與位置", "選單列字號", "圖示偏移", "金額偏移", "選單列寬度"],
                 [
                     "調整選單列字體大小",
+                    "微調圖示上下像素位置Y 軸 + 0.0 pt",
+                    "微調金額上下像素位置Y 軸 + 0.0 pt",
+                    "調整 BalanceBar 與其他項目的間距寬度 + 0.0 pt"
+                ],
+                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt"
+            ),
+            (
+                .traditionalChineseHongKong,
+                ["字號與位置", "選單列字型大小", "圖示偏移", "金額偏移", "選單列寬度"],
+                [
+                    "調整選單列字型大小",
                     "微調圖示上下像素位置Y 軸 + 0.0 pt",
                     "微調金額上下像素位置Y 軸 + 0.0 pt",
                     "調整 BalanceBar 與其他項目的間距寬度 + 0.0 pt"
@@ -1732,7 +1753,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             switch language {
             case .simplifiedChinese:
                 expectedEndpointLabels = ("窄", "宽")
-            case .traditionalChinese:
+            case .traditionalChineseTaiwan, .traditionalChineseHongKong:
                 expectedEndpointLabels = ("窄", "寬")
             case .japanese:
                 expectedEndpointLabels = ("狭い", "広い")
@@ -1749,7 +1770,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
             let expectedOffsetEndpointLabels: (minimum: String, maximum: String)
             switch language {
-            case .simplifiedChinese, .traditionalChinese, .japanese, .system:
+            case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .system:
                 expectedOffsetEndpointLabels = ("下", "上")
             case .korean:
                 expectedOffsetEndpointLabels = ("아래", "위")
@@ -2172,8 +2193,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         for (language, automaticDetection) in [
             (AppLanguage.simplifiedChinese, true),
             (.simplifiedChinese, false),
-            (.traditionalChinese, true),
-            (.traditionalChinese, false),
+            (.traditionalChineseTaiwan, true),
+            (.traditionalChineseTaiwan, false),
+            (.traditionalChineseHongKong, true),
+            (.traditionalChineseHongKong, false),
             (.japanese, true),
             (.japanese, false),
             (.english, true),
@@ -2183,7 +2206,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let copy: (String, String, String, String) -> String = { zh, en, zhT, ja in
                 switch language {
                 case .simplifiedChinese: return zh
-                case .traditionalChinese: return zhT
+                case .traditionalChineseTaiwan, .traditionalChineseHongKong: return zhT
                 case .japanese: return ja
                 case .english, .system, .korean, .spanish, .german: return en
                 }

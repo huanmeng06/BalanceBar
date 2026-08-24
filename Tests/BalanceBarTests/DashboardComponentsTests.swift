@@ -106,7 +106,8 @@ final class DashboardComponentsTests: XCTestCase {
         defer { AppLanguage.selected = previousLanguage }
         let fixtures: [(AppLanguage, String)] = [
             (.simplifiedChinese, "这是用于验证窗口缩放后副标题完整换行并同步更新卡片高度的长说明文字示例。"),
-            (.traditionalChinese, "這是用於驗證視窗縮放後副標題完整換行並同步更新卡片高度的長說明文字範例。"),
+            (.traditionalChineseTaiwan, "這是用於驗證視窗縮放後副標題完整換行並同步更新卡片高度的長說明文字範例。"),
+            (.traditionalChineseHongKong, "這是用於驗證視窗縮放後副標題完整換行並同步更新卡片高度的長說明文字範例。"),
             (.japanese, "これはウィンドウ幅の変更後も副題が完全に折り返され、カードの高さが更新されることを確認する説明文です。"),
             (.english, "This subtitle verifies resized-window wrapping and keeps the full settings text visible."),
             (.korean, "이 부제목은 창 너비를 바꾼 뒤에도 전체 설정 설명이 잘 줄바꿈되고 카드 높이가 갱신되는지 확인합니다."),
@@ -372,7 +373,8 @@ final class DashboardComponentsTests: XCTestCase {
 
         let cases: [(AppLanguage, String, String)] = [
             (.simplifiedChinese, "这是一段很长的本地化前缀，会在语义后缀之前换行：", "宽度 - 10.0 pt"),
-            (.traditionalChinese, "這是一段很長的本地化前綴，會在語義後綴之前換行：", "寬度 - 10.0 pt"),
+            (.traditionalChineseTaiwan, "這是一段很長的本地化前綴，會在語義後綴之前換行：", "寬度 - 10.0 pt"),
+            (.traditionalChineseHongKong, "這是一段很長的本地化前綴，會在語義後綴之前換行：", "寬度 - 10.0 pt"),
             (.japanese, "これは意味のある接尾辞の前で折り返す長いローカライズ済み接頭辞です：", "幅 - 10.0 pt"),
             (.english, "This localized prefix deliberately wraps before the semantic suffix: ", "Width - 10.0 pt")
         ]

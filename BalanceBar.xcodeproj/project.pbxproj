@@ -100,7 +100,8 @@
 		A100000000000000000000E0 /* GitHub.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = GitHub.svg; sourceTree = "<group>"; };
 		A100000000000000000000F2 /* Localizable.strings (en) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000F3 /* Localizable.strings (zh-Hans) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
-		A100000000000000000000F4 /* Localizable.strings (zh-Hant) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hant.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A100000000000000000000F4 /* Localizable.strings (zh-Hant-TW) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hant-TW.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A100000000000000000000FC /* Localizable.strings (zh-Hant-HK) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hant-HK.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000F5 /* Localizable.strings (ja) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000F9 /* Localizable.strings (ko) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000FA /* Localizable.strings (es) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -499,8 +500,12 @@
 				en,
 				Base,
 				zh-Hans,
-				zh-Hant,
+				zh-Hant-TW,
+				zh-Hant-HK,
 				ja,
+				ko,
+				es,
+				de,
 			);
 			mainGroup = A1000000000000000000001B /* BalanceBar */;
 			productRefGroup = A1000000000000000000001E /* Products */;
@@ -519,7 +524,8 @@
 			children = (
 				A100000000000000000000F2 /* Localizable.strings (en) */,
 				A100000000000000000000F3 /* Localizable.strings (zh-Hans) */,
-				A100000000000000000000F4 /* Localizable.strings (zh-Hant) */,
+				A100000000000000000000F4 /* Localizable.strings (zh-Hant-TW) */,
+				A100000000000000000000FC /* Localizable.strings (zh-Hant-HK) */,
 				A100000000000000000000F5 /* Localizable.strings (ja) */,
 				A100000000000000000000F9 /* Localizable.strings (ko) */,
 				A100000000000000000000FA /* Localizable.strings (es) */,

@@ -24,6 +24,7 @@
     case keyLocalizationFollowSystem = "localization.follow_system"
     case keyLocalizationSimplifiedChineseName = "localization.simplified_chinese_name"
     case keyLocalizationTraditionalChineseName = "localization.traditional_chinese_name"
+    case keyLocalizationTraditionalChineseHongKongName = "localization.traditional_chinese_hong_kong_name"
     case keyLocalizationJapaneseName = "localization.japanese_name"
     case keyLocalizationEnglishName = "localization.english_name"
     case keyLocalizationKoreanName = "localization.korean_name"

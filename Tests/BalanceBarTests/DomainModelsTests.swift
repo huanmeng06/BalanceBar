@@ -25,7 +25,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(available?.state, .available("person@example.com"))
         XCTAssertEqual(available?.subscription, .proFiveX)
         XCTAssertEqual(available?.text(language: .simplifiedChinese), "person@example.com")
-        XCTAssertEqual(available?.text(language: .traditionalChinese), "person@example.com")
+        XCTAssertEqual(available?.text(language: .traditionalChineseTaiwan), "person@example.com")
         XCTAssertEqual(available?.text(language: .japanese), "person@example.com")
         XCTAssertEqual(available?.text(language: .english), "person@example.com")
 
@@ -36,7 +36,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(unavailable?.state, .unavailable)
         XCTAssertEqual(unavailable?.text(language: .simplifiedChinese), "账号不可用")
-        XCTAssertEqual(unavailable?.text(language: .traditionalChinese), "帳號不可用")
+        XCTAssertEqual(unavailable?.text(language: .traditionalChineseTaiwan), "帳號不可用")
         XCTAssertEqual(unavailable?.text(language: .japanese), "アカウントを利用できません")
         XCTAssertEqual(unavailable?.text(language: .english), "Account unavailable")
 
