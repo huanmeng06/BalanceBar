@@ -109,8 +109,8 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(claude.remaining, 87.5, accuracy: 0.000001)
-        XCTAssertEqual(claude.label, tr("7 日额度", "7-Day Quota", "7 日額度", "7日間クォータ"))
-        XCTAssertEqual(claude.daysText, tr("7 天", "7 Days", "7 天", "7日間"))
+        XCTAssertEqual(claude.label, tr(.keyResponseParsers7DayQuota))
+        XCTAssertEqual(claude.daysText, tr(.keyResponseParsers7Days))
         XCTAssertEqual(claude.reset, "2h0m")
 
         let codex = try OfficialQuotaResponseParser.parse(
@@ -119,8 +119,8 @@ final class ResponseParsersTests: XCTestCase {
             now: now
         )
         XCTAssertEqual(codex.remaining, 45, accuracy: 0.000001)
-        XCTAssertEqual(codex.label, tr("7 日额度", "7-Day Quota", "7 日額度", "7日間クォータ"))
-        XCTAssertEqual(codex.daysText, tr("7 天", "7 Days", "7 天", "7日間"))
+        XCTAssertEqual(codex.label, tr(.keyResponseParsers7DayQuota))
+        XCTAssertEqual(codex.daysText, tr(.keyResponseParsers7Days))
         XCTAssertEqual(codex.reset, "1h30m")
     }
 

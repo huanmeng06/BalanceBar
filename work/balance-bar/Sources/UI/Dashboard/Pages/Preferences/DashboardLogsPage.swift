@@ -59,21 +59,21 @@ final class DashboardLogsPage {
     func makePage(relay: DashboardPreferencePageRelay) -> NSView {
         let root = NSView()
         let header = DashboardSettingsComponents.makePageHeader(
-            tr("日志", "Logs", "日誌", "ログ"),
-            subtitle: tr("供应商切换、同步和失败原因", "Provider switching, synchronization, and failure details", "供應商切換、同步和失敗原因", "プロバイダーの切り替え、同期、失敗の詳細")
+            tr(.keyDashboardLogsPageLogs),
+            subtitle: tr(.keyDashboardLogsPageProviderSwitchingSynchronizationAndFailureDetails)
         )
         let refreshButton = NSButton(
-            title: tr("刷新", "Refresh", "重新整理", "更新"),
+            title: tr(.keyDashboardLogsPageRefresh),
             target: relay,
             action: #selector(DashboardPreferencePageRelay.refreshLog(_:))
         )
-        refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: tr("刷新", "Refresh", "重新整理", "更新"))
+        refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: tr(.keyDashboardLogsPageRefresh2))
         let revealButton = NSButton(
-            title: tr("在 Finder 中显示", "Show in Finder", "在 Finder 中顯示", "Finder に表示"),
+            title: tr(.keyDashboardLogsPageShowInFinder),
             target: relay,
             action: #selector(DashboardPreferencePageRelay.revealLog(_:))
         )
-        revealButton.image = NSImage(systemSymbolName: "folder", accessibilityDescription: tr("在 Finder 中显示", "Show in Finder", "在 Finder 中顯示", "Finder に表示"))
+        revealButton.image = NSImage(systemSymbolName: "folder", accessibilityDescription: tr(.keyDashboardLogsPageShowInFinder2))
         let buttons = NSStackView(views: [refreshButton, revealButton, NSView()])
         buttons.orientation = .horizontal
         buttons.spacing = 8
@@ -116,7 +116,7 @@ final class DashboardLogsPage {
     }
 
     func refresh() {
-        let text = SwitchLog.recentText() ?? tr("暂无日志", "No logs yet", "暫無日誌", "ログはまだありません")
+        let text = SwitchLog.recentText() ?? tr(.keyDashboardLogsPageNoLogsYet)
         logView.textStorage?.setAttributedString(Self.styledLog(text))
         resizeDocument()
         DispatchQueue.main.async { [weak self] in

@@ -56,29 +56,11 @@ enum ProviderBalanceProgressError: Error, Equatable {
     func userVisibleReason(language: AppLanguage) -> String {
         switch self {
         case .invalidAmount:
-            return tr(
-                "余额数据无效",
-                "The balance data is invalid",
-                "餘額資料無效",
-                "残高データが無効です",
-                language: language
-            )
+            return tr(.keyProviderBalanceProgressStoreTheBalanceDataIsInvalid, language: language)
         case .invalidUnit:
-            return tr(
-                "余额单位无效",
-                "The balance unit is invalid",
-                "餘額單位無效",
-                "残高の単位が無効です",
-                language: language
-            )
+            return tr(.keyProviderBalanceProgressStoreTheBalanceUnitIsInvalid, language: language)
         case .inconsistentUnit:
-            return tr(
-                "余额单位发生变化",
-                "The balance unit changed",
-                "餘額單位已變更",
-                "残高の単位が変わりました",
-                language: language
-            )
+            return tr(.keyProviderBalanceProgressStoreTheBalanceUnitChanged, language: language)
         }
     }
 }

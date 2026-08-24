@@ -4,9 +4,9 @@ extension UpdateChannel {
     func localizedTitle(using language: AppLanguage = .selected) -> String {
         switch self {
         case .stable:
-            return tr("正式版", "Stable", "正式版", "正式版", language: language)
+            return tr(.keyDashboardGeneralAndRefreshPagesStable, language: language)
         case .beta:
-            return tr("Beta 测试版", "Beta Test", "Beta 測試版", "ベータテスト", language: language)
+            return tr(.keyDashboardGeneralAndRefreshPagesBetaTest, language: language)
         }
     }
 }
@@ -21,62 +21,50 @@ struct DashboardUpdatePresentation: Equatable {
         switch state {
         case .idle:
             return DashboardUpdatePresentation(
-                subtitle: tr(
-                    "点击检查 GitHub Releases",
-                    "Click to check GitHub Releases",
-                    "點擊檢查 GitHub Releases",
-                    "クリックして GitHub Releases を確認",
-                    language: language
-                ),
-                buttonTitle: tr("检查更新", "Check for Updates", "檢查更新", "アップデートを確認", language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesClickToCheckGithubReleases, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates, language: language),
                 buttonEnabled: true,
                 performsInstall: false
             )
         case .checking:
             return DashboardUpdatePresentation(
-                subtitle: tr("正在检查更新…", "Checking for updates…", "正在檢查更新…", "アップデートを確認中…", language: language),
-                buttonTitle: tr("检查中…", "Checking…", "檢查中…", "確認中…", language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesCheckingForUpdates, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesChecking, language: language),
                 buttonEnabled: false,
                 performsInstall: false
             )
         case .latest:
             return DashboardUpdatePresentation(
-                subtitle: tr("当前为最新版本", "You are up to date", "目前為最新版本", "最新バージョンです", language: language),
-                buttonTitle: tr("检查更新", "Check for Updates", "檢查更新", "アップデートを確認", language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesYouAreUpToDate, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates2, language: language),
                 buttonEnabled: true,
                 performsInstall: false
             )
         case .available(let current, let latest):
             return DashboardUpdatePresentation(
-                subtitle: tr(
-                    "新版本可用：\(current) -> \(latest)",
-                    "New version available: \(current) -> \(latest)",
-                    "新版本可用：\(current) -> \(latest)",
-                    "新しいバージョンがあります：\(current) -> \(latest)",
-                    language: language
-                ),
-                buttonTitle: tr("下载并安装", "Download and Install", "下載並安裝", "ダウンロードしてインストール", language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue, arguments: [String(describing: current), String(describing: latest)], language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language),
                 buttonEnabled: true,
                 performsInstall: true
             )
         case .downloading(_, _, let progress):
             return DashboardUpdatePresentation(
-                subtitle: tr("正在下载新版本…", "Downloading the new version…", "正在下載新版本…", "新しいバージョンをダウンロード中…", language: language),
-                buttonTitle: tr("下载中 \(progress)% …", "Downloading \(progress)% …", "下載中 \(progress)% …", "ダウンロード中 \(progress)% …", language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadingTheNewVersion, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadingValue, arguments: [String(describing: progress)], language: language),
                 buttonEnabled: false,
                 performsInstall: false
             )
         case .installing(_, _, let progress):
             return DashboardUpdatePresentation(
-                subtitle: tr("正在安装新版本…", "Installing the new version…", "正在安裝新版本…", "新しいバージョンをインストール中…", language: language),
-                buttonTitle: tr("安装中 \(progress)% …", "Installing \(progress)% …", "安裝中 \(progress)% …", "インストール中 \(progress)% …", language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesInstallingTheNewVersion, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesInstallingValue, arguments: [String(describing: progress)], language: language),
                 buttonEnabled: false,
                 performsInstall: false
             )
         case .restarting:
             return DashboardUpdatePresentation(
-                subtitle: tr("安装完成，正在重新启动…", "Installed; restarting…", "安裝完成，正在重新啟動…", "インストール完了。再起動中…", language: language),
-                buttonTitle: tr("重新启动中…", "Restarting…", "重新啟動中…", "再起動中…", language: language),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesInstalledRestarting, language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRestarting, language: language),
                 buttonEnabled: false,
                 performsInstall: false
             )
@@ -84,19 +72,19 @@ struct DashboardUpdatePresentation: Equatable {
             let subtitle: String
             switch failure {
             case .assetUnavailable:
-                subtitle = tr("没有可验证的安装包，请重试", "No verifiable installer is available; try again", "沒有可驗證的安裝包，請重試", "検証可能なインストーラーがありません。再試行してください", language: language)
+                subtitle = tr(.keyDashboardGeneralAndRefreshPagesNoVerifiableInstallerIsAvailableTryAgain, language: language)
             case .verificationFailed:
-                subtitle = tr("下载校验失败，当前版本未更改", "Download verification failed; the current version was not changed", "下載驗證失敗，目前版本未變更", "ダウンロードの検証に失敗しました。現在のバージョンは変更されていません", language: language)
+                subtitle = tr(.keyDashboardGeneralAndRefreshPagesDownloadVerificationFailedTheCurrentVersionWasNotChanged, language: language)
             case .installationFailed:
-                subtitle = tr("安装失败，当前版本未更改，请重试", "Installation failed; the current version was not changed", "安裝失敗，目前版本未變更，請重試", "インストールに失敗しました。現在のバージョンは変更されていません", language: language)
+                subtitle = tr(.keyDashboardGeneralAndRefreshPagesInstallationFailedTheCurrentVersionWasNotChanged, language: language)
             case .invalidCurrentVersion:
-                subtitle = tr("无法读取当前版本，请重试", "The current version could not be read; try again", "無法讀取目前版本，請重試", "現在のバージョンを読み取れません。再試行してください", language: language)
+                subtitle = tr(.keyDashboardGeneralAndRefreshPagesTheCurrentVersionCouldNotBeReadTryAgain, language: language)
             default:
-                subtitle = tr("检查更新失败，请重试", "Update check failed; try again", "檢查更新失敗，請重試", "アップデートの確認に失敗しました。再試行してください", language: language)
+                subtitle = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgain, language: language)
             }
             return DashboardUpdatePresentation(
                 subtitle: subtitle,
-                buttonTitle: tr("重试", "Retry", "重試", "再試行", language: language),
+                buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRetry, language: language),
                 buttonEnabled: true,
                 performsInstall: false
             )
@@ -117,17 +105,12 @@ final class DashboardGeneralPage {
 
     func make(_ input: Input) -> NSView {
         let openButton = NSButton(
-            title: tr("打开 CC Switch", "Open CC Switch", "開啟 CC Switch", "CC Switch を開く"),
+            title: tr(.keyDashboardGeneralAndRefreshPagesOpenCcSwitch),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.openCCSwitch(_:))
         )
-        let currentProviderText = tr(
-            "当前供应商：\(input.currentProviderName)",
-            "Current Provider: \(input.currentProviderName)",
-            "目前供應商：\(input.currentProviderName)",
-            "現在のプロバイダー：\(input.currentProviderName)"
-        )
-        let system = DashboardSettingsComponents.makeSettingsSection(tr("系统", "System", "系統", "システム"), rows: [
+        let currentProviderText = tr(.keyDashboardGeneralAndRefreshPagesCurrentProviderValue, arguments: [String(describing: input.currentProviderName)])
+        let system = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesSystem), rows: [
             DashboardSettingsComponents.makeSettingsRow(
                 "CC Switch",
                 subtitle: currentProviderText,
@@ -137,11 +120,11 @@ final class DashboardGeneralPage {
 
         let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [
-                (1, tr("每 1 秒", "Every 1 sec", "每 1 秒", "1秒ごと")),
-                (2, tr("每 2 秒", "Every 2 sec", "每 2 秒", "2秒ごと")),
-                (3, tr("每 3 秒", "Every 3 sec", "每 3 秒", "3秒ごと")),
-                (5, tr("每 5 秒", "Every 5 sec", "每 5 秒", "5秒ごと")),
-                (10, tr("每 10 秒", "Every 10 sec", "每 10 秒", "10秒ごと"))
+                (1, tr(.keyDashboardGeneralAndRefreshPagesEvery1Sec)),
+                (2, tr(.keyDashboardGeneralAndRefreshPagesEvery2Sec)),
+                (3, tr(.keyDashboardGeneralAndRefreshPagesEvery3Sec)),
+                (5, tr(.keyDashboardGeneralAndRefreshPagesEvery5Sec)),
+                (10, tr(.keyDashboardGeneralAndRefreshPagesEvery10Sec))
             ],
             selected: input.preferences.codexUsageRefreshInterval,
             identifier: "codexUsageRefreshInterval",
@@ -150,18 +133,18 @@ final class DashboardGeneralPage {
         )
         let trailingRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [
-                (0, tr("不继续", "Off", "不繼續", "オフ")),
-                (6, tr("持续 6 秒", "For 6 sec", "持續 6 秒", "6秒間")),
-                (12, tr("持续 12 秒", "For 12 sec", "持續 12 秒", "12秒間")),
-                (30, tr("持续 30 秒", "For 30 sec", "持續 30 秒", "30秒間"))
+                (0, tr(.keyDashboardGeneralAndRefreshPagesOff)),
+                (6, tr(.keyDashboardGeneralAndRefreshPagesFor6Sec)),
+                (12, tr(.keyDashboardGeneralAndRefreshPagesFor12Sec)),
+                (30, tr(.keyDashboardGeneralAndRefreshPagesFor30Sec))
             ],
             selected: input.preferences.postCodexRefreshDuration,
             identifier: "postCodexRefreshDuration",
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.interval(_:))
         )
-        let runningLabel = NSTextField(labelWithString: tr("运行中", "Running", "執行中", "実行中"))
-        let trailingLabel = NSTextField(labelWithString: tr("结束后", "After", "結束後", "終了後"))
+        let runningLabel = NSTextField(labelWithString: tr(.keyDashboardGeneralAndRefreshPagesRunning))
+        let trailingLabel = NSTextField(labelWithString: tr(.keyDashboardGeneralAndRefreshPagesAfter))
         [runningLabel, trailingLabel].forEach {
             $0.font = .systemFont(ofSize: 11)
             $0.textColor = .secondaryLabelColor
@@ -186,25 +169,20 @@ final class DashboardGeneralPage {
         activeRefreshControls.alignment = .trailing
         activeRefreshControls.spacing = 5
         let refreshButton = NSButton(
-            title: tr("立即刷新", "Refresh Now", "立即重新整理", "今すぐ更新"),
+            title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.manualRefresh(_:))
         )
-        let refreshing = DashboardSettingsComponents.makeSettingsSection(tr("刷新", "Refresh", "重新整理", "更新"), rows: [
+        let refreshing = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesRefresh), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("任务期间余量更新频率", "Balance Updates During Tasks", "任務期間餘量更新頻率", "タスク中の残高更新頻度"),
-                subtitle: tr(
-                    "Agent 运行时请求当前供应商的余量",
-                    "Requests the current Provider's balance while an Agent is running",
-                    "Agent 執行時請求目前供應商的餘量",
-                    "エージェント実行中に現在のプロバイダーの残高を要求します"
-                ),
+                tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
                 control: activeRefreshControls,
                 minimumHeight: 76
             ),
             DashboardSettingsComponents.makeSettingsRow(
-                tr("余额数据", "Balance Data", "餘額資料", "残高データ"),
-                subtitle: tr("立即重新读取当前供应商", "Reload the current Provider now", "立即重新讀取目前供應商", "現在のプロバイダーをすぐに再読み込み"),
+                tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow),
                 control: refreshButton
             )
         ])
@@ -251,14 +229,14 @@ final class DashboardGeneralPage {
         self.updateSubtitleLabel = updateSubtitle
         self.updateButton = updateButton
 
-        let app = DashboardSettingsComponents.makeSettingsSection(tr("应用", "Application", "應用程式", "アプリ"), rows: [
+        let app = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesApplication), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("语言", "Language", "語言", "言語"),
-                subtitle: tr("更改后立即应用到整个界面", "Changes apply to the entire interface immediately", "更改後立即套用到整個介面", "変更後すぐにすべての画面に適用されます"),
+                tr(.keyDashboardGeneralAndRefreshPagesLanguage),
+                subtitle: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
                 control: languagePopup
             ),
             DashboardSettingsComponents.makeSettingsRow(
-                tr("检查更新", "Check for Updates", "檢查更新", "アップデートを確認"),
+                tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates3),
                 subtitle: updatePresentation.subtitle,
                 subtitleLabel: updateSubtitle,
                 control: updateControls
@@ -295,22 +273,17 @@ enum DashboardRefreshPage {
     static func make(_ input: Input) -> NSView {
         let root = NSView()
         let header = DashboardSettingsComponents.makePageHeader(
-            tr("刷新设置", "Refresh Settings", "重新整理設定", "更新設定"),
-            subtitle: tr(
-                "文件监听始终开启，轮询用于防止遗漏系统事件",
-                "File monitoring is always active; polling prevents missed system events",
-                "檔案監聽始終開啟，輪詢用於防止遺漏系統事件",
-                "ファイル監視は常に有効です。ポーリングはシステムイベントの取りこぼしを防ぐためのものです"
-            )
+            tr(.keyDashboardGeneralAndRefreshPagesRefreshSettings),
+            subtitle: tr(.keyDashboardGeneralAndRefreshPagesFileMonitoringIsAlwaysActivePollingPreventsMissedSystemEvents)
         )
-        let pollingTitle = NSTextField(labelWithString: tr("CC Switch 轮询兜底", "CC Switch Fallback Polling", "CC Switch 輪詢兜底", "CC Switch フォールバックポーリング"))
+        let pollingTitle = NSTextField(labelWithString: tr(.keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling))
         pollingTitle.font = .systemFont(ofSize: 13, weight: .medium)
         let pollingPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [
-                (1, tr("每 1 秒", "Every 1 sec", "每 1 秒", "1秒ごと")),
-                (3, tr("每 3 秒", "Every 3 sec", "每 3 秒", "3秒ごと")),
-                (5, tr("每 5 秒", "Every 5 sec", "每 5 秒", "5秒ごと")),
-                (10, tr("每 10 秒", "Every 10 sec", "每 10 秒", "10秒ごと"))
+                (1, tr(.keyDashboardGeneralAndRefreshPagesEvery1Sec2)),
+                (3, tr(.keyDashboardGeneralAndRefreshPagesEvery3Sec2)),
+                (5, tr(.keyDashboardGeneralAndRefreshPagesEvery5Sec2)),
+                (10, tr(.keyDashboardGeneralAndRefreshPagesEvery10Sec2))
             ],
             selected: input.providerPollInterval,
             identifier: "providerPollInterval",
@@ -321,10 +294,10 @@ enum DashboardRefreshPage {
         pollingRow.orientation = .horizontal
         pollingRow.alignment = .centerY
 
-        let activityTitle = NSTextField(labelWithString: tr("Codex 任务状态检测", "Codex Task Status Detection", "Codex 任務狀態偵測", "Codex タスクステータス検出"))
+        let activityTitle = NSTextField(labelWithString: tr(.keyDashboardGeneralAndRefreshPagesCodexTaskStatusDetection))
         activityTitle.font = .systemFont(ofSize: 13, weight: .medium)
         let activityPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
-            values: [(0.25, tr("0.25 秒", "0.25 sec", "0.25 秒", "0.25秒")), (0.5, tr("0.5 秒", "0.5 sec", "0.5 秒", "0.5秒")), (1, tr("1 秒", "1 sec", "1 秒", "1秒"))],
+            values: [(0.25, tr(.keyDashboardGeneralAndRefreshPages025Sec)), (0.5, tr(.keyDashboardGeneralAndRefreshPages05Sec)), (1, tr(.keyDashboardGeneralAndRefreshPages1Sec))],
             selected: input.preferences.activityPollInterval,
             identifier: "activityPollInterval",
             target: input.relay,
@@ -334,12 +307,7 @@ enum DashboardRefreshPage {
         activityRow.orientation = .horizontal
         activityRow.alignment = .centerY
 
-        let note = NSTextField(wrappingLabelWithString: tr(
-            "供应商变化仍由 CC Switch 数据库事件即时触发；这里的秒数只是没有收到事件时的后备检查频率。",
-            "Provider changes are still triggered immediately by CC Switch database events; this interval is only the fallback check frequency.",
-            "供應商變化仍由 CC Switch 資料庫事件即時觸發；這裡的秒數只是沒有收到事件時的備援檢查頻率。",
-            "プロバイダーの変更は引き続き CC Switch データベースイベントによって即時トリガーされます。ここでの秒数は、イベントを受信しなかった場合のバックアップチェック頻度にすぎません。"
-        ))
+        let note = NSTextField(wrappingLabelWithString: tr(.keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency))
         note.font = .systemFont(ofSize: 12)
         note.textColor = .secondaryLabelColor
 

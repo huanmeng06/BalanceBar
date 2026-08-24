@@ -361,25 +361,13 @@ final class DashboardMenuBarPage {
     }
 
     static func overflowWarningText(for language: AppLanguage = .selected) -> String {
-        tr(
-            "菜单栏空间不足，BalanceBar 暂时不可见；请关闭或移除部分菜单栏图标后重试。",
-            "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again.",
-            "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。",
-            "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。",
-            language: language
-        )
+        tr(.keyDashboardMenuBarPageMenuBarSpaceIsFullSoBalancebarIsTemporarilyHiddenHideOrRemoveSomeMenuBarIconsAndTryAgain, language: language)
     }
 
     static func overflowWarningSettingsButtonText(
         for language: AppLanguage = .selected
     ) -> String {
-        tr(
-            "打开设置",
-            "Open Settings",
-            "開啟設定",
-            "設定を開く",
-            language: language
-        )
+        tr(.keyDashboardMenuBarPageOpenSettings, language: language)
     }
 
     struct Input {
@@ -656,10 +644,10 @@ final class DashboardMenuBarPage {
         self.overflowWarningLabel = overflowWarningLabel
         self.overflowWarningSettingsButton = overflowWarningSettingsButton
         self.overflowWarningRow = overflowWarningRow
-        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr("预览", "Preview", "預覽", "プレビュー"), rows: [
+        let previewSection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPagePreview), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("当前布局", "Current Layout", "目前版面", "現在のレイアウト"),
-                subtitle: tr("菜单栏会随供应商数据实时更新", "The menu bar updates with Provider data in real time", "選單列會隨供應商資料即時更新", "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"),
+                tr(.keyDashboardMenuBarPageCurrentLayout),
+                subtitle: tr(.keyDashboardMenuBarPageTheMenuBarUpdatesWithProviderDataInRealTime),
                 control: preview,
                 minimumHeight: Self.previewRowHeight
             ),
@@ -670,23 +658,18 @@ final class DashboardMenuBarPage {
             self?.previewSeparators = separators
         })
         let animationSection = DashboardSettingsComponents.makeSettingsSection(
-            tr("动画", "Animation", "動畫", "アニメーション"),
+            tr(.keyDashboardMenuBarPageAnimation),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr(
-                        "任务进行时播放图标动画",
-                        "Play the icon animation while a task is running",
-                        "任務進行時播放圖示動畫",
-                        "タスク実行中にアイコンアニメーションを再生"
-                    ),
+                    tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
                     control: animationToggle
                 )
             ]
         )
-        let displaySection = DashboardSettingsComponents.makeSettingsSection(tr("显示项目", "Display Items", "顯示項目", "表示項目"), rows: [
-            DashboardSettingsComponents.makeSettingsRow(tr("Agent 图标", "Agent Icon", "Agent 圖示", "エージェントアイコン"), subtitle: tr("显示当前任务运行状态", "Shows the current task status", "顯示目前任務執行狀態", "現在のタスク実行状態を表示"), control: iconToggle),
-            DashboardSettingsComponents.makeSettingsRow(tr("额度数字", "Balance Amount", "額度數字", "残高の数値"), subtitle: tr("显示百分比或 API 余额", "Shows a percentage or API balance", "顯示百分比或 API 餘額", "パーセンテージまたは API 残高を表示"), control: amountToggle),
-            DashboardSettingsComponents.makeSettingsRow(tr("重置倒计时", "Reset Countdown", "重設倒數計時", "リセットカウントダウン"), subtitle: tr("仅在官方额度可用时显示", "Only shown when official quota data is available", "僅在官方額度可用時顯示", "公式クォータが利用可能な場合のみ表示"), control: resetToggle)
+        let displaySection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPageDisplayItems), rows: [
+            DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageAgentIcon), subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus), control: iconToggle),
+            DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageBalanceAmount), subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance), control: amountToggle),
+            DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageResetCountdown), subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable), control: resetToggle)
         ])
         let iconOffsetSummary = NSTextField(
             labelWithString: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY)
@@ -704,32 +687,22 @@ final class DashboardMenuBarPage {
             value: input.preferences.menuBarIconOffsetY,
             key: AppPreferences.menuBarIconOffsetYKey,
             range: AppPreferences.menuBarOffsetRange,
-            minimumTitle: tr("下", "Down", "下", "下"),
-            maximumTitle: tr("上", "Up", "上", "上"),
+            minimumTitle: tr(.keyDashboardMenuBarPageDown),
+            maximumTitle: tr(.keyDashboardMenuBarPageUp),
             minimumIdentifier: Self.iconOffsetSliderMinimumIdentifier,
             maximumIdentifier: Self.iconOffsetSliderMaximumIdentifier,
-            tooltip: tr(
-                "从 -10.0 pt（下）调整到 +10.0 pt（上），默认 0 pt",
-                "Adjusts vertical position from -10.0 pt (down) to +10.0 pt (up); default 0 pt",
-                "從 -10.0 pt（下）調整到 +10.0 pt（上），預設 0 pt",
-                "Y 軸を -10.0 pt（下）から +10.0 pt（上）まで調整（デフォルト 0 pt）"
-            ),
+            tooltip: tr(.keyDashboardMenuBarPageAdjustsVerticalPositionFrom100PtDownTo100PtUpDefault0Pt),
             relay: input.relay
         )
         let amountOffsetControls = makeCenteredSliderControls(
             value: input.preferences.menuBarAmountOffsetY,
             key: AppPreferences.menuBarAmountOffsetYKey,
             range: AppPreferences.menuBarOffsetRange,
-            minimumTitle: tr("下", "Down", "下", "下"),
-            maximumTitle: tr("上", "Up", "上", "上"),
+            minimumTitle: tr(.keyDashboardMenuBarPageDown2),
+            maximumTitle: tr(.keyDashboardMenuBarPageUp2),
             minimumIdentifier: Self.amountOffsetSliderMinimumIdentifier,
             maximumIdentifier: Self.amountOffsetSliderMaximumIdentifier,
-            tooltip: tr(
-                "从 -10.0 pt（下）调整到 +10.0 pt（上），默认 0 pt",
-                "Adjusts vertical position from -10.0 pt (down) to +10.0 pt (up); default 0 pt",
-                "從 -10.0 pt（下）調整到 +10.0 pt（上），預設 0 pt",
-                "Y 軸を -10.0 pt（下）から +10.0 pt（上）まで調整（デフォルト 0 pt）"
-            ),
+            tooltip: tr(.keyDashboardMenuBarPageAdjustsVerticalPositionFrom100PtDownTo100PtUpDefault0Pt2),
             relay: input.relay
         )
         let widthAdjustmentControls = makeWidthSliderControls(
@@ -750,35 +723,30 @@ final class DashboardMenuBarPage {
         widthAdjustmentSlider = widthAdjustmentControls.slider
         fontSizePresetControl = fontSizeControls.control
         let typographyAndPositionSection = DashboardSettingsComponents.makeSettingsSection(
-            tr("字号与位置", "Font Size & Position", "字號與位置", "フォントサイズと位置"),
+            tr(.keyDashboardMenuBarPageFontSizePosition),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("菜单栏字号", "Menu Bar Font Size", "選單列字號", "メニューバーのフォントサイズ"),
-                    subtitle: tr(
-                        "调整菜单栏字体大小",
-                        "Adjusts the menu bar font size",
-                        "調整選單列字體大小",
-                        "メニューバーのフォントサイズを調整"
-                    ),
+                    tr(.keyDashboardMenuBarPageMenuBarFontSize),
+                    subtitle: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarFontSize),
                     control: fontSizeControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("图标偏移", "Icon Offset", "圖示偏移", "アイコンの位置調整"),
+                    tr(.keyDashboardMenuBarPageIconOffset),
                     subtitle: Self.iconOffsetSummaryText(y: input.preferences.menuBarIconOffsetY),
                     subtitleLabel: iconOffsetSummary,
                     control: iconOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("金额偏移", "Amount Offset", "金額偏移", "金額の位置調整"),
+                    tr(.keyDashboardMenuBarPageAmountOffset),
                     subtitle: Self.amountOffsetSummaryText(y: input.preferences.menuBarAmountOffsetY),
                     subtitleLabel: amountOffsetSummary,
                     control: amountOffsetControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr("菜单栏宽度", "Menu Bar Width", "選單列寬度", "メニューバーの幅"),
+                    tr(.keyDashboardMenuBarPageMenuBarWidth),
                     subtitle: Self.widthAdjustmentSummaryText(widthAdjustment),
                     subtitleLabel: widthAdjustmentSummary,
                     control: widthAdjustmentControls.view,
@@ -1172,8 +1140,8 @@ final class DashboardMenuBarPage {
         let sign = value < 0 ? "-" : "+"
         // Keep the signed value as one layout word. AppKit's normal word
         // wrapping can otherwise leave a trailing `0.0 pt` fragment on the
-        // next line while the localized descriptor (for example `幅 +` or
-        // `宽度 - 10.0`) remains on the previous line. Non-breaking spaces
+        // next line while the localized descriptor/value group remains on the
+        // previous line. Non-breaking spaces
         // are visually identical to ordinary spaces, but make the complete
         // descriptor/value group move together at narrow widths.
         let nonBreakingSpace = "\u{00A0}"
@@ -1182,32 +1150,17 @@ final class DashboardMenuBarPage {
 
     private static func iconOffsetSummaryText(y: Double) -> String {
         let valueText = signedPointText(y)
-        return tr(
-            "微调图标上下像素位置：Y\u{00A0}轴\(valueText)",
-            "Fine-tune the icon's vertical position: Y\u{00A0}axis\(valueText)",
-            "微調圖示上下像素位置：Y\u{00A0}軸\(valueText)",
-            "アイコンの上下位置を微調整：Y\u{00A0}軸\(valueText)"
-        )
+        return tr(.keyDashboardMenuBarPageFineTuneTheIconSVerticalPositionYaxisvalue, arguments: [String(describing: valueText)])
     }
 
     private static func amountOffsetSummaryText(y: Double) -> String {
         let valueText = signedPointText(y)
-        return tr(
-            "微调金额上下像素位置：Y\u{00A0}轴\(valueText)",
-            "Fine-tune the amount's vertical position: Y\u{00A0}axis\(valueText)",
-            "微調金額上下像素位置：Y\u{00A0}軸\(valueText)",
-            "金額の上下位置を微調整：Y\u{00A0}軸\(valueText)"
-        )
+        return tr(.keyDashboardMenuBarPageFineTuneTheAmountSVerticalPositionYaxisvalue, arguments: [String(describing: valueText)])
     }
 
     private static func widthAdjustmentSummaryText(_ value: Double) -> String {
         let valueText = signedPointText(value)
-        return tr(
-            "调整 BalanceBar 与其他项目的空隙：宽度\(valueText)",
-            "Adjusts the gap between BalanceBar and other items: Width\(valueText)",
-            "調整 BalanceBar 與其他項目的間距：寬度\(valueText)",
-            "BalanceBar と他の項目との間隔を調整：幅\(valueText)"
-        )
+        return tr(.keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue, arguments: [String(describing: valueText)])
     }
 
     private static func previewCapsuleHorizontalInset(
@@ -1237,21 +1190,16 @@ final class DashboardMenuBarPage {
             target: relay,
             action: #selector(DashboardPreferencePageRelay.selectMenuBarFontSizePreset(_:))
         )
-        control.toolTip = tr(
-            "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt",
-            "Large 13/10 pt; Medium 11.7/9 pt; Small 10.4/8 pt",
-            "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt",
-            "大 13/10 pt；中 11.7/9 pt；小 10.4/8 pt"
-        )
+        control.toolTip = tr(.keyDashboardMenuBarPageLarge1310PtMedium1179PtSmall1048Pt)
         control.widthAnchor.constraint(equalToConstant: Self.fontSizePresetWidth).isActive = true
         return FontPresetControls(view: control, control: control)
     }
 
     private static func fontSizePresetLabel(_ preset: MenuBarFontSizePreset) -> String {
         switch preset {
-        case .large: return tr("大", "Large", "大", "大")
-        case .medium: return tr("中", "Medium", "中", "中")
-        case .small: return tr("小", "Small", "小", "小")
+        case .large: return tr(.keyDashboardMenuBarPageLarge)
+        case .medium: return tr(.keyDashboardMenuBarPageMedium)
+        case .small: return tr(.keyDashboardMenuBarPageSmall)
         }
     }
 
@@ -1264,16 +1212,11 @@ final class DashboardMenuBarPage {
             value: value,
             key: key,
             range: AppPreferences.menuBarStatusItemWidthAdjustmentRange,
-            minimumTitle: tr("窄", "Narrow", "窄", "狭い"),
-            maximumTitle: tr("宽", "Wide", "寬", "広い"),
+            minimumTitle: tr(.keyDashboardMenuBarPageNarrow),
+            maximumTitle: tr(.keyDashboardMenuBarPageWide),
             minimumIdentifier: Self.widthAdjustmentSliderMinimumIdentifier,
             maximumIdentifier: Self.widthAdjustmentSliderMaximumIdentifier,
-            tooltip: tr(
-                "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt",
-                "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt",
-                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt",
-                "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
-            ),
+            tooltip: tr(.keyDashboardMenuBarPageAdjustsMenuBarWidthFrom100PtNarrowTo100PtWideDefault0Pt),
             relay: relay
         )
     }

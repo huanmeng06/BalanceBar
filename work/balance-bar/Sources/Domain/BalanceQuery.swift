@@ -63,27 +63,27 @@ enum BalanceQueryFailure: String {
     func userVisibleReason(language: AppLanguage) -> String {
         switch self {
         case .settingsJSONInvalid, .metaJSONInvalid:
-            return tr("CC Switch 配置格式无效", "CC Switch configuration is invalid", "CC Switch 設定格式無效", "CC Switch の設定形式が無効です", language: language)
+            return tr(.keyBalanceQueryCcSwitchConfigurationIsInvalid, language: language)
         case .usageScriptMissing:
-            return tr("用量脚本缺失", "Usage script is missing", "用量指令碼缺失", "使用量スクリプトがありません", language: language)
+            return tr(.keyBalanceQueryUsageScriptIsMissing, language: language)
         case .usageScriptInvalid:
-            return tr("用量脚本无效", "Usage script is invalid", "用量指令碼無效", "使用量スクリプトが無効です", language: language)
+            return tr(.keyBalanceQueryUsageScriptIsInvalid, language: language)
         case .usageScriptDisabled:
-            return tr("用量脚本未启用", "Usage script is not enabled", "用量指令碼未啟用", "使用量スクリプトが有効になっていません", language: language)
+            return tr(.keyBalanceQueryUsageScriptIsNotEnabled, language: language)
         case .credentialMissing:
-            return tr("缺少访问凭据", "Access credential is missing", "缺少存取憑證", "アクセス資格情報がありません", language: language)
+            return tr(.keyBalanceQueryAccessCredentialIsMissing, language: language)
         case .baseURLMissing:
-            return tr("缺少 API 地址", "API address is missing", "缺少 API 位址", "API アドレスがありません", language: language)
+            return tr(.keyBalanceQueryApiAddressIsMissing, language: language)
         case .requestCodeMissing:
-            return tr("用量脚本缺少请求代码", "Usage script request code is missing", "用量指令碼缺少請求程式碼", "使用量スクリプトのリクエストコードがありません", language: language)
+            return tr(.keyBalanceQueryUsageScriptRequestCodeIsMissing, language: language)
         case .requestEndpointMissing:
-            return tr("用量脚本缺少请求地址", "Usage script request address is missing", "用量指令碼缺少請求位址", "使用量スクリプトのリクエストアドレスがありません", language: language)
+            return tr(.keyBalanceQueryUsageScriptRequestAddressIsMissing, language: language)
         case .nativeTemplateUnsupported:
-            return tr("不支持当前余额模板", "Current balance template is not supported", "不支援目前餘額範本", "現在の残高テンプレートはサポートされていません", language: language)
+            return tr(.keyBalanceQueryCurrentBalanceTemplateIsNotSupported, language: language)
         case .newAPIUserIDMissing:
-            return tr("New API 用户 ID 缺失", "New API user ID is missing", "New API 使用者 ID 缺失", "New API ユーザー ID がありません", language: language)
+            return tr(.keyBalanceQueryNewApiUserIdIsMissing, language: language)
         case .unknown:
-            return tr("余额查询配置不完整", "Balance query configuration is incomplete", "餘額查詢設定不完整", "残高クエリの設定が不完全です", language: language)
+            return tr(.keyBalanceQueryBalanceQueryConfigurationIsIncomplete, language: language)
         }
     }
 

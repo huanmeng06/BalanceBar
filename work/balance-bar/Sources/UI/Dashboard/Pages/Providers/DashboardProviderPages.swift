@@ -161,10 +161,10 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
         amountLabel.font = .monospacedDigitSystemFont(ofSize: 34, weight: .semibold)
         resetLabel.stringValue = choice.isCurrent
             ? choice.initialResetText(input: input, formatter: Self.timeFormatter)
-            : tr("选择为当前供应商后显示详细重置时间", "Select this Provider to display detailed reset information", "選取為目前供應商後顯示詳細重設時間", "現在のプロバイダーに選択すると詳細なリセット情報が表示されます")
-        let usage = DashboardSettingsComponents.makeSettingsSection(tr("用量", "Usage", "用量", "使用量"), rows: [
+            : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation)
+        let usage = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardProviderPagesUsage), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("剩余额度", "Remaining Balance", "剩餘額度", "残りのクォータ"),
+                tr(.keyDashboardProviderPagesRemainingBalance),
                 subtitle: resetLabel.stringValue,
                 subtitleLabel: resetLabel,
                 control: amountLabel,
@@ -175,7 +175,7 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
         actionButton.bezelStyle = .roundRect
         let connection = DashboardSettingsComponents.makeSettingsSection("CC Switch", rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr("同步状态", "Sync Status", "同步狀態", "同期状態"),
+                tr(.keyDashboardProviderPagesSyncStatus),
                 subtitle: "",
                 subtitleLabel: syncSubtitleLabel,
                 control: actionButton
@@ -195,29 +195,29 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
 
     func refresh(input: DashboardProviderPageInput) -> Bool {
         guard let choice = input.choices.first(where: { $0.id == choiceID }) else {
-            providerLabel.stringValue = tr("供应商已不可用", "Provider Unavailable", "供應商已不可用", "プロバイダーを利用できません")
+            providerLabel.stringValue = tr(.keyDashboardProviderPagesProviderUnavailable)
             amountLabel.stringValue = "—"
-            resetLabel.stringValue = tr("当前供应商已消失", "This Provider is no longer available", "目前供應商已消失", "現在のプロバイダーは利用できなくなりました")
+            resetLabel.stringValue = tr(.keyDashboardProviderPagesThisProviderIsNoLongerAvailable)
             updateActionState(for: nil)
             return true
         }
         providerLabel.stringValue = choice.name
         amountLabel.stringValue = choice.isCurrent
             ? input.snapshot.overviewLargeAmount
-            : (input.quickSwitchSummaries[choice.id] ?? tr("正在读取…", "Loading…", "正在讀取…", "読み込み中…"))
+            : (input.quickSwitchSummaries[choice.id] ?? tr(.keyDashboardProviderPagesLoading))
         resetLabel.stringValue = choice.isCurrent
             ? input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: Self.timeFormatter)
-            : tr("选择为当前供应商后显示详细重置时间", "Select this Provider to display detailed reset information", "選取為目前供應商後顯示詳細重設時間", "現在のプロバイダーに選択すると詳細なリセット情報が表示されます")
+            : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2)
         updateActionState(for: choice)
         return true
     }
 
     private func updateActionState(for choice: ProviderChoice?) {
         guard let choice else {
-            statusLabel.stringValue = tr("供应商不可用", "Provider Unavailable", "供應商不可用", "プロバイダーを利用できません")
+            statusLabel.stringValue = tr(.keyDashboardProviderPagesProviderUnavailable2)
             statusLabel.textColor = .secondaryLabelColor
-            syncSubtitleLabel.stringValue = tr("该供应商已从 CC Switch 消失", "This Provider disappeared from CC Switch", "該供應商已從 CC Switch 消失", "このプロバイダーは CC Switch から削除されました")
-            actionButton.title = tr("不可用", "Unavailable", "不可用", "利用できません")
+            syncSubtitleLabel.stringValue = tr(.keyDashboardProviderPagesThisProviderDisappearedFromCcSwitch)
+            actionButton.title = tr(.keyDashboardProviderPagesUnavailable)
             actionButton.isEnabled = false
             actionButton.target = nil
             actionButton.action = nil
@@ -225,21 +225,21 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             return
         }
         statusLabel.stringValue = choice.isCurrent
-            ? tr("当前供应商", "Current Provider", "目前供應商", "現在のプロバイダー")
-            : tr("可用供应商", "Available Provider", "可用供應商", "利用可能なプロバイダー")
+            ? tr(.keyDashboardProviderPagesCurrentProvider)
+            : tr(.keyDashboardProviderPagesAvailableProvider)
         statusLabel.textColor = choice.isCurrent ? .systemGreen : .secondaryLabelColor
         syncSubtitleLabel.stringValue = choice.isCurrent
-            ? tr("正在跟随此供应商", "Following this Provider", "正在跟隨此供應商", "このプロバイダーをフォロー中")
-            : tr("当前未使用此供应商", "This Provider is not currently active", "目前未使用此供應商", "このプロバイダーは現在使用されていません")
+            ? tr(.keyDashboardProviderPagesFollowingThisProvider)
+            : tr(.keyDashboardProviderPagesThisProviderIsNotCurrentlyActive)
         actionButton.target = relay
         actionButton.isEnabled = true
         if choice.isCurrent {
-            actionButton.title = tr("立即刷新", "Refresh Now", "立即重新整理", "今すぐ更新")
+            actionButton.title = tr(.keyDashboardProviderPagesRefreshNow)
             actionButton.action = #selector(DashboardProviderPageRelay.refresh(_:))
             actionButton.identifier = nil
             actionButton.toolTip = nil
         } else {
-            actionButton.title = tr("切换到此供应商", "Switch to This Provider", "切換到此供應商", "このプロバイダーに切り替え")
+            actionButton.title = tr(.keyDashboardProviderPagesSwitchToThisProvider)
             actionButton.action = #selector(DashboardProviderPageRelay.switchProvider(_:))
             actionButton.identifier = NSUserInterfaceItemIdentifier(choice.id)
             actionButton.toolTip = choice.name
@@ -275,12 +275,12 @@ private func clearDashboardProviderControlTargets(in view: NSView) {
 private final class DashboardProviderOverviewPage: DashboardProviderMountedPage {
     let mount = DashboardProviderPageMount(rawValue: UUID())
 
-    private let providerLabel = NSTextField(labelWithString: tr("正在读取…", "Loading…", "正在讀取…", "読み込み中…"))
+    private let providerLabel = NSTextField(labelWithString: tr(.keyDashboardProviderPagesLoading2))
     private let amountLabel = NSTextField(labelWithString: "—")
-    private let quotaLabel = NSTextField(labelWithString: tr("等待额度信息", "Waiting for quota data", "等待額度資訊", "クォータ情報を待機中"))
+    private let quotaLabel = NSTextField(labelWithString: tr(.keyDashboardProviderPagesWaitingForQuotaData))
     private let resetLabel = NSTextField(labelWithString: "")
     private let refreshLabel = NSTextField(labelWithString: "--:--:--")
-    private let statusLabel = NSTextField(labelWithString: tr("正在连接 CC Switch", "Connecting to CC Switch", "正在連線 CC Switch", "CC Switch に接続中"))
+    private let statusLabel = NSTextField(labelWithString: tr(.keyDashboardProviderPagesConnectingToCcSwitch))
     private let progressHost = NSView()
     private let providersStack = NSStackView()
     private let relay: DashboardProviderPageRelay
@@ -293,8 +293,8 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         choices = input.choices
         quickSwitchSummaries = input.quickSwitchSummaries
         let header = DashboardSettingsComponents.makePageHeader(
-            tr("概览", "Overview", "概覽", "概要"),
-            subtitle: tr("当前余额、同步状态和 Codex 供应商", "Current balance, sync status, and Codex Provider", "目前餘額、同步狀態和 Codex 供應商", "現在の残高、同期状態、Codex プロバイダー")
+            tr(.keyDashboardProviderPagesOverview),
+            subtitle: tr(.keyDashboardProviderPagesCurrentBalanceSyncStatusAndCodexProvider)
         )
         providerLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         providerLabel.lineBreakMode = .byTruncatingTail
@@ -322,7 +322,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         statusLabel.textColor = .secondaryLabelColor
         let separator = NSBox()
         separator.boxType = .separator
-        let providersTitle = NSTextField(labelWithString: tr("供应商", "Providers", "供應商", "プロバイダー"))
+        let providersTitle = NSTextField(labelWithString: tr(.keyDashboardProviderPagesProviders))
         providersTitle.font = .systemFont(ofSize: 14, weight: .semibold)
         providersStack.orientation = .vertical
         providersStack.alignment = .leading
@@ -363,11 +363,11 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         choices = input.choices
         quickSwitchSummaries = input.quickSwitchSummaries
         guard let current = choices.first(where: { $0.isCurrent }) else {
-            providerLabel.stringValue = tr("未找到 Codex 供应商", "No Codex Provider Found", "找不到 Codex 供應商", "Codex プロバイダーが見つかりません")
+            providerLabel.stringValue = tr(.keyDashboardProviderPagesNoCodexProviderFound)
             amountLabel.stringValue = "—"
-            resetLabel.stringValue = tr("当前供应商不可用", "Current Provider unavailable", "目前供應商不可用", "現在のプロバイダーを利用できません")
+            resetLabel.stringValue = tr(.keyDashboardProviderPagesCurrentProviderUnavailable)
             refreshLabel.stringValue = "--:--:--"
-            statusLabel.stringValue = tr("等待供应商", "Waiting for Provider", "等待供應商", "プロバイダーを待機中")
+            statusLabel.stringValue = tr(.keyDashboardProviderPagesWaitingForProvider)
             refreshRows()
             return true
         }
@@ -375,7 +375,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         amountLabel.stringValue = input.snapshot.overviewLargeAmount
         resetLabel.stringValue = input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: Self.timeFormatter)
         refreshLabel.stringValue = input.refreshDate.map(Self.timeFormatter.string(from:)) ?? "--:--:--"
-        statusLabel.stringValue = tr("正在跟随当前供应商", "Following current Provider", "正在跟隨目前供應商", "現在のプロバイダーをフォロー中")
+        statusLabel.stringValue = tr(.keyDashboardProviderPagesFollowingCurrentProvider)
         refreshRows()
         return true
     }
@@ -386,7 +386,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
             $0.removeFromSuperview()
         }
         guard !choices.isEmpty else {
-            let empty = NSTextField(labelWithString: tr("未找到 Codex 供应商", "No Codex Provider Found", "找不到 Codex 供應商", "Codex プロバイダーが見つかりません"))
+            let empty = NSTextField(labelWithString: tr(.keyDashboardProviderPagesNoCodexProviderFound2))
             empty.textColor = .secondaryLabelColor
             providersStack.addArrangedSubview(empty)
             return
@@ -395,14 +395,14 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
             let name = NSTextField(labelWithString: choice.name)
             name.font = .systemFont(ofSize: 13, weight: choice.isCurrent ? .semibold : .regular)
             name.lineBreakMode = .byTruncatingTail
-            let summary = NSTextField(labelWithString: quickSwitchSummaries[choice.id] ?? tr("正在读取…", "Loading…", "正在讀取…", "読み込み中…"))
+            let summary = NSTextField(labelWithString: quickSwitchSummaries[choice.id] ?? tr(.keyDashboardProviderPagesLoading3))
             summary.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             summary.textColor = .secondaryLabelColor
             summary.alignment = .right
             summary.translatesAutoresizingMaskIntoConstraints = false
             summary.widthAnchor.constraint(equalToConstant: 112).isActive = true
             let action = NSButton(
-                title: choice.isCurrent ? tr("当前", "Current", "目前", "現在") : tr("切换", "Switch", "切換", "切り替え"),
+                title: choice.isCurrent ? tr(.keyDashboardProviderPagesCurrent) : tr(.keyDashboardProviderPagesSwitch),
                 target: relay,
                 action: #selector(DashboardProviderPageRelay.switchProvider(_:))
             )

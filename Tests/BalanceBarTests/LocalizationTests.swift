@@ -6,6 +6,22 @@ final class LocalizationTests: XCTestCase {
         .simplifiedChinese, .traditionalChinese, .japanese, .english
     ]
 
+    private let resourceDirectories: [String: AppLanguage] = [
+        "en": .english,
+        "zh-Hans": .simplifiedChinese,
+        "zh-Hant": .traditionalChinese,
+        "ja": .japanese
+    ]
+
+    private var testBundle: Bundle {
+        Bundle(for: LocalizationTests.self)
+    }
+
+    override func setUp() {
+        super.setUp()
+        LocalizationRuntime.configure(bundle: testBundle)
+    }
+
     func testExplicitLanguageSelectionIsConcrete() {
         for preferred in ["zh-CN", "zh-TW", "ja-JP", "en-US", "fr-FR"] {
             XCTAssertEqual(AppLanguage.resolved(for: .simplifiedChinese, preferredLanguages: [preferred]), .simplifiedChinese)
@@ -111,10 +127,100 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testTranslationReturnsLanguageSpecificStrings() {
-        XCTAssertEqual(tr("中文", "English", "中文（繁體）", "日本語のテキスト", language: .simplifiedChinese), "中文")
-        XCTAssertEqual(tr("中文", "English", "中文（繁體）", "日本語のテキスト", language: .traditionalChinese), "中文（繁體）")
-        XCTAssertEqual(tr("中文", "English", "中文（繁體）", "日本語のテキスト", language: .japanese), "日本語のテキスト")
-        XCTAssertEqual(tr("中文", "English", "中文（繁體）", "日本語のテキスト", language: .english), "English")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .simplifiedChinese), "跟随系统")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .traditionalChinese), "跟隨系統")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .japanese), "システムに従う")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .english), "Follow System")
+    }
+
+    func testAllTypedKeysExistInEveryBundledLanguage() throws {
+        let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
+        XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
+        XCTAssertEqual(expectedKeys.count, 349)
+
+        for (directory, language) in resourceDirectories {
+            let resourceURL = try XCTUnwrap(
+                testBundle.url(forResource: directory, withExtension: "lproj")
+            ).appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: resourceURL)
+            let text = try XCTUnwrap(
+                String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
+            )
+            let actualKeys = Set(
+                text.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard trimmed.hasPrefix("\""),
+                          let equals = trimmed.range(of: "\" = ") else {
+                        return nil
+                    }
+                    return String(trimmed.dropFirst().prefix(through: trimmed.index(before: equals.lowerBound)))
+                }
+            )
+            XCTAssertEqual(actualKeys, expectedKeys, "resource keys for \(language)")
+        }
+    }
+
+    func testParameterizedResourcesRenderAndValidatePlaceholderContracts() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        XCTAssertEqual(
+            store.localized(
+                key: .keySnapshotValueRemainingValueValue,
+                language: .english,
+                arguments: ["OpenAI", "87", "7-Day Quota"]
+            ),
+            "OpenAI remaining: 87% (7-Day Quota)"
+        )
+        XCTAssertEqual(
+            store.localized(
+                key: .keyDashboardGeneralAndRefreshPagesDownloadingValue,
+                language: .english,
+                arguments: ["12.5"]
+            ),
+            "Downloading 12.5% …"
+        )
+        XCTAssertEqual(
+            store.localized(
+                key: .keySnapshotValueRemainingValueValue,
+                language: .english,
+                arguments: ["OpenAI"]
+            ),
+            "⟦snapshot.value_remaining_value_value⟧"
+        )
+    }
+
+    func testMissingSelectedKeyFallsBackToEnglishAndMissingEnglishIsDiagnosable() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BalanceBar-I177-Localization-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("en.lproj"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("zh-Hans.lproj"),
+            withIntermediateDirectories: true
+        )
+        try "\"app.about_balancebar\" = \"English fallback\";\n".write(
+            to: root.appendingPathComponent("en.lproj/Localizable.strings"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "".write(
+            to: root.appendingPathComponent("zh-Hans.lproj/Localizable.strings"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let store = LocalizationResourceStore(resourceRoot: root)
+        XCTAssertEqual(
+            store.localized(key: .keyAppAboutBalancebar, language: .simplifiedChinese),
+            "English fallback"
+        )
+        XCTAssertEqual(
+            store.localized(key: .keyAppHideBalancebar, language: .simplifiedChinese),
+            "⟦app.hide_balancebar⟧"
+        )
     }
 
     func testMenuOverviewLinkPrefixWidthsAreStable() {
@@ -148,7 +254,7 @@ final class LocalizationTests: XCTestCase {
                 }
             }()
             XCTAssertEqual(
-                tr("关于 BalanceBar", "About BalanceBar", "關於 BalanceBar", "BalanceBar について"),
+                tr(.keyAppAboutBalancebar),
                 expected[0]
             )
             XCTAssertEqual(

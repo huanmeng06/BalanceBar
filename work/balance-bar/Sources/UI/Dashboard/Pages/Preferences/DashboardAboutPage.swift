@@ -3,7 +3,7 @@ import AppKit
 enum DashboardAboutPage {
     static let fallbackShortVersion = "0.11.14"
     static let githubRepositoryURL = URL(string: "https://github.com/huanmeng06/BalanceBar")!
-    static let githubAccessibilityLabel = tr("GitHub 项目", "GitHub repository", "GitHub 專案", "GitHub リポジトリ")
+    static let githubAccessibilityLabel = tr(.keyDashboardAboutPageGithubRepository)
 
     static func displayedVersion(shortVersion: String?, isDevBuild: Bool) -> String {
         let value = shortVersion ?? fallbackShortVersion
@@ -27,19 +27,9 @@ enum DashboardAboutPage {
         let name = NSTextField(labelWithString: "BalanceBar")
         name.font = .systemFont(ofSize: 22, weight: .semibold)
         let appVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let version = NSTextField(labelWithString: tr(
-            "版本 \(displayedVersion(shortVersion: appVersion, isDevBuild: bundle.bundleIdentifier == devBundleIdentifier))",
-            "Version \(displayedVersion(shortVersion: appVersion, isDevBuild: bundle.bundleIdentifier == devBundleIdentifier))",
-            "版本 \(displayedVersion(shortVersion: appVersion, isDevBuild: bundle.bundleIdentifier == devBundleIdentifier))",
-            "バージョン \(displayedVersion(shortVersion: appVersion, isDevBuild: bundle.bundleIdentifier == devBundleIdentifier))"
-        ))
+        let version = NSTextField(labelWithString: tr(.keyDashboardAboutPageVersionValue, arguments: [String(describing: displayedVersion(shortVersion: appVersion, isDevBuild: bundle.bundleIdentifier == devBundleIdentifier))]))
         version.textColor = .secondaryLabelColor
-        let detail = NSTextField(labelWithString: tr(
-            "基于 CC Switch 的菜单栏余量查看工具",
-            "A CC Switch-based menu bar balance viewer",
-            "基於 CC Switch 的選單列餘量檢視工具",
-            "CC Switch ベースのメニューバー残高ビューア"
-        ))
+        let detail = NSTextField(labelWithString: tr(.keyDashboardAboutPageACcSwitchBasedMenuBarBalanceViewer))
         detail.textColor = .secondaryLabelColor
         let githubIcon = bundle.url(forResource: "GitHub", withExtension: "svg")
             .flatMap(NSImage.init(contentsOf:))
@@ -102,7 +92,7 @@ final class DashboardAboutGitHubButton: NSButton {
         toolTip = DashboardAboutPage.githubAccessibilityLabel
         setAccessibilityRole(.button)
         setAccessibilityLabel(DashboardAboutPage.githubAccessibilityLabel)
-        setAccessibilityHelp(tr("打开 BalanceBar GitHub 项目", "Open the BalanceBar GitHub repository", "開啟 BalanceBar GitHub 專案", "BalanceBar の GitHub リポジトリを開く"))
+        setAccessibilityHelp(tr(.keyDashboardAboutPageOpenTheBalancebarGithubRepository))
         target = self
         action = #selector(DashboardAboutGitHubButton.activate(_:))
         translatesAutoresizingMaskIntoConstraints = false

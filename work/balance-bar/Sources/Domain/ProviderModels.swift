@@ -97,21 +97,9 @@ struct OpenAIAccountPresentation: Equatable {
     func text(language: AppLanguage = .selected) -> String {
         switch state {
         case .available(let email):
-            return tr(
-                email,
-                email,
-                email,
-                email,
-                language: language
-            )
+            return tr(.keyProviderModelsValue, arguments: [String(describing: email)], language: language)
         case .unavailable:
-            return tr(
-                "账号不可用",
-                "Account unavailable",
-                "帳號不可用",
-                "アカウントを利用できません",
-                language: language
-            )
+            return tr(.keyProviderModelsAccountUnavailable, language: language)
         }
     }
 }
@@ -192,9 +180,9 @@ enum OpenCodexCardCategory: Equatable, Hashable {
     var unavailableTitle: String {
         switch self {
         case .quota:
-            return tr("额度不可用", "Quota unavailable", "額度不可用", "クォータを利用できません")
+            return tr(.keyProviderModelsQuotaUnavailable)
         case .balance:
-            return tr("余额不可用", "Balance unavailable", "餘額不可用", "残高を利用できません")
+            return tr(.keyProviderModelsBalanceUnavailable)
         }
     }
 
@@ -660,12 +648,7 @@ enum OpenCodexCardPlanner {
             )
             return .unavailable(
                 category: .balance,
-                reason: tr(
-                    "未读取到上游 provider 身份",
-                    "The upstream provider identity was not read",
-                    "未讀取到上游 provider 身分",
-                    "上流プロバイダーの識別情報が読み取られていません"
-                )
+                reason: tr(.keyProviderModelsTheUpstreamProviderIdentityWasNotRead)
             )
         }
         if descriptor.isOfficial {
@@ -736,18 +719,8 @@ enum OpenCodexCardPlanner {
         )
         guard let selected else {
             let reason = candidates.count > 1 || credentialMatches.count > 1
-                ? tr(
-                    "找到多个余额来源，无法确认账户",
-                    "Multiple balance sources were found; the account could not be confirmed",
-                    "找到多個餘額來源，無法確認帳戶",
-                    "複数の残高ソースが見つかり、アカウントを確認できませんでした"
-                )
-                : tr(
-                    "未找到可验证的余额来源",
-                    "No verifiable balance source was found",
-                    "找不到可驗證的餘額來源",
-                    "検証可能な残高ソースが見つかりませんでした"
-                )
+                ? tr(.keyProviderModelsMultipleBalanceSourcesWereFoundTheAccountCouldNotBeConfirmed)
+                : tr(.keyProviderModelsNoVerifiableBalanceSourceWasFound)
             return .unavailable(
                 category: .balance,
                 reason: reason

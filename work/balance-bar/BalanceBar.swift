@@ -166,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             preferences: preferences,
             devBundleIdentifier: devBundleIdentifier,
             providerPollInterval: providerPollInterval,
-            currentProviderName: { [weak self] in self?.currentProviderName() ?? tr("未找到", "Not Found", "找不到", "見つかりません") },
+            currentProviderName: { [weak self] in self?.currentProviderName() ?? tr(.keyAppNotFound) },
             providerChoices: { [weak self] in self?.ccSwitchRepository.loadChoices(appType: self?.activeClient.appType ?? AssistantClient.codex.appType) ?? [] },
             snapshot: { [weak self] in self?.snapshot ?? .placeholder },
             quickSwitchSummaries: { [weak self] in self?.quickSwitchSummariesSnapshot() ?? [:] },
@@ -528,7 +528,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func currentProviderName() -> String {
         ccSwitchRepository.loadChoices(appType: activeClient.appType)
-            .first(where: { $0.isCurrent })?.name ?? tr("未找到", "Not Found", "找不到", "見つかりません")
+            .first(where: { $0.isCurrent })?.name ?? tr(.keyAppNotFound2)
     }
 
     private func quickSwitchSummariesSnapshot() -> [String: String] {
@@ -1249,12 +1249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     level: .error,
                     category: "provider"
                 )
-                self.render(.error(tr(
-                    "未找到 CC Switch 当前 \(client.displayName) 供应商",
-                    "The current CC Switch \(client.displayName) Provider was not found",
-                    "找不到 CC Switch 目前的 \(client.displayName) 供應商",
-                    "現在の CC Switch \(client.displayName) プロバイダーが見つかりません"
-                )))
+                self.render(.error(tr(.keyAppTheCurrentCcSwitchValueProviderWasNotFound, arguments: [String(describing: client.displayName)])))
                 return
             }
 
@@ -1367,31 +1362,31 @@ struct ApplicationMenuConfiguration {
         let applicationMenu = NSMenu(title: "BalanceBar")
         applicationItem.submenu = applicationMenu
         applicationMenu.addItem(
-            withTitle: tr("关于 BalanceBar", "About BalanceBar", "關於 BalanceBar", "BalanceBar について"),
+            withTitle: tr(.keyAppAboutBalancebar),
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         )
         applicationMenu.addItem(.separator())
         let hideItem = applicationMenu.addItem(
-            withTitle: tr("隐藏 BalanceBar", "Hide BalanceBar", "隱藏 BalanceBar", "BalanceBar を隠す"),
+            withTitle: tr(.keyAppHideBalancebar),
             action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h"
         )
         hideItem.keyEquivalentModifierMask = [.command]
         let hideOthers = applicationMenu.addItem(
-            withTitle: tr("隐藏其他应用", "Hide Others", "隱藏其他應用程式", "ほかのアプリを隠す"),
+            withTitle: tr(.keyAppHideOthers),
             action: #selector(NSApplication.hideOtherApplications(_:)),
             keyEquivalent: "h"
         )
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         applicationMenu.addItem(
-            withTitle: tr("全部显示", "Show All", "全部顯示", "すべてを表示"),
+            withTitle: tr(.keyAppShowAll),
             action: #selector(NSApplication.unhideAllApplications(_:)),
             keyEquivalent: ""
         )
         applicationMenu.addItem(.separator())
         let quitItem = applicationMenu.addItem(
-            withTitle: tr("退出 BalanceBar", "Quit BalanceBar", "結束 BalanceBar", "BalanceBar を終了"),
+            withTitle: tr(.keyAppQuitBalancebar),
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -1400,27 +1395,27 @@ struct ApplicationMenuConfiguration {
         mainMenu.addItem(applicationItem)
 
         let editItem = NSMenuItem()
-        let editMenu = NSMenu(title: tr("编辑", "Edit", "編輯", "編集"))
+        let editMenu = NSMenu(title: tr(.keyAppEdit))
         editItem.submenu = editMenu
         editMenu.autoenablesItems = true
         let undoItem = editMenu.addItem(
-            withTitle: tr("撤销", "Undo", "還原", "取り消す"),
+            withTitle: tr(.keyAppUndo),
             action: #selector(UndoManager.undo),
             keyEquivalent: "z"
         )
         undoItem.keyEquivalentModifierMask = [.command]
         let redoItem = editMenu.addItem(
-            withTitle: tr("重做", "Redo", "重做", "やり直す"),
+            withTitle: tr(.keyAppRedo),
             action: #selector(UndoManager.redo),
             keyEquivalent: "z"
         )
         redoItem.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(.separator())
         for (title, action, keyEquivalent) in [
-            (tr("剪切", "Cut", "剪切", "カット"), #selector(NSText.cut(_:)), "x"),
-            (tr("拷贝", "Copy", "拷貝", "コピー"), #selector(NSText.copy(_:)), "c"),
-            (tr("粘贴", "Paste", "貼上", "ペースト"), #selector(NSText.paste(_:)), "v"),
-            (tr("全选", "Select All", "全選", "すべてを選択"), #selector(NSText.selectAll(_:)), "a")
+            (tr(.keyAppCut), #selector(NSText.cut(_:)), "x"),
+            (tr(.keyAppCopy), #selector(NSText.copy(_:)), "c"),
+            (tr(.keyAppPaste), #selector(NSText.paste(_:)), "v"),
+            (tr(.keyAppSelectAll), #selector(NSText.selectAll(_:)), "a")
         ] {
             let item = editMenu.addItem(
                 withTitle: title,
@@ -1432,12 +1427,12 @@ struct ApplicationMenuConfiguration {
         mainMenu.addItem(editItem)
 
         let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: tr("窗口", "Window", "視窗", "ウインドウ"))
+        let windowMenu = NSMenu(title: tr(.keyAppWindow))
         windowMenu.autoenablesItems = true
         windowItem.submenu = windowMenu
 
         let closeItem = windowMenu.addItem(
-            withTitle: tr("关闭窗口", "Close Window", "關閉視窗", "ウインドウを閉じる"),
+            withTitle: tr(.keyAppCloseWindow),
             action: #selector(NSWindow.performClose(_:)),
             keyEquivalent: "w"
         )
@@ -1445,7 +1440,7 @@ struct ApplicationMenuConfiguration {
         closeItem.target = nil
 
         let minimizeItem = windowMenu.addItem(
-            withTitle: tr("最小化", "Minimize", "最小化", "最小化"),
+            withTitle: tr(.keyAppMinimize),
             action: #selector(NSWindow.performMiniaturize(_:)),
             keyEquivalent: "m"
         )
@@ -1453,7 +1448,7 @@ struct ApplicationMenuConfiguration {
         minimizeItem.target = nil
 
         let zoomItem = windowMenu.addItem(
-            withTitle: tr("缩放", "Zoom", "縮放", "拡大/縮小"),
+            withTitle: tr(.keyAppZoom),
             action: #selector(NSWindow.performZoom(_:)),
             keyEquivalent: ""
         )
@@ -1461,7 +1456,7 @@ struct ApplicationMenuConfiguration {
 
         windowMenu.addItem(.separator())
         let arrangeItem = windowMenu.addItem(
-            withTitle: tr("将所有窗口置于最前", "Bring All to Front", "將所有視窗置於最前", "すべてを手前に移動"),
+            withTitle: tr(.keyAppBringAllToFront),
             action: #selector(NSApplication.arrangeInFront(_:)),
             keyEquivalent: ""
         )

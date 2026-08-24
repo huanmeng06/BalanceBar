@@ -76,14 +76,14 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(placeholder.menuBarPrimary, "…")
         XCTAssertEqual(placeholder.menuBarSecondary, "")
         XCTAssertEqual(placeholder.overviewProvider, "CC Switch")
-        XCTAssertEqual(placeholder.overviewQuotaTitle, tr("额度状态", "Balance Status", "額度狀態", "残高ステータス"))
-        XCTAssertEqual(placeholder.overviewQuotaDetail, tr("等待刷新", "Waiting to Refresh", "等待重新整理", "更新待ち"))
+        XCTAssertEqual(placeholder.overviewQuotaTitle, tr(.keySnapshotBalanceStatus))
+        XCTAssertEqual(placeholder.overviewQuotaDetail, tr(.keySnapshotWaitingToRefresh))
         XCTAssertEqual(placeholder.overviewLargeAmount, "—")
         XCTAssertNil(placeholder.progressPercentage)
-        XCTAssertEqual(placeholder.title, tr("正在读取 CC Switch…", "Loading CC Switch…", "正在讀取 CC Switch…", "CC Switch を読み込み中…"))
-        XCTAssertEqual(placeholder.compactQuotaTitle, tr("正在读取 CC Switch…", "Loading CC Switch…", "正在讀取 CC Switch…", "CC Switch を読み込み中…"))
+        XCTAssertEqual(placeholder.title, tr(.keySnapshotLoadingCcSwitch))
+        XCTAssertEqual(placeholder.compactQuotaTitle, tr(.keySnapshotLoadingCcSwitch))
         XCTAssertEqual(placeholder.compactResetTitle, "")
-        XCTAssertEqual(placeholder.detail, tr("等待 CC Switch 状态", "Waiting for CC Switch Status", "等待 CC Switch 狀態", "CC Switch のステータスを待機中"))
+        XCTAssertEqual(placeholder.detail, tr(.keySnapshotWaitingForCcSwitchStatus))
 
         let official = Snapshot.official(
             "OpenAI",
@@ -95,39 +95,36 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(official.menuBarTitle, " 87%")
         XCTAssertEqual(official.menuBarPrimary, "87%")
         XCTAssertEqual(official.menuBarSecondary, "2 hours")
+        let officialTitle = tr(
+            .keySnapshotValueRemainingValueValue,
+            arguments: ["OpenAI", "87", "7-Day Quota"]
+        )
         XCTAssertEqual(
             official.menuBarToolTip,
-            tr(
-                "OpenAI 剩余：87%（7-Day Quota） · 重置：2 hours",
-                "OpenAI remaining: 87% (7-Day Quota) · Reset: 2 hours",
-                "OpenAI 剩餘：87%（7-Day Quota） · 重設：2 hours",
-                "OpenAI の残り：87%（7-Day Quota） · リセット：2 hours"
-            )
+            tr(.keySnapshotValueResetValue, arguments: [officialTitle, "2 hours"])
         )
         XCTAssertEqual(official.overviewProvider, "OpenAI")
         XCTAssertEqual(
             official.overviewReset(refreshDate: nil, formatter: DateFormatter()),
-            tr("重置：2 hours", "Reset: 2 hours", "重設：2 hours", "リセット：2 hours")
+            tr(.keySnapshotResetValue, arguments: ["2 hours"])
         )
-        XCTAssertEqual(official.overviewQuotaTitle, tr("可用额度", "Available Quota", "可用額度", "利用可能なクォータ"))
+        XCTAssertEqual(official.overviewQuotaTitle, tr(.keySnapshotAvailableQuota))
         XCTAssertEqual(official.overviewQuotaDetail, "7-Day Quota")
         XCTAssertEqual(official.overviewLargeAmount, "87%")
         XCTAssertEqual(official.progressPercentage, 87.6)
         XCTAssertEqual(
             official.compactQuotaTitle,
-            tr("7-Day Quota剩余：87%", "7-Day Quota remaining: 87%", "7-Day Quota剩餘：87%", "7-Day Quota の残り：87%")
+            tr(.keySnapshotValueRemainingValue2, arguments: ["7-Day Quota", "87"])
         )
         XCTAssertEqual(
             official.compactResetTitle,
-            tr("重置：2 hours", "Reset: 2 hours", "重設：2 hours", "リセット：2 hours")
+            tr(.keySnapshotResetValue2, arguments: ["2 hours"])
         )
         XCTAssertEqual(
             official.detail,
             tr(
-                "每分钟更新官方额度 · 重置：2 hours",
-                "Official quota updates every minute · Reset: 2 hours",
-                "每分鐘更新官方額度 · 重設：2 hours",
-                "公式クォータは毎分更新 · リセット：2 hours"
+                .keySnapshotOfficialQuotaUpdatesEveryMinutevalue,
+                arguments: [tr(.keySnapshotResetValue3, arguments: ["2 hours"])]
             )
         )
     }
@@ -144,8 +141,8 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(balance.menuBarPrimary, "$12.00")
         XCTAssertEqual(balance.overviewProvider, "Provider One")
-        XCTAssertEqual(balance.overviewQuotaTitle, tr("可用余额", "Available Balance", "可用餘額", "利用可能な残高"))
-        XCTAssertEqual(balance.overviewQuotaDetail, tr("剩余额度", "Remaining Balance", "剩餘額度", "残りのクォータ"))
+        XCTAssertEqual(balance.overviewQuotaTitle, tr(.keySnapshotAvailableBalance))
+        XCTAssertEqual(balance.overviewQuotaDetail, tr(.keySnapshotRemainingBalance))
         XCTAssertEqual(balance.overviewLargeAmount, "$12.00")
         XCTAssertEqual(balance.progressPercentage, 20)
 
