@@ -46,8 +46,98 @@ private final class DashboardSettingsRowView: NSView {
         lastMeasuredWidth = currentWidth
         lastPreferredHeight = currentHeight
         if changed {
+            invalidateIntrinsicContentSize()
             cardView?.updateHeightIfNeeded()
         }
+    }
+}
+
+/// NSTextField keeps the source subtitle separate from the layout string.
+/// Semantic groups are converted to non-breaking layout tokens only when the
+/// complete group fits on one line; a group wider than the label is left
+/// available to the language's normal wrapping rules. Explicit line-break
+/// metadata is applied to the layout copy only. The source string therefore
+/// remains suitable for accessibility, tests, and later updates.
+private final class DashboardSettingsSubtitleLabel: NSTextField {
+    private var localizedSubtitle: LocalizedSubtitle?
+    private var isApplyingLayoutText = false
+    private var lastAppliedWidth: CGFloat = -1
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureSubtitleAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureSubtitleAppearance()
+    }
+
+    private func configureSubtitleAppearance() {
+        isBezeled = false
+        drawsBackground = false
+        backgroundColor = .clear
+        isEditable = false
+        isSelectable = false
+    }
+
+    override var stringValue: String {
+        didSet {
+            guard !isApplyingLayoutText else { return }
+            localizedSubtitle = nil
+            lastAppliedWidth = -1
+        }
+    }
+
+    func setLocalizedSubtitle(_ subtitle: LocalizedSubtitle) {
+        localizedSubtitle = subtitle
+        lastAppliedWidth = -1
+        isApplyingLayoutText = true
+        super.stringValue = subtitle.text
+        isApplyingLayoutText = false
+        applyLayoutTextIfNeeded()
+        invalidateIntrinsicContentSize()
+    }
+
+    override func layout() {
+        applyLayoutTextIfNeeded()
+        super.layout()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        applyLayoutTextIfNeeded()
+        return super.intrinsicContentSize
+    }
+
+    private func applyLayoutTextIfNeeded() {
+        guard let localizedSubtitle else { return }
+        let width = bounds.width
+        guard width > 0 else {
+            if super.stringValue != localizedSubtitle.text {
+                isApplyingLayoutText = true
+                super.stringValue = localizedSubtitle.text
+                isApplyingLayoutText = false
+            }
+            return
+        }
+        guard abs(width - lastAppliedWidth) > 0.5 || super.stringValue == localizedSubtitle.text else {
+            return
+        }
+        let font = self.font ?? NSFont.systemFont(ofSize: 12)
+        let layoutText = DashboardSettingsComponents.subtitleDisplayText(
+            localizedSubtitle,
+            constrainedTo: width,
+            font: font
+        )
+        guard layoutText != super.stringValue else {
+            lastAppliedWidth = width
+            return
+        }
+        isApplyingLayoutText = true
+        super.stringValue = layoutText
+        isApplyingLayoutText = false
+        lastAppliedWidth = width
+        invalidateIntrinsicContentSize()
     }
 }
 
@@ -125,6 +215,178 @@ enum DashboardSettingsComponents {
             return .byCharWrapping
         case .english, .system:
             return .byWordWrapping
+        }
+    }
+
+    /// Semantic subtitles use word wrapping so AppKit honors the invisible
+    /// non-breaking layout tokens inside marked ranges. CJK text still gets
+    /// character-boundary opportunities from Unicode's line-break engine;
+    /// the marker ranges provide the stronger group-boundary behavior.
+    static func settingsSubtitleLineBreakMode(
+        for subtitle: LocalizedSubtitle
+    ) -> NSLineBreakMode {
+        return .byWordWrapping
+    }
+
+    /// Builds the text used by AppKit for one subtitle layout pass. The
+    /// source ranges come from the localization resource and remain valid for
+    /// any language or key that uses the shared semantic marker contract.
+    static func subtitleDisplayText(
+        _ subtitle: LocalizedSubtitle,
+        constrainedTo width: CGFloat,
+        font: NSFont
+    ) -> String {
+        guard width > 0 else { return subtitle.text }
+        let source = subtitle.text as NSString
+        var replacements: [(range: NSRange, text: String)] = []
+
+        for semanticRange in subtitle.lineBreakBeforeSemanticGroups {
+            guard sourceRangeIsValid(semanticRange, in: source),
+                  subtitle.semanticGroups.contains(where: { $0 == semanticRange }),
+                  let breakRange = lineBreakRange(before: semanticRange, in: source) else {
+                continue
+            }
+            replacements.append((breakRange, "\n"))
+        }
+
+        for semanticRange in subtitle.semanticGroups {
+            guard sourceRangeIsValid(semanticRange, in: source) else { continue }
+            let groupText = source.substring(with: semanticRange)
+            let groupWidth = groupText.size(withAttributes: [.font: font]).width
+            if groupWidth <= width + 0.5 {
+                replacements.append((
+                    semanticRange,
+                    nonBreakingSemanticText(groupText)
+                ))
+            } else {
+                for atomicRange in subtitle.atomicGroups where contains(
+                    semanticRange,
+                    inner: atomicRange
+                ) {
+                    guard sourceRangeIsValid(atomicRange, in: source) else { continue }
+                    replacements.append((
+                        atomicRange,
+                        nonBreakingAtomicText(source.substring(with: atomicRange))
+                    ))
+                }
+            }
+        }
+
+        for atomicRange in subtitle.atomicGroups {
+            guard sourceRangeIsValid(atomicRange, in: source),
+                  !subtitle.semanticGroups.contains(where: {
+                      contains($0, inner: atomicRange)
+                  }) else {
+                continue
+            }
+            replacements.append((
+                atomicRange,
+                nonBreakingAtomicText(source.substring(with: atomicRange))
+            ))
+        }
+
+        guard !replacements.isEmpty else { return subtitle.text }
+        let rendered = NSMutableString(string: subtitle.text)
+        for replacement in replacements.sorted(by: { lhs, rhs in
+            if lhs.range.location == rhs.range.location {
+                return lhs.range.length > rhs.range.length
+            }
+            return lhs.range.location > rhs.range.location
+        }) {
+            guard replacement.range.location >= 0,
+                  NSMaxRange(replacement.range) <= rendered.length else {
+                continue
+            }
+            rendered.replaceCharacters(in: replacement.range, with: replacement.text)
+        }
+        return rendered as String
+    }
+
+    static func makeSubtitleLabel(_ subtitle: LocalizedSubtitle) -> NSTextField {
+        let label = DashboardSettingsSubtitleLabel(frame: .zero)
+        label.setLocalizedSubtitle(subtitle)
+        return label
+    }
+
+    static func updateSubtitleLabel(
+        _ label: NSTextField?,
+        with subtitle: LocalizedSubtitle
+    ) {
+        if let semanticLabel = label as? DashboardSettingsSubtitleLabel {
+            semanticLabel.setLocalizedSubtitle(subtitle)
+        } else {
+            label?.stringValue = subtitle.text
+        }
+        label?.invalidateIntrinsicContentSize()
+        label?.superview?.needsLayout = true
+    }
+
+    private static func sourceRangeIsValid(_ range: NSRange, in source: NSString) -> Bool {
+        range.location >= 0 && range.length > 0 && NSMaxRange(range) <= source.length
+    }
+
+    private static func contains(_ outer: NSRange, inner: NSRange) -> Bool {
+        outer.location <= inner.location && NSMaxRange(inner) <= NSMaxRange(outer)
+    }
+
+    private static func lineBreakRange(
+        before range: NSRange,
+        in source: NSString
+    ) -> NSRange? {
+        guard range.location > 0 else {
+            return NSRange(location: range.location, length: 0)
+        }
+
+        let prefix = source.substring(to: range.location)
+        var whitespaceLength = 0
+        for character in prefix.reversed() {
+            guard isSubtitleWhitespace(character) else { break }
+            whitespaceLength += character.utf16.count
+        }
+        if whitespaceLength > 0 {
+            return NSRange(
+                location: range.location - whitespaceLength,
+                length: whitespaceLength
+            )
+        }
+        return NSRange(location: range.location, length: 0)
+    }
+
+    private static func nonBreakingSemanticText(_ text: String) -> String {
+        let characters = Array(text)
+        var result = ""
+        for character in characters {
+            if !result.isEmpty {
+                result.append("\u{2060}")
+            }
+            if isSubtitleWhitespace(character) {
+                result.append("\u{00A0}")
+                continue
+            }
+            result.append(character)
+        }
+        return result
+    }
+
+    private static func nonBreakingAtomicText(_ text: String) -> String {
+        let characters = Array(text)
+        var result = ""
+        for character in characters {
+            if !result.isEmpty {
+                result.append("\u{2060}")
+            }
+            if isSubtitleWhitespace(character) {
+                result.append("\u{00A0}")
+                continue
+            }
+            result.append(character)
+        }
+        return result
+    }
+
+    private static func isSubtitleWhitespace(_ character: Character) -> Bool {
+        character == "\u{00A0}" || character.unicodeScalars.allSatisfy {
+            CharacterSet.whitespacesAndNewlines.contains($0)
         }
     }
 
@@ -338,6 +600,7 @@ enum DashboardSettingsComponents {
         _ title: String,
         titleLabel: NSTextField? = nil,
         subtitle: String? = nil,
+        subtitleContent: LocalizedSubtitle? = nil,
         subtitleLabel: NSTextField? = nil,
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
@@ -369,9 +632,22 @@ enum DashboardSettingsComponents {
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 2
-        if let subtitle, !subtitle.isEmpty {
-            let detail = subtitleLabel ?? NSTextField(wrappingLabelWithString: subtitle)
-            detail.stringValue = subtitle
+        let subtitleText = subtitleContent?.text ?? subtitle
+        if let subtitleText, !subtitleText.isEmpty {
+            let detail: NSTextField
+            if let subtitleLabel {
+                detail = subtitleLabel
+            } else if subtitleContent != nil {
+                detail = DashboardSettingsSubtitleLabel(frame: .zero)
+            } else {
+                detail = NSTextField(wrappingLabelWithString: subtitleText)
+            }
+            if let subtitleContent,
+               let semanticLabel = detail as? DashboardSettingsSubtitleLabel {
+                semanticLabel.setLocalizedSubtitle(subtitleContent)
+            } else {
+                detail.stringValue = subtitleText
+            }
             detail.font = .systemFont(ofSize: 12)
             detail.textColor = .secondaryLabelColor
             detail.isEditable = false
@@ -383,7 +659,11 @@ enum DashboardSettingsComponents {
             // here so every subtitle uses the available row width and can
             // contribute its full fitting height.
             detail.usesSingleLineMode = false
-            detail.lineBreakMode = Self.settingsSubtitleLineBreakMode(for: subtitle)
+            detail.lineBreakMode = if let subtitleContent {
+                Self.settingsSubtitleLineBreakMode(for: subtitleContent)
+            } else {
+                Self.settingsSubtitleLineBreakMode(for: subtitleText)
+            }
             detail.maximumNumberOfLines = 0
             detail.cell?.wraps = true
             detail.cell?.isScrollable = false

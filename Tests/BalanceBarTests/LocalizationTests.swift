@@ -188,6 +188,79 @@ final class LocalizationTests: XCTestCase {
         )
     }
 
+    func testSemanticSubtitleResourcesExposeLocalizedAndAtomicInterpolationRanges() throws {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let values = [
+            "\u{00A0}-\u{00A0}10.0\u{00A0}pt",
+            "\u{00A0}+\u{00A0}10.0\u{00A0}pt",
+            "\u{00A0}+\u{00A0}0.0\u{00A0}pt"
+        ]
+
+        for value in values {
+            for language in allLanguages {
+                let subtitle = store.localizedSubtitle(
+                    key: .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
+                    language: language,
+                    arguments: [value]
+                )
+                XCTAssertFalse(subtitle.text.contains(LocalizationSemanticMarker.semanticStart))
+                XCTAssertEqual(subtitle.semanticGroups.count, 1, "semantic group for \(language), value \(value)")
+                XCTAssertEqual(subtitle.atomicGroups.count, 1, "atomic interpolation for \(language), value \(value)")
+                XCTAssertEqual(
+                    subtitle.lineBreakBeforeSemanticGroups,
+                    subtitle.semanticGroups,
+                    "the complete dynamic suffix starts on its own line for \(language), value \(value)"
+                )
+
+                let text = subtitle.text as NSString
+                let semanticText = text.substring(with: try XCTUnwrap(subtitle.semanticGroups.first))
+                let atomicText = text.substring(with: try XCTUnwrap(subtitle.atomicGroups.first))
+                XCTAssertTrue(
+                    semanticText.contains(value),
+                    "localized suffix should contain its dynamic value for \(language)"
+                )
+                XCTAssertEqual(atomicText, value, "dynamic value range for \(language)")
+                XCTAssertTrue(
+                    semanticText.contains("\u{00A0}"),
+                    "localized resource should preserve the visual descriptor/value spacing for \(language)"
+                )
+            }
+        }
+    }
+
+    func testFutureSubtitleFixtureUsesTheSameResourceContractWithoutLanguageBranch() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BalanceBar-I178-Subtitle-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appendingPathComponent("en.lproj")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let key = LocalizationKey.keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue.rawKey
+        let fixture = "\"\(key)\" = \"Future summary: [[balancebar.break-before-semantic]][[balancebar.semantic]]Zukunft value[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]\";\n"
+        try fixture.write(
+            to: directory.appendingPathComponent("Localizable.strings"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let subtitle = LocalizationResourceStore(resourceRoot: root).localizedSubtitle(
+            key: .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
+            language: .english,
+            arguments: [" - 10.0 pt"]
+        )
+        XCTAssertEqual(subtitle.text, "Future summary: Zukunft value - 10.0 pt")
+        XCTAssertEqual(subtitle.semanticGroups.count, 1)
+        XCTAssertEqual(subtitle.atomicGroups.count, 1)
+        XCTAssertEqual(subtitle.lineBreakBeforeSemanticGroups, subtitle.semanticGroups)
+        XCTAssertEqual(
+            (subtitle.text as NSString).substring(with: try XCTUnwrap(subtitle.semanticGroups.first)),
+            "Zukunft value - 10.0 pt"
+        )
+        XCTAssertEqual(
+            (subtitle.text as NSString).substring(with: try XCTUnwrap(subtitle.atomicGroups.first)),
+            " - 10.0 pt"
+        )
+    }
+
     func testMissingSelectedKeyFallsBackToEnglishAndMissingEnglishIsDiagnosable() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("BalanceBar-I177-Localization-\(UUID().uuidString)")
