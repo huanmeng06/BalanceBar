@@ -72,11 +72,26 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
 
     private func configureView() {
         guard let window else { return }
-        let root = NSView()
-        root.translatesAutoresizingMaskIntoConstraints = false
-        root.wantsLayer = true
-        root.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor.white.withAlphaComponent(0.82),
+        let materialSurface = NSVisualEffectView()
+        materialSurface.identifier = NSUserInterfaceItemIdentifier("updateNotesMaterialSurface")
+        materialSurface.material = .underWindowBackground
+        materialSurface.blendingMode = .behindWindow
+        materialSurface.state = .active
+        materialSurface.autoresizingMask = [.width, .height]
+        materialSurface.wantsLayer = true
+        materialSurface.layer?.cornerRadius = 16
+        materialSurface.layer?.masksToBounds = true
+        materialSurface.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor.white.withAlphaComponent(0.08),
+            dark: NSColor.black.withAlphaComponent(0.14)
+        ).cgColor
+
+        let contentSurface = NSView()
+        contentSurface.identifier = NSUserInterfaceItemIdentifier("updateNotesContentSurface")
+        contentSurface.translatesAutoresizingMaskIntoConstraints = false
+        contentSurface.wantsLayer = true
+        contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
+            light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
             dark: NSColor.black.withAlphaComponent(0.20)
         ).cgColor
 
@@ -140,43 +155,28 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         buttons.spacing = 8
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
-        root.addSubview(header)
-        root.addSubview(scrollView)
-        root.addSubview(buttons)
-
-        let surface: NSView
-        if let glassSurface = makeDashboardGlassEffectView(contentView: root, cornerRadius: 18) {
-            surface = glassSurface
-        } else {
-            let visualEffectSurface = NSVisualEffectView()
-            visualEffectSurface.material = .underWindowBackground
-            visualEffectSurface.blendingMode = .behindWindow
-            visualEffectSurface.state = .active
-            root.translatesAutoresizingMaskIntoConstraints = false
-            visualEffectSurface.addSubview(root)
-            NSLayoutConstraint.activate([
-                root.topAnchor.constraint(equalTo: visualEffectSurface.topAnchor),
-                root.leadingAnchor.constraint(equalTo: visualEffectSurface.leadingAnchor),
-                root.trailingAnchor.constraint(equalTo: visualEffectSurface.trailingAnchor),
-                root.bottomAnchor.constraint(equalTo: visualEffectSurface.bottomAnchor)
-            ])
-            surface = visualEffectSurface
-        }
-        surface.autoresizingMask = [.width, .height]
-        window.contentView = surface
+        contentSurface.addSubview(header)
+        contentSurface.addSubview(scrollView)
+        contentSurface.addSubview(buttons)
+        materialSurface.addSubview(contentSurface)
+        window.contentView = materialSurface
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor, constant: titlebarHeight + 24),
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
+            contentSurface.topAnchor.constraint(equalTo: materialSurface.topAnchor),
+            contentSurface.leadingAnchor.constraint(equalTo: materialSurface.leadingAnchor),
+            contentSurface.trailingAnchor.constraint(equalTo: materialSurface.trailingAnchor),
+            contentSurface.bottomAnchor.constraint(equalTo: materialSurface.bottomAnchor),
+            header.topAnchor.constraint(equalTo: contentSurface.topAnchor, constant: titlebarHeight + 24),
+            header.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor, constant: 24),
+            header.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor, constant: -24),
             scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 16),
-            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
-            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
+            scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor, constant: 24),
+            scrollView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor, constant: -24),
             scrollView.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -16),
-            buttons.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 24),
-            buttons.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
-            buttons.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
+            buttons.leadingAnchor.constraint(greaterThanOrEqualTo: contentSurface.leadingAnchor, constant: 24),
+            buttons.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor, constant: -24),
+            buttons.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor, constant: -20),
             buttons.heightAnchor.constraint(greaterThanOrEqualToConstant: 28)
         ])
     }

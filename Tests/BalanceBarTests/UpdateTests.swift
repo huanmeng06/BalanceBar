@@ -1210,11 +1210,7 @@ final class UpdateTests: XCTestCase {
             blockLayout.attributes(at: headingRange.location, effectiveRange: nil)[.paragraphStyle]
                 as? NSParagraphStyle
         )
-        let headingBlock = try XCTUnwrap(
-            headingParagraph.textBlocks.first as? ReleaseNotesHeadingBlock
-        )
-        XCTAssertTrue(headingBlock.drawsDivider)
-        XCTAssertEqual(headingBlock.dividerEdge, .maxY)
+        XCTAssertTrue(headingParagraph.textBlocks.isEmpty)
         XCTAssertFalse(blockLayout.string.contains("---"))
 
         let tableRange = (blockLayout.string as NSString).range(of: "项目")
@@ -1232,6 +1228,8 @@ final class UpdateTests: XCTestCase {
         XCTAssertFalse(firstCell.drawsOuterRightEdge)
         XCTAssertTrue(firstCell.drawsOuterTopEdge)
         XCTAssertFalse(firstCell.drawsOuterBottomEdge)
+        XCTAssertTrue(firstCell.drawsInternalRightEdge)
+        XCTAssertTrue(firstCell.drawsInternalBottomEdge)
 
         let bodyMarkerRange = (blockLayout.string as NSString).range(of: "修复", options: .backwards)
         let bodyRange = (blockLayout.string as NSString).range(of: "说明", options: [], range: NSRange(
@@ -1248,27 +1246,15 @@ final class UpdateTests: XCTestCase {
         XCTAssertFalse(lastCell.isHeader)
         XCTAssertTrue(lastCell.drawsOuterRightEdge)
         XCTAssertTrue(lastCell.drawsOuterBottomEdge)
+        XCTAssertFalse(lastCell.drawsInternalRightEdge)
+        XCTAssertFalse(lastCell.drawsInternalBottomEdge)
 
         let secondHeadingRange = (blockLayout.string as NSString).range(of: "安装")
         let secondHeadingParagraph = try XCTUnwrap(
             blockLayout.attributes(at: secondHeadingRange.location, effectiveRange: nil)[.paragraphStyle]
                 as? NSParagraphStyle
         )
-        XCTAssertGreaterThan(
-            secondHeadingParagraph.paragraphSpacingBefore,
-            firstTableParagraph.paragraphSpacingBefore
-        )
-
-        let subheading = ReleaseNotesMarkdownRenderer.render(markdown: "### 子标题")
-        let subheadingRange = (subheading.string as NSString).range(of: "子标题")
-        let subheadingParagraph = try XCTUnwrap(
-            subheading.attributes(at: subheadingRange.location, effectiveRange: nil)[.paragraphStyle]
-                as? NSParagraphStyle
-        )
-        let subheadingBlock = try XCTUnwrap(
-            subheadingParagraph.textBlocks.first as? ReleaseNotesHeadingBlock
-        )
-        XCTAssertFalse(subheadingBlock.drawsDivider)
+        XCTAssertEqual(secondHeadingParagraph.paragraphSpacing, 10, accuracy: 0.001)
 
         let safeRange = (rendered.string as NSString).range(of: "Safe")
         let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
@@ -1303,9 +1289,27 @@ final class UpdateTests: XCTestCase {
         let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
         XCTAssertTrue(notesTextView.string.contains("First presentation"))
         XCTAssertGreaterThan(notesTextView.frame.width, 1)
-        if #available(macOS 26.0, *) {
-            let glassViewClass = try XCTUnwrap(NSClassFromString("NSGlassEffectView"))
-            XCTAssertTrue(window.contentView?.isKind(of: glassViewClass) == true)
+        let materialSurface = try XCTUnwrap(window.contentView as? NSVisualEffectView)
+        XCTAssertEqual(materialSurface.material, .underWindowBackground)
+        XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
+        XCTAssertEqual(materialSurface.state, .active)
+        let contentSurface = try XCTUnwrap(
+            updateTestDescendants(of: materialSurface)
+                .first { $0.identifier?.rawValue == "updateNotesContentSurface" }
+        )
+        let expectedContentAlpha = dashboardUsesDarkAppearance ? 0.20 : 0.82
+        XCTAssertEqual(
+            contentSurface.layer?.backgroundColor?.alpha ?? 0,
+            expectedContentAlpha,
+            accuracy: 0.01
+        )
+        if let glassViewClass = NSClassFromString("NSGlassEffectView") {
+            XCTAssertFalse(materialSurface.isKind(of: glassViewClass))
+            XCTAssertFalse(
+                updateTestDescendants(of: materialSurface).contains {
+                    $0.isKind(of: glassViewClass)
+                }
+            )
         }
         let titleLabel = try XCTUnwrap(
             updateTestDescendants(of: contentView)
@@ -1316,6 +1320,47 @@ final class UpdateTests: XCTestCase {
         let titleLabelFrame = titleLabel.convert(titleLabel.bounds, to: contentView)
         let topInset = contentView.bounds.maxY - titleLabelFrame.maxY
         XCTAssertGreaterThanOrEqual(topInset, titlebarHeight + 20)
+    }
+
+    func testUpdateNotesWindowUsesDashboardMaterialContractInLightAndDarkModes() throws {
+        let previousAppearance = NSApp.appearance
+        defer { NSApp.appearance = previousAppearance }
+
+        for appearance in [NSAppearance(named: .aqua), NSAppearance(named: .darkAqua)] {
+            NSApp.appearance = appearance
+            let controller = UpdateNotesWindowController(onInstall: {})
+            controller.show(
+                currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+                release: GitHubRelease(
+                    tagName: "v1.1.21",
+                    draft: false,
+                    prerelease: true,
+                    assets: [],
+                    body: "# Material test\n\nOpaque content surface."
+                )
+            )
+            let window = try XCTUnwrap(controller.window)
+            let materialSurface = try XCTUnwrap(window.contentView as? NSVisualEffectView)
+            let contentSurface = try XCTUnwrap(
+                updateTestDescendants(of: materialSurface)
+                    .first { $0.identifier?.rawValue == "updateNotesContentSurface" }
+            )
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            XCTAssertEqual(materialSurface.material, .underWindowBackground)
+            XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
+            XCTAssertEqual(materialSurface.state, .active)
+            XCTAssertEqual(
+                materialSurface.layer?.backgroundColor?.alpha ?? 0,
+                isDark ? 0.14 : 0.08,
+                accuracy: 0.01
+            )
+            XCTAssertEqual(
+                contentSurface.layer?.backgroundColor?.alpha ?? 0,
+                isDark ? 0.20 : 0.82,
+                accuracy: 0.01
+            )
+            controller.close()
+        }
     }
 
     func testReleaseNotesReflowsLongContentAcrossLanguagesAndWindowWidths() throws {
