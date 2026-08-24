@@ -102,14 +102,17 @@ final class DashboardComponentsTests: XCTestCase {
     }
 
     func testSettingsRowsAdaptToLocalizedSubtitleHeightAcrossWindowWidths() throws {
-        let fixtures: [(String, String)] = [
-            ("简体中文", "这是用于验证窗口缩放后副标题完整换行并同步更新卡片高度的长说明文字示例。"),
-            ("繁體中文", "這是用於驗證視窗縮放後副標題完整換行並同步更新卡片高度的長說明文字範例。"),
-            ("日本語", "これはウィンドウ幅の変更後も副題が完全に折り返され、カードの高さが更新されることを確認する説明文です。"),
-            ("English", "This subtitle verifies resized-window wrapping and keeps the full settings text visible.")
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let fixtures: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "这是用于验证窗口缩放后副标题完整换行并同步更新卡片高度的长说明文字示例。"),
+            (.traditionalChinese, "這是用於驗證視窗縮放後副標題完整換行並同步更新卡片高度的長說明文字範例。"),
+            (.japanese, "これはウィンドウ幅の変更後も副題が完全に折り返され、カードの高さが更新されることを確認する説明文です。"),
+            (.english, "This subtitle verifies resized-window wrapping and keeps the full settings text visible.")
         ]
 
         for (language, longSubtitle) in fixtures {
+            AppLanguage.selected = language
             let subtitle = NSTextField(wrappingLabelWithString: longSubtitle)
             let control = NSSwitch()
             let longRow = DashboardSettingsComponents.makeSettingsRow(
@@ -163,6 +166,11 @@ final class DashboardComponentsTests: XCTestCase {
             let subtitleFrame = subtitle.convert(subtitle.bounds, to: longRow)
             let labelsFrame = labels.convert(labels.bounds, to: longRow)
             XCTAssertTrue(longRow.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame), "(language) labels must stay in row")
+            XCTAssertEqual(
+                subtitle.lineBreakMode,
+                language == .english ? .byWordWrapping : .byCharWrapping,
+                "(language) subtitle should use the script-appropriate wrapping mode"
+            )
             XCTAssertLessThanOrEqual(
                 subtitle.cell!.cellSize(
                     forBounds: NSRect(x: 0, y: 0, width: subtitle.bounds.width, height: .greatestFiniteMagnitude)
@@ -193,6 +201,9 @@ final class DashboardComponentsTests: XCTestCase {
     }
 
     func testCallerProvidedSubtitleLabelsStayMultilineForFutureRows() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
         let longSubtitle = "This future settings entry has a deliberately long summary so a caller-created labelWithString label must wrap beside its control instead of truncating."
         let subtitle = NSTextField(labelWithString: longSubtitle)
         let row = DashboardSettingsComponents.makeSettingsRow(

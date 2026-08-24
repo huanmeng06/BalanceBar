@@ -1128,6 +1128,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let card = try XCTUnwrap(rowsStack.superview)
             XCTAssertTrue(rows.allSatisfy { $0.superview === rowsStack })
             let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
+            // These live summaries contain an intentional non-breaking
+            // descriptor/value group, so they retain word/group wrapping in
+            // every locale. Ordinary CJK subtitles are covered separately by
+            // DashboardComponentsTests and use character wrapping.
+            let expectedLineBreakMode: NSLineBreakMode = .byWordWrapping
 
             func layout(at width: CGFloat) throws -> (rowHeights: [CGFloat], cardHeight: CGFloat) {
                 window.setContentSize(NSSize(width: width, height: 700))
@@ -1136,7 +1141,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     let summary = summaries[index]
                     let row = rows[index]
                     XCTAssertFalse(summary.usesSingleLineMode, "multiline mode for \(language)")
-                    XCTAssertEqual(summary.lineBreakMode, .byWordWrapping, "wrapping mode for \(language)")
+                    XCTAssertEqual(summary.lineBreakMode, expectedLineBreakMode, "wrapping mode for \(language)")
                     XCTAssertEqual(summary.maximumNumberOfLines, 0, "unlimited lines for \(language)")
                     XCTAssertTrue(summary.cell?.wraps == true, "cell wrapping for \(language)")
                     if normalizeSettingsText(summary.stringValue).contains(expectedSuffixes[index]) {
