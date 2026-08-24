@@ -618,16 +618,22 @@ enum DashboardSettingsComponents {
         compactHeightConstraint.priority = .defaultLow
         compactHeightConstraint.isActive = true
 
-        let label = titleLabel ?? NSTextField(labelWithString: title)
+        let label = titleLabel ?? NSTextField(wrappingLabelWithString: title)
         label.stringValue = title
         label.font = .systemFont(ofSize: 14, weight: .semibold)
         label.isEditable = false
         label.isSelectable = false
-        // Let localized titles/subtitles yield width to the row's control.
-        // Wrapping labels otherwise keep their full single-line intrinsic
-        // width, which can make a long translation enlarge the window's
-        // effective minimum width instead of wrapping inside the fixed row.
+        // Use the same width-sensitive wrapping contract as subtitles. A
+        // localized title must yield width to the row's control and contribute
+        // its full fitting height instead of keeping a single-line intrinsic
+        // width that clips long translations inside the fixed row.
+        label.usesSingleLineMode = false
+        label.lineBreakMode = Self.settingsSubtitleLineBreakMode(for: title)
+        label.maximumNumberOfLines = 0
+        label.cell?.wraps = true
+        label.cell?.isScrollable = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let labels = NSStackView(views: [label])
         labels.orientation = .vertical
         labels.alignment = .leading

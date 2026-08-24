@@ -1475,11 +1475,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(progress)
         }
 
-        let quotaDetail = makeOverviewLabel(snapshot.overviewQuotaDetail, font: .systemFont(ofSize: 13, weight: .medium))
+        let quotaDetail = makeMarqueeOverviewLabel(
+            snapshot.overviewQuotaDetail,
+            font: .systemFont(ofSize: 13, weight: .medium),
+            textColor: .labelColor,
+            frame: layout.quotaDetail
+        )
         let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
         amount.alignment = .right
         if isBalance {
-            quotaDetail.frame = layout.quotaDetail
             amount.frame = layout.amount
             let linkPrefix = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink), font: .systemFont(ofSize: 12, weight: .regular))
             linkPrefix.textColor = .secondaryLabelColor
@@ -1492,10 +1496,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 view.addSubview(link)
             }
         } else {
-            quotaDetail.frame = layout.quotaDetail
-            let reset = makeOverviewLabel(snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter), font: .systemFont(ofSize: 13, weight: .regular))
-            reset.textColor = .secondaryLabelColor
-            reset.frame = layout.reset ?? .zero
+            let reset = makeMarqueeOverviewLabel(
+                snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter),
+                font: .systemFont(ofSize: 13, weight: .regular),
+                textColor: .secondaryLabelColor,
+                frame: layout.reset ?? .zero
+            )
             amount.frame = layout.amount
             view.addSubview(reset)
         }
@@ -1557,8 +1563,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refreshTime.frame = layout.refreshTime
 
         let primary: NSTextField
-        let detail: NSTextField
-        let secondary: NSTextField
+        let detail: NSView
+        let secondary: NSView
         var progress: QuotaProgressView?
         var websiteLink: HoverLinkTextField?
         switch card.data {
@@ -1568,25 +1574,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             primary = makeOverviewLabel("\(Int(remaining))%", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
             primary.alignment = .right
             primary.frame = layout.amount
-            detail = makeOverviewLabel(label, font: .systemFont(ofSize: 13, weight: .medium))
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(
-                reset.map { tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)]) } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
-                font: .systemFont(ofSize: 13, weight: .regular)
+            detail = makeMarqueeOverviewLabel(
+                label,
+                font: .systemFont(ofSize: 13, weight: .medium),
+                textColor: .labelColor,
+                frame: layout.quotaDetail
             )
-            secondary.textColor = .secondaryLabelColor
-            secondary.frame = layout.reset ?? .zero
+            secondary = makeMarqueeOverviewLabel(
+                reset.map { tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)]) } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
+                font: .systemFont(ofSize: 13, weight: .regular),
+                textColor: .secondaryLabelColor,
+                frame: layout.reset ?? .zero
+            )
         case .balance(let amount, let unit, let progressPercentage, let websiteURL, _):
             progress = QuotaProgressView(percentage: progressPercentage)
             progress?.frame = layout.progress ?? .zero
             primary = makeOverviewLabel(Self.formatBalanceSummary(amount, unit: unit), font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
             primary.alignment = .right
             primary.frame = layout.amount
-            detail = makeOverviewLabel(tr(.keyStatusItemControllerRemainingBalance), font: .systemFont(ofSize: 13, weight: .medium))
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink2), font: .systemFont(ofSize: 12, weight: .regular))
-            secondary.textColor = .secondaryLabelColor
-            secondary.frame = layout.linkPrefix ?? .zero
+            detail = makeMarqueeOverviewLabel(
+                tr(.keyStatusItemControllerRemainingBalance),
+                font: .systemFont(ofSize: 13, weight: .medium),
+                textColor: .labelColor,
+                frame: layout.quotaDetail
+            )
+            let linkPrefix = makeOverviewLabel(
+                tr(.keyStatusItemControllerOfficialLink2),
+                font: .systemFont(ofSize: 12, weight: .regular)
+            )
+            linkPrefix.textColor = .secondaryLabelColor
+            linkPrefix.frame = layout.linkPrefix ?? .zero
+            secondary = linkPrefix
             if let websiteURL, let linkFrame = layout.link {
                 let link = HoverLinkTextField(text: card.provider)
                 link.frame = linkFrame
@@ -1597,24 +1615,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             primary = makeOverviewLabel("—", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
             primary.alignment = .right
             primary.frame = layout.amount
-            detail = makeOverviewLabel(
+            detail = makeMarqueeOverviewLabel(
                 category == .quota ? tr(.keyStatusItemControllerReadingQuota) : tr(.keyStatusItemControllerReadingBalance),
-                font: .systemFont(ofSize: 13, weight: .medium)
+                font: .systemFont(ofSize: 13, weight: .medium),
+                textColor: .labelColor,
+                frame: layout.quotaDetail
             )
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(tr(.keyStatusItemControllerNoLiveDataReceivedYet), font: .systemFont(ofSize: 13, weight: .regular))
-            secondary.textColor = .secondaryLabelColor
-            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
+            secondary = makeMarqueeOverviewLabel(
+                tr(.keyStatusItemControllerNoLiveDataReceivedYet),
+                font: .systemFont(ofSize: 13, weight: .regular),
+                textColor: .secondaryLabelColor,
+                frame: layout.reset ?? layout.linkPrefix ?? .zero
+            )
         case .unavailable(_, let reason):
             primary = makeOverviewLabel("—", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
             primary.alignment = .right
             primary.frame = layout.amount
-            detail = makeOverviewLabel(category.unavailableTitle, font: .systemFont(ofSize: 13, weight: .medium))
-            detail.frame = layout.quotaDetail
-            secondary = makeOverviewLabel(reason, font: .systemFont(ofSize: 12, weight: .regular))
-            secondary.textColor = .secondaryLabelColor
-            secondary.lineBreakMode = .byTruncatingTail
-            secondary.frame = layout.reset ?? layout.linkPrefix ?? .zero
+            detail = makeMarqueeOverviewLabel(
+                category.unavailableTitle,
+                font: .systemFont(ofSize: 13, weight: .medium),
+                textColor: .labelColor,
+                frame: layout.quotaDetail
+            )
+            secondary = makeMarqueeOverviewLabel(
+                reason,
+                font: .systemFont(ofSize: 12, weight: .regular),
+                textColor: .secondaryLabelColor,
+                frame: layout.reset ?? layout.linkPrefix ?? .zero
+            )
         }
         [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
         if let progress { view.addSubview(progress) }
@@ -1687,6 +1715,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return label
     }
 
+    private func makeMarqueeOverviewLabel(
+        _ text: String,
+        font: NSFont,
+        textColor: NSColor,
+        frame: NSRect
+    ) -> AccountMarqueeView {
+        AccountMarqueeView(
+            text: text,
+            font: font,
+            textColor: textColor,
+            frame: frame
+        )
+    }
+
     private func makeSubscriptionLabel(_ text: String, frame: NSRect) -> NSTextField {
         let label = makeOverviewLabel(text, font: .systemFont(ofSize: 13, weight: .regular))
         label.textColor = .secondaryLabelColor
@@ -1696,8 +1738,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeAccountLabel(_ text: String, frame: NSRect) -> AccountMarqueeView {
-        AccountMarqueeView(
-            text: text,
+        makeMarqueeOverviewLabel(
+            text,
             font: .systemFont(ofSize: 13, weight: .regular),
             textColor: .secondaryLabelColor,
             frame: frame

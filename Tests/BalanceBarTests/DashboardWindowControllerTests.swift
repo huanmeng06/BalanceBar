@@ -1270,6 +1270,85 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testLocalizedOverviewQuotaAndResetReuseAccountMarqueeLayout() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .spanish
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(
+                email: "person@example.com",
+                subscription: .proFiveX
+            ),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false
+        )
+        let longQuota = String(repeating: "Cuota de 7 días ", count: 4)
+        let longReset = String(repeating: "Restablecimiento: ", count: 5)
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        controller.start(
+            snapshot: .official("OpenAI Official", 78, longQuota, longReset, date),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let marquees = overview.subviews.compactMap { $0 as? AccountMarqueeView }
+        let quota = try XCTUnwrap(
+            marquees.first { $0.accountLabel.stringValue == longQuota }
+        )
+        let reset = try XCTUnwrap(
+            marquees.first { $0.accountLabel.stringValue.contains(longReset) }
+        )
+        XCTAssertTrue(quota.isScrollable)
+        XCTAssertTrue(reset.isScrollable)
+        XCTAssertGreaterThan(quota.accountLabel.frame.width, quota.bounds.width)
+        XCTAssertGreaterThan(reset.accountLabel.frame.width, reset.bounds.width)
+
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true
+        )
+        XCTAssertEqual(quota.frame, frames.quotaDetail)
+        XCTAssertEqual(reset.frame, try XCTUnwrap(frames.reset))
+    }
+
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
         for openCodexIsCurrent in [true, false] {
             for showOpenCodexMenu in [true, false] {

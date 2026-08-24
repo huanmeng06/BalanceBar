@@ -205,6 +205,88 @@ final class DashboardComponentsTests: XCTestCase {
         }
     }
 
+    func testLocalizedSettingsTitlesWrapLikeSubtitlesAcrossLanguages() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let fixtures: [(AppLanguage, String)] = [
+            (.english, "Play the icon animation while a task is running"),
+            (.korean, "작업 실행 중 아이콘 애니메이션 재생"),
+            (.spanish, "Reproducir la animación del icono mientras se ejecuta una tarea"),
+            (.german, "Symbolanimation während einer laufenden Aufgabe abspielen")
+        ]
+
+        for (language, longTitle) in fixtures {
+            AppLanguage.selected = language
+            let control = NSSwitch()
+            let row = DashboardSettingsComponents.makeSettingsRow(
+                longTitle,
+                subtitle: "Short subtitle",
+                control: control
+            )
+            var rowsStack: NSStackView?
+            let section = DashboardSettingsComponents.makeSettingsSection(
+                "Localized titles",
+                rows: [row],
+                onLayoutCreated: { stack, _, _ in
+                    rowsStack = stack
+                }
+            )
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 300, height: 260),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = section
+            defer { window.orderOut(nil) }
+
+            func titleLabel() throws -> NSTextField {
+                let labels = try XCTUnwrap(
+                    row.subviews.compactMap { $0 as? NSStackView }.first
+                )
+                return try XCTUnwrap(labels.arrangedSubviews.first as? NSTextField)
+            }
+
+            func layout(at width: CGFloat) throws -> CGFloat {
+                window.setContentSize(NSSize(width: width, height: 260))
+                window.layoutIfNeeded()
+                _ = try XCTUnwrap(rowsStack)
+                return row.frame.height
+            }
+
+            let narrowHeight = try layout(at: 300)
+            let title = try titleLabel()
+            XCTAssertFalse(title.usesSingleLineMode, "title must be multiline for \(language)")
+            XCTAssertEqual(
+                title.lineBreakMode,
+                DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: longTitle),
+                "title wrapping mode for \(language)"
+            )
+            XCTAssertEqual(title.maximumNumberOfLines, 0, "unlimited title lines for \(language)")
+            XCTAssertTrue(title.cell?.wraps == true, "title cell wrapping for \(language)")
+            XCTAssertFalse(title.cell?.isScrollable == true, "title cell must not scroll for \(language)")
+            XCTAssertGreaterThan(narrowHeight, 62, "long title should grow its row for \(language)")
+            XCTAssertLessThanOrEqual(
+                title.cell!.cellSize(
+                    forBounds: NSRect(
+                        x: 0,
+                        y: 0,
+                        width: title.bounds.width,
+                        height: .greatestFiniteMagnitude
+                    )
+                ).height,
+                title.bounds.height + 0.5,
+                "title must fit its wrapped frame for \(language)"
+            )
+            XCTAssertEqual(control.frame.midY, row.bounds.midY, accuracy: 0.5)
+
+            let wideHeight = try layout(at: 740)
+            XCTAssertLessThan(wideHeight, narrowHeight, "title row should shrink after widening for \(language)")
+            let narrowAgainHeight = try layout(at: 300)
+            XCTAssertEqual(narrowAgainHeight, narrowHeight, accuracy: 0.5)
+        }
+    }
+
     func testCallerProvidedSubtitleLabelsStayMultilineForFutureRows() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
