@@ -94,77 +94,361 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
     }
 
-    func testStatusItemVisibilityRequiresMenuBarOverflowEvidence() {
+    func testStatusItemVisibilityRequiresRenderedEvidenceAndStableOverflow() {
         let screen = NSRect(x: 0, y: 0, width: 1_000, height: 800)
         let visibleFrame = NSRect(x: 840, y: 780, width: 100, height: 20)
         let overflowFrame = NSRect(x: 940, y: 780, width: 100, height: 20)
         let nonMenuBarFrame = NSRect(x: 940, y: 720, width: 100, height: 20)
+        let statusItem = NSObject()
+        let window = NSObject()
+        let button = NSObject()
+        let start = Date(timeIntervalSince1970: 1_000)
 
+        func evidence(
+            window: NSObject?,
+            occlusionVisible: Bool,
+            frame: NSRect?,
+            statusItemIsVisible: Bool = true,
+            windowIsVisible: Bool = true,
+            buttonIsHidden: Bool = false
+        ) -> StatusItemVisibilityEvidence {
+            StatusItemVisibilityEvidence(
+                statusItemIsVisible: statusItemIsVisible,
+                windowIsVisible: windowIsVisible,
+                windowIsOcclusionVisible: occlusionVisible,
+                statusItemIdentity: ObjectIdentifier(statusItem),
+                windowIdentity: window.map(ObjectIdentifier.init),
+                buttonIdentity: ObjectIdentifier(button),
+                statusItemFrame: frame,
+                statusItemWindowFrame: frame,
+                screenFrame: screen,
+                buttonIsHidden: buttonIsHidden
+            )
+        }
+
+        var machine = StatusItemVisibilityStateMachine()
         XCTAssertEqual(
-            StatusItemVisibility.resolved(
-                statusItemIsVisible: true,
-                windowIsVisible: true,
-                windowFrame: visibleFrame,
-                screenFrame: screen
+            machine.ingest(
+                evidence(window: window, occlusionVisible: true, frame: visibleFrame),
+                at: start
+            ),
+            .visible
+        )
+
+        // A complete frame inside the screen is not enough to prove that
+        // WindowServer is actually drawing this item.
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: window, occlusionVisible: false, frame: visibleFrame),
+                at: start.addingTimeInterval(0.2)
             ),
             .visible
         )
         XCTAssertEqual(
-            StatusItemVisibility.resolved(
-                statusItemIsVisible: true,
-                windowIsVisible: true,
-                windowFrame: overflowFrame,
-                screenFrame: screen
+            machine.ingest(
+                evidence(window: window, occlusionVisible: false, frame: visibleFrame),
+                at: start.addingTimeInterval(0.4)
             ),
             .hiddenByMenuBarSpace
         )
+
+        // Real occlusion-visible evidence clears a candidate and any warning
+        // immediately after menu-bar reflow.
         XCTAssertEqual(
-            StatusItemVisibility.resolved(
-                statusItemIsVisible: true,
-                windowIsVisible: true,
-                windowFrame: nonMenuBarFrame,
-                screenFrame: screen
+            machine.ingest(
+                evidence(window: window, occlusionVisible: true, frame: visibleFrame),
+                at: start.addingTimeInterval(0.5)
+            ),
+            .visible
+        )
+
+        // A genuine horizontal overflow still requires stable confirmation.
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: window, occlusionVisible: false, frame: overflowFrame),
+                at: start.addingTimeInterval(0.6)
+            ),
+            .visible
+        )
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: window, occlusionVisible: false, frame: overflowFrame),
+                at: start.addingTimeInterval(0.8)
+            ),
+            .hiddenByMenuBarSpace
+        )
+
+        var unknownMachine = StatusItemVisibilityStateMachine()
+        XCTAssertEqual(
+            unknownMachine.ingest(
+                evidence(window: nil, occlusionVisible: false, frame: visibleFrame),
+                at: start
             ),
             .unknown
         )
         XCTAssertEqual(
-            StatusItemVisibility.resolved(
-                statusItemIsVisible: true,
-                windowIsVisible: true,
-                windowFrame: overflowFrame,
-                screenFrame: nil
+            unknownMachine.ingest(
+                evidence(window: window, occlusionVisible: true, frame: nonMenuBarFrame),
+                at: start.addingTimeInterval(0.2)
             ),
             .unknown
         )
         XCTAssertEqual(
-            StatusItemVisibility.resolved(
-                statusItemIsVisible: false,
-                windowIsVisible: true,
-                windowFrame: overflowFrame,
-                screenFrame: screen
+            unknownMachine.ingest(
+                evidence(window: window, occlusionVisible: true, frame: nil),
+                at: start.addingTimeInterval(0.4)
             ),
             .unknown
         )
         XCTAssertEqual(
-            StatusItemVisibility.resolved(
+            unknownMachine.ingest(
+                evidence(
+                    window: window,
+                    occlusionVisible: false,
+                    frame: visibleFrame,
+                    statusItemIsVisible: false
+                ),
+                at: start.addingTimeInterval(0.5)
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            unknownMachine.ingest(
+                evidence(
+                    window: window,
+                    occlusionVisible: false,
+                    frame: visibleFrame,
+                    windowIsVisible: false
+                ),
+                at: start.addingTimeInterval(0.6)
+            ),
+            .unknown
+        )
+    }
+
+    func testStatusItemVisibilityRejectsAnalyzerGeometryOnlyEvidence() {
+        let screen = NSRect(x: 0, y: 0, width: 1_710, height: 1_112)
+        let analyzerFrame = NSRect(x: 894, y: 1_081.5, width: 69, height: 22)
+        let analyzerWindowFrame = NSRect(x: 886, y: 1_081.5, width: 85, height: 30)
+        let statusItem = NSObject()
+        let window = NSObject()
+        let button = NSObject()
+        let start = Date(timeIntervalSince1970: 3_000)
+
+        func evidence(occlusionVisible: Bool) -> StatusItemVisibilityEvidence {
+            StatusItemVisibilityEvidence(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: visibleFrame,
+                windowIsOcclusionVisible: occlusionVisible,
+                statusItemIdentity: ObjectIdentifier(statusItem),
+                windowIdentity: ObjectIdentifier(window),
+                buttonIdentity: ObjectIdentifier(button),
+                statusItemFrame: analyzerFrame,
+                statusItemWindowFrame: analyzerWindowFrame,
                 screenFrame: screen,
-                windowIsVisibleOnScreen: false
+                buttonIsHidden: false
+            )
+        }
+
+        var machine = StatusItemVisibilityStateMachine()
+        XCTAssertEqual(machine.ingest(evidence(occlusionVisible: false), at: start), .unknown)
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(occlusionVisible: false),
+                at: start.addingTimeInterval(0.2)
             ),
             .hiddenByMenuBarSpace
         )
         XCTAssertEqual(
-            StatusItemVisibility.resolved(
+            machine.ingest(
+                evidence(occlusionVisible: true),
+                at: start.addingTimeInterval(0.3)
+            ),
+            .visible
+        )
+    }
+
+    func testStatusItemVisibilityRecoversFromOverflowToVisibleAndUnknown() {
+        let screen = NSRect(x: 0, y: 0, width: 1_000, height: 800)
+        let visibleFrame = NSRect(x: 840, y: 780, width: 100, height: 20)
+        let overflowFrame = NSRect(x: 940, y: 780, width: 100, height: 20)
+        let statusItem = NSObject()
+        let window = NSObject()
+        let replacementWindow = NSObject()
+        let button = NSObject()
+        let start = Date(timeIntervalSince1970: 2_000)
+
+        func evidence(
+            window: NSObject?,
+            occlusionVisible: Bool,
+            frame: NSRect?,
+            buttonIsHidden: Bool = false
+        ) -> StatusItemVisibilityEvidence {
+            StatusItemVisibilityEvidence(
                 statusItemIsVisible: true,
                 windowIsVisible: true,
-                windowFrame: visibleFrame,
+                windowIsOcclusionVisible: occlusionVisible,
+                statusItemIdentity: ObjectIdentifier(statusItem),
+                windowIdentity: window.map(ObjectIdentifier.init),
+                buttonIdentity: ObjectIdentifier(button),
+                statusItemFrame: frame,
+                statusItemWindowFrame: frame,
                 screenFrame: screen,
-                buttonIsHidden: true
+                buttonIsHidden: buttonIsHidden
+            )
+        }
+
+        var machine = StatusItemVisibilityStateMachine()
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: window, occlusionVisible: false, frame: overflowFrame),
+                at: start
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: window, occlusionVisible: false, frame: overflowFrame),
+                at: start.addingTimeInterval(0.2)
             ),
             .hiddenByMenuBarSpace
         )
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: window, occlusionVisible: true, frame: visibleFrame),
+                at: start.addingTimeInterval(0.4)
+            ),
+            .visible
+        )
+
+        // Window replacement cannot inherit a stale hidden warning.
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: replacementWindow, occlusionVisible: true, frame: visibleFrame),
+                at: start.addingTimeInterval(0.5)
+            ),
+            .visible
+        )
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: nil, occlusionVisible: false, frame: nil),
+                at: start.addingTimeInterval(0.6)
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            machine.ingest(
+                evidence(window: window, occlusionVisible: true, frame: visibleFrame),
+                at: start.addingTimeInterval(0.7)
+            ),
+            .visible
+        )
+    }
+
+    func testStatusItemVisibilityKeepsCommittedHiddenDuringGeometryChurn() {
+        let screen = NSRect(x: 0, y: 0, width: 1_000, height: 800)
+        let overflowFrames = [
+            NSRect(x: 940, y: 780, width: 100, height: 20),
+            NSRect(x: 941, y: 780, width: 100, height: 20),
+            NSRect(x: 942, y: 780, width: 100, height: 20),
+            NSRect(x: 943, y: 780, width: 100, height: 20)
+        ]
+        let visibleFrame = NSRect(x: 840, y: 780, width: 100, height: 20)
+        let statusItem = NSObject()
+        let window = NSObject()
+        let button = NSObject()
+        let start = Date(timeIntervalSince1970: 4_000)
+
+        func evidence(
+            frame: NSRect,
+            occlusionVisible: Bool = false,
+            windowObject: NSObject?
+        ) -> StatusItemVisibilityEvidence {
+            StatusItemVisibilityEvidence(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowIsOcclusionVisible: occlusionVisible,
+                statusItemIdentity: ObjectIdentifier(statusItem),
+                windowIdentity: windowObject.map(ObjectIdentifier.init),
+                buttonIdentity: ObjectIdentifier(button),
+                statusItemFrame: frame,
+                statusItemWindowFrame: frame,
+                screenFrame: screen,
+                buttonIsHidden: false
+            )
+        }
+
+        var machine = StatusItemVisibilityStateMachine()
+        var publishedTransitions: [StatusItemVisibility] = []
+
+        func ingest(_ evidence: StatusItemVisibilityEvidence, at date: Date) -> StatusItemVisibility {
+            let state = machine.ingest(evidence, at: date)
+            if publishedTransitions.last != state {
+                publishedTransitions.append(state)
+            }
+            return state
+        }
+
+        XCTAssertEqual(
+            ingest(evidence(frame: overflowFrames[0], windowObject: window), at: start),
+            .unknown
+        )
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: overflowFrames[0], windowObject: window),
+                at: start.addingTimeInterval(0.2)
+            ),
+            .hiddenByMenuBarSpace
+        )
+        XCTAssertFalse(machine.needsAdditionalHiddenSample)
+
+        // Slider/layout churn changes the raw candidate signature. It must
+        // replace pending evidence without publishing hidden -> unknown.
+        for (index, frame) in overflowFrames.dropFirst().enumerated() {
+            XCTAssertEqual(
+                ingest(
+                    evidence(frame: frame, windowObject: window),
+                    at: start.addingTimeInterval(0.4 + Double(index) * 0.2)
+                ),
+                .hiddenByMenuBarSpace
+            )
+            XCTAssertTrue(machine.needsAdditionalHiddenSample)
+        }
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: overflowFrames.last!, windowObject: window),
+                at: start.addingTimeInterval(1.2)
+            ),
+            .hiddenByMenuBarSpace
+        )
+        XCTAssertFalse(machine.needsAdditionalHiddenSample)
+        XCTAssertEqual(
+            publishedTransitions,
+            [.unknown, .hiddenByMenuBarSpace],
+            "pending geometry samples must not emit hidden -> unknown -> hidden"
+        )
+
+        // A real rendered sample still recovers immediately after reflow.
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: visibleFrame, occlusionVisible: true, windowObject: window),
+                at: start.addingTimeInterval(1.3)
+            ),
+            .visible
+        )
+
+        // Explicit invalid evidence and lifecycle reset still clear the
+        // committed state instead of preserving a stale warning.
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: visibleFrame, windowObject: nil),
+                at: start.addingTimeInterval(1.4)
+            ),
+            .unknown
+        )
+        machine.reset()
+        XCTAssertEqual(machine.visibility, .unknown)
+        XCTAssertFalse(machine.needsAdditionalHiddenSample)
     }
 
     @MainActor

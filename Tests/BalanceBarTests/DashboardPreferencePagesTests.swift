@@ -364,7 +364,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(presentation.isBalance)
     }
 
-    func testMenuBarOverflowWarningUsesInjectedVisibilityAndFourLocalizations() throws {
+    func testMenuBarOverflowWarningUsesInjectedVisibilityAndAllSupportedLocalizations() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
@@ -373,7 +373,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (.english, "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again.", "Open Settings"),
             (.traditionalChineseTaiwan, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。", "開啟設定"),
             (.traditionalChineseHongKong, "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後再試。", "開啟設定"),
-            (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。", "設定を開く")
+            (.japanese, "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。", "設定を開く"),
+            (.korean, "메뉴 막대 공간이 부족하여 BalanceBar가 일시적으로 숨겨졌습니다; 일부 메뉴 막대 아이콘을 숨기거나 제거한 후 다시 시도하세요.", "설정 열기"),
+            (.spanish, "No queda espacio en la barra de menús, por lo que BalanceBar está oculto temporalmente; oculta o elimina algunos iconos de la barra de menús y vuelve a intentarlo.", "Abrir ajustes"),
+            (.german, "Der Platz in der Menüleiste ist voll, daher ist BalanceBar vorübergehend ausgeblendet; weitere Menüleistensymbole ausblenden oder entfernen und erneut versuchen.", "Einstellungen öffnen")
         ]
         XCTAssertEqual(
             DashboardMenuBarPage.systemMenuBarSettingsURL.absoluteString,
@@ -421,7 +424,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     $0.firstAttribute == .height && $0.relation == .equal
                 }?.constant
             )
-            XCTAssertEqual(warningRowHeight, DashboardMenuBarPage.previewRowHeight)
+            XCTAssertEqual(warningRowHeight, DashboardSettingsComponents.standardRowHeight)
 
             let settingsButton = try XCTUnwrap(
                 descendants(of: page)
@@ -465,6 +468,138 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(warningRow.isHidden)
             XCTAssertTrue(settingsButton.superview?.isHidden ?? false)
         }
+    }
+
+    func testMenuBarPendingVisibilityDoesNotRebuildDashboardHierarchy() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPendingVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .hiddenByMenuBarSpace
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let warningRow = try XCTUnwrap(
+            descendant(
+                withIdentifier: DashboardMenuBarPage.overflowWarningRowIdentifier,
+                in: page
+            )
+        )
+        let rowsStack = try XCTUnwrap(warningRow.superview as? NSStackView)
+        let previewCard = try XCTUnwrap(rowsStack.superview)
+        let separator = try XCTUnwrap(
+            rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }.first
+        )
+        let scrollView = try XCTUnwrap(
+            page.subviews
+                .flatMap { descendants(of: $0) }
+                .compactMap { $0 as? NSScrollView }
+                .first
+        )
+        let documentView = try XCTUnwrap(scrollView.documentView)
+        let initialCardHeight = previewCard.frame.height
+        let initialDocumentFrame = documentView.frame
+        let initialDocumentBounds = documentView.bounds
+        let initialScrollBounds = scrollView.contentView.bounds
+
+        XCTAssertGreaterThan(initialCardHeight, 0)
+        XCTAssertGreaterThan(initialDocumentFrame.height, 0)
+        XCTAssertFalse(warningRow.isHidden)
+        XCTAssertFalse(separator.isHidden)
+
+        // Repeated committed-hidden refreshes model the Dashboard input while
+        // the visibility state machine is confirming changing geometry. They
+        // must update in place rather than rebuild the warning/card/document
+        // hierarchy or move the scroll viewport.
+        for _ in 0..<8 {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                statusItemVisibility: .hiddenByMenuBarSpace
+            )
+            window.layoutIfNeeded()
+            XCTAssertEqual(ObjectIdentifier(warningRow), ObjectIdentifier(
+                try XCTUnwrap(
+                    descendant(
+                        withIdentifier: DashboardMenuBarPage.overflowWarningRowIdentifier,
+                        in: page
+                    )
+                )
+            ))
+            XCTAssertEqual(ObjectIdentifier(rowsStack), ObjectIdentifier(
+                try XCTUnwrap(warningRow.superview)
+            ))
+            XCTAssertEqual(ObjectIdentifier(previewCard), ObjectIdentifier(rowsStack.superview!))
+            XCTAssertEqual(ObjectIdentifier(scrollView), ObjectIdentifier(
+                try XCTUnwrap(
+                    page.subviews
+                        .flatMap { descendants(of: $0) }
+                        .compactMap { $0 as? NSScrollView }
+                        .first
+                )
+            ))
+            XCTAssertTrue(scrollView.documentView === documentView)
+            XCTAssertFalse(warningRow.isHidden)
+            XCTAssertFalse(separator.isHidden)
+            XCTAssertEqual(previewCard.frame.height, initialCardHeight, accuracy: 0.5)
+            XCTAssertEqual(documentView.frame, initialDocumentFrame)
+            XCTAssertEqual(documentView.bounds, initialDocumentBounds)
+            XCTAssertEqual(scrollView.contentView.bounds, initialScrollBounds)
+        }
+
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            statusItemVisibility: .visible
+        )
+        window.layoutIfNeeded()
+        XCTAssertTrue(warningRow.isHidden)
+        XCTAssertTrue(separator.isHidden)
+
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            statusItemVisibility: .hiddenByMenuBarSpace
+        )
+        window.layoutIfNeeded()
+        XCTAssertFalse(warningRow.isHidden)
+        XCTAssertFalse(separator.isHidden)
+        XCTAssertTrue(scrollView.documentView === documentView)
     }
 
     func testCodexActivityAnimationBelongsToMenuBarWithLocalizedSectionOrder() {
@@ -1071,6 +1206,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             window.setContentSize(NSSize(width: 740, height: 520))
             window.layoutIfNeeded()
+            XCTAssertEqual(
+                row.frame.height,
+                DashboardSettingsComponents.standardRowHeight,
+                accuracy: 0.5,
+                "(language) preview row must match the standard settings-row height at a wide width"
+            )
             XCTAssertLessThan(row.frame.height, narrowHeight, "(language) preview row should shrink at wide width")
             XCTAssertLessThan(card.frame.height, narrowHeight + DashboardSettingsComponents.settingsSeparatorHeight)
 

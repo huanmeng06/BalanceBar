@@ -10,7 +10,7 @@ private final class DashboardSettingsRowView: NSView {
     private var lastPreferredHeight: CGFloat = -1
 
     init(minimumHeight: CGFloat, verticalPadding: CGFloat) {
-        self.minimumHeight = max(62, minimumHeight)
+        self.minimumHeight = max(DashboardSettingsComponents.standardRowHeight, minimumHeight)
         self.verticalPadding = max(0, verticalPadding)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -197,6 +197,7 @@ private final class DashboardSettingsCardView: NSView {
 
 enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
+    static let standardRowHeight: CGFloat = 62
 
     /// CJK UI copy is naturally breakable between characters. Word wrapping
     /// treats a run without spaces as one large word, which leaves an entire
