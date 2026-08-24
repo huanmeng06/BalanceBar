@@ -13,8 +13,7 @@ die() {
 }
 
 source_keys="$(
-    rg '^    case ' "$source_dir/Sources/AppCore/LocalizationKeys.swift" \
-        | sed -E 's/.*= "([^"]+)"/\1/' \
+    sed -nE 's/^    case .* = "([^"]+)".*/\1/p' "$source_dir/Sources/AppCore/LocalizationKeys.swift" \
         | LC_ALL=C sort
 )"
 source_key_count="$(printf '%s\n' "$source_keys" | awk 'NF { count += 1 } END { print count + 0 }')"
@@ -26,8 +25,7 @@ for localization_directory in "${localization_directories[@]}"; do
     [[ -f "$localization_file" ]] || die "source resource is missing: $localization_file"
 
     resource_keys="$(
-        rg '^"' "$localization_file" \
-            | sed -E 's/^"([^"]+)".*/\1/' \
+        sed -nE 's/^"([^"]+)".*/\1/p' "$localization_file" \
             | LC_ALL=C sort
     )"
     resource_key_count="$(printf '%s\n' "$resource_keys" | awk 'NF { count += 1 } END { print count + 0 }')"
