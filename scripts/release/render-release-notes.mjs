@@ -9,13 +9,11 @@ const SECTION_DEFINITIONS = [
     key: "features",
     heading: "## ✨ 新功能",
     column: "功能",
-    emptyDescription: "本版本暂无新功能。",
   },
   {
     key: "fixes",
     heading: "## 🛠 修复与体验优化",
     column: "项目",
-    emptyDescription: "本版本暂无修复与体验优化。",
   },
 ];
 
@@ -169,14 +167,16 @@ export function validateReleaseNotes(input, notes) {
 
 function renderSection(input, notes, definition) {
   const items = notes[definition.key];
-  const rows = items.length === 0
-    ? [["暂无", definition.emptyDescription]]
-    : items.map((item) => {
-      const title = tableCell(oneLine(item.title, `${definition.key}.title`));
-      const description = tableCell(oneLine(item.description, `${definition.key}.description`));
-      const links = item.sources.map((source) => sourceLink(input.repo, source)).join(", ");
-      return [`${title} (${links})`, description];
-    });
+  if (items.length === 0) {
+    return null;
+  }
+
+  const rows = items.map((item) => {
+    const title = tableCell(oneLine(item.title, `${definition.key}.title`));
+    const description = tableCell(oneLine(item.description, `${definition.key}.description`));
+    const links = item.sources.map((source) => sourceLink(input.repo, source)).join(", ");
+    return [`${title} (${links})`, description];
+  });
 
   return [
     definition.heading,
@@ -192,7 +192,8 @@ export function renderReleaseNotes(input, notes) {
   validateReleaseNotes(input, sanitizedNotes);
 
   const sections = SECTION_DEFINITIONS
-    .map((definition) => renderSection(input, sanitizedNotes, definition));
+    .map((definition) => renderSection(input, sanitizedNotes, definition))
+    .filter(Boolean);
   const installation = [
     "## 📦 安装",
     "",

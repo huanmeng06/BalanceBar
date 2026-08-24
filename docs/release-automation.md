@@ -48,10 +48,13 @@ push to `main`.
 The model returns structured feature and fix items. A checked-in renderer then
 creates the exact Release layout used by BalanceBar:
 
-- `## ✨ 新功能` with a `功能 | 说明` table;
-- `## 🛠 修复与体验优化` with a `项目 | 说明` table;
+- `## ✨ 新功能` with a `功能 | 说明` table when the release has feature items;
+- `## 🛠 修复与体验优化` with a `项目 | 说明` table when the release has fix items;
 - `## 📦 安装` with the versioned DMG filename;
 - the `Full Changelog` comparison link.
+
+Empty feature or fix arrays are omitted entirely. The renderer does not add a
+“暂无……” placeholder section.
 
 The description does not contain a separate documentation section. Every
 generated row must cite at least one real Issue or PR from the release range,
