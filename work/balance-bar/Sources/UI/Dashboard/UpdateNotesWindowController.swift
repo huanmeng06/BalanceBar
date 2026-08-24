@@ -45,18 +45,26 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     func show(currentVersion: AppSemanticVersion, release: GitHubRelease) {
         self.currentVersion = currentVersion
         self.release = release
-        render()
         guard let window else { return }
         if !window.isVisible {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
+        window.contentView?.layoutSubtreeIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        render()
+        DispatchQueue.main.async { [weak self] in
+            self?.relayoutAfterPresentation()
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func refreshForCurrentLanguage() {
         guard currentVersion != nil, release != nil else { return }
         render()
+        DispatchQueue.main.async { [weak self] in
+            self?.relayoutAfterPresentation()
+        }
     }
 
     private func configureView() {
@@ -172,18 +180,25 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func updateTextViewFrame() {
+        window?.contentView?.layoutSubtreeIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
         let clipView = scrollView.contentView
-        let width = max(1, clipView.bounds.width)
+        let width = clipView.bounds.width
+        guard width > 1,
+              let textContainer = notesTextView.textContainer,
+              let layoutManager = notesTextView.layoutManager else {
+            return
+        }
         let inset = notesTextView.textContainerInset
         let textContainerWidth = max(1, width - inset.width * 2)
-        notesTextView.textContainer?.widthTracksTextView = false
-        notesTextView.textContainer?.containerSize = NSSize(
+        textContainer.widthTracksTextView = false
+        textContainer.containerSize = NSSize(
             width: textContainerWidth,
             height: CGFloat.greatestFiniteMagnitude
         )
         notesTextView.frame.size.width = width
-        notesTextView.layoutManager?.ensureLayout(for: notesTextView.textContainer!)
-        let usedHeight = notesTextView.layoutManager?.usedRect(for: notesTextView.textContainer!).height ?? 0
+        layoutManager.ensureLayout(for: textContainer)
+        let usedHeight = layoutManager.usedRect(for: textContainer).height
         let minimumHeight = max(1, clipView.bounds.height)
         notesTextView.frame = NSRect(
             x: 0,
@@ -191,6 +206,13 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             width: width,
             height: max(minimumHeight, ceil(usedHeight + inset.height * 2))
         )
+    }
+
+    private func relayoutAfterPresentation() {
+        guard let window, window.isVisible else { return }
+        window.contentView?.layoutSubtreeIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+        updateTextViewFrame()
     }
 
     override func windowDidLoad() {

@@ -166,6 +166,7 @@
 "dashboard.advanced.page.current_port_value.2" = "Puerto actual: %1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "Introduce un puerto decimal entre 1 y 65535; borra el campo para restaurar la detección automática";
 "dashboard.general.and.refresh.pages.update_channel" = "Canal de actualización";
+"dashboard.general.and.refresh.pages.update_channel_description" = "Elige si quieres buscar actualizaciones estables o beta";
 "dashboard.general.and.refresh.pages.stable" = "Estable";
 "dashboard.general.and.refresh.pages.beta_test" = "Prueba beta";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "Haz clic para consultar las versiones de GitHub";

@@ -1171,6 +1171,26 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(rendered.string.contains("<script>alert(1)</script>"))
         XCTAssertTrue(rendered.string.contains("<a href=\"https://example.com\">HTML link</a>"))
 
+        let table = ReleaseNotesMarkdownRenderer.render(markdown: """
+        项目 | 说明
+        --- | ---
+        **修复** | [查看](https://example.com/fix)
+        """)
+        XCTAssertTrue(table.string.contains("项目"))
+        XCTAssertTrue(table.string.contains("说明"))
+        XCTAssertTrue(table.string.contains("修复"))
+        XCTAssertFalse(table.string.contains("--- | ---"))
+        XCTAssertFalse(table.string.contains("|"))
+        let tableParagraph = try XCTUnwrap(
+            table.attributes(at: 0, effectiveRange: nil)[.paragraphStyle] as? NSParagraphStyle
+        )
+        XCTAssertFalse(tableParagraph.textBlocks.isEmpty)
+        let tableLinkRange = (table.string as NSString).range(of: "查看")
+        XCTAssertEqual(
+            (table.attributes(at: tableLinkRange.location, effectiveRange: nil)[.link] as? URL)?.scheme,
+            "https"
+        )
+
         let safeRange = (rendered.string as NSString).range(of: "Safe")
         let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
         XCTAssertEqual((safeAttributes[.link] as? URL)?.scheme, "https")
@@ -1179,6 +1199,31 @@ final class UpdateTests: XCTestCase {
         XCTAssertNil(rendered.attributes(at: unsafeRange.location, effectiveRange: nil)[.link])
         let htmlRange = (rendered.string as NSString).range(of: "HTML link")
         XCTAssertNil(rendered.attributes(at: htmlRange.location, effectiveRange: nil)[.link])
+    }
+
+    func testUpdateNotesWindowLaysOutContentOnFirstPresentation() throws {
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        let release = GitHubRelease(
+            tagName: "v9.9.8",
+            draft: false,
+            prerelease: false,
+            assets: [],
+            body: "# First presentation\n\nThe release notes are visible immediately."
+        )
+
+        controller.show(currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.21")), release: release)
+
+        let window = try XCTUnwrap(controller.window)
+        let contentView = try XCTUnwrap(window.contentView)
+        let scrollView = try XCTUnwrap(
+            updateTestDescendants(of: contentView)
+                .compactMap { $0 as? NSScrollView }
+                .first
+        )
+        let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+        XCTAssertTrue(notesTextView.string.contains("First presentation"))
+        XCTAssertGreaterThan(notesTextView.frame.width, 1)
     }
 
     // MARK: - Dashboard state/action wiring and localization
@@ -1450,6 +1495,16 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == AppPreferences.updateChannelKey }
         )
+        XCTAssertTrue(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .contains {
+                    $0.stringValue == tr(
+                        .keyDashboardGeneralAndRefreshPagesUpdateChannelDescription,
+                        language: .simplifiedChinese
+                    )
+                }
+        )
         XCTAssertEqual(channelPopup.itemTitles, ["正式版", "Beta 测试版"])
         XCTAssertEqual(channelPopup.selectedItem?.representedObject as? String, UpdateChannel.stable.rawValue)
         let updateNotesButton = try XCTUnwrap(
@@ -1540,6 +1595,16 @@ final class UpdateTests: XCTestCase {
                     language == .korean ? "업데이트 내용 보기" :
                     language == .spanish ? "Ver notas de la versión" :
                     language == .german ? "Versionshinweise anzeigen" : "View Release Notes"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription, language: language),
+                language == .simplifiedChinese ? "选择要检查的正式版或 Beta 测试版更新" :
+                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "選擇要檢查的正式版或 Beta 測試版更新" :
+                    language == .japanese ? "正式版またはベータテストの更新を確認するか選択します" :
+                    language == .korean ? "정식 버전 또는 베타 테스트 업데이트를 확인할지 선택합니다" :
+                    language == .spanish ? "Elige si quieres buscar actualizaciones estables o beta" :
+                    language == .german ? "Wähle, ob nach stabilen oder Beta-Updates gesucht werden soll" :
+                    "Choose whether to check Stable or Beta releases"
             )
             let downloading = DashboardUpdatePresentation.make(
                 for: .downloading(

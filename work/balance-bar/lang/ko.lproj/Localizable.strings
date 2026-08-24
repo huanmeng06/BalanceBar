@@ -166,6 +166,7 @@
 "dashboard.advanced.page.current_port_value.2" = "현재 포트: %1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "1에서 65535 사이의 십진수 포트를 입력하세요; 자동 감지를 복원하려면 필드를 비우세요";
 "dashboard.general.and.refresh.pages.update_channel" = "업데이트 채널";
+"dashboard.general.and.refresh.pages.update_channel_description" = "정식 버전 또는 베타 테스트 업데이트를 확인할지 선택합니다";
 "dashboard.general.and.refresh.pages.stable" = "정식 버전";
 "dashboard.general.and.refresh.pages.beta_test" = "베타 테스트";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "클릭하여 GitHub Releases 확인";

@@ -150,6 +150,12 @@ extension AppLanguage {
 /// renderer builds attributed text directly, so HTML tags, javascript URLs,
 /// and scripts are displayed as ordinary text rather than interpreted.
 enum ReleaseNotesMarkdownRenderer {
+    private struct MarkdownTable {
+        let rows: [[String]]
+        let alignments: [NSTextAlignment]
+        let nextIndex: Int
+    }
+
     static func render(markdown: String) -> NSAttributedString {
         let baseFont = NSFont.systemFont(ofSize: 14)
         let baseParagraph = NSMutableParagraphStyle()
@@ -168,12 +174,15 @@ enum ReleaseNotesMarkdownRenderer {
             .replacingOccurrences(of: "\r", with: "\n")
         let lines = normalized.components(separatedBy: "\n")
 
-        for (index, rawLine) in lines.enumerated() {
+        var index = 0
+        while index < lines.count {
+            let rawLine = lines[index]
             if rawLine.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
                 inCodeFence.toggle()
                 if index < lines.count - 1 {
                     output.append(NSAttributedString(string: "\n", attributes: baseAttributes))
                 }
+                index += 1
                 continue
             }
 
@@ -184,11 +193,22 @@ enum ReleaseNotesMarkdownRenderer {
                     attributes: codeAttributes(paragraph: baseParagraph),
                     addNewline: index < lines.count - 1
                 )
+                index += 1
+                continue
+            }
+
+            if let table = tableParts(in: lines, startingAt: index) {
+                appendTable(table, into: output, baseAttributes: baseAttributes)
+                index = table.nextIndex
+                if index < lines.count {
+                    output.append(NSAttributedString(string: "\n", attributes: baseAttributes))
+                }
                 continue
             }
 
             if rawLine.trimmingCharacters(in: .whitespaces).isEmpty {
                 output.append(NSAttributedString(string: "\n", attributes: baseAttributes))
+                index += 1
                 continue
             }
 
@@ -207,6 +227,7 @@ enum ReleaseNotesMarkdownRenderer {
                     attributes: attributes,
                     addNewline: index < lines.count - 1
                 )
+                index += 1
                 continue
             }
 
@@ -224,9 +245,159 @@ enum ReleaseNotesMarkdownRenderer {
             if index < lines.count - 1 {
                 output.append(NSAttributedString(string: "\n", attributes: attributes))
             }
+            index += 1
         }
 
         return output
+    }
+
+    private static func appendTable(
+        _ table: MarkdownTable,
+        into output: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any]
+    ) {
+        let columnCount = max(1, table.alignments.count)
+        let textTable = NSTextTable()
+        textTable.numberOfColumns = columnCount
+        textTable.layoutAlgorithm = .automaticLayoutAlgorithm
+        textTable.collapsesBorders = true
+        textTable.hidesEmptyCells = false
+
+        for (rowIndex, row) in table.rows.enumerated() {
+            for columnIndex in 0..<columnCount {
+                let block = NSTextTableBlock(
+                    table: textTable,
+                    startingRow: rowIndex,
+                    rowSpan: 1,
+                    startingColumn: columnIndex,
+                    columnSpan: 1
+                )
+                block.setWidth(
+                    1,
+                    type: .absoluteValueType,
+                    for: .border
+                )
+                block.setWidth(
+                    5,
+                    type: .absoluteValueType,
+                    for: .padding
+                )
+                block.setWidth(
+                    3,
+                    type: .absoluteValueType,
+                    for: .margin
+                )
+                block.setBorderColor(NSColor.separatorColor)
+                if rowIndex == 0 {
+                    block.backgroundColor = NSColor.controlBackgroundColor
+                }
+
+                let sourceParagraph = baseAttributes[.paragraphStyle] as? NSParagraphStyle
+                    ?? NSParagraphStyle.default
+                let paragraph = paragraphStyle(from: sourceParagraph, spacing: 4)
+                paragraph.alignment = table.alignments[columnIndex]
+                paragraph.textBlocks = [block]
+                var attributes = baseAttributes
+                attributes[.paragraphStyle] = paragraph
+                if rowIndex == 0,
+                   let font = baseAttributes[.font] as? NSFont {
+                    attributes[.font] = NSFontManager.shared.convert(
+                        font,
+                        toHaveTrait: .boldFontMask
+                    )
+                }
+
+                let cell = columnIndex < row.count ? row[columnIndex] : ""
+                appendInline(cell, into: output, attributes: attributes)
+                output.append(NSAttributedString(string: "\n", attributes: attributes))
+            }
+        }
+    }
+
+    private static func tableParts(
+        in lines: [String],
+        startingAt index: Int
+    ) -> MarkdownTable? {
+        guard index + 1 < lines.count,
+              let header = tableRowParts(lines[index]),
+              let delimiter = tableRowParts(lines[index + 1]),
+              !header.isEmpty,
+              delimiter.count == header.count else {
+            return nil
+        }
+
+        let alignments = delimiter.compactMap(tableDelimiterAlignment)
+        guard alignments.count == delimiter.count else { return nil }
+
+        let columnCount = header.count
+        var rows = [header]
+        var nextIndex = index + 2
+        while nextIndex < lines.count,
+              let row = tableRowParts(lines[nextIndex]),
+              !row.isEmpty {
+            rows.append(row + Array(repeating: "", count: max(0, columnCount - row.count)))
+            nextIndex += 1
+        }
+
+        return MarkdownTable(
+            rows: rows.map { $0 + Array(repeating: "", count: max(0, columnCount - $0.count)) },
+            alignments: alignments,
+            nextIndex: nextIndex
+        )
+    }
+
+    private static func tableRowParts(_ line: String) -> [String]? {
+        var cells = [String]()
+        var current = ""
+        var hasSeparator = false
+        var inCodeSpan = false
+        var escaped = false
+
+        for character in line {
+            if escaped {
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if character == "\\" {
+                escaped = true
+                current.append(character)
+                continue
+            }
+            if character == "`" {
+                inCodeSpan.toggle()
+                current.append(character)
+                continue
+            }
+            if character == "|", !inCodeSpan {
+                cells.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+                hasSeparator = true
+            } else {
+                current.append(character)
+            }
+        }
+        guard hasSeparator else { return nil }
+        cells.append(current.trimmingCharacters(in: .whitespaces))
+        if cells.first?.isEmpty == true { cells.removeFirst() }
+        if cells.last?.isEmpty == true { cells.removeLast() }
+        return cells.isEmpty ? nil : cells
+    }
+
+    private static func tableDelimiterAlignment(_ cell: String) -> NSTextAlignment? {
+        var value = cell.trimmingCharacters(in: .whitespaces)
+        let leftAligned = value.hasPrefix(":")
+        let rightAligned = value.hasSuffix(":")
+        if leftAligned { value.removeFirst() }
+        if rightAligned, !value.isEmpty { value.removeLast() }
+        value = value.trimmingCharacters(in: .whitespaces)
+        guard value.count >= 3,
+              value.allSatisfy({ $0 == "-" }) else {
+            return nil
+        }
+        if leftAligned && rightAligned { return .center }
+        if rightAligned { return .right }
+        return .left
     }
 
     private static func appendLine(

@@ -242,6 +242,7 @@ final class DashboardGeneralPage {
         updateChannelPopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
         let updateChannelRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardGeneralAndRefreshPagesUpdateChannel),
+            subtitle: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription),
             control: updateChannelPopup
         )
         let updateControls = NSStackView(views: [updateNotesButton, updateButton])

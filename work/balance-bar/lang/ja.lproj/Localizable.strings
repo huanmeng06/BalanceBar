@@ -166,6 +166,7 @@
 "dashboard.advanced.page.current_port_value.2" = "現在のポート：%1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "1～65535 の十進数のポートを入力してください。空にすると自動検出に戻ります";
 "dashboard.general.and.refresh.pages.update_channel" = "更新チャンネル";
+"dashboard.general.and.refresh.pages.update_channel_description" = "正式版またはベータテストの更新を確認するか選択します";
 "dashboard.general.and.refresh.pages.stable" = "正式版";
 "dashboard.general.and.refresh.pages.beta_test" = "ベータテスト";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "クリックして GitHub Releases を確認";

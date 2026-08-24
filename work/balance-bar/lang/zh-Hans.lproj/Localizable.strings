@@ -166,6 +166,7 @@
 "dashboard.advanced.page.current_port_value.2" = "当前端口：%1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "请输入 1 到 65535 的十进制端口；空值恢复自动检测";
 "dashboard.general.and.refresh.pages.update_channel" = "更新分组";
+"dashboard.general.and.refresh.pages.update_channel_description" = "选择要检查的正式版或 Beta 测试版更新";
 "dashboard.general.and.refresh.pages.stable" = "正式版";
 "dashboard.general.and.refresh.pages.beta_test" = "Beta 测试版";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "点击检查 GitHub Releases";

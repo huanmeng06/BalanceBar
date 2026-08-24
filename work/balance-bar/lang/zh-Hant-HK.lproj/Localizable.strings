@@ -166,6 +166,7 @@
 "dashboard.advanced.page.current_port_value.2" = "目前連接埠：%1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "請輸入 1 到 65535 的十進位連接埠；空值恢復自動偵測";
 "dashboard.general.and.refresh.pages.update_channel" = "更新分組";
+"dashboard.general.and.refresh.pages.update_channel_description" = "選擇要檢查的正式版或 Beta 測試版更新";
 "dashboard.general.and.refresh.pages.stable" = "正式版";
 "dashboard.general.and.refresh.pages.beta_test" = "Beta 測試版";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "點擊檢查 GitHub Releases";

@@ -168,6 +168,7 @@
     case keyDashboardAdvancedPageCurrentPortValue2 = "dashboard.advanced.page.current_port_value.2"
     case keyDashboardAdvancedPageEnterADecimalPortFrom1To65535ClearTheFieldToRestoreAutomaticDetection = "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection"
     case keyDashboardGeneralAndRefreshPagesUpdateChannel = "dashboard.general.and.refresh.pages.update_channel"
+    case keyDashboardGeneralAndRefreshPagesUpdateChannelDescription = "dashboard.general.and.refresh.pages.update_channel_description"
     case keyDashboardGeneralAndRefreshPagesStable = "dashboard.general.and.refresh.pages.stable"
     case keyDashboardGeneralAndRefreshPagesBetaTest = "dashboard.general.and.refresh.pages.beta_test"
     case keyDashboardGeneralAndRefreshPagesClickToCheckGithubReleases = "dashboard.general.and.refresh.pages.click_to_check_github_releases"
