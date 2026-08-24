@@ -864,16 +864,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
         XCTAssertEqual(
             iconSummary.map { normalizeSettingsText($0.stringValue) },
-            "微调图标上下像素位置：Y 轴 - 0.3 pt"
+            "微调图标上下像素位置Y 轴 - 0.3 pt"
         )
         XCTAssertEqual(
             amountSummary.map { normalizeSettingsText($0.stringValue) },
-            "微调金额上下像素位置：Y 轴 + 0.5 pt"
+            "微调金额上下像素位置Y 轴 + 0.5 pt"
         )
         XCTAssertEqual(
             labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "调整 BalanceBar 与其他项目的空隙：宽度 + 0.6 pt"
+            "调整 BalanceBar 与其他项目的空隙宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
         XCTAssertTrue(labelStrings.contains("字号与位置"))
@@ -983,12 +983,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调图标上下像素位置： Y 轴 + 0.7 pt"
+            "微调图标上下像素位置 Y 轴 + 0.7 pt"
         )
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调金额上下像素位置： Y 轴 - 0.8 pt"
+            "微调金额上下像素位置 Y 轴 - 0.8 pt"
         )
         XCTAssertEqual(
             refreshedSliders.first { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }?.doubleValue ?? .nan,
@@ -1089,10 +1089,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"]
         ]
         let expectedDescriptions: [AppLanguage: [String]] = [
-            .simplifiedChinese: ["微调图标上下像素位置：", "微调金额上下像素位置：", "调整 BalanceBar 与其他项目的空隙："],
-            .traditionalChinese: ["微調圖示上下像素位置：", "微調金額上下像素位置：", "調整 BalanceBar 與其他項目的間距："],
-            .japanese: ["アイコンの上下位置を微調整：", "金額の上下位置を微調整：", "BalanceBar と他の項目との間隔を調整："],
-            .english: ["Fine-tune the icon's vertical position:", "Fine-tune the amount's vertical position:", "Adjusts the gap between BalanceBar and other items:"]
+            .simplifiedChinese: ["微调图标上下像素位置", "微调金额上下像素位置", "调整 BalanceBar 与其他项目的空隙"],
+            .traditionalChinese: ["微調圖示上下像素位置", "微調金額上下像素位置", "調整 BalanceBar 與其他項目的間距"],
+            .japanese: ["アイコンの上下位置を微調整", "金額の上下位置を微調整", "BalanceBar と他の項目との間隔を調整"],
+            .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjusts the gap between BalanceBar and other items"]
         ]
         let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
 
@@ -1412,7 +1412,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             summary.map { normalizeSettingsText($0.stringValue) },
-            "调整 BalanceBar 与其他项目的空隙：宽度 + 7.4 pt"
+            "调整 BalanceBar 与其他项目的空隙宽度 + 7.4 pt"
         )
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
@@ -1468,9 +1468,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["字号与位置", "菜单栏字号", "图标偏移", "金额偏移", "菜单栏宽度"],
                 [
                     "调整菜单栏字体大小",
-                    "微调图标上下像素位置：Y 轴 + 0.0 pt",
-                    "微调金额上下像素位置：Y 轴 + 0.0 pt",
-                    "调整 BalanceBar 与其他项目的空隙：宽度 + 0.0 pt"
+                    "微调图标上下像素位置Y 轴 + 0.0 pt",
+                    "微调金额上下像素位置Y 轴 + 0.0 pt",
+                    "调整 BalanceBar 与其他项目的空隙宽度 + 0.0 pt"
                 ],
                 "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt"
             ),
@@ -1479,9 +1479,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["字號與位置", "選單列字號", "圖示偏移", "金額偏移", "選單列寬度"],
                 [
                     "調整選單列字體大小",
-                    "微調圖示上下像素位置：Y 軸 + 0.0 pt",
-                    "微調金額上下像素位置：Y 軸 + 0.0 pt",
-                    "調整 BalanceBar 與其他項目的間距：寬度 + 0.0 pt"
+                    "微調圖示上下像素位置Y 軸 + 0.0 pt",
+                    "微調金額上下像素位置Y 軸 + 0.0 pt",
+                    "調整 BalanceBar 與其他項目的間距寬度 + 0.0 pt"
                 ],
                 "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt"
             ),
@@ -1490,9 +1490,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの位置調整", "金額の位置調整", "メニューバーの幅"],
                 [
                     "メニューバーのフォントサイズを調整",
-                    "アイコンの上下位置を微調整：Y 軸 + 0.0 pt",
-                    "金額の上下位置を微調整：Y 軸 + 0.0 pt",
-                    "BalanceBar と他の項目との間隔を調整：幅 + 0.0 pt"
+                    "アイコンの上下位置を微調整Y 軸 + 0.0 pt",
+                    "金額の上下位置を微調整Y 軸 + 0.0 pt",
+                    "BalanceBar と他の項目との間隔を調整幅 + 0.0 pt"
                 ],
                 "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
             ),
@@ -1501,9 +1501,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 ["Font Size & Position", "Menu Bar Font Size", "Icon Offset", "Amount Offset", "Menu Bar Width"],
                 [
                     "Adjusts the menu bar font size",
-                    "Fine-tune the icon's vertical position: Y axis + 0.0 pt",
-                    "Fine-tune the amount's vertical position: Y axis + 0.0 pt",
-                    "Adjusts the gap between BalanceBar and other items: Width + 0.0 pt"
+                    "Fine-tune the icon's vertical position Y axis + 0.0 pt",
+                    "Fine-tune the amount's vertical position Y axis + 0.0 pt",
+                    "Adjusts the gap between BalanceBar and other items Width + 0.0 pt"
                 ],
                 "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt"
             )
