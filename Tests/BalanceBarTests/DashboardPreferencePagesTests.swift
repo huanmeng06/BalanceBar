@@ -364,7 +364,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(presentation.isBalance)
     }
 
-    func testMenuBarOverflowWarningUsesInjectedVisibilityAndSevenLocalizations() throws {
+    func testMenuBarOverflowWarningUsesInjectedVisibilityAndAllSupportedLocalizations() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 

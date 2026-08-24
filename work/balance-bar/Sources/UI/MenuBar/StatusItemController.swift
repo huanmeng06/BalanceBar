@@ -269,43 +269,155 @@ enum StatusItemVisibility: Equatable {
     case unknown
     case visible
     case hiddenByMenuBarSpace
+}
 
-    /// Classifies only status-item evidence that can prove a menu-bar
-    /// overflow. The status-bar host window's occlusion state is deliberately
-    /// not part of this decision: it describes the whole host window rather
-    /// than this individual status item and can report occluded while the item
-    /// is visibly rendered.
-    static func resolved(
-        statusItemIsVisible: Bool,
-        windowIsVisible: Bool,
-        statusItemFrame: NSRect?,
-        screenFrame: NSRect?,
-        buttonIsHidden: Bool = false
+struct StatusItemVisibilityEvidence {
+    let statusItemIsVisible: Bool
+    let windowIsVisible: Bool
+    let windowIsOcclusionVisible: Bool
+    let statusItemIdentity: ObjectIdentifier?
+    let windowIdentity: ObjectIdentifier?
+    let buttonIdentity: ObjectIdentifier?
+    let statusItemFrame: NSRect?
+    let statusItemWindowFrame: NSRect?
+    let screenFrame: NSRect?
+    let buttonIsHidden: Bool
+}
+
+/// Fuses AppKit identity, occlusion, geometry, and button state into the one
+/// visibility state consumed by the real menu-bar status and Dashboard warning.
+///
+/// AppKit can briefly leave an item, its button, and a complete screen-space
+/// frame in place while the WindowServer is reflowing the menu bar. A single
+/// non-occluded sample is therefore only a hidden candidate. A visible
+/// occlusion sample is stronger evidence and clears any previous warning
+/// immediately; hidden space warnings require two stable samples for the same
+/// item/window/button and geometry signature.
+struct StatusItemVisibilityStateMachine {
+    static let hiddenConfirmationSampleCount = 2
+    static let hiddenConfirmationInterval: TimeInterval = 0.15
+
+    private struct HiddenCandidateKey: Equatable {
+        let statusItemIdentity: ObjectIdentifier
+        let windowIdentity: ObjectIdentifier
+        let buttonIdentity: ObjectIdentifier
+        let statusItemFrame: NSRect
+        let statusItemWindowFrame: NSRect
+        let screenFrame: NSRect
+        let buttonIsHidden: Bool
+        let exceedsScreenHorizontally: Bool
+    }
+
+    private struct HiddenCandidate {
+        let key: HiddenCandidateKey
+        var sampleCount: Int
+        let firstSampleAt: Date
+        var lastSampleAt: Date
+    }
+
+    private(set) var visibility: StatusItemVisibility = .unknown
+    private var hiddenCandidate: HiddenCandidate?
+
+    var needsAdditionalHiddenSample: Bool {
+        hiddenCandidate != nil && visibility != .hiddenByMenuBarSpace
+    }
+
+    var hiddenCandidateSampleCount: Int {
+        hiddenCandidate?.sampleCount ?? 0
+    }
+
+    mutating func reset() {
+        visibility = .unknown
+        hiddenCandidate = nil
+    }
+
+    mutating func ingest(
+        _ evidence: StatusItemVisibilityEvidence,
+        at date: Date
     ) -> StatusItemVisibility {
-        guard statusItemIsVisible,
-              windowIsVisible,
-              let statusItemFrame,
-              let screenFrame,
+        guard evidence.statusItemIsVisible,
+              evidence.windowIsVisible,
+              let statusItemIdentity = evidence.statusItemIdentity,
+              let windowIdentity = evidence.windowIdentity,
+              let buttonIdentity = evidence.buttonIdentity,
+              let statusItemFrame = evidence.statusItemFrame,
+              let statusItemWindowFrame = evidence.statusItemWindowFrame,
+              let screenFrame = evidence.screenFrame,
               statusItemFrame.width > 0,
               statusItemFrame.height > 0,
+              statusItemWindowFrame.width > 0,
+              statusItemWindowFrame.height > 0,
               screenFrame.width > 0,
               screenFrame.height > 0 else {
-            return .unknown
+            return setUnknown()
         }
 
-        let isInMenuBarBand = statusItemFrame.maxY >= screenFrame.maxY - 4
-            && statusItemFrame.minY >= screenFrame.maxY - 48
-        guard isInMenuBarBand else { return .unknown }
+        let isInMenuBarBand = statusItemWindowFrame.maxY >= screenFrame.maxY - 4
+            && statusItemWindowFrame.minY >= screenFrame.maxY - 48
+        guard isInMenuBarBand else { return setUnknown() }
 
         let exceedsScreenHorizontally = statusItemFrame.minX < screenFrame.minX
             || statusItemFrame.maxX > screenFrame.maxX
-        return exceedsScreenHorizontally || buttonIsHidden
-            ? .hiddenByMenuBarSpace
-            : .visible
+        let key = HiddenCandidateKey(
+            statusItemIdentity: statusItemIdentity,
+            windowIdentity: windowIdentity,
+            buttonIdentity: buttonIdentity,
+            statusItemFrame: statusItemFrame,
+            statusItemWindowFrame: statusItemWindowFrame,
+            screenFrame: screenFrame,
+            buttonIsHidden: evidence.buttonIsHidden,
+            exceedsScreenHorizontally: exceedsScreenHorizontally
+        )
+
+        if evidence.windowIsOcclusionVisible,
+           !evidence.buttonIsHidden,
+           !exceedsScreenHorizontally {
+            hiddenCandidate = nil
+            visibility = .visible
+            return .visible
+        }
+
+        if var candidate = hiddenCandidate, candidate.key == key {
+            guard date.timeIntervalSince(candidate.lastSampleAt)
+                >= Self.hiddenConfirmationInterval else {
+                return visibility
+            }
+            candidate.sampleCount += 1
+            candidate.lastSampleAt = date
+            hiddenCandidate = candidate
+        } else {
+            hiddenCandidate = HiddenCandidate(
+                key: key,
+                sampleCount: 1,
+                firstSampleAt: date,
+                lastSampleAt: date
+            )
+            if visibility == .hiddenByMenuBarSpace {
+                visibility = .unknown
+            }
+        }
+
+        guard let candidate = hiddenCandidate,
+              candidate.sampleCount >= Self.hiddenConfirmationSampleCount,
+              candidate.lastSampleAt.timeIntervalSince(candidate.firstSampleAt)
+                >= Self.hiddenConfirmationInterval else {
+            return visibility
+        }
+
+        visibility = .hiddenByMenuBarSpace
+        return .hiddenByMenuBarSpace
+    }
+
+    private mutating func setUnknown() -> StatusItemVisibility {
+        hiddenCandidate = nil
+        visibility = .unknown
+        return .unknown
     }
 }
 
 final class StatusItemController: NSObject, NSMenuDelegate {
+    private static let statusItemVisibilityStabilityDelay: TimeInterval = 0.2
+
     struct Actions {
         let manualRefresh: () -> Void
         let openDashboard: () -> Void
@@ -466,6 +578,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lifecycleGeneration = 0
     private(set) var statusItemInstallCount = 0
     private(set) var statusItemVisibility: StatusItemVisibility = .unknown
+    private var statusItemVisibilityStateMachine = StatusItemVisibilityStateMachine()
+    private weak var observedStatusItemWindow: NSWindow?
+    private var statusItemWindowObservers: [NSObjectProtocol] = []
+    private var screenParametersObserver: NSObjectProtocol?
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var isMenuTracking: Bool { isStatusMenuTracking }
@@ -513,6 +629,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     init(actions: Actions) {
         self.actions = actions
         super.init()
+        screenParametersObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.statusItem != nil else { return }
+            self.scheduleStatusItemAttachmentCheck(
+                reason: "screen-parameters",
+                reanchor: false
+            )
+        }
+    }
+
+    deinit {
+        removeStatusItemWindowObservation()
+        if let screenParametersObserver {
+            NotificationCenter.default.removeObserver(screenParametersObserver)
+        }
     }
 
     func start(
@@ -522,6 +656,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings
     ) {
         lifecycleGeneration += 1
+        statusItemVisibilityStateMachine.reset()
+        updateStatusItemVisibility(.unknown)
         statusMenu.delegate = self
         if statusItem == nil {
             installStatusItem()
@@ -536,6 +672,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func teardown() {
         lifecycleGeneration += 1
+        removeStatusItemWindowObservation()
+        statusItemVisibilityStateMachine.reset()
         updateStatusItemVisibility(.unknown)
         statusItemAttachmentCheckScheduled = false
         statusItemReanchorAttempts = 0
@@ -685,6 +823,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func configureStatusItem() {
         guard let statusItem, let button = statusItem.button else { return }
+        statusItemVisibilityStateMachine.reset()
         updateStatusItemVisibility(.unknown)
         statusItem.isVisible = true
         statusItem.length = 56
@@ -746,7 +885,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let windowFrame = statusWindow.map { DashboardLogging.rect($0.frame) } ?? "none"
             let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
             SwitchLog.write(
-                "status item presentation; visible=\(statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); title=\(button.title); attributed_title=\(button.attributedTitle.string); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+                "status item presentation; visible=\(statusItem.isVisible); window_visible=\(statusWindow?.isVisible ?? false); window_occlusion_visible=\(statusWindow?.occlusionState.contains(.visible) ?? false); window_occlusion_raw=\(statusWindow?.occlusionState.rawValue ?? 0); button_window=\(statusWindow != nil); button_hidden=\(button.isHidden); image=\(button.image != nil); title=\(button.title); attributed_title=\(button.attributedTitle.string); frame=\(DashboardLogging.rect(button.frame)); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
                 category: "ui.status-item"
             )
         }
@@ -765,20 +904,76 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func scheduleStatusItemAttachmentCheck(
         reason: String,
-        reanchor: Bool = true
+        reanchor: Bool = true,
+        delay: TimeInterval = 0.2
     ) {
         guard !statusItemAttachmentCheckScheduled else { return }
         statusItemAttachmentCheckScheduled = true
         let generation = lifecycleGeneration
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.lifecycleGeneration == generation else { return }
             self.statusItemAttachmentCheckScheduled = false
             self.verifyStatusItemAttachment(reason: reason, reanchor: reanchor)
         }
     }
 
+    private func observeStatusItemWindow(_ window: NSWindow?) {
+        guard observedStatusItemWindow !== window else { return }
+        removeStatusItemWindowObservation()
+        guard let window else { return }
+
+        observedStatusItemWindow = window
+        let notifications: [Notification.Name] = [
+            NSWindow.didChangeOcclusionStateNotification,
+            NSWindow.didMoveNotification,
+            NSWindow.didResizeNotification,
+            NSWindow.didChangeScreenNotification
+        ]
+        statusItemWindowObservers = notifications.map { notificationName in
+            NotificationCenter.default.addObserver(
+                forName: notificationName,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self, self.statusItem != nil else { return }
+                self.scheduleStatusItemAttachmentCheck(
+                    reason: "window-\(notificationName.rawValue)",
+                    reanchor: false
+                )
+            }
+        }
+    }
+
+    private func removeStatusItemWindowObservation() {
+        for observer in statusItemWindowObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        statusItemWindowObservers.removeAll()
+        observedStatusItemWindow = nil
+    }
+
+    private func updateStatusItemVisibility(
+        with evidence: StatusItemVisibilityEvidence,
+        reason: String
+    ) {
+        let visibility = statusItemVisibilityStateMachine.ingest(
+            evidence,
+            at: Date()
+        )
+        updateStatusItemVisibility(visibility)
+        guard statusItemVisibilityStateMachine.needsAdditionalHiddenSample else {
+            return
+        }
+        scheduleStatusItemAttachmentCheck(
+            reason: "visibility-stability-(reason)",
+            reanchor: false,
+            delay: Self.statusItemVisibilityStabilityDelay
+        )
+    }
+
     private func verifyStatusItemAttachment(reason: String, reanchor: Bool) {
         guard let item = statusItem, let button = item.button else {
+            statusItemVisibilityStateMachine.reset()
             updateStatusItemVisibility(.unknown)
             SwitchLog.write(
                 "status item attachment failed; reason=missing item or button",
@@ -789,20 +984,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         let window = button.window
+        observeStatusItemWindow(window)
         let windowFrame = window.map { DashboardLogging.rect($0.frame) } ?? "none"
         let screen = window?.screen
         let screenFrame = screen.map { DashboardLogging.rect($0.frame) } ?? "none"
         let statusItemFrame = window.map {
             $0.convertToScreen(button.convert(button.bounds, to: nil))
         }
+        let windowIsOcclusionVisible = window?.occlusionState.contains(.visible) ?? false
         updateStatusItemVisibility(
-            StatusItemVisibility.resolved(
+            with: StatusItemVisibilityEvidence(
                 statusItemIsVisible: item.isVisible,
                 windowIsVisible: window?.isVisible ?? false,
+                windowIsOcclusionVisible: windowIsOcclusionVisible,
+                statusItemIdentity: ObjectIdentifier(item),
+                windowIdentity: window.map(ObjectIdentifier.init),
+                buttonIdentity: ObjectIdentifier(button),
                 statusItemFrame: statusItemFrame,
+                statusItemWindowFrame: window?.frame,
                 screenFrame: screen?.frame,
                 buttonIsHidden: button.isHidden
-            )
+            ),
+            reason: reason
         )
         let attached = window.map { window in
             guard let screen else { return false }
@@ -816,7 +1019,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } ?? false
 
         SwitchLog.write(
-            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); button_hidden=\(button.isHidden); status_item_frame=\(statusItemFrame.map { DashboardLogging.rect($0) } ?? "none"); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
+            "status item attachment checked; reason=\(reason); attached=\(attached); visible=\(item.isVisible); window_visible=\(window?.isVisible ?? false); window_occlusion_visible=\(windowIsOcclusionVisible); window_occlusion_raw=\(window?.occlusionState.rawValue ?? 0); button_hidden=\(button.isHidden); visibility=\(statusItemVisibility); hidden_candidate_samples=\(statusItemVisibilityStateMachine.hiddenCandidateSampleCount); status_item_frame=\(statusItemFrame.map { DashboardLogging.rect($0) } ?? "none"); window_frame=\(windowFrame); screen_frame=\(screenFrame); length=\(item.length)",
             level: attached ? .debug : .warning,
             category: "ui.status-item",
             throttleKey: "status-item-attachment-\(reason)",
@@ -839,6 +1042,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         statusItemReanchorAttempts += 1
         let desiredLength = max(CGFloat(30), item.length)
+        removeStatusItemWindowObservation()
         NSStatusBar.system.removeStatusItem(item)
         let replacement = NSStatusBar.system.statusItem(withLength: desiredLength)
         statusItem = replacement
@@ -1343,7 +1547,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let screenFrame = statusWindow?.screen.map { DashboardLogging.rect($0.frame) } ?? "none"
         let buttonTitle = statusItem?.button?.title ?? ""
         SwitchLog.write(
-            "status menu rendered; item_count=\(statusMenu.items.count); items=\(menuTitles); status_visible=\(isVisible); button_window=\(statusWindow != nil); window_visible=\(statusWindow?.isVisible ?? false); image=\(statusItem?.button?.image != nil); title=\(buttonTitle); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
+            "status menu rendered; item_count=\(statusMenu.items.count); items=\(menuTitles); status_visible=\(isVisible); button_window=\(statusWindow != nil); window_visible=\(statusWindow?.isVisible ?? false); window_occlusion_visible=\(statusWindow?.occlusionState.contains(.visible) ?? false); window_occlusion_raw=\(statusWindow?.occlusionState.rawValue ?? 0); image=\(statusItem?.button?.image != nil); title=\(buttonTitle); window_frame=\(windowFrame); screen_frame=\(screenFrame)",
             level: .debug,
             category: "ui.status-menu",
             throttleKey: "status-menu-render",
