@@ -211,7 +211,7 @@ enum DashboardSettingsComponents {
             return .byWordWrapping
         }
         switch AppLanguage.resolved {
-        case .simplifiedChinese, .traditionalChinese, .japanese, .korean:
+        case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .korean:
             return .byCharWrapping
         case .english, .spanish, .german, .system:
             return .byWordWrapping

@@ -39,23 +39,24 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
 }
 
 let languages: [AppLanguage] = [
-    .simplifiedChinese, .traditionalChinese, .japanese, .english,
+    .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .english,
     .korean, .spanish, .german
 ]
 
-let cases: [(URLError.Code, String, String, String, String, String, String, String)] = [
-    (.timedOut, "网络请求超时", "Network request timed out", "網路請求逾時", "ネットワークリクエストがタイムアウトしました", "네트워크 요청 시간이 초과되었습니다", "La solicitud de red agotó el tiempo de espera", "Zeitüberschreitung bei der Netzwerkanfrage"),
-    (.notConnectedToInternet, "无网络连接", "No internet connection", "沒有網路連線", "ネットワークに接続されていません", "인터넷 연결 없음", "No hay conexión a Internet", "Keine Internetverbindung"),
-    (.networkConnectionLost, "网络连接已中断", "Network connection was lost", "網路連線已中斷", "ネットワーク接続が切断されました", "네트워크 연결이 끊겼습니다", "Se perdió la conexión de red", "Netzwerkverbindung verloren"),
-    (.cannotFindHost, "找不到主机", "Host could not be found", "找不到主機", "ホストが見つかりません", "호스트를 찾을 수 없습니다", "No se encontró el host", "Host konnte nicht gefunden werden"),
-    (.cannotConnectToHost, "无法连接主机", "Could not connect to host", "無法連線主機", "ホストに接続できません", "호스트에 연결할 수 없습니다", "No se pudo conectar al host", "Verbindung zum Host konnte nicht hergestellt werden"),
-    (.secureConnectionFailed, "安全连接失败", "Secure connection failed", "安全連線失敗", "安全な接続に失敗しました", "보안 연결에 실패했습니다", "La conexión segura falló", "Sichere Verbindung fehlgeschlagen")
+let cases: [(URLError.Code, String, String, String, String, String, String, String, String)] = [
+    (.timedOut, "网络请求超时", "Network request timed out", "網路請求逾時", "網絡請求逾時", "ネットワークリクエストがタイムアウトしました", "네트워크 요청 시간이 초과되었습니다", "La solicitud de red agotó el tiempo de espera", "Zeitüberschreitung bei der Netzwerkanfrage"),
+    (.notConnectedToInternet, "无网络连接", "No internet connection", "沒有網路連線", "沒有網絡連線", "ネットワークに接続されていません", "인터넷 연결 없음", "No hay conexión a Internet", "Keine Internetverbindung"),
+    (.networkConnectionLost, "网络连接已中断", "Network connection was lost", "網路連線已中斷", "網絡連線已中斷", "ネットワーク接続が切断されました", "네트워크 연결이 끊겼습니다", "Se perdió la conexión de red", "Netzwerkverbindung verloren"),
+    (.cannotFindHost, "找不到主机", "Host could not be found", "找不到主機", "找不到主機", "ホストが見つかりません", "호스트를 찾을 수 없습니다", "No se encontró el host", "Host konnte nicht gefunden werden"),
+    (.cannotConnectToHost, "无法连接主机", "Could not connect to host", "無法連線主機", "無法連線主機", "ホストに接続できません", "호스트에 연결할 수 없습니다", "No se pudo conectar al host", "Verbindung zum Host konnte nicht hergestellt werden"),
+    (.secureConnectionFailed, "安全连接失败", "Secure connection failed", "安全連線失敗", "安全連線失敗", "安全な接続に失敗しました", "보안 연결에 실패했습니다", "La conexión segura falló", "Sichere Verbindung fehlgeschlagen")
 ]
 
-for (code, simplifiedChinese, english, traditionalChinese, japanese, korean, spanish, german) in cases {
+for (code, simplifiedChinese, english, traditionalChineseTaiwan, traditionalChineseHongKong, japanese, korean, spanish, german) in cases {
     for error in [URLError(code) as Error, NSError(domain: NSURLErrorDomain, code: code.rawValue)] {
         let simplified = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .simplifiedChinese)
-        let traditional = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .traditionalChinese)
+        let traditionalTaiwan = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .traditionalChineseTaiwan)
+        let traditionalHongKong = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .traditionalChineseHongKong)
         let japaneseText = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .japanese)
         let englishText = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .english)
         let koreanText = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .korean)
@@ -63,7 +64,8 @@ for (code, simplifiedChinese, english, traditionalChinese, japanese, korean, spa
         let germanText = ProbeSubject.localizedBalanceNetworkErrorReason(error, language: .german)
         require(simplified == simplifiedChinese, "error \(code.rawValue) has a fixed Simplified Chinese reason")
         require(englishText == english, "error \(code.rawValue) has a fixed English reason")
-        require(traditional == traditionalChinese, "error \(code.rawValue) has a fixed Traditional Chinese reason")
+        require(traditionalTaiwan == traditionalChineseTaiwan, "error \(code.rawValue) has a fixed Taiwan Traditional Chinese reason")
+        require(traditionalHongKong == traditionalChineseHongKong, "error \(code.rawValue) has a fixed Hong Kong Traditional Chinese reason")
         require(japaneseText == japanese, "error \(code.rawValue) has a fixed Japanese reason")
         require(koreanText == korean, "error \(code.rawValue) has a fixed Korean reason")
         require(spanishText == spanish, "error \(code.rawValue) has a fixed Spanish reason")
@@ -85,7 +87,8 @@ let unknownURLError = NSError(
 
 let unknownExpected: [AppLanguage: String] = [
     .simplifiedChinese: "网络请求失败",
-    .traditionalChinese: "網路請求失敗",
+    .traditionalChineseTaiwan: "網路請求失敗",
+    .traditionalChineseHongKong: "網絡請求失敗",
     .japanese: "ネットワークリクエストに失敗しました",
     .english: "Network request failed",
     .korean: "네트워크 요청 실패",
@@ -101,7 +104,7 @@ for error in [unknownError, unknownURLError] {
     }
 }
 
-print("network error localization probe: PASS; six stable URL error mappings; all seven languages; unknown domain/code fallback; original descriptions excluded")
+print("network error localization probe: PASS; six stable URL error mappings; all eight concrete languages; unknown domain/code fallback; original descriptions excluded")
 SWIFT
 } | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 

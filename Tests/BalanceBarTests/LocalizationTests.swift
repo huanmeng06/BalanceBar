@@ -3,14 +3,15 @@ import XCTest
 
 final class LocalizationTests: XCTestCase {
     private let allLanguages: [AppLanguage] = [
-        .simplifiedChinese, .traditionalChinese, .japanese, .english,
+        .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .english,
         .korean, .spanish, .german
     ]
 
     private let resourceDirectories: [String: AppLanguage] = [
         "en": .english,
         "zh-Hans": .simplifiedChinese,
-        "zh-Hant": .traditionalChinese,
+        "zh-Hant-TW": .traditionalChineseTaiwan,
+        "zh-Hant-HK": .traditionalChineseHongKong,
         "ja": .japanese,
         "ko": .korean,
         "es": .spanish,
@@ -29,7 +30,8 @@ final class LocalizationTests: XCTestCase {
     func testExplicitLanguageSelectionIsConcrete() {
         for preferred in ["zh-CN", "zh-TW", "ja-JP", "en-US", "fr-FR"] {
             XCTAssertEqual(AppLanguage.resolved(for: .simplifiedChinese, preferredLanguages: [preferred]), .simplifiedChinese)
-            XCTAssertEqual(AppLanguage.resolved(for: .traditionalChinese, preferredLanguages: [preferred]), .traditionalChinese)
+            XCTAssertEqual(AppLanguage.resolved(for: .traditionalChineseTaiwan, preferredLanguages: [preferred]), .traditionalChineseTaiwan)
+            XCTAssertEqual(AppLanguage.resolved(for: .traditionalChineseHongKong, preferredLanguages: [preferred]), .traditionalChineseHongKong)
             XCTAssertEqual(AppLanguage.resolved(for: .japanese, preferredLanguages: [preferred]), .japanese)
             XCTAssertEqual(AppLanguage.resolved(for: .english, preferredLanguages: [preferred]), .english)
             XCTAssertEqual(AppLanguage.resolved(for: .korean, preferredLanguages: [preferred]), .korean)
@@ -48,12 +50,22 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    func testSystemSelectionMatchesTraditionalChineseIdentifiers() {
-        for preferred in ["zh-Hant", "zh-TW", "zh-HK", "zh-MO", "zh-Hant-TW", "zh-HK_Hant"] {
+    func testSystemSelectionMatchesTaiwanTraditionalChineseIdentifiers() {
+        for preferred in ["zh-Hant", "zh-TW", "zh-Hant-TW", "zh_TW"] {
             XCTAssertEqual(
                 AppLanguage.resolved(for: .system, preferredLanguages: [preferred]),
-                .traditionalChinese,
-                "expected \(preferred) to resolve to Traditional Chinese"
+                .traditionalChineseTaiwan,
+                "expected \(preferred) to resolve to Taiwan Traditional Chinese"
+            )
+        }
+    }
+
+    func testSystemSelectionMatchesHongKongTraditionalChineseIdentifiers() {
+        for preferred in ["zh-HK", "zh-Hant-HK", "zh-MO", "zh-Hant-MO", "zh-HK_Hant"] {
+            XCTAssertEqual(
+                AppLanguage.resolved(for: .system, preferredLanguages: [preferred]),
+                .traditionalChineseHongKong,
+                "expected \(preferred) to resolve to Hong Kong Traditional Chinese"
             )
         }
     }
@@ -103,7 +115,7 @@ final class LocalizationTests: XCTestCase {
         )
         XCTAssertEqual(
             AppLanguage.resolved(for: .system, preferredLanguages: ["zh-Hant", "en-US"]),
-            .traditionalChinese
+            .traditionalChineseTaiwan
         )
         XCTAssertEqual(
             AppLanguage.resolved(for: .system, preferredLanguages: ["fr-FR", "ja-JP", "zh-CN"]),
@@ -112,8 +124,14 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testPersistenceRoundTripAndOldValueFallback() {
-        let previous = AppLanguage.selected
-        defer { AppLanguage.selected = previous }
+        let previousRawValue = UserDefaults.standard.string(forKey: "appLanguage")
+        defer {
+            if let previousRawValue {
+                UserDefaults.standard.set(previousRawValue, forKey: "appLanguage")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "appLanguage")
+            }
+        }
 
         for language in allLanguages {
             AppLanguage.selected = language
@@ -124,24 +142,31 @@ final class LocalizationTests: XCTestCase {
             )
         }
 
-        // Unknown or legacy values fall back to "system" instead of crashing.
-        AppLanguage.selected = .system
+        // Unknown values fall back to "system" instead of crashing.
         UserDefaults.standard.set("no-such-language", forKey: "appLanguage")
         XCTAssertEqual(AppLanguage.selected, .system)
-        UserDefaults.standard.removeObject(forKey: "appLanguage")
-        XCTAssertEqual(AppLanguage.selected, .system)
+
+        // The pre-Issue-184 value is migrated in place to Taiwan, preserving
+        // the user's choice while giving future launches a regional value.
+        UserDefaults.standard.set("traditionalChinese", forKey: "appLanguage")
+        XCTAssertEqual(AppLanguage.selected, .traditionalChineseTaiwan)
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: "appLanguage"),
+            AppLanguage.traditionalChineseTaiwan.rawValue
+        )
     }
 
     func testLanguagePickerOrder() {
         XCTAssertEqual(
             AppLanguage.allCases,
-            [.system, .simplifiedChinese, .traditionalChinese, .english, .japanese, .korean, .spanish, .german]
+            [.system, .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .english, .japanese, .korean, .spanish, .german]
         )
     }
 
     func testLocalizedTitlesCoverAllLanguages() {
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .simplifiedChinese), "跟随系统")
-        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .traditionalChinese), "跟隨系統")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .traditionalChineseTaiwan), "跟隨系統")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .traditionalChineseHongKong), "跟隨系統")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .japanese), "システムに従う")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .english), "Follow System")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .korean), "시스템 언어 사용")
@@ -152,7 +177,8 @@ final class LocalizationTests: XCTestCase {
         // "Follow System" is localized into the current UI language.
         for language in allLanguages + [.system] {
             XCTAssertEqual(AppLanguage.simplifiedChinese.localizedTitle(using: language), "简体中文")
-            XCTAssertEqual(AppLanguage.traditionalChinese.localizedTitle(using: language), "繁體中文")
+            XCTAssertEqual(AppLanguage.traditionalChineseTaiwan.localizedTitle(using: language), "繁體中文（台灣）")
+            XCTAssertEqual(AppLanguage.traditionalChineseHongKong.localizedTitle(using: language), "繁體中文（香港）")
             XCTAssertEqual(AppLanguage.japanese.localizedTitle(using: language), "日本語")
             XCTAssertEqual(AppLanguage.english.localizedTitle(using: language), "English")
             XCTAssertEqual(AppLanguage.korean.localizedTitle(using: language), "한국어")
@@ -163,7 +189,8 @@ final class LocalizationTests: XCTestCase {
 
     func testTranslationReturnsLanguageSpecificStrings() {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .simplifiedChinese), "跟随系统")
-        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .traditionalChinese), "跟隨系統")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .traditionalChineseTaiwan), "跟隨系統")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .traditionalChineseHongKong), "跟隨系統")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .japanese), "システムに従う")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .english), "Follow System")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .korean), "시스템 언어 사용")
@@ -174,7 +201,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 352)
+        XCTAssertEqual(expectedKeys.count, 353)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -201,6 +228,8 @@ final class LocalizationTests: XCTestCase {
     func testNewLanguageBundlesLoadExplicitlyWithoutEnglishFallback() throws {
         let store = LocalizationResourceStore(bundle: testBundle)
         let expectations: [(AppLanguage, String, String)] = [
+            (.traditionalChineseTaiwan, "zh-Hant-TW", "關於 BalanceBar"),
+            (.traditionalChineseHongKong, "zh-Hant-HK", "關於 BalanceBar"),
             (.korean, "ko", "BalanceBar 정보"),
             (.spanish, "es", "Acerca de BalanceBar"),
             (.german, "de", "Über BalanceBar")
@@ -266,14 +295,62 @@ final class LocalizationTests: XCTestCase {
         )
     }
 
+    func testRegionalTraditionalChineseResourcesStayDistinctAndDoNotCrossFallback() throws {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        XCTAssertEqual(
+            store.localized(key: .keyLocalizationQuota, language: .traditionalChineseTaiwan),
+            "額度"
+        )
+        XCTAssertEqual(
+            store.localized(key: .keyLocalizationQuota, language: .traditionalChineseHongKong),
+            "配額"
+        )
+        XCTAssertNotEqual(
+            store.localized(key: .keyLocalizationQuota, language: .traditionalChineseTaiwan),
+            store.localized(key: .keyLocalizationQuota, language: .traditionalChineseHongKong)
+        )
+
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BalanceBar-I184-Regional-Fallback-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for directory in ["en.lproj", "zh-Hant.lproj"] {
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent(directory),
+                withIntermediateDirectories: true
+            )
+        }
+        try "\"app.about_balancebar\" = \"Legacy Taiwan resource\";\n".write(
+            to: root.appendingPathComponent("zh-Hant.lproj/Localizable.strings"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "\"app.about_balancebar\" = \"English fallback\";\n".write(
+            to: root.appendingPathComponent("en.lproj/Localizable.strings"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let legacyStore = LocalizationResourceStore(resourceRoot: root)
+        XCTAssertEqual(
+            legacyStore.localized(key: .keyAppAboutBalancebar, language: .traditionalChineseTaiwan),
+            "Legacy Taiwan resource"
+        )
+        XCTAssertEqual(
+            legacyStore.localized(key: .keyAppAboutBalancebar, language: .traditionalChineseHongKong),
+            "English fallback",
+            "Hong Kong must not silently reuse a generic Taiwan resource"
+        )
+    }
+
     func testRefreshTerminologyUsesUnifiedTraditionalChineseValues() throws {
         let store = LocalizationResourceStore(bundle: testBundle)
         let expectations: [
-            (key: LocalizationKey, surface: String, traditionalChinese: String, simplifiedChinese: String, english: String, japanese: String)
+            (key: LocalizationKey, surface: String, traditionalChineseTaiwan: String, traditionalChineseHongKong: String, simplifiedChinese: String, english: String, japanese: String)
         ] = [
             (
                 .keySnapshotLastRefreshedValue,
                 "Snapshot status summary",
+                "最後刷新：10:00",
                 "最後刷新：10:00",
                 "最后刷新：10:00",
                 "Last refreshed: 10:00",
@@ -284,12 +361,14 @@ final class LocalizationTests: XCTestCase {
                 "Snapshot status summary",
                 "等待刷新",
                 "等待刷新",
+                "等待刷新",
                 "Waiting to Refresh",
                 "更新待ち"
             ),
             (
                 .keyDashboardGeneralAndRefreshPagesRefreshNow,
                 "Refresh settings button",
+                "立即刷新",
                 "立即刷新",
                 "立即刷新",
                 "Refresh Now",
@@ -300,12 +379,14 @@ final class LocalizationTests: XCTestCase {
                 "Refresh settings title",
                 "刷新",
                 "刷新",
+                "刷新",
                 "Refresh",
                 "更新"
             ),
             (
                 .keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow,
                 "Refresh settings description",
+                "立即刷新目前供應商",
                 "立即刷新目前供應商",
                 "立即重新读取当前供应商",
                 "Reload the current Provider now",
@@ -314,6 +395,7 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyDashboardGeneralAndRefreshPagesRefreshSettings,
                 "Refresh settings title",
+                "刷新設定",
                 "刷新設定",
                 "刷新设置",
                 "Refresh Settings",
@@ -324,12 +406,14 @@ final class LocalizationTests: XCTestCase {
                 "Logs button",
                 "刷新",
                 "刷新",
+                "刷新",
                 "Refresh",
                 "更新"
             ),
             (
                 .keyDashboardLogsPageRefresh2,
                 "Logs button accessibility label",
+                "刷新",
                 "刷新",
                 "刷新",
                 "Refresh",
@@ -339,6 +423,7 @@ final class LocalizationTests: XCTestCase {
                 .keyDashboardMenuPageKeepOpenAfterRefresh,
                 "Menu settings title",
                 "刷新後保持展開",
+                "刷新後保持展開",
                 "刷新后保持展开",
                 "Keep Open After Refresh",
                 "更新後も開いたままにする"
@@ -346,6 +431,7 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyDashboardMenuPageReopenTheMenuAfterRefreshNow,
                 "Menu settings description",
+                "按一下立即刷新後重新開啟選單",
                 "按一下立即刷新後重新開啟選單",
                 "点击立即刷新后重新打开菜单",
                 "Reopen the menu after Refresh Now",
@@ -356,12 +442,14 @@ final class LocalizationTests: XCTestCase {
                 "Provider detail and quick-switch button",
                 "立即刷新",
                 "立即刷新",
+                "立即刷新",
                 "Refresh Now",
                 "今すぐ更新"
             ),
             (
                 .keyStatusItemControllerRefreshNow,
                 "Menu bar refresh button",
+                "立即刷新",
                 "立即刷新",
                 "立即刷新",
                 "Refresh Now",
@@ -372,7 +460,8 @@ final class LocalizationTests: XCTestCase {
         for expectation in expectations {
             let arguments = expectation.key == .keySnapshotLastRefreshedValue ? ["10:00"] : []
             let values = [
-                (AppLanguage.traditionalChinese, expectation.traditionalChinese),
+                (AppLanguage.traditionalChineseTaiwan, expectation.traditionalChineseTaiwan),
+                (AppLanguage.traditionalChineseHongKong, expectation.traditionalChineseHongKong),
                 (AppLanguage.simplifiedChinese, expectation.simplifiedChinese),
                 (AppLanguage.english, expectation.english),
                 (AppLanguage.japanese, expectation.japanese)
@@ -385,22 +474,24 @@ final class LocalizationTests: XCTestCase {
                 )
             }
             XCTAssertFalse(
-                expectation.traditionalChinese.contains("重新整理"),
-                "confirmed Traditional Chinese value still contains the unconfirmed term for \(expectation.key.rawKey)"
+                expectation.traditionalChineseTaiwan.contains("重新整理") || expectation.traditionalChineseHongKong.contains("重新整理"),
+                "confirmed Traditional Chinese values still contain the unconfirmed term for \(expectation.key.rawKey)"
             )
         }
 
-        let traditionalResourceURL = try XCTUnwrap(
-            testBundle.url(forResource: "zh-Hant", withExtension: "lproj")
-        ).appendingPathComponent("Localizable.strings")
-        let data = try Data(contentsOf: traditionalResourceURL)
-        let traditionalResource = try XCTUnwrap(
-            String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
-        )
-        XCTAssertFalse(
-            traditionalResource.contains("重新整理"),
-            "the Traditional Chinese resource must not retain the unconfirmed refresh term"
-        )
+        for directory in ["zh-Hant-TW", "zh-Hant-HK"] {
+            let resourceURL = try XCTUnwrap(
+                testBundle.url(forResource: directory, withExtension: "lproj")
+            ).appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: resourceURL)
+            let resource = try XCTUnwrap(
+                String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
+            )
+            XCTAssertFalse(
+                resource.contains("重新整理"),
+                "the \(directory) resource must not retain the unconfirmed refresh term"
+            )
+        }
     }
 
     func testParameterizedResourcesRenderAndValidatePlaceholderContracts() {
@@ -541,7 +632,8 @@ final class LocalizationTests: XCTestCase {
 
     func testMenuOverviewLinkPrefixWidthsAreStable() {
         XCTAssertEqual(AppLanguage.simplifiedChinese.overviewLinkPrefixWidth, 62)
-        XCTAssertEqual(AppLanguage.traditionalChinese.overviewLinkPrefixWidth, 62)
+        XCTAssertEqual(AppLanguage.traditionalChineseTaiwan.overviewLinkPrefixWidth, 62)
+        XCTAssertEqual(AppLanguage.traditionalChineseHongKong.overviewLinkPrefixWidth, 62)
         XCTAssertEqual(AppLanguage.japanese.overviewLinkPrefixWidth, 72)
         XCTAssertEqual(AppLanguage.english.overviewLinkPrefixWidth, 72)
     }
@@ -558,19 +650,19 @@ final class LocalizationTests: XCTestCase {
             let expected: [String] = {
                 switch language {
                 case .simplifiedChinese:
-                    return ["关于 BalanceBar", "跟随系统", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
-                case .traditionalChinese:
-                    return ["關於 BalanceBar", "跟隨系統", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                    return ["关于 BalanceBar", "跟随系统", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch"]
+                case .traditionalChineseTaiwan, .traditionalChineseHongKong:
+                    return ["關於 BalanceBar", "跟隨系統", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch"]
                 case .japanese:
-                    return ["BalanceBar について", "システムに従う", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                    return ["BalanceBar について", "システムに従う", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch"]
                 case .english:
-                    return ["About BalanceBar", "Follow System", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                    return ["About BalanceBar", "Follow System", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch"]
                 case .korean:
-                    return ["BalanceBar 정보", "시스템 언어 사용", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                    return ["BalanceBar 정보", "시스템 언어 사용", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch"]
                 case .spanish:
-                    return ["Acerca de BalanceBar", "Seguir el sistema", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                    return ["Acerca de BalanceBar", "Seguir el sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch"]
                 case .german:
-                    return ["Über BalanceBar", "System folgen", "简体中文", "繁體中文", "日本語", "한국어", "Español", "Deutsch"]
+                    return ["Über BalanceBar", "System folgen", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch"]
                 case .system:
                     return []
                 }
@@ -588,24 +680,28 @@ final class LocalizationTests: XCTestCase {
                 expected[2]
             )
             XCTAssertEqual(
-                AppLanguage.traditionalChinese.localizedTitle,
+                AppLanguage.traditionalChineseTaiwan.localizedTitle,
                 expected[3]
             )
             XCTAssertEqual(
-                AppLanguage.japanese.localizedTitle,
+                AppLanguage.traditionalChineseHongKong.localizedTitle,
                 expected[4]
             )
             XCTAssertEqual(
-                AppLanguage.korean.localizedTitle,
+                AppLanguage.japanese.localizedTitle,
                 expected[5]
             )
             XCTAssertEqual(
-                AppLanguage.spanish.localizedTitle,
+                AppLanguage.korean.localizedTitle,
                 expected[6]
             )
             XCTAssertEqual(
-                AppLanguage.german.localizedTitle,
+                AppLanguage.spanish.localizedTitle,
                 expected[7]
+            )
+            XCTAssertEqual(
+                AppLanguage.german.localizedTitle,
+                expected[8]
             )
         }
     }
