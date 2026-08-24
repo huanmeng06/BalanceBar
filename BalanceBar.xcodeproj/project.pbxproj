@@ -88,6 +88,10 @@
 		A100000000000000000000F0 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F6 /* Localizable.strings */; };
 		A100000000000000000000F1 /* Localizable.strings in Test Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F6 /* Localizable.strings */; };
 		A100000000000000000000F8 /* LocalizationKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F7 /* LocalizationKeys.swift */; };
+		A10000000000000000000101 /* ReleaseNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000105 /* ReleaseNotes.swift */; };
+		A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000106 /* UpdateNotesWindowController.swift */; };
+		A10000000000000000000103 /* release-notes in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000107 /* release-notes */; };
+		A10000000000000000000104 /* release-notes in Test Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000107 /* release-notes */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -179,6 +183,9 @@
 		A100000000000000000000E6 /* UpdateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateModels.swift; sourceTree = "<group>"; };
 		A100000000000000000000E8 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
 		A100000000000000000000EA /* UpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000105 /* ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotes.swift; sourceTree = "<group>"; };
+		A10000000000000000000106 /* UpdateNotesWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateNotesWindowController.swift; sourceTree = "<group>"; };
+		A10000000000000000000107 /* release-notes */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "release-notes"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -234,6 +241,7 @@
 				A10000000000000000000015 /* ClaudeThinking.svg */,
 				A100000000000000000000E0 /* GitHub.svg */,
 				A100000000000000000000F6 /* Localizable.strings */,
+				A10000000000000000000107 /* release-notes */,
 			);
 			name = "work/balance-bar";
 			path = "work/balance-bar";
@@ -325,6 +333,7 @@
 				A10000000000000000000068 /* OpenCodexRepository.swift */,
 				A10000000000000000000071 /* OfficialQuotaClient.swift */,
 				A100000000000000000000E8 /* UpdateService.swift */,
+				A10000000000000000000105 /* ReleaseNotes.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
@@ -367,6 +376,7 @@
 				A100000000000000000000DD /* DashboardCompositionController.swift */,
 				A100000000000000000000A2 /* DashboardSettingsComponents.swift */,
 				A1000000000000000000009E /* DashboardWindowController.swift */,
+				A10000000000000000000106 /* UpdateNotesWindowController.swift */,
 				A10000000000000000000093 /* Components */,
 				A100000000000000000000C0 /* Preferences */,
 				A100000000000000000000C7 /* Providers */,
@@ -548,6 +558,7 @@
 				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
 				A100000000000000000000F0 /* Localizable.strings in Resources */,
+				A10000000000000000000103 /* release-notes in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -557,6 +568,7 @@
 			files = (
 				A100000000000000000000E2 /* GitHub.svg in Test Resources */,
 				A100000000000000000000F1 /* Localizable.strings in Test Resources */,
+				A10000000000000000000104 /* release-notes in Test Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -612,6 +624,8 @@
 				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
 				A100000000000000000000DC /* DashboardCompositionController.swift in Sources */,
 				A100000000000000000000E7 /* UpdateService.swift in Sources */,
+				A10000000000000000000101 /* ReleaseNotes.swift in Sources */,
+				A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

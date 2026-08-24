@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "releases": {
+    "1.1.22": {
+      "files": {
+        "en": "1.1.22/en.md",
+        "zh-Hans": "1.1.22/zh-Hans.md",
+        "zh-Hant-TW": "1.1.22/zh-Hant-TW.md",
+        "zh-Hant-HK": "1.1.22/zh-Hant-HK.md",
+        "ja": "1.1.22/ja.md",
+        "ko": "1.1.22/ko.md",
+        "es": "1.1.22/es.md",
+        "de": "1.1.22/de.md"
+      }
+    }
+  }
+}

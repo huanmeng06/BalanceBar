@@ -15,6 +15,7 @@ struct DashboardPreferencePageActions {
     let onManualRefresh: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
+    let onOpenUpdateNotes: () -> Void
     let onOpenOpenCodex: () -> Void
     let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
     let onOpenCodexModeChanged: (OpenCodexDashboardMode) -> Void
@@ -49,6 +50,7 @@ final class DashboardPreferencePages {
         relay.onManualRefresh = actions.onManualRefresh
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate
+        relay.onOpenUpdateNotes = actions.onOpenUpdateNotes
         relay.onOpenOpenCodex = actions.onOpenOpenCodex
         relay.onRevealLog = { [weak self] in self?.logsPage.reveal() }
         relay.onRefreshLog = { [weak self] in self?.logsPage.refresh() }

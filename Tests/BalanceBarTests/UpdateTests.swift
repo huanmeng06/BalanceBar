@@ -276,12 +276,26 @@ final class UpdateTests: XCTestCase {
             tag: "v1.0.0",
             draft: false,
             prerelease: false,
+            body: "Release body",
+            htmlURL: "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.0.0",
             assets: [
                 ["name": "BalanceBar-1.0.0.zip", "browser_download_url": "https://example.test/wrong.zip", "size": 1],
                 ["name": "BalanceBar-1.0.0.dmg", "browser_download_url": "https://example.test/BalanceBar-1.0.0.dmg", "size": 4, "digest": "sha256:fixture"]
             ]
         )
         let release = try JSONDecoder().decode(GitHubRelease.self, from: body)
+        XCTAssertEqual(release.body, "Release body")
+        XCTAssertEqual(release.releaseURL?.absoluteString, "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.0.0")
+        XCTAssertEqual(
+            GitHubRelease(
+                tagName: "v1.0.0",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                htmlURL: URL(string: "file:///tmp/untrusted")
+            ).releaseURL?.absoluteString,
+            "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.0.0"
+        )
         let version = try XCTUnwrap(release.stableVersion)
         XCTAssertEqual(version, AppSemanticVersion("1.0.0"))
         XCTAssertEqual(release.matchingAsset(for: version)?.name, "BalanceBar-1.0.0.dmg")
@@ -1065,6 +1079,108 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(arguments.last, applicationURL.path)
     }
 
+    func testReleaseNotesManifestUsesLocaleFallbacksThenReleaseBodyAndEmptyState() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let releaseDirectory = root.appendingPathComponent("1.1.22", isDirectory: true)
+        try FileManager.default.createDirectory(at: releaseDirectory, withIntermediateDirectories: true)
+        try "Taiwan notes".write(
+            to: releaseDirectory.appendingPathComponent("zh-Hant-TW.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "Traditional Chinese base notes".write(
+            to: releaseDirectory.appendingPathComponent("zh-Hant.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "English notes".write(
+            to: releaseDirectory.appendingPathComponent("en.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let manifest: [String: Any] = [
+            "schemaVersion": 1,
+            "releases": [
+                "1.1.22": [
+                    "files": [
+                        "zh-Hant-TW": "1.1.22/zh-Hant-TW.md",
+                        "zh-Hant": "1.1.22/zh-Hant.md",
+                        "en": "1.1.22/en.md"
+                    ]
+                ]
+            ]
+        ]
+        let manifestData = try JSONSerialization.data(withJSONObject: manifest)
+        try manifestData.write(to: root.appendingPathComponent("manifest.json"))
+
+        let release = GitHubRelease(
+            tagName: "v1.1.22",
+            draft: false,
+            prerelease: false,
+            assets: [],
+            body: "GitHub original body",
+            htmlURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.1.22")
+        )
+        let store = ReleaseNotesStore(releaseNotesRoot: root)
+        let version = try XCTUnwrap(AppSemanticVersion("1.1.22"))
+
+        XCTAssertEqual(
+            store.resolve(version: version, language: .traditionalChineseTaiwan, release: release),
+            ReleaseNotesResolution(markdown: "Taiwan notes", source: .bundled(locale: "zh-Hant-TW"))
+        )
+        XCTAssertEqual(
+            store.resolve(version: version, language: .traditionalChineseHongKong, release: release),
+            ReleaseNotesResolution(markdown: "Traditional Chinese base notes", source: .bundled(locale: "zh-Hant"))
+        )
+        XCTAssertEqual(
+            store.resolve(version: version, language: .german, release: release),
+            ReleaseNotesResolution(markdown: "English notes", source: .bundled(locale: "en"))
+        )
+
+        let missingVersion = try XCTUnwrap(AppSemanticVersion("9.9.9"))
+        XCTAssertEqual(
+            store.resolve(version: missingVersion, language: .english, release: release),
+            ReleaseNotesResolution(markdown: "GitHub original body", source: .githubRelease)
+        )
+        XCTAssertEqual(
+            store.resolve(version: missingVersion, language: .english, release: GitHubRelease(
+                tagName: "v9.9.9",
+                draft: false,
+                prerelease: false,
+                assets: []
+            )),
+            ReleaseNotesResolution(markdown: nil, source: .unavailable)
+        )
+    }
+
+    func testReleaseNotesMarkdownRendererKeepsUnsupportedMarkupAsTextAndOnlyAllowsWebLinks() throws {
+        let rendered = ReleaseNotesMarkdownRenderer.render(markdown: """
+        # Heading
+
+        - **Bold** and `code`
+        [Safe](https://example.com/release)
+        [Unsafe](javascript:alert(1))
+        <script>alert(1)</script>
+        <a href="https://example.com">HTML link</a>
+        """)
+
+        XCTAssertTrue(rendered.string.contains("Heading"))
+        XCTAssertTrue(rendered.string.contains("• Bold and code"))
+        XCTAssertTrue(rendered.string.contains("javascript:alert(1)"))
+        XCTAssertTrue(rendered.string.contains("<script>alert(1)</script>"))
+        XCTAssertTrue(rendered.string.contains("<a href=\"https://example.com\">HTML link</a>"))
+
+        let safeRange = (rendered.string as NSString).range(of: "Safe")
+        let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
+        XCTAssertEqual((safeAttributes[.link] as? URL)?.scheme, "https")
+
+        let unsafeRange = (rendered.string as NSString).range(of: "Unsafe")
+        XCTAssertNil(rendered.attributes(at: unsafeRange.location, effectiveRange: nil)[.link])
+        let htmlRange = (rendered.string as NSString).range(of: "HTML link")
+        XCTAssertNil(rendered.attributes(at: htmlRange.location, effectiveRange: nil)[.link])
+    }
+
     // MARK: - Dashboard state/action wiring and localization
 
     func testDashboardRetryActionKeepsCheckingVisibleForOneSecondAndGuardsDuplicateRequests() throws {
@@ -1312,8 +1428,10 @@ final class UpdateTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         var checkCount = 0
         var installCount = 0
+        var openNotesCount = 0
         relay.onCheckForUpdates = { checkCount += 1 }
         relay.onInstallUpdate = { installCount += 1 }
+        relay.onOpenUpdateNotes = { openNotesCount += 1 }
         var selectedChannel: UpdateChannel?
         relay.onUpdateChannelChanged = { selectedChannel = $0 }
         let pageController = DashboardGeneralPage()
@@ -1334,6 +1452,11 @@ final class UpdateTests: XCTestCase {
         )
         XCTAssertEqual(channelPopup.itemTitles, ["正式版", "Beta 测试版"])
         XCTAssertEqual(channelPopup.selectedItem?.representedObject as? String, UpdateChannel.stable.rawValue)
+        let updateNotesButton = try XCTUnwrap(
+            buttons.first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
+        )
+        XCTAssertTrue(updateNotesButton.isHidden)
+        XCTAssertFalse(channelPopup.superview === updateButton.superview)
         channelPopup.selectItem(at: UpdateChannel.allCases.firstIndex(of: .beta)!)
         relay.updateChannel(channelPopup)
         XCTAssertEqual(selectedChannel, .beta)
@@ -1356,6 +1479,11 @@ final class UpdateTests: XCTestCase {
         ))
         XCTAssertEqual(updateButton.title, "下载并安装")
         XCTAssertTrue(updateButton.isEnabled)
+        XCTAssertEqual(updateNotesButton.title, "查看更新内容")
+        XCTAssertFalse(updateNotesButton.isHidden)
+        XCTAssertEqual((updateButton.superview as? NSStackView)?.arrangedSubviews.first, updateNotesButton)
+        relay.openUpdateNotes(updateNotesButton)
+        XCTAssertEqual(openNotesCount, 1)
         relay.update(updateButton)
         XCTAssertEqual(installCount, 1)
         XCTAssertEqual(
@@ -1403,6 +1531,16 @@ final class UpdateTests: XCTestCase {
             case .system:
                 XCTFail("system is not part of this explicit localization matrix")
             }
+            XCTAssertTrue(presentation.showsReleaseNotesButton)
+            XCTAssertEqual(
+                tr(.keyDashboardGeneralAndRefreshPagesViewReleaseNotes, language: language),
+                language == .simplifiedChinese ? "查看更新内容" :
+                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "查看更新內容" :
+                    language == .japanese ? "更新内容を見る" :
+                    language == .korean ? "업데이트 내용 보기" :
+                    language == .spanish ? "Ver notas de la versión" :
+                    language == .german ? "Versionshinweise anzeigen" : "View Release Notes"
+            )
             let downloading = DashboardUpdatePresentation.make(
                 for: .downloading(
                     current: try XCTUnwrap(AppSemanticVersion("1.0.6")),
@@ -1490,14 +1628,18 @@ final class UpdateTests: XCTestCase {
         tag: String,
         draft: Bool = false,
         prerelease: Bool = false,
+        body: String? = nil,
+        htmlURL: String? = nil,
         assets: [[String: Any]]
     ) -> Data {
-        let object: [String: Any] = [
+        var object: [String: Any] = [
             "tag_name": tag,
             "draft": draft,
             "prerelease": prerelease,
             "assets": assets
         ]
+        if let body { object["body"] = body }
+        if let htmlURL { object["html_url"] = htmlURL }
         return try! JSONSerialization.data(withJSONObject: object, options: [])
     }
 

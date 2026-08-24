@@ -165,6 +165,7 @@
 "dashboard.advanced.page.only_trimmed_decimal_165535_is_accepted_clear_the_field_to_restore_automatic_detection" = "Only trimmed decimal 1–65535 is accepted; clear the field to restore automatic detection";
 "dashboard.advanced.page.current_port_value.2" = "Current port: %1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "Enter a decimal port from 1 to 65535; clear the field to restore automatic detection";
+"dashboard.general.and.refresh.pages.update_channel" = "Update Channel";
 "dashboard.general.and.refresh.pages.stable" = "Stable";
 "dashboard.general.and.refresh.pages.beta_test" = "Beta Test";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "Click to check GitHub Releases";
@@ -175,6 +176,11 @@
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "Check for Updates";
 "dashboard.general.and.refresh.pages.new_version_available_value_value" = "New version available: %1$@ -> %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "Download and Install";
+"dashboard.general.and.refresh.pages.view_release_notes" = "View Release Notes";
+"dashboard.general.and.refresh.pages.release_notes" = "Release Notes";
+"dashboard.general.and.refresh.pages.release_notes.later" = "Later";
+"dashboard.general.and.refresh.pages.release_notes.view_github" = "View on GitHub";
+"dashboard.general.and.refresh.pages.release_notes.unavailable" = "No release notes are available for this version.";
 "dashboard.general.and.refresh.pages.downloading_the_new_version" = "Downloading the new version…";
 "dashboard.general.and.refresh.pages.downloading_value" = "Downloading %1$@%% …";
 "dashboard.general.and.refresh.pages.installing_the_new_version" = "Installing the new version…";

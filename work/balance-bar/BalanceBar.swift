@@ -217,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
+            onOpenUpdateNotes: { [weak self] in self?.showUpdateNotes() },
             onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
             onOpenCodexModeChanged: { [weak self] mode in
                 self?.openCodexDashboardAutomaticDetection = mode.automaticDetection
@@ -281,6 +282,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
     private let updateService: UpdateService
+    private lazy var updateNotesWindowController = UpdateNotesWindowController { [weak self] in
+        self?.updateService.installAvailableUpdate()
+    }
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
     private var showMenuBarAmount: Bool { get { preferences.showMenuBarAmount } set { preferences.showMenuBarAmount = newValue } }
@@ -339,15 +343,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         self.officialQuotaClient = officialQuotaClient
         self.updateService = updateService ?? UpdateService(updateChannel: preferences.updateChannel)
         super.init()
-        self.updateService.onStateChange = { [weak self] _ in
+        self.updateService.onStateChange = { [weak self] state in
             guard let self else { return }
-            if Thread.isMainThread {
+            let updateDashboard = { [weak self] in
+                guard let self else { return }
                 self.dashboardComposition.refreshUpdateState()
-            } else {
-                DispatchQueue.main.async { [weak self] in
-                    self?.dashboardComposition.refreshUpdateState()
-                }
+                guard case .available(let current, _) = state,
+                      let release = self.updateService.availableReleaseForPresentation else { return }
+                self.showUpdateNotes(currentVersion: current, release: release)
             }
+            if Thread.isMainThread { updateDashboard() }
+            else { DispatchQueue.main.async(execute: updateDashboard) }
         }
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
@@ -1043,6 +1049,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func rebuildDashboardForLanguageChange() {
         dashboardComposition.rebuild()
+        updateNotesWindowController.refreshForCurrentLanguage()
+    }
+
+    private func showUpdateNotes() {
+        guard case .available(let current, _) = updateService.state,
+              let release = updateService.availableReleaseForPresentation else { return }
+        showUpdateNotes(currentVersion: current, release: release)
+    }
+
+    private func showUpdateNotes(
+        currentVersion: AppSemanticVersion,
+        release: GitHubRelease
+    ) {
+        updateNotesWindowController.show(currentVersion: currentVersion, release: release)
     }
 
     private func showDashboardSection(

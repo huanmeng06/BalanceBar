@@ -165,6 +165,7 @@
 "dashboard.advanced.page.only_trimmed_decimal_165535_is_accepted_clear_the_field_to_restore_automatic_detection" = "スペースを除いた 1～65535 の十進数のみ受け付けます。空にすると自動検出に戻ります";
 "dashboard.advanced.page.current_port_value.2" = "現在のポート：%1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "1～65535 の十進数のポートを入力してください。空にすると自動検出に戻ります";
+"dashboard.general.and.refresh.pages.update_channel" = "更新チャンネル";
 "dashboard.general.and.refresh.pages.stable" = "正式版";
 "dashboard.general.and.refresh.pages.beta_test" = "ベータテスト";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "クリックして GitHub Releases を確認";
@@ -175,6 +176,11 @@
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "アップデートを確認";
 "dashboard.general.and.refresh.pages.new_version_available_value_value" = "新しいバージョンがあります：%1$@ -> %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "ダウンロードしてインストール";
+"dashboard.general.and.refresh.pages.view_release_notes" = "更新内容を見る";
+"dashboard.general.and.refresh.pages.release_notes" = "更新内容";
+"dashboard.general.and.refresh.pages.release_notes.later" = "後で";
+"dashboard.general.and.refresh.pages.release_notes.view_github" = "GitHub で見る";
+"dashboard.general.and.refresh.pages.release_notes.unavailable" = "このバージョンの更新内容はありません。";
 "dashboard.general.and.refresh.pages.downloading_the_new_version" = "新しいバージョンをダウンロード中…";
 "dashboard.general.and.refresh.pages.downloading_value" = "ダウンロード中 %1$@%% …";
 "dashboard.general.and.refresh.pages.installing_the_new_version" = "新しいバージョンをインストール中…";

@@ -174,12 +174,32 @@ struct GitHubRelease: Decodable, Equatable {
     let draft: Bool
     let prerelease: Bool
     let assets: [GitHubReleaseAsset]
+    let body: String?
+    let htmlURL: URL?
+
+    init(
+        tagName: String,
+        draft: Bool,
+        prerelease: Bool,
+        assets: [GitHubReleaseAsset],
+        body: String? = nil,
+        htmlURL: URL? = nil
+    ) {
+        self.tagName = tagName
+        self.draft = draft
+        self.prerelease = prerelease
+        self.assets = assets
+        self.body = body
+        self.htmlURL = htmlURL
+    }
 
     private enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
         case draft
         case prerelease
         case assets
+        case body
+        case htmlURL = "html_url"
     }
 
     var version: AppSemanticVersion? {
@@ -204,6 +224,20 @@ struct GitHubRelease: Decodable, Equatable {
         return assets.first {
             $0.name == expectedName && $0.browserDownloadURL != nil
         }
+    }
+
+    var releaseURL: URL? {
+        if let htmlURL,
+           let scheme = htmlURL.scheme?.lowercased(),
+           (scheme == "https" || scheme == "http"),
+           htmlURL.host != nil {
+            return htmlURL
+        }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "github.com"
+        components.path = "/huanmeng06/BalanceBar/releases/tag/\(tagName)"
+        return components.url
     }
 }
 
