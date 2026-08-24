@@ -9,8 +9,10 @@ trap 'rm -rf "$probe_dir"' EXIT
 
 {
     printf '%s\n' 'import Foundation'
+    cat "$source_dir/Sources/AppCore/LocalizationKeys.swift"
     cat "$source_dir/Sources/AppCore/Localization.swift"
     cat "$source_dir/Sources/Domain/BalanceQuery.swift"
+    printf '%s\n' 'LocalizationRuntime.configure(resourceRoot: URL(fileURLWithPath: ProcessInfo.processInfo.environment["BALANCEBAR_LOCALIZATION_ROOT"]!))'
     cat <<'SWIFT'
 
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {
@@ -346,7 +348,7 @@ for (failure, simplifiedChinese, english, traditionalChinese, japanese) in expec
 SWIFT
 } | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
-"$probe_binary"
+BALANCEBAR_LOCALIZATION_ROOT="$source_dir/lang" "$probe_binary"
 
 ui_render_block="$(sed -n '/func refreshStandardProvider(/,/func prefetchCurrentBalance/p' "$source_dir/Sources/Services/ProviderRefreshCoordinator.swift")"
 [[ "$ui_render_block" == *"failure.userVisibleReason"* ]] || {

@@ -26,7 +26,9 @@ network_error_function="$(awk '
 
 {
     printf '%s\n' 'import Foundation' 'import AppKit'
+    cat "$source_dir/Sources/AppCore/LocalizationKeys.swift"
     cat "$source_dir/Sources/AppCore/Localization.swift"
+    printf '%s\n' 'LocalizationRuntime.configure(resourceRoot: URL(fileURLWithPath: ProcessInfo.processInfo.environment["BALANCEBAR_LOCALIZATION_ROOT"]!))'
     printf '%s\n' 'enum ProbeSubject {'
     printf '%s\n' "$network_error_function"
     cat <<'SWIFT'
@@ -91,4 +93,4 @@ print("network error localization probe: PASS; six stable URL error mappings; Si
 SWIFT
 } | swiftc -framework Foundation -framework AppKit -o "$probe_binary" -
 
-"$probe_binary"
+BALANCEBAR_LOCALIZATION_ROOT="$source_dir/lang" "$probe_binary"

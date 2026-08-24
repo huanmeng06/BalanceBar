@@ -224,15 +224,15 @@ final class ProviderRefreshCoordinator {
                     client: client
                 )
             case .failure(.nonHTTPS):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额接口不是 HTTPS", "The balance endpoint is not HTTPS", "餘額介面不是 HTTPS", "残高エンドポイントが HTTPS ではありません"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointIsNotHttps), client: client)
             case .failure(.transport(let error)):
                 self.renderBalanceError(providerID: providerID, providerName: providerName, reason: Self.localizedBalanceNetworkErrorReason(error, language: AppLanguage.resolved), client: client)
             case .failure(.httpStatus):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额接口返回异常", "The balance endpoint returned an error", "餘額介面傳回異常", "残高エンドポイントでエラーが返されました"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceEndpointReturnedAnError), client: client)
             case .failure(.unsupportedFormat):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("未识别余额格式", "Unrecognized balance format", "無法辨識餘額格式", "残高形式を認識できません"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorUnrecognizedBalanceFormat), client: client)
             case .failure(.invalidJSON):
-                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr("余额响应无法解析", "The balance response could not be parsed", "無法解析餘額回應", "残高レスポンスを解析できません"), client: client)
+                self.renderBalanceError(providerID: providerID, providerName: providerName, reason: tr(.keyProviderRefreshCoordinatorTheBalanceResponseCouldNotBeParsed), client: client)
             }
             }
         ) else {
@@ -255,21 +255,21 @@ final class ProviderRefreshCoordinator {
                 self.renderOfficialError(
                     providerID: providerID,
                     providerName: providerName,
-                    reason: tr("\(client.displayName) 官方账号：未找到本机登录态", "Official \(client.displayName): Local sign-in credentials were not found", "\(client.displayName) 官方帳號：找不到本機登入狀態", "\(client.displayName) 公式アカウント：ローカルログイン情報が見つかりません"),
+                    reason: tr(.keyProviderRefreshCoordinatorOfficialValueLocalSignInCredentialsWereNotFound, arguments: [String(describing: client.displayName)]),
                     client: client
                 )
             case .failure(.transport(let error)):
                 self.renderOfficialError(
                     providerID: providerID,
                     providerName: providerName,
-                    reason: tr("\(client.displayName) 官方账号：\(error.localizedDescription)", "Official \(client.displayName): \(error.localizedDescription)", "\(client.displayName) 官方帳號：\(error.localizedDescription)", "\(client.displayName) 公式アカウント：\(error.localizedDescription)"),
+                    reason: tr(.keyProviderRefreshCoordinatorOfficialValueValue, arguments: [String(describing: client.displayName), String(describing: error.localizedDescription)]),
                     client: client
                 )
             case .failure:
                 self.renderOfficialError(
                     providerID: providerID,
                     providerName: providerName,
-                    reason: tr("\(client.displayName) 官方账号：额度接口返回异常", "Official \(client.displayName): The quota endpoint returned an error", "\(client.displayName) 官方帳號：額度介面傳回異常", "\(client.displayName) 公式アカウント：クォータエンドポイントでエラーが返されました"),
+                    reason: tr(.keyProviderRefreshCoordinatorOfficialValueTheQuotaEndpointReturnedAnError, arguments: [String(describing: client.displayName)]),
                     client: client
                 )
             }
@@ -339,23 +339,23 @@ final class ProviderRefreshCoordinator {
     static func localizedBalanceNetworkErrorReason(_ error: Error, language: AppLanguage) -> String {
         let nsError = error as NSError
         guard nsError.domain == NSURLErrorDomain else {
-            return tr("网络请求失败", "Network request failed", "網路請求失敗", "ネットワークリクエストに失敗しました", language: language)
+            return tr(.keyProviderRefreshCoordinatorNetworkRequestFailed, language: language)
         }
         switch URLError.Code(rawValue: nsError.code) {
         case .timedOut:
-            return tr("网络请求超时", "Network request timed out", "網路請求逾時", "ネットワークリクエストがタイムアウトしました", language: language)
+            return tr(.keyProviderRefreshCoordinatorNetworkRequestTimedOut, language: language)
         case .notConnectedToInternet:
-            return tr("无网络连接", "No internet connection", "沒有網路連線", "ネットワークに接続されていません", language: language)
+            return tr(.keyProviderRefreshCoordinatorNoInternetConnection, language: language)
         case .networkConnectionLost:
-            return tr("网络连接已中断", "Network connection was lost", "網路連線已中斷", "ネットワーク接続が切断されました", language: language)
+            return tr(.keyProviderRefreshCoordinatorNetworkConnectionWasLost, language: language)
         case .cannotFindHost:
-            return tr("找不到主机", "Host could not be found", "找不到主機", "ホストが見つかりません", language: language)
+            return tr(.keyProviderRefreshCoordinatorHostCouldNotBeFound, language: language)
         case .cannotConnectToHost:
-            return tr("无法连接主机", "Could not connect to host", "無法連線主機", "ホストに接続できません", language: language)
+            return tr(.keyProviderRefreshCoordinatorCouldNotConnectToHost, language: language)
         case .secureConnectionFailed:
-            return tr("安全连接失败", "Secure connection failed", "安全連線失敗", "安全な接続に失敗しました", language: language)
+            return tr(.keyProviderRefreshCoordinatorSecureConnectionFailed, language: language)
         default:
-            return tr("网络请求失败", "Network request failed", "網路請求失敗", "ネットワークリクエストに失敗しました", language: language)
+            return tr(.keyProviderRefreshCoordinatorNetworkRequestFailed2, language: language)
         }
     }
 }

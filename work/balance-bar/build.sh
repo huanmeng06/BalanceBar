@@ -94,6 +94,13 @@ do
     [[ -f "$required_file" ]] || die "required input is missing: $required_file"
 done
 
+localization_directories=(en.lproj zh-Hans.lproj zh-Hant.lproj ja.lproj)
+for localization_directory in "${localization_directories[@]}"
+do
+    localization_file="$source_dir/lang/$localization_directory/Localizable.strings"
+    [[ -f "$localization_file" ]] || die "required localization resource is missing: $localization_file"
+done
+
 printf 'build-balancebar: building %s variant in %s\n' "$variant" "$build_dir"
 for clean_path in "${clean_paths[@]}"
 do
@@ -152,6 +159,18 @@ fi
 for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg
 do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
+done
+for localization_directory in "${localization_directories[@]}"
+do
+    mkdir -p "$resources_dir/$localization_directory"
+    cp "$source_dir/lang/$localization_directory/Localizable.strings" \
+        "$resources_dir/$localization_directory/Localizable.strings"
+done
+
+for localization_directory in "${localization_directories[@]}"
+do
+    localization_file="$resources_dir/$localization_directory/Localizable.strings"
+    [[ -s "$localization_file" ]] || die "localized app resource is empty: $localization_file"
 done
 
 printf 'build-balancebar: ad-hoc signing complete bundle\n'

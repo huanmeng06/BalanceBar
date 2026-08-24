@@ -57,19 +57,9 @@ struct Snapshot {
     var menuBarToolTip: String {
         guard kind == .official || kind == .openCodex else { return title }
         if kind == .openCodex {
-            return tr(
-                "\(title) · \(message ?? "状态未知")",
-                "\(title) · \(message ?? "Unknown status")",
-                "\(title) · \(message ?? "狀態未知")",
-                "\(title) · \(message ?? "ステータス不明")"
-            )
+            return tr(.keySnapshotValueValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationStatusUnknown))])
         }
-        return tr(
-            "\(title) · 重置：\(message ?? "未知")",
-            "\(title) · Reset: \(message ?? "Unknown")",
-            "\(title) · 重設：\(message ?? "未知")",
-            "\(title) · リセット：\(message ?? "不明")"
-        )
+        return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationUnknown))])
     }
 
     var overviewProvider: String {
@@ -83,39 +73,34 @@ struct Snapshot {
     func overviewReset(refreshDate: Date?, formatter: DateFormatter) -> String {
         switch kind {
         case .official:
-            return tr("重置：\(message ?? "未知")", "Reset: \(message ?? "Unknown")", "重設：\(message ?? "未知")", "リセット：\(message ?? "不明")")
+            return tr(.keySnapshotResetValue, arguments: [String(describing: message ?? tr(.keyLocalizationUnknown))])
         case .balance:
-            return tr(
-                "最后刷新：\(formatter.string(from: refreshDate ?? date ?? Date()))",
-                "Last refreshed: \(formatter.string(from: refreshDate ?? date ?? Date()))",
-                "最後重新整理：\(formatter.string(from: refreshDate ?? date ?? Date()))",
-                "最終更新：\(formatter.string(from: refreshDate ?? date ?? Date()))"
-            )
+            return tr(.keySnapshotLastRefreshedValue, arguments: [String(describing: formatter.string(from: refreshDate ?? date ?? Date()))])
         case .openCodex:
-            return message ?? tr("OpenCodex 状态未知", "OpenCodex status is unknown", "OpenCodex 狀態未知", "OpenCodex のステータスが不明です")
+            return message ?? tr(.keySnapshotOpencodexStatusIsUnknown)
         case .placeholder:
-            return tr("正在读取当前供应商…", "Loading the current Provider…", "正在讀取目前供應商…", "現在のプロバイダーを読み込み中…")
+            return tr(.keySnapshotLoadingTheCurrentProvider)
         case .error:
-            return message ?? tr("余额读取失败", "Failed to load balance", "餘額讀取失敗", "残高の読み込みに失敗しました")
+            return message ?? tr(.keySnapshotFailedToLoadBalance)
         }
     }
 
     var overviewQuotaTitle: String {
         switch kind {
-        case .official: return tr("可用额度", "Available Quota", "可用額度", "利用可能なクォータ")
-        case .balance: return tr("可用余额", "Available Balance", "可用餘額", "利用可能な残高")
-        case .openCodex: return tr("OpenCodex", "OpenCodex", "OpenCodex", "OpenCodex")
-        case .placeholder, .error: return tr("额度状态", "Balance Status", "額度狀態", "残高ステータス")
+        case .official: return tr(.keySnapshotAvailableQuota)
+        case .balance: return tr(.keySnapshotAvailableBalance)
+        case .openCodex: return tr(.keySnapshotOpencodex)
+        case .placeholder, .error: return tr(.keySnapshotBalanceStatus)
         }
     }
 
     var overviewQuotaDetail: String {
         switch kind {
-        case .official: return unit ?? tr("7 日额度", "7-Day Quota", "7 日額度", "7日間クォータ")
-        case .balance: return tr("剩余额度", "Remaining Balance", "剩餘額度", "残りのクォータ")
-        case .openCodex: return tr("当前 provider/model", "Current provider/model", "目前 provider/model", "現在のプロバイダー/モデル")
-        case .placeholder: return tr("等待刷新", "Waiting to Refresh", "等待重新整理", "更新待ち")
-        case .error: return tr("读取失败", "Load Failed", "讀取失敗", "読み込み失敗")
+        case .official: return unit ?? tr(.keySnapshot7DayQuota)
+        case .balance: return tr(.keySnapshotRemainingBalance)
+        case .openCodex: return tr(.keySnapshotCurrentProviderModel)
+        case .placeholder: return tr(.keySnapshotWaitingToRefresh)
+        case .error: return tr(.keySnapshotLoadFailed)
         }
     }
 
@@ -146,42 +131,22 @@ struct Snapshot {
     var title: String {
         switch kind {
         case .placeholder:
-            return tr("正在读取 CC Switch…", "Loading CC Switch…", "正在讀取 CC Switch…", "CC Switch を読み込み中…")
+            return tr(.keySnapshotLoadingCcSwitch)
         case .official:
-            return tr(
-                "\(provider) 剩余：\(Int(amount ?? 0))%（\(unit ?? "额度")）",
-                "\(provider) remaining: \(Int(amount ?? 0))% (\(unit ?? "Quota"))",
-                "\(provider) 剩餘：\(Int(amount ?? 0))%（\(unit ?? "額度")）",
-                "\(provider) の残り：\(Int(amount ?? 0))%（\(unit ?? "クォータ")）"
-            )
+            return tr(.keySnapshotValueRemainingValueValue, arguments: [String(describing: provider), String(describing: Int(amount ?? 0)), String(describing: unit ?? tr(.keyLocalizationQuota))])
         case .balance:
-            return tr(
-                "\(provider) 剩余：\(format(amount ?? 0, unit ?? "USD"))",
-                "\(provider) remaining: \(format(amount ?? 0, unit ?? "USD"))",
-                "\(provider) 剩餘：\(format(amount ?? 0, unit ?? "USD"))",
-                "\(provider) の残り：\(format(amount ?? 0, unit ?? "USD"))"
-            )
+            return tr(.keySnapshotValueRemainingValue, arguments: [String(describing: provider), String(describing: format(amount ?? 0, unit ?? "USD"))])
         case .openCodex:
-            return tr(
-                "\(provider) · \(unit ?? "OpenCodex")",
-                "\(provider) · \(unit ?? "OpenCodex")",
-                "\(provider) · \(unit ?? "OpenCodex")",
-                "\(provider) · \(unit ?? "OpenCodex")"
-            )
+            return tr(.keySnapshotValueValue2, arguments: [String(describing: provider), String(describing: unit ?? "OpenCodex")])
         case .error:
-            return tr("余额读取失败", "Failed to Load Balance", "餘額讀取失敗", "残高の読み込みに失敗しました")
+            return tr(.keySnapshotFailedToLoadBalance2)
         }
     }
 
     var compactQuotaTitle: String {
         switch kind {
         case .official:
-            return tr(
-                "\(unit ?? "额度")剩余：\(Int(amount ?? 0))%",
-                "\(unit ?? "Quota") remaining: \(Int(amount ?? 0))%",
-                "\(unit ?? "額度")剩餘：\(Int(amount ?? 0))%",
-                "\(unit ?? "クォータ") の残り：\(Int(amount ?? 0))%"
-            )
+            return tr(.keySnapshotValueRemainingValue2, arguments: [String(describing: unit ?? tr(.keyLocalizationQuota)), String(describing: Int(amount ?? 0))])
         default:
             return title
         }
@@ -190,12 +155,7 @@ struct Snapshot {
     var compactResetTitle: String {
         switch kind {
         case .official:
-            return tr(
-                "重置：\(message ?? "等待额度信息")",
-                "Reset: \(message ?? "Waiting for quota data")",
-                "重設：\(message ?? "等待額度資訊")",
-                "リセット：\(message ?? "クォータ情報を待機中")"
-            )
+            return tr(.keySnapshotResetValue2, arguments: [String(describing: message ?? tr(.keyLocalizationWaitingForQuotaData))])
         default:
             return ""
         }
@@ -204,21 +164,16 @@ struct Snapshot {
     var detail: String {
         switch kind {
         case .balance:
-            return tr(
-                "更新：\(date?.formatted(date: .omitted, time: .shortened) ?? "刚刚") · 随 CC Switch 自动切换",
-                "Updated: \(date?.formatted(date: .omitted, time: .shortened) ?? "Just now") · Follows CC Switch automatically",
-                "更新：\(date?.formatted(date: .omitted, time: .shortened) ?? "剛剛") · 隨 CC Switch 自動切換",
-                "更新：\(date?.formatted(date: .omitted, time: .shortened) ?? "たった今") · CC Switch に自動的に追従"
-            )
+            return tr(.keySnapshotUpdatedValueFollowsCcSwitchAutomatically, arguments: [String(describing: date?.formatted(date: .omitted, time: .shortened) ?? tr(.keyLocalizationJustNow))])
         case .official:
             let resetText = message.map {
-                tr(" · 重置：\($0)", " · Reset: \($0)", " · 重設：\($0)", " · リセット：\($0)")
+                tr(.keySnapshotResetValue3, arguments: [String(describing: $0)])
             } ?? ""
-            return tr("每分钟更新官方额度\(resetText)", "Official quota updates every minute\(resetText)", "每分鐘更新官方額度\(resetText)", "公式クォータは毎分更新\(resetText)")
+            return tr(.keySnapshotOfficialQuotaUpdatesEveryMinutevalue, arguments: [String(describing: resetText)])
         case .openCodex:
-            return message ?? tr("等待 OpenCodex 状态", "Waiting for OpenCodex status", "等待 OpenCodex 狀態", "OpenCodex のステータスを待機中")
-        case .error: return message ?? tr("未知错误", "Unknown Error", "未知錯誤", "不明なエラー")
-        case .placeholder: return tr("等待 CC Switch 状态", "Waiting for CC Switch Status", "等待 CC Switch 狀態", "CC Switch のステータスを待機中")
+            return message ?? tr(.keySnapshotWaitingForOpencodexStatus)
+        case .error: return message ?? tr(.keySnapshotUnknownError)
+        case .placeholder: return tr(.keySnapshotWaitingForCcSwitchStatus)
         }
     }
 

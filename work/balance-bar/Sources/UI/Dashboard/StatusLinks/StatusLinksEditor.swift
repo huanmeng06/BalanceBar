@@ -135,10 +135,10 @@ struct StatusLinksEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                Text(tr("状态链接", "Status Links", "狀態連結", "ステータスリンク"))
+                Text(tr(.keyStatusLinksEditorStatusLinks))
                     .font(.system(size: 13, weight: .medium))
                 Spacer(minLength: 12)
-                Button(tr("恢复默认", "Restore Defaults", "恢復預設", "デフォルトに戻す"), action: model.reset)
+                Button(tr(.keyStatusLinksEditorRestoreDefaults), action: model.reset)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .font(.system(size: 12))
@@ -148,9 +148,9 @@ struct StatusLinksEditorView: View {
             .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor")))
 
             HStack(spacing: 8) {
-                Text(tr("名称", "Name", "名稱", "名前"))
+                Text(tr(.keyStatusLinksEditorName))
                     .frame(width: 160, alignment: .leading)
-                Text(tr("网址", "URL", "網址", "URL"))
+                Text(tr(.keyStatusLinksEditorUrl))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Color.clear.frame(width: 24, height: 1)
             }
@@ -163,7 +163,7 @@ struct StatusLinksEditorView: View {
                 HStack(spacing: 8) {
                     StatusTextField(
                         text: $model.links[index].title,
-                        placeholder: tr("显示名称", "Display name", "顯示名稱", "表示名"),
+                        placeholder: tr(.keyStatusLinksEditorDisplayName),
                         accessibilityIdentifier: "statusLinks.name.\(index)"
                     )
                     .frame(width: 160)

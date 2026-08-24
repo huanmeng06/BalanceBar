@@ -381,11 +381,11 @@ enum DashboardSection: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .general: return tr("通用", "General", "通用", "一般")
-        case .menuBar: return tr("菜单栏", "Menu Bar", "選單列", "メニューバー")
-        case .menu: return tr("菜单", "Menu", "選單", "メニュー")
-        case .advanced: return tr("高级", "Advanced", "進階", "詳細")
-        case .about: return tr("关于", "About", "關於", "情報")
+        case .general: return tr(.keyDashboardComponentsGeneral)
+        case .menuBar: return tr(.keyDashboardComponentsMenuBar)
+        case .menu: return tr(.keyDashboardComponentsMenu)
+        case .advanced: return tr(.keyDashboardComponentsAdvanced)
+        case .about: return tr(.keyDashboardComponentsAbout)
         }
     }
 

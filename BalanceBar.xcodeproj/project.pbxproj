@@ -85,6 +85,9 @@
 		A100000000000000000000E5 /* UpdateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E6 /* UpdateModels.swift */; };
 		A100000000000000000000E7 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E8 /* UpdateService.swift */; };
 		A100000000000000000000E9 /* UpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EA /* UpdateTests.swift */; };
+		A100000000000000000000F0 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F6 /* Localizable.strings */; };
+		A100000000000000000000F1 /* Localizable.strings in Test Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F6 /* Localizable.strings */; };
+		A100000000000000000000F8 /* LocalizationKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F7 /* LocalizationKeys.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -95,6 +98,11 @@
 		A10000000000000000000014 /* Claude.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Claude.svg; sourceTree = "<group>"; };
 		A10000000000000000000015 /* ClaudeThinking.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = ClaudeThinking.svg; sourceTree = "<group>"; };
 		A100000000000000000000E0 /* GitHub.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = GitHub.svg; sourceTree = "<group>"; };
+		A100000000000000000000F2 /* Localizable.strings (en) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A100000000000000000000F3 /* Localizable.strings (zh-Hans) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A100000000000000000000F4 /* Localizable.strings (zh-Hant) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hant.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A100000000000000000000F5 /* Localizable.strings (ja) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A100000000000000000000F7 /* LocalizationKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/LocalizationKeys.swift"; sourceTree = "<group>"; };
 		A10000000000000000000016 /* BalanceBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BalanceBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000017 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		A10000000000000000000018 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -209,6 +217,7 @@
 				A10000000000000000000010 /* BalanceBar.swift */,
 				A10000000000000000000045 /* AppPreferences.swift */,
 				A10000000000000000000041 /* Localization.swift */,
+				A100000000000000000000F7 /* LocalizationKeys.swift */,
 				A1000000000000000000006D /* DashboardScrollClamping.swift */,
 				A10000000000000000000054 /* Domain */,
 				A10000000000000000000059 /* Services */,
@@ -220,6 +229,7 @@
 				A10000000000000000000014 /* Claude.svg */,
 				A10000000000000000000015 /* ClaudeThinking.svg */,
 				A100000000000000000000E0 /* GitHub.svg */,
+				A100000000000000000000F6 /* Localizable.strings */,
 			);
 			name = "work/balance-bar";
 			path = "work/balance-bar";
@@ -485,6 +495,9 @@
 			knownRegions = (
 				en,
 				Base,
+				zh-Hans,
+				zh-Hant,
+				ja,
 			);
 			mainGroup = A1000000000000000000001B /* BalanceBar */;
 			productRefGroup = A1000000000000000000001E /* Products */;
@@ -497,6 +510,21 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXVariantGroup section */
+		A100000000000000000000F6 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A100000000000000000000F2 /* Localizable.strings (en) */,
+				A100000000000000000000F3 /* Localizable.strings (zh-Hans) */,
+				A100000000000000000000F4 /* Localizable.strings (zh-Hant) */,
+				A100000000000000000000F5 /* Localizable.strings (ja) */,
+			);
+			name = Localizable.strings;
+			path = lang;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin PBXResourcesBuildPhase section */
 		A10000000000000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
@@ -507,6 +535,7 @@
 				A10000000000000000000023 /* Claude.svg in Resources */,
 				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
+				A100000000000000000000F0 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -515,6 +544,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A100000000000000000000E2 /* GitHub.svg in Test Resources */,
+				A100000000000000000000F1 /* Localizable.strings in Test Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -528,6 +558,7 @@
 				A10000000000000000000020 /* BalanceBar.swift in Sources */,
 				A10000000000000000000044 /* AppPreferences.swift in Sources */,
 				A10000000000000000000040 /* Localization.swift in Sources */,
+				A100000000000000000000F8 /* LocalizationKeys.swift in Sources */,
 				A10000000000000000000048 /* AssistantClient.swift in Sources */,
 				A10000000000000000000049 /* BalanceQuery.swift in Sources */,
 				A1000000000000000000004A /* ProviderModels.swift in Sources */,

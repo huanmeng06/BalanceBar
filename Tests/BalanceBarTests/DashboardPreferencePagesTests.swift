@@ -488,9 +488,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             let labels = descendants(of: menuBarPage).compactMap { $0 as? NSTextField }
             let labelStrings = labels.map(\.stringValue)
-            guard let previewIndex = labelStrings.firstIndex(of: tr("预览", "Preview", "預覽", "プレビュー", language: language)),
+            guard let previewIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPagePreview, language: language)),
                   let animationIndex = labelStrings.firstIndex(of: animationSectionTitle),
-                  let displayIndex = labelStrings.firstIndex(of: tr("显示项目", "Display Items", "顯示項目", "表示項目", language: language)) else {
+                  let displayIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageDisplayItems, language: language)) else {
                 defaults.removePersistentDomain(forName: suiteName)
                 return XCTFail("Expected menu bar section headings for \(language)")
             }
@@ -516,7 +516,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 onClamp: {}
             ))
             let advancedLabels = descendants(of: advancedPage).compactMap { $0 as? NSTextField }
-            XCTAssertFalse(advancedLabels.contains { $0.stringValue == tr("任务状态", "Task Status", "任務狀態", "タスクステータス", language: language) })
+            XCTAssertFalse(advancedLabels.contains {
+                $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesCodexTaskStatusDetection, language: language)
+            })
             XCTAssertTrue(
                 descendants(of: advancedPage)
                     .compactMap { $0 as? NSSwitch }

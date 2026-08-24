@@ -470,13 +470,13 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         navigation.addArrangedSubview(makeNavigationRow(for: .general))
         navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
 
-        let appearanceLabel = makeSidebarGroupTitle(tr("外观", "Appearance", "外觀", "外観"))
+        let appearanceLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerAppearance))
         navigation.addArrangedSubview(appearanceLabel)
         navigation.addArrangedSubview(makeNavigationRow(for: .menuBar))
         navigation.addArrangedSubview(makeNavigationRow(for: .menu))
         navigation.setCustomSpacing(12, after: navigation.arrangedSubviews.last!)
 
-        let systemLabel = makeSidebarGroupTitle(tr("系统", "System", "系統", "システム"))
+        let systemLabel = makeSidebarGroupTitle(tr(.keyDashboardWindowControllerSystem))
         navigation.addArrangedSubview(systemLabel)
         navigation.addArrangedSubview(makeNavigationRow(for: .advanced))
         navigation.addArrangedSubview(makeNavigationRow(for: .about))
