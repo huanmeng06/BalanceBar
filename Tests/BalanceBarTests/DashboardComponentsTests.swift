@@ -108,7 +108,10 @@ final class DashboardComponentsTests: XCTestCase {
             (.simplifiedChinese, "这是用于验证窗口缩放后副标题完整换行并同步更新卡片高度的长说明文字示例。"),
             (.traditionalChinese, "這是用於驗證視窗縮放後副標題完整換行並同步更新卡片高度的長說明文字範例。"),
             (.japanese, "これはウィンドウ幅の変更後も副題が完全に折り返され、カードの高さが更新されることを確認する説明文です。"),
-            (.english, "This subtitle verifies resized-window wrapping and keeps the full settings text visible.")
+            (.english, "This subtitle verifies resized-window wrapping and keeps the full settings text visible."),
+            (.korean, "이 부제목은 창 너비를 바꾼 뒤에도 전체 설정 설명이 잘 줄바꿈되고 카드 높이가 갱신되는지 확인합니다."),
+            (.spanish, "Este subtítulo comprueba que el texto completo de ajustes se ajuste al cambiar el ancho de la ventana."),
+            (.german, "Dieser Untertitel prüft, dass der vollständige Einstellungstext bei geänderter Fensterbreite umbricht.")
         ]
 
         for (language, longSubtitle) in fixtures {
@@ -168,7 +171,9 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(longRow.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame), "(language) labels must stay in row")
             XCTAssertEqual(
                 subtitle.lineBreakMode,
-                language == .english ? .byWordWrapping : .byCharWrapping,
+                language == .english || language == .spanish || language == .german
+                    ? .byWordWrapping
+                    : .byCharWrapping,
                 "(language) subtitle should use the script-appropriate wrapping mode"
             )
             XCTAssertLessThanOrEqual(

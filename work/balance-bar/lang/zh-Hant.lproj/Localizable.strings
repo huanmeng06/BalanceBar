@@ -24,6 +24,9 @@
 "localization.traditional_chinese_name" = "繁體中文";
 "localization.japanese_name" = "日本語";
 "localization.english_name" = "English";
+"localization.korean_name" = "한국어";
+"localization.spanish_name" = "Español";
+"localization.german_name" = "Deutsch";
 "localization.status_unknown" = "狀態未知";
 "localization.unknown" = "未知";
 "localization.quota" = "額度";

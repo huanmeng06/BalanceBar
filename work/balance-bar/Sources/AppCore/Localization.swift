@@ -7,6 +7,9 @@ enum AppLanguage: String, CaseIterable {
     case traditionalChinese
     case english
     case japanese
+    case korean
+    case spanish
+    case german
 
     static var selected: AppLanguage {
         get {
@@ -42,6 +45,12 @@ enum AppLanguage: String, CaseIterable {
             return .japanese
         case .english:
             return .english
+        case .korean:
+            return .korean
+        case .spanish:
+            return .spanish
+        case .german:
+            return .german
         case .system:
             for preferred in preferredLanguages {
                 let normalized = Self.normalizedPreferredLanguage(preferred)
@@ -53,6 +62,15 @@ enum AppLanguage: String, CaseIterable {
                 }
                 if normalized.hasPrefix("ja") {
                     return .japanese
+                }
+                if normalized.hasPrefix("ko") {
+                    return .korean
+                }
+                if normalized.hasPrefix("es") {
+                    return .spanish
+                }
+                if normalized.hasPrefix("de") {
+                    return .german
                 }
                 if normalized.hasPrefix("en") {
                     return .english
@@ -68,7 +86,7 @@ enum AppLanguage: String, CaseIterable {
         switch self {
         case .simplifiedChinese, .traditionalChinese:
             return 62
-        case .english, .japanese, .system:
+        case .english, .japanese, .korean, .spanish, .german, .system:
             return 72
         }
     }
@@ -89,6 +107,12 @@ enum AppLanguage: String, CaseIterable {
             return tr(.keyLocalizationJapaneseName, language: language)
         case .english:
             return tr(.keyLocalizationEnglishName, language: language)
+        case .korean:
+            return tr(.keyLocalizationKoreanName, language: language)
+        case .spanish:
+            return tr(.keyLocalizationSpanishName, language: language)
+        case .german:
+            return tr(.keyLocalizationGermanName, language: language)
         }
     }
 
@@ -104,6 +128,12 @@ enum AppLanguage: String, CaseIterable {
             return "en"
         case .japanese:
             return "ja"
+        case .korean:
+            return "ko"
+        case .spanish:
+            return "es"
+        case .german:
+            return "de"
         }
     }
 

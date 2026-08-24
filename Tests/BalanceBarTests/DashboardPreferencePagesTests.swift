@@ -1086,13 +1086,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .simplifiedChinese: ["Y 轴 + 0.0 pt", "Y 轴 + 0.0 pt", "宽度 + 0.0 pt"],
             .traditionalChinese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "寬度 + 0.0 pt"],
             .japanese: ["Y 軸 + 0.0 pt", "Y 軸 + 0.0 pt", "幅 + 0.0 pt"],
-            .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"]
+            .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"],
+            .korean: ["Y 축 + 0.0 pt", "Y 축 + 0.0 pt", "너비 + 0.0 pt"],
+            .spanish: ["Eje Y + 0.0 pt", "Eje Y + 0.0 pt", "Ancho + 0.0 pt"],
+            .german: ["Y Achse + 0.0 pt", "Y Achse + 0.0 pt", "Breite + 0.0 pt"]
         ]
         let expectedDescriptions: [AppLanguage: [String]] = [
             .simplifiedChinese: ["微调图标上下像素位置", "微调金额上下像素位置", "调整 BalanceBar 与其他项目的空隙"],
             .traditionalChinese: ["微調圖示上下像素位置", "微調金額上下像素位置", "調整 BalanceBar 與其他項目的間距"],
             .japanese: ["アイコンの上下位置を微調整", "金額の上下位置を微調整", "BalanceBar と他の項目との間隔を調整"],
-            .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjusts the gap between BalanceBar and other items"]
+            .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjusts the gap between BalanceBar and other items"],
+            .korean: ["아이콘의 세로 위치 미세 조정", "금액의 세로 위치 미세 조정", "BalanceBar와 다른 항목 사이 간격 조정"],
+            .spanish: ["Ajusta con precisión la posición vertical del icono", "Ajusta con precisión la posición vertical del importe", "Ajusta el espacio entre BalanceBar y los demás elementos"],
+            .german: ["Vertikale Position des Symbols fein einstellen", "Vertikale Position des Betrags fein einstellen", "Passt den Abstand zwischen BalanceBar und anderen Elementen an"]
         ]
         let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
 
@@ -1100,7 +1106,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             AppLanguage.simplifiedChinese,
             .traditionalChinese,
             .japanese,
-            .english
+            .english,
+            .korean,
+            .spanish,
+            .german
         ] {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarExternalSummaries.\(UUID().uuidString)"
@@ -1663,6 +1672,39 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "Adjusts the gap between BalanceBar and other items Width + 0.0 pt"
                 ],
                 "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt"
+            ),
+            (
+                .korean,
+                ["글꼴 크기 및 위치", "메뉴 막대 글꼴 크기", "아이콘 오프셋", "금액 오프셋", "메뉴 막대 너비"],
+                [
+                    "메뉴 막대 글꼴 크기 조정",
+                    "아이콘의 세로 위치 미세 조정 Y 축 + 0.0 pt",
+                    "금액의 세로 위치 미세 조정 Y 축 + 0.0 pt",
+                    "BalanceBar와 다른 항목 사이 간격 조정 너비 + 0.0 pt"
+                ],
+                "-10.0pt(좁게)에서 +10.0pt(넓게)까지 메뉴 막대 너비 조정; 기본값 0pt"
+            ),
+            (
+                .spanish,
+                ["Tamaño y posición de la fuente", "Tamaño de fuente de la barra de menús", "Desplazamiento del icono", "Desplazamiento del importe", "Ancho de la barra de menús"],
+                [
+                    "Ajusta el tamaño de fuente de la barra de menús",
+                    "Ajusta con precisión la posición vertical del icono Eje Y + 0.0 pt",
+                    "Ajusta con precisión la posición vertical del importe Eje Y + 0.0 pt",
+                    "Ajusta el espacio entre BalanceBar y los demás elementos Ancho + 0.0 pt"
+                ],
+                "Ajusta el ancho de la barra de menús de -10,0 pt (estrecho) a +10,0 pt (ancho); valor predeterminado: 0 pt"
+            ),
+            (
+                .german,
+                ["Schriftgröße und Position", "Schriftgröße der Menüleiste", "Symbolversatz", "Betragsversatz", "Breite der Menüleiste"],
+                [
+                    "Passt die Schriftgröße der Menüleiste an",
+                    "Vertikale Position des Symbols fein einstellen Y Achse + 0.0 pt",
+                    "Vertikale Position des Betrags fein einstellen Y Achse + 0.0 pt",
+                    "Passt den Abstand zwischen BalanceBar und anderen Elementen an Breite + 0.0 pt"
+                ],
+                "Passt die Breite der Menüleiste von -10,0 pt (schmal) bis +10,0 pt (breit) an; Standard: 0 pt"
             )
         ]
 
@@ -1693,6 +1735,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 expectedEndpointLabels = ("狭い", "広い")
             case .english:
                 expectedEndpointLabels = ("Narrow", "Wide")
+            case .korean:
+                expectedEndpointLabels = ("좁게", "넓게")
+            case .spanish:
+                expectedEndpointLabels = ("Estrecho", "Ancho")
+            case .german:
+                expectedEndpointLabels = ("Schmal", "Breit")
             case .system:
                 expectedEndpointLabels = ("窄", "宽")
             }
@@ -1700,6 +1748,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             switch language {
             case .simplifiedChinese, .traditionalChinese, .japanese, .system:
                 expectedOffsetEndpointLabels = ("下", "上")
+            case .korean:
+                expectedOffsetEndpointLabels = ("아래", "위")
+            case .spanish:
+                expectedOffsetEndpointLabels = ("Abajo", "Arriba")
+            case .german:
+                expectedOffsetEndpointLabels = ("Unten", "Oben")
             case .english:
                 expectedOffsetEndpointLabels = ("Down", "Up")
             }
@@ -2128,7 +2182,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 case .simplifiedChinese: return zh
                 case .traditionalChinese: return zhT
                 case .japanese: return ja
-                case .english, .system: return en
+                case .english, .system, .korean, .spanish, .german: return en
                 }
             }
             let suiteName = "DashboardPreferencePagesTests.OpenCodex.\(UUID().uuidString)"

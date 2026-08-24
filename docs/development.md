@@ -58,10 +58,13 @@ work/balance-bar/Info.plist.
 
 Standalone Swift probes compile the production localization sources
 (`Sources/AppCore/Localization.swift` plus the relevant production file) and
-verify the balance-query failure mapping and the network-error mapping in all
-four supported languages, including the unknown-error fallback:
+verify the balance-query failure mapping and the network-error mapping across
+all seven supported languages, including the unknown-error fallback. The
+resource probe checks key parity for every source language and, when given an
+app bundle, checks that every language is packaged:
 
 ~~~sh
+./work/balance-bar/localization-resource-probe.sh
 ./work/balance-bar/balance-query-probe.sh
 ./work/balance-bar/balance-network-error-localization-probe.sh
 ~~~

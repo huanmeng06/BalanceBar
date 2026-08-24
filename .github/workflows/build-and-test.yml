@@ -38,6 +38,9 @@ jobs:
       - name: CLI fresh build
         run: ./work/balance-bar/build.sh
 
+      - name: Verify CLI localization resources
+        run: ./work/balance-bar/localization-resource-probe.sh work/balance-bar/build/BalanceBar.app
+
       - name: Localization probes
         run: >-
           ./work/balance-bar/balance-query-probe.sh
@@ -52,6 +55,11 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/BalanceBar-Build-DerivedData"
           CODE_SIGNING_ALLOWED=NO
           build
+
+      - name: Verify Xcode localization resources
+        run: >-
+          ./work/balance-bar/localization-resource-probe.sh
+          "$RUNNER_TEMP/BalanceBar-Build-DerivedData/Build/Products/Debug/BalanceBar.app"
 
       - name: XCTest
         run: >-
