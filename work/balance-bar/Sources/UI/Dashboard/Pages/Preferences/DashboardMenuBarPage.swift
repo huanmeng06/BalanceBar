@@ -332,7 +332,11 @@ final class DashboardMenuBarPage {
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
     static let previewAmountDefaultYOffset: CGFloat = 0.5
-    static let previewRowHeight: CGFloat = 66
+    /// Keep the preview and overflow-warning rows aligned with the standard
+    /// settings rows. The preview control itself is 42 pt tall, so 10 pt of
+    /// vertical padding on its adaptive row reaches the shared 62 pt height.
+    static let previewRowHeight: CGFloat = DashboardSettingsComponents.standardRowHeight
+    private static let previewRowVerticalPadding: CGFloat = 10
     static let previewPrimaryIdentifier = "menuBarPreviewPrimary"
     static let previewSecondaryIdentifier = "menuBarPreviewSecondary"
     static let overflowWarningIdentifier = "menuBarOverflowWarning"
@@ -659,7 +663,8 @@ final class DashboardMenuBarPage {
                 tr(.keyDashboardMenuBarPageCurrentLayout),
                 subtitle: tr(.keyDashboardMenuBarPageTheMenuBarUpdatesWithProviderDataInRealTime),
                 control: preview,
-                minimumHeight: Self.previewRowHeight
+                minimumHeight: Self.previewRowHeight,
+                verticalPadding: Self.previewRowVerticalPadding
             ),
             overflowWarningRow
         ], onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in

@@ -424,7 +424,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     $0.firstAttribute == .height && $0.relation == .equal
                 }?.constant
             )
-            XCTAssertEqual(warningRowHeight, DashboardMenuBarPage.previewRowHeight)
+            XCTAssertEqual(warningRowHeight, DashboardSettingsComponents.standardRowHeight)
 
             let settingsButton = try XCTUnwrap(
                 descendants(of: page)
@@ -1074,6 +1074,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             window.setContentSize(NSSize(width: 740, height: 520))
             window.layoutIfNeeded()
+            XCTAssertEqual(
+                row.frame.height,
+                DashboardSettingsComponents.standardRowHeight,
+                accuracy: 0.5,
+                "(language) preview row must match the standard settings-row height at a wide width"
+            )
             XCTAssertLessThan(row.frame.height, narrowHeight, "(language) preview row should shrink at wide width")
             XCTAssertLessThan(card.frame.height, narrowHeight + DashboardSettingsComponents.settingsSeparatorHeight)
 
