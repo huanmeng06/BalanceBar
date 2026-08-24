@@ -215,6 +215,11 @@ enum DashboardSettingsComponents {
         label.font = .systemFont(ofSize: 14, weight: .semibold)
         label.isEditable = false
         label.isSelectable = false
+        // Let localized titles/subtitles yield width to the row's control.
+        // Wrapping labels otherwise keep their full single-line intrinsic
+        // width, which can make a long translation enlarge the window's
+        // effective minimum width instead of wrapping inside the fixed row.
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let labels = NSStackView(views: [label])
         labels.orientation = .vertical
         labels.alignment = .leading
@@ -226,9 +231,11 @@ enum DashboardSettingsComponents {
             detail.textColor = .secondaryLabelColor
             detail.isEditable = false
             detail.isSelectable = false
+            detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             labels.addArrangedSubview(detail)
         }
         labels.translatesAutoresizingMaskIntoConstraints = false
+        labels.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         row.addSubview(labels)
         let padding = max(0, verticalPadding)
         var constraints = [

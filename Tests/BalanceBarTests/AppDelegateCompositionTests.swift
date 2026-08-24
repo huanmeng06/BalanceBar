@@ -94,6 +94,79 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
     }
 
+    func testStatusItemVisibilityRequiresMenuBarOverflowEvidence() {
+        let screen = NSRect(x: 0, y: 0, width: 1_000, height: 800)
+        let visibleFrame = NSRect(x: 840, y: 780, width: 100, height: 20)
+        let overflowFrame = NSRect(x: 940, y: 780, width: 100, height: 20)
+        let nonMenuBarFrame = NSRect(x: 940, y: 720, width: 100, height: 20)
+
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: visibleFrame,
+                screenFrame: screen
+            ),
+            .visible
+        )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: overflowFrame,
+                screenFrame: screen
+            ),
+            .hiddenByMenuBarSpace
+        )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: nonMenuBarFrame,
+                screenFrame: screen
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: overflowFrame,
+                screenFrame: nil
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: false,
+                windowIsVisible: true,
+                windowFrame: overflowFrame,
+                screenFrame: screen
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: visibleFrame,
+                screenFrame: screen,
+                windowIsVisibleOnScreen: false
+            ),
+            .hiddenByMenuBarSpace
+        )
+        XCTAssertEqual(
+            StatusItemVisibility.resolved(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowFrame: visibleFrame,
+                screenFrame: screen,
+                buttonIsHidden: true
+            ),
+            .hiddenByMenuBarSpace
+        )
+    }
+
     @MainActor
     func testStatusItemStartIsIdempotentAndTeardownIsSafe() throws {
         let controller = StatusItemController(

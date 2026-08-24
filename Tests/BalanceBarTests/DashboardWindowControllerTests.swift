@@ -39,6 +39,50 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
     }
 
+    func testMenuBarSettingsFittingWidthFollowsLocalization() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        var fittingWidths: [AppLanguage: CGFloat] = [:]
+        for language in [
+            AppLanguage.simplifiedChinese,
+            .english,
+            .traditionalChinese,
+            .japanese
+        ] {
+            AppLanguage.selected = language
+            let appDelegate = AppDelegate(
+                repository: CCSwitchRepository(
+                    databaseURL: URL(fileURLWithPath: "/nonexistent/issue-165-\(language.rawValue).db")
+                )
+            )
+            defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+
+            let window = try XCTUnwrap(
+                appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .menuBar)
+            )
+            window.setContentSize(NSSize(width: 800, height: 540))
+            window.layoutIfNeeded()
+            window.displayIfNeeded()
+            let page = try XCTUnwrap(appDelegate.dashboardCompositionForTesting.contentHost.subviews.first)
+            fittingWidths[language] = page.fittingSize.width
+        }
+
+        let simplifiedChineseFittingWidth = try XCTUnwrap(fittingWidths[.simplifiedChinese])
+        let englishFittingWidth = try XCTUnwrap(fittingWidths[.english])
+        let japaneseFittingWidth = try XCTUnwrap(fittingWidths[.japanese])
+        XCTAssertGreaterThan(
+            englishFittingWidth,
+            simplifiedChineseFittingWidth + 1,
+            "English should retain enough fitting width for its localized copy"
+        )
+        XCTAssertGreaterThan(
+            japaneseFittingWidth,
+            simplifiedChineseFittingWidth + 1,
+            "Japanese should retain enough fitting width for its localized copy"
+        )
+    }
+
     func testWindowZoomStateUsesTargetFrameAndRestoresRepeatedly() {
         let normalFrame = NSRect(x: 120, y: 180, width: 880, height: 620)
         let primaryVisibleFrame = NSRect(x: 0, y: 25, width: 1_440, height: 875)

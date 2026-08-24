@@ -11,6 +11,7 @@ struct DashboardPreferencePageActions {
     let onLanguage: (AppLanguage) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
+    let onOpenSystemMenuBarSettings: () -> Void
     let onManualRefresh: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
@@ -44,6 +45,7 @@ final class DashboardPreferencePages {
         relay.onLanguage = actions.onLanguage
         relay.onUpdateChannelChanged = actions.onUpdateChannelChanged
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
+        relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
         relay.onManualRefresh = actions.onManualRefresh
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate
@@ -58,6 +60,7 @@ final class DashboardPreferencePages {
         providerPollInterval: TimeInterval,
         snapshot: Snapshot,
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
+        statusItemVisibility: StatusItemVisibility,
         iconImage: NSImage?,
         currentOpenCodexResolution: OpenCodexDashboardResolution?,
         runtimeCandidate: OpenCodexEndpointCandidate?,
@@ -77,7 +80,8 @@ final class DashboardPreferencePages {
                 snapshot: snapshot,
                 menuBarSnapshot: menuBarSnapshot,
                 iconImage: iconImage,
-                relay: relay
+                relay: relay,
+                statusItemVisibility: statusItemVisibility
             ))
         case .menu:
             return menuPage.make(.init(
@@ -110,13 +114,15 @@ final class DashboardPreferencePages {
     func refreshMenuBar(
         snapshot: Snapshot,
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
+        statusItemVisibility: StatusItemVisibility,
         iconImage: NSImage?
     ) {
         menuBarPage.refresh(
             snapshot: snapshot,
             preferences: preferences,
             menuBarSnapshot: menuBarSnapshot,
-            iconImage: iconImage
+            iconImage: iconImage,
+            statusItemVisibility: statusItemVisibility
         )
     }
 

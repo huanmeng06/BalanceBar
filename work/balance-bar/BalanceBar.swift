@@ -173,6 +173,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             refreshDate: { [weak self] in self?.refreshDate(for: self?.snapshot ?? .placeholder) },
             menuBarSnapshot: { [weak self] snapshot in self?.menuBarSnapshot(for: snapshot) ?? snapshot },
             iconImage: { [weak self] in self?.statusItemController?.iconImage },
+            statusItemVisibility: { [weak self] in
+                self?.statusItemController?.statusItemVisibility ?? .unknown
+            },
             currentOpenCodexResolution: { [weak self] in self?.currentOpenCodexDashboardResolution() },
             runtimeCandidate: { [weak self] in self?.openCodexState?.state.candidate },
             updateState: { [weak self] in self?.updateService.state ?? .failed(.invalidCurrentVersion) },
@@ -209,6 +212,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 self?.handleUpdateChannelChanged(channel)
             },
             onOpenCCSwitch: { [weak self] in self?.openCCSwitch() },
+            onOpenSystemMenuBarSettings: { [weak self] in
+                self?.openSystemMenuBarSettings()
+            },
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
             onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
@@ -482,6 +488,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 iconChanged: { [weak self] image in
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
+                },
+                visibilityChanged: { [weak self] _ in
+                    guard let self else { return }
+                    self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
                 }
             )
         )
@@ -709,6 +719,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         NSApp.windowsMenu = configuration.windowMenu
         NSApp.mainMenu = configuration.mainMenu
     }
+
+    private func openSystemMenuBarSettings() {
+        let opened = NSWorkspace.shared.open(
+            DashboardMenuBarPage.systemMenuBarSettingsURL
+        )
+        if !opened {
+            SwitchLog.write(
+                "failed to open system menu bar settings",
+                level: .warning,
+                category: "ui.dashboard"
+            )
+        }
+    }
+
     @objc private func openCCSwitch() {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop") else { return }
         let configuration = NSWorkspace.OpenConfiguration()
