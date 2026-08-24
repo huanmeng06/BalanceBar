@@ -315,11 +315,15 @@ struct StatusItemVisibilityStateMachine {
         var lastSampleAt: Date
     }
 
+    // This is the state already published to the menu bar and Dashboard.
+    // `hiddenCandidate` is deliberately kept separate: a new geometry sample
+    // can be pending while the last committed state remains authoritative.
     private(set) var visibility: StatusItemVisibility = .unknown
     private var hiddenCandidate: HiddenCandidate?
 
     var needsAdditionalHiddenSample: Bool {
-        hiddenCandidate != nil && visibility != .hiddenByMenuBarSpace
+        guard let hiddenCandidate else { return false }
+        return hiddenCandidate.sampleCount < Self.hiddenConfirmationSampleCount
     }
 
     var hiddenCandidateSampleCount: Int {
@@ -392,9 +396,6 @@ struct StatusItemVisibilityStateMachine {
                 firstSampleAt: date,
                 lastSampleAt: date
             )
-            if visibility == .hiddenByMenuBarSpace {
-                visibility = .unknown
-            }
         }
 
         guard let candidate = hiddenCandidate,

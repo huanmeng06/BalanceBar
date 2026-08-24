@@ -345,6 +345,112 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
     }
 
+    func testStatusItemVisibilityKeepsCommittedHiddenDuringGeometryChurn() {
+        let screen = NSRect(x: 0, y: 0, width: 1_000, height: 800)
+        let overflowFrames = [
+            NSRect(x: 940, y: 780, width: 100, height: 20),
+            NSRect(x: 941, y: 780, width: 100, height: 20),
+            NSRect(x: 942, y: 780, width: 100, height: 20),
+            NSRect(x: 943, y: 780, width: 100, height: 20)
+        ]
+        let visibleFrame = NSRect(x: 840, y: 780, width: 100, height: 20)
+        let statusItem = NSObject()
+        let window = NSObject()
+        let button = NSObject()
+        let start = Date(timeIntervalSince1970: 4_000)
+
+        func evidence(
+            frame: NSRect,
+            occlusionVisible: Bool = false,
+            windowObject: NSObject?
+        ) -> StatusItemVisibilityEvidence {
+            StatusItemVisibilityEvidence(
+                statusItemIsVisible: true,
+                windowIsVisible: true,
+                windowIsOcclusionVisible: occlusionVisible,
+                statusItemIdentity: ObjectIdentifier(statusItem),
+                windowIdentity: windowObject.map(ObjectIdentifier.init),
+                buttonIdentity: ObjectIdentifier(button),
+                statusItemFrame: frame,
+                statusItemWindowFrame: frame,
+                screenFrame: screen,
+                buttonIsHidden: false
+            )
+        }
+
+        var machine = StatusItemVisibilityStateMachine()
+        var publishedTransitions: [StatusItemVisibility] = []
+
+        func ingest(_ evidence: StatusItemVisibilityEvidence, at date: Date) -> StatusItemVisibility {
+            let state = machine.ingest(evidence, at: date)
+            if publishedTransitions.last != state {
+                publishedTransitions.append(state)
+            }
+            return state
+        }
+
+        XCTAssertEqual(
+            ingest(evidence(frame: overflowFrames[0], windowObject: window), at: start),
+            .unknown
+        )
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: overflowFrames[0], windowObject: window),
+                at: start.addingTimeInterval(0.2)
+            ),
+            .hiddenByMenuBarSpace
+        )
+        XCTAssertFalse(machine.needsAdditionalHiddenSample)
+
+        // Slider/layout churn changes the raw candidate signature. It must
+        // replace pending evidence without publishing hidden -> unknown.
+        for (index, frame) in overflowFrames.dropFirst().enumerated() {
+            XCTAssertEqual(
+                ingest(
+                    evidence(frame: frame, windowObject: window),
+                    at: start.addingTimeInterval(0.4 + Double(index) * 0.2)
+                ),
+                .hiddenByMenuBarSpace
+            )
+            XCTAssertTrue(machine.needsAdditionalHiddenSample)
+        }
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: overflowFrames.last!, windowObject: window),
+                at: start.addingTimeInterval(1.2)
+            ),
+            .hiddenByMenuBarSpace
+        )
+        XCTAssertFalse(machine.needsAdditionalHiddenSample)
+        XCTAssertEqual(
+            publishedTransitions,
+            [.unknown, .hiddenByMenuBarSpace],
+            "pending geometry samples must not emit hidden -> unknown -> hidden"
+        )
+
+        // A real rendered sample still recovers immediately after reflow.
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: visibleFrame, occlusionVisible: true, windowObject: window),
+                at: start.addingTimeInterval(1.3)
+            ),
+            .visible
+        )
+
+        // Explicit invalid evidence and lifecycle reset still clear the
+        // committed state instead of preserving a stale warning.
+        XCTAssertEqual(
+            ingest(
+                evidence(frame: visibleFrame, windowObject: nil),
+                at: start.addingTimeInterval(1.4)
+            ),
+            .unknown
+        )
+        machine.reset()
+        XCTAssertEqual(machine.visibility, .unknown)
+        XCTAssertFalse(machine.needsAdditionalHiddenSample)
+    }
+
     @MainActor
     func testStatusItemStartIsIdempotentAndTeardownIsSafe() throws {
         let controller = StatusItemController(

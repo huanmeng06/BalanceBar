@@ -470,6 +470,138 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testMenuBarPendingVisibilityDoesNotRebuildDashboardHierarchy() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPendingVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .hiddenByMenuBarSpace
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let warningRow = try XCTUnwrap(
+            descendant(
+                withIdentifier: DashboardMenuBarPage.overflowWarningRowIdentifier,
+                in: page
+            )
+        )
+        let rowsStack = try XCTUnwrap(warningRow.superview as? NSStackView)
+        let previewCard = try XCTUnwrap(rowsStack.superview)
+        let separator = try XCTUnwrap(
+            rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }.first
+        )
+        let scrollView = try XCTUnwrap(
+            page.subviews
+                .flatMap { descendants(of: $0) }
+                .compactMap { $0 as? NSScrollView }
+                .first
+        )
+        let documentView = try XCTUnwrap(scrollView.documentView)
+        let initialCardHeight = previewCard.frame.height
+        let initialDocumentFrame = documentView.frame
+        let initialDocumentBounds = documentView.bounds
+        let initialScrollBounds = scrollView.contentView.bounds
+
+        XCTAssertGreaterThan(initialCardHeight, 0)
+        XCTAssertGreaterThan(initialDocumentFrame.height, 0)
+        XCTAssertFalse(warningRow.isHidden)
+        XCTAssertFalse(separator.isHidden)
+
+        // Repeated committed-hidden refreshes model the Dashboard input while
+        // the visibility state machine is confirming changing geometry. They
+        // must update in place rather than rebuild the warning/card/document
+        // hierarchy or move the scroll viewport.
+        for _ in 0..<8 {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                statusItemVisibility: .hiddenByMenuBarSpace
+            )
+            window.layoutIfNeeded()
+            XCTAssertEqual(ObjectIdentifier(warningRow), ObjectIdentifier(
+                try XCTUnwrap(
+                    descendant(
+                        withIdentifier: DashboardMenuBarPage.overflowWarningRowIdentifier,
+                        in: page
+                    )
+                )
+            ))
+            XCTAssertEqual(ObjectIdentifier(rowsStack), ObjectIdentifier(
+                try XCTUnwrap(warningRow.superview)
+            ))
+            XCTAssertEqual(ObjectIdentifier(previewCard), ObjectIdentifier(rowsStack.superview!))
+            XCTAssertEqual(ObjectIdentifier(scrollView), ObjectIdentifier(
+                try XCTUnwrap(
+                    page.subviews
+                        .flatMap { descendants(of: $0) }
+                        .compactMap { $0 as? NSScrollView }
+                        .first
+                )
+            ))
+            XCTAssertTrue(scrollView.documentView === documentView)
+            XCTAssertFalse(warningRow.isHidden)
+            XCTAssertFalse(separator.isHidden)
+            XCTAssertEqual(previewCard.frame.height, initialCardHeight, accuracy: 0.5)
+            XCTAssertEqual(documentView.frame, initialDocumentFrame)
+            XCTAssertEqual(documentView.bounds, initialDocumentBounds)
+            XCTAssertEqual(scrollView.contentView.bounds, initialScrollBounds)
+        }
+
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            statusItemVisibility: .visible
+        )
+        window.layoutIfNeeded()
+        XCTAssertTrue(warningRow.isHidden)
+        XCTAssertTrue(separator.isHidden)
+
+        controller.refresh(
+            snapshot: snapshot,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            statusItemVisibility: .hiddenByMenuBarSpace
+        )
+        window.layoutIfNeeded()
+        XCTAssertFalse(warningRow.isHidden)
+        XCTAssertFalse(separator.isHidden)
+        XCTAssertTrue(scrollView.documentView === documentView)
+    }
+
     func testCodexActivityAnimationBelongsToMenuBarWithLocalizedSectionOrder() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
