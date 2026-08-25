@@ -1217,6 +1217,13 @@ final class UpdateTests: XCTestCase {
         )
         XCTAssertTrue(headingParagraph.textBlocks.isEmpty)
         XCTAssertFalse(blockLayout.string.contains("---"))
+        let dividerRange = (blockLayout.string as NSString).range(of: "\u{00A0}")
+        XCTAssertNotEqual(dividerRange.location, NSNotFound)
+        let dividerParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: dividerRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertTrue(dividerParagraph.textBlocks.first is ReleaseNotesDividerBlock)
 
         let tableRange = (blockLayout.string as NSString).range(of: "项目")
         let firstTableParagraph = try XCTUnwrap(
@@ -1512,6 +1519,67 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(
             bitmapContainsInk(bitmap, xRange: rightXRange, yRange: interiorYRange),
             "expected the last table column to contain a visible right outer edge"
+        )
+    }
+
+    func testReleaseNotesHorizontalRuleDrawsVisibleDividerInOffscreenBitmap() throws {
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 180, height: 100))
+        view.appearance = darkAppearance
+        let scale = max(1, NSScreen.main?.backingScaleFactor ?? 2)
+        let bitmapSize = NSSize(width: 180, height: 100)
+        let pixelsWide = max(1, Int(ceil(bitmapSize.width * scale)))
+        let pixelsHigh = max(1, Int(ceil(bitmapSize.height * scale)))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+        let frame = NSRect(x: 12.25, y: 41.25, width: 120.5, height: 1)
+        let divider = ReleaseNotesDividerBlock()
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        context.cgContext.clear(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
+        context.cgContext.saveGState()
+        context.cgContext.scaleBy(x: scale, y: scale)
+        divider.drawBackground(
+            withFrame: frame,
+            in: view,
+            characterRange: NSRange(location: 0, length: 1),
+            layoutManager: NSLayoutManager()
+        )
+        context.cgContext.restoreGState()
+        context.flushGraphics()
+
+        let lineWidth = 1 / scale
+        XCTAssertTrue(
+            bitmapContainsInk(
+                bitmap,
+                xRange: bitmapPixelRange(
+                    from: frame.minX + lineWidth,
+                    to: frame.maxX - lineWidth,
+                    scale: scale,
+                    limit: pixelsWide
+                ),
+                yRange: bitmapYPixelRange(
+                    from: frame.midY - lineWidth * 1.5,
+                    to: frame.midY + lineWidth * 1.5,
+                    scale: scale,
+                    pixelsHigh: pixelsHigh
+                )
+            ),
+            "expected a horizontal rule to draw a visible divider"
         )
     }
 

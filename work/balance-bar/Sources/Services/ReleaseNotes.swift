@@ -151,6 +151,39 @@ final class ReleaseNotesTableCellBlock: NSTextTableBlock {
     }
 }
 
+final class ReleaseNotesDividerBlock: NSTextBlock {
+    override init() {
+        super.init()
+        setContentWidth(100, type: .percentageValueType)
+        setWidth(0, type: .absoluteValueType, for: .padding)
+        setWidth(0, type: .absoluteValueType, for: .border)
+        setWidth(0, type: .absoluteValueType, for: .margin)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func drawBackground(
+        withFrame frameRect: NSRect,
+        in controlView: NSView,
+        characterRange: NSRange,
+        layoutManager: NSLayoutManager
+    ) {
+        let scale = releaseNotesBackingScale(for: controlView)
+        let lineWidth = 1 / scale
+        let frame = releaseNotesPixelAlignedRect(frameRect, scale: scale)
+        let lineY = releaseNotesPixelAligned(frame.midY - lineWidth / 2, scale: scale)
+        ReleaseNotesAppearanceColors.resolved(for: controlView.effectiveAppearance).tableGrid.setFill()
+        NSRect(
+            x: frame.minX,
+            y: lineY,
+            width: max(lineWidth, frame.width),
+            height: lineWidth
+        ).fill()
+    }
+}
+
 /// A deliberately small native Markdown subset for release notes. The
 /// renderer builds attributed text directly, so HTML tags, javascript URLs,
 /// and scripts are displayed as ordinary text rather than interpreted.
@@ -225,6 +258,10 @@ enum ReleaseNotesMarkdownRenderer {
             }
 
             if isHorizontalRule(rawLine) {
+                appendDivider(
+                    into: output,
+                    baseAttributes: baseAttributes
+                )
                 index += 1
                 continue
             }
@@ -344,6 +381,26 @@ enum ReleaseNotesMarkdownRenderer {
                 output.append(NSAttributedString(string: "\n", attributes: attributes))
             }
         }
+    }
+
+    private static func appendDivider(
+        into output: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any]
+    ) {
+        let paragraph = paragraphStyle(
+            from: baseAttributes[.paragraphStyle] as? NSParagraphStyle ?? NSParagraphStyle.default,
+            spacing: 10
+        )
+        paragraph.minimumLineHeight = 1
+        paragraph.maximumLineHeight = 1
+        paragraph.lineSpacing = 0
+        paragraph.textBlocks = [ReleaseNotesDividerBlock()]
+
+        var attributes = baseAttributes
+        attributes[.font] = NSFont.systemFont(ofSize: 1)
+        attributes[.foregroundColor] = NSColor.clear
+        attributes[.paragraphStyle] = paragraph
+        output.append(NSAttributedString(string: "\u{00A0}\n", attributes: attributes))
     }
 
     private static func hasFollowingBlock(in lines: [String], startingAt index: Int) -> Bool {
