@@ -1244,6 +1244,7 @@ final class UpdateTests: XCTestCase {
             bodyParagraph.textBlocks.first as? ReleaseNotesTableCellBlock
         )
         XCTAssertFalse(lastCell.isHeader)
+        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesTableBottomSpacing, accuracy: 0.001)
         XCTAssertTrue(lastCell.drawsOuterRightEdge)
         XCTAssertTrue(lastCell.drawsOuterBottomEdge)
         XCTAssertFalse(lastCell.drawsInternalRightEdge)
@@ -1264,6 +1265,69 @@ final class UpdateTests: XCTestCase {
         XCTAssertNil(rendered.attributes(at: unsafeRange.location, effectiveRange: nil)[.link])
         let htmlRange = (rendered.string as NSString).range(of: "HTML link")
         XCTAssertNil(rendered.attributes(at: htmlRange.location, effectiveRange: nil)[.link])
+    }
+
+    func testReleaseNotesTableSpacingCreatesFollowingBlockGapInTextKitGeometry() throws {
+        let rendered = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 修复与体验优化
+
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+
+        ## 安装
+
+        1. 下载文件
+        """)
+        let storage = NSTextStorage(attributedString: rendered)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(
+            size: NSSize(width: 480, height: CGFloat.greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 0
+        layoutManager.addTextContainer(textContainer)
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let bodyRange = (rendered.string as NSString).range(of: "说明", options: .backwards)
+        let headingRange = (rendered.string as NSString).range(of: "安装")
+        XCTAssertNotEqual(bodyRange.location, NSNotFound)
+        XCTAssertNotEqual(headingRange.location, NSNotFound)
+
+        let bodyParagraph = try XCTUnwrap(
+            rendered.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesTableBottomSpacing, accuracy: 0.001)
+
+        let bodyGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: bodyRange,
+            actualCharacterRange: nil
+        )
+        let headingGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: headingRange,
+            actualCharacterRange: nil
+        )
+        let bodyRect = layoutManager.boundingRect(forGlyphRange: bodyGlyphRange, in: textContainer)
+        let headingRect = layoutManager.boundingRect(forGlyphRange: headingGlyphRange, in: textContainer)
+        let gap = max(bodyRect.minY, headingRect.minY) - min(bodyRect.maxY, headingRect.maxY)
+        XCTAssertGreaterThanOrEqual(
+            gap,
+            releaseNotesTableBottomSpacing - 1,
+            "expected a table-to-heading gap, body=\(bodyRect), heading=\(headingRect)"
+        )
+
+        let trailingTable = ReleaseNotesMarkdownRenderer.render(markdown: """
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+        """)
+        let trailingRange = (trailingTable.string as NSString).range(of: "说明", options: .backwards)
+        let trailingParagraph = try XCTUnwrap(
+            trailingTable.attributes(at: trailingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(trailingParagraph.paragraphSpacing, 0, accuracy: 0.001)
     }
 
     func testReleaseNotesTableGridUsesVisibleLightAndDarkColors() throws {
@@ -1296,6 +1360,95 @@ final class UpdateTests: XCTestCase {
             let expected = ReleaseNotesAppearanceColors.resolved(for: appearance)
             XCTAssertGreaterThanOrEqual(expected.tableGrid.alphaComponent, 0.30)
         }
+    }
+
+    func testReleaseNotesTableGridDrawsBottomAndRightOuterEdgesInOffscreenBitmap() throws {
+        let rendered = ReleaseNotesMarkdownRenderer.render(markdown: """
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+        """)
+        let bodyRange = (rendered.string as NSString).range(of: "说明", options: .backwards)
+        let bodyParagraph = try XCTUnwrap(
+            rendered.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        let cell = try XCTUnwrap(bodyParagraph.textBlocks.first as? ReleaseNotesTableCellBlock)
+        XCTAssertTrue(cell.drawsOuterRightEdge)
+        XCTAssertTrue(cell.drawsOuterBottomEdge)
+
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 180, height: 100))
+        view.appearance = darkAppearance
+        let scale = max(1, NSScreen.main?.backingScaleFactor ?? 2)
+        let bitmapSize = NSSize(width: 180, height: 100)
+        let pixelsWide = max(1, Int(ceil(bitmapSize.width * scale)))
+        let pixelsHigh = max(1, Int(ceil(bitmapSize.height * scale)))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+        let frame = NSRect(x: 12.25, y: 11.25, width: 120.5, height: 42.25)
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        context.cgContext.clear(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
+        context.cgContext.saveGState()
+        context.cgContext.scaleBy(x: scale, y: scale)
+        cell.drawBackground(
+            withFrame: frame,
+            in: view,
+            characterRange: bodyRange,
+            layoutManager: NSLayoutManager()
+        )
+        context.cgContext.restoreGState()
+        context.flushGraphics()
+
+        let lineWidth = 1 / scale
+        let interiorXRange = bitmapPixelRange(
+            from: frame.minX + lineWidth * 2,
+            to: frame.maxX - lineWidth * 2,
+            scale: scale,
+            limit: pixelsWide
+        )
+        let interiorYRange = bitmapYPixelRange(
+            from: frame.minY + lineWidth * 2,
+            to: frame.maxY - lineWidth * 2,
+            scale: scale,
+            pixelsHigh: pixelsHigh
+        )
+        let bottomYRange = bitmapYPixelRange(
+            from: frame.maxY - lineWidth * 1.5,
+            to: frame.maxY + lineWidth * 0.5,
+            scale: scale,
+            pixelsHigh: pixelsHigh
+        )
+        let rightXRange = bitmapPixelRange(
+            from: frame.maxX - lineWidth * 1.5,
+            to: frame.maxX + lineWidth * 0.5,
+            scale: scale,
+            limit: pixelsWide
+        )
+
+        XCTAssertTrue(
+            bitmapContainsInk(bitmap, xRange: interiorXRange, yRange: bottomYRange),
+            "expected the last table row to contain a visible bottom outer edge"
+        )
+        XCTAssertTrue(
+            bitmapContainsInk(bitmap, xRange: rightXRange, yRange: interiorYRange),
+            "expected the last table column to contain a visible right outer edge"
+        )
     }
 
     func testUpdateNotesWindowLaysOutContentOnFirstPresentation() throws {
@@ -2138,6 +2291,51 @@ final class UpdateTests: XCTestCase {
 
 private func updateTestDescendants(of view: NSView) -> [NSView] {
     view.subviews + view.subviews.flatMap(updateTestDescendants)
+}
+
+private func bitmapPixelRange(
+    from lower: CGFloat,
+    to upper: CGFloat,
+    scale: CGFloat,
+    limit: Int
+) -> ClosedRange<Int> {
+    guard limit > 0 else { return 0...0 }
+    let lowerPixel = max(0, Int(floor(lower * scale)))
+    let upperPixel = min(limit - 1, Int(ceil(upper * scale)))
+    return lowerPixel...max(lowerPixel, upperPixel)
+}
+
+private func bitmapYPixelRange(
+    from lower: CGFloat,
+    to upper: CGFloat,
+    scale: CGFloat,
+    pixelsHigh: Int
+) -> ClosedRange<Int> {
+    let bitmapHeight = CGFloat(pixelsHigh) / scale
+    return bitmapPixelRange(
+        from: bitmapHeight - upper,
+        to: bitmapHeight - lower,
+        scale: scale,
+        limit: pixelsHigh
+    )
+}
+
+private func bitmapContainsInk(
+    _ bitmap: NSBitmapImageRep,
+    xRange: ClosedRange<Int>,
+    yRange: ClosedRange<Int>
+) -> Bool {
+    for y in yRange {
+        for x in xRange {
+            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                continue
+            }
+            if color.alphaComponent > 0.05 {
+                return true
+            }
+        }
+    }
+    return false
 }
 
 private func equalHeightConstraint(in view: NSView?) -> CGFloat? {

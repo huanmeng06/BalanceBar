@@ -167,6 +167,8 @@ private func releaseNotesBackingScale(for view: NSView) -> CGFloat {
     max(1, view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
 }
 
+let releaseNotesTableBottomSpacing: CGFloat = 12
+
 struct ReleaseNotesAppearanceColors {
     let tableGrid: NSColor
 
@@ -261,7 +263,7 @@ final class ReleaseNotesTableCellBlock: NSTextTableBlock {
         }
 
         horizontal(bottom)
-        if drawsOuterTopEdge {
+        if drawsInternalBottomEdge || drawsOuterBottomEdge {
             horizontal(top - lineWidth)
         }
         vertical(right - lineWidth)
@@ -323,7 +325,12 @@ enum ReleaseNotesMarkdownRenderer {
             }
 
             if let table = tableParts(in: lines, startingAt: index) {
-                appendTable(table, into: output, baseAttributes: baseAttributes)
+                appendTable(
+                    table,
+                    into: output,
+                    baseAttributes: baseAttributes,
+                    addsFollowingBlockSpacing: hasFollowingBlock(in: lines, startingAt: table.nextIndex)
+                )
                 index = table.nextIndex
                 continue
             }
@@ -380,7 +387,8 @@ enum ReleaseNotesMarkdownRenderer {
     private static func appendTable(
         _ table: MarkdownTable,
         into output: NSMutableAttributedString,
-        baseAttributes: [NSAttributedString.Key: Any]
+        baseAttributes: [NSAttributedString.Key: Any],
+        addsFollowingBlockSpacing: Bool
     ) {
         let columnCount = max(1, table.alignments.count)
         let rowCount = max(1, table.rows.count)
@@ -413,7 +421,9 @@ enum ReleaseNotesMarkdownRenderer {
                 let sourceParagraph = baseAttributes[.paragraphStyle] as? NSParagraphStyle
                     ?? NSParagraphStyle.default
                 let paragraph = paragraphStyle(from: sourceParagraph, spacing: 4)
-                paragraph.paragraphSpacing = 0
+                paragraph.paragraphSpacing = rowIndex == rowCount - 1 && addsFollowingBlockSpacing
+                    ? releaseNotesTableBottomSpacing
+                    : 0
                 paragraph.alignment = rowIndex == 0
                     ? .center
                     : table.alignments[columnIndex]
@@ -433,6 +443,20 @@ enum ReleaseNotesMarkdownRenderer {
                 output.append(NSAttributedString(string: "\n", attributes: attributes))
             }
         }
+    }
+
+    private static func hasFollowingBlock(in lines: [String], startingAt index: Int) -> Bool {
+        guard index < lines.count else { return false }
+        for line in lines[index...] {
+            if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                continue
+            }
+            if isHorizontalRule(line) {
+                continue
+            }
+            return true
+        }
+        return false
     }
 
     private static func isHorizontalRule(_ line: String) -> Bool {
