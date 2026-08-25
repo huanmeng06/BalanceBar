@@ -1486,10 +1486,15 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
         XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
         XCTAssertTrue(scrollView.layer?.masksToBounds ?? false)
+        XCTAssertEqual(scrollView.borderType, .lineBorder)
         let materialSurface = try XCTUnwrap(window.contentView as? NSVisualEffectView)
         XCTAssertEqual(materialSurface.material, .underWindowBackground)
         XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
         XCTAssertEqual(materialSurface.state, .active)
+        XCTAssertTrue(window.styleMask.contains(.miniaturizable))
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertTrue(window.standardWindowButton(.miniaturizeButton)?.isEnabled ?? false)
+        XCTAssertFalse(window.standardWindowButton(.zoomButton)?.isEnabled ?? true)
         XCTAssertEqual(materialSurface.layer?.cornerRadius ?? 0, 16, accuracy: 0.001)
         XCTAssertEqual(materialSurface.layer?.cornerCurve, .continuous)
         let contentSurface = try XCTUnwrap(
@@ -1616,11 +1621,17 @@ final class UpdateTests: XCTestCase {
                 .first
         )
         let notesTextView = try XCTUnwrap(scrollView.documentView as? ReleaseNotesTextView)
+        notesTextView.updateTrackingAreas()
         XCTAssertFalse(notesTextView.isSelectable)
         XCTAssertFalse(notesTextView.isEditable)
         XCTAssertFalse(notesTextView.acceptsFirstResponder)
         XCTAssertNotEqual(window.firstResponder, notesTextView)
         XCTAssertEqual(notesTextView.selectedRange().length, 0)
+        XCTAssertTrue(
+            notesTextView.trackingAreas.contains {
+                $0.options.contains(.cursorUpdate) && $0.options.contains(.mouseMoved)
+            }
+        )
 
         let range = (notesTextView.string as NSString).range(of: "the release")
         XCTAssertNotEqual(range.location, NSNotFound)

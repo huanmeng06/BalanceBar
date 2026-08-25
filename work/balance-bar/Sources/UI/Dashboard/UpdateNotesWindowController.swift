@@ -4,6 +4,7 @@ final class ReleaseNotesTextView: NSTextView {
     override var acceptsFirstResponder: Bool { false }
 
     private var pressedLink: URL?
+    private var cursorTrackingArea: NSTrackingArea?
 
     func cursor(at point: NSPoint) -> NSCursor {
         linkURL(at: point) == nil ? .arrow : .pointingHand
@@ -11,33 +12,42 @@ final class ReleaseNotesTextView: NSTextView {
 
     override func resetCursorRects() {
         discardCursorRects()
-        addCursorRect(bounds, cursor: .arrow)
+    }
 
-        guard let textContainer,
-              let layoutManager,
-              let textStorage,
-              textStorage.length > 0 else {
-            return
+    override func updateTrackingAreas() {
+        if let cursorTrackingArea {
+            removeTrackingArea(cursorTrackingArea)
         }
+        super.updateTrackingAreas()
 
-        let origin = textContainerOrigin
-        textStorage.enumerateAttribute(
-            .link,
-            in: NSRange(location: 0, length: textStorage.length),
-            options: []
-        ) { value, characterRange, _ in
-            guard value is URL else { return }
-            let glyphRange = layoutManager.glyphRange(
-                forCharacterRange: characterRange,
-                actualCharacterRange: nil
-            )
-            guard glyphRange.length > 0 else { return }
-            let rect = layoutManager
-                .boundingRect(forGlyphRange: glyphRange, in: textContainer)
-                .offsetBy(dx: origin.x, dy: origin.y)
-            guard !rect.isEmpty else { return }
-            addCursorRect(rect, cursor: .pointingHand)
-        }
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .cursorUpdate, .mouseEnteredAndExited, .mouseMoved, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        cursorTrackingArea = trackingArea
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        setCursor(for: event)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        setCursor(for: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        setCursor(for: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
+    private func setCursor(for event: NSEvent) {
+        cursor(at: convert(event.locationInWindow, from: nil)).set()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -104,7 +114,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -117,6 +127,8 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         window.isOpaque = false
         window.hasShadow = true
         window.appearance = nil
+        window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
         super.init(window: window)
         window.delegate = self
         configureView()
