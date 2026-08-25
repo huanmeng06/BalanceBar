@@ -887,8 +887,14 @@ final class DashboardMenuBarPage {
         amountOffsetSlider?.doubleValue = amountOffsetY
         iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
         amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
-        if fontSizePresetControl?.indexOfSelectedItem != fontSizePreset.segmentIndex {
-            fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        if let fontSizePresetControl {
+            if fontSizePresetControl.indexOfSelectedItem != fontSizePreset.segmentIndex {
+                fontSizePresetControl.selectItem(at: fontSizePreset.segmentIndex)
+            }
+            updateFontSizePresetMenuItemStates(
+                fontSizePresetControl,
+                selectedIndex: fontSizePreset.segmentIndex
+            )
         }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
@@ -1283,6 +1289,16 @@ final class DashboardMenuBarPage {
         let preset = preferences.menuBarFontSizePreset
         control.selectItem(at: preset.segmentIndex)
         control.synchronizeTitleAndSelectedItem()
+        updateFontSizePresetMenuItemStates(control, selectedIndex: preset.segmentIndex)
+    }
+
+    private func updateFontSizePresetMenuItemStates(
+        _ control: NSPopUpButton,
+        selectedIndex: Int
+    ) {
+        for (index, item) in control.itemArray.enumerated() {
+            item.state = index == selectedIndex ? .on : .off
+        }
     }
 
     private func removeFontSizePresetTrackingObserver() {
