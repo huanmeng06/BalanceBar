@@ -1079,41 +1079,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(arguments.last, applicationURL.path)
     }
 
-    func testReleaseNotesManifestUsesLocaleFallbacksThenReleaseBodyAndEmptyState() throws {
-        let root = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let releaseDirectory = root.appendingPathComponent("1.1.22", isDirectory: true)
-        try FileManager.default.createDirectory(at: releaseDirectory, withIntermediateDirectories: true)
-        try "Taiwan notes".write(
-            to: releaseDirectory.appendingPathComponent("zh-Hant-TW.md"),
-            atomically: true,
-            encoding: .utf8
-        )
-        try "Traditional Chinese base notes".write(
-            to: releaseDirectory.appendingPathComponent("zh-Hant.md"),
-            atomically: true,
-            encoding: .utf8
-        )
-        try "English notes".write(
-            to: releaseDirectory.appendingPathComponent("en.md"),
-            atomically: true,
-            encoding: .utf8
-        )
-        let manifest: [String: Any] = [
-            "schemaVersion": 1,
-            "releases": [
-                "1.1.22": [
-                    "files": [
-                        "zh-Hant-TW": "1.1.22/zh-Hant-TW.md",
-                        "zh-Hant": "1.1.22/zh-Hant.md",
-                        "en": "1.1.22/en.md"
-                    ]
-                ]
-            ]
-        ]
-        let manifestData = try JSONSerialization.data(withJSONObject: manifest)
-        try manifestData.write(to: root.appendingPathComponent("manifest.json"))
-
+    func testReleaseNotesUseOnlyGitHubBodyAndShowUnavailableWhenBodyIsMissing() {
         let release = GitHubRelease(
             tagName: "v1.1.22",
             draft: false,
@@ -1122,29 +1088,25 @@ final class UpdateTests: XCTestCase {
             body: "GitHub original body",
             htmlURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.1.22")
         )
-        let store = ReleaseNotesStore(releaseNotesRoot: root)
-        let version = try XCTUnwrap(AppSemanticVersion("1.1.22"))
+        let store = ReleaseNotesStore()
 
         XCTAssertEqual(
-            store.resolve(version: version, language: .traditionalChineseTaiwan, release: release),
-            ReleaseNotesResolution(markdown: "Taiwan notes", source: .bundled(locale: "zh-Hant-TW"))
-        )
-        XCTAssertEqual(
-            store.resolve(version: version, language: .traditionalChineseHongKong, release: release),
-            ReleaseNotesResolution(markdown: "Traditional Chinese base notes", source: .bundled(locale: "zh-Hant"))
-        )
-        XCTAssertEqual(
-            store.resolve(version: version, language: .german, release: release),
-            ReleaseNotesResolution(markdown: "English notes", source: .bundled(locale: "en"))
-        )
-
-        let missingVersion = try XCTUnwrap(AppSemanticVersion("9.9.9"))
-        XCTAssertEqual(
-            store.resolve(version: missingVersion, language: .english, release: release),
+            store.resolve(release: release),
             ReleaseNotesResolution(markdown: "GitHub original body", source: .githubRelease)
         )
+
         XCTAssertEqual(
-            store.resolve(version: missingVersion, language: .english, release: GitHubRelease(
+            store.resolve(release: GitHubRelease(
+                tagName: "v9.9.9",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "  \n  "
+            )),
+            ReleaseNotesResolution(markdown: nil, source: .unavailable)
+        )
+        XCTAssertEqual(
+            store.resolve(release: GitHubRelease(
                 tagName: "v9.9.9",
                 draft: false,
                 prerelease: false,

@@ -46,7 +46,6 @@ jobs:
           (
             ./work/balance-bar/balance-query-probe.sh
             ./work/balance-bar/balance-network-error-localization-probe.sh
-            ./work/balance-bar/release-notes-resource-probe.sh
           ) >"$probes_log" 2>&1 &
           probes_pid=$!
 
@@ -75,15 +74,6 @@ jobs:
             "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
             check_status=1
           fi
-          if ! ./work/balance-bar/release-notes-resource-probe.sh \
-            work/balance-bar/build/BalanceBar.app; then
-            check_status=1
-          fi
-          if ! ./work/balance-bar/release-notes-resource-probe.sh \
-            "$RUNNER_TEMP/BalanceBar-DerivedData/Build/Products/Debug/BalanceBar.app"; then
-            check_status=1
-          fi
-
           cat "$cli_log"
           cat "$probes_log"
           cat "$xcode_log"

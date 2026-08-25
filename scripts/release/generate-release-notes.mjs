@@ -16,10 +16,10 @@ export const RELEASE_NOTES_SCHEMA = {
     item: {
       type: "object",
       additionalProperties: false,
-      required: ["title", "description", "sources"],
+      required: ["zhHans", "en", "sources"],
       properties: {
-        title: { type: "string", minLength: 1, maxLength: 120 },
-        description: { type: "string", minLength: 1, maxLength: 500 },
+        zhHans: { $ref: "#/$defs/localizedText" },
+        en: { $ref: "#/$defs/localizedText" },
         sources: {
           type: "array",
           minItems: 1,
@@ -33,6 +33,15 @@ export const RELEASE_NOTES_SCHEMA = {
             },
           },
         },
+      },
+    },
+    localizedText: {
+      type: "object",
+      additionalProperties: false,
+      required: ["title", "description"],
+      properties: {
+        title: { type: "string", minLength: 1, maxLength: 120 },
+        description: { type: "string", minLength: 1, maxLength: 500 },
       },
     },
   },
@@ -56,7 +65,7 @@ const RELEASE_NOTES_INSTRUCTIONS = [
   "Classify every merged pull request exactly once: product additions belong in features; fixes, refinements, performance work, tests, and maintenance belong in fixes.",
   "When a category has no actual changes, return an empty array for that category. Never create a placeholder item such as 暂无.",
   "Every output item must cite at least one source, and every merged pull request must be cited by at least one output item.",
-  "Write concise factual Chinese text. Do not invent behavior, test results, issue numbers, or links.",
+  "For every item, write the same change in concise factual Simplified Chinese under zhHans and in English under en. Keep the features/fixes order and shared sources identical between the two languages. Do not invent behavior, test results, issue numbers, or links.",
   "Do not produce a 文档 section, installation section, headings, Markdown tables, pipes, or line breaks inside title or description; the renderer owns that format.",
 ].join("\n");
 
@@ -65,8 +74,14 @@ function buildDeepSeekJsonExample(input) {
   return {
     features: [
       {
-        title: "功能标题",
-        description: "用一句中文说明功能变化。",
+        zhHans: {
+          title: "功能标题",
+          description: "用一句中文说明功能变化。",
+        },
+        en: {
+          title: "Feature title",
+          description: "Describe the change in one concise sentence.",
+        },
         sources: [{ kind: "pr", number: firstPullRequestNumber }],
       },
     ],
@@ -117,7 +132,7 @@ export function buildDeepSeekRequest(input, model) {
     RELEASE_NOTES_INSTRUCTIONS,
     "Return only one valid JSON object; this response is json, not Markdown. Do not use Markdown fences.",
     "The JSON object must contain exactly two top-level arrays: features and fixes.",
-    "Each item must contain title, description, and a non-empty sources array.",
+    "Each item must contain zhHans and en objects, each with title and description, plus a non-empty sources array.",
     "Each source must be an object with kind set to pr or issue and a real number from the payload.",
     `Use this JSON shape as an example:\n${JSON.stringify(buildDeepSeekJsonExample(input), null, 2)}`,
   ].join("\n");
