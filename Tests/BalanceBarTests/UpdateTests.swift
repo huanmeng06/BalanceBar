@@ -1244,7 +1244,7 @@ final class UpdateTests: XCTestCase {
             bodyParagraph.textBlocks.first as? ReleaseNotesTableCellBlock
         )
         XCTAssertFalse(lastCell.isHeader)
-        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesTableBottomSpacing, accuracy: 0.001)
+        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
         XCTAssertTrue(lastCell.drawsOuterRightEdge)
         XCTAssertTrue(lastCell.drawsOuterBottomEdge)
         XCTAssertFalse(lastCell.drawsInternalRightEdge)
@@ -1256,6 +1256,56 @@ final class UpdateTests: XCTestCase {
                 as? NSParagraphStyle
         )
         XCTAssertEqual(secondHeadingParagraph.paragraphSpacing, 10, accuracy: 0.001)
+
+        let headingSpacing = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 安装
+
+        1. 下载文件
+        2. 打开文件
+
+        ## 文档
+
+        说明文字
+        """)
+        let lastListRange = (headingSpacing.string as NSString).range(of: "2. 打开文件")
+        let lastListParagraph = try XCTUnwrap(
+            headingSpacing.attributes(at: lastListRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(lastListParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
+
+        let precedingParagraphRange = (headingSpacing.string as NSString).range(of: "说明文字")
+        let precedingParagraph = try XCTUnwrap(
+            headingSpacing.attributes(at: precedingParagraphRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(precedingParagraph.paragraphSpacing, 2, accuracy: 0.001)
+
+        let normalBeforeHeading = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 安装
+
+        普通说明
+
+        ## 文档
+        """)
+        let normalRange = (normalBeforeHeading.string as NSString).range(of: "普通说明")
+        let normalParagraph = try XCTUnwrap(
+            normalBeforeHeading.attributes(at: normalRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(normalParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
+
+        let adjacentHeadings = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 第一节
+
+        ## 第二节
+        """)
+        let firstHeadingRange = (adjacentHeadings.string as NSString).range(of: "第一节")
+        let firstHeadingParagraph = try XCTUnwrap(
+            adjacentHeadings.attributes(at: firstHeadingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(firstHeadingParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
 
         let safeRange = (rendered.string as NSString).range(of: "Safe")
         let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
@@ -1300,7 +1350,7 @@ final class UpdateTests: XCTestCase {
             rendered.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
                 as? NSParagraphStyle
         )
-        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesTableBottomSpacing, accuracy: 0.001)
+        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
 
         let bodyGlyphRange = layoutManager.glyphRange(
             forCharacterRange: bodyRange,

@@ -167,7 +167,7 @@ private func releaseNotesBackingScale(for view: NSView) -> CGFloat {
     max(1, view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
 }
 
-let releaseNotesTableBottomSpacing: CGFloat = 20
+let releaseNotesBlockSpacing: CGFloat = 20
 
 struct ReleaseNotesAppearanceColors {
     let tableGrid: NSColor
@@ -314,10 +314,16 @@ enum ReleaseNotesMarkdownRenderer {
             }
 
             if inCodeFence {
+                let closesCodeFence = index + 1 < lines.count &&
+                    lines[index + 1].trimmingCharacters(in: .whitespaces).hasPrefix("```")
+                let codeSpacing = closesCodeFence && headingFollows(
+                    in: lines,
+                    startingAt: index + 2
+                ) ? releaseNotesBlockSpacing : 4
                 appendLine(
                     rawLine,
                     into: output,
-                    attributes: codeAttributes(paragraph: baseParagraph),
+                    attributes: codeAttributes(paragraph: baseParagraph, spacing: codeSpacing),
                     addNewline: index < lines.count - 1
                 )
                 index += 1
@@ -346,7 +352,12 @@ enum ReleaseNotesMarkdownRenderer {
             }
 
             if let heading = headingParts(rawLine) {
-                let paragraph = paragraphStyle(from: baseParagraph, spacing: 10)
+                let paragraph = paragraphStyle(
+                    from: baseParagraph,
+                    spacing: headingFollows(in: lines, startingAt: index + 1)
+                        ? releaseNotesBlockSpacing
+                        : 10
+                )
                 let headingFont = NSFont.systemFont(
                     ofSize: max(15, 23 - CGFloat(heading.level * 2)),
                     weight: .semibold
@@ -368,11 +379,23 @@ enum ReleaseNotesMarkdownRenderer {
             let content = list?.content ?? rawLine.trimmingCharacters(in: .whitespaces)
             var attributes = baseAttributes
             if let list {
-                let paragraph = paragraphStyle(from: baseParagraph, spacing: 5)
+                let nextBlockLine = nextBlockLine(in: lines, startingAt: index + 1)
+                let closesListBeforeBlock = nextBlockLine.map { listParts($0) == nil } ?? false
+                let paragraph = paragraphStyle(
+                    from: baseParagraph,
+                    spacing: closesListBeforeBlock ? releaseNotesBlockSpacing : 5
+                )
                 paragraph.firstLineHeadIndent = 0
                 paragraph.headIndent = 20
                 attributes[.paragraphStyle] = paragraph
                 appendInline("\(list.marker) ", into: output, attributes: attributes)
+            } else {
+                attributes[.paragraphStyle] = paragraphStyle(
+                    from: baseParagraph,
+                    spacing: headingFollows(in: lines, startingAt: index + 1)
+                        ? releaseNotesBlockSpacing
+                        : 2
+                )
             }
             appendInline(content, into: output, attributes: attributes)
             if index < lines.count - 1 {
@@ -422,7 +445,7 @@ enum ReleaseNotesMarkdownRenderer {
                     ?? NSParagraphStyle.default
                 let paragraph = paragraphStyle(from: sourceParagraph, spacing: 4)
                 paragraph.paragraphSpacing = rowIndex == rowCount - 1 && addsFollowingBlockSpacing
-                    ? releaseNotesTableBottomSpacing
+                    ? releaseNotesBlockSpacing
                     : 0
                 paragraph.alignment = rowIndex == 0
                     ? .center
@@ -446,7 +469,16 @@ enum ReleaseNotesMarkdownRenderer {
     }
 
     private static func hasFollowingBlock(in lines: [String], startingAt index: Int) -> Bool {
-        guard index < lines.count else { return false }
+        nextBlockLine(in: lines, startingAt: index) != nil
+    }
+
+    private static func headingFollows(in lines: [String], startingAt index: Int) -> Bool {
+        guard let nextLine = nextBlockLine(in: lines, startingAt: index) else { return false }
+        return headingParts(nextLine) != nil
+    }
+
+    private static func nextBlockLine(in lines: [String], startingAt index: Int) -> String? {
+        guard index < lines.count else { return nil }
         for line in lines[index...] {
             if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 continue
@@ -454,9 +486,9 @@ enum ReleaseNotesMarkdownRenderer {
             if isHorizontalRule(line) {
                 continue
             }
-            return true
+            return line
         }
-        return false
+        return nil
     }
 
     private static func isHorizontalRule(_ line: String) -> Bool {
@@ -711,10 +743,11 @@ enum ReleaseNotesMarkdownRenderer {
     }
 
     private static func codeAttributes(
-        paragraph: NSParagraphStyle
+        paragraph: NSParagraphStyle,
+        spacing: CGFloat = 4
     ) -> [NSAttributedString.Key: Any] {
         let codeParagraph = paragraph.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
-        codeParagraph.paragraphSpacing = 4
+        codeParagraph.paragraphSpacing = spacing
         return [
             .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
             .foregroundColor: NSColor.labelColor,
