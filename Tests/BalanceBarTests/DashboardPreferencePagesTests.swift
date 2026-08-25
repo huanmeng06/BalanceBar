@@ -1588,11 +1588,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         preferences.menuBarFontSizePreset = .medium
         let controller = DashboardMenuBarPage()
         let relay = DashboardPreferencePageRelay()
-        relay.onOffsetValue = { identifier, value in
-            guard identifier == AppPreferences.menuBarFontSizePresetKey,
-                  let preset = MenuBarFontSizePreset(segmentIndex: Int(value.rounded())) else {
-                return
-            }
+        relay.onMenuBarFontSizePreset = { preset in
             preferences.menuBarFontSizePreset = preset
             controller.refresh(
                 snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
@@ -1620,8 +1616,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         })
         XCTAssertEqual(fontPresetWidthConstraint.constant, DashboardMenuBarPage.fontSizePresetWidth, accuracy: 0.001)
         XCTAssertEqual(
-            (fontPresetControl.selectedItem?.representedObject as? NSNumber)?.intValue,
-            MenuBarFontSizePreset.medium.segmentIndex
+            fontPresetControl.selectedItem?.representedObject as? String,
+            MenuBarFontSizePreset.medium.rawValue
         )
         XCTAssertEqual(
             fontPresetControl.numberOfItems,
@@ -1634,6 +1630,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             $0.identifier?.rawValue != AppPreferences.menuBarPrimaryFontSizeKey
                 && $0.identifier?.rawValue != AppPreferences.menuBarSecondaryFontSizeKey
         })
+        XCTAssertEqual(
+            fontPresetControl.action,
+            #selector(DashboardPreferencePageRelay.menuBarFontSizePreset(_:))
+        )
         XCTAssertTrue(fontPresetControl.toolTip?.contains("11.7/9") == true)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
@@ -1663,7 +1663,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         for preset in MenuBarFontSizePreset.allCases {
             fontPresetControl.selectItem(at: preset.segmentIndex)
-            relay.selectMenuBarFontSizePreset(fontPresetControl)
+            relay.menuBarFontSizePreset(fontPresetControl)
 
             XCTAssertEqual(preferences.menuBarFontSizePreset, preset)
             XCTAssertEqual(preferences.menuBarFontSize, preset.primarySize, accuracy: 0.001)
@@ -1677,6 +1677,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(previewPrimary.font?.pointSize ?? .nan, preset.primarySize, accuracy: 0.001)
             XCTAssertEqual(previewSecondary.font?.pointSize ?? .nan, preset.secondarySize, accuracy: 0.001)
         }
+
+        preferences.menuBarFontSizePreset = .small
+        fontPresetControl.selectItem(at: MenuBarFontSizePreset.medium.segmentIndex)
+        XCTAssertEqual(fontPresetControl.indexOfSelectedItem, MenuBarFontSizePreset.medium.segmentIndex)
+        NotificationCenter.default.post(
+            name: NSMenu.didEndTrackingNotification,
+            object: fontPresetControl.menu
+        )
+        XCTAssertEqual(fontPresetControl.indexOfSelectedItem, MenuBarFontSizePreset.small.segmentIndex)
+        XCTAssertEqual(fontPresetControl.title, "Small")
 
         let restoredPreferences = AppPreferences(defaults: defaults)
         XCTAssertEqual(restoredPreferences.menuBarFontSizePreset, .small)

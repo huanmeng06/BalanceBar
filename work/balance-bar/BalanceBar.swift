@@ -208,6 +208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 self?.handleDashboardOffsetReset(identifier: identifier)
             },
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
+            onMenuBarFontSizePreset: { [weak self] preset in
+                self?.applyMenuBarFontSizePreset(preset)
+            },
             onUpdateChannelChanged: { [weak self] channel in
                 self?.handleUpdateChannelChanged(channel)
             },
@@ -952,12 +955,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             guard let preset = MenuBarFontSizePreset(segmentIndex: Int(value.rounded())) else {
                 return
             }
-            guard preferences.menuBarFontSizePreset != preset else {
-                return
-            }
-            preferences.menuBarFontSizePreset = preset
-            statusItemController.updateFontSize(CGFloat(preset.primarySize))
-            refreshDashboardMenuBarPage()
+            applyMenuBarFontSizePreset(preset)
         case AppPreferences.menuBarFontSizeKey:
             // Keep the numeric route for migration-era callers. The current
             // settings page sends the discrete preset key above.
@@ -980,6 +978,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         default:
             return
         }
+    }
+
+    private func applyMenuBarFontSizePreset(_ preset: MenuBarFontSizePreset) {
+        guard preferences.menuBarFontSizePreset != preset else { return }
+        preferences.menuBarFontSizePreset = preset
+        statusItemController.updateFontSize(CGFloat(preset.primarySize))
+        refreshDashboardMenuBarPage()
     }
 
     private func handleDashboardOffsetValueEnded(identifier: String, value: Double) {

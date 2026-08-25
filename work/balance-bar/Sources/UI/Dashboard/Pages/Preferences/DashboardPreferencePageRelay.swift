@@ -6,6 +6,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onToggle: ((String, Bool) -> Void)?
     var onInterval: ((String, TimeInterval) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
+    var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
     var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
     var onOpenSystemMenuBarSettings: (() -> Void)?
@@ -36,6 +37,12 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let language = AppLanguage(rawValue: rawValue) else { return }
         onLanguage?(language)
+    }
+
+    @objc func menuBarFontSizePreset(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let preset = MenuBarFontSizePreset(rawValue: rawValue) else { return }
+        onMenuBarFontSizePreset?(preset)
     }
 
     @objc func updateChannel(_ sender: NSPopUpButton) {
@@ -89,15 +96,6 @@ final class DashboardPreferencePageRelay: NSObject {
     @objc func adjustOffsetValue(_ sender: NSSlider) {
         guard let identifier = sender.identifier?.rawValue else { return }
         onOffsetValue?(identifier, sender.doubleValue)
-    }
-
-    @objc func selectMenuBarFontSizePreset(_ sender: NSPopUpButton) {
-        guard sender.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey,
-              let segmentIndex = (sender.selectedItem?.representedObject as? NSNumber)?.intValue,
-              let preset = MenuBarFontSizePreset(segmentIndex: segmentIndex) else {
-            return
-        }
-        onOffsetValue?(AppPreferences.menuBarFontSizePresetKey, Double(preset.segmentIndex))
     }
 
     @objc func finishOffsetValue(_ sender: NSSlider) {
