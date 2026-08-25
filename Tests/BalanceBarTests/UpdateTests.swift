@@ -1653,6 +1653,12 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(
             notesTextView.cursor(at: NSPoint(x: linkRect.midX, y: linkRect.midY)) === NSCursor.pointingHand
         )
+        let trailingLinkPoint = NSPoint(
+            x: min(linkRect.maxX + 24, notesTextView.bounds.maxX - 2),
+            y: linkRect.midY
+        )
+        XCTAssertGreaterThan(trailingLinkPoint.x, linkRect.maxX)
+        XCTAssertTrue(notesTextView.cursor(at: trailingLinkPoint) === NSCursor.arrow)
 
         let headingRange = (textStorage.string as NSString).range(of: "Readable")
         let headingGlyphRange = layoutManager.glyphRange(

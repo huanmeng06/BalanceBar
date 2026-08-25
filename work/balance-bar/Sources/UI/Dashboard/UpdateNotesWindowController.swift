@@ -79,6 +79,18 @@ final class ReleaseNotesTextView: NSTextView {
             x: pointInView.x - textContainerOrigin.x,
             y: pointInView.y - textContainerOrigin.y
         )
+        var fractionOfDistanceThroughGlyph: CGFloat = 0
+        let glyphIndex = layoutManager.glyphIndex(
+            for: pointInContainer,
+            in: textContainer,
+            fractionOfDistanceThroughGlyph: &fractionOfDistanceThroughGlyph
+        )
+        guard glyphIndex < layoutManager.numberOfGlyphs else { return nil }
+        let glyphRect = layoutManager.boundingRect(
+            forGlyphRange: NSRange(location: glyphIndex, length: 1),
+            in: textContainer
+        )
+        guard !glyphRect.isEmpty, glyphRect.contains(pointInContainer) else { return nil }
         let characterIndex = layoutManager.characterIndex(
             for: pointInContainer,
             in: textContainer,
