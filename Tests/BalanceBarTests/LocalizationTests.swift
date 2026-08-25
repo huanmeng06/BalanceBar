@@ -249,10 +249,46 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .french), "Suivre le système")
     }
 
+    func testUpdateVersionSubtitleKeepsExistingTwoPlaceholderContract() {
+        let key = LocalizationKey.keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue
+        for language in allLanguages {
+            let rendered = tr(
+                key,
+                arguments: ["1.0.6", "1.0.7"],
+                language: language
+            )
+            XCTAssertTrue(rendered.contains("1.0.6"), "missing current version in \(language)")
+            XCTAssertTrue(rendered.contains("1.0.7"), "missing target version in \(language)")
+            XCTAssertFalse(rendered.contains("%1$@"), "unrendered first placeholder in \(language)")
+            XCTAssertFalse(rendered.contains("%2$@"), "unrendered second placeholder in \(language)")
+            XCTAssertFalse(rendered.hasPrefix("⟦"), "missing existing update subtitle key in \(language)")
+        }
+    }
+
+    func testIgnoreUpdateCopyExistsInEverySupportedLanguage() {
+        let key = LocalizationKey.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion
+        let expected: [AppLanguage: String] = [
+            .simplifiedChinese: "忽略此版本",
+            .traditionalChineseTaiwan: "忽略此版本",
+            .traditionalChineseHongKong: "忽略此版本",
+            .japanese: "このバージョンを無視",
+            .english: "Ignore This Version",
+            .korean: "이 버전 무시",
+            .spanish: "Ignorar esta versión",
+            .german: "Diese Version ignorieren",
+            .french: "Ignorer cette version"
+        ]
+
+        for language in allLanguages {
+            XCTAssertEqual(tr(key, language: language), expected[language])
+            XCTAssertFalse(tr(key, language: language).hasPrefix("⟦"))
+        }
+    }
+
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 361)
+        XCTAssertEqual(expectedKeys.count, 362)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(

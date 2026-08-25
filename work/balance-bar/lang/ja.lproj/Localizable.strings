@@ -178,6 +178,7 @@
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "アップデートを確認";
 "dashboard.general.and.refresh.pages.new_version_available_value_value" = "新しいバージョンがあります：%1$@ -> %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "ダウンロードしてインストール";
+"dashboard.general.and.refresh.pages.ignore_this_version" = "このバージョンを無視";
 "dashboard.general.and.refresh.pages.view_release_notes" = "更新内容を見る";
 "dashboard.general.and.refresh.pages.release_notes" = "更新内容";
 "dashboard.general.and.refresh.pages.release_notes.later" = "後で";

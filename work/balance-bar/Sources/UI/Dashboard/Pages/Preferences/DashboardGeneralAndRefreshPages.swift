@@ -17,6 +17,7 @@ struct DashboardUpdatePresentation: Equatable {
     let buttonEnabled: Bool
     let performsInstall: Bool
     let showsReleaseNotesButton: Bool
+    let showsUpdateBadge: Bool
 
     static func make(for state: UpdateCheckState, language: AppLanguage = .selected) -> DashboardUpdatePresentation {
         switch state {
@@ -26,7 +27,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates, language: language),
                 buttonEnabled: true,
                 performsInstall: false,
-                showsReleaseNotesButton: false
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
             )
         case .checking:
             return DashboardUpdatePresentation(
@@ -34,7 +36,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesChecking, language: language),
                 buttonEnabled: false,
                 performsInstall: false,
-                showsReleaseNotesButton: false
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
             )
         case .latest:
             return DashboardUpdatePresentation(
@@ -42,7 +45,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates2, language: language),
                 buttonEnabled: true,
                 performsInstall: false,
-                showsReleaseNotesButton: false
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
             )
         case .available(let current, let latest):
             return DashboardUpdatePresentation(
@@ -50,7 +54,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language),
                 buttonEnabled: true,
                 performsInstall: true,
-                showsReleaseNotesButton: true
+                showsReleaseNotesButton: true,
+                showsUpdateBadge: true
             )
         case .downloading(_, _, let progress):
             return DashboardUpdatePresentation(
@@ -58,7 +63,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadingValue, arguments: [String(describing: progress)], language: language),
                 buttonEnabled: false,
                 performsInstall: false,
-                showsReleaseNotesButton: false
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
             )
         case .installing(_, _, let progress):
             return DashboardUpdatePresentation(
@@ -66,7 +72,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesInstallingValue, arguments: [String(describing: progress)], language: language),
                 buttonEnabled: false,
                 performsInstall: false,
-                showsReleaseNotesButton: false
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
             )
         case .restarting:
             return DashboardUpdatePresentation(
@@ -74,7 +81,8 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRestarting, language: language),
                 buttonEnabled: false,
                 performsInstall: false,
-                showsReleaseNotesButton: false
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
             )
         case .failed(let failure):
             let subtitle: String
@@ -95,9 +103,68 @@ struct DashboardUpdatePresentation: Equatable {
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRetry, language: language),
                 buttonEnabled: true,
                 performsInstall: false,
-                showsReleaseNotesButton: false
+                showsReleaseNotesButton: false,
+                showsUpdateBadge: false
             )
         }
+    }
+}
+
+/// Keeps the existing update buttons side by side at normal widths and stacks
+/// those same buttons only when the settings row cannot fit them. The buttons
+/// themselves retain their existing rounded style, targets, and dimensions.
+final class DashboardUpdateControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
+    private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
+
+    func updateAvailableRowWidth(_ width: CGFloat) {
+        let normalizedWidth = max(0, width)
+        guard abs(normalizedWidth - availableRowWidth) > 0.5 else { return }
+        availableRowWidth = normalizedWidth
+        updateOrientationIfNeeded()
+    }
+
+    private var horizontalFittingWidth: CGFloat {
+        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        let buttonWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
+            max(total, view.fittingSize.width)
+        }
+        let totalWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
+            total + view.fittingSize.width
+        }
+        return max(buttonWidth, totalWidth + max(0, CGFloat(visibleButtons.count - 1)) * spacing) + 1
+    }
+
+    override func layout() {
+        updateOrientationIfNeeded()
+        super.layout()
+    }
+
+    private func updateOrientationIfNeeded() {
+        let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < horizontalFittingWidth
+        let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
+        if orientation != desiredOrientation {
+            orientation = desiredOrientation
+            alignment = wantsVertical ? .trailing : .centerY
+            invalidateIntrinsicContentSize()
+            superview?.needsLayout = true
+        }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        guard !visibleButtons.isEmpty else { return .zero }
+        if orientation == .vertical {
+            return NSSize(
+                width: visibleButtons.map { $0.fittingSize.width }.max() ?? 0,
+                height: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.height }
+                    + max(0, CGFloat(visibleButtons.count - 1)) * spacing
+            )
+        }
+        return NSSize(
+            width: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.width }
+                + max(0, CGFloat(visibleButtons.count - 1)) * spacing,
+            height: visibleButtons.map { $0.fittingSize.height }.max() ?? 0
+        )
     }
 }
 
@@ -111,7 +178,9 @@ final class DashboardGeneralPage {
 
     private var updateSubtitleLabel: NSTextField?
     private var updateButton: NSButton?
+    private var updateIgnoreButton: NSButton?
     private var updateNotesButton: NSButton?
+    private var updateBadge: NSView?
 
     func make(_ input: Input) -> NSView {
         let openButton = NSButton(
@@ -214,6 +283,8 @@ final class DashboardGeneralPage {
             action: #selector(DashboardPreferencePageRelay.language(_:))
         )
         let updatePresentation = DashboardUpdatePresentation.make(for: input.updateState)
+        let updateBadge = DashboardUpdateBadgeView()
+        updateBadge.isHidden = !updatePresentation.showsUpdateBadge
         let updateSubtitle = NSTextField(wrappingLabelWithString: updatePresentation.subtitle)
         updateSubtitle.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesSubtitle")
         let updateButton = NSButton(
@@ -224,6 +295,14 @@ final class DashboardGeneralPage {
         updateButton.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesButton")
         updateButton.bezelStyle = .rounded
         apply(updatePresentation, to: updateButton, subtitle: updateSubtitle)
+        let updateIgnoreButton = NSButton(
+            title: tr(.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.ignoreUpdate(_:))
+        )
+        updateIgnoreButton.identifier = NSUserInterfaceItemIdentifier("ignoreUpdateButton")
+        updateIgnoreButton.bezelStyle = .rounded
+        apply(updatePresentation, to: updateIgnoreButton)
         let updateNotesButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesViewReleaseNotes),
             target: input.relay,
@@ -250,13 +329,17 @@ final class DashboardGeneralPage {
             subtitle: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription),
             control: updateChannelPopup
         )
-        let updateControls = NSStackView(views: [updateNotesButton, updateButton])
+        let updateControls = DashboardUpdateControlsStackView(views: [updateIgnoreButton, updateNotesButton, updateButton])
         updateControls.orientation = .horizontal
         updateControls.alignment = .centerY
         updateControls.spacing = 8
+        updateControls.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        updateControls.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.updateSubtitleLabel = updateSubtitle
         self.updateButton = updateButton
+        self.updateIgnoreButton = updateIgnoreButton
         self.updateNotesButton = updateNotesButton
+        self.updateBadge = updateBadge
 
         let app = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesApplication), rows: [
             DashboardSettingsComponents.makeSettingsRow(
@@ -269,7 +352,9 @@ final class DashboardGeneralPage {
                 tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates3),
                 subtitle: updatePresentation.subtitle,
                 subtitleLabel: updateSubtitle,
-                control: updateControls
+                titleAccessory: updateBadge,
+                control: updateControls,
+                controlWidthConstrainedToRow: true
             )
         ])
         return DashboardSettingsComponents.makeSettingsPage([system, refreshing, app])
@@ -279,7 +364,9 @@ final class DashboardGeneralPage {
         let presentation = DashboardUpdatePresentation.make(for: updateState)
         guard let updateSubtitleLabel, let updateButton else { return }
         apply(presentation, to: updateButton, subtitle: updateSubtitleLabel)
+        apply(presentation, to: updateIgnoreButton)
         apply(presentation, to: updateNotesButton)
+        updateBadge?.isHidden = !presentation.showsUpdateBadge
     }
 
     private func apply(

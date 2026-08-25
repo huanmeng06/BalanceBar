@@ -1,5 +1,9 @@
 import AppKit
 
+protocol DashboardSettingsRowControlLayout: AnyObject {
+    func updateAvailableRowWidth(_ width: CGFloat)
+}
+
 private final class DashboardSettingsRowView: NSView {
     let minimumHeight: CGFloat
     let verticalPadding: CGFloat
@@ -38,6 +42,9 @@ private final class DashboardSettingsRowView: NSView {
     }
 
     override func layout() {
+        if let adaptiveControl = controlView as? DashboardSettingsRowControlLayout {
+            adaptiveControl.updateAvailableRowWidth(max(0, bounds.width - 40))
+        }
         super.layout()
         let currentWidth = bounds.width
         let currentHeight = preferredRowHeight
@@ -603,9 +610,11 @@ enum DashboardSettingsComponents {
         subtitle: String? = nil,
         subtitleContent: LocalizedSubtitle? = nil,
         subtitleLabel: NSTextField? = nil,
+        titleAccessory: NSView? = nil,
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
-        verticalPadding: CGFloat = 11
+        verticalPadding: CGFloat = 11,
+        controlWidthConstrainedToRow: Bool = false
     ) -> NSView {
         let row = DashboardSettingsRowView(
             minimumHeight: minimumHeight,
@@ -635,7 +644,19 @@ enum DashboardSettingsComponents {
         label.cell?.isScrollable = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let labels = NSStackView(views: [label])
+        let titleView: NSView
+        if let titleAccessory {
+            let titleStack = NSStackView(views: [label, titleAccessory])
+            titleStack.orientation = .horizontal
+            titleStack.alignment = .centerY
+            titleStack.spacing = 6
+            titleStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            titleStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            titleView = titleStack
+        } else {
+            titleView = label
+        }
+        let labels = NSStackView(views: [titleView])
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 2
@@ -698,6 +719,11 @@ enum DashboardSettingsComponents {
                 control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
                 labels.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -20)
             ])
+            if controlWidthConstrainedToRow {
+                constraints.append(
+                    control.widthAnchor.constraint(lessThanOrEqualTo: row.widthAnchor, constant: -40)
+                )
+            }
         } else {
             constraints.append(labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -20))
         }

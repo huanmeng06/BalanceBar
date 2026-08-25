@@ -163,6 +163,34 @@ extension UpdateAssetDownloading {
     }
 }
 
+protocol UpdateVersionIgnoring {
+    func ignoredVersion(for channel: UpdateChannel) -> AppSemanticVersion?
+    func ignore(version: AppSemanticVersion, for channel: UpdateChannel)
+}
+
+final class UserDefaultsUpdateVersionIgnoreStore: UpdateVersionIgnoring {
+    static let key = "ignoredUpdateVersions"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func ignoredVersion(for channel: UpdateChannel) -> AppSemanticVersion? {
+        guard let versions = defaults.dictionary(forKey: Self.key) as? [String: String] else {
+            return nil
+        }
+        return versions[channel.rawValue].flatMap(AppSemanticVersion.init)
+    }
+
+    func ignore(version: AppSemanticVersion, for channel: UpdateChannel) {
+        var versions = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+        versions[channel.rawValue] = version.description
+        defaults.set(versions, forKey: Self.key)
+    }
+}
+
 enum UpdateAssetVerifier {
     static func verify(data: Data, asset: GitHubReleaseAsset) throws {
         guard !data.isEmpty else { throw UpdateAssetDownloadError.emptyData }
@@ -788,8 +816,11 @@ final class UpdateService {
     private let workQueue: DispatchQueue
     private let scheduler: UpdateScheduling
     private let minimumCheckingDuration: TimeInterval
+    private let automaticCheckMinimumInterval: TimeInterval
+    private let ignoredVersionStore: UpdateVersionIgnoring
     private var availableRelease: GitHubRelease?
     private var checkingStartedAt: TimeInterval?
+    private var lastCheckStartedAtByChannel: [UpdateChannel: TimeInterval] = [:]
     private var updateCheckGeneration: UInt64 = 0
 
     private(set) var state: UpdateCheckState
@@ -829,7 +860,9 @@ final class UpdateService {
         callbackQueue: DispatchQueue = .main,
         workQueue: DispatchQueue = DispatchQueue(label: "local.balancebar.update-install", qos: .userInitiated),
         scheduler: UpdateScheduling = DispatchUpdateScheduler(),
-        minimumCheckingDuration: TimeInterval = 1.0
+        minimumCheckingDuration: TimeInterval = 1.0,
+        automaticCheckMinimumInterval: TimeInterval = 15 * 60,
+        ignoredVersionStore: UpdateVersionIgnoring = UserDefaultsUpdateVersionIgnoreStore()
     ) {
         self.releaseFetcher = releaseFetcher
         self.downloader = downloader
@@ -842,11 +875,29 @@ final class UpdateService {
         self.workQueue = workQueue
         self.scheduler = scheduler
         self.minimumCheckingDuration = max(0, minimumCheckingDuration)
+        self.automaticCheckMinimumInterval = max(0, automaticCheckMinimumInterval)
+        self.ignoredVersionStore = ignoredVersionStore
         if let currentVersion = self.currentVersion {
             self.state = .idle(current: currentVersion)
         } else {
             self.state = .failed(.invalidCurrentVersion)
         }
+    }
+
+    /// Starts the inexpensive automatic check used when the settings page is
+    /// shown. A recent manual or automatic request counts toward the cooldown
+    /// so redraws, window resizes, and repeated page-entry callbacks cannot
+    /// create a request storm. Channel changes can bypass the cooldown after
+    /// the caller has invalidated the previous channel's presentation state.
+    func checkForUpdatesIfNeeded(force: Bool = false) {
+        guard currentVersion != nil, !isBusy else { return }
+        let channel = updateChannel
+        if !force,
+           let lastCheckStartedAt = lastCheckStartedAtByChannel[channel],
+           scheduler.now - lastCheckStartedAt < automaticCheckMinimumInterval {
+            return
+        }
+        checkForUpdates()
     }
 
     func checkForUpdates() {
@@ -855,8 +906,10 @@ final class UpdateService {
         else { return }
         let updateChannel = self.updateChannel
         let updateCheckGeneration = self.updateCheckGeneration
+        let checkStartedAt = scheduler.now
         availableRelease = nil
-        checkingStartedAt = scheduler.now
+        lastCheckStartedAtByChannel[updateChannel] = checkStartedAt
+        checkingStartedAt = checkStartedAt
         transition(to: .checking(current: currentVersion))
         releaseFetcher.fetchReleases { [weak self] result in
             guard let self else { return }
@@ -869,6 +922,15 @@ final class UpdateService {
                 )
             }
         }
+    }
+
+    func ignoreAvailableUpdate() {
+        guard let currentVersion,
+              case .available(_, let latest) = state
+        else { return }
+        ignoredVersionStore.ignore(version: latest, for: updateChannel)
+        availableRelease = nil
+        transition(to: .latest(current: currentVersion))
     }
 
     private func finishReleaseResultAfterMinimumCheckingDuration(
@@ -947,9 +1009,9 @@ final class UpdateService {
 
     private var isBusy: Bool {
         switch state {
-        case .checking, .downloading, .installing:
+        case .checking, .downloading, .installing, .restarting:
             return true
-        case .idle, .latest, .available, .restarting, .failed:
+        case .idle, .latest, .available, .failed:
             return false
         }
     }
@@ -985,6 +1047,9 @@ final class UpdateService {
                 guard version > currentVersion else { continue }
                 guard release.matchingAsset(for: version) != nil else {
                     hasUnavailableNewerRelease = true
+                    continue
+                }
+                guard ignoredVersionStore.ignoredVersion(for: updateChannel) != version else {
                     continue
                 }
                 candidates.append(UpdateReleaseCandidate(release: release, version: version))

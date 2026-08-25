@@ -39,6 +39,44 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
     }
 
+    func testGeneralNavigationShowsAndHidesUpdateBadgeWithUpdateState() throws {
+        let controller = DashboardWindowController(
+            actions: DashboardWindowControllerActions(
+                makeSectionPage: { _ in NSView() },
+                makeProviderPage: { _ in NSView() },
+                providerChoices: { [] },
+                prepareForPageReplacement: {},
+                didShowPage: {},
+                didClose: {},
+                didResize: {}
+            )
+        )
+        defer { controller.teardown() }
+
+        _ = NSApplication.shared
+        controller.setShowsUpdateAvailableBadge(true)
+        controller.open()
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        func findBadge(in view: NSView) -> DashboardUpdateBadgeView? {
+            for child in view.subviews {
+                if let badge = child as? DashboardUpdateBadgeView { return badge }
+                if let badge = findBadge(in: child) { return badge }
+            }
+            return nil
+        }
+        let badge = try XCTUnwrap(findBadge(in: try XCTUnwrap(window.contentView)))
+        let row = try XCTUnwrap(badge.superview as? DashboardNavigationRowView)
+        let titleLabel = try XCTUnwrap(row.titleLabel)
+
+        XCTAssertFalse(badge.isHidden)
+        XCTAssertGreaterThan(badge.frame.minX, titleLabel.frame.maxX)
+        XCTAssertLessThanOrEqual(badge.frame.maxX, row.bounds.maxX)
+
+        controller.setShowsUpdateAvailableBadge(false)
+        XCTAssertTrue(badge.isHidden)
+    }
+
     func testMenuBarSettingsFittingWidthFollowsLocalization() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

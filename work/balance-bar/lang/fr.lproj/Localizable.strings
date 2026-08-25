@@ -178,6 +178,7 @@
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "Rechercher des mises à jour";
 "dashboard.general.and.refresh.pages.new_version_available_value_value" = "Nouvelle version disponible : %1$@ -> %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "Télécharger et installer";
+"dashboard.general.and.refresh.pages.ignore_this_version" = "Ignorer cette version";
 "dashboard.general.and.refresh.pages.view_release_notes" = "Afficher les notes de version";
 "dashboard.general.and.refresh.pages.release_notes" = "Notes de version";
 "dashboard.general.and.refresh.pages.release_notes.later" = "Plus tard";

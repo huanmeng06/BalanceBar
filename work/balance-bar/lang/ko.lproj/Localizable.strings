@@ -178,6 +178,7 @@
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "업데이트 확인";
 "dashboard.general.and.refresh.pages.new_version_available_value_value" = "새 버전 사용 가능: %1$@ -> %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "다운로드 및 설치";
+"dashboard.general.and.refresh.pages.ignore_this_version" = "이 버전 무시";
 "dashboard.general.and.refresh.pages.view_release_notes" = "업데이트 내용 보기";
 "dashboard.general.and.refresh.pages.release_notes" = "업데이트 내용";
 "dashboard.general.and.refresh.pages.release_notes.later" = "나중에";

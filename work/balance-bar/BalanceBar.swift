@@ -237,6 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
+            onIgnoreUpdate: { [weak self] in self?.updateService.ignoreAvailableUpdate() },
             onOpenUpdateNotes: { [weak self] in self?.showUpdateNotes() },
             onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
             onOpenCodexModeChanged: { [weak self] mode in
@@ -252,6 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onDidShowPage: { [weak self] in
                 guard let self else { return }
                 self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
+                self.updateService.checkForUpdatesIfNeeded()
             },
             onDidClose: { [weak self] in
                 guard let self else { return }
@@ -302,9 +304,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
     private let updateService: UpdateService
-    private lazy var updateNotesWindowController = UpdateNotesWindowController { [weak self] in
-        self?.updateService.installAvailableUpdate()
-    }
+    private lazy var updateNotesWindowController = UpdateNotesWindowController(
+        onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
+        onIgnore: { [weak self] in self?.updateService.ignoreAvailableUpdate() }
+    )
     private var showMenuBarReset: Bool { get { preferences.showMenuBarReset } set { preferences.showMenuBarReset = newValue } }
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
     private var showMenuBarAmount: Bool { get { preferences.showMenuBarAmount } set { preferences.showMenuBarAmount = newValue } }
@@ -363,17 +366,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         self.officialQuotaClient = officialQuotaClient
         self.updateService = updateService ?? UpdateService(
             releaseFetcher: DevelopmentReleaseFixture.releaseFetcher(),
-            updateChannel: preferences.updateChannel
+            updateChannel: preferences.updateChannel,
+            ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore()
         )
         super.init()
-        self.updateService.onStateChange = { [weak self] state in
+        self.updateService.onStateChange = { [weak self] _ in
             guard let self else { return }
             let updateDashboard = { [weak self] in
                 guard let self else { return }
                 self.dashboardComposition.refreshUpdateState()
-                guard case .available(let current, _) = state,
-                      let release = self.updateService.availableReleaseForPresentation else { return }
-                self.showUpdateNotes(currentVersion: current, release: release)
             }
             if Thread.isMainThread { updateDashboard() }
             else { DispatchQueue.main.async(execute: updateDashboard) }
@@ -916,6 +917,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func handleUpdateChannelChanged(_ channel: UpdateChannel) {
         preferences.updateChannel = channel
         updateService.updateChannel = channel
+        updateService.checkForUpdatesIfNeeded(force: true)
         SwitchLog.write(
             "preference changed; key=\(AppPreferences.updateChannelKey); value=\(channel.rawValue)",
             category: "configuration"
