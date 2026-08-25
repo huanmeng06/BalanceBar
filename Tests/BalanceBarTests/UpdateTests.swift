@@ -1291,8 +1291,10 @@ final class UpdateTests: XCTestCase {
 
         let bodyRange = (rendered.string as NSString).range(of: "说明", options: .backwards)
         let headingRange = (rendered.string as NSString).range(of: "安装")
+        let listRange = (rendered.string as NSString).range(of: "1. 下载文件")
         XCTAssertNotEqual(bodyRange.location, NSNotFound)
         XCTAssertNotEqual(headingRange.location, NSNotFound)
+        XCTAssertNotEqual(listRange.location, NSNotFound)
 
         let bodyParagraph = try XCTUnwrap(
             rendered.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
@@ -1308,13 +1310,20 @@ final class UpdateTests: XCTestCase {
             forCharacterRange: headingRange,
             actualCharacterRange: nil
         )
+        let listGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: listRange,
+            actualCharacterRange: nil
+        )
         let bodyRect = layoutManager.boundingRect(forGlyphRange: bodyGlyphRange, in: textContainer)
         let headingRect = layoutManager.boundingRect(forGlyphRange: headingGlyphRange, in: textContainer)
+        let listRect = layoutManager.boundingRect(forGlyphRange: listGlyphRange, in: textContainer)
         let gap = max(bodyRect.minY, headingRect.minY) - min(bodyRect.maxY, headingRect.maxY)
+        let headingToListGap = max(headingRect.minY, listRect.minY)
+            - min(headingRect.maxY, listRect.maxY)
         XCTAssertGreaterThanOrEqual(
             gap,
-            releaseNotesTableBottomSpacing - 1,
-            "expected a table-to-heading gap, body=\(bodyRect), heading=\(headingRect)"
+            headingToListGap + 8 - 1,
+            "expected table-to-heading gap \(gap) >= heading-to-list gap \(headingToListGap) + 8, body=\(bodyRect), heading=\(headingRect), list=\(listRect)"
         )
 
         let trailingTable = ReleaseNotesMarkdownRenderer.render(markdown: """

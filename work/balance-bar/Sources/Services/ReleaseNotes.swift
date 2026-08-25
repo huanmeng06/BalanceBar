@@ -167,7 +167,7 @@ private func releaseNotesBackingScale(for view: NSView) -> CGFloat {
     max(1, view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
 }
 
-let releaseNotesTableBottomSpacing: CGFloat = 12
+let releaseNotesTableBottomSpacing: CGFloat = 20
 
 struct ReleaseNotesAppearanceColors {
     let tableGrid: NSColor
