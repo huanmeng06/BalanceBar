@@ -1696,6 +1696,14 @@ final class UpdateTests: XCTestCase {
             tr(.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion, language: AppLanguage.resolved)
         )
         XCTAssertEqual(ignoreButton.bezelStyle, .rounded)
+        let buttons = try XCTUnwrap(
+            updateTestDescendants(of: contentView)
+                .first { $0.identifier?.rawValue == "updateNotesButtons" } as? NSStackView
+        )
+        XCTAssertEqual(
+            buttons.arrangedSubviews.compactMap { $0.identifier?.rawValue },
+            ["laterUpdateButton", "ignoreUpdateButton", "viewUpdateGithubButton", "installUpdateButton"]
+        )
         XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
         XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
         XCTAssertTrue(scrollView.layer?.masksToBounds ?? false)
