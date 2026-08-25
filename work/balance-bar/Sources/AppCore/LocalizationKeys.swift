@@ -179,6 +179,7 @@
     case keyDashboardGeneralAndRefreshPagesCheckForUpdates2 = "dashboard.general.and.refresh.pages.check_for_updates.2"
     case keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue = "dashboard.general.and.refresh.pages.new_version_available_value_value"
     case keyDashboardGeneralAndRefreshPagesDownloadAndInstall = "dashboard.general.and.refresh.pages.download_and_install"
+    case keyDashboardGeneralAndRefreshPagesIgnoreThisVersion = "dashboard.general.and.refresh.pages.ignore_this_version"
     case keyDashboardGeneralAndRefreshPagesViewReleaseNotes = "dashboard.general.and.refresh.pages.view_release_notes"
     case keyDashboardGeneralAndRefreshPagesReleaseNotes = "dashboard.general.and.refresh.pages.release_notes"
     case keyDashboardGeneralAndRefreshPagesReleaseNotesLater = "dashboard.general.and.refresh.pages.release_notes.later"

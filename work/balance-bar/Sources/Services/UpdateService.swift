@@ -163,6 +163,34 @@ extension UpdateAssetDownloading {
     }
 }
 
+protocol UpdateVersionIgnoring {
+    func ignoredVersion(for channel: UpdateChannel) -> AppSemanticVersion?
+    func ignore(version: AppSemanticVersion, for channel: UpdateChannel)
+}
+
+final class UserDefaultsUpdateVersionIgnoreStore: UpdateVersionIgnoring {
+    static let key = "ignoredUpdateVersions"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func ignoredVersion(for channel: UpdateChannel) -> AppSemanticVersion? {
+        guard let versions = defaults.dictionary(forKey: Self.key) as? [String: String] else {
+            return nil
+        }
+        return versions[channel.rawValue].flatMap(AppSemanticVersion.init)
+    }
+
+    func ignore(version: AppSemanticVersion, for channel: UpdateChannel) {
+        var versions = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+        versions[channel.rawValue] = version.description
+        defaults.set(versions, forKey: Self.key)
+    }
+}
+
 enum UpdateAssetVerifier {
     static func verify(data: Data, asset: GitHubReleaseAsset) throws {
         guard !data.isEmpty else { throw UpdateAssetDownloadError.emptyData }
@@ -789,6 +817,7 @@ final class UpdateService {
     private let scheduler: UpdateScheduling
     private let minimumCheckingDuration: TimeInterval
     private let automaticCheckMinimumInterval: TimeInterval
+    private let ignoredVersionStore: UpdateVersionIgnoring
     private var availableRelease: GitHubRelease?
     private var checkingStartedAt: TimeInterval?
     private var lastCheckStartedAtByChannel: [UpdateChannel: TimeInterval] = [:]
@@ -832,7 +861,8 @@ final class UpdateService {
         workQueue: DispatchQueue = DispatchQueue(label: "local.balancebar.update-install", qos: .userInitiated),
         scheduler: UpdateScheduling = DispatchUpdateScheduler(),
         minimumCheckingDuration: TimeInterval = 1.0,
-        automaticCheckMinimumInterval: TimeInterval = 15 * 60
+        automaticCheckMinimumInterval: TimeInterval = 15 * 60,
+        ignoredVersionStore: UpdateVersionIgnoring = UserDefaultsUpdateVersionIgnoreStore()
     ) {
         self.releaseFetcher = releaseFetcher
         self.downloader = downloader
@@ -846,6 +876,7 @@ final class UpdateService {
         self.scheduler = scheduler
         self.minimumCheckingDuration = max(0, minimumCheckingDuration)
         self.automaticCheckMinimumInterval = max(0, automaticCheckMinimumInterval)
+        self.ignoredVersionStore = ignoredVersionStore
         if let currentVersion = self.currentVersion {
             self.state = .idle(current: currentVersion)
         } else {
@@ -891,6 +922,15 @@ final class UpdateService {
                 )
             }
         }
+    }
+
+    func ignoreAvailableUpdate() {
+        guard let currentVersion,
+              case .available(_, let latest) = state
+        else { return }
+        ignoredVersionStore.ignore(version: latest, for: updateChannel)
+        availableRelease = nil
+        transition(to: .latest(current: currentVersion))
     }
 
     private func finishReleaseResultAfterMinimumCheckingDuration(
@@ -1007,6 +1047,9 @@ final class UpdateService {
                 guard version > currentVersion else { continue }
                 guard release.matchingAsset(for: version) != nil else {
                     hasUnavailableNewerRelease = true
+                    continue
+                }
+                guard ignoredVersionStore.ignoredVersion(for: updateChannel) != version else {
                     continue
                 }
                 candidates.append(UpdateReleaseCandidate(release: release, version: version))

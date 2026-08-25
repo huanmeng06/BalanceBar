@@ -43,6 +43,7 @@ struct DashboardCompositionActions {
     let onOpenSystemMenuBarSettings: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
+    let onIgnoreUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
     let onOpenOpenCodex: () -> Void
     let onOpenCodexModeChanged: (OpenCodexDashboardMode) -> Void
@@ -89,6 +90,7 @@ final class DashboardCompositionController {
             onManualRefresh: actions.onManualRefresh,
             onCheckForUpdates: actions.onCheckForUpdates,
             onInstallUpdate: actions.onInstallUpdate,
+            onIgnoreUpdate: actions.onIgnoreUpdate,
             onOpenUpdateNotes: actions.onOpenUpdateNotes,
             onOpenOpenCodex: actions.onOpenOpenCodex,
             makeStatusLinksEditor: { [weak self] in

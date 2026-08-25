@@ -245,10 +245,29 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testIgnoreUpdateCopyExistsInEverySupportedLanguage() {
+        let key = LocalizationKey.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion
+        let expected: [AppLanguage: String] = [
+            .simplifiedChinese: "忽略此版本",
+            .traditionalChineseTaiwan: "忽略此版本",
+            .traditionalChineseHongKong: "忽略此版本",
+            .japanese: "このバージョンを無視",
+            .english: "Ignore This Version",
+            .korean: "이 버전 무시",
+            .spanish: "Ignorar esta versión",
+            .german: "Diese Version ignorieren"
+        ]
+
+        for language in allLanguages {
+            XCTAssertEqual(tr(key, language: language), expected[language])
+            XCTAssertFalse(tr(key, language: language).hasPrefix("⟦"))
+        }
+    }
+
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 360)
+        XCTAssertEqual(expectedKeys.count, 361)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(

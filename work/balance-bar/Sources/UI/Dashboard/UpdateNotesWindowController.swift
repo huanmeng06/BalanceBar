@@ -101,9 +101,47 @@ final class ReleaseNotesTextView: NSTextView {
     }
 }
 
+private final class UpdateNotesButtonsStackView: NSStackView {
+    private var availableWidth: CGFloat = .greatestFiniteMagnitude
+
+    override func layout() {
+        availableWidth = bounds.width
+        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        let fittingWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
+            total + view.fittingSize.width
+        } + max(0, CGFloat(visibleButtons.count - 1)) * spacing
+        let wantsVertical = availableWidth > 0 && availableWidth + 0.5 < fittingWidth
+        let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
+        if orientation != desiredOrientation {
+            orientation = desiredOrientation
+            alignment = wantsVertical ? .trailing : .centerY
+            invalidateIntrinsicContentSize()
+        }
+        super.layout()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        guard !visibleButtons.isEmpty else { return .zero }
+        if orientation == .vertical {
+            return NSSize(
+                width: visibleButtons.map { $0.fittingSize.width }.max() ?? 0,
+                height: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.height }
+                    + max(0, CGFloat(visibleButtons.count - 1)) * spacing
+            )
+        }
+        return NSSize(
+            width: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.width }
+                + max(0, CGFloat(visibleButtons.count - 1)) * spacing,
+            height: visibleButtons.map { $0.fittingSize.height }.max() ?? 0
+        )
+    }
+}
+
 final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     private let releaseNotesStore: ReleaseNotesStore
     private let onInstall: () -> Void
+    private let onIgnore: () -> Void
     private let titleLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView()
@@ -111,6 +149,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     private let materialSurface = NSVisualEffectView()
     private let contentSurface = NSView()
     private let laterButton = NSButton(title: "", target: nil, action: nil)
+    private let ignoreButton = NSButton(title: "", target: nil, action: nil)
     private let githubButton = NSButton(title: "", target: nil, action: nil)
     private let installButton = NSButton(title: "", target: nil, action: nil)
     private var currentVersion: AppSemanticVersion?
@@ -119,10 +158,12 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
 
     init(
         releaseNotesStore: ReleaseNotesStore = ReleaseNotesStore(),
-        onInstall: @escaping () -> Void
+        onInstall: @escaping () -> Void,
+        onIgnore: @escaping () -> Void = {}
     ) {
         self.releaseNotesStore = releaseNotesStore
         self.onInstall = onInstall
+        self.onIgnore = onIgnore
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
@@ -252,10 +293,16 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         scrollView.documentView = notesTextView
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        for button in [laterButton, githubButton, installButton] {
+        for button in [ignoreButton, laterButton, githubButton, installButton] {
             button.bezelStyle = .rounded
             button.translatesAutoresizingMaskIntoConstraints = false
         }
+        ignoreButton.identifier = NSUserInterfaceItemIdentifier("ignoreUpdateButton")
+        laterButton.identifier = NSUserInterfaceItemIdentifier("laterUpdateButton")
+        githubButton.identifier = NSUserInterfaceItemIdentifier("viewUpdateGithubButton")
+        installButton.identifier = NSUserInterfaceItemIdentifier("installUpdateButton")
+        ignoreButton.target = self
+        ignoreButton.action = #selector(ignore(_:))
         laterButton.target = self
         laterButton.action = #selector(later(_:))
         githubButton.target = self
@@ -264,7 +311,8 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         installButton.action = #selector(install(_:))
         installButton.keyEquivalent = "\r"
 
-        let buttons = NSStackView(views: [laterButton, githubButton, installButton])
+        let buttons = UpdateNotesButtonsStackView(views: [ignoreButton, laterButton, githubButton, installButton])
+        buttons.identifier = NSUserInterfaceItemIdentifier("updateNotesButtons")
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
         buttons.spacing = 8
@@ -362,6 +410,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             arguments: [String(describing: currentVersion), String(describing: release.version ?? currentVersion)],
             language: language
         )
+        ignoreButton.title = tr(.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion, language: language)
         laterButton.title = tr(.keyDashboardGeneralAndRefreshPagesReleaseNotesLater, language: language)
         githubButton.title = tr(.keyDashboardGeneralAndRefreshPagesReleaseNotesViewGithub, language: language)
         installButton.title = tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language)
@@ -430,6 +479,11 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func later(_ sender: NSButton) {
+        close()
+    }
+
+    @objc private func ignore(_ sender: NSButton) {
+        onIgnore()
         close()
     }
 

@@ -177,6 +177,7 @@
 "dashboard.general.and.refresh.pages.check_for_updates.2" = "检查更新";
 "dashboard.general.and.refresh.pages.new_version_available_value_value" = "新版本可用：%1$@ -> %2$@";
 "dashboard.general.and.refresh.pages.download_and_install" = "下载并安装";
+"dashboard.general.and.refresh.pages.ignore_this_version" = "忽略此版本";
 "dashboard.general.and.refresh.pages.view_release_notes" = "查看更新内容";
 "dashboard.general.and.refresh.pages.release_notes" = "更新说明";
 "dashboard.general.and.refresh.pages.release_notes.later" = "稍后";

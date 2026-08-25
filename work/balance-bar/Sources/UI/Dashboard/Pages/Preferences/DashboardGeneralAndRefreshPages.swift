@@ -178,6 +178,7 @@ final class DashboardGeneralPage {
 
     private var updateSubtitleLabel: NSTextField?
     private var updateButton: NSButton?
+    private var updateIgnoreButton: NSButton?
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
 
@@ -289,6 +290,14 @@ final class DashboardGeneralPage {
         updateButton.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesButton")
         updateButton.bezelStyle = .rounded
         apply(updatePresentation, to: updateButton, subtitle: updateSubtitle)
+        let updateIgnoreButton = NSButton(
+            title: tr(.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.ignoreUpdate(_:))
+        )
+        updateIgnoreButton.identifier = NSUserInterfaceItemIdentifier("ignoreUpdateButton")
+        updateIgnoreButton.bezelStyle = .rounded
+        apply(updatePresentation, to: updateIgnoreButton)
         let updateNotesButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesViewReleaseNotes),
             target: input.relay,
@@ -315,7 +324,7 @@ final class DashboardGeneralPage {
             subtitle: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription),
             control: updateChannelPopup
         )
-        let updateControls = DashboardUpdateControlsStackView(views: [updateNotesButton, updateButton])
+        let updateControls = DashboardUpdateControlsStackView(views: [updateIgnoreButton, updateNotesButton, updateButton])
         updateControls.orientation = .horizontal
         updateControls.alignment = .centerY
         updateControls.spacing = 8
@@ -323,6 +332,7 @@ final class DashboardGeneralPage {
         updateControls.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.updateSubtitleLabel = updateSubtitle
         self.updateButton = updateButton
+        self.updateIgnoreButton = updateIgnoreButton
         self.updateNotesButton = updateNotesButton
         self.updateBadge = updateBadge
 
@@ -349,6 +359,7 @@ final class DashboardGeneralPage {
         let presentation = DashboardUpdatePresentation.make(for: updateState)
         guard let updateSubtitleLabel, let updateButton else { return }
         apply(presentation, to: updateButton, subtitle: updateSubtitleLabel)
+        apply(presentation, to: updateIgnoreButton)
         apply(presentation, to: updateNotesButton)
         updateBadge?.isHidden = !presentation.showsUpdateBadge
     }
