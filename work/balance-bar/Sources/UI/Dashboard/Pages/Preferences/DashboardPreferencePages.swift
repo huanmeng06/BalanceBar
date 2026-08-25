@@ -185,6 +185,7 @@ final class DashboardPreferencePages {
     }
 
     func teardown() {
+        menuBarPage.teardown()
         menuPage.teardown()
     }
 }

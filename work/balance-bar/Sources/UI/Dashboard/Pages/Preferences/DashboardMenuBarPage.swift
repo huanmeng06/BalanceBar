@@ -454,6 +454,10 @@ final class DashboardMenuBarPage {
         removeFontSizePresetTrackingObserver()
     }
 
+    func teardown() {
+        removeFontSizePresetTrackingObserver()
+    }
+
     private static func makeOverflowWarningRow(
         label: NSTextField,
         settingsButton: NSButton
