@@ -204,7 +204,11 @@ final class DashboardCompositionController {
     }
 
     func refreshUpdateState() {
-        dashboardPreferencePages.refreshUpdateState(state.updateState())
+        let updateState = state.updateState()
+        dashboardPreferencePages.refreshUpdateState(updateState)
+        windowController.setShowsUpdateAvailableBadge(
+            DashboardUpdatePresentation.make(for: updateState).showsUpdateBadge
+        )
     }
 
     func updateMenuStatusVisibility(_ visible: Bool, animated: Bool) {

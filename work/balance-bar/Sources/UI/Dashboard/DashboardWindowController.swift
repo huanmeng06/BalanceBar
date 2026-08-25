@@ -152,6 +152,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     private var navigationButtons: [DashboardSection: NSButton] = [:]
     private var navigationRows: [DashboardSection: DashboardNavigationRowView] = [:]
+    private var showsUpdateAvailableBadge = false
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var isTornDown = false
@@ -271,6 +272,11 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         replacePage {
             actions.makeProviderPage(choice)
         }
+    }
+
+    func setShowsUpdateAvailableBadge(_ visible: Bool) {
+        showsUpdateAvailableBadge = visible
+        navigationRows[.general]?.updateBadgeView?.isHidden = !visible
     }
 
     func teardown() {
@@ -549,14 +555,37 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         row.addSubview(label)
         row.iconView = icon
         row.titleLabel = label
-        NSLayoutConstraint.activate([
+        let badge: DashboardUpdateBadgeView?
+        if section == .general {
+            let updateBadge = DashboardUpdateBadgeView()
+            updateBadge.isHidden = !showsUpdateAvailableBadge
+            updateBadge.translatesAutoresizingMaskIntoConstraints = false
+            row.addSubview(updateBadge)
+            row.updateBadgeView = updateBadge
+            badge = updateBadge
+        } else {
+            badge = nil
+        }
+        var rowConstraints = [
             icon.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
             icon.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 15),
             icon.heightAnchor.constraint(equalToConstant: 15),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
             label.centerYAnchor.constraint(equalTo: row.centerYAnchor)
-        ])
+        ]
+        if let badge {
+            rowConstraints.append(contentsOf: [
+                badge.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -14),
+                badge.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                badge.widthAnchor.constraint(equalToConstant: 18),
+                badge.heightAnchor.constraint(equalToConstant: 18),
+                label.trailingAnchor.constraint(lessThanOrEqualTo: badge.leadingAnchor, constant: -8)
+            ])
+        } else {
+            rowConstraints.append(label.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -14))
+        }
+        NSLayoutConstraint.activate(rowConstraints)
         navigationButtons[section] = button
         navigationRows[section] = row
         row.updateAppearance(animated: false)

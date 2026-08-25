@@ -110,52 +110,6 @@ struct DashboardUpdatePresentation: Equatable {
     }
 }
 
-private final class DashboardUpdateBadgeView: NSView {
-    private static let diameter: CGFloat = 18
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        configure()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        configure()
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: Self.diameter, height: Self.diameter)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
-        NSColor.systemRed.setFill()
-        circle.fill()
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
-            .foregroundColor: NSColor.white
-        ]
-        let text = NSAttributedString(string: "1", attributes: attributes)
-        let textSize = text.size()
-        text.draw(at: NSPoint(
-            x: bounds.midX - textSize.width / 2,
-            y: bounds.midY - textSize.height / 2 + 0.5
-        ))
-    }
-
-    private func configure() {
-        identifier = NSUserInterfaceItemIdentifier("updateAvailableBadge")
-        setContentHuggingPriority(.required, for: .horizontal)
-        setContentHuggingPriority(.required, for: .vertical)
-        setContentCompressionResistancePriority(.required, for: .horizontal)
-        setContentCompressionResistancePriority(.required, for: .vertical)
-        setAccessibilityRole(.staticText)
-        setAccessibilityLabel("1")
-    }
-}
-
 /// Keeps the existing update buttons side by side at normal widths and stacks
 /// those same buttons only when the settings row cannot fit them. The buttons
 /// themselves retain their existing rounded style, targets, and dimensions.
