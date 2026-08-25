@@ -252,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onDidShowPage: { [weak self] in
                 guard let self else { return }
                 self.updateDashboard(for: self.snapshot, refreshDate: self.refreshDate(for: self.snapshot))
+                self.updateService.checkForUpdatesIfNeeded()
             },
             onDidClose: { [weak self] in
                 guard let self else { return }
@@ -366,14 +367,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             updateChannel: preferences.updateChannel
         )
         super.init()
-        self.updateService.onStateChange = { [weak self] state in
+        self.updateService.onStateChange = { [weak self] _ in
             guard let self else { return }
             let updateDashboard = { [weak self] in
                 guard let self else { return }
                 self.dashboardComposition.refreshUpdateState()
-                guard case .available(let current, _) = state,
-                      let release = self.updateService.availableReleaseForPresentation else { return }
-                self.showUpdateNotes(currentVersion: current, release: release)
             }
             if Thread.isMainThread { updateDashboard() }
             else { DispatchQueue.main.async(execute: updateDashboard) }
@@ -916,6 +914,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func handleUpdateChannelChanged(_ channel: UpdateChannel) {
         preferences.updateChannel = channel
         updateService.updateChannel = channel
+        updateService.checkForUpdatesIfNeeded(force: true)
         SwitchLog.write(
             "preference changed; key=\(AppPreferences.updateChannelKey); value=\(channel.rawValue)",
             category: "configuration"

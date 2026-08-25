@@ -788,8 +788,10 @@ final class UpdateService {
     private let workQueue: DispatchQueue
     private let scheduler: UpdateScheduling
     private let minimumCheckingDuration: TimeInterval
+    private let automaticCheckMinimumInterval: TimeInterval
     private var availableRelease: GitHubRelease?
     private var checkingStartedAt: TimeInterval?
+    private var lastCheckStartedAtByChannel: [UpdateChannel: TimeInterval] = [:]
     private var updateCheckGeneration: UInt64 = 0
 
     private(set) var state: UpdateCheckState
@@ -829,7 +831,8 @@ final class UpdateService {
         callbackQueue: DispatchQueue = .main,
         workQueue: DispatchQueue = DispatchQueue(label: "local.balancebar.update-install", qos: .userInitiated),
         scheduler: UpdateScheduling = DispatchUpdateScheduler(),
-        minimumCheckingDuration: TimeInterval = 1.0
+        minimumCheckingDuration: TimeInterval = 1.0,
+        automaticCheckMinimumInterval: TimeInterval = 15 * 60
     ) {
         self.releaseFetcher = releaseFetcher
         self.downloader = downloader
@@ -842,11 +845,28 @@ final class UpdateService {
         self.workQueue = workQueue
         self.scheduler = scheduler
         self.minimumCheckingDuration = max(0, minimumCheckingDuration)
+        self.automaticCheckMinimumInterval = max(0, automaticCheckMinimumInterval)
         if let currentVersion = self.currentVersion {
             self.state = .idle(current: currentVersion)
         } else {
             self.state = .failed(.invalidCurrentVersion)
         }
+    }
+
+    /// Starts the inexpensive automatic check used when the settings page is
+    /// shown. A recent manual or automatic request counts toward the cooldown
+    /// so redraws, window resizes, and repeated page-entry callbacks cannot
+    /// create a request storm. Channel changes can bypass the cooldown after
+    /// the caller has invalidated the previous channel's presentation state.
+    func checkForUpdatesIfNeeded(force: Bool = false) {
+        guard currentVersion != nil, !isBusy else { return }
+        let channel = updateChannel
+        if !force,
+           let lastCheckStartedAt = lastCheckStartedAtByChannel[channel],
+           scheduler.now - lastCheckStartedAt < automaticCheckMinimumInterval {
+            return
+        }
+        checkForUpdates()
     }
 
     func checkForUpdates() {
@@ -855,8 +875,10 @@ final class UpdateService {
         else { return }
         let updateChannel = self.updateChannel
         let updateCheckGeneration = self.updateCheckGeneration
+        let checkStartedAt = scheduler.now
         availableRelease = nil
-        checkingStartedAt = scheduler.now
+        lastCheckStartedAtByChannel[updateChannel] = checkStartedAt
+        checkingStartedAt = checkStartedAt
         transition(to: .checking(current: currentVersion))
         releaseFetcher.fetchReleases { [weak self] result in
             guard let self else { return }
@@ -947,9 +969,9 @@ final class UpdateService {
 
     private var isBusy: Bool {
         switch state {
-        case .checking, .downloading, .installing:
+        case .checking, .downloading, .installing, .restarting:
             return true
-        case .idle, .latest, .available, .restarting, .failed:
+        case .idle, .latest, .available, .failed:
             return false
         }
     }

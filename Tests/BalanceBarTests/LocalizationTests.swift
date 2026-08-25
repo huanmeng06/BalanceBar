@@ -229,6 +229,22 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .german), "System folgen")
     }
 
+    func testUpdateVersionSubtitleKeepsExistingTwoPlaceholderContract() {
+        let key = LocalizationKey.keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue
+        for language in allLanguages {
+            let rendered = tr(
+                key,
+                arguments: ["1.0.6", "1.0.7"],
+                language: language
+            )
+            XCTAssertTrue(rendered.contains("1.0.6"), "missing current version in \(language)")
+            XCTAssertTrue(rendered.contains("1.0.7"), "missing target version in \(language)")
+            XCTAssertFalse(rendered.contains("%1$@"), "unrendered first placeholder in \(language)")
+            XCTAssertFalse(rendered.contains("%2$@"), "unrendered second placeholder in \(language)")
+            XCTAssertFalse(rendered.hasPrefix("⟦"), "missing existing update subtitle key in \(language)")
+        }
+    }
+
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)

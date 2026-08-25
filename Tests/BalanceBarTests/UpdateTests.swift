@@ -2159,6 +2159,85 @@ final class UpdateTests: XCTestCase {
         }
     }
 
+    func testAutomaticUpdateCheckIsThrottledAcrossPageReentryAndManualChecks() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.automatic-check")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 60
+        )
+
+        let firstLatest = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        service.checkForUpdatesIfNeeded()
+        service.checkForUpdatesIfNeeded()
+        XCTAssertEqual(fetcher.requestCount, 1, "page re-entry must not duplicate an in-flight automatic check")
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [firstLatest], timeout: 2)
+
+        service.checkForUpdatesIfNeeded()
+        XCTAssertEqual(fetcher.requestCount, 1, "a recent automatic result must satisfy repeated page-entry callbacks")
+
+        service.checkForUpdates()
+        XCTAssertEqual(fetcher.requestCount, 2, "manual checking remains available during the automatic cooldown")
+        let secondLatest = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [secondLatest], timeout: 2)
+
+        service.checkForUpdatesIfNeeded()
+        XCTAssertEqual(fetcher.requestCount, 2, "manual checks also suppress duplicate automatic requests")
+        scheduler.advance(by: 60)
+        service.checkForUpdatesIfNeeded()
+        XCTAssertEqual(fetcher.requestCount, 3, "automatic checking resumes after the cooldown")
+    }
+
+    func testForcedAutomaticCheckRevalidatesTheSelectedChannel() {
+        let fetcher = StubReleaseFetcher()
+        let scheduler = StubUpdateScheduler()
+        let queue = DispatchQueue(label: "UpdateTests.automatic-channel-switch")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.0.0",
+            callbackQueue: queue,
+            workQueue: queue,
+            scheduler: scheduler,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 3_600
+        )
+
+        let stableLatest = waitForState(service, queue: queue) { state in
+            if case .latest = state { return true }
+            return false
+        }
+        service.checkForUpdatesIfNeeded()
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
+        wait(for: [stableLatest], timeout: 2)
+
+        service.updateChannel = .beta
+        let betaAvailable = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("2.0.0-beta.1")
+            }
+            return false
+        }
+        service.checkForUpdatesIfNeeded(force: true)
+        XCTAssertEqual(fetcher.requestCount, 2)
+        fetcher.resolve(.success([makeRelease(tag: "v2.0.0-beta.1", prerelease: true)]))
+        wait(for: [betaAvailable], timeout: 2)
+        XCTAssertEqual(service.updateChannel, .beta)
+    }
+
     func testDashboardGeneralUpdateRowUsesSharedSettingsRowAndRelayActions() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -2207,7 +2286,12 @@ final class UpdateTests: XCTestCase {
         let updateNotesButton = try XCTUnwrap(
             buttons.first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
         )
+        let updateBadge = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .first { $0.identifier?.rawValue == "updateAvailableBadge" }
+        )
         XCTAssertTrue(updateNotesButton.isHidden)
+        XCTAssertTrue(updateBadge.isHidden)
         XCTAssertFalse(channelPopup.superview === updateButton.superview)
         channelPopup.selectItem(at: UpdateChannel.allCases.firstIndex(of: .beta)!)
         relay.updateChannel(channelPopup)
@@ -2233,6 +2317,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(updateButton.isEnabled)
         XCTAssertEqual(updateNotesButton.title, "查看更新内容")
         XCTAssertFalse(updateNotesButton.isHidden)
+        XCTAssertFalse(updateBadge.isHidden)
         XCTAssertEqual((updateButton.superview as? NSStackView)?.arrangedSubviews.first, updateNotesButton)
         relay.openUpdateNotes(updateNotesButton)
         XCTAssertEqual(openNotesCount, 1)
@@ -2243,6 +2328,75 @@ final class UpdateTests: XCTestCase {
                 .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }?.stringValue,
             "新版本可用：1.0.6 -> 1.0.7"
         )
+
+        pageController.refresh(updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))))
+        XCTAssertTrue(updateNotesButton.isHidden)
+        XCTAssertTrue(updateBadge.isHidden)
+    }
+
+    func testDashboardUpdateRowStacksExistingButtonsAndReflowsLongVersionAtNarrowWidth() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "UpdateTests.UI.layout.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let pageController = DashboardGeneralPage()
+        let relay = DashboardPreferencePageRelay()
+        let page = pageController.make(.init(
+            preferences: preferences,
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: .available(
+                current: try XCTUnwrap(AppSemanticVersion("1.0.0")),
+                latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
+            )
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 300),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 300))
+        window.contentView = host
+        page.frame = NSRect(x: 0, y: 0, width: 320, height: 300)
+        page.autoresizingMask = []
+        host.addSubview(page)
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let updateButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+        let updateNotesButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
+        )
+        let controls = try XCTUnwrap(updateButton.superview as? NSStackView)
+        let row = try XCTUnwrap(updateButton.superview?.superview)
+        let subtitle = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }
+        )
+
+        XCTAssertEqual(controls.orientation, .vertical)
+        XCTAssertGreaterThan(row.frame.height, 62)
+        XCTAssertTrue(subtitle.stringValue.contains("123.456.789"))
+        XCTAssertLessThanOrEqual(updateButton.frame.maxX, controls.bounds.maxX + 0.5)
+        XCTAssertLessThanOrEqual(updateNotesButton.frame.maxX, controls.bounds.maxX + 0.5)
+
+        page.setFrameSize(NSSize(width: 760, height: 300))
+        page.layoutSubtreeIfNeeded()
+        XCTAssertEqual(controls.orientation, .horizontal)
+        XCTAssertLessThan(row.frame.height, 120)
     }
 
     func testDashboardUpdateCopyIsLocalizedAcrossAllSupportedLanguages() throws {
@@ -2284,6 +2438,7 @@ final class UpdateTests: XCTestCase {
                 XCTFail("system is not part of this explicit localization matrix")
             }
             XCTAssertTrue(presentation.showsReleaseNotesButton)
+            XCTAssertTrue(presentation.showsUpdateBadge)
             XCTAssertEqual(
                 tr(.keyDashboardGeneralAndRefreshPagesViewReleaseNotes, language: language),
                 language == .simplifiedChinese ? "查看更新内容" :
@@ -2358,6 +2513,7 @@ final class UpdateTests: XCTestCase {
                     language == .german ? "Nach Updates suchen" : "Check for Updates"
             )
             XCTAssertTrue(latest.buttonEnabled)
+            XCTAssertFalse(latest.showsUpdateBadge)
             XCTAssertEqual(
                 UpdateChannel.stable.localizedTitle(using: language),
                 language == .simplifiedChinese ? "正式版" :
@@ -2381,6 +2537,7 @@ final class UpdateTests: XCTestCase {
                 language: language
             )
             XCTAssertTrue(failure.buttonEnabled)
+            XCTAssertFalse(failure.showsUpdateBadge)
         }
     }
 

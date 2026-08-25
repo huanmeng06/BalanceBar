@@ -30,6 +30,19 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(source.contains("BalanceBarApplicationCoordinator"))
     }
 
+    func testAutomaticUpdateStateRefreshDoesNotPresentReleaseNotes() throws {
+        let source = try balanceBarSource()
+        let handlerStart = try XCTUnwrap(source.range(of: "self.updateService.onStateChange"))
+        let handlerEnd = try XCTUnwrap(
+            source.range(of: "databaseWatcher = CCSwitchDatabaseWatcher", range: handlerStart.upperBound..<source.endIndex)
+        )
+        let handler = String(source[handlerStart.lowerBound..<handlerEnd.lowerBound])
+        XCTAssertFalse(
+            handler.contains("showUpdateNotes"),
+            "automatic update state changes must only refresh the dashboard; release notes require the explicit button action"
+        )
+    }
+
     func testCompositionLayerOwnsConcreteResponsibilitiesByModule() throws {
         let sources = try compositionSources()
         let dashboard = try XCTUnwrap(sources["DashboardCompositionController.swift"])
