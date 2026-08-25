@@ -276,12 +276,26 @@ final class UpdateTests: XCTestCase {
             tag: "v1.0.0",
             draft: false,
             prerelease: false,
+            body: "Release body",
+            htmlURL: "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.0.0",
             assets: [
                 ["name": "BalanceBar-1.0.0.zip", "browser_download_url": "https://example.test/wrong.zip", "size": 1],
                 ["name": "BalanceBar-1.0.0.dmg", "browser_download_url": "https://example.test/BalanceBar-1.0.0.dmg", "size": 4, "digest": "sha256:fixture"]
             ]
         )
         let release = try JSONDecoder().decode(GitHubRelease.self, from: body)
+        XCTAssertEqual(release.body, "Release body")
+        XCTAssertEqual(release.releaseURL?.absoluteString, "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.0.0")
+        XCTAssertEqual(
+            GitHubRelease(
+                tagName: "v1.0.0",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                htmlURL: URL(string: "file:///tmp/untrusted")
+            ).releaseURL?.absoluteString,
+            "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.0.0"
+        )
         let version = try XCTUnwrap(release.stableVersion)
         XCTAssertEqual(version, AppSemanticVersion("1.0.0"))
         XCTAssertEqual(release.matchingAsset(for: version)?.name, "BalanceBar-1.0.0.dmg")
@@ -1065,6 +1079,777 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(arguments.last, applicationURL.path)
     }
 
+    func testReleaseNotesManifestUsesLocaleFallbacksThenReleaseBodyAndEmptyState() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let releaseDirectory = root.appendingPathComponent("1.1.22", isDirectory: true)
+        try FileManager.default.createDirectory(at: releaseDirectory, withIntermediateDirectories: true)
+        try "Taiwan notes".write(
+            to: releaseDirectory.appendingPathComponent("zh-Hant-TW.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "Traditional Chinese base notes".write(
+            to: releaseDirectory.appendingPathComponent("zh-Hant.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "English notes".write(
+            to: releaseDirectory.appendingPathComponent("en.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let manifest: [String: Any] = [
+            "schemaVersion": 1,
+            "releases": [
+                "1.1.22": [
+                    "files": [
+                        "zh-Hant-TW": "1.1.22/zh-Hant-TW.md",
+                        "zh-Hant": "1.1.22/zh-Hant.md",
+                        "en": "1.1.22/en.md"
+                    ]
+                ]
+            ]
+        ]
+        let manifestData = try JSONSerialization.data(withJSONObject: manifest)
+        try manifestData.write(to: root.appendingPathComponent("manifest.json"))
+
+        let release = GitHubRelease(
+            tagName: "v1.1.22",
+            draft: false,
+            prerelease: false,
+            assets: [],
+            body: "GitHub original body",
+            htmlURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.1.22")
+        )
+        let store = ReleaseNotesStore(releaseNotesRoot: root)
+        let version = try XCTUnwrap(AppSemanticVersion("1.1.22"))
+
+        XCTAssertEqual(
+            store.resolve(version: version, language: .traditionalChineseTaiwan, release: release),
+            ReleaseNotesResolution(markdown: "Taiwan notes", source: .bundled(locale: "zh-Hant-TW"))
+        )
+        XCTAssertEqual(
+            store.resolve(version: version, language: .traditionalChineseHongKong, release: release),
+            ReleaseNotesResolution(markdown: "Traditional Chinese base notes", source: .bundled(locale: "zh-Hant"))
+        )
+        XCTAssertEqual(
+            store.resolve(version: version, language: .german, release: release),
+            ReleaseNotesResolution(markdown: "English notes", source: .bundled(locale: "en"))
+        )
+
+        let missingVersion = try XCTUnwrap(AppSemanticVersion("9.9.9"))
+        XCTAssertEqual(
+            store.resolve(version: missingVersion, language: .english, release: release),
+            ReleaseNotesResolution(markdown: "GitHub original body", source: .githubRelease)
+        )
+        XCTAssertEqual(
+            store.resolve(version: missingVersion, language: .english, release: GitHubRelease(
+                tagName: "v9.9.9",
+                draft: false,
+                prerelease: false,
+                assets: []
+            )),
+            ReleaseNotesResolution(markdown: nil, source: .unavailable)
+        )
+    }
+
+    func testReleaseNotesMarkdownRendererKeepsUnsupportedMarkupAsTextAndOnlyAllowsWebLinks() throws {
+        let rendered = ReleaseNotesMarkdownRenderer.render(markdown: """
+        # Heading
+
+        - **Bold** and `code`
+        [Safe](https://example.com/release)
+        [Unsafe](javascript:alert(1))
+        <script>alert(1)</script>
+        <a href="https://example.com">HTML link</a>
+        """)
+
+        XCTAssertTrue(rendered.string.contains("Heading"))
+        XCTAssertTrue(rendered.string.contains("• Bold and code"))
+        XCTAssertTrue(rendered.string.contains("javascript:alert(1)"))
+        XCTAssertTrue(rendered.string.contains("<script>alert(1)</script>"))
+        XCTAssertTrue(rendered.string.contains("<a href=\"https://example.com\">HTML link</a>"))
+
+        let table = ReleaseNotesMarkdownRenderer.render(markdown: """
+        项目 | 说明
+        --- | ---
+        **修复** | [查看](https://example.com/fix)
+        """)
+        XCTAssertTrue(table.string.contains("项目"))
+        XCTAssertTrue(table.string.contains("说明"))
+        XCTAssertTrue(table.string.contains("修复"))
+        XCTAssertFalse(table.string.contains("--- | ---"))
+        XCTAssertFalse(table.string.contains("|"))
+        let tableParagraph = try XCTUnwrap(
+            table.attributes(at: 0, effectiveRange: nil)[.paragraphStyle] as? NSParagraphStyle
+        )
+        XCTAssertFalse(tableParagraph.textBlocks.isEmpty)
+        let tableLinkRange = (table.string as NSString).range(of: "查看")
+        XCTAssertEqual(
+            (table.attributes(at: tableLinkRange.location, effectiveRange: nil)[.link] as? URL)?.scheme,
+            "https"
+        )
+
+        let blockLayout = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 修复与体验优化
+
+        ---
+
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+
+        ## 安装
+
+        1. 下载文件
+        """)
+        XCTAssertFalse(blockLayout.string.contains("\n\n"))
+        let headingRange = (blockLayout.string as NSString).range(of: "修复与体验优化")
+        let headingParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: headingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertTrue(headingParagraph.textBlocks.isEmpty)
+        XCTAssertFalse(blockLayout.string.contains("---"))
+
+        let tableRange = (blockLayout.string as NSString).range(of: "项目")
+        let firstTableParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: tableRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        let firstCell = try XCTUnwrap(
+            firstTableParagraph.textBlocks.first as? ReleaseNotesTableCellBlock
+        )
+        XCTAssertEqual(firstCell.rowCount, 2)
+        XCTAssertEqual(firstCell.columnCount, 2)
+        XCTAssertTrue(firstCell.isHeader)
+        XCTAssertTrue(firstCell.drawsOuterLeftEdge)
+        XCTAssertFalse(firstCell.drawsOuterRightEdge)
+        XCTAssertTrue(firstCell.drawsOuterTopEdge)
+        XCTAssertFalse(firstCell.drawsOuterBottomEdge)
+        XCTAssertTrue(firstCell.drawsInternalRightEdge)
+        XCTAssertTrue(firstCell.drawsInternalBottomEdge)
+
+        let bodyMarkerRange = (blockLayout.string as NSString).range(of: "修复", options: .backwards)
+        let bodyRange = (blockLayout.string as NSString).range(of: "说明", options: [], range: NSRange(
+            location: bodyMarkerRange.location + bodyMarkerRange.length,
+            length: blockLayout.length - bodyMarkerRange.location - bodyMarkerRange.length
+        ))
+        let bodyParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        let lastCell = try XCTUnwrap(
+            bodyParagraph.textBlocks.first as? ReleaseNotesTableCellBlock
+        )
+        XCTAssertFalse(lastCell.isHeader)
+        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
+        XCTAssertTrue(lastCell.drawsOuterRightEdge)
+        XCTAssertTrue(lastCell.drawsOuterBottomEdge)
+        XCTAssertFalse(lastCell.drawsInternalRightEdge)
+        XCTAssertFalse(lastCell.drawsInternalBottomEdge)
+
+        let secondHeadingRange = (blockLayout.string as NSString).range(of: "安装")
+        let secondHeadingParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: secondHeadingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(secondHeadingParagraph.paragraphSpacing, 10, accuracy: 0.001)
+
+        let headingSpacing = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 安装
+
+        1. 下载文件
+        2. 打开文件
+
+        ## 文档
+
+        说明文字
+        """)
+        let lastListRange = (headingSpacing.string as NSString).range(of: "2. 打开文件")
+        let lastListParagraph = try XCTUnwrap(
+            headingSpacing.attributes(at: lastListRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(lastListParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
+
+        let precedingParagraphRange = (headingSpacing.string as NSString).range(of: "说明文字")
+        let precedingParagraph = try XCTUnwrap(
+            headingSpacing.attributes(at: precedingParagraphRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(precedingParagraph.paragraphSpacing, 2, accuracy: 0.001)
+
+        let normalBeforeHeading = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 安装
+
+        普通说明
+
+        ## 文档
+        """)
+        let normalRange = (normalBeforeHeading.string as NSString).range(of: "普通说明")
+        let normalParagraph = try XCTUnwrap(
+            normalBeforeHeading.attributes(at: normalRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(normalParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
+
+        let adjacentHeadings = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 第一节
+
+        ## 第二节
+        """)
+        let firstHeadingRange = (adjacentHeadings.string as NSString).range(of: "第一节")
+        let firstHeadingParagraph = try XCTUnwrap(
+            adjacentHeadings.attributes(at: firstHeadingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(firstHeadingParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
+
+        let safeRange = (rendered.string as NSString).range(of: "Safe")
+        let safeAttributes = rendered.attributes(at: safeRange.location, effectiveRange: nil)
+        XCTAssertEqual((safeAttributes[.link] as? URL)?.scheme, "https")
+
+        let unsafeRange = (rendered.string as NSString).range(of: "Unsafe")
+        XCTAssertNil(rendered.attributes(at: unsafeRange.location, effectiveRange: nil)[.link])
+        let htmlRange = (rendered.string as NSString).range(of: "HTML link")
+        XCTAssertNil(rendered.attributes(at: htmlRange.location, effectiveRange: nil)[.link])
+    }
+
+    func testReleaseNotesTableSpacingCreatesFollowingBlockGapInTextKitGeometry() throws {
+        let rendered = ReleaseNotesMarkdownRenderer.render(markdown: """
+        ## 修复与体验优化
+
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+
+        ## 安装
+
+        1. 下载文件
+        """)
+        let storage = NSTextStorage(attributedString: rendered)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(
+            size: NSSize(width: 480, height: CGFloat.greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 0
+        layoutManager.addTextContainer(textContainer)
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let bodyRange = (rendered.string as NSString).range(of: "说明", options: .backwards)
+        let headingRange = (rendered.string as NSString).range(of: "安装")
+        let listRange = (rendered.string as NSString).range(of: "1. 下载文件")
+        XCTAssertNotEqual(bodyRange.location, NSNotFound)
+        XCTAssertNotEqual(headingRange.location, NSNotFound)
+        XCTAssertNotEqual(listRange.location, NSNotFound)
+
+        let bodyParagraph = try XCTUnwrap(
+            rendered.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(bodyParagraph.paragraphSpacing, releaseNotesBlockSpacing, accuracy: 0.001)
+
+        let bodyGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: bodyRange,
+            actualCharacterRange: nil
+        )
+        let headingGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: headingRange,
+            actualCharacterRange: nil
+        )
+        let listGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: listRange,
+            actualCharacterRange: nil
+        )
+        let bodyRect = layoutManager.boundingRect(forGlyphRange: bodyGlyphRange, in: textContainer)
+        let headingRect = layoutManager.boundingRect(forGlyphRange: headingGlyphRange, in: textContainer)
+        let listRect = layoutManager.boundingRect(forGlyphRange: listGlyphRange, in: textContainer)
+        let gap = max(bodyRect.minY, headingRect.minY) - min(bodyRect.maxY, headingRect.maxY)
+        let headingToListGap = max(headingRect.minY, listRect.minY)
+            - min(headingRect.maxY, listRect.maxY)
+        XCTAssertGreaterThanOrEqual(
+            gap,
+            headingToListGap + 8 - 1,
+            "expected table-to-heading gap \(gap) >= heading-to-list gap \(headingToListGap) + 8, body=\(bodyRect), heading=\(headingRect), list=\(listRect)"
+        )
+
+        let trailingTable = ReleaseNotesMarkdownRenderer.render(markdown: """
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+        """)
+        let trailingRange = (trailingTable.string as NSString).range(of: "说明", options: .backwards)
+        let trailingParagraph = try XCTUnwrap(
+            trailingTable.attributes(at: trailingRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(trailingParagraph.paragraphSpacing, 0, accuracy: 0.001)
+    }
+
+    func testReleaseNotesTableGridUsesVisibleLightAndDarkColors() throws {
+        let lightAppearance = try XCTUnwrap(NSAppearance(named: .aqua))
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        let lightColors = ReleaseNotesAppearanceColors.resolved(for: lightAppearance)
+        let darkColors = ReleaseNotesAppearanceColors.resolved(for: darkAppearance)
+
+        XCTAssertEqual(lightColors.tableGrid.alphaComponent, 0.30, accuracy: 0.001)
+        XCTAssertEqual(darkColors.tableGrid.alphaComponent, 0.32, accuracy: 0.001)
+        XCTAssertLessThan(lightColors.tableGrid.whiteComponent, 0.10)
+        XCTAssertGreaterThan(darkColors.tableGrid.whiteComponent, 0.90)
+
+        let markdown = """
+        项目 | 说明
+        --- | ---
+        修复 | 长文本用于验证表格在深色模式下仍有清晰网格。
+        """
+        for appearance in [lightAppearance, darkAppearance] {
+            let rendered = ReleaseNotesMarkdownRenderer.render(markdown: markdown)
+            let markerRange = (rendered.string as NSString).range(of: "项目")
+            let paragraph = try XCTUnwrap(
+                rendered.attributes(at: markerRange.location, effectiveRange: nil)[.paragraphStyle]
+                    as? NSParagraphStyle
+            )
+            let cell = try XCTUnwrap(paragraph.textBlocks.first as? ReleaseNotesTableCellBlock)
+            XCTAssertTrue(cell.drawsOuterLeftEdge)
+            XCTAssertTrue(cell.drawsOuterTopEdge)
+
+            let expected = ReleaseNotesAppearanceColors.resolved(for: appearance)
+            XCTAssertGreaterThanOrEqual(expected.tableGrid.alphaComponent, 0.30)
+        }
+    }
+
+    func testReleaseNotesTableGridDrawsBottomAndRightOuterEdgesInOffscreenBitmap() throws {
+        let rendered = ReleaseNotesMarkdownRenderer.render(markdown: """
+        项目 | 说明
+        --- | ---
+        修复 | 说明
+        """)
+        let bodyRange = (rendered.string as NSString).range(of: "说明", options: .backwards)
+        let bodyParagraph = try XCTUnwrap(
+            rendered.attributes(at: bodyRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        let cell = try XCTUnwrap(bodyParagraph.textBlocks.first as? ReleaseNotesTableCellBlock)
+        XCTAssertTrue(cell.drawsOuterRightEdge)
+        XCTAssertTrue(cell.drawsOuterBottomEdge)
+
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 180, height: 100))
+        view.appearance = darkAppearance
+        let scale = max(1, NSScreen.main?.backingScaleFactor ?? 2)
+        let bitmapSize = NSSize(width: 180, height: 100)
+        let pixelsWide = max(1, Int(ceil(bitmapSize.width * scale)))
+        let pixelsHigh = max(1, Int(ceil(bitmapSize.height * scale)))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+        let frame = NSRect(x: 12.25, y: 11.25, width: 120.5, height: 42.25)
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        context.cgContext.clear(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
+        context.cgContext.saveGState()
+        context.cgContext.scaleBy(x: scale, y: scale)
+        cell.drawBackground(
+            withFrame: frame,
+            in: view,
+            characterRange: bodyRange,
+            layoutManager: NSLayoutManager()
+        )
+        context.cgContext.restoreGState()
+        context.flushGraphics()
+
+        let lineWidth = 1 / scale
+        let interiorXRange = bitmapPixelRange(
+            from: frame.minX + lineWidth * 2,
+            to: frame.maxX - lineWidth * 2,
+            scale: scale,
+            limit: pixelsWide
+        )
+        let interiorYRange = bitmapYPixelRange(
+            from: frame.minY + lineWidth * 2,
+            to: frame.maxY - lineWidth * 2,
+            scale: scale,
+            pixelsHigh: pixelsHigh
+        )
+        let bottomYRange = bitmapYPixelRange(
+            from: frame.maxY - lineWidth * 1.5,
+            to: frame.maxY + lineWidth * 0.5,
+            scale: scale,
+            pixelsHigh: pixelsHigh
+        )
+        let rightXRange = bitmapPixelRange(
+            from: frame.maxX - lineWidth * 1.5,
+            to: frame.maxX + lineWidth * 0.5,
+            scale: scale,
+            limit: pixelsWide
+        )
+
+        XCTAssertTrue(
+            bitmapContainsInk(bitmap, xRange: interiorXRange, yRange: bottomYRange),
+            "expected the last table row to contain a visible bottom outer edge"
+        )
+        XCTAssertTrue(
+            bitmapContainsInk(bitmap, xRange: rightXRange, yRange: interiorYRange),
+            "expected the last table column to contain a visible right outer edge"
+        )
+    }
+
+    func testUpdateNotesWindowLaysOutContentOnFirstPresentation() throws {
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        let release = GitHubRelease(
+            tagName: "v9.9.8",
+            draft: false,
+            prerelease: false,
+            assets: [],
+            body: "# First presentation\n\nThe release notes are visible immediately."
+        )
+
+        controller.show(currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.21")), release: release)
+
+        let window = try XCTUnwrap(controller.window)
+        let contentView = try XCTUnwrap(window.contentView)
+        let scrollView = try XCTUnwrap(
+            updateTestDescendants(of: contentView)
+                .compactMap { $0 as? NSScrollView }
+                .first
+        )
+        let notesTextView = try XCTUnwrap(scrollView.documentView as? ReleaseNotesTextView)
+        XCTAssertTrue(notesTextView.string.contains("First presentation"))
+        XCTAssertGreaterThan(notesTextView.frame.width, 1)
+        XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
+        XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
+        XCTAssertTrue(scrollView.layer?.masksToBounds ?? false)
+        XCTAssertEqual(scrollView.borderType, .noBorder)
+        XCTAssertTrue(scrollView.contentView is NSClipView)
+        XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
+        XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
+        XCTAssertFalse(scrollView.automaticallyAdjustsContentInsets)
+        XCTAssertEqual(scrollView.contentInsets.top, 0, accuracy: 0.001)
+        XCTAssertEqual(scrollView.contentInsets.bottom, 0, accuracy: 0.001)
+        let materialSurface = try XCTUnwrap(window.contentView as? NSVisualEffectView)
+        XCTAssertEqual(materialSurface.material, .underWindowBackground)
+        XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
+        XCTAssertEqual(materialSurface.state, .active)
+        XCTAssertTrue(window.styleMask.contains(.miniaturizable))
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertTrue(window.standardWindowButton(.miniaturizeButton)?.isEnabled ?? false)
+        XCTAssertFalse(window.standardWindowButton(.zoomButton)?.isEnabled ?? true)
+        XCTAssertEqual(materialSurface.layer?.cornerRadius ?? 0, 16, accuracy: 0.001)
+        XCTAssertEqual(materialSurface.layer?.cornerCurve, .continuous)
+        let contentSurface = try XCTUnwrap(
+            updateTestDescendants(of: materialSurface)
+                .first { $0.identifier?.rawValue == "updateNotesContentSurface" }
+        )
+        let expectedContentAlpha = dashboardUsesDarkAppearance ? 0.20 : 0.82
+        XCTAssertEqual(
+            contentSurface.layer?.backgroundColor?.alpha ?? 0,
+            expectedContentAlpha,
+            accuracy: 0.01
+        )
+        if let glassViewClass = NSClassFromString("NSGlassEffectView") {
+            XCTAssertFalse(materialSurface.isKind(of: glassViewClass))
+            XCTAssertFalse(
+                updateTestDescendants(of: materialSurface).contains {
+                    $0.isKind(of: glassViewClass)
+                }
+            )
+        }
+        let titleLabel = try XCTUnwrap(
+            updateTestDescendants(of: contentView)
+                .compactMap { $0 as? NSTextField }
+                .first
+        )
+        let titlebarHeight = window.frame.height - window.contentLayoutRect.height
+        let titleLabelFrame = titleLabel.convert(titleLabel.bounds, to: contentView)
+        let topInset = contentView.bounds.maxY - titleLabelFrame.maxY
+        XCTAssertGreaterThanOrEqual(topInset, titlebarHeight + 20)
+    }
+
+    func testUpdateNotesWindowUsesDashboardMaterialContractInLightAndDarkModes() throws {
+        let previousAppearance = NSApp.appearance
+        defer { NSApp.appearance = previousAppearance }
+
+        for appearance in [NSAppearance(named: .aqua), NSAppearance(named: .darkAqua)] {
+            NSApp.appearance = appearance
+            let controller = UpdateNotesWindowController(onInstall: {})
+            controller.show(
+                currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+                release: GitHubRelease(
+                    tagName: "v1.1.21",
+                    draft: false,
+                    prerelease: true,
+                    assets: [],
+                    body: "# Material test\n\nOpaque content surface."
+                )
+            )
+            let window = try XCTUnwrap(controller.window)
+            let materialSurface = try XCTUnwrap(window.contentView as? NSVisualEffectView)
+            let contentSurface = try XCTUnwrap(
+                updateTestDescendants(of: materialSurface)
+                    .first { $0.identifier?.rawValue == "updateNotesContentSurface" }
+            )
+            let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            XCTAssertEqual(materialSurface.material, .underWindowBackground)
+            XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
+            XCTAssertEqual(materialSurface.state, .active)
+            XCTAssertEqual(
+                window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]),
+                isDark ? .darkAqua : .aqua
+            )
+            XCTAssertEqual(
+                materialSurface.layer?.backgroundColor?.alpha ?? 0,
+                isDark ? 0.14 : 0.08,
+                accuracy: 0.01
+            )
+            XCTAssertEqual(
+                contentSurface.layer?.backgroundColor?.alpha ?? 0,
+                isDark ? 0.20 : 0.82,
+                accuracy: 0.01
+            )
+            let contentColor = try XCTUnwrap(
+                try XCTUnwrap(NSColor(cgColor: try XCTUnwrap(contentSurface.layer?.backgroundColor)))
+                    .usingColorSpace(.deviceRGB)
+            )
+            if isDark {
+                XCTAssertLessThan(contentColor.redComponent, 0.10)
+            } else {
+                XCTAssertGreaterThan(contentColor.redComponent, 0.80)
+            }
+            let notesTextView = try XCTUnwrap(
+                updateTestDescendants(of: contentSurface)
+                    .compactMap { $0 as? NSTextView }
+                    .first
+            )
+            XCTAssertTrue(notesTextView.drawsBackground)
+            let notesBackground = try XCTUnwrap(
+                notesTextView.backgroundColor.usingColorSpace(.sRGB)
+            )
+            if isDark {
+                XCTAssertEqual(notesBackground.redComponent, 29.0 / 255.0, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.greenComponent, 30.0 / 255.0, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.blueComponent, 30.0 / 255.0, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.alphaComponent, 1, accuracy: 0.001)
+            } else {
+                XCTAssertEqual(notesBackground.redComponent, 1, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.greenComponent, 1, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.blueComponent, 1, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.alphaComponent, 1, accuracy: 0.001)
+            }
+            controller.close()
+        }
+    }
+
+    func testUpdateNotesTextViewDisablesSelectionAndKeepsLinks() throws {
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        controller.show(
+            currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+            release: GitHubRelease(
+                tagName: "v1.1.21",
+                draft: false,
+                prerelease: true,
+                assets: [],
+                body: "# Readable\n\nOpen [the release](https://github.com/huanmeng06/BalanceBar/releases)."
+            )
+        )
+
+        let window = try XCTUnwrap(controller.window)
+        let scrollView = try XCTUnwrap(
+            updateTestDescendants(of: try XCTUnwrap(window.contentView))
+                .compactMap { $0 as? NSScrollView }
+                .first
+        )
+        let notesTextView = try XCTUnwrap(scrollView.documentView as? ReleaseNotesTextView)
+        notesTextView.updateTrackingAreas()
+        XCTAssertFalse(notesTextView.isSelectable)
+        XCTAssertFalse(notesTextView.isEditable)
+        XCTAssertFalse(notesTextView.acceptsFirstResponder)
+        XCTAssertNotEqual(window.firstResponder, notesTextView)
+        XCTAssertEqual(notesTextView.selectedRange().length, 0)
+        XCTAssertTrue(
+            notesTextView.trackingAreas.contains {
+                $0.options.contains(.cursorUpdate) && $0.options.contains(.mouseMoved)
+            }
+        )
+
+        let range = (notesTextView.string as NSString).range(of: "the release")
+        XCTAssertNotEqual(range.location, NSNotFound)
+        XCTAssertEqual(
+            notesTextView.textStorage?.attribute(.link, at: range.location, effectiveRange: nil) as? URL,
+            URL(string: "https://github.com/huanmeng06/BalanceBar/releases")
+        )
+
+        let textStorage = try XCTUnwrap(notesTextView.textStorage)
+        let layoutManager = try XCTUnwrap(notesTextView.layoutManager)
+        let textContainer = try XCTUnwrap(notesTextView.textContainer)
+        let linkGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: range,
+            actualCharacterRange: nil
+        )
+        let linkRect = layoutManager
+            .boundingRect(forGlyphRange: linkGlyphRange, in: textContainer)
+            .offsetBy(dx: notesTextView.textContainerOrigin.x, dy: notesTextView.textContainerOrigin.y)
+        XCTAssertTrue(
+            notesTextView.cursor(at: NSPoint(x: linkRect.midX, y: linkRect.midY)) === NSCursor.pointingHand
+        )
+        let trailingLinkPoint = NSPoint(
+            x: min(linkRect.maxX + 24, notesTextView.bounds.maxX - 2),
+            y: linkRect.midY
+        )
+        XCTAssertGreaterThan(trailingLinkPoint.x, linkRect.maxX)
+        XCTAssertTrue(notesTextView.cursor(at: trailingLinkPoint) === NSCursor.arrow)
+
+        let headingRange = (textStorage.string as NSString).range(of: "Readable")
+        let headingGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: headingRange,
+            actualCharacterRange: nil
+        )
+        let headingRect = layoutManager
+            .boundingRect(forGlyphRange: headingGlyphRange, in: textContainer)
+            .offsetBy(dx: notesTextView.textContainerOrigin.x, dy: notesTextView.textContainerOrigin.y)
+        XCTAssertTrue(
+            notesTextView.cursor(at: NSPoint(x: headingRect.midX, y: headingRect.midY)) === NSCursor.arrow
+        )
+    }
+
+    func testReleaseNotesReflowsLongContentAcrossLanguagesAndWindowWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        let longList = (1...14)
+            .map { "\($0). 这是一段用于验证窄窗口滚动和重复打开的较长更新说明。" }
+            .joined(separator: "\n")
+        let release = GitHubRelease(
+            tagName: "v9.9.9",
+            draft: false,
+            prerelease: true,
+            assets: [],
+            body: """
+            ## 修复与体验优化
+
+            项目 | 说明
+            --- | ---
+            长文本 | This is a deliberately long English and 中文 paragraph used to verify wrapping at narrow widths. 日本語 한국어 Español Deutsch.
+
+            ## 安装
+
+            1. 下载 BalanceBar-9.9.9.dmg。
+            2. Open the DMG and move BalanceBar.app into Applications.
+            3. 从应用程序文件夹启动 BalanceBar。
+
+            \(longList)
+            """
+        )
+        let languages: [AppLanguage] = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .english,
+            .japanese,
+            .korean,
+            .spanish,
+            .german
+        ]
+
+        for language in languages {
+            AppLanguage.selected = language
+            controller.show(
+                currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+                release: release
+            )
+            let window = try XCTUnwrap(controller.window)
+            for width in [520, 900] {
+                var frame = window.frame
+                frame.size = NSSize(width: width, height: 560)
+                window.setFrame(frame, display: false)
+                window.contentView?.layoutSubtreeIfNeeded()
+                let contentView = try XCTUnwrap(window.contentView)
+                let scrollView = try XCTUnwrap(
+                    updateTestDescendants(of: contentView)
+                        .compactMap { $0 as? NSScrollView }
+                        .first
+                )
+                let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+                XCTAssertGreaterThan(notesTextView.frame.width, 1)
+                XCTAssertGreaterThanOrEqual(
+                    notesTextView.frame.height,
+                    scrollView.contentView.bounds.height
+                )
+                if width == 520 {
+                    XCTAssertGreaterThan(
+                        notesTextView.frame.height,
+                        scrollView.contentView.bounds.height
+                    )
+                    let maxScrollY = max(
+                        0,
+                        notesTextView.frame.height - scrollView.contentView.bounds.height
+                    )
+                    scrollView.contentView.scroll(to: NSPoint(x: 0, y: maxScrollY))
+                    scrollView.reflectScrolledClipView(scrollView.contentView)
+                }
+            }
+            controller.show(
+                currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+                release: release
+            )
+            controller.window?.contentView?.layoutSubtreeIfNeeded()
+            XCTAssertTrue(controller.window?.isVisible == true)
+            controller.close()
+        }
+
+        AppLanguage.selected = .english
+        controller.show(
+            currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+            release: release
+        )
+        let englishTitle = try XCTUnwrap(
+            updateTestDescendants(of: try XCTUnwrap(controller.window?.contentView))
+                .compactMap { $0 as? NSTextField }
+                .first
+        ).stringValue
+        AppLanguage.selected = .japanese
+        controller.refreshForCurrentLanguage()
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        let japaneseTitle = try XCTUnwrap(
+            updateTestDescendants(of: try XCTUnwrap(controller.window?.contentView))
+                .compactMap { $0 as? NSTextField }
+                .first
+        ).stringValue
+        XCTAssertNotEqual(englishTitle, japaneseTitle)
+        controller.close()
+
+        XCTAssertEqual(releaseNotesPixelAligned(10.24, scale: 2), 10, accuracy: 0.001)
+        XCTAssertEqual(releaseNotesPixelAligned(10.26, scale: 2), 10.5, accuracy: 0.001)
+        XCTAssertEqual(releaseNotesPixelAligned(10.17, scale: 3), 31.0 / 3.0, accuracy: 0.001)
+        let snappedRect = releaseNotesPixelAlignedRect(
+            NSRect(x: 0.24, y: 1.17, width: 10.26, height: 5.24),
+            scale: 2
+        )
+        XCTAssertEqual(snappedRect.minX * 2, (snappedRect.minX * 2).rounded(), accuracy: 0.001)
+        XCTAssertEqual(snappedRect.minY * 2, (snappedRect.minY * 2).rounded(), accuracy: 0.001)
+        XCTAssertEqual(snappedRect.maxX * 2, (snappedRect.maxX * 2).rounded(), accuracy: 0.001)
+        XCTAssertEqual(snappedRect.maxY * 2, (snappedRect.maxY * 2).rounded(), accuracy: 0.001)
+    }
+
     // MARK: - Dashboard state/action wiring and localization
 
     func testDashboardRetryActionKeepsCheckingVisibleForOneSecondAndGuardsDuplicateRequests() throws {
@@ -1312,8 +2097,10 @@ final class UpdateTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         var checkCount = 0
         var installCount = 0
+        var openNotesCount = 0
         relay.onCheckForUpdates = { checkCount += 1 }
         relay.onInstallUpdate = { installCount += 1 }
+        relay.onOpenUpdateNotes = { openNotesCount += 1 }
         var selectedChannel: UpdateChannel?
         relay.onUpdateChannelChanged = { selectedChannel = $0 }
         let pageController = DashboardGeneralPage()
@@ -1332,8 +2119,23 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == AppPreferences.updateChannelKey }
         )
+        XCTAssertTrue(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .contains {
+                    $0.stringValue == tr(
+                        .keyDashboardGeneralAndRefreshPagesUpdateChannelDescription,
+                        language: .simplifiedChinese
+                    )
+                }
+        )
         XCTAssertEqual(channelPopup.itemTitles, ["正式版", "Beta 测试版"])
         XCTAssertEqual(channelPopup.selectedItem?.representedObject as? String, UpdateChannel.stable.rawValue)
+        let updateNotesButton = try XCTUnwrap(
+            buttons.first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
+        )
+        XCTAssertTrue(updateNotesButton.isHidden)
+        XCTAssertFalse(channelPopup.superview === updateButton.superview)
         channelPopup.selectItem(at: UpdateChannel.allCases.firstIndex(of: .beta)!)
         relay.updateChannel(channelPopup)
         XCTAssertEqual(selectedChannel, .beta)
@@ -1356,6 +2158,11 @@ final class UpdateTests: XCTestCase {
         ))
         XCTAssertEqual(updateButton.title, "下载并安装")
         XCTAssertTrue(updateButton.isEnabled)
+        XCTAssertEqual(updateNotesButton.title, "查看更新内容")
+        XCTAssertFalse(updateNotesButton.isHidden)
+        XCTAssertEqual((updateButton.superview as? NSStackView)?.arrangedSubviews.first, updateNotesButton)
+        relay.openUpdateNotes(updateNotesButton)
+        XCTAssertEqual(openNotesCount, 1)
         relay.update(updateButton)
         XCTAssertEqual(installCount, 1)
         XCTAssertEqual(
@@ -1403,6 +2210,26 @@ final class UpdateTests: XCTestCase {
             case .system:
                 XCTFail("system is not part of this explicit localization matrix")
             }
+            XCTAssertTrue(presentation.showsReleaseNotesButton)
+            XCTAssertEqual(
+                tr(.keyDashboardGeneralAndRefreshPagesViewReleaseNotes, language: language),
+                language == .simplifiedChinese ? "查看更新内容" :
+                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "查看更新內容" :
+                    language == .japanese ? "更新内容を見る" :
+                    language == .korean ? "업데이트 내용 보기" :
+                    language == .spanish ? "Ver notas de la versión" :
+                    language == .german ? "Versionshinweise anzeigen" : "View Release Notes"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription, language: language),
+                language == .simplifiedChinese ? "选择要检查的正式版或 Beta 测试版更新" :
+                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "選擇要檢查的正式版或 Beta 測試版更新" :
+                    language == .japanese ? "正式版またはベータテストの更新を確認するか選択します" :
+                    language == .korean ? "정식 버전 또는 베타 테스트 업데이트를 확인할지 선택합니다" :
+                    language == .spanish ? "Elige si quieres buscar actualizaciones estables o beta" :
+                    language == .german ? "Wähle, ob nach stabilen oder Beta-Updates gesucht werden soll" :
+                    "Choose whether to check Stable or Beta releases"
+            )
             let downloading = DashboardUpdatePresentation.make(
                 for: .downloading(
                     current: try XCTUnwrap(AppSemanticVersion("1.0.6")),
@@ -1490,14 +2317,18 @@ final class UpdateTests: XCTestCase {
         tag: String,
         draft: Bool = false,
         prerelease: Bool = false,
+        body: String? = nil,
+        htmlURL: String? = nil,
         assets: [[String: Any]]
     ) -> Data {
-        let object: [String: Any] = [
+        var object: [String: Any] = [
             "tag_name": tag,
             "draft": draft,
             "prerelease": prerelease,
             "assets": assets
         ]
+        if let body { object["body"] = body }
+        if let htmlURL { object["html_url"] = htmlURL }
         return try! JSONSerialization.data(withJSONObject: object, options: [])
     }
 
@@ -1591,6 +2422,51 @@ final class UpdateTests: XCTestCase {
 
 private func updateTestDescendants(of view: NSView) -> [NSView] {
     view.subviews + view.subviews.flatMap(updateTestDescendants)
+}
+
+private func bitmapPixelRange(
+    from lower: CGFloat,
+    to upper: CGFloat,
+    scale: CGFloat,
+    limit: Int
+) -> ClosedRange<Int> {
+    guard limit > 0 else { return 0...0 }
+    let lowerPixel = max(0, Int(floor(lower * scale)))
+    let upperPixel = min(limit - 1, Int(ceil(upper * scale)))
+    return lowerPixel...max(lowerPixel, upperPixel)
+}
+
+private func bitmapYPixelRange(
+    from lower: CGFloat,
+    to upper: CGFloat,
+    scale: CGFloat,
+    pixelsHigh: Int
+) -> ClosedRange<Int> {
+    let bitmapHeight = CGFloat(pixelsHigh) / scale
+    return bitmapPixelRange(
+        from: bitmapHeight - upper,
+        to: bitmapHeight - lower,
+        scale: scale,
+        limit: pixelsHigh
+    )
+}
+
+private func bitmapContainsInk(
+    _ bitmap: NSBitmapImageRep,
+    xRange: ClosedRange<Int>,
+    yRange: ClosedRange<Int>
+) -> Bool {
+    for y in yRange {
+        for x in xRange {
+            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                continue
+            }
+            if color.alphaComponent > 0.05 {
+                return true
+            }
+        }
+    }
+    return false
 }
 
 private func equalHeightConstraint(in view: NSView?) -> CGFloat? {

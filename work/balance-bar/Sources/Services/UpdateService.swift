@@ -787,6 +787,11 @@ final class UpdateService {
     }
     var onStateChange: ((UpdateCheckState) -> Void)?
 
+    /// The release that produced the current available state. The dashboard
+    /// uses this read-only seam for release notes and the GitHub link while
+    /// the service remains the sole owner of update selection/install logic.
+    var availableReleaseForPresentation: GitHubRelease? { availableRelease }
+
     init(
         releaseFetcher: GitHubReleaseFetching = GitHubReleaseClient(),
         downloader: UpdateAssetDownloading = URLSessionUpdateAssetDownloader(),

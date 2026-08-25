@@ -16,6 +16,7 @@ struct DashboardUpdatePresentation: Equatable {
     let buttonTitle: String
     let buttonEnabled: Bool
     let performsInstall: Bool
+    let showsReleaseNotesButton: Bool
 
     static func make(for state: UpdateCheckState, language: AppLanguage = .selected) -> DashboardUpdatePresentation {
         switch state {
@@ -24,49 +25,56 @@ struct DashboardUpdatePresentation: Equatable {
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesClickToCheckGithubReleases, language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates, language: language),
                 buttonEnabled: true,
-                performsInstall: false
+                performsInstall: false,
+                showsReleaseNotesButton: false
             )
         case .checking:
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesCheckingForUpdates, language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesChecking, language: language),
                 buttonEnabled: false,
-                performsInstall: false
+                performsInstall: false,
+                showsReleaseNotesButton: false
             )
         case .latest:
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesYouAreUpToDate, language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates2, language: language),
                 buttonEnabled: true,
-                performsInstall: false
+                performsInstall: false,
+                showsReleaseNotesButton: false
             )
         case .available(let current, let latest):
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue, arguments: [String(describing: current), String(describing: latest)], language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language),
                 buttonEnabled: true,
-                performsInstall: true
+                performsInstall: true,
+                showsReleaseNotesButton: true
             )
         case .downloading(_, _, let progress):
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadingTheNewVersion, language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesDownloadingValue, arguments: [String(describing: progress)], language: language),
                 buttonEnabled: false,
-                performsInstall: false
+                performsInstall: false,
+                showsReleaseNotesButton: false
             )
         case .installing(_, _, let progress):
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesInstallingTheNewVersion, language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesInstallingValue, arguments: [String(describing: progress)], language: language),
                 buttonEnabled: false,
-                performsInstall: false
+                performsInstall: false,
+                showsReleaseNotesButton: false
             )
         case .restarting:
             return DashboardUpdatePresentation(
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesInstalledRestarting, language: language),
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRestarting, language: language),
                 buttonEnabled: false,
-                performsInstall: false
+                performsInstall: false,
+                showsReleaseNotesButton: false
             )
         case .failed(let failure):
             let subtitle: String
@@ -86,7 +94,8 @@ struct DashboardUpdatePresentation: Equatable {
                 subtitle: subtitle,
                 buttonTitle: tr(.keyDashboardGeneralAndRefreshPagesRetry, language: language),
                 buttonEnabled: true,
-                performsInstall: false
+                performsInstall: false,
+                showsReleaseNotesButton: false
             )
         }
     }
@@ -102,6 +111,7 @@ final class DashboardGeneralPage {
 
     private var updateSubtitleLabel: NSTextField?
     private var updateButton: NSButton?
+    private var updateNotesButton: NSButton?
 
     func make(_ input: Input) -> NSView {
         let openButton = NSButton(
@@ -209,6 +219,14 @@ final class DashboardGeneralPage {
         updateButton.identifier = NSUserInterfaceItemIdentifier("checkForUpdatesButton")
         updateButton.bezelStyle = .rounded
         apply(updatePresentation, to: updateButton, subtitle: updateSubtitle)
+        let updateNotesButton = NSButton(
+            title: tr(.keyDashboardGeneralAndRefreshPagesViewReleaseNotes),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.openUpdateNotes(_:))
+        )
+        updateNotesButton.identifier = NSUserInterfaceItemIdentifier("viewUpdateNotesButton")
+        updateNotesButton.bezelStyle = .rounded
+        apply(updatePresentation, to: updateNotesButton)
         let updateChannelPopup = DashboardSettingsComponents.makePopUpButton(
             identifier: AppPreferences.updateChannelKey,
             items: UpdateChannel.allCases.map {
@@ -222,12 +240,18 @@ final class DashboardGeneralPage {
             action: #selector(DashboardPreferencePageRelay.updateChannel(_:))
         )
         updateChannelPopup.widthAnchor.constraint(equalToConstant: 112).isActive = true
-        let updateControls = NSStackView(views: [updateChannelPopup, updateButton])
+        let updateChannelRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardGeneralAndRefreshPagesUpdateChannel),
+            subtitle: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription),
+            control: updateChannelPopup
+        )
+        let updateControls = NSStackView(views: [updateNotesButton, updateButton])
         updateControls.orientation = .horizontal
         updateControls.alignment = .centerY
         updateControls.spacing = 8
         self.updateSubtitleLabel = updateSubtitle
         self.updateButton = updateButton
+        self.updateNotesButton = updateNotesButton
 
         let app = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesApplication), rows: [
             DashboardSettingsComponents.makeSettingsRow(
@@ -235,6 +259,7 @@ final class DashboardGeneralPage {
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
                 control: languagePopup
             ),
+            updateChannelRow,
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates3),
                 subtitle: updatePresentation.subtitle,
@@ -249,6 +274,7 @@ final class DashboardGeneralPage {
         let presentation = DashboardUpdatePresentation.make(for: updateState)
         guard let updateSubtitleLabel, let updateButton else { return }
         apply(presentation, to: updateButton, subtitle: updateSubtitleLabel)
+        apply(presentation, to: updateNotesButton)
     }
 
     private func apply(
@@ -260,6 +286,15 @@ final class DashboardGeneralPage {
         button.isEnabled = presentation.buttonEnabled
         button.tag = presentation.performsInstall ? 1 : 0
         subtitle.stringValue = presentation.subtitle
+    }
+
+    private func apply(
+        _ presentation: DashboardUpdatePresentation,
+        to button: NSButton?
+    ) {
+        guard let button else { return }
+        button.isHidden = !presentation.showsReleaseNotesButton
+        button.isEnabled = presentation.showsReleaseNotesButton
     }
 }
 
