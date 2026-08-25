@@ -159,8 +159,39 @@ final class LocalizationTests: XCTestCase {
     func testLanguagePickerOrder() {
         XCTAssertEqual(
             AppLanguage.allCases,
-            [.system, .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .english, .japanese, .korean, .spanish, .german]
+            [.system, .simplifiedChinese, .traditionalChineseHongKong, .traditionalChineseTaiwan, .english, .japanese, .korean, .spanish, .german]
         )
+    }
+
+    func testLanguagePickerRegionalSelectionsKeepTheirOwnRouting() {
+        let pickerLanguages = AppLanguage.allCases
+        let regionalLanguages: [AppLanguage] = [
+            .traditionalChineseHongKong,
+            .traditionalChineseTaiwan
+        ]
+
+        XCTAssertEqual(
+            Array(pickerLanguages.dropFirst(2).prefix(2)),
+            regionalLanguages
+        )
+
+        for language in regionalLanguages {
+            guard let pickerIndex = pickerLanguages.firstIndex(of: language) else {
+                XCTFail("missing picker item")
+                continue
+            }
+            let representedValue = pickerLanguages[pickerIndex].rawValue
+            guard let selectedLanguage = AppLanguage(rawValue: representedValue) else {
+                XCTFail("picker item has an invalid raw value")
+                continue
+            }
+
+            XCTAssertEqual(selectedLanguage, language)
+            XCTAssertEqual(
+                AppLanguage.resolved(for: selectedLanguage, preferredLanguages: ["en-US"]),
+                language
+            )
+        }
     }
 
     func testLocalizedTitlesCoverAllLanguages() {
