@@ -64,6 +64,67 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.updateChannel, .beta)
     }
 
+    func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, [String], [String])] = [
+            (
+                .spanish,
+                ["Cada 1 s", "Cada 2 s", "Cada 3 s", "Cada 5 s", "Cada 10 s"],
+                ["Desactivado", "Durante 6 s", "Durante 12 s", "Durante 30 s"]
+            ),
+            (
+                .french,
+                ["Toutes les 1 s", "Toutes les 2 s", "Toutes les 3 s", "Toutes les 5 s", "Toutes les 10 s"],
+                ["Désactivé", "Pendant 6 s", "Pendant 12 s", "Pendant 30 s"]
+            )
+        ]
+
+        for (language, expectedRunningTitles, expectedTrailingTitles) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.RefreshIntervalPopup.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            let page = DashboardGeneralPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                currentProviderName: "OpenAI",
+                relay: DashboardPreferencePageRelay(),
+                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+            ))
+
+            let popupControls = descendants(of: page).compactMap { $0 as? NSPopUpButton }
+            let runningPopup = try XCTUnwrap(popupControls.first {
+                $0.identifier?.rawValue == "codexUsageRefreshInterval"
+            })
+            let trailingPopup = try XCTUnwrap(popupControls.first {
+                $0.identifier?.rawValue == "postCodexRefreshDuration"
+            })
+            let popups = [runningPopup, trailingPopup]
+            XCTAssertEqual(popups[0].itemTitles, expectedRunningTitles)
+            XCTAssertEqual(popups[1].itemTitles, expectedTrailingTitles)
+
+            var localizedWidths: [CGFloat] = []
+            for popup in popups {
+                let width = try XCTUnwrap(popup.constraints.first {
+                    $0.firstAttribute == .width && $0.relation == .equal
+                })
+                localizedWidths.append(width.constant)
+                XCTAssertGreaterThanOrEqual(
+                    width.constant,
+                    ceil(popup.fittingSize.width),
+                    "\(language) interval popup must fit every localized item title"
+                )
+            }
+            XCTAssertGreaterThan(
+                localizedWidths.max() ?? 0,
+                108,
+                "\(language) interval popups must grow when at least one localized item needs more room"
+            )
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+    }
+
     func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

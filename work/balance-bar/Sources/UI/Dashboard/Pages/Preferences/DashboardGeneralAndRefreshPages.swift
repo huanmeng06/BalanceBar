@@ -164,7 +164,6 @@ final class DashboardGeneralPage {
         }
         [activeRefreshPopup, trailingRefreshPopup].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
-            $0.widthAnchor.constraint(equalToConstant: 108).isActive = true
         }
         let runningControls = NSStackView(views: [runningLabel, activeRefreshPopup])
         runningControls.orientation = .horizontal
