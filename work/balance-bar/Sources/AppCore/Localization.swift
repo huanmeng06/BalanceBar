@@ -4,8 +4,8 @@ import AppKit
 enum AppLanguage: String, CaseIterable {
     case system
     case simplifiedChinese
-    case traditionalChineseTaiwan
     case traditionalChineseHongKong
+    case traditionalChineseTaiwan
     case english
     case japanese
     case korean

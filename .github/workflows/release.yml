@@ -16,6 +16,11 @@ on:
         required: true
         default: false
         type: boolean
+      source_pr:
+        description: Merged PR number to publish through the normal release pipeline
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -28,7 +33,7 @@ concurrency:
 jobs:
   release:
     name: Package and publish Release
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && inputs.source_pr != '')
     runs-on: macos-26
     timeout-minutes: 35
     env:
@@ -50,6 +55,40 @@ jobs:
         with:
           node-version: 22
 
+      - name: Prepare manually selected merged PR event
+        if: github.event_name == 'workflow_dispatch' && inputs.source_pr != ''
+        env:
+          SOURCE_PR: ${{ inputs.source_pr }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pr_json="$(gh pr view "$SOURCE_PR" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json number,title,body,url,state,mergedAt,mergeCommit,labels,closingIssuesReferences)"
+          state="$(jq -r '.state' <<< "$pr_json")"
+          [[ "$state" == "MERGED" ]] \
+            || { echo "PR #$SOURCE_PR is not merged (state: $state)." >&2; exit 1; }
+
+          merge_sha="$(jq -r '.mergeCommit.oid // empty' <<< "$pr_json")"
+          [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo "PR #$SOURCE_PR has no valid merge commit." >&2; exit 1; }
+          echo "MERGE_SHA=$merge_sha" >> "$GITHUB_ENV"
+
+          manual_event="$RUNNER_TEMP/balancebar-manual-event.json"
+          jq --arg merge_sha "$merge_sha" '{
+            pull_request: {
+              number,
+              title,
+              body,
+              html_url: .url,
+              merged: true,
+              merge_commit_sha: $merge_sha,
+              labels,
+              closingIssuesReferences
+            }
+          }' <<< "$pr_json" > "$manual_event"
+          echo "RELEASE_EVENT_PATH=$manual_event" >> "$GITHUB_ENV"
+
       - name: Verify macOS 26 build environment
         run: |
           set -Eeuo pipefail
@@ -60,7 +99,9 @@ jobs:
 
       - name: Detect version change in the merged PR
         id: release_context
-        run: node scripts/release/release-context.mjs
+        run: |
+          event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
+          GITHUB_EVENT_PATH="$event_path" node scripts/release/release-context.mjs
 
       - name: Skip merged PRs without a version change
         if: steps.release_context.outputs.should_release != 'true'
@@ -107,14 +148,23 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          previous_tag="$(gh release list \
+          releases_json="$RUNNER_TEMP/balancebar-releases.json"
+          gh release list \
             --repo "$GITHUB_REPOSITORY" \
-            --limit 1 \
+            --limit 1000 \
             --exclude-drafts \
-            --json tagName \
-            --jq '.[0].tagName' 2>/dev/null || true)"
+            --json tagName,isPrerelease,isDraft,publishedAt,createdAt \
+            > "$releases_json"
+
+          previous_tag="$(node scripts/release/select-previous-release.mjs \
+            --releases "$releases_json" \
+            --current-version "${{ steps.version_plan.outputs.version }}" \
+            --prerelease "${{ steps.version_plan.outputs.prerelease }}")"
+
           if [[ -z "$previous_tag" ]]; then
-            previous_tag="$(git describe --tags --abbrev=0 "${MERGE_SHA}^" 2>/dev/null || true)"
+            if [[ "${{ steps.version_plan.outputs.prerelease }}" == "true" ]]; then
+              previous_tag="$(git describe --tags --abbrev=0 "${MERGE_SHA}^" 2>/dev/null || true)"
+            fi
           fi
           if [[ -z "$previous_tag" ]]; then
             previous_tag="$(git rev-list --max-parents=0 "$MERGE_SHA")"
@@ -147,8 +197,9 @@ jobs:
             --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit \
             > "$prs_json"
 
+          event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
           node scripts/release/collect-release-input.mjs \
-            --event "$GITHUB_EVENT_PATH" \
+            --event "$event_path" \
             --compare "$compare_json" \
             --prs "$prs_json" \
             --repo "$GITHUB_REPOSITORY" \
@@ -243,7 +294,7 @@ jobs:
 
   rebuild-existing-release:
     name: Rebuild an existing Release
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.source_pr == ''
     runs-on: macos-26
     timeout-minutes: 35
     env:
