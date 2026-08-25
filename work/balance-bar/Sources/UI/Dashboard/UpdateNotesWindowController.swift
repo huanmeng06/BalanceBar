@@ -1,29 +1,81 @@
 import AppKit
 
-private final class ReleaseNotesTextView: NSTextView {
-    override var acceptsFirstResponder: Bool { true }
+final class ReleaseNotesTextView: NSTextView {
+    override var acceptsFirstResponder: Bool { false }
 
-    override func writeSelection(
-        to pasteboard: NSPasteboard,
-        types: [NSPasteboard.PasteboardType]
-    ) -> Bool {
-        let range = selectedRange()
-        guard range.length > 0,
-              types.contains(.string),
-              range.location >= 0,
-              NSMaxRange(range) <= (string as NSString).length else {
-            return false
-        }
-        let selectedText = (string as NSString).substring(with: range)
-        pasteboard.declareTypes([.string], owner: nil)
-        return pasteboard.setString(selectedText, forType: .string)
+    private var pressedLink: URL?
+
+    func cursor(at point: NSPoint) -> NSCursor {
+        linkURL(at: point) == nil ? .arrow : .pointingHand
     }
 
-    override func copy(_ sender: Any?) {
-        guard selectedRange().length > 0 else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        _ = writeSelection(to: pasteboard, types: [.string])
+    override func resetCursorRects() {
+        discardCursorRects()
+        addCursorRect(bounds, cursor: .arrow)
+
+        guard let textContainer,
+              let layoutManager,
+              let textStorage,
+              textStorage.length > 0 else {
+            return
+        }
+
+        let origin = textContainerOrigin
+        textStorage.enumerateAttribute(
+            .link,
+            in: NSRange(location: 0, length: textStorage.length),
+            options: []
+        ) { value, characterRange, _ in
+            guard value is URL else { return }
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: characterRange,
+                actualCharacterRange: nil
+            )
+            guard glyphRange.length > 0 else { return }
+            let rect = layoutManager
+                .boundingRect(forGlyphRange: glyphRange, in: textContainer)
+                .offsetBy(dx: origin.x, dy: origin.y)
+            guard !rect.isEmpty else { return }
+            addCursorRect(rect, cursor: .pointingHand)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        pressedLink = linkURL(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { pressedLink = nil }
+        guard let pressedLink,
+              linkURL(at: convert(event.locationInWindow, from: nil)) == pressedLink else {
+            return
+        }
+        NSWorkspace.shared.open(pressedLink)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        // Deliberately do not forward drag events to NSTextView: release notes
+        // are readable content, not an editable/selectable document.
+    }
+
+    private func linkURL(at pointInView: NSPoint) -> URL? {
+        guard let textContainer,
+              let layoutManager,
+              let textStorage else {
+            return nil
+        }
+        guard bounds.contains(pointInView) else { return nil }
+        let pointInContainer = NSPoint(
+            x: pointInView.x - textContainerOrigin.x,
+            y: pointInView.y - textContainerOrigin.y
+        )
+        let characterIndex = layoutManager.characterIndex(
+            for: pointInContainer,
+            in: textContainer,
+            fractionOfDistanceBetweenInsertionPoints: nil
+        )
+        guard characterIndex < textStorage.length else { return nil }
+        return textStorage.attribute(.link, at: characterIndex, effectiveRange: nil) as? URL
     }
 }
 
@@ -91,7 +143,6 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
-        _ = window.makeFirstResponder(notesTextView)
         window.contentView?.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         render()
@@ -118,6 +169,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         materialSurface.autoresizingMask = [.width, .height]
         materialSurface.wantsLayer = true
         materialSurface.layer?.cornerRadius = 16
+        materialSurface.layer?.cornerCurve = .continuous
         materialSurface.layer?.masksToBounds = true
         contentSurface.identifier = NSUserInterfaceItemIdentifier("updateNotesContentSurface")
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
@@ -139,7 +191,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         header.translatesAutoresizingMaskIntoConstraints = false
 
         notesTextView.isEditable = false
-        notesTextView.isSelectable = true
+        notesTextView.isSelectable = false
         notesTextView.isRichText = true
         notesTextView.importsGraphics = false
         notesTextView.allowsUndo = false
@@ -163,6 +215,10 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .lineBorder
         scrollView.scrollerStyle = .overlay
+        scrollView.wantsLayer = true
+        scrollView.layer?.cornerRadius = 12
+        scrollView.layer?.cornerCurve = .continuous
+        scrollView.layer?.masksToBounds = true
         scrollView.documentView = notesTextView
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -189,7 +245,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         contentSurface.addSubview(buttons)
         materialSurface.addSubview(contentSurface)
         window.contentView = materialSurface
-        window.initialFirstResponder = notesTextView
+        window.initialFirstResponder = nil
         // Resolve the concrete backing colors only after the view hierarchy is
         // attached to the window. This makes the update window use the same
         // effective appearance as the Dashboard instead of briefly baking a
@@ -258,7 +314,12 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             : NSColor(calibratedWhite: 0.94, alpha: 0.82)
         ).cgColor
         notesTextView.backgroundColor = isDark
-            ? NSColor(calibratedWhite: 0.12, alpha: 1)
+            ? NSColor(
+                srgbRed: 29.0 / 255.0,
+                green: 30.0 / 255.0,
+                blue: 30.0 / 255.0,
+                alpha: 1
+            )
             : NSColor.white
     }
 
@@ -287,6 +348,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             ReleaseNotesMarkdownRenderer.render(markdown: markdown)
         )
         updateTextViewFrame()
+        window?.invalidateCursorRects(for: notesTextView)
     }
 
     private func updateTextViewFrame() {
@@ -317,6 +379,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             height: max(minimumHeight, ceil(usedHeight + inset.height * 2))
         )
         notesTextView.needsDisplay = true
+        window?.invalidateCursorRects(for: notesTextView)
     }
 
     private func relayoutAfterPresentation() {

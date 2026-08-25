@@ -1480,13 +1480,18 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSScrollView }
                 .first
         )
-        let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+        let notesTextView = try XCTUnwrap(scrollView.documentView as? ReleaseNotesTextView)
         XCTAssertTrue(notesTextView.string.contains("First presentation"))
         XCTAssertGreaterThan(notesTextView.frame.width, 1)
+        XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
+        XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
+        XCTAssertTrue(scrollView.layer?.masksToBounds ?? false)
         let materialSurface = try XCTUnwrap(window.contentView as? NSVisualEffectView)
         XCTAssertEqual(materialSurface.material, .underWindowBackground)
         XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
         XCTAssertEqual(materialSurface.state, .active)
+        XCTAssertEqual(materialSurface.layer?.cornerRadius ?? 0, 16, accuracy: 0.001)
+        XCTAssertEqual(materialSurface.layer?.cornerCurve, .continuous)
         let contentSurface = try XCTUnwrap(
             updateTestDescendants(of: materialSurface)
                 .first { $0.identifier?.rawValue == "updateNotesContentSurface" }
@@ -1573,10 +1578,12 @@ final class UpdateTests: XCTestCase {
             )
             XCTAssertTrue(notesTextView.drawsBackground)
             let notesBackground = try XCTUnwrap(
-                notesTextView.backgroundColor.usingColorSpace(.deviceRGB)
+                notesTextView.backgroundColor.usingColorSpace(.sRGB)
             )
             if isDark {
-                XCTAssertLessThan(notesBackground.redComponent, 0.20)
+                XCTAssertEqual(notesBackground.redComponent, 29.0 / 255.0, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.greenComponent, 30.0 / 255.0, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.blueComponent, 30.0 / 255.0, accuracy: 0.001)
                 XCTAssertEqual(notesBackground.alphaComponent, 1, accuracy: 0.001)
             } else {
                 XCTAssertEqual(notesBackground.redComponent, 1, accuracy: 0.001)
@@ -1588,7 +1595,7 @@ final class UpdateTests: XCTestCase {
         }
     }
 
-    func testUpdateNotesTextViewSupportsSelectionAndCopy() throws {
+    func testUpdateNotesTextViewDisablesSelectionAndKeepsLinks() throws {
         let controller = UpdateNotesWindowController(onInstall: {})
         defer { controller.close() }
         controller.show(
@@ -1598,7 +1605,7 @@ final class UpdateTests: XCTestCase {
                 draft: false,
                 prerelease: true,
                 assets: [],
-                body: "# Copyable\n\nThis release note can be selected and copied."
+                body: "# Readable\n\nOpen [the release](https://github.com/huanmeng06/BalanceBar/releases)."
             )
         )
 
@@ -1608,21 +1615,45 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSScrollView }
                 .first
         )
-        let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
-        XCTAssertTrue(notesTextView.isSelectable)
+        let notesTextView = try XCTUnwrap(scrollView.documentView as? ReleaseNotesTextView)
+        XCTAssertFalse(notesTextView.isSelectable)
         XCTAssertFalse(notesTextView.isEditable)
-        XCTAssertTrue(window.makeFirstResponder(notesTextView))
-        XCTAssertTrue(window.firstResponder === notesTextView)
+        XCTAssertFalse(notesTextView.acceptsFirstResponder)
+        XCTAssertNotEqual(window.firstResponder, notesTextView)
+        XCTAssertEqual(notesTextView.selectedRange().length, 0)
 
-        let range = (notesTextView.string as NSString).range(of: "Copyable")
+        let range = (notesTextView.string as NSString).range(of: "the release")
         XCTAssertNotEqual(range.location, NSNotFound)
-        notesTextView.setSelectedRange(range)
-        XCTAssertEqual(notesTextView.selectedRange(), range)
+        XCTAssertEqual(
+            notesTextView.textStorage?.attribute(.link, at: range.location, effectiveRange: nil) as? URL,
+            URL(string: "https://github.com/huanmeng06/BalanceBar/releases")
+        )
 
-        let pasteboard = NSPasteboard.withUniqueName()
-        pasteboard.declareTypes([.string], owner: nil)
-        XCTAssertTrue(notesTextView.writeSelection(to: pasteboard, types: [.string]))
-        XCTAssertEqual(pasteboard.string(forType: .string), "Copyable")
+        let textStorage = try XCTUnwrap(notesTextView.textStorage)
+        let layoutManager = try XCTUnwrap(notesTextView.layoutManager)
+        let textContainer = try XCTUnwrap(notesTextView.textContainer)
+        let linkGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: range,
+            actualCharacterRange: nil
+        )
+        let linkRect = layoutManager
+            .boundingRect(forGlyphRange: linkGlyphRange, in: textContainer)
+            .offsetBy(dx: notesTextView.textContainerOrigin.x, dy: notesTextView.textContainerOrigin.y)
+        XCTAssertTrue(
+            notesTextView.cursor(at: NSPoint(x: linkRect.midX, y: linkRect.midY)) === NSCursor.pointingHand
+        )
+
+        let headingRange = (textStorage.string as NSString).range(of: "Readable")
+        let headingGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: headingRange,
+            actualCharacterRange: nil
+        )
+        let headingRect = layoutManager
+            .boundingRect(forGlyphRange: headingGlyphRange, in: textContainer)
+            .offsetBy(dx: notesTextView.textContainerOrigin.x, dy: notesTextView.textContainerOrigin.y)
+        XCTAssertTrue(
+            notesTextView.cursor(at: NSPoint(x: headingRect.midX, y: headingRect.midY)) === NSCursor.arrow
+        )
     }
 
     func testReleaseNotesReflowsLongContentAcrossLanguagesAndWindowWidths() throws {
