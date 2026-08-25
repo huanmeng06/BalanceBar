@@ -74,6 +74,7 @@ jobs:
             || { echo "PR #$SOURCE_PR has no valid merge commit." >&2; exit 1; }
           echo "MERGE_SHA=$merge_sha" >> "$GITHUB_ENV"
 
+          manual_event="$RUNNER_TEMP/balancebar-manual-event.json"
           jq --arg merge_sha "$merge_sha" '{
             pull_request: {
               number,
@@ -85,7 +86,8 @@ jobs:
               labels,
               closingIssuesReferences
             }
-          }' <<< "$pr_json" > "$GITHUB_EVENT_PATH"
+          }' <<< "$pr_json" > "$manual_event"
+          echo "RELEASE_EVENT_PATH=$manual_event" >> "$GITHUB_ENV"
 
       - name: Verify macOS 26 build environment
         run: |
@@ -97,7 +99,9 @@ jobs:
 
       - name: Detect version change in the merged PR
         id: release_context
-        run: node scripts/release/release-context.mjs
+        run: |
+          event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
+          GITHUB_EVENT_PATH="$event_path" node scripts/release/release-context.mjs
 
       - name: Skip merged PRs without a version change
         if: steps.release_context.outputs.should_release != 'true'
@@ -193,8 +197,9 @@ jobs:
             --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit \
             > "$prs_json"
 
+          event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
           node scripts/release/collect-release-input.mjs \
-            --event "$GITHUB_EVENT_PATH" \
+            --event "$event_path" \
             --compare "$compare_json" \
             --prs "$prs_json" \
             --repo "$GITHUB_REPOSITORY" \
