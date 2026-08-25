@@ -237,7 +237,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.borderType = .lineBorder
+        scrollView.borderType = .noBorder
         scrollView.scrollerStyle = .overlay
         scrollView.wantsLayer = true
         scrollView.layer?.cornerRadius = 12

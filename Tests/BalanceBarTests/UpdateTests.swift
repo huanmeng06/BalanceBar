@@ -1486,7 +1486,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
         XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
         XCTAssertTrue(scrollView.layer?.masksToBounds ?? false)
-        XCTAssertEqual(scrollView.borderType, .lineBorder)
+        XCTAssertEqual(scrollView.borderType, .noBorder)
         let materialSurface = try XCTUnwrap(window.contentView as? NSVisualEffectView)
         XCTAssertEqual(materialSurface.material, .underWindowBackground)
         XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
