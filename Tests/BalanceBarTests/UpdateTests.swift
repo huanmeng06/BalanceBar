@@ -1382,6 +1382,10 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(materialSurface.blendingMode, .behindWindow)
             XCTAssertEqual(materialSurface.state, .active)
             XCTAssertEqual(
+                window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]),
+                isDark ? .darkAqua : .aqua
+            )
+            XCTAssertEqual(
                 materialSurface.layer?.backgroundColor?.alpha ?? 0,
                 isDark ? 0.14 : 0.08,
                 accuracy: 0.01
@@ -1391,8 +1395,54 @@ final class UpdateTests: XCTestCase {
                 isDark ? 0.20 : 0.82,
                 accuracy: 0.01
             )
+            let contentColor = try XCTUnwrap(
+                try XCTUnwrap(NSColor(cgColor: try XCTUnwrap(contentSurface.layer?.backgroundColor)))
+                    .usingColorSpace(.deviceRGB)
+            )
+            if isDark {
+                XCTAssertLessThan(contentColor.redComponent, 0.10)
+            } else {
+                XCTAssertGreaterThan(contentColor.redComponent, 0.80)
+            }
             controller.close()
         }
+    }
+
+    func testUpdateNotesTextViewSupportsSelectionAndCopy() throws {
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        controller.show(
+            currentVersion: try XCTUnwrap(AppSemanticVersion("1.1.20")),
+            release: GitHubRelease(
+                tagName: "v1.1.21",
+                draft: false,
+                prerelease: true,
+                assets: [],
+                body: "# Copyable\n\nThis release note can be selected and copied."
+            )
+        )
+
+        let window = try XCTUnwrap(controller.window)
+        let scrollView = try XCTUnwrap(
+            updateTestDescendants(of: try XCTUnwrap(window.contentView))
+                .compactMap { $0 as? NSScrollView }
+                .first
+        )
+        let notesTextView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+        XCTAssertTrue(notesTextView.isSelectable)
+        XCTAssertFalse(notesTextView.isEditable)
+        XCTAssertTrue(window.makeFirstResponder(notesTextView))
+        XCTAssertTrue(window.firstResponder === notesTextView)
+
+        let range = (notesTextView.string as NSString).range(of: "Copyable")
+        XCTAssertNotEqual(range.location, NSNotFound)
+        notesTextView.setSelectedRange(range)
+        XCTAssertEqual(notesTextView.selectedRange(), range)
+
+        let pasteboard = NSPasteboard.withUniqueName()
+        pasteboard.declareTypes([.string], owner: nil)
+        XCTAssertTrue(notesTextView.writeSelection(to: pasteboard, types: [.string]))
+        XCTAssertEqual(pasteboard.string(forType: .string), "Copyable")
     }
 
     func testReleaseNotesReflowsLongContentAcrossLanguagesAndWindowWidths() throws {

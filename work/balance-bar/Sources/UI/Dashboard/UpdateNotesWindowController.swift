@@ -1,17 +1,47 @@
 import AppKit
 
+private final class ReleaseNotesTextView: NSTextView {
+    override var acceptsFirstResponder: Bool { true }
+
+    override func writeSelection(
+        to pasteboard: NSPasteboard,
+        types: [NSPasteboard.PasteboardType]
+    ) -> Bool {
+        let range = selectedRange()
+        guard range.length > 0,
+              types.contains(.string),
+              range.location >= 0,
+              NSMaxRange(range) <= (string as NSString).length else {
+            return false
+        }
+        let selectedText = (string as NSString).substring(with: range)
+        pasteboard.declareTypes([.string], owner: nil)
+        return pasteboard.setString(selectedText, forType: .string)
+    }
+
+    override func copy(_ sender: Any?) {
+        guard selectedRange().length > 0 else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        _ = writeSelection(to: pasteboard, types: [.string])
+    }
+}
+
 final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     private let releaseNotesStore: ReleaseNotesStore
     private let onInstall: () -> Void
     private let titleLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView()
-    private let notesTextView = NSTextView(frame: .zero)
+    private let notesTextView = ReleaseNotesTextView(frame: .zero)
+    private let materialSurface = NSVisualEffectView()
+    private let contentSurface = NSView()
     private let laterButton = NSButton(title: "", target: nil, action: nil)
     private let githubButton = NSButton(title: "", target: nil, action: nil)
     private let installButton = NSButton(title: "", target: nil, action: nil)
     private var currentVersion: AppSemanticVersion?
     private var release: GitHubRelease?
+    private var appearanceObserver: NSObjectProtocol?
 
     init(
         releaseNotesStore: ReleaseNotesStore = ReleaseNotesStore(),
@@ -39,20 +69,29 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
         configureView()
         render()
+        installAppearanceObserver()
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        if let appearanceObserver {
+            DistributedNotificationCenter.default().removeObserver(appearanceObserver)
+        }
+    }
+
     func show(currentVersion: AppSemanticVersion, release: GitHubRelease) {
         self.currentVersion = currentVersion
         self.release = release
         guard let window else { return }
+        adoptDashboardAppearance()
         if !window.isVisible {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
+        _ = window.makeFirstResponder(notesTextView)
         window.contentView?.layoutSubtreeIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         render()
@@ -72,7 +111,6 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
 
     private func configureView() {
         guard let window else { return }
-        let materialSurface = NSVisualEffectView()
         materialSurface.identifier = NSUserInterfaceItemIdentifier("updateNotesMaterialSurface")
         materialSurface.material = .underWindowBackground
         materialSurface.blendingMode = .behindWindow
@@ -81,19 +119,10 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         materialSurface.wantsLayer = true
         materialSurface.layer?.cornerRadius = 16
         materialSurface.layer?.masksToBounds = true
-        materialSurface.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor.white.withAlphaComponent(0.08),
-            dark: NSColor.black.withAlphaComponent(0.14)
-        ).cgColor
-
-        let contentSurface = NSView()
         contentSurface.identifier = NSUserInterfaceItemIdentifier("updateNotesContentSurface")
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
         contentSurface.wantsLayer = true
-        contentSurface.layer?.backgroundColor = dashboardAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.94, alpha: 0.82),
-            dark: NSColor.black.withAlphaComponent(0.20)
-        ).cgColor
+        updateSurfaceAppearance()
 
         titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
         titleLabel.textColor = .labelColor
@@ -160,6 +189,12 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         contentSurface.addSubview(buttons)
         materialSurface.addSubview(contentSurface)
         window.contentView = materialSurface
+        window.initialFirstResponder = notesTextView
+        // Resolve the concrete backing colors only after the view hierarchy is
+        // attached to the window. This makes the update window use the same
+        // effective appearance as the Dashboard instead of briefly baking a
+        // light surface while its text resolves in dark mode.
+        updateSurfaceAppearance()
         let titlebarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
 
         NSLayoutConstraint.activate([
@@ -179,6 +214,49 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             buttons.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor, constant: -20),
             buttons.heightAnchor.constraint(greaterThanOrEqualToConstant: 28)
         ])
+    }
+
+    private func installAppearanceObserver() {
+        appearanceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.adoptDashboardAppearance()
+                self.render()
+                self.relayoutAfterPresentation()
+            }
+        }
+    }
+
+    private func adoptDashboardAppearance() {
+        guard let window else { return }
+        if let applicationAppearance = NSApp.appearance {
+            window.appearance = applicationAppearance
+        } else {
+            let sourceWindow = NSApp.windows.first {
+                $0 !== window && $0.isVisible && ($0.isKeyWindow || $0 === NSApp.mainWindow)
+            } ?? NSApp.windows.first {
+                $0 !== window && $0.isVisible
+            }
+            window.appearance = sourceWindow?.effectiveAppearance
+        }
+        updateSurfaceAppearance()
+    }
+
+    private func updateSurfaceAppearance() {
+        guard let window else { return }
+        let isDark = window.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        materialSurface.layer?.backgroundColor = (isDark
+            ? NSColor.black.withAlphaComponent(0.14)
+            : NSColor.white.withAlphaComponent(0.08)
+        ).cgColor
+        contentSurface.layer?.backgroundColor = (isDark
+            ? NSColor.black.withAlphaComponent(0.20)
+            : NSColor(calibratedWhite: 0.94, alpha: 0.82)
+        ).cgColor
     }
 
     private func render() {
