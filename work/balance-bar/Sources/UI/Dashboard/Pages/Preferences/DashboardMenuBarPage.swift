@@ -873,8 +873,15 @@ final class DashboardMenuBarPage {
         amountOffsetSlider?.doubleValue = amountOffsetY
         iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
         amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
-        if fontSizePresetControl?.indexOfSelectedItem != fontSizePreset.segmentIndex {
-            fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        if let fontSizePresetControl {
+            if fontSizePresetControl.indexOfSelectedItem != fontSizePreset.segmentIndex {
+                fontSizePresetControl.selectItem(at: fontSizePreset.segmentIndex)
+            }
+            // AppKit can update the selected item before it updates the title
+            // shown by the collapsed popup while the menu is dismissing. Keep
+            // the displayed value bound to the persisted preset even when the
+            // selected index already matches.
+            fontSizePresetControl.synchronizeTitleAndSelectedItem()
         }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment

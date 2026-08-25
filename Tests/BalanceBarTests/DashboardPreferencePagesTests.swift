@@ -1586,6 +1586,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let preferences = AppPreferences(defaults: defaults)
         preferences.menuBarFontSizePreset = .medium
+        let controller = DashboardMenuBarPage()
         let relay = DashboardPreferencePageRelay()
         relay.onOffsetValue = { identifier, value in
             guard identifier == AppPreferences.menuBarFontSizePresetKey,
@@ -1593,8 +1594,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 return
             }
             preferences.menuBarFontSizePreset = preset
+            controller.refresh(
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
         }
-        let controller = DashboardMenuBarPage()
         let page = controller.make(.init(
             preferences: preferences,
             snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
@@ -1655,15 +1661,41 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(previewPrimary.frame.minX, previewSecondary.frame.minX, accuracy: 0.001)
         XCTAssertEqual(previewPrimary.frame.width, previewSecondary.frame.width, accuracy: 0.001)
 
-        fontPresetControl.selectItem(at: MenuBarFontSizePreset.small.segmentIndex)
-        relay.selectMenuBarFontSizePreset(fontPresetControl)
-        XCTAssertEqual(preferences.menuBarFontSizePreset, .small)
-        XCTAssertEqual(preferences.menuBarFontSize, 10.4, accuracy: 0.001)
-        XCTAssertEqual(
-            preferences.menuBarSecondaryFontSize,
-            8.0,
-            accuracy: 0.001
+        for preset in MenuBarFontSizePreset.allCases {
+            fontPresetControl.selectItem(at: preset.segmentIndex)
+            relay.selectMenuBarFontSizePreset(fontPresetControl)
+
+            XCTAssertEqual(preferences.menuBarFontSizePreset, preset)
+            XCTAssertEqual(preferences.menuBarFontSize, preset.primarySize, accuracy: 0.001)
+            XCTAssertEqual(
+                preferences.menuBarSecondaryFontSize,
+                preset.secondarySize,
+                accuracy: 0.001
+            )
+            XCTAssertEqual(fontPresetControl.indexOfSelectedItem, preset.segmentIndex)
+            XCTAssertEqual(fontPresetControl.title, fontPresetControl.itemTitle(at: preset.segmentIndex))
+            XCTAssertEqual(previewPrimary.font?.pointSize ?? .nan, preset.primarySize, accuracy: 0.001)
+            XCTAssertEqual(previewSecondary.font?.pointSize ?? .nan, preset.secondarySize, accuracy: 0.001)
+        }
+
+        let restoredPreferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(restoredPreferences.menuBarFontSizePreset, .small)
+        let rebuiltController = DashboardMenuBarPage()
+        let rebuiltPage = rebuiltController.make(.init(
+            preferences: restoredPreferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        let rebuiltFontPresetControl = try XCTUnwrap(
+            descendants(of: rebuiltPage)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppPreferences.menuBarFontSizePresetKey }
         )
+        XCTAssertEqual(rebuiltFontPresetControl.indexOfSelectedItem, MenuBarFontSizePreset.small.segmentIndex)
+        XCTAssertEqual(rebuiltFontPresetControl.title, "Small")
+
         XCTAssertFalse(
             descendants(of: page)
                 .compactMap { $0 as? NSButton }
@@ -1678,6 +1710,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             iconImage: nil
         )
         XCTAssertEqual(fontPresetControl.indexOfSelectedItem, MenuBarFontSizePreset.small.segmentIndex)
+        XCTAssertEqual(fontPresetControl.title, "Small")
 
         preferences.showMenuBarAmount = false
         controller.refresh(
