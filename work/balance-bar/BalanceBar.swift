@@ -139,6 +139,25 @@ private let devBundleIdentifier = "com.huanmeng06.BalanceBar.dev"
 private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
+#if BALANCEBAR_DEVELOPMENT
+private enum DevelopmentReleaseFixture {
+    static let environmentKey = "BALANCEBAR_RELEASE_FIXTURE_PATH"
+
+    static func releaseFetcher() -> GitHubReleaseFetching {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
+        let isDevelopmentBundle = bundleIdentifier == devBundleIdentifier
+            || bundleIdentifier.hasPrefix(devBundleIdentifier + ".")
+        guard isDevelopmentBundle,
+              let rawPath = ProcessInfo.processInfo.environment[environmentKey],
+              !rawPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return GitHubReleaseClient()
+        }
+        return LocalGitHubReleaseFixture(fileURL: URL(fileURLWithPath: rawPath))
+    }
+}
+#endif
+
 struct PreferencesMigrationPlan {
     static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
@@ -344,7 +363,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
-        self.updateService = updateService ?? UpdateService(updateChannel: preferences.updateChannel)
+#if BALANCEBAR_DEVELOPMENT
+        let releaseFetcher = DevelopmentReleaseFixture.releaseFetcher()
+#else
+        let releaseFetcher: GitHubReleaseFetching = GitHubReleaseClient()
+#endif
+        self.updateService = updateService ?? UpdateService(
+            releaseFetcher: releaseFetcher,
+            updateChannel: preferences.updateChannel
+        )
         super.init()
         self.updateService.onStateChange = { [weak self] state in
             guard let self else { return }

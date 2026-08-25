@@ -53,6 +53,11 @@ case "$variant" in
         ;;
 esac
 
+swift_definitions=()
+if [[ "$variant" == "dev" ]]; then
+    swift_definitions=(-D BALANCEBAR_DEVELOPMENT)
+fi
+
 contents_dir="$app_bundle/Contents"
 executable_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
@@ -123,6 +128,7 @@ swiftc \
     -parse-as-library \
     -sdk "$balancebar_sdk_path" \
     -target "$balancebar_swift_target" \
+    "${swift_definitions[@]}" \
     "${swift_sources[@]}" \
     -o "$executable" \
     -framework AppKit \

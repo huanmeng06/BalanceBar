@@ -361,6 +361,49 @@ final class UpdateTests: XCTestCase {
         }
     }
 
+    func testLocalGitHubReleaseFixtureLoadsBilingualReleaseBody() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixtureURL = root.appendingPathComponent("release.json")
+        let bilingualBody = """
+        ## ✨ 新功能
+
+        | 功能 | 说明 |
+        | --- | --- |
+        | 双语说明 | 中文正文 |
+
+        ---
+
+        ## ✨ New Features
+
+        | Feature | Description |
+        | --- | --- |
+        | Bilingual notes | English body |
+        """
+        let fixture = releaseBody(
+            tag: "v9.9.9",
+            body: bilingualBody,
+            htmlURL: "https://github.com/huanmeng06/BalanceBar/releases/tag/v9.9.9",
+            assets: [[
+                "name": "BalanceBar-9.9.9.dmg",
+                "browser_download_url": "https://example.test/BalanceBar-9.9.9.dmg"
+            ]]
+        )
+        try fixture.write(to: fixtureURL)
+
+        let fixtureFetcher = LocalGitHubReleaseFixture(fileURL: fixtureURL)
+        var result: Result<[GitHubRelease], GitHubReleaseClientError>?
+        fixtureFetcher.fetchReleases { result = $0 }
+
+        guard case .success(let releases) = result,
+              let release = releases.first else {
+            return XCTFail("expected bilingual fixture release, got \(String(describing: result))")
+        }
+        XCTAssertEqual(release.tagName, "v9.9.9")
+        XCTAssertTrue(release.body?.contains("## ✨ 新功能") == true)
+        XCTAssertTrue(release.body?.contains("## ✨ New Features") == true)
+    }
+
     func testAssetDownloaderValidatesSizeDigestAndCleansTemporaryFile() throws {
         let data = Data("fixture-installer".utf8)
         let digest = sha256(data)
