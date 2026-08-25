@@ -1,0 +1,81 @@
+name: 报告 Bug
+description: 遇到异常、崩溃或显示不对？从这里告诉我们
+title: "[Bug] "
+labels:
+  - bug
+  - ai:todo
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！不确定原因也没关系，只要告诉我们你看到了什么。带 `*` 的问题必须填写，其他内容知道多少写多少。
+
+        **提醒：**请删除日志和截图中的 API Key、Token、Cookie、完整接口地址、真实账号及其他私人信息。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 发生了什么？
+      description: 用你自己的话描述问题，以及它给你带来的影响。
+      placeholder: 例如：切换到 Claude Code 后，菜单栏仍然显示 Codex 图标，重新打开菜单也没有变化。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎样可以再次看到这个问题？
+      description: 尽量按顺序写；如果问题偶尔发生，也请告诉我们大概多久出现一次。
+      placeholder: |
+        1. 启动 BalanceBar 和 CC Switch
+        2. 在 CC Switch 中切换到……
+        3. 点击 BalanceBar 菜单栏图标
+        4. 看到……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 你原本希望看到什么？
+      placeholder: 例如：切换完成后，菜单栏应在几秒内显示 Claude 图标。
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 你的使用环境
+      description: 不知道某一项可以写“不清楚”。
+      placeholder: |
+        BalanceBar 版本：1.2.2
+        macOS 版本：15.6
+        Mac：Apple Silicon / Intel / 不清楚
+        安装方式：Release / 自己构建 / 不清楚
+        使用的客户端：Codex / Claude Code
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 截图或已脱敏的日志（可选）
+      description: 可以直接拖入截图，或粘贴问题发生前后的少量日志。请再次确认其中没有凭据和私人信息。
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 还有什么想补充的？（可选）
+      description: 例如从哪个版本开始出现、什么情况下正常、临时解决办法，或相关 Issue 链接。
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我搜索过现有 Issue，没有找到同一个问题。
+          required: true
+        - label: 我已删除文本、日志和截图中的凭据与私人信息。
+          required: true
+        - label: 我同意遵守本仓库的社区行为准则。
+          required: true
