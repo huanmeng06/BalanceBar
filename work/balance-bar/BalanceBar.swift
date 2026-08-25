@@ -139,7 +139,6 @@ private let devBundleIdentifier = "com.huanmeng06.BalanceBar.dev"
 private let legacyProductionBundleIdentifier = "com.huanmeng06.BalanceBar"
 private let legacyBundleIdentifier = "local.balancebar"
 
-#if BALANCEBAR_DEVELOPMENT
 private enum DevelopmentReleaseFixture {
     static let environmentKey = "BALANCEBAR_RELEASE_FIXTURE_PATH"
 
@@ -156,7 +155,6 @@ private enum DevelopmentReleaseFixture {
         return LocalGitHubReleaseFixture(fileURL: URL(fileURLWithPath: rawPath))
     }
 }
-#endif
 
 struct PreferencesMigrationPlan {
     static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
@@ -363,13 +361,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
-#if BALANCEBAR_DEVELOPMENT
-        let releaseFetcher = DevelopmentReleaseFixture.releaseFetcher()
-#else
-        let releaseFetcher: GitHubReleaseFetching = GitHubReleaseClient()
-#endif
         self.updateService = updateService ?? UpdateService(
-            releaseFetcher: releaseFetcher,
+            releaseFetcher: DevelopmentReleaseFixture.releaseFetcher(),
             updateChannel: preferences.updateChannel
         )
         super.init()
