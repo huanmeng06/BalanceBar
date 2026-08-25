@@ -214,7 +214,7 @@ enum DashboardSettingsComponents {
         switch AppLanguage.resolved {
         case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .korean:
             return .byCharWrapping
-        case .english, .spanish, .german, .system:
+        case .english, .spanish, .german, .french, .system:
             return .byWordWrapping
         }
     }
@@ -806,7 +806,7 @@ enum DashboardSettingsComponents {
         target: AnyObject?,
         action: Selector?
     ) -> NSPopUpButton {
-        makePopUpButton(
+        let popup = makePopUpButton(
             identifier: identifier,
             items: values.map { PopUpItem(
                 title: $0.1,
@@ -816,6 +816,17 @@ enum DashboardSettingsComponents {
             target: target,
             action: action
         )
+        // A fixed 108pt width fits the English and German interval labels but
+        // truncates longer localized values such as French "Toutes les 10 s"
+        // and Spanish "Durante 30 s". AppKit already measures the complete
+        // popup item set, so retain the compact minimum when it is sufficient
+        // and grow only the controls whose localized titles need more room.
+        // Paired controls can add a required equal-width constraint afterward
+        // so their labels share one right-aligned column.
+        let compactWidth: CGFloat = 108
+        let localizedWidth = ceil(popup.fittingSize.width)
+        popup.widthAnchor.constraint(greaterThanOrEqualToConstant: max(compactWidth, localizedWidth)).isActive = true
+        return popup
     }
 }
 

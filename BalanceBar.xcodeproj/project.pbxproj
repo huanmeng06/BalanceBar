@@ -108,6 +108,7 @@
 		A100000000000000000000F9 /* Localizable.strings (ko) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000FA /* Localizable.strings (es) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000FB /* Localizable.strings (de) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A10000000000000000000107 /* Localizable.strings (fr) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000F7 /* LocalizationKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/LocalizationKeys.swift"; sourceTree = "<group>"; };
 		A10000000000000000000016 /* BalanceBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BalanceBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000017 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
@@ -536,6 +537,7 @@
 				A100000000000000000000F9 /* Localizable.strings (ko) */,
 				A100000000000000000000FA /* Localizable.strings (es) */,
 				A100000000000000000000FB /* Localizable.strings (de) */,
+				A10000000000000000000107 /* Localizable.strings (fr) */,
 			);
 			name = Localizable.strings;
 			path = lang;

@@ -112,7 +112,8 @@ final class DashboardComponentsTests: XCTestCase {
             (.english, "This subtitle verifies resized-window wrapping and keeps the full settings text visible."),
             (.korean, "이 부제목은 창 너비를 바꾼 뒤에도 전체 설정 설명이 잘 줄바꿈되고 카드 높이가 갱신되는지 확인합니다."),
             (.spanish, "Este subtítulo comprueba que el texto completo de ajustes se ajuste al cambiar el ancho de la ventana."),
-            (.german, "Dieser Untertitel prüft, dass der vollständige Einstellungstext bei geänderter Fensterbreite umbricht.")
+            (.german, "Dieser Untertitel prüft, dass der vollständige Einstellungstext bei geänderter Fensterbreite umbricht."),
+            (.french, "Ce sous-titre vérifie que le texte complet des réglages s’adapte lorsque la largeur de la fenêtre change.")
         ]
 
         for (language, longSubtitle) in fixtures {
@@ -172,7 +173,7 @@ final class DashboardComponentsTests: XCTestCase {
             XCTAssertTrue(longRow.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame), "(language) labels must stay in row")
             XCTAssertEqual(
                 subtitle.lineBreakMode,
-                language == .english || language == .spanish || language == .german
+                language == .english || language == .spanish || language == .german || language == .french
                     ? .byWordWrapping
                     : .byCharWrapping,
                 "(language) subtitle should use the script-appropriate wrapping mode"
@@ -213,7 +214,8 @@ final class DashboardComponentsTests: XCTestCase {
             (.english, "Play the icon animation while a task is running"),
             (.korean, "작업 실행 중 아이콘 애니메이션 재생"),
             (.spanish, "Reproducir la animación del icono mientras se ejecuta una tarea"),
-            (.german, "Symbolanimation während einer laufenden Aufgabe abspielen")
+            (.german, "Symbolanimation während einer laufenden Aufgabe abspielen"),
+            (.french, "Lire l’animation de l’icône pendant l’exécution d’une tâche")
         ]
 
         for (language, longTitle) in fixtures {
@@ -376,7 +378,8 @@ final class DashboardComponentsTests: XCTestCase {
             (.traditionalChineseTaiwan, "這是一段很長的本地化前綴，會在語義後綴之前換行：", "寬度 - 10.0 pt"),
             (.traditionalChineseHongKong, "這是一段很長的本地化前綴，會在語義後綴之前換行：", "寬度 - 10.0 pt"),
             (.japanese, "これは意味のある接尾辞の前で折り返す長いローカライズ済み接頭辞です：", "幅 - 10.0 pt"),
-            (.english, "This localized prefix deliberately wraps before the semantic suffix: ", "Width - 10.0 pt")
+            (.english, "This localized prefix deliberately wraps before the semantic suffix: ", "Width - 10.0 pt"),
+            (.french, "Ce préfixe localisé volontairement long se replie avant le suffixe sémantique : ", "Largeur - 10.0 pt")
         ]
 
         func normalized(_ text: String) -> String {
