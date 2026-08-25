@@ -64,6 +64,75 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.updateChannel, .beta)
     }
 
+    func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, [String], [String])] = [
+            (
+                .spanish,
+                ["Cada 1 s", "Cada 2 s", "Cada 3 s", "Cada 5 s", "Cada 10 s"],
+                ["Desactivado", "Durante 6 s", "Durante 12 s", "Durante 30 s"]
+            ),
+            (
+                .french,
+                ["Toutes les 1 s", "Toutes les 2 s", "Toutes les 3 s", "Toutes les 5 s", "Toutes les 10 s"],
+                ["Désactivé", "Pendant 6 s", "Pendant 12 s", "Pendant 30 s"]
+            )
+        ]
+
+        for (language, expectedRunningTitles, expectedTrailingTitles) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.RefreshIntervalPopup.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            let page = DashboardGeneralPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                currentProviderName: "OpenAI",
+                relay: DashboardPreferencePageRelay(),
+                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+            ))
+
+            let popupControls = descendants(of: page).compactMap { $0 as? NSPopUpButton }
+            let runningPopup = try XCTUnwrap(popupControls.first {
+                $0.identifier?.rawValue == "codexUsageRefreshInterval"
+            })
+            let trailingPopup = try XCTUnwrap(popupControls.first {
+                $0.identifier?.rawValue == "postCodexRefreshDuration"
+            })
+            let popups = [runningPopup, trailingPopup]
+            XCTAssertEqual(popups[0].itemTitles, expectedRunningTitles)
+            XCTAssertEqual(popups[1].itemTitles, expectedTrailingTitles)
+
+            var localizedWidths: [CGFloat] = []
+            for popup in popups {
+                let width = try XCTUnwrap(
+                    popup.constraints
+                        .filter { $0.firstAttribute == .width && $0.relation == .equal }
+                        .max { $0.constant < $1.constant }
+                )
+                localizedWidths.append(width.constant)
+                XCTAssertGreaterThanOrEqual(
+                    width.constant,
+                    ceil(popup.fittingSize.width),
+                    "\(language) interval popup must fit every localized item title"
+                )
+            }
+            XCTAssertEqual(
+                localizedWidths[0],
+                localizedWidths[1],
+                accuracy: 0.001,
+                "\(language) refresh labels and controls must share one right-aligned column"
+            )
+            XCTAssertGreaterThan(
+                localizedWidths.max() ?? 0,
+                108,
+                "\(language) interval popups must grow when at least one localized item needs more room"
+            )
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+    }
+
     func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -1238,7 +1307,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .english: ["Y axis + 0.0 pt", "Y axis + 0.0 pt", "Width + 0.0 pt"],
             .korean: ["Y 축 + 0.0 pt", "Y 축 + 0.0 pt", "너비 + 0.0 pt"],
             .spanish: ["Eje Y + 0.0 pt", "Eje Y + 0.0 pt", "Ancho + 0.0 pt"],
-            .german: ["Y Achse + 0.0 pt", "Y Achse + 0.0 pt", "Breite + 0.0 pt"]
+            .german: ["Y Achse + 0.0 pt", "Y Achse + 0.0 pt", "Breite + 0.0 pt"],
+            .french: ["Axe Y + 0.0 pt", "Axe Y + 0.0 pt", "Largeur + 0.0 pt"]
         ]
         let expectedDescriptions: [AppLanguage: [String]] = [
             .simplifiedChinese: ["微调图标上下像素位置", "微调金额上下像素位置", "调整 BalanceBar 与其他项目的空隙"],
@@ -1248,7 +1318,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjusts the gap between BalanceBar and other items"],
             .korean: ["아이콘의 세로 위치 미세 조정", "금액의 세로 위치 미세 조정", "BalanceBar와 다른 항목 사이 간격 조정"],
             .spanish: ["Ajusta con precisión la posición vertical del icono", "Ajusta con precisión la posición vertical del importe", "Ajusta el espacio entre BalanceBar y los demás elementos"],
-            .german: ["Vertikale Position des Symbols fein einstellen", "Vertikale Position des Betrags fein einstellen", "Passt den Abstand zwischen BalanceBar und anderen Elementen an"]
+            .german: ["Vertikale Position des Symbols fein einstellen", "Vertikale Position des Betrags fein einstellen", "Passt den Abstand zwischen BalanceBar und anderen Elementen an"],
+            .french: ["Ajuste précisément la position verticale de l’icône", "Ajuste précisément la position verticale du montant", "Ajuste l’écart entre BalanceBar et les autres éléments"]
         ]
         let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
 
@@ -1260,7 +1331,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .english,
             .korean,
             .spanish,
-            .german
+            .german,
+            .french
         ] {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.MenuBarExternalSummaries.\(UUID().uuidString)"
@@ -1922,6 +1994,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "Passt den Abstand zwischen BalanceBar und anderen Elementen an Breite + 0.0 pt"
                 ],
                 "Passt die Breite der Menüleiste von -10,0 pt (schmal) bis +10,0 pt (breit) an; Standard: 0 pt"
+            ),
+            (
+                .french,
+                ["Taille et position de la police", "Taille de la police de la barre des menus", "Décalage de l’icône", "Décalage du montant", "Largeur de la barre des menus"],
+                [
+                    "Ajuste la taille de la police de la barre des menus",
+                    "Ajuste précisément la position verticale de l’icône Axe Y + 0.0 pt",
+                    "Ajuste précisément la position verticale du montant Axe Y + 0.0 pt",
+                    "Ajuste l’écart entre BalanceBar et les autres éléments Largeur + 0.0 pt"
+                ],
+                "Ajuste la largeur de la barre des menus de -10,0 pt (étroite) à +10,0 pt (large) ; valeur par défaut : 0 pt"
             )
         ]
 
@@ -1958,6 +2041,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 expectedEndpointLabels = ("Estrecho", "Ancho")
             case .german:
                 expectedEndpointLabels = ("Schmal", "Breit")
+            case .french:
+                expectedEndpointLabels = ("Étroit", "Large")
             case .system:
                 expectedEndpointLabels = ("窄", "宽")
             }
@@ -1971,6 +2056,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 expectedOffsetEndpointLabels = ("Abajo", "Arriba")
             case .german:
                 expectedOffsetEndpointLabels = ("Unten", "Oben")
+            case .french:
+                expectedOffsetEndpointLabels = ("Bas", "Haut")
             case .english:
                 expectedOffsetEndpointLabels = ("Down", "Up")
             }
@@ -2401,7 +2488,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 case .simplifiedChinese: return zh
                 case .traditionalChineseTaiwan, .traditionalChineseHongKong: return zhT
                 case .japanese: return ja
-                case .english, .system, .korean, .spanish, .german: return en
+                case .english, .system, .korean, .spanish, .german, .french: return en
                 }
             }
             let suiteName = "DashboardPreferencePagesTests.OpenCodex.\(UUID().uuidString)"

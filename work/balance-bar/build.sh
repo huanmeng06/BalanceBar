@@ -93,7 +93,7 @@ for required_file in \
 do
     [[ -f "$required_file" ]] || die "required input is missing: $required_file"
 done
-localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj)
+localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj)
 for localization_directory in "${localization_directories[@]}"
 do
     localization_file="$source_dir/lang/$localization_directory/Localizable.strings"

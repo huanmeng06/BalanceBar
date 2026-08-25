@@ -308,33 +308,35 @@ for diagnostic in diagnostics {
     require(!diagnostic.contains("\"response\""), "diagnostic excludes response content")
 }
 
-private let expectedUserVisibleReasons: [(BalanceQueryFailure, String, String, String, String, String)] = [
-    (.settingsJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid", "CC Switch 設定格式無效", "CC Switch 設定格式無效", "CC Switch の設定形式が無効です"),
-    (.metaJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid", "CC Switch 設定格式無效", "CC Switch 設定格式無效", "CC Switch の設定形式が無効です"),
-    (.usageScriptMissing, "用量脚本缺失", "Usage script is missing", "用量指令碼缺失", "用量指令碼缺失", "使用量スクリプトがありません"),
-    (.usageScriptInvalid, "用量脚本无效", "Usage script is invalid", "用量指令碼無效", "用量指令碼無效", "使用量スクリプトが無効です"),
-    (.usageScriptDisabled, "用量脚本未启用", "Usage script is not enabled", "用量指令碼未啟用", "用量指令碼未啟用", "使用量スクリプトが有効になっていません"),
-    (.credentialMissing, "缺少访问凭据", "Access credential is missing", "缺少存取憑證", "缺少存取憑證", "アクセス資格情報がありません"),
-    (.baseURLMissing, "缺少 API 地址", "API address is missing", "缺少 API 位址", "缺少 API 地址", "API アドレスがありません"),
-    (.requestCodeMissing, "用量脚本缺少请求代码", "Usage script request code is missing", "用量指令碼缺少請求程式碼", "用量指令碼缺少請求程式碼", "使用量スクリプトのリクエストコードがありません"),
-    (.requestEndpointMissing, "用量脚本缺少请求地址", "Usage script request address is missing", "用量指令碼缺少請求位址", "用量指令碼缺少請求地址", "使用量スクリプトのリクエストアドレスがありません"),
-    (.nativeTemplateUnsupported, "不支持当前余额模板", "Current balance template is not supported", "不支援目前餘額範本", "不支援目前餘額範本", "現在の残高テンプレートはサポートされていません"),
-    (.newAPIUserIDMissing, "New API 用户 ID 缺失", "New API user ID is missing", "New API 使用者 ID 缺失", "New API 使用者 ID 缺失", "New API ユーザー ID がありません"),
-    (.unknown, "余额查询配置不完整", "Balance query configuration is incomplete", "餘額查詢設定不完整", "餘額查詢設定不完整", "残高クエリの設定が不完全です")
+private let expectedUserVisibleReasons: [(BalanceQueryFailure, String, String, String, String, String, String)] = [
+    (.settingsJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid", "CC Switch 設定格式無效", "CC Switch 設定格式無效", "CC Switch の設定形式が無効です", "La configuration de CC Switch est invalide"),
+    (.metaJSONInvalid, "CC Switch 配置格式无效", "CC Switch configuration is invalid", "CC Switch 設定格式無效", "CC Switch 設定格式無效", "CC Switch の設定形式が無効です", "La configuration de CC Switch est invalide"),
+    (.usageScriptMissing, "用量脚本缺失", "Usage script is missing", "用量指令碼缺失", "用量指令碼缺失", "使用量スクリプトがありません", "Le script d’utilisation est manquant"),
+    (.usageScriptInvalid, "用量脚本无效", "Usage script is invalid", "用量指令碼無效", "用量指令碼無效", "使用量スクリプトが無効です", "Le script d’utilisation n’est pas valide"),
+    (.usageScriptDisabled, "用量脚本未启用", "Usage script is not enabled", "用量指令碼未啟用", "用量指令碼未啟用", "使用量スクリプトが有効になっていません", "Le script d’utilisation n’est pas activé"),
+    (.credentialMissing, "缺少访问凭据", "Access credential is missing", "缺少存取憑證", "缺少存取憑證", "アクセス資格情報がありません", "Les identifiants d’accès sont manquants"),
+    (.baseURLMissing, "缺少 API 地址", "API address is missing", "缺少 API 位址", "缺少 API 地址", "API アドレスがありません", "L’adresse de l’API est manquante"),
+    (.requestCodeMissing, "用量脚本缺少请求代码", "Usage script request code is missing", "用量指令碼缺少請求程式碼", "用量指令碼缺少請求程式碼", "使用量スクリプトのリクエストコードがありません", "Le code de requête du script d’utilisation est manquant"),
+    (.requestEndpointMissing, "用量脚本缺少请求地址", "Usage script request address is missing", "用量指令碼缺少請求位址", "用量指令碼缺少請求地址", "使用量スクリプトのリクエストアドレスがありません", "L’adresse de requête du script d’utilisation est manquante"),
+    (.nativeTemplateUnsupported, "不支持当前余额模板", "Current balance template is not supported", "不支援目前餘額範本", "不支援目前餘額範本", "現在の残高テンプレートはサポートされていません", "Le modèle de solde actuel n’est pas pris en charge"),
+    (.newAPIUserIDMissing, "New API 用户 ID 缺失", "New API user ID is missing", "New API 使用者 ID 缺失", "New API 使用者 ID 缺失", "New API ユーザー ID がありません", "L’identifiant utilisateur de New API est manquant"),
+    (.unknown, "余额查询配置不完整", "Balance query configuration is incomplete", "餘額查詢設定不完整", "餘額查詢設定不完整", "残高クエリの設定が不完全です", "La configuration de requête du solde est incomplète")
 ]
 require(expectedUserVisibleReasons.count == 12, "every stable failure type has a user-visible mapping")
-for (failure, simplifiedChinese, english, traditionalChineseTaiwan, traditionalChineseHongKong, japanese) in expectedUserVisibleReasons {
+for (failure, simplifiedChinese, english, traditionalChineseTaiwan, traditionalChineseHongKong, japanese, french) in expectedUserVisibleReasons {
     let actualSimplified = failure.userVisibleReason(language: .simplifiedChinese)
     let actualEnglish = failure.userVisibleReason(language: .english)
     let actualTraditionalTaiwan = failure.userVisibleReason(language: .traditionalChineseTaiwan)
     let actualTraditionalHongKong = failure.userVisibleReason(language: .traditionalChineseHongKong)
     let actualJapanese = failure.userVisibleReason(language: .japanese)
+    let actualFrench = failure.userVisibleReason(language: .french)
     require(actualSimplified == simplifiedChinese, "Simplified Chinese user-visible reason is fixed for \(failure.rawValue)")
     require(actualEnglish == english, "English user-visible reason is fixed for \(failure.rawValue)")
     require(actualTraditionalTaiwan == traditionalChineseTaiwan, "Taiwan Traditional Chinese user-visible reason is fixed for \(failure.rawValue)")
     require(actualTraditionalHongKong == traditionalChineseHongKong, "Hong Kong Traditional Chinese user-visible reason is fixed for \(failure.rawValue)")
     require(actualJapanese == japanese, "Japanese user-visible reason is fixed for \(failure.rawValue)")
-    for message in [actualSimplified, actualEnglish, actualTraditionalTaiwan, actualTraditionalHongKong, actualJapanese] {
+    require(actualFrench == french, "French user-visible reason is fixed for \(failure.rawValue)")
+    for message in [actualSimplified, actualEnglish, actualTraditionalTaiwan, actualTraditionalHongKong, actualJapanese, actualFrench] {
         require(!message.contains(failure.rawValue), "user-visible reason excludes internal raw values")
         require(!message.contains("stage="), "user-visible reason excludes diagnostic stages")
         require(!message.contains("reason="), "user-visible reason excludes diagnostic reasons")
@@ -374,4 +376,4 @@ if grep -Eq 'rawValue|diagnostic|stage=|reason=|https?://|Bearer|SENSITIVE_BEARE
     exit 1
 fi
 
-echo "balance query probe: PASS; success paths; all stable parsing failures; fixed Simplified/Taiwan Traditional/Hong Kong Traditional/Japanese/English user-visible mappings via production Localization; diagnostics and UI text exclude sensitive configuration"
+echo "balance query probe: PASS; success paths; all stable parsing failures; fixed Simplified/Taiwan Traditional/Hong Kong Traditional/Japanese/English/French user-visible mappings via production Localization; diagnostics and UI text exclude sensitive configuration"

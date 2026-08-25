@@ -1,4 +1,4 @@
-  // Stable typed keys for the four bundled Localizable.strings resources.
+  // Stable typed keys for every bundled Localizable.strings resource.
   enum LocalizationKey: String, CaseIterable {
     case keyAppPreferencesTiboSUpdates = "app.preferences.tibo_s_updates"
     case keyAppNotFound = "app.not_found"
@@ -30,6 +30,7 @@
     case keyLocalizationKoreanName = "localization.korean_name"
     case keyLocalizationSpanishName = "localization.spanish_name"
     case keyLocalizationGermanName = "localization.german_name"
+    case keyLocalizationFrenchName = "localization.french_name"
     case keyLocalizationStatusUnknown = "localization.status_unknown"
     case keyLocalizationUnknown = "localization.unknown"
     case keyLocalizationQuota = "localization.quota"

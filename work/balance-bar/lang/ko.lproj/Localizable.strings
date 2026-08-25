@@ -28,6 +28,7 @@
 "localization.korean_name" = "한국어";
 "localization.spanish_name" = "Español";
 "localization.german_name" = "Deutsch";
+"localization.french_name" = "Français";
 "localization.status_unknown" = "상태 알 수 없음";
 "localization.unknown" = "알 수 없음";
 "localization.quota" = "할당량";

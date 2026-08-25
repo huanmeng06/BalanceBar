@@ -11,6 +11,7 @@ enum AppLanguage: String, CaseIterable {
     case korean
     case spanish
     case german
+    case french
 
     /// Source compatibility for callers that used the pre-Issue-184 value.
     /// It intentionally does not appear in `allCases`, so the picker exposes
@@ -43,6 +44,8 @@ enum AppLanguage: String, CaseIterable {
             self = .spanish
         case "german":
             self = .german
+        case "french":
+            self = .french
         default:
             return nil
         }
@@ -93,6 +96,8 @@ enum AppLanguage: String, CaseIterable {
             return .spanish
         case .german:
             return .german
+        case .french:
+            return .french
         case .system:
             for preferred in preferredLanguages {
                 let normalized = Self.normalizedPreferredLanguage(preferred)
@@ -114,6 +119,9 @@ enum AppLanguage: String, CaseIterable {
                 if normalized.hasPrefix("de") {
                     return .german
                 }
+                if normalized.hasPrefix("fr") {
+                    return .french
+                }
                 if normalized.hasPrefix("en") {
                     return .english
                 }
@@ -128,7 +136,7 @@ enum AppLanguage: String, CaseIterable {
         switch self {
         case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong:
             return 62
-        case .english, .japanese, .korean, .spanish, .german, .system:
+        case .english, .japanese, .korean, .spanish, .german, .french, .system:
             return 72
         }
     }
@@ -157,6 +165,8 @@ enum AppLanguage: String, CaseIterable {
             return tr(.keyLocalizationSpanishName, language: language)
         case .german:
             return tr(.keyLocalizationGermanName, language: language)
+        case .french:
+            return tr(.keyLocalizationFrenchName, language: language)
         }
     }
 
@@ -180,6 +190,8 @@ enum AppLanguage: String, CaseIterable {
             return "es"
         case .german:
             return "de"
+        case .french:
+            return "fr"
         }
     }
 
