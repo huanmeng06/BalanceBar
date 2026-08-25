@@ -9,6 +9,7 @@ struct DashboardPreferencePageActions {
     let onOffsetValueEnded: (String, Double) -> Void
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
+    let onMenuBarFontSizePreset: (MenuBarFontSizePreset) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
@@ -44,6 +45,7 @@ final class DashboardPreferencePages {
         relay.onOffsetValueEnded = actions.onOffsetValueEnded
         relay.onOffsetReset = actions.onOffsetReset
         relay.onLanguage = actions.onLanguage
+        relay.onMenuBarFontSizePreset = actions.onMenuBarFontSizePreset
         relay.onUpdateChannelChanged = actions.onUpdateChannelChanged
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
         relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
@@ -183,6 +185,7 @@ final class DashboardPreferencePages {
     }
 
     func teardown() {
+        menuBarPage.teardown()
         menuPage.teardown()
     }
 }

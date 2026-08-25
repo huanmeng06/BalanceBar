@@ -445,9 +445,18 @@ final class DashboardMenuBarPage {
     private weak var amountOffsetSlider: NSSlider?
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
+    private var fontSizePresetTrackingObserver: NSObjectProtocol?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
+
+    deinit {
+        removeFontSizePresetTrackingObserver()
+    }
+
+    func teardown() {
+        removeFontSizePresetTrackingObserver()
+    }
 
     private static func makeOverflowWarningRow(
         label: NSTextField,
@@ -477,6 +486,7 @@ final class DashboardMenuBarPage {
     }
 
     func make(_ input: Input) -> NSView {
+        removeFontSizePresetTrackingObserver()
         let previewContent = NSView()
         let preview: NSView
         if let glassPreview = makeDashboardGlassEffectView(contentView: previewContent, cornerRadius: 7) {
@@ -759,6 +769,10 @@ final class DashboardMenuBarPage {
         amountOffsetSlider = amountOffsetControls.slider
         widthAdjustmentSlider = widthAdjustmentControls.slider
         fontSizePresetControl = fontSizeControls.control
+        observeFontSizePresetTracking(
+            for: fontSizeControls.control,
+            preferences: input.preferences
+        )
         let typographyAndPositionSection = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuBarPageFontSizePosition),
             rows: [
@@ -873,8 +887,14 @@ final class DashboardMenuBarPage {
         amountOffsetSlider?.doubleValue = amountOffsetY
         iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
         amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
-        if fontSizePresetControl?.indexOfSelectedItem != fontSizePreset.segmentIndex {
-            fontSizePresetControl?.selectItem(at: fontSizePreset.segmentIndex)
+        if let fontSizePresetControl {
+            if fontSizePresetControl.indexOfSelectedItem != fontSizePreset.segmentIndex {
+                fontSizePresetControl.selectItem(at: fontSizePreset.segmentIndex)
+            }
+            updateFontSizePresetMenuItemStates(
+                fontSizePresetControl,
+                selectedIndex: fontSizePreset.segmentIndex
+            )
         }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         let widthAdjustment = transientWidthAdjustment
@@ -1235,16 +1255,57 @@ final class DashboardMenuBarPage {
             items: MenuBarFontSizePreset.allCases.map { preset in
                 DashboardSettingsComponents.PopUpItem(
                     title: Self.fontSizePresetLabel(preset),
-                    representedObject: NSNumber(value: preset.segmentIndex)
+                    representedObject: preset.rawValue
                 )
             },
             selectedIndex: value.segmentIndex,
             target: relay,
-            action: #selector(DashboardPreferencePageRelay.selectMenuBarFontSizePreset(_:))
+            action: #selector(DashboardPreferencePageRelay.menuBarFontSizePreset(_:))
         )
         control.toolTip = tr(.keyDashboardMenuBarPageLarge1310PtMedium1179PtSmall1048Pt)
         control.widthAnchor.constraint(equalToConstant: Self.fontSizePresetWidth).isActive = true
         return FontPresetControls(view: control, control: control)
+    }
+
+    private func observeFontSizePresetTracking(
+        for control: NSPopUpButton,
+        preferences: AppPreferences
+    ) {
+        guard let menu = control.menu else { return }
+        fontSizePresetTrackingObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didEndTrackingNotification,
+            object: menu,
+            queue: .main
+        ) { [weak self, weak control, weak preferences] _ in
+            guard let self, let control, let preferences else { return }
+            self.reconcileFontSizePresetControl(control, preferences: preferences)
+        }
+    }
+
+    private func reconcileFontSizePresetControl(
+        _ control: NSPopUpButton,
+        preferences: AppPreferences
+    ) {
+        let preset = preferences.menuBarFontSizePreset
+        control.selectItem(at: preset.segmentIndex)
+        control.synchronizeTitleAndSelectedItem()
+        updateFontSizePresetMenuItemStates(control, selectedIndex: preset.segmentIndex)
+    }
+
+    private func updateFontSizePresetMenuItemStates(
+        _ control: NSPopUpButton,
+        selectedIndex: Int
+    ) {
+        for (index, item) in control.itemArray.enumerated() {
+            item.state = index == selectedIndex ? .on : .off
+        }
+    }
+
+    private func removeFontSizePresetTrackingObserver() {
+        if let fontSizePresetTrackingObserver {
+            NotificationCenter.default.removeObserver(fontSizePresetTrackingObserver)
+            self.fontSizePresetTrackingObserver = nil
+        }
     }
 
     private static func fontSizePresetLabel(_ preset: MenuBarFontSizePreset) -> String {
