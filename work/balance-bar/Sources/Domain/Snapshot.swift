@@ -1,5 +1,22 @@
 import Foundation
 
+struct OfficialQuotaWindow: Equatable {
+    enum Kind: Int, Equatable, Hashable {
+        case fiveHour
+        case sevenDay
+        case other
+
+        var sortOrder: Int { rawValue }
+    }
+
+    let kind: Kind
+    let remaining: Double
+    let label: String
+    let daysText: String
+    let reset: String?
+    let durationSeconds: Double?
+}
+
 struct Snapshot {
     enum Kind { case placeholder, official, balance, openCodex, error }
     let kind: Kind
@@ -10,12 +27,109 @@ struct Snapshot {
     let message: String?
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
+    let officialQuotaWindows: [OfficialQuotaWindow]
 
-    static let placeholder = Snapshot(kind: .placeholder, provider: "", amount: nil, unit: nil, date: nil, message: nil, websiteURL: nil, balanceProgressPercentage: nil)
-    static func official(_ provider: String, _ remaining: Double, _ lane: String, _ reset: String?, _ date: Date) -> Snapshot { Snapshot(kind: .official, provider: provider, amount: remaining, unit: lane, date: date, message: reset, websiteURL: nil, balanceProgressPercentage: nil) }
-    static func balance(_ provider: String, _ amount: Double, _ unit: String, _ websiteURL: URL?, _ date: Date, progressPercentage: Double? = nil) -> Snapshot { Snapshot(kind: .balance, provider: provider, amount: amount, unit: unit, date: date, message: nil, websiteURL: websiteURL, balanceProgressPercentage: progressPercentage) }
-    static func openCodex(_ provider: String, selector: String?, status: String, _ date: Date) -> Snapshot { Snapshot(kind: .openCodex, provider: provider, amount: nil, unit: selector, date: date, message: status, websiteURL: nil, balanceProgressPercentage: nil) }
-    static func error(_ message: String) -> Snapshot { Snapshot(kind: .error, provider: "", amount: nil, unit: nil, date: nil, message: message, websiteURL: nil, balanceProgressPercentage: nil) }
+    static let placeholder = Snapshot(
+        kind: .placeholder,
+        provider: "",
+        amount: nil,
+        unit: nil,
+        date: nil,
+        message: nil,
+        websiteURL: nil,
+        balanceProgressPercentage: nil,
+        officialQuotaWindows: []
+    )
+
+    static func official(
+        _ provider: String,
+        _ remaining: Double,
+        _ lane: String,
+        _ reset: String?,
+        _ date: Date,
+        windows: [OfficialQuotaWindow] = []
+    ) -> Snapshot {
+        let fallbackWindows = windows.isEmpty
+            ? [OfficialQuotaWindow(
+                kind: .other,
+                remaining: remaining,
+                label: lane,
+                daysText: lane,
+                reset: reset,
+                durationSeconds: nil
+            )]
+            : windows
+        let resolvedWindows = fallbackWindows.sorted {
+            if $0.kind.sortOrder != $1.kind.sortOrder {
+                return $0.kind.sortOrder < $1.kind.sortOrder
+            }
+            return ($0.durationSeconds ?? 0) > ($1.durationSeconds ?? 0)
+        }
+        let representative = resolvedWindows.first(where: { $0.kind == .sevenDay })
+            ?? resolvedWindows.first(where: { $0.kind == .fiveHour })
+            ?? resolvedWindows[0]
+        return Snapshot(
+            kind: .official,
+            provider: provider,
+            amount: representative.remaining,
+            unit: representative.label,
+            date: date,
+            message: representative.reset,
+            websiteURL: nil,
+            balanceProgressPercentage: nil,
+            officialQuotaWindows: resolvedWindows
+        )
+    }
+
+    static func balance(
+        _ provider: String,
+        _ amount: Double,
+        _ unit: String,
+        _ websiteURL: URL?,
+        _ date: Date,
+        progressPercentage: Double? = nil
+    ) -> Snapshot {
+        Snapshot(
+            kind: .balance,
+            provider: provider,
+            amount: amount,
+            unit: unit,
+            date: date,
+            message: nil,
+            websiteURL: websiteURL,
+            balanceProgressPercentage: progressPercentage,
+            officialQuotaWindows: []
+        )
+    }
+
+    static func openCodex(_ provider: String, selector: String?, status: String, _ date: Date) -> Snapshot {
+        Snapshot(
+            kind: .openCodex,
+            provider: provider,
+            amount: nil,
+            unit: selector,
+            date: date,
+            message: status,
+            websiteURL: nil,
+            balanceProgressPercentage: nil,
+            officialQuotaWindows: []
+        )
+    }
+
+    static func error(_ message: String) -> Snapshot {
+        Snapshot(
+            kind: .error,
+            provider: "",
+            amount: nil,
+            unit: nil,
+            date: nil,
+            message: message,
+            websiteURL: nil,
+            balanceProgressPercentage: nil,
+            officialQuotaWindows: []
+        )
+    }
+
     static func providerError(_ provider: String, reason: String, cachedBalance: Snapshot?) -> Snapshot {
         let cached = cachedBalance?.kind == .balance ? cachedBalance : nil
         return Snapshot(
@@ -26,8 +140,18 @@ struct Snapshot {
             date: cached?.date,
             message: reason,
             websiteURL: nil,
-            balanceProgressPercentage: cached?.balanceProgressPercentage
+            balanceProgressPercentage: cached?.balanceProgressPercentage,
+            officialQuotaWindows: []
         )
+    }
+
+    /// Only recognized Codex windows participate in the expanded menu card.
+    /// Unknown/legacy windows remain available through the normal single-row
+    /// snapshot presentation instead of being mistaken for a 5-hour or 7-day
+    /// quota.
+    var officialQuotaWindowsForMenu: [OfficialQuotaWindow] {
+        let recognized = officialQuotaWindows.filter { $0.kind != .other }
+        return recognized.isEmpty ? Array(officialQuotaWindows.prefix(1)) : recognized
     }
 
     var menuBarTitle: String {

@@ -1175,6 +1175,57 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertLessThanOrEqual(errorFrames.account?.maxX ?? 0, errorFrames.subscription?.minX ?? 0)
     }
 
+    func testOfficialQuotaLayoutExpandsForOrderedFiveHourAndSevenDayRows() {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-Hour Quota",
+                daysText: "5 Hours",
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: "7-Day Quota",
+                daysText: "7 Days",
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows
+        )
+
+        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 157))
+        XCTAssertEqual(frames.quotaRows.count, 2)
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 111, width: 190, height: 17))
+        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 111, width: 78, height: 17))
+        XCTAssertEqual(frames.title, CGRect(x: 14, y: 130, width: 189, height: 20))
+        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 131, width: 81, height: 17))
+
+        let fiveHour = frames.quotaRows[0]
+        let sevenDay = frames.quotaRows[1]
+        XCTAssertGreaterThan(fiveHour.progress.minY, sevenDay.progress.minY)
+        XCTAssertEqual(fiveHour.progress.width, 276)
+        XCTAssertEqual(sevenDay.progress.width, 276)
+        XCTAssertLessThanOrEqual(sevenDay.progress.maxY, sevenDay.reset.minY)
+        XCTAssertLessThanOrEqual(sevenDay.reset.maxY, sevenDay.quotaDetail.minY)
+        XCTAssertLessThanOrEqual(fiveHour.progress.maxY, fiveHour.reset.minY)
+        XCTAssertLessThanOrEqual(fiveHour.reset.maxY, fiveHour.quotaDetail.minY)
+        XCTAssertLessThanOrEqual(fiveHour.quotaDetail.maxY, frames.account?.minY ?? 0)
+        for row in frames.quotaRows {
+            XCTAssertGreaterThanOrEqual(row.progress.minX, 14)
+            XCTAssertLessThanOrEqual(row.progress.maxX, frames.cardSize.width - 14)
+            XCTAssertGreaterThanOrEqual(row.amount.minY, 0)
+            XCTAssertLessThanOrEqual(row.amount.maxY, frames.cardSize.height)
+        }
+    }
+
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {
         let card = OpenCodexModelCard(
             selector: "openai/gpt-5.6-sol",

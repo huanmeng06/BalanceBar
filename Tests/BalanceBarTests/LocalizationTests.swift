@@ -582,6 +582,37 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testCodexQuotaWindowLabelsAreLocalizedAcrossAllSupportedLanguages() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let languages: [AppLanguage] = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .english,
+            .japanese,
+            .korean,
+            .spanish,
+            .german,
+            .french
+        ]
+
+        for language in languages {
+            let fiveHour = store.localized(
+                key: .keyResponseParsers5HourQuota,
+                language: language
+            )
+            let sevenDay = store.localized(
+                key: .keyResponseParsers7DayQuota2,
+                language: language
+            )
+
+            XCTAssertFalse(fiveHour.isEmpty, "missing 5-hour label for \(language)")
+            XCTAssertFalse(sevenDay.isEmpty, "missing 7-day label for \(language)")
+            XCTAssertFalse(fiveHour.hasPrefix("⟦"), "unresolved 5-hour label for \(language)")
+            XCTAssertFalse(sevenDay.hasPrefix("⟦"), "unresolved 7-day label for \(language)")
+        }
+    }
+
     func testParameterizedResourcesRenderAndValidatePlaceholderContracts() {
         let store = LocalizationResourceStore(bundle: testBundle)
         XCTAssertEqual(

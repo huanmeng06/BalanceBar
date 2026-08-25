@@ -122,6 +122,90 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(codex.label, tr(.keyResponseParsers7DayQuota))
         XCTAssertEqual(codex.daysText, tr(.keyResponseParsers7Days))
         XCTAssertEqual(codex.reset, "1h30m")
+        XCTAssertEqual(codex.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(codex.windows.map(\.remaining), [80, 45])
+        XCTAssertEqual(codex.windows.map(\.reset), ["1h0m", "1h30m"])
+    }
+
+    func testCodexWindowOrderingUsesSemanticDurationsInsteadOfPayloadFieldOrder() throws {
+        let output = try OfficialQuotaResponseParser.parse(
+            data: fixture(#"{"rate_limit":{"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400},"primary_window":{"used_percent":20,"limit_window_seconds":18000,"reset_after_seconds":3600}}}"#),
+            client: .codex,
+            now: now
+        )
+
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(output.windows.map(\.label), [
+            tr(.keyResponseParsers5HourQuota),
+            tr(.keyResponseParsers7DayQuota2)
+        ])
+        XCTAssertEqual(output.windows.map(\.daysText), [
+            tr(.keyResponseParsers5Hours),
+            tr(.keyResponseParsers7Days4)
+        ])
+    }
+
+    func testCodexMissingAndLegacyWindowsDoNotSynthesizeTheOtherWindow() throws {
+        let weeklyOnly = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": [
+                    "secondary_window": [
+                        "used_percent": 55,
+                        "limit_window_seconds": 604_800,
+                        "reset_after_seconds": 5_400
+                    ]
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(weeklyOnly.windows.map(\.kind), [.sevenDay])
+        XCTAssertEqual(weeklyOnly.remaining, 45, accuracy: 0.000001)
+
+        let fiveHourOnly = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": [
+                    "primary_window": [
+                        "used_percent": 20,
+                        "limit_window_seconds": 18_000,
+                        "reset_after_seconds": 3_600
+                    ]
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(fiveHourOnly.windows.map(\.kind), [.fiveHour])
+        XCTAssertEqual(fiveHourOnly.remaining, 80, accuracy: 0.000001)
+
+        let legacy = try OfficialQuotaResponseParser.parse(
+            object: [
+                "primary_window": [
+                    "used_percent": 20,
+                    "limit_window_seconds": 3_600,
+                    "reset_after_seconds": 600
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(legacy.windows.map(\.kind), [.other])
+        XCTAssertEqual(legacy.label, tr(.keyResponseParsersQuota))
+        XCTAssertFalse(legacy.windows.contains { $0.kind == .fiveHour || $0.kind == .sevenDay })
+
+        let legacyWithoutDuration = try OfficialQuotaResponseParser.parse(
+            object: [
+                "primary_window": [
+                    "used_percent": 20,
+                    "reset_description": "later"
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(legacyWithoutDuration.windows.map(\.kind), [.other])
+        XCTAssertEqual(legacyWithoutDuration.remaining, 80, accuracy: 0.000001)
+        XCTAssertEqual(legacyWithoutDuration.reset, "later")
     }
 
     func testResetDescriptionsSupportNumericAndTextValues() {

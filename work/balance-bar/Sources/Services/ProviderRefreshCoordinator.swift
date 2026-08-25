@@ -247,7 +247,14 @@ final class ProviderRefreshCoordinator {
             case .success(let response):
                 self.updateQuickSwitchSummary(providerID: providerID, text: "\(Int(response.output.remaining))% / \(response.output.daysText)")
                 self.renderForCurrentProvider(
-                    .official(providerName, response.output.remaining, response.output.label, response.output.reset, Date()),
+                    .official(
+                        providerName,
+                        response.output.remaining,
+                        response.output.label,
+                        response.output.reset,
+                        Date(),
+                        windows: response.output.windows
+                    ),
                     providerID: providerID,
                     client: client
                 )

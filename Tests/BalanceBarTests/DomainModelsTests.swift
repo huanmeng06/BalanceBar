@@ -129,6 +129,69 @@ final class DomainModelsTests: XCTestCase {
         )
     }
 
+    func testOfficialSnapshotKeepsBothCodexWindowsAndUsesWeeklyValuesForLegacyConsumers() {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            45,
+            tr(.keyResponseParsers7DayQuota2),
+            "1h30m",
+            Date(timeIntervalSince1970: 1_700_000_000),
+            windows: Array(windows.reversed())
+        )
+
+        XCTAssertEqual(snapshot.officialQuotaWindowsForMenu.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(snapshot.amount, 45)
+        XCTAssertEqual(snapshot.unit, tr(.keyResponseParsers7DayQuota2))
+        XCTAssertEqual(snapshot.message, "1h30m")
+        XCTAssertEqual(snapshot.menuBarPrimary, "45%")
+        XCTAssertEqual(snapshot.menuBarSecondary, "1h30m")
+
+        let legacySnapshot = Snapshot.official(
+            "OpenAI",
+            80,
+            tr(.keyResponseParsersQuota),
+            "later",
+            Date(timeIntervalSince1970: 1_700_000_000),
+            windows: [
+                OfficialQuotaWindow(
+                    kind: .other,
+                    remaining: 80,
+                    label: tr(.keyResponseParsersQuota),
+                    daysText: tr(.keyResponseParsersQuota2),
+                    reset: "later",
+                    durationSeconds: nil
+                ),
+                OfficialQuotaWindow(
+                    kind: .other,
+                    remaining: 60,
+                    label: tr(.keyResponseParsersQuota),
+                    daysText: tr(.keyResponseParsersQuota2),
+                    reset: "later too",
+                    durationSeconds: nil
+                )
+            ]
+        )
+        XCTAssertEqual(legacySnapshot.officialQuotaWindowsForMenu.count, 1)
+    }
+
     func testBalanceSnapshotAndCacheKeepProviderClientIsolation() {
         let date = Date(timeIntervalSince1970: 1_700_000_001)
         let balance = Snapshot.balance(
