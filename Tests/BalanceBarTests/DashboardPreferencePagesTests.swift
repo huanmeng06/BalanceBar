@@ -106,9 +106,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             var localizedWidths: [CGFloat] = []
             for popup in popups {
-                let width = try XCTUnwrap(popup.constraints.first {
-                    $0.firstAttribute == .width && $0.relation == .equal
-                })
+                let width = try XCTUnwrap(
+                    popup.constraints
+                        .filter { $0.firstAttribute == .width && $0.relation == .equal }
+                        .max { $0.constant < $1.constant }
+                )
                 localizedWidths.append(width.constant)
                 XCTAssertGreaterThanOrEqual(
                     width.constant,
@@ -116,6 +118,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     "\(language) interval popup must fit every localized item title"
                 )
             }
+            XCTAssertEqual(
+                localizedWidths[0],
+                localizedWidths[1],
+                accuracy: 0.001,
+                "\(language) refresh labels and controls must share one right-aligned column"
+            )
             XCTAssertGreaterThan(
                 localizedWidths.max() ?? 0,
                 108,
