@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,14 +13,22 @@ import {
   updatePlist,
 } from "../../scripts/release/version.mjs";
 import {
+  RELEASE_NOTES_LOCALES,
+  renderLocalizedReleaseNotes,
   renderReleaseNotes,
   validateReleaseNotes,
 } from "../../scripts/release/render-release-notes.mjs";
 import {
   buildDeepSeekRequest,
+  buildLocalizedDeepSeekRequest,
+  requestLocalizedReleaseNotes,
   requestReleaseNotes,
   resolveAIProvider,
 } from "../../scripts/release/generate-release-notes.mjs";
+import {
+  buildReleaseNotesAssetBundle,
+  verifyReleaseNotesInventory,
+} from "../../scripts/release/build-release-notes-assets.mjs";
 import { buildReleaseContext } from "../../scripts/release/release-context.mjs";
 import { buildReleaseInput } from "../../scripts/release/collect-release-input.mjs";
 import {
@@ -70,6 +79,27 @@ function fixtureNotes() {
       },
     ],
   };
+}
+
+function localizedFixtureNotes() {
+  return Object.fromEntries(RELEASE_NOTES_LOCALES.map((locale) => [
+    locale,
+    {
+      features: [{
+        title: `${locale} feature`,
+        description: `${locale} feature description`,
+        sources: [{ kind: "pr", number: 141 }],
+      }],
+      fixes: [{
+        title: `${locale} fix`,
+        description: `${locale} fix description`,
+        sources: [
+          { kind: "pr", number: 140 },
+          { kind: "issue", number: 136 },
+        ],
+      }],
+    },
+  ]));
 }
 
 test("patch and minor plans follow the release policy", () => {
@@ -273,6 +303,94 @@ test("OpenAI remains available as an explicit provider", async () => {
   assert.deepEqual(notes, fixtureNotes());
 });
 
+test("localized release-note requests preserve canonical sources and cover all locales", async () => {
+  const expected = localizedFixtureNotes();
+  const request = buildLocalizedDeepSeekRequest(fixtureNotes(), "deepseek-v4-pro");
+  assert.equal(request.model, "deepseek-v4-pro");
+  assert.match(request.messages[0].content, /zh-Hans/);
+  assert.match(request.messages[0].content, /sources arrays/);
+
+  let observedUrl;
+  const notes = await requestLocalizedReleaseNotes(fixtureInput(), fixtureNotes(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    fetchImpl: async (url) => {
+      observedUrl = url;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify(expected) } }] }),
+      };
+    },
+  });
+
+  assert.equal(observedUrl, "https://api.deepseek.com/chat/completions");
+  assert.deepEqual(notes, expected);
+});
+
+test("versioned notes assets contain an exact eight-locale manifest and verified inventory", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-notes-assets-"));
+  const bundle = buildReleaseNotesAssetBundle({
+    input: fixtureInput(),
+    canonicalNotes: fixtureNotes(),
+    localizedNotes: localizedFixtureNotes(),
+    outputDir: directory,
+  });
+
+  assert.equal(bundle.files.length, 8);
+  assert.deepEqual(Object.keys(bundle.manifest.locales).sort(), [...RELEASE_NOTES_LOCALES].sort());
+  assert.match(fs.readFileSync(bundle.files.find((file) => file.locale === "en").path, "utf8"), /## ✨ New Features/);
+  assert.match(fs.readFileSync(bundle.files.find((file) => file.locale === "de").path, "utf8"), /## ✨ Neue Funktionen/);
+
+  const manifestData = fs.readFileSync(bundle.manifestPath);
+  const releaseAssets = [
+    { name: `BalanceBar-${fixtureInput().version}.dmg`, size: 1, digest: null },
+    {
+      name: bundle.manifestName,
+      size: manifestData.length,
+      digest: `sha256:${crypto.createHash("sha256").update(manifestData).digest("hex")}`,
+    },
+    ...bundle.files.map((file) => ({
+      name: file.name,
+      size: file.size,
+      digest: `sha256:${file.sha256}`,
+    })),
+  ];
+  assert.equal(verifyReleaseNotesInventory({
+    input: fixtureInput(),
+    manifest: bundle.manifest,
+    manifestData,
+    releaseAssets,
+  }), true);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("asset generation rejects unsafe Markdown and manifest source drift", () => {
+  const unsafe = localizedFixtureNotes();
+  unsafe.en.features[0].title = "<script>alert(1)</script>";
+  assert.throws(
+    () => buildReleaseNotesAssetBundle({
+      input: fixtureInput(),
+      canonicalNotes: fixtureNotes(),
+      localizedNotes: unsafe,
+      outputDir: fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-notes-unsafe-")),
+    }),
+    /raw HTML/,
+  );
+
+  const drifted = localizedFixtureNotes();
+  drifted.ja.features[0].sources = [{ kind: "pr", number: 140 }];
+  assert.throws(
+    () => buildReleaseNotesAssetBundle({
+      input: fixtureInput(),
+      canonicalNotes: fixtureNotes(),
+      localizedNotes: drifted,
+      outputDir: fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-notes-drift-")),
+    }),
+    /changed canonical sources/,
+  );
+});
+
 test("renderer preserves the BalanceBar release layout and links every row", () => {
   const rendered = renderReleaseNotes(fixtureInput(), fixtureNotes());
 
@@ -412,5 +530,9 @@ test("manual rebuild is guarded and preserves a DMG-only Release", () => {
   assert.match(rebuildScript, /restoring tag/);
   assert.match(rebuildScript, /restoring DMG/);
   assert.match(rebuildScript, /must contain only \$asset_name after rebuilding/);
+  assert.match(rebuildScript, /multilingual notes inventory/);
+  assert.match(workflow, /build-release-notes-assets\.mjs/);
+  assert.match(workflow, /verify-release-notes-assets\.mjs/);
+  assert.match(workflow, /--draft/);
   assert.doesNotMatch(rebuildScript, /\.sha256/);
 });

@@ -91,6 +91,46 @@ final class UpdateTests: XCTestCase {
         }
     }
 
+    private final class StubReleaseNotesAssetFetcher: ReleaseNotesAssetFetching {
+        var responses: [String: Result<Data, ReleaseNotesRemoteError>] = [:]
+        private(set) var requestCount = 0
+        private(set) var requestedNames: [String] = []
+
+        func fetch(
+            asset: GitHubReleaseAsset,
+            expectedURL: URL,
+            completion: @escaping (Result<Data, ReleaseNotesRemoteError>) -> Void
+        ) {
+            requestCount += 1
+            requestedNames.append(asset.name)
+            completion(responses[asset.name] ?? .failure(.invalidAsset))
+        }
+    }
+
+    private final class StubReleaseNotesResolver: ReleaseNotesRemoteResolving {
+        private var completions: [String: [(Result<ReleaseNotesRemoteValue, ReleaseNotesRemoteError>) -> Void]] = [:]
+        private(set) var requestCount = 0
+
+        func resolve(
+            version: AppSemanticVersion,
+            locale: String,
+            release: GitHubRelease,
+            completion: @escaping (Result<ReleaseNotesRemoteValue, ReleaseNotesRemoteError>) -> Void
+        ) {
+            requestCount += 1
+            completions[locale, default: []].append(completion)
+        }
+
+        func resolve(
+            locale: String,
+            result: Result<ReleaseNotesRemoteValue, ReleaseNotesRemoteError>
+        ) {
+            guard let completion = completions[locale]?.removeFirst() else { return }
+            completions[locale] = completions[locale]?.isEmpty == true ? nil : completions[locale]
+            completion(result)
+        }
+    }
+
     private final class StubUpdateScheduler: UpdateScheduling {
         private struct ScheduledAction {
             let date: TimeInterval
@@ -1152,6 +1192,223 @@ final class UpdateTests: XCTestCase {
             )),
             ReleaseNotesResolution(markdown: nil, source: .unavailable)
         )
+    }
+
+    func testRemoteReleaseNotesLoadsExactLocaleThenUsesDigestKeyedMemoryCache() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let version = try XCTUnwrap(AppSemanticVersion("1.2.3"))
+        let remote = try makeRemoteRelease(version: version, body: "Release body")
+        let bundledDirectory = root.appendingPathComponent("1.2.3", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundledDirectory, withIntermediateDirectories: true)
+        try "Bundled English".write(
+            to: bundledDirectory.appendingPathComponent("en.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let bundledManifest: [String: Any] = [
+            "schemaVersion": 1,
+            "releases": [
+                "1.2.3": ["files": ["en": "1.2.3/en.md"]]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: bundledManifest).write(
+            to: root.appendingPathComponent("manifest.json")
+        )
+        let fetcher = StubReleaseNotesAssetFetcher()
+        fetcher.responses = remote.payloads.mapValues { .success($0) }
+        let callbackQueue = DispatchQueue(label: "balancebar.remote-notes-test")
+        let resolver = ReleaseNotesRemoteResolver(fetcher: fetcher, callbackQueue: callbackQueue)
+        let store = ReleaseNotesStore(
+            releaseNotesRoot: root,
+            remoteResolver: resolver
+        )
+
+        let first = expectation(description: "remote exact locale")
+        store.resolveAsync(
+            version: version,
+            language: .traditionalChineseHongKong,
+            release: remote.release
+        ) { resolution in
+            XCTAssertEqual(resolution.markdown, "zh-Hant-HK remote notes")
+            XCTAssertEqual(resolution.source, .remote(locale: "zh-Hant-HK"))
+            first.fulfill()
+        }
+        wait(for: [first], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 2, "manifest plus exact locale asset")
+
+        let cached = expectation(description: "cached exact locale")
+        store.resolveAsync(
+            version: version,
+            language: .traditionalChineseHongKong,
+            release: remote.release
+        ) { resolution in
+            XCTAssertEqual(resolution.markdown, "zh-Hant-HK remote notes")
+            XCTAssertEqual(resolution.source, .cached(locale: "zh-Hant-HK"))
+            cached.fulfill()
+        }
+        wait(for: [cached], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 2, "verified manifest and notes are cached in memory")
+    }
+
+    func testRemoteReleaseNotesCoalescesManifestAndLocaleRequests() throws {
+        let version = try XCTUnwrap(AppSemanticVersion("1.2.4"))
+        let remote = try makeRemoteRelease(version: version, body: "Release body")
+        let fetcher = StubReleaseNotesAssetFetcher()
+        fetcher.responses = remote.payloads.mapValues { .success($0) }
+        let resolver = ReleaseNotesRemoteResolver(
+            fetcher: fetcher,
+            callbackQueue: DispatchQueue(label: "balancebar.remote-notes-coalescing-test")
+        )
+        let first = expectation(description: "first coalesced resolver")
+        let second = expectation(description: "second coalesced resolver")
+        resolver.resolve(version: version, locale: "en", release: remote.release) { result in
+            XCTAssertEqual(try? result.get().markdown, "en remote notes")
+            first.fulfill()
+        }
+        resolver.resolve(version: version, locale: "en", release: remote.release) { result in
+            XCTAssertEqual(try? result.get().markdown, "en remote notes")
+            second.fulfill()
+        }
+        wait(for: [first, second], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 2, "one manifest and one locale request for two callers")
+        XCTAssertEqual(fetcher.requestedNames.filter { $0.contains("manifest") }.count, 1)
+        XCTAssertEqual(fetcher.requestedNames.filter { $0.hasSuffix("-en.md") }.count, 1)
+    }
+
+    func testRemoteReleaseNotesRejectsUnsafeIdentityAndContentBeforeBodyFallback() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let version = try XCTUnwrap(AppSemanticVersion("1.2.5"))
+        let valid = try makeRemoteRelease(version: version, body: "Fallback body")
+        let manifestName = ReleaseNotesLocaleContract.manifestAssetName(for: version)
+        let invalidManifestURL = GitHubReleaseAsset(
+            name: manifestName,
+            browserDownloadURL: URL(string: "http://github.com/huanmeng06/BalanceBar/releases/download/v1.2.5/\(manifestName)"),
+            size: valid.release.assets.first(where: { $0.name == manifestName })?.size,
+            digest: valid.release.assets.first(where: { $0.name == manifestName })?.digest
+        )
+        let invalidRelease = GitHubRelease(
+            tagName: valid.release.tagName,
+            draft: false,
+            prerelease: false,
+            assets: valid.release.assets.map { $0.name == manifestName ? invalidManifestURL : $0 },
+            body: valid.release.body
+        )
+        let fetcher = StubReleaseNotesAssetFetcher()
+        fetcher.responses = valid.payloads.mapValues { .success($0) }
+        let resolver = ReleaseNotesRemoteResolver(
+            fetcher: fetcher,
+            callbackQueue: DispatchQueue(label: "balancebar.remote-notes-security-test")
+        )
+        let store = ReleaseNotesStore(releaseNotesRoot: root, remoteResolver: resolver)
+        let fallback = expectation(description: "unsafe asset falls back")
+        store.resolveAsync(version: version, language: .english, release: invalidRelease) { resolution in
+            XCTAssertEqual(resolution, ReleaseNotesResolution(markdown: "Fallback body", source: .githubRelease))
+            fallback.fulfill()
+        }
+        wait(for: [fallback], timeout: 2)
+        XCTAssertEqual(fetcher.requestCount, 0, "HTTP is never attempted for a non-HTTPS asset")
+
+        let englishName = ReleaseNotesLocaleContract.localeAssetName(for: version, locale: "en")
+        let corruptFetcher = StubReleaseNotesAssetFetcher()
+        corruptFetcher.responses = valid.payloads.mapValues { .success($0) }
+        corruptFetcher.responses[englishName] = .success(Data("corrupt".utf8))
+        let corruptResolver = ReleaseNotesRemoteResolver(
+            fetcher: corruptFetcher,
+            callbackQueue: DispatchQueue(label: "balancebar.remote-notes-corrupt-content-test")
+        )
+        let corruptStore = ReleaseNotesStore(releaseNotesRoot: root, remoteResolver: corruptResolver)
+        let corruptFallback = expectation(description: "corrupt content falls back")
+        corruptStore.resolveAsync(version: version, language: .english, release: valid.release) { resolution in
+            XCTAssertEqual(resolution, ReleaseNotesResolution(markdown: "Fallback body", source: .githubRelease))
+            corruptFallback.fulfill()
+        }
+        wait(for: [corruptFallback], timeout: 2)
+        XCTAssertEqual(corruptFetcher.requestCount, 2, "manifest and corrupted locale are the only attempted assets")
+        XCTAssertThrowsError(try ReleaseNotesRemoteValidator.validatedMarkdown("<script>alert(1)</script>"))
+        XCTAssertThrowsError(try ReleaseNotesRemoteValidator.validatedMarkdown("[unsafe](javascript:alert(1))"))
+    }
+
+    func testRemoteReleaseNotesFallsBackToEnglishThenReleaseBodyWhenCandidatesFail() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let version = try XCTUnwrap(AppSemanticVersion("1.2.7"))
+        let remote = try makeRemoteRelease(version: version, body: "Fallback body")
+        let exactName = ReleaseNotesLocaleContract.localeAssetName(for: version, locale: "zh-Hant-HK")
+        let fetcher = StubReleaseNotesAssetFetcher()
+        fetcher.responses = remote.payloads.mapValues { .success($0) }
+        fetcher.responses[exactName] = .success(Data("invalid exact notes".utf8))
+        let resolver = ReleaseNotesRemoteResolver(
+            fetcher: fetcher,
+            callbackQueue: DispatchQueue(label: "balancebar.remote-notes-fallback-test")
+        )
+        let store = ReleaseNotesStore(releaseNotesRoot: root, remoteResolver: resolver)
+        let english = expectation(description: "English remote fallback")
+        store.resolveAsync(version: version, language: .traditionalChineseHongKong, release: remote.release) { resolution in
+            XCTAssertEqual(resolution.markdown, "en remote notes")
+            XCTAssertEqual(resolution.source, .remote(locale: "en"))
+            english.fulfill()
+        }
+        wait(for: [english], timeout: 2)
+        XCTAssertEqual(fetcher.requestedNames, [
+            ReleaseNotesLocaleContract.manifestAssetName(for: version),
+            exactName,
+            ReleaseNotesLocaleContract.localeAssetName(for: version, locale: "en")
+        ])
+
+        let bodylessVersion = try XCTUnwrap(AppSemanticVersion("1.2.8"))
+        let bodyless = try makeRemoteRelease(version: bodylessVersion, body: nil)
+        let unavailableFetcher = StubReleaseNotesAssetFetcher()
+        unavailableFetcher.responses[ReleaseNotesLocaleContract.manifestAssetName(for: bodylessVersion)] = .failure(.transport)
+        let unavailableResolver = ReleaseNotesRemoteResolver(
+            fetcher: unavailableFetcher,
+            callbackQueue: DispatchQueue(label: "balancebar.remote-notes-unavailable-test")
+        )
+        let unavailableStore = ReleaseNotesStore(releaseNotesRoot: root, remoteResolver: unavailableResolver)
+        let unavailable = expectation(description: "unavailable fallback")
+        unavailableStore.resolveAsync(version: bodylessVersion, language: .english, release: bodyless.release) { resolution in
+            XCTAssertEqual(resolution, ReleaseNotesResolution(markdown: nil, source: .unavailable))
+            unavailable.fulfill()
+        }
+        wait(for: [unavailable], timeout: 2)
+    }
+
+    func testReleaseNotesGenerationTokenDropsLateRemoteCompletion() throws {
+        let version = try XCTUnwrap(AppSemanticVersion("1.2.6"))
+        let release = GitHubRelease(
+            tagName: "v1.2.6",
+            draft: false,
+            prerelease: false,
+            assets: [],
+            body: "new body"
+        )
+        let resolver = StubReleaseNotesResolver()
+        let store = ReleaseNotesStore(
+            releaseNotesRoot: try makeTemporaryDirectory(),
+            remoteResolver: resolver
+        )
+        let stale = expectation(description: "stale result is ignored")
+        stale.isInverted = true
+        let current = expectation(description: "current result is delivered")
+        store.resolveAsync(version: version, language: .english, release: release) { resolution in
+            XCTAssertEqual(resolution.markdown, "stale")
+            stale.fulfill()
+        }
+        store.resolveAsync(version: version, language: .english, release: release) { resolution in
+            XCTAssertEqual(resolution.markdown, "current")
+            current.fulfill()
+        }
+        XCTAssertEqual(resolver.requestCount, 2)
+        resolver.resolve(
+            locale: "en",
+            result: .success(ReleaseNotesRemoteValue(markdown: "stale", wasCached: false))
+        )
+        resolver.resolve(
+            locale: "en",
+            result: .success(ReleaseNotesRemoteValue(markdown: "current", wasCached: false))
+        )
+        wait(for: [current, stale], timeout: 1)
     }
 
     func testReleaseNotesMarkdownRendererKeepsUnsupportedMarkupAsTextAndOnlyAllowsWebLinks() throws {
@@ -2312,6 +2569,75 @@ final class UpdateTests: XCTestCase {
     }
 
     // MARK: - Fixtures
+
+    private struct RemoteReleaseFixture {
+        let release: GitHubRelease
+        let payloads: [String: Data]
+    }
+
+    private func makeRemoteRelease(
+        version: AppSemanticVersion,
+        body: String?
+    ) throws -> RemoteReleaseFixture {
+        let notes = Dictionary(uniqueKeysWithValues: ReleaseNotesLocaleContract.supportedLocales.map { locale in
+            (locale, "\(locale) remote notes")
+        })
+        var payloads: [String: Data] = [:]
+        var localeEntries: [String: [String: Any]] = [:]
+        var assets: [GitHubReleaseAsset] = []
+
+        let dmg = GitHubReleaseAsset(
+            name: "BalanceBar-\(version.normalizedAssetVersion).dmg",
+            browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/v\(version)/BalanceBar-\(version).dmg"),
+            size: 1,
+            digest: nil
+        )
+        assets.append(dmg)
+
+        for locale in ReleaseNotesLocaleContract.supportedLocales {
+            let name = ReleaseNotesLocaleContract.localeAssetName(for: version, locale: locale)
+            let data = Data(notes[locale]!.utf8)
+            let digest = sha256(data)
+            payloads[name] = data
+            localeEntries[locale] = [
+                "asset": name,
+                "size": data.count,
+                "sha256": digest
+            ]
+            assets.append(GitHubReleaseAsset(
+                name: name,
+                browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/v\(version)/\(name)"),
+                size: data.count,
+                digest: "sha256:\(digest)"
+            ))
+        }
+
+        let manifestObject: [String: Any] = [
+            "schemaVersion": 1,
+            "version": version.description,
+            "locales": localeEntries
+        ]
+        let manifestData = try JSONSerialization.data(withJSONObject: manifestObject, options: [])
+        let manifestName = ReleaseNotesLocaleContract.manifestAssetName(for: version)
+        payloads[manifestName] = manifestData
+        assets.append(GitHubReleaseAsset(
+            name: manifestName,
+            browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/v\(version)/\(manifestName)"),
+            size: manifestData.count,
+            digest: "sha256:\(sha256(manifestData))"
+        ))
+
+        return RemoteReleaseFixture(
+            release: GitHubRelease(
+                tagName: "v\(version)",
+                draft: false,
+                prerelease: false,
+                assets: assets,
+                body: body
+            ),
+            payloads: payloads
+        )
+    }
 
     private func releaseBody(
         tag: String,

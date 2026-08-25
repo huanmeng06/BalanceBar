@@ -51,14 +51,36 @@ gh release view "$tag" \
     > "$release_before"
 
 original_asset_count="$(jq '.assets | length' "$release_before")"
-original_asset_name="$(jq -r '.assets[0].name // empty' "$release_before")"
-[[ "$original_asset_count" -eq 1 && "$original_asset_name" == "$asset_name" ]] \
-    || die "Release $tag must contain only $asset_name before rebuilding"
+notes_manifest_name="BalanceBar-release-notes-${version}-manifest.json"
+notes_locales=()
+while IFS= read -r locale
+do
+    notes_locales+=("$locale")
+done < <(node --input-type=module -e 'import { RELEASE_NOTES_LOCALES } from "./scripts/release/render-release-notes.mjs"; for (const locale of RELEASE_NOTES_LOCALES) console.log(locale)')
+expected_notes_assets=("$notes_manifest_name")
+for locale in "${notes_locales[@]}"
+do
+    expected_notes_assets+=("BalanceBar-release-notes-${version}-${locale}.md")
+done
 
-gh release download "$tag" \
-    --repo "$repository" \
-    --pattern "$asset_name" \
-    --dir "$backup_dir"
+original_asset_names_json="$(jq -c '[.assets[].name] | sort' "$release_before")"
+expected_legacy_assets_json="$(jq -cn --arg dmg "$asset_name" '[ $dmg ]')"
+expected_notes_assets_json="$(printf '%s\n' "$asset_name" "${expected_notes_assets[@]}" | jq -R -s 'split("\n") | map(select(length > 0)) | sort')"
+if [[ "$original_asset_names_json" == "$expected_legacy_assets_json" ]]; then
+    release_inventory="legacy"
+elif [[ "$original_asset_names_json" == "$expected_notes_assets_json" ]]; then
+    release_inventory="multilingual-notes"
+else
+    die "Release $tag must contain the expected DMG-only or multilingual notes inventory"
+fi
+
+while IFS= read -r original_asset
+do
+    gh release download "$tag" \
+        --repo "$repository" \
+        --pattern "$original_asset" \
+        --dir "$backup_dir"
+done < <(jq -r '.assets[].name' "$release_before")
 backup_asset="$backup_dir/$asset_name"
 [[ -f "$backup_asset" ]] || die "could not back up existing $asset_name"
 
@@ -100,9 +122,18 @@ after_metadata="$(jq -Sc '{databaseId,name,body,isDraft,isPrerelease}' "$release
     || die "Release metadata changed while replacing the DMG"
 
 final_asset_count="$(jq '.assets | length' "$release_after")"
-final_asset_name="$(jq -r '.assets[0].name // empty' "$release_after")"
-[[ "$final_asset_count" -eq 1 && "$final_asset_name" == "$asset_name" ]] \
-    || die "Release $tag must contain only $asset_name after rebuilding"
+final_asset_names_json="$(jq -c '[.assets[].name] | sort' "$release_after")"
+if [[ "$release_inventory" == "legacy" ]]; then
+    [[ "$final_asset_count" -eq 1 && "$final_asset_names_json" == "$expected_legacy_assets_json" ]] \
+        || die "Release $tag must contain only $asset_name after rebuilding"
+else
+    [[ "$final_asset_names_json" == "$expected_notes_assets_json" ]] \
+        || die "Release $tag lost or changed its multilingual notes inventory after rebuilding"
+    original_notes_inventory="$(jq -Sc --arg dmg "$asset_name" '[.assets[] | select(.name != $dmg) | {name,size,digest}] | sort_by(.name)' "$release_before")"
+    final_notes_inventory="$(jq -Sc --arg dmg "$asset_name" '[.assets[] | select(.name != $dmg) | {name,size,digest}] | sort_by(.name)' "$release_after")"
+    [[ "$original_notes_inventory" == "$final_notes_inventory" ]] \
+        || die "Release $tag multilingual notes size/digest inventory changed while rebuilding"
+fi
 
 remote_tag_sha="$(git ls-remote origin "refs/tags/${tag}^{}" | awk 'NR == 1 { print $1 }')"
 [[ "$remote_tag_sha" == "$target_sha" ]] \

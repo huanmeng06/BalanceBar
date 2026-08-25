@@ -116,6 +116,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     private var currentVersion: AppSemanticVersion?
     private var release: GitHubRelease?
     private var appearanceObserver: NSObjectProtocol?
+    private var presentationGeneration: UInt64 = 0
 
     init(
         releaseNotesStore: ReleaseNotesStore = ReleaseNotesStore(),
@@ -355,6 +356,8 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
 
     private func render() {
         guard let currentVersion, let release else { return }
+        presentationGeneration &+= 1
+        let generation = presentationGeneration
         let language = AppLanguage.resolved
         titleLabel.stringValue = tr(.keyDashboardGeneralAndRefreshPagesReleaseNotes, language: language)
         versionLabel.stringValue = tr(
@@ -372,8 +375,30 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             language: language,
             release: release
         )
+        applyResolution(resolution)
+        releaseNotesStore.resolveAsync(
+            version: release.version ?? currentVersion,
+            language: language,
+            release: release
+        ) { [weak self] resolution in
+            DispatchQueue.main.async {
+                guard let self,
+                      self.presentationGeneration == generation,
+                      self.currentVersion == currentVersion,
+                      self.release == release else {
+                    return
+                }
+                self.applyResolution(resolution)
+            }
+        }
+    }
+
+    private func applyResolution(_ resolution: ReleaseNotesResolution) {
         let markdown = resolution.markdown
-            ?? tr(.keyDashboardGeneralAndRefreshPagesReleaseNotesUnavailable, language: language)
+            ?? tr(
+                .keyDashboardGeneralAndRefreshPagesReleaseNotesUnavailable,
+                language: AppLanguage.resolved
+            )
         notesTextView.textStorage?.setAttributedString(
             ReleaseNotesMarkdownRenderer.render(markdown: markdown)
         )

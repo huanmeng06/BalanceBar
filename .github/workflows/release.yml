@@ -240,6 +240,26 @@ jobs:
             --output "$notes_file"
           echo "RELEASE_NOTES=$notes_file" >> "$GITHUB_ENV"
 
+      - name: Generate and validate versioned multilingual notes assets
+        if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          RELEASE_AI_PROVIDER: ${{ vars.RELEASE_AI_PROVIDER }}
+          RELEASE_AI_MODEL: ${{ vars.RELEASE_AI_MODEL }}
+          RELEASE_AI_BASE_URL: ${{ vars.RELEASE_AI_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          notes_assets_dir="$RUNNER_TEMP/balancebar-release-notes-assets"
+          node scripts/release/build-release-notes-assets.mjs \
+            --input "$RELEASE_INPUT" \
+            --ai "$RELEASE_AI_NOTES" \
+            --output-dir "$notes_assets_dir"
+          echo "RELEASE_NOTES_ASSET_DIR=$notes_assets_dir" >> "$GITHUB_ENV"
+          echo "RELEASE_NOTES_MANIFEST=$notes_assets_dir/BalanceBar-release-notes-${{ steps.version_plan.outputs.version }}-manifest.json" >> "$GITHUB_ENV"
+
       - name: Build the production app and DMG
         if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         env:
@@ -275,19 +295,46 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          release_flags=(--latest)
+          release_flags=(--draft)
           title="BalanceBar ${VERSION}"
           if [[ "$PRERELEASE" == "true" ]]; then
-            release_flags=(--prerelease --latest=false)
+            release_flags+=(--prerelease)
+          else
+            release_flags+=(--latest=false)
           fi
 
+          release_assets=(
+            "$RELEASE_DMG"
+            "$RELEASE_NOTES_MANIFEST"
+          )
+          while IFS= read -r locale; do
+            release_assets+=(
+              "$RELEASE_NOTES_ASSET_DIR/BalanceBar-release-notes-${VERSION}-${locale}.md"
+            )
+          done < <(node --input-type=module -e 'import { RELEASE_NOTES_LOCALES } from "./scripts/release/render-release-notes.mjs"; for (const locale of RELEASE_NOTES_LOCALES) console.log(locale)')
+
           gh release create "$TAG" \
-            "$RELEASE_DMG" \
+            "${release_assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "$title" \
             --notes-file "$RELEASE_NOTES" \
             "${release_flags[@]}"
+
+          gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets \
+            > "$RUNNER_TEMP/balancebar-release-assets.json"
+          node scripts/release/verify-release-notes-assets.mjs \
+            --input "$RELEASE_INPUT" \
+            --manifest "$RELEASE_NOTES_MANIFEST" \
+            --release "$RUNNER_TEMP/balancebar-release-assets.json"
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          fi
 
           release_url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
           echo "Published $release_url"

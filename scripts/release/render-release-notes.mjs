@@ -17,6 +17,120 @@ const SECTION_DEFINITIONS = [
   },
 ];
 
+export const RELEASE_NOTES_LOCALES = Object.freeze([
+  "zh-Hans",
+  "zh-Hant-TW",
+  "zh-Hant-HK",
+  "en",
+  "ja",
+  "ko",
+  "es",
+  "de",
+]);
+
+const LOCALIZED_COPY = Object.freeze({
+  "zh-Hans": {
+    features: { heading: "## ✨ 新功能", column: "功能" },
+    fixes: { heading: "## 🛠 修复与体验优化", column: "项目" },
+    descriptionColumn: "说明",
+    installationHeading: "## 📦 安装",
+    installation: [
+      "下载 Assets 中的 `BalanceBar-{version}.dmg`。",
+      "打开 DMG，将 `BalanceBar.app` 拖入“应用程序”文件夹。",
+      "从“应用程序”文件夹启动 BalanceBar。",
+    ],
+    changelog: "Full Changelog",
+  },
+  "zh-Hant-TW": {
+    features: { heading: "## ✨ 新功能", column: "功能" },
+    fixes: { heading: "## 🛠 修復與體驗優化", column: "項目" },
+    descriptionColumn: "說明",
+    installationHeading: "## 📦 安裝",
+    installation: [
+      "下載 Assets 中的 `BalanceBar-{version}.dmg`。",
+      "開啟 DMG，將 `BalanceBar.app` 拖入「應用程式」資料夾。",
+      "從「應用程式」資料夾啟動 BalanceBar。",
+    ],
+    changelog: "完整變更記錄",
+  },
+  "zh-Hant-HK": {
+    features: { heading: "## ✨ 新功能", column: "功能" },
+    fixes: { heading: "## 🛠 修復與體驗優化", column: "項目" },
+    descriptionColumn: "說明",
+    installationHeading: "## 📦 安裝",
+    installation: [
+      "下載 Assets 中的 `BalanceBar-{version}.dmg`。",
+      "開啟 DMG，將 `BalanceBar.app` 拖入「應用程式」資料夾。",
+      "從「應用程式」資料夾啟動 BalanceBar。",
+    ],
+    changelog: "完整變更記錄",
+  },
+  en: {
+    features: { heading: "## ✨ New Features", column: "Feature" },
+    fixes: { heading: "## 🛠 Fixes and Improvements", column: "Item" },
+    descriptionColumn: "Description",
+    installationHeading: "## 📦 Installation",
+    installation: [
+      "Download `BalanceBar-{version}.dmg` from Assets.",
+      "Open the DMG and drag `BalanceBar.app` to the Applications folder.",
+      "Launch BalanceBar from the Applications folder.",
+    ],
+    changelog: "Full Changelog",
+  },
+  ja: {
+    features: { heading: "## ✨ 新機能", column: "機能" },
+    fixes: { heading: "## 🛠 修正と改善", column: "項目" },
+    descriptionColumn: "説明",
+    installationHeading: "## 📦 インストール",
+    installation: [
+      "Assets から `BalanceBar-{version}.dmg` をダウンロードします。",
+      "DMG を開き、`BalanceBar.app` をアプリケーションフォルダへ移動します。",
+      "アプリケーションフォルダから BalanceBar を起動します。",
+    ],
+    changelog: "完全な変更履歴",
+  },
+  ko: {
+    features: { heading: "## ✨ 새로운 기능", column: "기능" },
+    fixes: { heading: "## 🛠 수정 및 개선", column: "항목" },
+    descriptionColumn: "설명",
+    installationHeading: "## 📦 설치",
+    installation: [
+      "Assets에서 `BalanceBar-{version}.dmg`를 다운로드합니다.",
+      "DMG를 열고 `BalanceBar.app`을 응용 프로그램 폴더로 드래그합니다.",
+      "응용 프로그램 폴더에서 BalanceBar를 실행합니다.",
+    ],
+    changelog: "전체 변경 기록",
+  },
+  es: {
+    features: { heading: "## ✨ Novedades", column: "Función" },
+    fixes: { heading: "## 🛠 Correcciones y mejoras", column: "Elemento" },
+    descriptionColumn: "Descripción",
+    installationHeading: "## 📦 Instalación",
+    installation: [
+      "Descarga `BalanceBar-{version}.dmg` desde Assets.",
+      "Abre el DMG y arrastra `BalanceBar.app` a la carpeta Aplicaciones.",
+      "Inicia BalanceBar desde la carpeta Aplicaciones.",
+    ],
+    changelog: "Registro completo de cambios",
+  },
+  de: {
+    features: { heading: "## ✨ Neue Funktionen", column: "Funktion" },
+    fixes: { heading: "## 🛠 Fehlerbehebungen und Verbesserungen", column: "Element" },
+    descriptionColumn: "Beschreibung",
+    installationHeading: "## 📦 Installation",
+    installation: [
+      "Lade `BalanceBar-{version}.dmg` aus den Assets herunter.",
+      "Öffne die DMG und ziehe `BalanceBar.app` in den Programme-Ordner.",
+      "Starte BalanceBar aus dem Programme-Ordner.",
+    ],
+    changelog: "Vollständiges Änderungsprotokoll",
+  },
+});
+
+function copyForLocale(locale) {
+  return LOCALIZED_COPY[locale] || LOCALIZED_COPY.en;
+}
+
 function sourceKey(source) {
   return `${source.kind}:${source.number}`;
 }
@@ -165,7 +279,7 @@ export function validateReleaseNotes(input, notes) {
   return { coveredPullRequests };
 }
 
-function renderSection(input, notes, definition) {
+function renderSection(input, notes, definition, copy) {
   const items = notes[definition.key];
   if (items.length === 0) {
     return null;
@@ -179,31 +293,38 @@ function renderSection(input, notes, definition) {
   });
 
   return [
-    definition.heading,
+    copy[definition.key].heading,
     "",
-    `${definition.column} | 说明`,
+    `${copy[definition.key].column} | ${copy.descriptionColumn}`,
     "--- | ---",
     ...rows.map(([name, description]) => `${name} | ${description}`),
   ].join("\n");
 }
 
-export function renderReleaseNotes(input, notes) {
-  const sanitizedNotes = sanitizeReleaseNotes(input, notes);
+export function renderReleaseNotes(input, notes, {
+  locale = "zh-Hans",
+  localizedNotes = notes,
+} = {}) {
+  const sanitizedNotes = sanitizeReleaseNotes(input, localizedNotes);
   validateReleaseNotes(input, sanitizedNotes);
+  const copy = copyForLocale(locale);
+  const localizedInput = { ...input, locale };
 
   const sections = SECTION_DEFINITIONS
-    .map((definition) => renderSection(input, sanitizedNotes, definition))
+    .map((definition) => renderSection(localizedInput, sanitizedNotes, definition, copy))
     .filter(Boolean);
   const installation = [
-    "## 📦 安装",
+    copy.installationHeading,
     "",
-    `1. 下载 Assets 中的 \`BalanceBar-${input.version}.dmg\`。`,
-    "2. 打开 DMG，将 `BalanceBar.app` 拖入“应用程序”文件夹。",
-    "3. 从“应用程序”文件夹启动 BalanceBar。",
+    ...copy.installation.map((step, index) => `${index + 1}. ${step.replace("{version}", input.version)}`),
   ].join("\n");
-  const changelog = `Full Changelog: [${input.previousVersion} → ${input.version}](${input.compareUrl})`;
+  const changelog = `${copy.changelog}: [${input.previousVersion} → ${input.version}](${input.compareUrl})`;
 
   return `${[...sections, installation, changelog].join("\n\n")}\n`;
+}
+
+export function renderLocalizedReleaseNotes(input, canonicalNotes, locale, localizedNotes) {
+  return renderReleaseNotes(input, canonicalNotes, { locale, localizedNotes });
 }
 
 function parseArguments(argv) {

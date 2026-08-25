@@ -1,5 +1,8 @@
 import AppKit
 import Foundation
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
 
 struct ReleaseNotesManifestEntry: Decodable, Equatable {
     let files: [String: String]
@@ -12,6 +15,8 @@ struct ReleaseNotesManifest: Decodable, Equatable {
 
 enum ReleaseNotesSource: Equatable {
     case bundled(locale: String)
+    case remote(locale: String)
+    case cached(locale: String)
     case githubRelease
     case unavailable
 }
@@ -21,16 +26,695 @@ struct ReleaseNotesResolution: Equatable {
     let source: ReleaseNotesSource
 }
 
+enum ReleaseNotesRemoteError: Error, Equatable {
+    case invalidAsset
+    case transport
+    case httpStatus(Int)
+    case invalidResponse
+    case tooLarge
+    case emptyData
+    case sizeMismatch
+    case digestMismatch
+    case invalidUTF8
+    case invalidManifest
+    case unsafeMarkdown
+}
+
+enum ReleaseNotesLocaleContract {
+    static let supportedLocales = [
+        "zh-Hans",
+        "zh-Hant-TW",
+        "zh-Hant-HK",
+        "en",
+        "ja",
+        "ko",
+        "es",
+        "de"
+    ]
+
+    static let maximumBytes = 256 * 1024
+
+    static func manifestAssetName(for version: AppSemanticVersion) -> String {
+        "BalanceBar-release-notes-\(version.normalizedAssetVersion)-manifest.json"
+    }
+
+    static func localeAssetName(
+        for version: AppSemanticVersion,
+        locale: String
+    ) -> String {
+        "BalanceBar-release-notes-\(version.normalizedAssetVersion)-\(locale).md"
+    }
+}
+
+struct ReleaseNotesRemoteManifestEntry: Equatable {
+    let asset: String
+    let size: Int
+    let sha256: String
+}
+
+struct ReleaseNotesRemoteManifest: Equatable {
+    let schemaVersion: Int
+    let version: String
+    let locales: [String: ReleaseNotesRemoteManifestEntry]
+
+    static func decode(data: Data) -> ReleaseNotesRemoteManifest? {
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any],
+              Set(dictionary.keys) == ["schemaVersion", "version", "locales"],
+              let schemaVersion = dictionary["schemaVersion"] as? Int,
+              let version = dictionary["version"] as? String,
+              let localeObject = dictionary["locales"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        var entries: [String: ReleaseNotesRemoteManifestEntry] = [:]
+        for (locale, rawEntry) in localeObject {
+            guard let entry = rawEntry as? [String: Any],
+                  Set(entry.keys) == ["asset", "size", "sha256"],
+                  let asset = entry["asset"] as? String,
+                  let size = entry["size"] as? Int,
+                  let sha256 = entry["sha256"] as? String,
+                  let normalizedDigest = ReleaseNotesRemoteValidator.normalizedSHA256(sha256)
+            else {
+                return nil
+            }
+            entries[locale] = ReleaseNotesRemoteManifestEntry(
+                asset: asset,
+                size: size,
+                sha256: normalizedDigest
+            )
+        }
+
+        return ReleaseNotesRemoteManifest(
+            schemaVersion: schemaVersion,
+            version: version,
+            locales: entries
+        )
+    }
+}
+
+struct ReleaseNotesRemoteValue: Equatable {
+    let markdown: String
+    let wasCached: Bool
+}
+
+protocol ReleaseNotesRemoteResolving: AnyObject {
+    func resolve(
+        version: AppSemanticVersion,
+        locale: String,
+        release: GitHubRelease,
+        completion: @escaping (Result<ReleaseNotesRemoteValue, ReleaseNotesRemoteError>) -> Void
+    )
+}
+
+protocol ReleaseNotesAssetFetching: AnyObject {
+    func fetch(
+        asset: GitHubReleaseAsset,
+        expectedURL: URL,
+        completion: @escaping (Result<Data, ReleaseNotesRemoteError>) -> Void
+    )
+}
+
+enum ReleaseNotesRemoteValidator {
+    static func normalizedSHA256(_ value: String) -> String? {
+        let parts = value.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        let digest = parts.count == 2 && parts[0].lowercased() == "sha256"
+            ? String(parts[1])
+            : value
+        let hex = "0123456789abcdefABCDEF"
+        guard digest.count == 64,
+              digest.allSatisfy({ hex.contains($0) }) else {
+            return nil
+        }
+        return digest.lowercased()
+    }
+
+    static func expectedAssetURL(
+        asset: GitHubReleaseAsset,
+        release: GitHubRelease,
+        expectedName: String
+    ) -> URL? {
+        guard asset.name == expectedName,
+              !asset.name.isEmpty,
+              !asset.name.contains("/"),
+              !asset.name.contains("\\"),
+              let size = asset.size,
+              size > 0,
+              size <= ReleaseNotesLocaleContract.maximumBytes,
+              let digest = asset.digest,
+              normalizedSHA256(digest) != nil,
+              let url = asset.browserDownloadURL,
+              url.scheme?.lowercased() == "https",
+              url.user == nil,
+              url.password == nil,
+              url.query == nil,
+              url.fragment == nil,
+              url.host?.lowercased() == "github.com"
+        else {
+            return nil
+        }
+
+        let expectedPath = "/huanmeng06/BalanceBar/releases/download/\(release.tagName)/\(expectedName)"
+        guard url.path == expectedPath else { return nil }
+        return url
+    }
+
+    static func isSafeFinalURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              url.user == nil,
+              url.password == nil,
+              let host = url.host?.lowercased(),
+              [
+                  "github.com",
+                  "objects.githubusercontent.com",
+                  "github-releases.githubusercontent.com",
+                  "githubusercontent.com"
+              ].contains(host),
+              !url.path.isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    static func verify(
+        data: Data,
+        asset: GitHubReleaseAsset,
+        maximumBytes: Int = ReleaseNotesLocaleContract.maximumBytes
+    ) throws {
+        guard !data.isEmpty else { throw ReleaseNotesRemoteError.emptyData }
+        guard data.count <= maximumBytes else { throw ReleaseNotesRemoteError.tooLarge }
+        guard let expectedSize = asset.size,
+              expectedSize > 0,
+              expectedSize == data.count else {
+            throw ReleaseNotesRemoteError.sizeMismatch
+        }
+        guard let expectedDigest = asset.digest.flatMap(normalizedSHA256),
+              ReleaseNotesSHA256.digest(data).caseInsensitiveCompare(expectedDigest) == .orderedSame
+        else {
+            throw ReleaseNotesRemoteError.digestMismatch
+        }
+    }
+
+    static func strictUTF8(_ data: Data) throws -> String {
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw ReleaseNotesRemoteError.invalidUTF8
+        }
+        return text
+    }
+
+    static func validatedMarkdown(_ markdown: String) throws -> String {
+        let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ReleaseNotesRemoteError.emptyData }
+        guard Data(trimmed.utf8).count <= ReleaseNotesLocaleContract.maximumBytes else {
+            throw ReleaseNotesRemoteError.tooLarge
+        }
+
+        for scalar in trimmed.unicodeScalars {
+            let value = scalar.value
+            guard value == 9 || value == 10 || value == 13 || value >= 32,
+                  value != 127 else {
+                throw ReleaseNotesRemoteError.unsafeMarkdown
+            }
+        }
+
+        let htmlPattern = #"<[^>\n]*>|<!--|-->"#
+        if trimmed.range(of: htmlPattern, options: [.regularExpression, .caseInsensitive]) != nil ||
+            trimmed.range(of: #"!\["#, options: .regularExpression) != nil {
+            throw ReleaseNotesRemoteError.unsafeMarkdown
+        }
+
+        let linkPattern = #"\[[^\]\n]*\]\(([^)\s]+)(?:\s+[^)]*)?\)"#
+        if let expression = try? NSRegularExpression(pattern: linkPattern) {
+            let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+            for match in expression.matches(in: trimmed, range: range) {
+                guard match.numberOfRanges > 1,
+                      let urlRange = Range(match.range(at: 1), in: trimmed),
+                      let url = URL(string: String(trimmed[urlRange])),
+                      let scheme = url.scheme?.lowercased(),
+                      (scheme == "http" || scheme == "https"),
+                      url.host != nil,
+                      url.user == nil,
+                      url.password == nil else {
+                    throw ReleaseNotesRemoteError.unsafeMarkdown
+                }
+            }
+        }
+        return trimmed
+    }
+
+    static func validateManifest(
+        _ manifest: ReleaseNotesRemoteManifest,
+        version: AppSemanticVersion,
+        release: GitHubRelease
+    ) -> Bool {
+        guard manifest.schemaVersion == 1,
+              manifest.version == version.description,
+              Set(manifest.locales.keys) == Set(ReleaseNotesLocaleContract.supportedLocales)
+        else {
+            return false
+        }
+
+        for locale in ReleaseNotesLocaleContract.supportedLocales {
+            guard let entry = manifest.locales[locale],
+                  entry.size > 0,
+                  entry.size <= ReleaseNotesLocaleContract.maximumBytes,
+                  normalizedSHA256(entry.sha256) != nil,
+                  entry.asset == ReleaseNotesLocaleContract.localeAssetName(for: version, locale: locale),
+                  release.assets.filter({ $0.name == entry.asset }).count == 1,
+                  let asset = release.assets.first(where: { $0.name == entry.asset }),
+                  asset.size == entry.size,
+                  asset.digest.flatMap(normalizedSHA256) == normalizedSHA256(entry.sha256),
+                  expectedAssetURL(asset: asset, release: release, expectedName: entry.asset) != nil
+            else {
+                return false
+            }
+        }
+        return true
+    }
+}
+
+private enum ReleaseNotesSHA256 {
+    static func digest(_ data: Data) -> String {
+        #if canImport(CryptoKit)
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        #else
+        return ""
+        #endif
+    }
+}
+
+/// A credential-free, in-memory-only downloader for small Release Notes
+/// assets. The resolver validates the exact GitHub Release URL before calling
+/// this object; the delegate additionally rejects redirects and hard-limits
+/// received bytes.
+final class URLSessionReleaseNotesAssetFetcher: ReleaseNotesAssetFetching {
+    private let configuration: URLSessionConfiguration
+    private let maximumBytes: Int
+
+    init(session: URLSession? = nil, maximumBytes: Int = ReleaseNotesLocaleContract.maximumBytes) {
+        if let session {
+            self.configuration = session.configuration
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.urlCredentialStorage = nil
+            configuration.httpCookieStorage = nil
+            configuration.httpShouldSetCookies = false
+            self.configuration = configuration
+        }
+        self.maximumBytes = maximumBytes
+    }
+
+    func fetch(
+        asset: GitHubReleaseAsset,
+        expectedURL: URL,
+        completion: @escaping (Result<Data, ReleaseNotesRemoteError>) -> Void
+    ) {
+        guard asset.browserDownloadURL == expectedURL,
+              expectedURL.scheme?.lowercased() == "https",
+              expectedURL.user == nil,
+              expectedURL.password == nil,
+              expectedURL.query == nil,
+              expectedURL.fragment == nil,
+              let declaredSize = asset.size,
+              declaredSize > 0,
+              declaredSize <= maximumBytes else {
+            completion(.failure(.invalidAsset))
+            return
+        }
+
+        var request = URLRequest(url: expectedURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.httpShouldHandleCookies = false
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+        request.setValue("BalanceBar", forHTTPHeaderField: "User-Agent")
+
+        let delegate = ReleaseNotesAssetDownloadDelegate(
+            asset: asset,
+            expectedURL: expectedURL,
+            maximumBytes: maximumBytes,
+            completion: completion
+        )
+        let session = URLSession(
+            configuration: configuration,
+            delegate: delegate,
+            delegateQueue: nil
+        )
+        session.dataTask(with: request).resume()
+    }
+}
+
+private final class ReleaseNotesAssetDownloadDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let asset: GitHubReleaseAsset
+    private let expectedURL: URL
+    private let maximumBytes: Int
+    private let completion: (Result<Data, ReleaseNotesRemoteError>) -> Void
+    private var response: HTTPURLResponse?
+    private var receivedData = Data()
+    private var didComplete = false
+
+    init(
+        asset: GitHubReleaseAsset,
+        expectedURL: URL,
+        maximumBytes: Int,
+        completion: @escaping (Result<Data, ReleaseNotesRemoteError>) -> Void
+    ) {
+        self.asset = asset
+        self.expectedURL = expectedURL
+        self.maximumBytes = maximumBytes
+        self.completion = completion
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        guard let url = request.url, isSafeResponseURL(url) else {
+            finish(.failure(.invalidResponse))
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode),
+              httpResponse.url.map(isSafeResponseURL) == true,
+              httpResponse.expectedContentLength <= Int64(maximumBytes) ||
+                httpResponse.expectedContentLength == NSURLSessionTransferSizeUnknown else {
+            finish(.failure(.invalidResponse))
+            completionHandler(.cancel)
+            return
+        }
+        self.response = httpResponse
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard !didComplete else { return }
+        receivedData.append(data)
+        if receivedData.count > maximumBytes {
+            finish(.failure(.tooLarge))
+            dataTask.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard !didComplete else { return }
+        if error != nil {
+            finish(.failure(.transport))
+            return
+        }
+        guard let response,
+              (200..<300).contains(response.statusCode),
+              response.url.map(isSafeResponseURL) == true else {
+            finish(.failure(.invalidResponse))
+            return
+        }
+        do {
+            try ReleaseNotesRemoteValidator.verify(data: receivedData, asset: asset, maximumBytes: maximumBytes)
+            finish(.success(receivedData))
+        } catch let error as ReleaseNotesRemoteError {
+            finish(.failure(error))
+        } catch {
+            finish(.failure(.invalidResponse))
+        }
+    }
+
+    private func isSafeResponseURL(_ url: URL) -> Bool {
+        guard ReleaseNotesRemoteValidator.isSafeFinalURL(url) else { return false }
+        if url.host?.lowercased() == "github.com" {
+            return url == expectedURL
+        }
+        return true
+    }
+
+    private func finish(_ result: Result<Data, ReleaseNotesRemoteError>) {
+        guard !didComplete else { return }
+        didComplete = true
+        completion(result)
+    }
+}
+
+/// Resolves a versioned manifest and its locale asset while sharing both
+/// in-flight requests and verified in-memory results. Cache keys include the
+/// GitHub-provided asset digest so a changed Release cannot reuse old notes.
+final class ReleaseNotesRemoteResolver: ReleaseNotesRemoteResolving {
+    private let fetcher: ReleaseNotesAssetFetching
+    private let callbackQueue: DispatchQueue
+    private let lock = NSLock()
+    private var manifestCache: [String: ReleaseNotesRemoteManifest] = [:]
+    private var manifestInFlight: [String: [(Result<ReleaseNotesRemoteManifest, ReleaseNotesRemoteError>) -> Void]] = [:]
+    private var contentCache: [String: String] = [:]
+    private var contentInFlight: [String: [(Result<String, ReleaseNotesRemoteError>) -> Void]] = [:]
+
+    init(
+        fetcher: ReleaseNotesAssetFetching = URLSessionReleaseNotesAssetFetcher(),
+        callbackQueue: DispatchQueue = .main
+    ) {
+        self.fetcher = fetcher
+        self.callbackQueue = callbackQueue
+    }
+
+    func resolve(
+        version: AppSemanticVersion,
+        locale: String,
+        release: GitHubRelease,
+        completion: @escaping (Result<ReleaseNotesRemoteValue, ReleaseNotesRemoteError>) -> Void
+    ) {
+        guard release.version == version,
+              ReleaseNotesLocaleContract.supportedLocales.contains(locale) else {
+            complete(completion, .failure(.invalidManifest))
+            return
+        }
+
+        let manifestName = ReleaseNotesLocaleContract.manifestAssetName(for: version)
+        guard release.assets.filter({ $0.name == manifestName }).count == 1,
+              let manifestAsset = release.assets.first(where: { $0.name == manifestName }),
+              let manifestURL = ReleaseNotesRemoteValidator.expectedAssetURL(
+                  asset: manifestAsset,
+                  release: release,
+                  expectedName: manifestName
+              ) else {
+            complete(completion, .failure(.invalidAsset))
+            return
+        }
+
+        let manifestKey = cacheKey(
+            tag: release.tagName,
+            name: manifestName,
+            size: manifestAsset.size,
+            digest: manifestAsset.digest
+        )
+        loadManifest(
+            key: manifestKey,
+            asset: manifestAsset,
+            expectedURL: manifestURL,
+            version: version,
+            release: release
+        ) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .failure(let error):
+                self.complete(completion, .failure(error))
+            case .success(let manifest):
+                self.resolveContent(
+                    manifest: manifest,
+                    manifestKey: manifestKey,
+                    version: version,
+                    locale: locale,
+                    release: release,
+                    completion: completion
+                )
+            }
+        }
+    }
+
+    private func loadManifest(
+        key: String,
+        asset: GitHubReleaseAsset,
+        expectedURL: URL,
+        version: AppSemanticVersion,
+        release: GitHubRelease,
+        completion: @escaping (Result<ReleaseNotesRemoteManifest, ReleaseNotesRemoteError>) -> Void
+    ) {
+        lock.lock()
+        if let cached = manifestCache[key] {
+            lock.unlock()
+            complete(completion, .success(cached))
+            return
+        }
+        if manifestInFlight[key] != nil {
+            manifestInFlight[key, default: []].append(completion)
+            lock.unlock()
+            return
+        }
+        manifestInFlight[key] = [completion]
+        lock.unlock()
+
+        fetcher.fetch(asset: asset, expectedURL: expectedURL) { [weak self] result in
+            guard let self else { return }
+            let parsed: Result<ReleaseNotesRemoteManifest, ReleaseNotesRemoteError>
+            switch result {
+            case .failure(let error):
+                parsed = .failure(error)
+            case .success(let data):
+                do {
+                    try ReleaseNotesRemoteValidator.verify(data: data, asset: asset)
+                    let manifestData = try ReleaseNotesRemoteValidator.strictUTF8(data)
+                    guard let manifest = ReleaseNotesRemoteManifest.decode(data: Data(manifestData.utf8)),
+                          ReleaseNotesRemoteValidator.validateManifest(manifest, version: version, release: release)
+                    else {
+                        throw ReleaseNotesRemoteError.invalidManifest
+                    }
+                    parsed = .success(manifest)
+                } catch let error as ReleaseNotesRemoteError {
+                    parsed = .failure(error)
+                } catch {
+                    parsed = .failure(.invalidManifest)
+                }
+            }
+            self.finishManifest(key: key, result: parsed)
+        }
+    }
+
+    private func finishManifest(
+        key: String,
+        result: Result<ReleaseNotesRemoteManifest, ReleaseNotesRemoteError>
+    ) {
+        lock.lock()
+        if case .success(let manifest) = result {
+            manifestCache[key] = manifest
+        }
+        let waiters = manifestInFlight.removeValue(forKey: key) ?? []
+        lock.unlock()
+        waiters.forEach { complete($0, result) }
+    }
+
+    private func resolveContent(
+        manifest: ReleaseNotesRemoteManifest,
+        manifestKey: String,
+        version: AppSemanticVersion,
+        locale: String,
+        release: GitHubRelease,
+        completion: @escaping (Result<ReleaseNotesRemoteValue, ReleaseNotesRemoteError>) -> Void
+    ) {
+        guard let entry = manifest.locales[locale],
+              let asset = release.assets.first(where: { $0.name == entry.asset }),
+              let expectedURL = ReleaseNotesRemoteValidator.expectedAssetURL(
+                  asset: asset,
+                  release: release,
+                  expectedName: entry.asset
+              ),
+              asset.size == entry.size,
+              asset.digest.flatMap(ReleaseNotesRemoteValidator.normalizedSHA256) ==
+                ReleaseNotesRemoteValidator.normalizedSHA256(entry.sha256) else {
+            complete(completion, .failure(.invalidAsset))
+            return
+        }
+
+        let contentKey = "\(manifestKey)|\(locale)|\(entry.asset)|\(entry.size)|\(entry.sha256)"
+        lock.lock()
+        if let cached = contentCache[contentKey] {
+            lock.unlock()
+            complete(
+                completion,
+                .success(ReleaseNotesRemoteValue(markdown: cached, wasCached: true))
+            )
+            return
+        }
+        if contentInFlight[contentKey] != nil {
+            contentInFlight[contentKey, default: []].append { result in
+                completion(result.map { ReleaseNotesRemoteValue(markdown: $0, wasCached: false) })
+            }
+            lock.unlock()
+            return
+        }
+        contentInFlight[contentKey] = [{ result in
+            completion(result.map { ReleaseNotesRemoteValue(markdown: $0, wasCached: false) })
+        }]
+        lock.unlock()
+
+        fetcher.fetch(asset: asset, expectedURL: expectedURL) { [weak self] result in
+            guard let self else { return }
+            let validated: Result<String, ReleaseNotesRemoteError>
+            switch result {
+            case .failure(let error):
+                validated = .failure(error)
+            case .success(let data):
+                do {
+                    try ReleaseNotesRemoteValidator.verify(data: data, asset: asset)
+                    validated = .success(
+                        try ReleaseNotesRemoteValidator.validatedMarkdown(
+                            ReleaseNotesRemoteValidator.strictUTF8(data)
+                        )
+                    )
+                } catch let error as ReleaseNotesRemoteError {
+                    validated = .failure(error)
+                } catch {
+                    validated = .failure(.unsafeMarkdown)
+                }
+            }
+            self.finishContent(key: contentKey, result: validated)
+        }
+    }
+
+    private func finishContent(
+        key: String,
+        result: Result<String, ReleaseNotesRemoteError>
+    ) {
+        lock.lock()
+        if case .success(let markdown) = result {
+            contentCache[key] = markdown
+        }
+        let waiters = contentInFlight.removeValue(forKey: key) ?? []
+        lock.unlock()
+        waiters.forEach { complete($0, result) }
+    }
+
+    private func cacheKey(tag: String, name: String, size: Int?, digest: String?) -> String {
+        "\(tag)|\(name)|\(size.map(String.init) ?? "missing")|\(digest ?? "missing")"
+    }
+
+    private func complete<T>(
+        _ completion: @escaping (Result<T, ReleaseNotesRemoteError>) -> Void,
+        _ result: Result<T, ReleaseNotesRemoteError>
+    ) {
+        callbackQueue.async {
+            completion(result)
+        }
+    }
+}
+
 /// Reads only the checked-in release-notes contract and never treats a notes
 /// file as HTML. The manifest is intentionally data-only so adding a locale
 /// does not require changing this loader or the Markdown renderer.
 final class ReleaseNotesStore {
     private let bundle: Bundle
     private let releaseNotesRootOverride: URL?
+    private let remoteResolver: ReleaseNotesRemoteResolving?
+    private let generationLock = NSLock()
+    private var generation: UInt64 = 0
 
-    init(bundle: Bundle = .main, releaseNotesRoot: URL? = nil) {
+    init(
+        bundle: Bundle = .main,
+        releaseNotesRoot: URL? = nil,
+        remoteResolver: ReleaseNotesRemoteResolving? = nil
+    ) {
         self.bundle = bundle
         self.releaseNotesRootOverride = releaseNotesRoot
+        self.remoteResolver = remoteResolver ?? ReleaseNotesRemoteResolver()
     }
 
     func resolve(
@@ -38,27 +722,131 @@ final class ReleaseNotesStore {
         language: AppLanguage,
         release: GitHubRelease?
     ) -> ReleaseNotesResolution {
-        if let root = releaseNotesRoot,
-           let manifest = loadManifest(at: root),
-           manifest.schemaVersion == 1,
-           let entry = manifest.releases[version.description] {
-            for locale in localeCandidates(for: language) {
-                guard let path = entry.files[locale],
-                      let markdown = loadMarkdown(path: path, root: root) else {
-                    continue
-                }
-                return ReleaseNotesResolution(
-                    markdown: markdown,
-                    source: .bundled(locale: locale)
-                )
+        for locale in localeCandidates(for: language) {
+            if let bundled = bundledResolution(version: version, locale: locale) {
+                return bundled
             }
         }
 
+        return fallbackResolution(for: release)
+    }
+
+    /// Resolves the same fallback chain asynchronously. The store-level
+    /// generation token means a late response from an earlier language or
+    /// release cannot overwrite the latest request; the window controller has
+    /// an additional presentation generation guard.
+    @discardableResult
+    func resolveAsync(
+        version: AppSemanticVersion,
+        language: AppLanguage,
+        release: GitHubRelease?,
+        completion: @escaping (ReleaseNotesResolution) -> Void
+    ) -> UInt64 {
+        let requestGeneration = nextGeneration()
+        let locales = localeCandidates(for: language)
+        resolveAsync(
+            version: version,
+            locales: locales,
+            release: release,
+            index: 0,
+            generation: requestGeneration,
+            completion: completion
+        )
+        return requestGeneration
+    }
+
+    private func resolveAsync(
+        version: AppSemanticVersion,
+        locales: [String],
+        release: GitHubRelease?,
+        index: Int,
+        generation: UInt64,
+        completion: @escaping (ReleaseNotesResolution) -> Void
+    ) {
+        guard isCurrent(generation) else { return }
+        if index < locales.count,
+           let bundled = bundledResolution(version: version, locale: locales[index]) {
+            completionIfCurrent(generation, resolution: bundled, completion: completion)
+            return
+        }
+
+        guard index < locales.count,
+              let release,
+              let remoteResolver else {
+            completionIfCurrent(generation, resolution: fallbackResolution(for: release), completion: completion)
+            return
+        }
+
+        remoteResolver.resolve(version: version, locale: locales[index], release: release) { [weak self] result in
+            guard let self else { return }
+            guard self.isCurrent(generation) else { return }
+            if case .success(let remote) = result {
+                self.completionIfCurrent(
+                    generation,
+                    resolution: ReleaseNotesResolution(
+                        markdown: remote.markdown,
+                        source: remote.wasCached ? .cached(locale: locales[index]) : .remote(locale: locales[index])
+                    ),
+                    completion: completion
+                )
+                return
+            }
+            self.resolveAsync(
+                version: version,
+                locales: locales,
+                release: release,
+                index: index + 1,
+                generation: generation,
+                completion: completion
+            )
+        }
+    }
+
+    private func bundledResolution(
+        version: AppSemanticVersion,
+        locale: String
+    ) -> ReleaseNotesResolution? {
+        guard let root = releaseNotesRoot,
+              let manifest = loadManifest(at: root),
+              manifest.schemaVersion == 1,
+              let entry = manifest.releases[version.description],
+              let path = entry.files[locale],
+              let markdown = loadMarkdown(path: path, root: root) else {
+            return nil
+        }
+        return ReleaseNotesResolution(markdown: markdown, source: .bundled(locale: locale))
+    }
+
+    private func fallbackResolution(for release: GitHubRelease?) -> ReleaseNotesResolution {
         if let body = release?.body?.trimmingCharacters(in: .whitespacesAndNewlines),
            !body.isEmpty {
             return ReleaseNotesResolution(markdown: body, source: .githubRelease)
         }
         return ReleaseNotesResolution(markdown: nil, source: .unavailable)
+    }
+
+    private func nextGeneration() -> UInt64 {
+        generationLock.lock()
+        generation &+= 1
+        let value = generation
+        generationLock.unlock()
+        return value
+    }
+
+    private func isCurrent(_ value: UInt64) -> Bool {
+        generationLock.lock()
+        let current = generation == value
+        generationLock.unlock()
+        return current
+    }
+
+    private func completionIfCurrent(
+        _ value: UInt64,
+        resolution: ReleaseNotesResolution,
+        completion: @escaping (ReleaseNotesResolution) -> Void
+    ) {
+        guard isCurrent(value) else { return }
+        completion(resolution)
     }
 
     private var releaseNotesRoot: URL? {
