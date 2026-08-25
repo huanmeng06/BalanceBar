@@ -367,11 +367,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         installButton.title = tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language)
         githubButton.isEnabled = release.releaseURL != nil
 
-        let resolution = releaseNotesStore.resolve(
-            version: release.version ?? currentVersion,
-            language: language,
-            release: release
-        )
+        let resolution = releaseNotesStore.resolve(release: release)
         let markdown = resolution.markdown
             ?? tr(.keyDashboardGeneralAndRefreshPagesReleaseNotesUnavailable, language: language)
         notesTextView.textStorage?.setAttributedString(

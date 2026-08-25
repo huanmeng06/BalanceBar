@@ -95,6 +95,32 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
     }
 }
 
+/// Reads a local release JSON fixture for development-only manual UI testing.
+/// App composition gates this fetcher to the development bundle, so the
+/// production app always uses GitHub's public releases endpoint.
+final class LocalGitHubReleaseFixture: GitHubReleaseFetching {
+    private let result: Result<[GitHubRelease], GitHubReleaseClientError>
+
+    init(fileURL: URL) {
+        guard let data = try? Data(contentsOf: fileURL) else {
+            result = .failure(.invalidResponse)
+            return
+        }
+
+        if let releases = try? JSONDecoder().decode([GitHubRelease].self, from: data) {
+            result = .success(releases)
+        } else if let release = try? JSONDecoder().decode(GitHubRelease.self, from: data) {
+            result = .success([release])
+        } else {
+            result = .failure(.invalidResponse)
+        }
+    }
+
+    func fetchReleases(completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void) {
+        completion(result)
+    }
+}
+
 enum UpdateAssetDownloadError: Error {
     case invalidAsset
     case transport

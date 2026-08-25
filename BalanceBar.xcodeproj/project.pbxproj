@@ -90,8 +90,6 @@
 		A100000000000000000000F8 /* LocalizationKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F7 /* LocalizationKeys.swift */; };
 		A10000000000000000000101 /* ReleaseNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000105 /* ReleaseNotes.swift */; };
 		A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000106 /* UpdateNotesWindowController.swift */; };
-		A10000000000000000000103 /* release-notes in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000107 /* release-notes */; };
-		A10000000000000000000104 /* release-notes in Test Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000107 /* release-notes */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -185,7 +183,6 @@
 		A100000000000000000000EA /* UpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000105 /* ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotes.swift; sourceTree = "<group>"; };
 		A10000000000000000000106 /* UpdateNotesWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateNotesWindowController.swift; sourceTree = "<group>"; };
-		A10000000000000000000107 /* release-notes */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "release-notes"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -241,7 +238,6 @@
 				A10000000000000000000015 /* ClaudeThinking.svg */,
 				A100000000000000000000E0 /* GitHub.svg */,
 				A100000000000000000000F6 /* Localizable.strings */,
-				A10000000000000000000107 /* release-notes */,
 			);
 			name = "work/balance-bar";
 			path = "work/balance-bar";
@@ -558,7 +554,6 @@
 				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
 				A100000000000000000000F0 /* Localizable.strings in Resources */,
-				A10000000000000000000103 /* release-notes in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -568,7 +563,6 @@
 			files = (
 				A100000000000000000000E2 /* GitHub.svg in Test Resources */,
 				A100000000000000000000F1 /* Localizable.strings in Test Resources */,
-				A10000000000000000000104 /* release-notes in Test Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

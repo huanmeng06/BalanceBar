@@ -60,16 +60,20 @@ push to `main`.
 
 ## Release description contract
 
-The model returns structured feature and fix items. A checked-in renderer then
-creates the exact Release layout used by BalanceBar:
+The model returns structured feature and fix items with a Simplified Chinese
+and an English title/description for each item. A checked-in renderer then
+creates one fixed Markdown body in this order:
 
-- `## ✨ 新功能` with a `功能 | 说明` table when the release has feature items;
-- `## 🛠 修复与体验优化` with a `项目 | 说明` table when the release has fix items;
-- `## 📦 安装` with the versioned DMG filename;
-- the `Full Changelog` comparison link.
+1. Simplified Chinese sections (`## ✨ 新功能`, `## 🛠 修复与体验优化`, and
+   `## 📦 安装`) followed by the `Full Changelog` comparison link;
+2. a `---` separator;
+3. the matching English sections (`## ✨ New Features`, `## 🛠 Fixes &
+   Improvements`, and `## 📦 Installation`) followed by the same comparison
+   link.
 
-Empty feature or fix arrays are omitted entirely. The renderer does not add a
-“暂无……” placeholder section.
+The two language sections use the same item order and source links. Empty
+feature or fix arrays are omitted in both languages together. The renderer
+does not add a “暂无……” placeholder section.
 
 The description does not contain a separate documentation section. Every
 generated row must cite at least one real Issue or PR from the release range,
@@ -80,5 +84,6 @@ workflow stops before pushing the tag or publishing the Release. DeepSeek JSON
 Output is checked again by the local validator, which preserves the
 exact-format and traceability guarantees.
 
-The production build uploads `BalanceBar-{version}.dmg` and its SHA-256 file
-as Release assets.
+The production build uploads only the versioned DMG asset. The client reads
+the complete description from `GitHubRelease.body`; no manifest, locale
+Markdown, or other release-notes resource is bundled or uploaded.

@@ -7,18 +7,103 @@ import { pathToFileURL } from "node:url";
 const SECTION_DEFINITIONS = [
   {
     key: "features",
-    heading: "## ✨ 新功能",
-    column: "功能",
+    zhHans: {
+      heading: "## ✨ 新功能",
+      nameColumn: "功能",
+      descriptionColumn: "说明",
+    },
+    en: {
+      heading: "## ✨ New Features",
+      nameColumn: "Feature",
+      descriptionColumn: "Description",
+    },
   },
   {
     key: "fixes",
-    heading: "## 🛠 修复与体验优化",
-    column: "项目",
+    zhHans: {
+      heading: "## 🛠 修复与体验优化",
+      nameColumn: "项目",
+      descriptionColumn: "说明",
+    },
+    en: {
+      heading: "## 🛠 Fixes & Improvements",
+      nameColumn: "Item",
+      descriptionColumn: "Description",
+    },
   },
 ];
 
+const LANGUAGE_ALIASES = {
+  zhHans: ["zhHans", "zh-Hans", "zh", "chinese", "simplifiedChinese"],
+  en: ["en", "english"],
+};
+
+const FLAT_TITLE_KEYS = {
+  zhHans: ["titleZhHans", "titleZh", "titleChinese", "titleSimplifiedChinese"],
+  en: ["titleEn", "titleEnglish"],
+};
+
+const FLAT_DESCRIPTION_KEYS = {
+  zhHans: [
+    "descriptionZhHans",
+    "descriptionZh",
+    "descriptionChinese",
+    "descriptionSimplifiedChinese",
+  ],
+  en: ["descriptionEn", "descriptionEnglish"],
+};
+
 function sourceKey(source) {
   return `${source.kind}:${source.number}`;
+}
+
+function firstDefinedString(values) {
+  return values.find((value) => typeof value === "string") ?? undefined;
+}
+
+/**
+ * The checked-in schema uses zhHans/en objects. The flat aliases keep the
+ * renderer tolerant of already-generated test fixtures while the validator
+ * still requires both language blocks to be present.
+ */
+function localizedText(item, language) {
+  for (const key of LANGUAGE_ALIASES[language]) {
+    const candidate = item?.[key];
+    if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      return {
+        title: candidate.title,
+        description: candidate.description,
+      };
+    }
+  }
+
+  const translations = item?.translations;
+  if (translations && typeof translations === "object") {
+    for (const key of LANGUAGE_ALIASES[language]) {
+      const candidate = translations[key];
+      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+        return {
+          title: candidate.title,
+          description: candidate.description,
+        };
+      }
+    }
+  }
+
+  const titleObject = item?.title && typeof item.title === "object" ? item.title : null;
+  const descriptionObject = item?.description && typeof item.description === "object"
+    ? item.description
+    : null;
+  return {
+    title: firstDefinedString([
+      ...(titleObject ? LANGUAGE_ALIASES[language].map((key) => titleObject[key]) : []),
+      ...FLAT_TITLE_KEYS[language].map((key) => item?.[key]),
+    ]),
+    description: firstDefinedString([
+      ...(descriptionObject ? LANGUAGE_ALIASES[language].map((key) => descriptionObject[key]) : []),
+      ...FLAT_DESCRIPTION_KEYS[language].map((key) => item?.[key]),
+    ]),
+  };
 }
 
 function buildIssueCatalog(input) {
@@ -116,8 +201,11 @@ export function validateReleaseNotes(input, notes) {
 
     for (const [index, item] of items.entries()) {
       itemCount += 1;
-      oneLine(item?.title, `${section.key}[${index}].title`);
-      oneLine(item?.description, `${section.key}[${index}].description`);
+      for (const language of ["zhHans", "en"]) {
+        const localized = localizedText(item, language);
+        oneLine(localized.title, `${section.key}[${index}].${language}.title`);
+        oneLine(localized.description, `${section.key}[${index}].${language}.description`);
+      }
 
       if (!Array.isArray(item.sources) || item.sources.length === 0) {
         throw new Error(`${section.key}[${index}] must have at least one Issue or PR source`);
@@ -165,45 +253,67 @@ export function validateReleaseNotes(input, notes) {
   return { coveredPullRequests };
 }
 
-function renderSection(input, notes, definition) {
+function renderSection(input, notes, definition, language) {
   const items = notes[definition.key];
   if (items.length === 0) {
     return null;
   }
 
   const rows = items.map((item) => {
-    const title = tableCell(oneLine(item.title, `${definition.key}.title`));
-    const description = tableCell(oneLine(item.description, `${definition.key}.description`));
+    const localized = localizedText(item, language);
+    const title = tableCell(oneLine(localized.title, `${definition.key}.${language}.title`));
+    const description = tableCell(oneLine(localized.description, `${definition.key}.${language}.description`));
     const links = item.sources.map((source) => sourceLink(input.repo, source)).join(", ");
     return [`${title} (${links})`, description];
   });
 
   return [
-    definition.heading,
+    definition[language].heading,
     "",
-    `${definition.column} | 说明`,
-    "--- | ---",
-    ...rows.map(([name, description]) => `${name} | ${description}`),
+    `| ${definition[language].nameColumn} | ${definition[language].descriptionColumn} |`,
+    "| --- | --- |",
+    ...rows.map(([name, description]) => `| ${name} | ${description} |`),
   ].join("\n");
+}
+
+function renderInstallation(input, language) {
+  if (language === "zhHans") {
+    return [
+      "## 📦 安装",
+      "",
+      `1. 下载 Assets 中的 \`BalanceBar-${input.version}.dmg\`。`,
+      "2. 打开 DMG，将 `BalanceBar.app` 拖入“应用程序”文件夹。",
+      "3. 从“应用程序”文件夹启动 BalanceBar。",
+    ].join("\n");
+  }
+
+  return [
+    "## 📦 Installation",
+    "",
+    `1. Download \`BalanceBar-${input.version}.dmg\` from Assets.`,
+    "2. Open the DMG and drag `BalanceBar.app` to the Applications folder.",
+    "3. Launch BalanceBar from the Applications folder.",
+  ].join("\n");
+}
+
+function renderLanguage(input, notes, language) {
+  const sections = SECTION_DEFINITIONS
+    .map((definition) => renderSection(input, notes, definition, language))
+    .filter(Boolean);
+  const changelog = `Full Changelog: [${input.previousVersion} → ${input.version}](${input.compareUrl})`;
+
+  return [...sections, renderInstallation(input, language), changelog].join("\n\n");
 }
 
 export function renderReleaseNotes(input, notes) {
   const sanitizedNotes = sanitizeReleaseNotes(input, notes);
   validateReleaseNotes(input, sanitizedNotes);
 
-  const sections = SECTION_DEFINITIONS
-    .map((definition) => renderSection(input, sanitizedNotes, definition))
-    .filter(Boolean);
-  const installation = [
-    "## 📦 安装",
-    "",
-    `1. 下载 Assets 中的 \`BalanceBar-${input.version}.dmg\`。`,
-    "2. 打开 DMG，将 `BalanceBar.app` 拖入“应用程序”文件夹。",
-    "3. 从“应用程序”文件夹启动 BalanceBar。",
-  ].join("\n");
-  const changelog = `Full Changelog: [${input.previousVersion} → ${input.version}](${input.compareUrl})`;
-
-  return `${[...sections, installation, changelog].join("\n\n")}\n`;
+  return `${[
+    renderLanguage(input, sanitizedNotes, "zhHans"),
+    "---",
+    renderLanguage(input, sanitizedNotes, "en"),
+  ].join("\n\n")}\n`;
 }
 
 function parseArguments(argv) {

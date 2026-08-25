@@ -361,6 +361,49 @@ final class UpdateTests: XCTestCase {
         }
     }
 
+    func testLocalGitHubReleaseFixtureLoadsBilingualReleaseBody() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixtureURL = root.appendingPathComponent("release.json")
+        let bilingualBody = """
+        ## ✨ 新功能
+
+        | 功能 | 说明 |
+        | --- | --- |
+        | 双语说明 | 中文正文 |
+
+        ---
+
+        ## ✨ New Features
+
+        | Feature | Description |
+        | --- | --- |
+        | Bilingual notes | English body |
+        """
+        let fixture = releaseBody(
+            tag: "v9.9.9",
+            body: bilingualBody,
+            htmlURL: "https://github.com/huanmeng06/BalanceBar/releases/tag/v9.9.9",
+            assets: [[
+                "name": "BalanceBar-9.9.9.dmg",
+                "browser_download_url": "https://example.test/BalanceBar-9.9.9.dmg"
+            ]]
+        )
+        try fixture.write(to: fixtureURL)
+
+        let fixtureFetcher = LocalGitHubReleaseFixture(fileURL: fixtureURL)
+        var result: Result<[GitHubRelease], GitHubReleaseClientError>?
+        fixtureFetcher.fetchReleases { result = $0 }
+
+        guard case .success(let releases) = result,
+              let release = releases.first else {
+            return XCTFail("expected bilingual fixture release, got \(String(describing: result))")
+        }
+        XCTAssertEqual(release.tagName, "v9.9.9")
+        XCTAssertTrue(release.body?.contains("## ✨ 新功能") == true)
+        XCTAssertTrue(release.body?.contains("## ✨ New Features") == true)
+    }
+
     func testAssetDownloaderValidatesSizeDigestAndCleansTemporaryFile() throws {
         let data = Data("fixture-installer".utf8)
         let digest = sha256(data)
@@ -1079,41 +1122,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(arguments.last, applicationURL.path)
     }
 
-    func testReleaseNotesManifestUsesLocaleFallbacksThenReleaseBodyAndEmptyState() throws {
-        let root = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let releaseDirectory = root.appendingPathComponent("1.1.22", isDirectory: true)
-        try FileManager.default.createDirectory(at: releaseDirectory, withIntermediateDirectories: true)
-        try "Taiwan notes".write(
-            to: releaseDirectory.appendingPathComponent("zh-Hant-TW.md"),
-            atomically: true,
-            encoding: .utf8
-        )
-        try "Traditional Chinese base notes".write(
-            to: releaseDirectory.appendingPathComponent("zh-Hant.md"),
-            atomically: true,
-            encoding: .utf8
-        )
-        try "English notes".write(
-            to: releaseDirectory.appendingPathComponent("en.md"),
-            atomically: true,
-            encoding: .utf8
-        )
-        let manifest: [String: Any] = [
-            "schemaVersion": 1,
-            "releases": [
-                "1.1.22": [
-                    "files": [
-                        "zh-Hant-TW": "1.1.22/zh-Hant-TW.md",
-                        "zh-Hant": "1.1.22/zh-Hant.md",
-                        "en": "1.1.22/en.md"
-                    ]
-                ]
-            ]
-        ]
-        let manifestData = try JSONSerialization.data(withJSONObject: manifest)
-        try manifestData.write(to: root.appendingPathComponent("manifest.json"))
-
+    func testReleaseNotesUseOnlyGitHubBodyAndShowUnavailableWhenBodyIsMissing() {
         let release = GitHubRelease(
             tagName: "v1.1.22",
             draft: false,
@@ -1122,29 +1131,25 @@ final class UpdateTests: XCTestCase {
             body: "GitHub original body",
             htmlURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/tag/v1.1.22")
         )
-        let store = ReleaseNotesStore(releaseNotesRoot: root)
-        let version = try XCTUnwrap(AppSemanticVersion("1.1.22"))
+        let store = ReleaseNotesStore()
 
         XCTAssertEqual(
-            store.resolve(version: version, language: .traditionalChineseTaiwan, release: release),
-            ReleaseNotesResolution(markdown: "Taiwan notes", source: .bundled(locale: "zh-Hant-TW"))
-        )
-        XCTAssertEqual(
-            store.resolve(version: version, language: .traditionalChineseHongKong, release: release),
-            ReleaseNotesResolution(markdown: "Traditional Chinese base notes", source: .bundled(locale: "zh-Hant"))
-        )
-        XCTAssertEqual(
-            store.resolve(version: version, language: .german, release: release),
-            ReleaseNotesResolution(markdown: "English notes", source: .bundled(locale: "en"))
-        )
-
-        let missingVersion = try XCTUnwrap(AppSemanticVersion("9.9.9"))
-        XCTAssertEqual(
-            store.resolve(version: missingVersion, language: .english, release: release),
+            store.resolve(release: release),
             ReleaseNotesResolution(markdown: "GitHub original body", source: .githubRelease)
         )
+
         XCTAssertEqual(
-            store.resolve(version: missingVersion, language: .english, release: GitHubRelease(
+            store.resolve(release: GitHubRelease(
+                tagName: "v9.9.9",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "  \n  "
+            )),
+            ReleaseNotesResolution(markdown: nil, source: .unavailable)
+        )
+        XCTAssertEqual(
+            store.resolve(release: GitHubRelease(
                 tagName: "v9.9.9",
                 draft: false,
                 prerelease: false,
@@ -1212,6 +1217,13 @@ final class UpdateTests: XCTestCase {
         )
         XCTAssertTrue(headingParagraph.textBlocks.isEmpty)
         XCTAssertFalse(blockLayout.string.contains("---"))
+        let dividerRange = (blockLayout.string as NSString).range(of: "\u{00A0}")
+        XCTAssertNotEqual(dividerRange.location, NSNotFound)
+        let dividerParagraph = try XCTUnwrap(
+            blockLayout.attributes(at: dividerRange.location, effectiveRange: nil)[.paragraphStyle]
+                as? NSParagraphStyle
+        )
+        XCTAssertTrue(dividerParagraph.textBlocks.first is ReleaseNotesDividerBlock)
 
         let tableRange = (blockLayout.string as NSString).range(of: "项目")
         let firstTableParagraph = try XCTUnwrap(
@@ -1507,6 +1519,67 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(
             bitmapContainsInk(bitmap, xRange: rightXRange, yRange: interiorYRange),
             "expected the last table column to contain a visible right outer edge"
+        )
+    }
+
+    func testReleaseNotesHorizontalRuleDrawsVisibleDividerInOffscreenBitmap() throws {
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 180, height: 100))
+        view.appearance = darkAppearance
+        let scale = max(1, NSScreen.main?.backingScaleFactor ?? 2)
+        let bitmapSize = NSSize(width: 180, height: 100)
+        let pixelsWide = max(1, Int(ceil(bitmapSize.width * scale)))
+        let pixelsHigh = max(1, Int(ceil(bitmapSize.height * scale)))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+        let frame = NSRect(x: 12.25, y: 41.25, width: 120.5, height: 1)
+        let divider = ReleaseNotesDividerBlock()
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        context.cgContext.clear(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
+        context.cgContext.saveGState()
+        context.cgContext.scaleBy(x: scale, y: scale)
+        divider.drawBackground(
+            withFrame: frame,
+            in: view,
+            characterRange: NSRange(location: 0, length: 1),
+            layoutManager: NSLayoutManager()
+        )
+        context.cgContext.restoreGState()
+        context.flushGraphics()
+
+        let lineWidth = 1 / scale
+        XCTAssertTrue(
+            bitmapContainsInk(
+                bitmap,
+                xRange: bitmapPixelRange(
+                    from: frame.minX + lineWidth,
+                    to: frame.maxX - lineWidth,
+                    scale: scale,
+                    limit: pixelsWide
+                ),
+                yRange: bitmapYPixelRange(
+                    from: frame.midY - lineWidth * 1.5,
+                    to: frame.midY + lineWidth * 1.5,
+                    scale: scale,
+                    pixelsHigh: pixelsHigh
+                )
+            ),
+            "expected a horizontal rule to draw a visible divider"
         )
     }
 

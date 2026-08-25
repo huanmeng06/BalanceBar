@@ -54,15 +54,27 @@ function fixtureNotes() {
   return {
     features: [
       {
-        title: "GitHub 更新检查",
-        description: "在通用设置中检查最新稳定版本。",
+        zhHans: {
+          title: "GitHub 更新检查",
+          description: "在通用设置中检查最新稳定版本。",
+        },
+        en: {
+          title: "GitHub Update Check",
+          description: "Check for the latest stable version in General settings.",
+        },
         sources: [{ kind: "pr", number: 141 }],
       },
     ],
     fixes: [
       {
-        title: "更新资产校验",
-        description: "精确匹配 DMG 资产并处理校验失败。",
+        zhHans: {
+          title: "更新资产校验",
+          description: "精确匹配 DMG 资产并处理校验失败。",
+        },
+        en: {
+          title: "Update Asset Validation",
+          description: "Match the DMG asset exactly and handle verification failures.",
+        },
         sources: [
           { kind: "pr", number: 140 },
           { kind: "issue", number: 136 },
@@ -203,6 +215,8 @@ test("DeepSeek is the default provider and uses JSON chat completions", async ()
   assert.equal(request.model, "deepseek-v4-pro");
   assert.deepEqual(request.response_format, { type: "json_object" });
   assert.match(request.messages[0].content, /JSON/);
+  assert.match(request.messages[0].content, /zhHans/);
+  assert.match(request.messages[0].content, /English/);
   assert.match(request.messages[0].content, /"number": 140/);
   assert.match(request.messages[1].content, /v1\.1\.5/);
 
@@ -277,15 +291,21 @@ test("renderer preserves the BalanceBar release layout and links every row", () 
   const rendered = renderReleaseNotes(fixtureInput(), fixtureNotes());
 
   assert.match(rendered, /## ✨ 新功能/);
-  assert.match(rendered, /功能 \| 说明/);
+  assert.match(rendered, /\| 功能 \| 说明 \|/);
   assert.match(rendered, /## 🛠 修复与体验优化/);
-  assert.match(rendered, /项目 \| 说明/);
+  assert.match(rendered, /\| 项目 \| 说明 \|/);
   assert.match(rendered, /## 📦 安装/);
+  assert.match(rendered, /## ✨ New Features/);
+  assert.match(rendered, /\| Feature \| Description \|/);
+  assert.match(rendered, /## 🛠 Fixes & Improvements/);
+  assert.match(rendered, /## 📦 Installation/);
   assert.match(rendered, /BalanceBar-1\.1\.5\.dmg/);
   assert.match(rendered, /\[PR #141\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/141\)/);
   assert.match(rendered, /\[PR #140\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/pull\/140\)/);
   assert.match(rendered, /\[Issue #136\]\(https:\/\/github\.com\/huanmeng06\/BalanceBar\/issues\/136\)/);
   assert.match(rendered, /Full Changelog: \[1\.1\.0 → 1\.1\.5\]/);
+  assert.ok(rendered.indexOf("## ✨ 新功能") < rendered.indexOf("## ✨ New Features"));
+  assert.ok(rendered.indexOf("## 📦 安装") < rendered.indexOf("\n\n---\n\n"));
   assert.doesNotMatch(rendered, /## 📚 文档|架构说明|开发工作流/);
 });
 
@@ -298,9 +318,12 @@ test("renderer omits empty feature or fix sections", () => {
   const featurelessRendered = renderReleaseNotes(featurelessInput, featurelessNotes);
 
   assert.doesNotMatch(featurelessRendered, /## ✨ 新功能/);
+  assert.doesNotMatch(featurelessRendered, /## ✨ New Features/);
   assert.doesNotMatch(featurelessRendered, /暂无/);
   assert.match(featurelessRendered, /## 🛠 修复与体验优化/);
+  assert.match(featurelessRendered, /## 🛠 Fixes & Improvements/);
   assert.match(featurelessRendered, /## 📦 安装/);
+  assert.match(featurelessRendered, /## 📦 Installation/);
 
   const fixlessInput = fixtureInput();
   fixlessInput.pullRequests = fixlessInput.pullRequests
@@ -310,7 +333,9 @@ test("renderer omits empty feature or fix sections", () => {
   const fixlessRendered = renderReleaseNotes(fixlessInput, fixlessNotes);
 
   assert.match(fixlessRendered, /## ✨ 新功能/);
+  assert.match(fixlessRendered, /## ✨ New Features/);
   assert.doesNotMatch(fixlessRendered, /## 🛠 修复与体验优化/);
+  assert.doesNotMatch(fixlessRendered, /## 🛠 Fixes & Improvements/);
   assert.doesNotMatch(fixlessRendered, /暂无/);
 });
 
@@ -341,6 +366,16 @@ test("validator rejects invented sources", () => {
   assert.throws(
     () => validateReleaseNotes(fixtureInput(), notes),
     /AI cited PR #999/,
+  );
+});
+
+test("validator requires both fixed language blocks for every item", () => {
+  const notes = fixtureNotes();
+  delete notes.features[0].en;
+
+  assert.throws(
+    () => validateReleaseNotes(fixtureInput(), notes),
+    /features\[0\]\.en\.title must be a non-empty string/,
   );
 });
 

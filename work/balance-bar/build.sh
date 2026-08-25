@@ -89,13 +89,10 @@ for required_file in \
     "$source_dir/GitHub.svg" \
     "$source_dir/CodexIcon.svg" \
     "$source_dir/Claude.svg" \
-    "$source_dir/ClaudeThinking.svg" \
-    "$source_dir/release-notes/manifest.json"
+    "$source_dir/ClaudeThinking.svg"
 do
     [[ -f "$required_file" ]] || die "required input is missing: $required_file"
 done
-[[ -d "$source_dir/release-notes" ]] || die "required release-notes directory is missing: $source_dir/release-notes"
-
 localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj)
 for localization_directory in "${localization_directories[@]}"
 do
@@ -162,7 +159,6 @@ for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeT
 do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
 done
-cp -R "$source_dir/release-notes" "$resources_dir/release-notes"
 for localization_directory in "${localization_directories[@]}"
 do
     mkdir -p "$resources_dir/$localization_directory"
