@@ -1,0 +1,68 @@
+name: 建议新功能
+description: 告诉我们你遇到的不便，以及希望 BalanceBar 能做什么
+title: "[Enhancement] "
+labels:
+  - enhancement
+  - ai:todo
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎分享想法！不需要先设计技术方案。先说清使用场景和希望得到的结果，维护者会帮助整理实现范围。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到了什么不便？
+      description: 请描述实际使用场景。谁会用到？现在为什么不方便？
+      placeholder: 例如：我同时使用多个供应商，菜单中的顺序固定，每次切换都要找很久。
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 你希望 BalanceBar 怎么做？
+      description: 描述你想看到的结果即可，不必知道代码应该怎么改。
+      placeholder: 例如：希望可以把常用供应商固定在列表最前面，并在重启后保留顺序。
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: 举个使用例子
+      description: 按“当我……时，希望……”写一个具体例子，能帮助我们理解你的想法。
+      placeholder: 当我打开快速切换菜单时，希望前三项始终是我固定的供应商。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 你现在怎么解决？（可选）
+      description: 可以写临时办法、用过的其他工具，或你考虑过但觉得不合适的方案。
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: 有什么需要特别注意？（可选）
+      description: 例如不希望改变的现有行为、隐私顾虑、兼容要求或失败时应该怎样表现。
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截图、草图或相关链接（可选）
+      description: 可以直接拖入图片，或附上相关 Issue / PR。请不要上传凭据和私人信息。
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我搜索过现有 Issue，没有找到相同建议。
+          required: true
+        - label: 我没有提交凭据或私人信息。
+          required: true
+        - label: 我同意遵守本仓库的社区行为准则。
+          required: true
