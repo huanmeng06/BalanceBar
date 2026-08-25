@@ -143,7 +143,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         notesTextView.isRichText = true
         notesTextView.importsGraphics = false
         notesTextView.allowsUndo = false
-        notesTextView.drawsBackground = false
+        notesTextView.drawsBackground = true
         notesTextView.isAutomaticLinkDetectionEnabled = false
         notesTextView.textContainerInset = NSSize(width: 16, height: 14)
         notesTextView.textContainer?.lineFragmentPadding = 0
@@ -257,6 +257,9 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             ? NSColor.black.withAlphaComponent(0.20)
             : NSColor(calibratedWhite: 0.94, alpha: 0.82)
         ).cgColor
+        notesTextView.backgroundColor = isDark
+            ? NSColor(calibratedWhite: 0.12, alpha: 1)
+            : NSColor.white
     }
 
     private func render() {

@@ -1557,6 +1557,24 @@ final class UpdateTests: XCTestCase {
             } else {
                 XCTAssertGreaterThan(contentColor.redComponent, 0.80)
             }
+            let notesTextView = try XCTUnwrap(
+                updateTestDescendants(of: contentSurface)
+                    .compactMap { $0 as? NSTextView }
+                    .first
+            )
+            XCTAssertTrue(notesTextView.drawsBackground)
+            let notesBackground = try XCTUnwrap(
+                notesTextView.backgroundColor.usingColorSpace(.deviceRGB)
+            )
+            if isDark {
+                XCTAssertLessThan(notesBackground.redComponent, 0.20)
+                XCTAssertEqual(notesBackground.alphaComponent, 1, accuracy: 0.001)
+            } else {
+                XCTAssertEqual(notesBackground.redComponent, 1, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.greenComponent, 1, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.blueComponent, 1, accuracy: 0.001)
+                XCTAssertEqual(notesBackground.alphaComponent, 1, accuracy: 0.001)
+            }
             controller.close()
         }
     }
