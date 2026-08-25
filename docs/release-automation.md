@@ -19,6 +19,21 @@ publishing anything. If the version change skips a number or does not reset
 the lower components according to the rules above, it fails safely and asks
 for a corrected version bump.
 
+## Previous release comparison
+
+The comparison base depends on whether the new Release is a Pre-release:
+
+- A patch bump is a Pre-release. It compares against the highest lower
+  released version, whether that previous Release was Stable or a Pre-release.
+  For example, `1.2.3` compares against `1.2.2`.
+- A minor or major bump is a Stable/latest Release. It compares against the
+  highest lower Stable version, intentionally including every Pre-release
+  published after that Stable baseline. For example, `1.3.0` compares against
+  `1.2.0` and includes `1.2.1`, `1.2.2`, and other intervening work.
+
+Release publication time is not used to choose the comparison base. This keeps
+an out-of-order Pre-release from becoming the base for a later version.
+
 Patch releases use a normal `vX.Y.Z` tag without a beta-number suffix.
 GitHub's Pre-release flag identifies the release as a test version; the tag and
 Release title remain `vX.Y.Z`.

@@ -107,14 +107,23 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          previous_tag="$(gh release list \
+          releases_json="$RUNNER_TEMP/balancebar-releases.json"
+          gh release list \
             --repo "$GITHUB_REPOSITORY" \
-            --limit 1 \
+            --limit 1000 \
             --exclude-drafts \
-            --json tagName \
-            --jq '.[0].tagName' 2>/dev/null || true)"
+            --json tagName,isPrerelease,isDraft,publishedAt,createdAt \
+            > "$releases_json"
+
+          previous_tag="$(node scripts/release/select-previous-release.mjs \
+            --releases "$releases_json" \
+            --current-version "${{ steps.version_plan.outputs.version }}" \
+            --prerelease "${{ steps.version_plan.outputs.prerelease }}")"
+
           if [[ -z "$previous_tag" ]]; then
-            previous_tag="$(git describe --tags --abbrev=0 "${MERGE_SHA}^" 2>/dev/null || true)"
+            if [[ "${{ steps.version_plan.outputs.prerelease }}" == "true" ]]; then
+              previous_tag="$(git describe --tags --abbrev=0 "${MERGE_SHA}^" 2>/dev/null || true)"
+            fi
           fi
           if [[ -z "$previous_tag" ]]; then
             previous_tag="$(git rev-list --max-parents=0 "$MERGE_SHA")"

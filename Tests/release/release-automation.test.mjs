@@ -22,6 +22,9 @@ import {
 } from "../../scripts/release/generate-release-notes.mjs";
 import { buildReleaseContext } from "../../scripts/release/release-context.mjs";
 import { buildReleaseInput } from "../../scripts/release/collect-release-input.mjs";
+import {
+  selectPreviousRelease,
+} from "../../scripts/release/select-previous-release.mjs";
 
 function fixtureInput() {
   return {
@@ -129,6 +132,38 @@ test("existing version changes are classified without incrementing again", () =>
     () => classifyVersionChange("1.1.3", "1.1.5"),
     /Unsupported version change/,
   );
+});
+
+test("pre-release comparisons use the immediately preceding release", () => {
+  const previous = selectPreviousRelease({
+    currentVersion: "1.2.3",
+    prerelease: true,
+    releases: [
+      { tagName: "v1.1.22", isPrerelease: true },
+      { tagName: "v1.2.0", isPrerelease: false },
+      { tagName: "v1.2.2", isPrerelease: true },
+      { tagName: "v1.2.1", isPrerelease: true },
+      { tagName: "v1.3.0", isPrerelease: false },
+    ],
+  });
+
+  assert.equal(previous?.tagName, "v1.2.2");
+});
+
+test("stable comparisons use the preceding stable release and include pre-releases", () => {
+  const previous = selectPreviousRelease({
+    currentVersion: "1.3.0",
+    prerelease: false,
+    releases: [
+      { tagName: "v1.1.0", isPrerelease: false },
+      { tagName: "v1.2.0", isPrerelease: false },
+      { tagName: "v1.2.1", isPrerelease: true },
+      { tagName: "v1.2.2", isPrerelease: true },
+      { tagName: "v1.3.0", isPrerelease: false },
+    ],
+  });
+
+  assert.equal(previous?.tagName, "v1.2.0");
 });
 
 test("release context ignores build-only changes and detects version changes", () => {
