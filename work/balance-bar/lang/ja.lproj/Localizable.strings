@@ -244,6 +244,10 @@
 "dashboard.menu.bar.page.preview" = "プレビュー";
 "dashboard.menu.bar.page.current_layout" = "現在のレイアウト";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます";
+"dashboard.menu.bar.page.quota_display_priority" = "クォータ表示の優先順位";
+"dashboard.menu.bar.page.quota_display_priority_description" = "メニューバーに表示する公式 Codex クォータの期間を選択";
+"dashboard.menu.bar.page.five_hour_quota" = "5時間クォータ";
+"dashboard.menu.bar.page.seven_day_quota" = "7日間クォータ";
 "dashboard.menu.bar.page.animation" = "アニメーション";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "タスク実行中にアイコンアニメーションを再生";
 "dashboard.menu.bar.page.display_items" = "表示項目";

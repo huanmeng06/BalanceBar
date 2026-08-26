@@ -244,6 +244,10 @@
 "dashboard.menu.bar.page.preview" = "미리보기";
 "dashboard.menu.bar.page.current_layout" = "현재 레이아웃";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "메뉴 막대가 공급자 데이터에 따라 실시간으로 업데이트됩니다";
+"dashboard.menu.bar.page.quota_display_priority" = "할당량 표시 우선순위";
+"dashboard.menu.bar.page.quota_display_priority_description" = "메뉴 막대에 표시할 공식 Codex 할당량 기간 선택";
+"dashboard.menu.bar.page.five_hour_quota" = "5시간 할당량";
+"dashboard.menu.bar.page.seven_day_quota" = "7일 할당량";
 "dashboard.menu.bar.page.animation" = "애니메이션";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "작업 실행 중 아이콘 애니메이션 재생";
 "dashboard.menu.bar.page.display_items" = "표시 항목";

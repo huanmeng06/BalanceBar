@@ -244,6 +244,10 @@
 "dashboard.menu.bar.page.preview" = "预览";
 "dashboard.menu.bar.page.current_layout" = "当前布局";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "菜单栏会随供应商数据实时更新";
+"dashboard.menu.bar.page.quota_display_priority" = "额度显示优先级";
+"dashboard.menu.bar.page.quota_display_priority_description" = "选择菜单栏中显示的官方 Codex 额度窗口";
+"dashboard.menu.bar.page.five_hour_quota" = "5 小时额度";
+"dashboard.menu.bar.page.seven_day_quota" = "7 日额度";
 "dashboard.menu.bar.page.animation" = "动画";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务进行时播放图标动画";
 "dashboard.menu.bar.page.display_items" = "显示项目";

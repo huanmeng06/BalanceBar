@@ -1,5 +1,19 @@
 import Foundation
 
+enum OfficialQuotaWindowPreference: String, CaseIterable, Equatable {
+    case fiveHour
+    case sevenDay
+
+    static let defaultValue: Self = .sevenDay
+
+    var kind: OfficialQuotaWindow.Kind {
+        switch self {
+        case .fiveHour: return .fiveHour
+        case .sevenDay: return .sevenDay
+        }
+    }
+}
+
 enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
     case large
     case medium
@@ -53,6 +67,8 @@ final class AppPreferences {
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
     static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
     static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
+    static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"
+    static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -99,6 +115,18 @@ final class AppPreferences {
     var showOpenChatGPTMenu: Bool { get { bool("showOpenChatGPTMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenChatGPTMenu") } }
     var showStatusMenu: Bool { get { bool("showStatusMenu", default: true) } set { defaults.set(newValue, forKey: "showStatusMenu") } }
     var keepMenuOpenAfterRefresh: Bool { get { bool("keepMenuOpenAfterRefresh", default: true) } set { defaults.set(newValue, forKey: "keepMenuOpenAfterRefresh") } }
+    var menuBarQuotaWindowPreference: OfficialQuotaWindowPreference {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarQuotaWindowPreferenceKey),
+                  let preference = OfficialQuotaWindowPreference(rawValue: rawValue) else {
+                return Self.menuBarQuotaWindowPreferenceDefault
+            }
+            return preference
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaWindowPreferenceKey)
+        }
+    }
     var updateChannel: UpdateChannel {
         get {
             guard let rawValue = defaults.string(forKey: Self.updateChannelKey),

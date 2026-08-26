@@ -8,7 +8,9 @@ probe_binary="$probe_dir/provider-balance-snapshot-cache-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
 {
-    printf '%s\n' 'import Foundation' 'func tr(_ chinese: String, _ english: String, _ traditional: String, _ japanese: String) -> String { english }'
+    printf '%s\n' 'import Foundation' 'enum OfficialQuotaWindowPreference { case fiveHour, sevenDay }'
+    cat "$source_dir/Sources/AppCore/LocalizationKeys.swift"
+    printf '%s\n' 'func tr(_ key: LocalizationKey, arguments: [String] = []) -> String { key.rawValue }'
     cat "$source_dir/Sources/Domain/Snapshot.swift"
     awk '
         /^struct ProviderBalanceSnapshotCache \{/ { capture = 1 }

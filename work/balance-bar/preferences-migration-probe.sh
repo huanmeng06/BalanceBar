@@ -23,6 +23,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarFontSizeKey = "menuBarFontSize"' \
         '    static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"' \
         '    static let menuBarSecondaryFontSizeKey = "menuBarSecondaryFontSize"' \
+        '    static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"' \
         '}'
     awk '
         /^struct PreferencesMigrationPlan \{/ { capture = 1 }
@@ -44,6 +45,7 @@ let production: [String: Any] = [
     "menuBarFontSize": NSNumber(value: 14.2),
     "menuBarPrimaryFontSize": NSNumber(value: 14.2),
     "menuBarSecondaryFontSize": NSNumber(value: 9.6),
+    "menuBarQuotaWindowPreference": "fiveHour",
     "appLanguage": "en",
     "unknownSecret": "must not migrate",
     "NSStatusItem Preferred Position Item-0": "must not migrate"
@@ -69,6 +71,7 @@ require((selected["menuBarFontSizePreset"] as? String) == "medium", "font size p
 require((selected["menuBarFontSize"] as? NSNumber)?.doubleValue == 14.2, "shared font size migrates")
 require((selected["menuBarPrimaryFontSize"] as? NSNumber)?.doubleValue == 14.2, "primary font size migrates")
 require((selected["menuBarSecondaryFontSize"] as? NSNumber)?.doubleValue == 9.6, "secondary font size migrates")
+require((selected["menuBarQuotaWindowPreference"] as? String) == "fiveHour", "quota window preference migrates")
 require((selected["showMenuBarReset"] as? NSNumber)?.boolValue == false, "local fills missing production key")
 require((selected["showMenuBarAmount"] as? NSNumber)?.boolValue == true, "local fallback value migrates")
 require(selected["unknownSecret"] == nil, "unknown production key is excluded")
@@ -77,7 +80,8 @@ require(selected["NSStatusItem Preferred Position Item-0"] == nil, "system posit
 
 let existingTarget: [String: Any] = [
     "showMenuBarIcon": NSNumber(value: true),
-    "appLanguage": "zh-Hans"
+    "appLanguage": "zh-Hans",
+    "menuBarQuotaWindowPreference": "sevenDay"
 ]
 let selectedWithExisting = PreferencesMigrationPlan.selectedValues(
     target: existingTarget,
@@ -86,6 +90,7 @@ let selectedWithExisting = PreferencesMigrationPlan.selectedValues(
 )
 require(selectedWithExisting["showMenuBarIcon"] == nil, "existing target value is preserved")
 require(selectedWithExisting["appLanguage"] == nil, "existing target language is preserved")
+require(selectedWithExisting["menuBarQuotaWindowPreference"] == nil, "existing target quota window preference is preserved")
 
 var mergedTarget = existingTarget
 for (key, value) in selectedWithExisting { mergedTarget[key] = value }
@@ -103,7 +108,7 @@ let noSources = PreferencesMigrationPlan.selectedValues(
 )
 require(noSources.isEmpty, "missing source domains are safe")
 
-print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
+print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; quota window preference migrates; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
 SWIFT
 } | swiftc -framework Foundation -o "$probe_binary" -
 

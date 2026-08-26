@@ -244,6 +244,10 @@
 "dashboard.menu.bar.page.preview" = "預覽";
 "dashboard.menu.bar.page.current_layout" = "目前版面";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "選單列會隨供應商資料即時更新";
+"dashboard.menu.bar.page.quota_display_priority" = "額度顯示優先順序";
+"dashboard.menu.bar.page.quota_display_priority_description" = "選擇選單列中顯示的官方 Codex 額度視窗";
+"dashboard.menu.bar.page.five_hour_quota" = "5 小時額度";
+"dashboard.menu.bar.page.seven_day_quota" = "7 日額度";
 "dashboard.menu.bar.page.animation" = "動畫";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任務進行時播放圖示動畫";
 "dashboard.menu.bar.page.display_items" = "顯示項目";

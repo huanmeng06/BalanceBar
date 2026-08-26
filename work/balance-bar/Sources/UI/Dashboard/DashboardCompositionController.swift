@@ -38,6 +38,7 @@ struct DashboardCompositionActions {
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onMenuBarFontSizePreset: (MenuBarFontSizePreset) -> Void
+    let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
@@ -84,6 +85,7 @@ final class DashboardCompositionController {
             onOffsetReset: actions.onOffsetReset,
             onLanguage: actions.onLanguage,
             onMenuBarFontSizePreset: actions.onMenuBarFontSizePreset,
+            onMenuBarQuotaWindowPreferenceChanged: actions.onMenuBarQuotaWindowPreferenceChanged,
             onUpdateChannelChanged: actions.onUpdateChannelChanged,
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onOpenSystemMenuBarSettings: actions.onOpenSystemMenuBarSettings,
