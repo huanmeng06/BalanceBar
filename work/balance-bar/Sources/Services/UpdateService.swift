@@ -851,9 +851,9 @@ final class UpdateService {
     /// the service remains the sole owner of update selection/install logic.
     var availableReleaseForPresentation: GitHubRelease? { availableRelease }
 
-    /// The releases crossed by the current update, ordered from the target
-    /// version back toward the installed version. The target release remains
-    /// available separately for installation and its GitHub link.
+    /// The newer releases crossed by the current update, ordered from the
+    /// target version back toward the installed version. The target release
+    /// remains available separately for installation and its GitHub link.
     var availableReleasesForPresentation: [GitHubRelease] { availableReleases }
 
     init(
@@ -1100,7 +1100,7 @@ final class UpdateService {
         var versionedReleases = releases.compactMap { release -> (release: GitHubRelease, version: AppSemanticVersion)? in
             guard updateChannel.accepts(release),
                   let version = release.version,
-                  version >= currentVersion,
+                  version > currentVersion,
                   version <= targetVersion else {
                 return nil
             }
@@ -1108,7 +1108,9 @@ final class UpdateService {
         }
         // The selected target is always included, even if a future change to
         // the fetcher supplies a differently shaped list than the candidate
-        // scan above.
+        // scan above. The installed version is intentionally excluded: the
+        // notes window describes releases the user is moving through, not the
+        // version already running.
         versionedReleases.append((release: targetRelease, version: targetVersion))
         versionedReleases.sort { left, right in
             if Self.sameVersion(left.version, right.version) {

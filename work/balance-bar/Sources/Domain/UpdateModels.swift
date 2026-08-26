@@ -161,11 +161,16 @@ enum UpdateChannel: String, CaseIterable, Equatable {
     case stable
     case beta
 
-    /// Stable is the default channel. Beta is deliberately opt-in and may
-    /// include both GitHub prereleases and ordinary releases.
+    /// Stable is the default channel. Beta is deliberately opt-in and each
+    /// channel accepts only its own GitHub Release class.
     func accepts(_ release: GitHubRelease) -> Bool {
         guard !release.draft else { return false }
-        return self == .beta || !release.prerelease
+        switch self {
+        case .stable:
+            return !release.prerelease
+        case .beta:
+            return release.prerelease
+        }
     }
 }
 
