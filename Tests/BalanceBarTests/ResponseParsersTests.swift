@@ -114,7 +114,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(claude.reset, "2h0m")
 
         let codex = try OfficialQuotaResponseParser.parse(
-            data: fixture(#"{"rate_limit":{"primary_window":{"used_percent":"20","limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400}}}"#),
+            data: fixture(#"{"rate_limit":{"primary_window":{"used_percent":"20","limit_window_seconds":18000,"reset_after_seconds":3600,"reset_at":1700007200},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400,"reset_at":1700010800}}}"#),
             client: .codex,
             now: now
         )
@@ -125,6 +125,11 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(codex.windows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(codex.windows.map(\.remaining), [80, 45])
         XCTAssertEqual(codex.windows.map(\.reset), ["1h0m", "1h30m"])
+        XCTAssertEqual(codex.windows.map(\.resetAt), [
+            Date(timeIntervalSince1970: 1_700_007_200),
+            Date(timeIntervalSince1970: 1_700_010_800)
+        ])
+        XCTAssertEqual(codex.resetAt, Date(timeIntervalSince1970: 1_700_010_800))
     }
 
     func testCodexWindowOrderingUsesSemanticDurationsInsteadOfPayloadFieldOrder() throws {
@@ -233,6 +238,83 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(ResponseParsingSupport.resetDescription("after deploy", now: now), "after deploy")
         XCTAssertNil(ResponseParsingSupport.resetDescription("", now: now))
+    }
+
+    func testResetDatesAcceptOnlyFutureAbsoluteEpochOrISOValues() {
+        XCTAssertEqual(
+            ResponseParsingSupport.resetDate(1_700_003_600, now: now),
+            Date(timeIntervalSince1970: 1_700_003_600)
+        )
+        XCTAssertEqual(
+            ResponseParsingSupport.resetDate("1700003600000", now: now),
+            Date(timeIntervalSince1970: 1_700_003_600)
+        )
+        XCTAssertEqual(
+            ResponseParsingSupport.resetDate("2023-11-14T23:13:20Z", now: now),
+            Date(timeIntervalSince1970: 1_700_003_600)
+        )
+        XCTAssertEqual(
+            ResponseParsingSupport.resetDate("2023-11-14T23:13:20.500Z", now: now),
+            Date(timeIntervalSince1970: 1_700_003_600.5)
+        )
+
+        // A relative countdown must never become an absolute date.
+        XCTAssertNil(ResponseParsingSupport.resetDate(5_400, now: now))
+        XCTAssertNil(ResponseParsingSupport.resetDate("5400", now: now))
+        XCTAssertNil(ResponseParsingSupport.resetDate("not-a-date", now: now))
+        XCTAssertNil(ResponseParsingSupport.resetDate(1_699_999_999, now: now))
+        XCTAssertNil(ResponseParsingSupport.resetDate(Double.greatestFiniteMagnitude, now: now))
+        XCTAssertNil(ResponseParsingSupport.resetDate("", now: now))
+    }
+
+    func testCodexRelativeOnlyAndInvalidOrExpiredAbsoluteTimestampsRemainSafe() throws {
+        let relativeOnly = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": [
+                    "primary_window": [
+                        "used_percent": 20,
+                        "limit_window_seconds": 18_000,
+                        "reset_after_seconds": 2_700
+                    ]
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(relativeOnly.windows.first?.reset, "45m")
+        XCTAssertNil(relativeOnly.windows.first?.resetAt)
+
+        let invalid = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": [
+                    "primary_window": [
+                        "used_percent": 20,
+                        "limit_window_seconds": 18_000,
+                        "reset_at": "later"
+                    ]
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(invalid.windows.first?.reset, "later")
+        XCTAssertNil(invalid.windows.first?.resetAt)
+
+        let expired = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": [
+                    "primary_window": [
+                        "used_percent": 20,
+                        "limit_window_seconds": 18_000,
+                        "reset_at": 1_699_999_999
+                    ]
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(expired.windows.first?.reset, "0m")
+        XCTAssertNil(expired.windows.first?.resetAt)
     }
 
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {

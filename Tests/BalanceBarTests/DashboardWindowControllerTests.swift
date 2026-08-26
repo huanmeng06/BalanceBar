@@ -1479,23 +1479,25 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             horizontalPadding: 6,
             keepMenuOpenAfterRefresh: true
         )
-        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let date = Date()
         let windows = [
             OfficialQuotaWindow(
                 kind: .fiveHour,
                 remaining: 80,
                 label: tr(.keyResponseParsers5HourQuota),
                 daysText: tr(.keyResponseParsers5Hours),
-                reset: "1h0m",
-                durationSeconds: 18_000
+                reset: "2d0h",
+                durationSeconds: 18_000,
+                resetAt: date.addingTimeInterval(2 * 86_400)
             ),
             OfficialQuotaWindow(
                 kind: .sevenDay,
                 remaining: 45,
                 label: tr(.keyResponseParsers7DayQuota2),
                 daysText: tr(.keyResponseParsers7Days4),
-                reset: "1h30m",
-                durationSeconds: 604_800
+                reset: "7d0h",
+                durationSeconds: 604_800,
+                resetAt: date.addingTimeInterval(7 * 86_400)
             )
         ]
 
@@ -1514,6 +1516,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let expectedResetTexts = windows.map {
+            tr(
+                .keySnapshotResetValue,
+                arguments: [String(describing: $0.resetDisplayText()!)]
+            )
+        }
         let frames = OpenCodexCardLayout.frames(
             for: .quota,
             includesAccount: true,
@@ -1548,18 +1556,19 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 let value = $0.accountLabel.stringValue
                 return value == tr(.keyResponseParsers5HourQuota)
                     || value == tr(.keyResponseParsers7DayQuota2)
-                    || value == "Reset: 1h0m"
-                    || value == "Reset: 1h30m"
+                    || expectedResetTexts.contains(value)
             }
         XCTAssertEqual(
             quotaViews.map { $0.accountLabel.stringValue },
             [
                 tr(.keyResponseParsers5HourQuota),
-                "Reset: 1h0m",
+                expectedResetTexts[0],
                 tr(.keyResponseParsers7DayQuota2),
-                "Reset: 1h30m"
+                expectedResetTexts[1]
             ]
         )
+        XCTAssertTrue(expectedResetTexts.allSatisfy { $0.contains(" · ") })
+        XCTAssertNotEqual(expectedResetTexts[0], expectedResetTexts[1])
         let expectedBaseFrames = [
             frames.quotaRows[0].quotaDetail,
             frames.quotaRows[0].reset,
@@ -1618,7 +1627,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 remaining: 80,
                 label: String(repeating: windows[0].label + " ", count: 4),
                 daysText: windows[0].daysText,
-                reset: String(repeating: "1h0m ", count: 6),
+                reset: String(repeating: "2d0h ", count: 6),
                 durationSeconds: windows[0].durationSeconds
             ),
             OfficialQuotaWindow(
@@ -1626,7 +1635,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 remaining: 45,
                 label: String(repeating: windows[1].label + " ", count: 4),
                 daysText: windows[1].daysText,
-                reset: String(repeating: "1h30m ", count: 6),
+                reset: String(repeating: "7d0h ", count: 6),
                 durationSeconds: windows[1].durationSeconds
             )
         ]
@@ -1649,8 +1658,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 let value = view.accountLabel.stringValue
                 return value == longWindows[0].label
                     || value == longWindows[1].label
-                    || value.contains("1h0m")
-                    || value.contains("1h30m")
+                    || value.contains("2d0h")
+                    || value.contains("7d0h")
             }
         XCTAssertEqual(longQuotaViews.count, 4)
         XCTAssertTrue(longQuotaViews.allSatisfy { $0.isScrollable })

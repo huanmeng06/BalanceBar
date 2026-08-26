@@ -278,6 +278,310 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(legacyPresentation.officialQuotaWindows, legacy.officialQuotaWindows)
     }
 
+    func testOfficialQuotaResetFormattingUsesEachWindowTimestampAndLocalizedDayBoundary() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let sameDayReset = Date(timeIntervalSince1970: 1_700_003_600)
+        let nextDayReset = Date(timeIntervalSince1970: 1_700_010_800)
+        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let calendar = Calendar(identifier: .gregorian)
+        let locale = Locale(identifier: "en_GB")
+
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-Hour Quota",
+            daysText: "5 Hours",
+            reset: "4h31m",
+            durationSeconds: 18_000,
+            resetAt: sameDayReset
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-Day Quota",
+            daysText: "7 Days",
+            reset: "5d18h",
+            durationSeconds: 604_800,
+            resetAt: nextDayReset
+        )
+
+        let fiveHourDate = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: sameDayReset,
+                relativeTo: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+        let sevenDayDate = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: nextDayReset,
+                relativeTo: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertEqual(
+            fiveHourDate,
+            expectedResetDateText(
+                sameDayReset,
+                template: "jm",
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertEqual(
+            sevenDayDate,
+            expectedResetDateText(
+                nextDayReset,
+                template: "Mdjm",
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertNotEqual(fiveHourDate, sevenDayDate)
+
+        // The day boundary is evaluated after converting both instants into
+        // the user's local time zone, not in UTC.
+        let westCoastTimeZone = try XCTUnwrap(TimeZone(secondsFromGMT: -8 * 3_600))
+        let westCoastDate = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: nextDayReset,
+                relativeTo: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: westCoastTimeZone
+            )
+        )
+        XCTAssertEqual(
+            westCoastDate,
+            expectedResetDateText(
+                nextDayReset,
+                template: "jm",
+                calendar: calendar,
+                locale: locale,
+                timeZone: westCoastTimeZone
+            )
+        )
+
+        let simplifiedChinese = Locale(identifier: "zh_Hans_CN")
+        let simplifiedChineseDate = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: nextDayReset,
+                relativeTo: now,
+                calendar: calendar,
+                locale: simplifiedChinese,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertEqual(
+            simplifiedChineseDate,
+            expectedResetDateText(
+                nextDayReset,
+                template: "Mdjm",
+                calendar: calendar,
+                locale: simplifiedChinese,
+                timeZone: timeZone
+            )
+        )
+        let simplifiedChineseSameDay = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: sameDayReset,
+                relativeTo: now,
+                calendar: calendar,
+                locale: simplifiedChinese,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertNotEqual(simplifiedChineseDate, simplifiedChineseSameDay)
+
+        XCTAssertEqual(
+            fiveHour.resetDisplayText(
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            tr(.keySnapshotValueValue, arguments: ["4h31m", fiveHourDate])
+        )
+        XCTAssertEqual(
+            sevenDay.resetDisplayText(
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            tr(.keySnapshotValueValue, arguments: ["5d18h", sevenDayDate])
+        )
+
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            45,
+            "7-Day Quota",
+            "5d18h",
+            now,
+            windows: [fiveHour, sevenDay]
+        )
+        XCTAssertEqual(
+            snapshot.officialResetDisplayValue(
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            tr(.keySnapshotValueValue, arguments: ["5d18h", sevenDayDate])
+        )
+        XCTAssertEqual(
+            snapshot.overviewReset(refreshDate: nil, formatter: DateFormatter()),
+            tr(.keySnapshotResetValue, arguments: ["5d18h"])
+        )
+    }
+
+    func testOfficialQuotaResetFormattingFallsBackWithoutInventingAValue() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let timeZone = TimeZone(secondsFromGMT: 0)!
+        let calendar = Calendar(identifier: .gregorian)
+        let locale = Locale(identifier: "en_GB")
+
+        let expired = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-Hour Quota",
+            daysText: "5 Hours",
+            reset: "4h31m",
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(-1)
+        )
+        let missing = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-Day Quota",
+            daysText: "7 Days",
+            reset: "5d18h",
+            durationSeconds: 604_800
+        )
+        let noRelativeText = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-Hour Quota",
+            daysText: "5 Hours",
+            reset: nil,
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(3_600)
+        )
+
+        XCTAssertEqual(
+            expired.resetDisplayText(
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            "4h31m"
+        )
+        XCTAssertEqual(
+            missing.resetDisplayText(
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            "5d18h"
+        )
+        XCTAssertNil(
+            noRelativeText.resetDisplayText(
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertNil(
+            OfficialQuotaResetFormatter.string(
+                for: now.addingTimeInterval(-1),
+                relativeTo: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+
+        let other = OfficialQuotaWindow(
+            kind: .other,
+            remaining: 20,
+            label: "Legacy",
+            daysText: "Legacy",
+            reset: "later",
+            durationSeconds: nil,
+            resetAt: now.addingTimeInterval(3_600)
+        )
+        XCTAssertEqual(
+            other.resetDisplayText(
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            "later"
+        )
+    }
+
+    func testOfficialQuotaResetFormattingFollowsLocaleHourCycle() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let resetAt = Date(timeIntervalSince1970: 1_700_003_600)
+        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let calendar = Calendar(identifier: .gregorian)
+
+        let twelveHourLocale = Locale(identifier: "en_US")
+        let twentyFourHourLocale = Locale(identifier: "en_GB")
+        let twelveHour = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: resetAt,
+                relativeTo: now,
+                calendar: calendar,
+                locale: twelveHourLocale,
+                timeZone: timeZone
+            )
+        )
+        let twentyFourHour = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: resetAt,
+                relativeTo: now,
+                calendar: calendar,
+                locale: twentyFourHourLocale,
+                timeZone: timeZone
+            )
+        )
+
+        XCTAssertEqual(
+            twelveHour,
+            expectedResetDateText(
+                resetAt,
+                template: "jm",
+                calendar: calendar,
+                locale: twelveHourLocale,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertEqual(
+            twentyFourHour,
+            expectedResetDateText(
+                resetAt,
+                template: "jm",
+                calendar: calendar,
+                locale: twentyFourHourLocale,
+                timeZone: timeZone
+            )
+        )
+        XCTAssertNotEqual(twelveHour, twentyFourHour)
+        XCTAssertTrue(twelveHour.contains("AM") || twelveHour.contains("PM"))
+        XCTAssertFalse(twentyFourHour.contains("AM") || twentyFourHour.contains("PM"))
+    }
+
     func testBalanceSnapshotAndCacheKeepProviderClientIsolation() {
         let date = Date(timeIntervalSince1970: 1_700_000_001)
         let balance = Snapshot.balance(
@@ -513,6 +817,39 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertFalse(official.menuBarTitle.contains("gpt-5.6-luna"))
         XCTAssertFalse(official.menuBarToolTip.contains("gpt-5.6-luna"))
 
+        let preciseWindow = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 81.7,
+            label: "7-Day Quota",
+            daysText: "7 Days",
+            reset: "2 hours",
+            durationSeconds: 604_800,
+            resetAt: date.addingTimeInterval(7_200)
+        )
+        let preciseCard = OpenCodexModelCard(
+            selector: "gpt-5.6-luna",
+            provider: "openai",
+            model: "gpt-5.6-luna",
+            isCurrent: true,
+            data: .official(window: preciseWindow, updatedAt: date)
+        )
+        let preciseSnapshot = OpenCodexCardPresentation.menuBarSnapshot(for: preciseCard)
+        XCTAssertEqual(preciseSnapshot.officialQuotaWindows, [preciseWindow])
+        XCTAssertEqual(
+            preciseSnapshot.officialResetDisplayValue(
+                now: date,
+                calendar: Calendar(identifier: .gregorian),
+                locale: Locale(identifier: "en_GB"),
+                timeZone: TimeZone(secondsFromGMT: 0)!
+            ),
+            preciseWindow.resetDisplayText(
+                now: date,
+                calendar: Calendar(identifier: .gregorian),
+                locale: Locale(identifier: "en_GB"),
+                timeZone: TimeZone(secondsFromGMT: 0)!
+            )
+        )
+
         let currentBalance = OpenCodexModelCard(
             selector: "relay/gpt-5.6-sol",
             provider: "relay",
@@ -714,6 +1051,24 @@ final class DomainModelsTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return (defaults, suiteName)
+    }
+
+    private func expectedResetDateText(
+        _ date: Date,
+        template: String,
+        calendar: Calendar,
+        locale: Locale,
+        timeZone: TimeZone
+    ) -> String {
+        var localizedCalendar = calendar
+        localizedCalendar.locale = locale
+        localizedCalendar.timeZone = timeZone
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = localizedCalendar
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter.string(from: date)
     }
 
     private func makeBalanceProgressQuery(
