@@ -195,6 +195,11 @@
 "dashboard.general.and.refresh.pages.installation_failed_the_current_version_was_not_changed" = "インストールに失敗しました。現在のバージョンは変更されていません";
 "dashboard.general.and.refresh.pages.the_current_version_could_not_be_read_try_again" = "現在のバージョンを読み取れません。再試行してください";
 "dashboard.general.and.refresh.pages.update_check_failed_try_again" = "アップデートの確認に失敗しました。再試行してください";
+"dashboard.general.and.refresh.pages.update_check_failed_try_again_reason" = "アップデートの確認に失敗しました。再試行してください。原因：%1$@";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_network" = "ネットワーク要求に失敗しました";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_http_status_value" = "サーバーが HTTP ステータス %1$@ を返しました";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_response" = "サーバーの応答が無効です";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_release_version" = "リリースバージョンが無効です";
 "dashboard.general.and.refresh.pages.retry" = "再試行";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "CC Switch を開く";
 "dashboard.general.and.refresh.pages.current_provider_value" = "現在のプロバイダー：%1$@";

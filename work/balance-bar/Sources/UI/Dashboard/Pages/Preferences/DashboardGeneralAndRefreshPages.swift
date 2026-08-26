@@ -86,17 +86,25 @@ struct DashboardUpdatePresentation: Equatable {
             )
         case .failed(let failure):
             let subtitle: String
-            switch failure {
-            case .assetUnavailable:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesNoVerifiableInstallerIsAvailableTryAgain, language: language)
-            case .verificationFailed:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesDownloadVerificationFailedTheCurrentVersionWasNotChanged, language: language)
-            case .installationFailed:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesInstallationFailedTheCurrentVersionWasNotChanged, language: language)
-            case .invalidCurrentVersion:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesTheCurrentVersionCouldNotBeReadTryAgain, language: language)
-            default:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgain, language: language)
+            if let reason = localizedUpdateCheckFailureReason(for: failure, language: language) {
+                subtitle = tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgainReason,
+                    arguments: [reason],
+                    language: language
+                )
+            } else {
+                switch failure {
+                case .assetUnavailable:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesNoVerifiableInstallerIsAvailableTryAgain, language: language)
+                case .verificationFailed:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesDownloadVerificationFailedTheCurrentVersionWasNotChanged, language: language)
+                case .installationFailed:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesInstallationFailedTheCurrentVersionWasNotChanged, language: language)
+                case .invalidCurrentVersion:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesTheCurrentVersionCouldNotBeReadTryAgain, language: language)
+                default:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgain, language: language)
+                }
             }
             return DashboardUpdatePresentation(
                 subtitle: subtitle,
@@ -106,6 +114,37 @@ struct DashboardUpdatePresentation: Equatable {
                 showsReleaseNotesButton: false,
                 showsUpdateBadge: false
             )
+        }
+    }
+
+    private static func localizedUpdateCheckFailureReason(
+        for failure: UpdateFailure,
+        language: AppLanguage
+    ) -> String? {
+        switch failure {
+        case .network:
+            return tr(
+                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonNetwork,
+                language: language
+            )
+        case .httpStatus(let statusCode):
+            return tr(
+                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpStatusValue,
+                arguments: [String(statusCode)],
+                language: language
+            )
+        case .invalidResponse:
+            return tr(
+                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidResponse,
+                language: language
+            )
+        case .invalidReleaseVersion:
+            return tr(
+                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidReleaseVersion,
+                language: language
+            )
+        case .assetUnavailable, .downloadFailed, .verificationFailed, .installationFailed, .invalidCurrentVersion:
+            return nil
         }
     }
 }

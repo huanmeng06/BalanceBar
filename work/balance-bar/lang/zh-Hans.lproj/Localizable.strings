@@ -195,6 +195,11 @@
 "dashboard.general.and.refresh.pages.installation_failed_the_current_version_was_not_changed" = "安装失败，当前版本未更改，请重试";
 "dashboard.general.and.refresh.pages.the_current_version_could_not_be_read_try_again" = "无法读取当前版本，请重试";
 "dashboard.general.and.refresh.pages.update_check_failed_try_again" = "检查更新失败，请重试";
+"dashboard.general.and.refresh.pages.update_check_failed_try_again_reason" = "检查更新失败，请重试。原因：%1$@";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_network" = "网络请求失败";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_http_status_value" = "服务器返回 HTTP 状态码 %1$@";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_response" = "服务器响应无效";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_release_version" = "发布版本号无效";
 "dashboard.general.and.refresh.pages.retry" = "重试";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "打开 CC Switch";
 "dashboard.general.and.refresh.pages.current_provider_value" = "当前供应商：%1$@";

@@ -195,6 +195,11 @@
 "dashboard.general.and.refresh.pages.installation_failed_the_current_version_was_not_changed" = "Installation fehlgeschlagen; die aktuelle Version wurde nicht geändert";
 "dashboard.general.and.refresh.pages.the_current_version_could_not_be_read_try_again" = "Die aktuelle Version konnte nicht gelesen werden; erneut versuchen";
 "dashboard.general.and.refresh.pages.update_check_failed_try_again" = "Updateprüfung fehlgeschlagen; erneut versuchen";
+"dashboard.general.and.refresh.pages.update_check_failed_try_again_reason" = "Updateprüfung fehlgeschlagen; erneut versuchen. Grund: %1$@";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_network" = "Die Netzwerkanfrage ist fehlgeschlagen";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_http_status_value" = "Der Server gab den HTTP-Status %1$@ zurück";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_response" = "Die Serverantwort war ungültig";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_release_version" = "Die Release-Version war ungültig";
 "dashboard.general.and.refresh.pages.retry" = "Erneut versuchen";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "CC Switch öffnen";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Aktueller Anbieter: %1$@";

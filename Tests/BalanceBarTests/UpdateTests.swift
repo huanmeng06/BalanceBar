@@ -2581,6 +2581,13 @@ final class UpdateTests: XCTestCase {
             "新版本可用：1.0.6 -> 1.0.7"
         )
 
+        pageController.refresh(updateState: .failed(.network))
+        XCTAssertEqual(
+            updateTestDescendants(of: page).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }?.stringValue,
+            "检查更新失败，请重试。原因：网络请求失败"
+        )
+
         pageController.refresh(updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))))
         XCTAssertTrue(updateIgnoreButton.isHidden)
         XCTAssertTrue(updateNotesButton.isHidden)
@@ -2986,9 +2993,45 @@ final class UpdateTests: XCTestCase {
                 for: .failed(.network),
                 language: language
             )
+            XCTAssertEqual(
+                failure.subtitle,
+                language == .simplifiedChinese ? "检查更新失败，请重试。原因：网络请求失败" :
+                    language == .traditionalChineseTaiwan ? "檢查更新失敗，請重試。原因：網路請求失敗" :
+                    language == .traditionalChineseHongKong ? "檢查更新失敗，請再試。原因：網絡請求失敗" :
+                    language == .japanese ? "アップデートの確認に失敗しました。再試行してください。原因：ネットワーク要求に失敗しました" :
+                    language == .korean ? "업데이트 확인 실패; 다시 시도하세요. 원인: 네트워크 요청에 실패했습니다" :
+                    language == .spanish ? "Falló la búsqueda de actualizaciones; inténtalo de nuevo. Motivo: La solicitud de red falló" :
+                    language == .german ? "Updateprüfung fehlgeschlagen; erneut versuchen. Grund: Die Netzwerkanfrage ist fehlgeschlagen" :
+                    language == .french ? "La recherche de mises à jour a échoué ; réessayez. Motif : La requête réseau a échoué" :
+                    "Update check failed; try again. Reason: The network request failed"
+            )
             XCTAssertTrue(failure.buttonEnabled)
             XCTAssertFalse(failure.showsUpdateBadge)
         }
+    }
+
+    func testDashboardUpdateFailureSubtitleIncludesSpecificReasonDetails() throws {
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(403)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。原因：服务器返回 HTTP 状态码 403"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.invalidResponse),
+                language: .english
+            ).subtitle,
+            "Update check failed; try again. Reason: The server response was invalid"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.invalidReleaseVersion),
+                language: .japanese
+            ).subtitle,
+            "アップデートの確認に失敗しました。再試行してください。原因：リリースバージョンが無効です"
+        )
     }
 
     // MARK: - Fixtures

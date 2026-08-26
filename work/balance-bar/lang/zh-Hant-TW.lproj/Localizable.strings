@@ -195,6 +195,11 @@
 "dashboard.general.and.refresh.pages.installation_failed_the_current_version_was_not_changed" = "安裝失敗，目前版本未變更，請重試";
 "dashboard.general.and.refresh.pages.the_current_version_could_not_be_read_try_again" = "無法讀取目前版本，請重試";
 "dashboard.general.and.refresh.pages.update_check_failed_try_again" = "檢查更新失敗，請重試";
+"dashboard.general.and.refresh.pages.update_check_failed_try_again_reason" = "檢查更新失敗，請重試。原因：%1$@";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_network" = "網路請求失敗";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_http_status_value" = "伺服器回傳 HTTP 狀態碼 %1$@";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_response" = "伺服器回應無效";
+"dashboard.general.and.refresh.pages.update_check_failure_reason_invalid_release_version" = "發佈版本號無效";
 "dashboard.general.and.refresh.pages.retry" = "重試";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "開啟 CC Switch";
 "dashboard.general.and.refresh.pages.current_provider_value" = "目前供應商：%1$@";
