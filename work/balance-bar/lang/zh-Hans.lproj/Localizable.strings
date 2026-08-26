@@ -53,8 +53,8 @@
 "provider.models.multiple_balance_sources_were_found_the_account_could_not_be_confirmed" = "找到多个余额来源，无法确认账户";
 "provider.models.no_verifiable_balance_source_was_found" = "未找到可验证的余额来源";
 "snapshot.value_value" = "%1$@ · %2$@";
-"snapshot.value_reset_value" = "%1$@ · 重置：%2$@";
-"snapshot.reset_value" = "重置：%1$@";
+"snapshot.value_reset_value" = "%1$@ · %2$@";
+"snapshot.reset_value" = "%1$@";
 "snapshot.last_refreshed_value" = "最后刷新：%1$@";
 "snapshot.opencodex_status_is_unknown" = "OpenCodex 状态未知";
 "snapshot.loading_the_current_provider" = "正在读取当前供应商…";
@@ -74,9 +74,9 @@
 "snapshot.value_value.2" = "%1$@ · %2$@";
 "snapshot.failed_to_load_balance.2" = "余额读取失败";
 "snapshot.value_remaining_value.2" = "%1$@剩余：%2$@%%";
-"snapshot.reset_value.2" = "重置：%1$@";
+"snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "更新：%1$@ · 随 CC Switch 自动切换";
-"snapshot.reset_value.3" = " · 重置：%1$@";
+"snapshot.reset_value.3" = " · %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "每分钟更新官方额度%1$@";
 "snapshot.waiting_for_opencodex_status" = "等待 OpenCodex 状态";
 "snapshot.unknown_error" = "未知错误";
@@ -357,8 +357,8 @@
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "暂未读取到 OpenCodex 精选模型";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "没有配置 OpenCodex 精选模型";
 "status.item.controller.current" = " · 当前";
-"status.item.controller.reset_value" = "重置：%1$@";
-"status.item.controller.reset_time_unavailable" = "重置时间不可用";
+"status.item.controller.reset_value" = "%1$@";
+"status.item.controller.reset_time_unavailable" = "时间不可用";
 "status.item.controller.remaining_balance" = "剩余额度";
 "status.item.controller.official_link.2" = "官方链接：";
 "status.item.controller.reading_quota" = "正在读取额度…";

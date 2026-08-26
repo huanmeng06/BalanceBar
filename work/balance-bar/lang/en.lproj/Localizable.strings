@@ -53,8 +53,8 @@
 "provider.models.multiple_balance_sources_were_found_the_account_could_not_be_confirmed" = "Multiple balance sources were found; the account could not be confirmed";
 "provider.models.no_verifiable_balance_source_was_found" = "No verifiable balance source was found";
 "snapshot.value_value" = "%1$@ · %2$@";
-"snapshot.value_reset_value" = "%1$@ · Reset: %2$@";
-"snapshot.reset_value" = "Reset: %1$@";
+"snapshot.value_reset_value" = "%1$@ · %2$@";
+"snapshot.reset_value" = "%1$@";
 "snapshot.last_refreshed_value" = "Last refreshed: %1$@";
 "snapshot.opencodex_status_is_unknown" = "OpenCodex status is unknown";
 "snapshot.loading_the_current_provider" = "Loading the current Provider…";
@@ -74,9 +74,9 @@
 "snapshot.value_value.2" = "%1$@ · %2$@";
 "snapshot.failed_to_load_balance.2" = "Failed to Load Balance";
 "snapshot.value_remaining_value.2" = "%1$@ remaining: %2$@%%";
-"snapshot.reset_value.2" = "Reset: %1$@";
+"snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Updated: %1$@ · Follows CC Switch automatically";
-"snapshot.reset_value.3" = " · Reset: %1$@";
+"snapshot.reset_value.3" = " · %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Official quota updates every minute%1$@";
 "snapshot.waiting_for_opencodex_status" = "Waiting for OpenCodex status";
 "snapshot.unknown_error" = "Unknown Error";
@@ -357,8 +357,8 @@
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "OpenCodex chosen models are not available yet";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "No OpenCodex chosen models are configured";
 "status.item.controller.current" = " · Current";
-"status.item.controller.reset_value" = "Reset: %1$@";
-"status.item.controller.reset_time_unavailable" = "Reset time unavailable";
+"status.item.controller.reset_value" = "%1$@";
+"status.item.controller.reset_time_unavailable" = "Time unavailable";
 "status.item.controller.remaining_balance" = "Remaining Balance";
 "status.item.controller.official_link.2" = "Official Link:";
 "status.item.controller.reading_quota" = "Reading quota…";

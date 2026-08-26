@@ -53,8 +53,8 @@
 "provider.models.multiple_balance_sources_were_found_the_account_could_not_be_confirmed" = "Plusieurs sources de solde ont été trouvées ; le compte n’a pas pu être confirmé";
 "provider.models.no_verifiable_balance_source_was_found" = "Aucune source de solde vérifiable n’a été trouvée";
 "snapshot.value_value" = "%1$@ · %2$@";
-"snapshot.value_reset_value" = "%1$@ · Réinitialisation : %2$@";
-"snapshot.reset_value" = "Réinitialisation : %1$@";
+"snapshot.value_reset_value" = "%1$@ · %2$@";
+"snapshot.reset_value" = "%1$@";
 "snapshot.last_refreshed_value" = "Dernière actualisation : %1$@";
 "snapshot.opencodex_status_is_unknown" = "L’état d’OpenCodex est inconnu";
 "snapshot.loading_the_current_provider" = "Chargement du fournisseur actuel…";
@@ -74,9 +74,9 @@
 "snapshot.value_value.2" = "%1$@ · %2$@";
 "snapshot.failed_to_load_balance.2" = "Échec du chargement du solde";
 "snapshot.value_remaining_value.2" = "%1$@ restant : %2$@%%";
-"snapshot.reset_value.2" = "Réinitialisation : %1$@";
+"snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Mis à jour : %1$@ · Suit automatiquement CC Switch";
-"snapshot.reset_value.3" = " · Réinitialisation : %1$@";
+"snapshot.reset_value.3" = " · %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Le quota officiel est mis à jour chaque minute%1$@";
 "snapshot.waiting_for_opencodex_status" = "En attente de l’état d’OpenCodex";
 "snapshot.unknown_error" = "Erreur inconnue";
@@ -357,8 +357,8 @@
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "Les modèles sélectionnés d’OpenCodex ne sont pas encore disponibles";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "Aucun modèle OpenCodex sélectionné n’est configuré";
 "status.item.controller.current" = " · Actuel";
-"status.item.controller.reset_value" = "Réinitialisation : %1$@";
-"status.item.controller.reset_time_unavailable" = "Heure de réinitialisation indisponible";
+"status.item.controller.reset_value" = "%1$@";
+"status.item.controller.reset_time_unavailable" = "Heure indisponible";
 "status.item.controller.remaining_balance" = "Solde restant";
 "status.item.controller.official_link.2" = "Lien officiel :";
 "status.item.controller.reading_quota" = "Lecture du quota…";

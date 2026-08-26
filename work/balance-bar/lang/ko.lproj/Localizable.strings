@@ -53,8 +53,8 @@
 "provider.models.multiple_balance_sources_were_found_the_account_could_not_be_confirmed" = "여러 잔액 소스가 발견되어 계정을 확인할 수 없습니다";
 "provider.models.no_verifiable_balance_source_was_found" = "확인 가능한 잔액 소스를 찾지 못했습니다";
 "snapshot.value_value" = "%1$@ · %2$@";
-"snapshot.value_reset_value" = "%1$@ · 재설정: %2$@";
-"snapshot.reset_value" = "재설정: %1$@";
+"snapshot.value_reset_value" = "%1$@ · %2$@";
+"snapshot.reset_value" = "%1$@";
 "snapshot.last_refreshed_value" = "마지막 업데이트: %1$@";
 "snapshot.opencodex_status_is_unknown" = "OpenCodex 상태를 알 수 없음";
 "snapshot.loading_the_current_provider" = "현재 공급자를 불러오는 중…";
@@ -74,9 +74,9 @@
 "snapshot.value_value.2" = "%1$@ · %2$@";
 "snapshot.failed_to_load_balance.2" = "잔액을 불러오지 못했습니다";
 "snapshot.value_remaining_value.2" = "%1$@ 남음: %2$@%%";
-"snapshot.reset_value.2" = "재설정: %1$@";
+"snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "업데이트: %1$@ · CC Switch를 자동으로 따름";
-"snapshot.reset_value.3" = " · 재설정: %1$@";
+"snapshot.reset_value.3" = " · %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "공식 할당량은 매분 업데이트됩니다%1$@";
 "snapshot.waiting_for_opencodex_status" = "OpenCodex 상태를 기다리는 중";
 "snapshot.unknown_error" = "알 수 없는 오류";
@@ -357,8 +357,8 @@
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "OpenCodex 선택 모델을 아직 사용할 수 없습니다";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "구성된 OpenCodex 선택 모델이 없습니다";
 "status.item.controller.current" = " · 현재";
-"status.item.controller.reset_value" = "재설정: %1$@";
-"status.item.controller.reset_time_unavailable" = "재설정 시간을 사용할 수 없음";
+"status.item.controller.reset_value" = "%1$@";
+"status.item.controller.reset_time_unavailable" = "시간을 사용할 수 없음";
 "status.item.controller.remaining_balance" = "남은 잔액";
 "status.item.controller.official_link.2" = "공식 링크:";
 "status.item.controller.reading_quota" = "할당량 읽는 중…";

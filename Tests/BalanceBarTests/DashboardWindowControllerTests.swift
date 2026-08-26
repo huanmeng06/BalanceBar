@@ -1358,7 +1358,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let shortQuota = "7-Tage-Kontingent"
         let shortResetValue = "6d14"
-        let shortReset = "Zurücksetzung: \(shortResetValue)"
+        let shortReset = shortResetValue
         let longQuota = String(repeating: "7-Tage-Kontingent ", count: 4)
         let longReset = String(repeating: "6d14 ", count: 12)
         let date = Date(timeIntervalSince1970: 1_700_000_000)
@@ -1516,12 +1516,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
 
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
-        let expectedResetTexts = windows.map {
-            tr(
-                .keySnapshotResetValue,
-                arguments: [String(describing: $0.resetDisplayText()!)]
-            )
-        }
+        let expectedResetTexts = windows.map { $0.resetDisplayText()! }
         let frames = OpenCodexCardLayout.frames(
             for: .quota,
             includesAccount: true,
@@ -1575,14 +1570,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             frames.quotaRows[1].quotaDetail,
             frames.quotaRows[1].reset
         ]
-        for (view, expected) in zip(quotaViews, expectedBaseFrames) {
+        for (index, (view, expected)) in zip(quotaViews, expectedBaseFrames).enumerated() {
+            let isReset = index == 1 || index == 3
             XCTAssertEqual(view.frame.minX, expected.minX)
             XCTAssertEqual(view.frame.minY, expected.minY)
             XCTAssertEqual(view.frame.height, expected.height)
             XCTAssertGreaterThanOrEqual(view.frame.width, expected.width)
             XCTAssertEqual(
                 view.accountLabel.font?.pointSize ?? 0,
-                view.accountLabel.stringValue.hasPrefix("Reset:")
+                isReset
                     ? OpenCodexCardLayout.quotaResetPointSize
                     : OpenCodexCardLayout.quotaDetailPointSize
             )
@@ -1596,8 +1592,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ofSize: OpenCodexCardLayout.quotaResetPointSize,
             weight: .regular
         ).fontDescriptor.symbolicTraits.rawValue
-        for view in quotaViews {
-            let expectedTraits = view.accountLabel.stringValue.hasPrefix("Reset:")
+        for (index, view) in quotaViews.enumerated() {
+            let expectedTraits = index == 1 || index == 3
                 ? expectedResetTraits
                 : expectedDetailTraits
             XCTAssertEqual(
