@@ -65,6 +65,12 @@ final class GitHubReleaseClient: GitHubReleaseFetching {
         var request = URLRequest(url: requestURL)
         request.httpMethod = "GET"
         request.timeoutInterval = 15
+        // Release checks must always validate the current network state. A
+        // cached 2xx response would make an offline manual check look like a
+        // successful latest/available result.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("BalanceBar", forHTTPHeaderField: "User-Agent")
         session.dataTask(with: request) { data, response, error in
