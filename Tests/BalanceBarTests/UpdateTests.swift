@@ -580,6 +580,70 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(latest, AppSemanticVersion("1.0.5"))
     }
 
+    func testUpdateServiceExposesOrderedUniqueReleaseNotesForJumpUpdate() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.release-notes-range")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.2.3",
+            updateChannel: .stable,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.2.5")
+            }
+            return false
+        }
+
+        let current = makeRelease(
+            tag: "v1.2.3",
+            assets: [],
+            body: "1.2.3 body"
+        )
+        let middle = makeRelease(
+            tag: "v1.2.4",
+            assets: [],
+            body: "1.2.4 body"
+        )
+        let duplicateMiddle = makeRelease(
+            tag: "1.2.4",
+            assets: [],
+            body: nil
+        )
+        let target = makeRelease(
+            tag: "v1.2.5",
+            body: "1.2.5 body"
+        )
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.3.0", assets: [], body: "outside body"),
+            duplicateMiddle,
+            target,
+            makeRelease(tag: "v1.2.4-beta.1", prerelease: true, body: "beta body"),
+            current,
+            middle
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.map(\.tagName),
+            ["v1.2.5", "v1.2.4", "v1.2.3"]
+        )
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.compactMap(\.body),
+            ["1.2.5 body", "1.2.4 body", "1.2.3 body"]
+        )
+        XCTAssertEqual(
+            service.availableReleaseForPresentation?.tagName,
+            "v1.2.5"
+        )
+    }
+
     func testUpdateServiceBetaChannelCanSelectAValidPrereleaseAboveStable() throws {
         let fetcher = StubReleaseFetcher()
         let queue = DispatchQueue(label: "UpdateTests.beta-channel")
@@ -1236,6 +1300,83 @@ final class UpdateTests: XCTestCase {
                 assets: []
             )),
             ReleaseNotesResolution(markdown: nil, source: .unavailable)
+        )
+    }
+
+    func testReleaseNotesCombineVersionedBodiesInSemVerOrderAndSkipUnavailableEntries() {
+        let store = ReleaseNotesStore()
+        let resolution = store.resolve(releases: [
+            GitHubRelease(
+                tagName: "v1.2.3",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "Older body"
+            ),
+            GitHubRelease(
+                tagName: "v1.2.4",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "  \n  "
+            ),
+            GitHubRelease(
+                tagName: "not-semver",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "Invalid body"
+            ),
+            GitHubRelease(
+                tagName: "v1.2.5",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "Newest body"
+            )
+        ])
+
+        XCTAssertEqual(resolution.source, .githubRelease)
+        XCTAssertEqual(
+            resolution.markdown,
+            "## 1.2.5\n\nNewest body\n\n---\n\n## 1.2.3\n\nOlder body"
+        )
+    }
+
+    func testUpdateNotesWindowRendersMultipleReleaseBodiesWithTargetFirst() throws {
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        controller.show(
+            currentVersion: try XCTUnwrap(AppSemanticVersion("1.2.3")),
+            releases: [
+                makeRelease(tag: "v1.2.3", body: "Current release body"),
+                makeRelease(tag: "v1.2.5", body: "Target release body"),
+                makeRelease(tag: "v1.2.4", body: "Middle release body")
+            ]
+        )
+
+        let contentView = try XCTUnwrap(controller.window?.contentView)
+        let notesTextView = try XCTUnwrap(
+            updateTestDescendants(of: contentView)
+                .compactMap { $0 as? NSTextView }
+                .first
+        )
+        let rendered = notesTextView.string
+        let targetRange = (rendered as NSString).range(of: "1.2.5")
+        let middleRange = (rendered as NSString).range(of: "1.2.4")
+        let currentRange = (rendered as NSString).range(of: "1.2.3")
+        XCTAssertNotEqual(targetRange.location, NSNotFound)
+        XCTAssertNotEqual(middleRange.location, NSNotFound)
+        XCTAssertNotEqual(currentRange.location, NSNotFound)
+        XCTAssertLessThan(targetRange.location, middleRange.location)
+        XCTAssertLessThan(middleRange.location, currentRange.location)
+        XCTAssertLessThan(
+            (rendered as NSString).range(of: "Target release body").location,
+            (rendered as NSString).range(of: "Middle release body").location
+        )
+        XCTAssertLessThan(
+            (rendered as NSString).range(of: "Middle release body").location,
+            (rendered as NSString).range(of: "Current release body").location
         )
     }
 
@@ -2749,7 +2890,8 @@ final class UpdateTests: XCTestCase {
         tag: String,
         draft: Bool = false,
         prerelease: Bool = false,
-        assets: [[String: Any]]? = nil
+        assets: [[String: Any]]? = nil,
+        body: String? = nil
     ) -> GitHubRelease {
         let version = AppSemanticVersion(tag)!
         let releaseAssets = assets.map { values in
@@ -2772,7 +2914,8 @@ final class UpdateTests: XCTestCase {
             tagName: tag,
             draft: draft,
             prerelease: prerelease,
-            assets: releaseAssets
+            assets: releaseAssets,
+            body: body
         )
     }
 

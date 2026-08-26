@@ -819,6 +819,7 @@ final class UpdateService {
     private let automaticCheckMinimumInterval: TimeInterval
     private let ignoredVersionStore: UpdateVersionIgnoring
     private var availableRelease: GitHubRelease?
+    private var availableReleases: [GitHubRelease] = []
     private var checkingStartedAt: TimeInterval?
     private var lastCheckStartedAtByChannel: [UpdateChannel: TimeInterval] = [:]
     private var updateCheckGeneration: UInt64 = 0
@@ -829,6 +830,7 @@ final class UpdateService {
             guard oldValue != updateChannel else { return }
             updateCheckGeneration &+= 1
             availableRelease = nil
+            availableReleases = []
             checkingStartedAt = nil
 
             guard let currentVersion else { return }
@@ -848,6 +850,11 @@ final class UpdateService {
     /// uses this read-only seam for release notes and the GitHub link while
     /// the service remains the sole owner of update selection/install logic.
     var availableReleaseForPresentation: GitHubRelease? { availableRelease }
+
+    /// The releases crossed by the current update, ordered from the target
+    /// version back toward the installed version. The target release remains
+    /// available separately for installation and its GitHub link.
+    var availableReleasesForPresentation: [GitHubRelease] { availableReleases }
 
     init(
         releaseFetcher: GitHubReleaseFetching = GitHubReleaseClient(),
@@ -908,6 +915,7 @@ final class UpdateService {
         let updateCheckGeneration = self.updateCheckGeneration
         let checkStartedAt = scheduler.now
         availableRelease = nil
+        availableReleases = []
         lastCheckStartedAtByChannel[updateChannel] = checkStartedAt
         checkingStartedAt = checkStartedAt
         transition(to: .checking(current: currentVersion))
@@ -930,6 +938,7 @@ final class UpdateService {
         else { return }
         ignoredVersionStore.ignore(version: latest, for: updateChannel)
         availableRelease = nil
+        availableReleases = []
         transition(to: .latest(current: currentVersion))
     }
 
@@ -1026,6 +1035,8 @@ final class UpdateService {
               case .checking = state else { return }
         switch result {
         case .failure(let error):
+            availableRelease = nil
+            availableReleases = []
             switch error {
             case .transport:
                 transition(to: .failed(.network))
@@ -1057,9 +1068,17 @@ final class UpdateService {
 
             if let candidate = candidates.max(by: { $0.version < $1.version }) {
                 availableRelease = candidate.release
+                availableReleases = releaseNotesReleases(
+                    from: releases,
+                    currentVersion: currentVersion,
+                    targetVersion: candidate.version,
+                    targetRelease: candidate.release,
+                    updateChannel: updateChannel
+                )
                 transition(to: .available(current: currentVersion, latest: candidate.version))
             } else {
                 availableRelease = nil
+                availableReleases = []
                 if hasUnavailableNewerRelease {
                     transition(to: .failed(.assetUnavailable))
                 } else if hasInvalidNewerRelease {
@@ -1069,6 +1088,62 @@ final class UpdateService {
                 }
             }
         }
+    }
+
+    private func releaseNotesReleases(
+        from releases: [GitHubRelease],
+        currentVersion: AppSemanticVersion,
+        targetVersion: AppSemanticVersion,
+        targetRelease: GitHubRelease,
+        updateChannel: UpdateChannel
+    ) -> [GitHubRelease] {
+        var versionedReleases = releases.compactMap { release -> (release: GitHubRelease, version: AppSemanticVersion)? in
+            guard updateChannel.accepts(release),
+                  let version = release.version,
+                  version >= currentVersion,
+                  version <= targetVersion else {
+                return nil
+            }
+            return (release: release, version: version)
+        }
+        // The selected target is always included, even if a future change to
+        // the fetcher supplies a differently shaped list than the candidate
+        // scan above.
+        versionedReleases.append((release: targetRelease, version: targetVersion))
+        versionedReleases.sort { left, right in
+            if Self.sameVersion(left.version, right.version) {
+                let leftIsTarget = left.release == targetRelease
+                let rightIsTarget = right.release == targetRelease
+                if leftIsTarget != rightIsTarget {
+                    return leftIsTarget
+                }
+                let leftHasBody = Self.hasReleaseBody(left.release)
+                let rightHasBody = Self.hasReleaseBody(right.release)
+                if leftHasBody != rightHasBody {
+                    return leftHasBody
+                }
+                return left.release.tagName < right.release.tagName
+            }
+            return left.version > right.version
+        }
+
+        var unique: [(release: GitHubRelease, version: AppSemanticVersion)] = []
+        for entry in versionedReleases
+        where !unique.contains(where: { Self.sameVersion($0.version, entry.version) }) {
+            unique.append(entry)
+        }
+        return unique.map(\.release)
+    }
+
+    private static func sameVersion(_ lhs: AppSemanticVersion, _ rhs: AppSemanticVersion) -> Bool {
+        !(lhs < rhs) && !(rhs < lhs)
+    }
+
+    private static func hasReleaseBody(_ release: GitHubRelease) -> Bool {
+        guard let body = release.body?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+        return !body.isEmpty
     }
 
     private func handleDownloadResult(
