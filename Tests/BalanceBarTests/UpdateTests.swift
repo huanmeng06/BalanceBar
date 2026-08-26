@@ -678,7 +678,38 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(latest, AppSemanticVersion("2.0.0-beta.1"))
     }
 
-    func testUpdateServiceBetaJumpNotesExcludeStableBoundaryAndIncludeCurrentVersion() throws {
+    func testUpdateServiceBetaChannelStillAcceptsAStableRelease() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.beta-stable-release")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.0.0",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.1.0")
+            }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.1.0", prerelease: false),
+            makeRelease(tag: "v1.0.1-beta.1", prerelease: true),
+            makeRelease(tag: "v1.2.0", draft: true)
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.1.0")
+    }
+
+    func testUpdateServiceBetaJumpNotesIncludeStableReleaseAndCurrentVersion() throws {
         let fetcher = StubReleaseFetcher()
         let queue = DispatchQueue(label: "UpdateTests.beta-release-notes-range")
         let service = UpdateService(
@@ -712,13 +743,14 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
         XCTAssertEqual(
             service.availableReleasesForPresentation.map(\.tagName),
-            ["v1.3.2", "v1.3.1", "v1.2.5", "v1.2.4", "v1.2.3"]
+            ["v1.3.2", "v1.3.1", "v1.3.0", "v1.2.5", "v1.2.4", "v1.2.3"]
         )
         XCTAssertEqual(
             service.availableReleasesForPresentation.compactMap(\.body),
             [
                 "1.3.2 beta body",
                 "1.3.1 beta body",
+                "stable boundary body",
                 "1.2.5 beta body",
                 "1.2.4 beta body",
                 "current beta body"

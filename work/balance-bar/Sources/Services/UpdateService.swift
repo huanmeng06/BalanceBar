@@ -1104,6 +1104,10 @@ final class UpdateService {
                   version <= targetVersion else {
                 return nil
             }
+            if Self.sameVersion(version, currentVersion),
+               !Self.releaseMatchesCurrentChannel(release, updateChannel: updateChannel) {
+                return nil
+            }
             return (release: release, version: version)
         }
         // The selected target is always included, even if a future change to
@@ -1139,6 +1143,18 @@ final class UpdateService {
 
     private static func sameVersion(_ lhs: AppSemanticVersion, _ rhs: AppSemanticVersion) -> Bool {
         !(lhs < rhs) && !(rhs < lhs)
+    }
+
+    private static func releaseMatchesCurrentChannel(
+        _ release: GitHubRelease,
+        updateChannel: UpdateChannel
+    ) -> Bool {
+        switch updateChannel {
+        case .stable:
+            return !release.prerelease
+        case .beta:
+            return release.prerelease
+        }
     }
 
     private static func hasReleaseBody(_ release: GitHubRelease) -> Bool {
