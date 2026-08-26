@@ -79,10 +79,34 @@ private final class DashboardSettingsRowView: NSView {
     private var minimumReadableContentWidth: CGFloat {
         guard let labelsView else { return 0 }
         return labelsView.arrangedSubviews
-            .flatMap { textFields(in: $0) }
+            .filter { !$0.isHidden }
+            .map(minimumReadableWidth(in:))
+            .max() ?? 0
+    }
+
+    private func minimumReadableWidth(in view: NSView) -> CGFloat {
+        if let textField = view as? NSTextField {
+            guard textField.lineBreakMode == .byWordWrapping else { return 0 }
+            return widestUnbreakableRunWidth(in: textField)
+        }
+
+        if let stack = view as? NSStackView {
+            let visibleSubviews = stack.arrangedSubviews.filter { !$0.isHidden }
+            let childWidths = visibleSubviews.map(minimumReadableWidth(in:))
+            guard !childWidths.isEmpty else { return 0 }
+            if stack.orientation == .horizontal {
+                return childWidths.reduce(CGFloat(0), +)
+                    + max(0, CGFloat(childWidths.count - 1)) * stack.spacing
+            }
+            return childWidths.max() ?? 0
+        }
+
+        let textWidth = textFields(in: view)
             .filter { $0.lineBreakMode == .byWordWrapping }
             .map(widestUnbreakableRunWidth(in:))
             .max() ?? 0
+        let fittingWidth = view.fittingSize.width
+        return max(textWidth, fittingWidth.isFinite && fittingWidth > 0 ? fittingWidth : 0)
     }
 
     private func textFields(in view: NSView) -> [NSTextField] {

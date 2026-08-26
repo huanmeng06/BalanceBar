@@ -2897,6 +2897,33 @@ final class UpdateTests: XCTestCase {
             let narrowRowHeight = row.frame.height
             let narrowCardHeight = card.frame.height
 
+            page.setFrameSize(NSSize(width: 720, height: 420))
+            let medium = frames()
+            let mediumTitleLabel = (labels.arrangedSubviews.first as? NSStackView)?.arrangedSubviews
+                .compactMap { $0 as? NSTextField }
+                .first
+            assertCardHeight("card height must follow the medium update row for \(language)")
+            XCTAssertEqual(
+                controls.orientation,
+                .horizontal,
+                "actions should retain their horizontal order on the dedicated row for \(language)"
+            )
+            XCTAssertEqual(
+                medium.labels.maxX,
+                row.bounds.maxX - 20,
+                accuracy: 0.5,
+                "medium-width content must use the full row when the title accessory needs the action column"
+            )
+            XCTAssertGreaterThanOrEqual(
+                mediumTitleLabel?.frame.width ?? 0,
+                mediumTitleLabel?.fittingSize.width ?? .greatestFiniteMagnitude,
+                "medium-width content must keep the complete localized title on one readable line for \(language)"
+            )
+            XCTAssertFalse(
+                medium.labels.intersects(medium.controls),
+                "medium-width content and actions must not overlap for \(language)"
+            )
+
             page.setFrameSize(NSSize(width: 760, height: 420))
             let wide = frames()
             assertCardHeight("card height must follow the wide update row for \(language)")
