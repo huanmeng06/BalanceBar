@@ -1646,11 +1646,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = snapshot.kind == .balance && snapshot.websiteURL != nil
         let isBalance = snapshot.kind == .balance
+        let officialQuotaWindows = snapshot.kind == .official
+            ? snapshot.officialQuotaWindowsForMenu
+            : []
         let layout = OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
             includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
-            includesSubscription: snapshot.kind == .official && menuInput.openAIAccount?.subscription != nil
+            includesSubscription: snapshot.kind == .official && menuInput.openAIAccount?.subscription != nil,
+            officialQuotaWindows: officialQuotaWindows
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -1675,42 +1679,103 @@ final class StatusItemController: NSObject, NSMenuDelegate {
            let subscriptionFrame = layout.subscription {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
-        if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
-            let progress = QuotaProgressView(percentage: percentage)
-            progress.frame = progressFrame
-            view.addSubview(progress)
-        }
 
-        let amount = makeOverviewLabel(snapshot.overviewLargeAmount, font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
-        amount.alignment = .right
-        amount.frame = layout.amount
-        let quotaDetail = makeMarqueeOverviewLabel(
-            snapshot.overviewQuotaDetail,
-            font: .systemFont(ofSize: 13, weight: .medium),
-            textColor: .labelColor,
-            frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: amount)
-        )
-        if isBalance {
-            let linkPrefix = makeOverviewLabel(tr(.keyStatusItemControllerOfficialLink), font: .systemFont(ofSize: 12, weight: .regular))
-            linkPrefix.textColor = .secondaryLabelColor
-            linkPrefix.frame = layout.linkPrefix ?? .zero
-            view.addSubview(linkPrefix)
-            if snapshot.websiteURL != nil, let linkFrame = layout.link {
-                let link = HoverLinkTextField(text: snapshot.provider)
-                link.frame = linkFrame
-                link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
-                view.addSubview(link)
+        if !layout.quotaRows.isEmpty {
+            for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
+                let progress = QuotaProgressView(percentage: window.remaining)
+                progress.frame = row.progress
+                view.addSubview(progress)
+
+                let amount = makeOverviewLabel(
+                    "\(Int(window.remaining))%",
+                    font: .monospacedDigitSystemFont(
+                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                        weight: .semibold
+                    )
+                )
+                amount.alignment = .right
+                amount.frame = row.amount
+                view.addSubview(amount)
+
+                let quotaDetail = makeMarqueeOverviewLabel(
+                    window.label,
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                        weight: .medium
+                    ),
+                    textColor: .labelColor,
+                    frame: overviewMarqueeFrame(row.quotaDetail, avoiding: amount)
+                )
+                view.addSubview(quotaDetail)
+
+                let resetText = window.reset.map {
+                    tr(.keySnapshotResetValue, arguments: [String(describing: $0)])
+                } ?? tr(.keySnapshotResetValue, arguments: [tr(.keyLocalizationUnknown)])
+                let reset = makeMarqueeOverviewLabel(
+                    resetText,
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                        weight: .regular
+                    ),
+                    textColor: .secondaryLabelColor,
+                    frame: overviewMarqueeFrame(row.reset, avoiding: amount)
+                )
+                view.addSubview(reset)
             }
+            view.addSubview(provider)
         } else {
-            let reset = makeMarqueeOverviewLabel(
-                snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter),
-                font: .systemFont(ofSize: 13, weight: .regular),
-                textColor: .secondaryLabelColor,
-                frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: amount)
+            if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
+                let progress = QuotaProgressView(percentage: percentage)
+                progress.frame = progressFrame
+                view.addSubview(progress)
+            }
+
+            let amount = makeOverviewLabel(
+                snapshot.overviewLargeAmount,
+                font: .monospacedDigitSystemFont(
+                    ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                    weight: .semibold
+                )
             )
-            view.addSubview(reset)
+            amount.alignment = .right
+            amount.frame = layout.amount
+            let quotaDetail = makeMarqueeOverviewLabel(
+                snapshot.overviewQuotaDetail,
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                    weight: .medium
+                ),
+                textColor: .labelColor,
+                frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: amount)
+            )
+            if isBalance {
+                let linkPrefix = makeOverviewLabel(
+                    tr(.keyStatusItemControllerOfficialLink),
+                    font: .systemFont(ofSize: 12, weight: .regular)
+                )
+                linkPrefix.textColor = .secondaryLabelColor
+                linkPrefix.frame = layout.linkPrefix ?? .zero
+                view.addSubview(linkPrefix)
+                if snapshot.websiteURL != nil, let linkFrame = layout.link {
+                    let link = HoverLinkTextField(text: snapshot.provider)
+                    link.frame = linkFrame
+                    link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
+                    view.addSubview(link)
+                }
+            } else {
+                let reset = makeMarqueeOverviewLabel(
+                    snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                        weight: .regular
+                    ),
+                    textColor: .secondaryLabelColor,
+                    frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: amount)
+                )
+                view.addSubview(reset)
+            }
+            [provider, quotaDetail, amount].forEach(view.addSubview)
         }
-        [provider, quotaDetail, amount].forEach(view.addSubview)
         item.view = view
         return item
     }
@@ -1776,18 +1841,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .official(let remaining, let label, let reset, _):
             progress = QuotaProgressView(percentage: remaining)
             progress?.frame = layout.progress ?? .zero
-            primary = makeOverviewLabel("\(Int(remaining))%", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
+            primary = makeOverviewLabel(
+                "\(Int(remaining))%",
+                font: .monospacedDigitSystemFont(
+                    ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                    weight: .semibold
+                )
+            )
             primary.alignment = .right
             primary.frame = layout.amount
             detail = makeMarqueeOverviewLabel(
                 label,
-                font: .systemFont(ofSize: 13, weight: .medium),
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                    weight: .medium
+                ),
                 textColor: .labelColor,
                 frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
             )
             secondary = makeMarqueeOverviewLabel(
                 reset.map { tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)]) } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
-                font: .systemFont(ofSize: 13, weight: .regular),
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                    weight: .regular
+                ),
                 textColor: .secondaryLabelColor,
                 frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: primary)
             )

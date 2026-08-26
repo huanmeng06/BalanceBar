@@ -1434,6 +1434,229 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(reset.frame.maxX, expectedRightEdge, accuracy: 0.5)
     }
 
+    @MainActor
+    func testOfficialCodexMenuCardRendersIndependentFiveHourAndSevenDayRows() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                tr(.keyResponseParsers7DayQuota2),
+                "1h30m",
+                date,
+                windows: windows
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows
+        )
+        XCTAssertEqual(overview.bounds.size, frames.cardSize)
+
+        let progressViews = overview.subviews.compactMap { $0 as? QuotaProgressView }
+        XCTAssertEqual(progressViews.map(\.percentage), [80, 45])
+        XCTAssertEqual(
+            progressViews.map(\.frame),
+            frames.quotaRows.map(\.progress)
+        )
+        let percentageLabels = allControls(of: overview, as: NSTextField.self)
+            .filter { $0.stringValue == "80%" || $0.stringValue == "45%" }
+        XCTAssertEqual(percentageLabels.count, 2)
+        let expectedAmountTraits = NSFont.monospacedDigitSystemFont(
+            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+            weight: .semibold
+        ).fontDescriptor.symbolicTraits.rawValue
+        XCTAssertTrue(
+            percentageLabels.allSatisfy {
+                ($0.font?.pointSize ?? 0) == OpenCodexCardLayout.quotaAmountPointSize
+                    && ($0.font?.fontDescriptor.symbolicTraits.rawValue ?? 0) == expectedAmountTraits
+                    && $0.frame.height == OpenCodexCardLayout.quotaAmountHeight
+            }
+        )
+
+        let quotaViews = overview.subviews.compactMap { $0 as? AccountMarqueeView }
+            .filter {
+                let value = $0.accountLabel.stringValue
+                return value == tr(.keyResponseParsers5HourQuota)
+                    || value == tr(.keyResponseParsers7DayQuota2)
+                    || value == "Reset: 1h0m"
+                    || value == "Reset: 1h30m"
+            }
+        XCTAssertEqual(
+            quotaViews.map { $0.accountLabel.stringValue },
+            [
+                tr(.keyResponseParsers5HourQuota),
+                "Reset: 1h0m",
+                tr(.keyResponseParsers7DayQuota2),
+                "Reset: 1h30m"
+            ]
+        )
+        let expectedBaseFrames = [
+            frames.quotaRows[0].quotaDetail,
+            frames.quotaRows[0].reset,
+            frames.quotaRows[1].quotaDetail,
+            frames.quotaRows[1].reset
+        ]
+        for (view, expected) in zip(quotaViews, expectedBaseFrames) {
+            XCTAssertEqual(view.frame.minX, expected.minX)
+            XCTAssertEqual(view.frame.minY, expected.minY)
+            XCTAssertEqual(view.frame.height, expected.height)
+            XCTAssertGreaterThanOrEqual(view.frame.width, expected.width)
+            XCTAssertEqual(
+                view.accountLabel.font?.pointSize ?? 0,
+                view.accountLabel.stringValue.hasPrefix("Reset:")
+                    ? OpenCodexCardLayout.quotaResetPointSize
+                    : OpenCodexCardLayout.quotaDetailPointSize
+            )
+        }
+        XCTAssertTrue(quotaViews.allSatisfy { $0.accountLabel.lineBreakMode == .byClipping })
+        let expectedDetailTraits = NSFont.systemFont(
+            ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+            weight: .medium
+        ).fontDescriptor.symbolicTraits.rawValue
+        let expectedResetTraits = NSFont.systemFont(
+            ofSize: OpenCodexCardLayout.quotaResetPointSize,
+            weight: .regular
+        ).fontDescriptor.symbolicTraits.rawValue
+        for view in quotaViews {
+            let expectedTraits = view.accountLabel.stringValue.hasPrefix("Reset:")
+                ? expectedResetTraits
+                : expectedDetailTraits
+            XCTAssertEqual(
+                view.accountLabel.font?.fontDescriptor.symbolicTraits.rawValue ?? 0,
+                expectedTraits
+            )
+        }
+        XCTAssertEqual(
+            allControls(of: overview, as: NSTextField.self)
+                .filter { $0.stringValue == "80%" || $0.stringValue == "45%" }
+                .map(\.stringValue),
+            ["80%", "45%"]
+        )
+        XCTAssertLessThanOrEqual(
+            frames.quotaRows[0].quotaDetail.maxX,
+            overview.bounds.maxX - 14
+        )
+        XCTAssertLessThanOrEqual(
+            frames.quotaRows[1].quotaDetail.maxX,
+            overview.bounds.maxX - 14
+        )
+        XCTAssertTrue(quotaViews.allSatisfy { $0.frame.maxX <= overview.bounds.maxX })
+
+        let longWindows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: String(repeating: windows[0].label + " ", count: 4),
+                daysText: windows[0].daysText,
+                reset: String(repeating: "1h0m ", count: 6),
+                durationSeconds: windows[0].durationSeconds
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: String(repeating: windows[1].label + " ", count: 4),
+                daysText: windows[1].daysText,
+                reset: String(repeating: "1h30m ", count: 6),
+                durationSeconds: windows[1].durationSeconds
+            )
+        ]
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: longWindows
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let longOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let longQuotaViews = longOverview.subviews.compactMap { $0 as? AccountMarqueeView }
+            .filter { view in
+                let value = view.accountLabel.stringValue
+                return value == longWindows[0].label
+                    || value == longWindows[1].label
+                    || value.contains("1h0m")
+                    || value.contains("1h30m")
+            }
+        XCTAssertEqual(longQuotaViews.count, 4)
+        XCTAssertTrue(longQuotaViews.allSatisfy { $0.isScrollable })
+        XCTAssertTrue(longQuotaViews.allSatisfy { $0.frame.maxX <= longOverview.bounds.maxX })
+    }
+
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
         for openCodexIsCurrent in [true, false] {
             for showOpenCodexMenu in [true, false] {

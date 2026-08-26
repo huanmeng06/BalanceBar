@@ -521,6 +521,14 @@ struct OpenCodexCardFrames: Equatable {
     let progress: CGRect?
     let linkPrefix: CGRect?
     let link: CGRect?
+    let quotaRows: [OpenCodexQuotaRowFrames]
+}
+
+struct OpenCodexQuotaRowFrames: Equatable {
+    let quotaDetail: CGRect
+    let reset: CGRect
+    let amount: CGRect
+    let progress: CGRect
 }
 
 enum OpenCodexCardLayout {
@@ -533,12 +541,41 @@ enum OpenCodexCardLayout {
     static let amountX = cardWidth - horizontalInset - amountWidth
     static let refreshTimeX = cardWidth - horizontalInset - 81
 
+    // Keep the official quota rows on the same AppKit text and progress
+    // metrics as the existing single-window quota card. The expanded card
+    // gets its extra height from these row metrics and the inter-row gap,
+    // rather than shrinking the rendered content.
+    static let quotaAmountPointSize: CGFloat = 31
+    static let quotaDetailPointSize: CGFloat = 13
+    static let quotaResetPointSize: CGFloat = 13
+    static let quotaRowHeight: CGFloat = 60
+    static let quotaRowGap: CGFloat = 14
+    static let quotaBottomInset: CGFloat = 8
+    static let quotaTitleGap: CGFloat = 11
+    static let quotaAmountOffset: CGFloat = 10
+    static let quotaResetOffset: CGFloat = 20
+    static let quotaDetailOffset: CGFloat = 39
+    static let quotaAmountHeight: CGFloat = 48
+    static let quotaResetHeight: CGFloat = 17
+    static let quotaDetailHeight: CGFloat = 18
+    static let quotaProgressHeight: CGFloat = 5
+
     static func frames(
         for category: OpenCodexCardCategory,
         linkPrefixWidth: CGFloat = 62,
         includesAccount: Bool = false,
-        includesSubscription: Bool = false
+        includesSubscription: Bool = false,
+        officialQuotaWindows: [OfficialQuotaWindow] = []
     ) -> OpenCodexCardFrames {
+        let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
+        if category == .quota, recognizedWindowCount > 1 {
+            return expandedQuotaFrames(
+                windowCount: recognizedWindowCount,
+                includesAccount: includesAccount,
+                includesSubscription: includesSubscription
+            )
+        }
+
         switch category {
         case .quota:
             let hasSubscription = includesAccount && includesSubscription
@@ -561,12 +598,33 @@ enum OpenCodexCardLayout {
                         height: 17
                     )
                     : nil,
-                quotaDetail: CGRect(x: horizontalInset, y: 47, width: 128, height: 18),
-                reset: CGRect(x: horizontalInset, y: 28, width: 128, height: 17),
-                amount: CGRect(x: amountX, y: 18, width: amountWidth, height: 48),
-                progress: CGRect(x: horizontalInset, y: 8, width: contentWidth, height: 5),
+                quotaDetail: CGRect(
+                    x: horizontalInset,
+                    y: 47,
+                    width: 128,
+                    height: quotaDetailHeight
+                ),
+                reset: CGRect(
+                    x: horizontalInset,
+                    y: 28,
+                    width: 128,
+                    height: quotaResetHeight
+                ),
+                amount: CGRect(
+                    x: amountX,
+                    y: 18,
+                    width: amountWidth,
+                    height: quotaAmountHeight
+                ),
+                progress: CGRect(
+                    x: horizontalInset,
+                    y: 8,
+                    width: contentWidth,
+                    height: quotaProgressHeight
+                ),
                 linkPrefix: nil,
-                link: nil
+                link: nil,
+                quotaRows: []
             )
         case .balance:
             let linkWidth: CGFloat = linkPrefixWidth == 62 ? 148 : 136
@@ -582,9 +640,85 @@ enum OpenCodexCardLayout {
                 amount: CGRect(x: amountX, y: 18, width: amountWidth, height: 48),
                 progress: CGRect(x: horizontalInset, y: 8, width: contentWidth, height: 5),
                 linkPrefix: CGRect(x: horizontalInset, y: 28, width: linkPrefixWidth, height: 17),
-                link: CGRect(x: linkX, y: 28, width: linkWidth, height: 17)
+                link: CGRect(x: linkX, y: 28, width: linkWidth, height: 17),
+                quotaRows: []
             )
         }
+    }
+
+    private static func expandedQuotaFrames(
+        windowCount: Int,
+        includesAccount: Bool,
+        includesSubscription: Bool
+    ) -> OpenCodexCardFrames {
+        let rowHeight = quotaRowHeight
+        let rowGap = quotaRowGap
+        let bottomInset = quotaBottomInset
+        let titleGap = quotaTitleGap
+        let accountShift: CGFloat = includesAccount ? 19 : 0
+        let rowAreaHeight = CGFloat(windowCount) * rowHeight
+            + CGFloat(max(0, windowCount - 1)) * rowGap
+        let baseTitleY = bottomInset + rowAreaHeight + titleGap
+        let titleY = baseTitleY + accountShift
+        let cardHeight = titleY + 20 + 7
+        let hasSubscription = includesAccount && includesSubscription
+        let accountWidth = hasSubscription
+            ? contentWidth - subscriptionWidth - subscriptionGap
+            : contentWidth
+        let rows = (0..<windowCount).map { index in
+            let y = bottomInset
+                + CGFloat(windowCount - 1 - index) * (rowHeight + rowGap)
+            return OpenCodexQuotaRowFrames(
+                quotaDetail: CGRect(
+                    x: horizontalInset,
+                    y: y + quotaDetailOffset,
+                    width: 128,
+                    height: quotaDetailHeight
+                ),
+                reset: CGRect(
+                    x: horizontalInset,
+                    y: y + quotaResetOffset,
+                    width: 128,
+                    height: quotaResetHeight
+                ),
+                amount: CGRect(
+                    x: amountX,
+                    y: y + quotaAmountOffset,
+                    width: amountWidth,
+                    height: quotaAmountHeight
+                ),
+                progress: CGRect(
+                    x: horizontalInset,
+                    y: y,
+                    width: contentWidth,
+                    height: quotaProgressHeight
+                )
+            )
+        }
+
+        return OpenCodexCardFrames(
+            cardSize: CGSize(width: cardWidth, height: cardHeight),
+            title: CGRect(x: horizontalInset, y: titleY, width: 189, height: 20),
+            refreshTime: CGRect(x: refreshTimeX, y: titleY + 1, width: 81, height: 17),
+            account: includesAccount
+                ? CGRect(x: horizontalInset, y: baseTitleY, width: accountWidth, height: 17)
+                : nil,
+            subscription: hasSubscription
+                ? CGRect(
+                    x: cardWidth - horizontalInset - subscriptionWidth,
+                    y: baseTitleY,
+                    width: subscriptionWidth,
+                    height: 17
+                )
+                : nil,
+            quotaDetail: .zero,
+            reset: nil,
+            amount: .zero,
+            progress: nil,
+            linkPrefix: nil,
+            link: nil,
+            quotaRows: rows
+        )
     }
 }
 

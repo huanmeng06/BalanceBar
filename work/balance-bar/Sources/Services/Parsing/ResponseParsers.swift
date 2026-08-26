@@ -199,10 +199,22 @@ enum BalanceResponseParser {
 
 enum OfficialQuotaResponseParser {
     struct Output: Equatable {
-        let remaining: Double
-        let label: String
-        let daysText: String
-        let reset: String?
+        let windows: [OfficialQuotaWindow]
+
+        private var representative: OfficialQuotaWindow? {
+            windows.first(where: { $0.kind == .sevenDay })
+                ?? windows.first(where: { $0.kind == .fiveHour })
+                ?? windows.first
+        }
+
+        // Keep the existing single-window accessors for quick-switch summaries
+        // and callers that still need one representative quota. The weekly
+        // window remains preferred, preserving the compact status text and
+        // Dashboard behavior while the menu card consumes `windows`.
+        var remaining: Double { representative?.remaining ?? 0 }
+        var label: String { representative?.label ?? tr(.keyResponseParsersQuota) }
+        var daysText: String { representative?.daysText ?? tr(.keyResponseParsersQuota2) }
+        var reset: String? { representative?.reset }
     }
 
     static func parse(
@@ -234,38 +246,82 @@ enum OfficialQuotaResponseParser {
                       let utilization = ResponseParsingSupport.numberValue(window["utilization"])
                 else { continue }
                 return Output(
-                    remaining: max(0, min(100, 100 - utilization)),
-                    label: label,
-                    daysText: daysText,
-                    reset: ResponseParsingSupport.resetDescription(window["resets_at"], now: now)
+                    windows: [OfficialQuotaWindow(
+                        kind: .other,
+                        remaining: max(0, min(100, 100 - utilization)),
+                        label: label,
+                        daysText: daysText,
+                        reset: ResponseParsingSupport.resetDescription(window["resets_at"], now: now),
+                        durationSeconds: nil
+                    )]
                 )
             }
             throw ResponseParserError.unsupportedFormat
         }
 
         let limits = (object["rate_limit"] as? [String: Any]) ?? object
-        let primary = limits["primary_window"] as? [String: Any]
-        let secondary = limits["secondary_window"] as? [String: Any]
-        // Select the longest actual window; CC Switch may expose weekly quota
-        // in either primary_window or secondary_window.
-        let windows = [primary, secondary].compactMap { $0 }
-        guard let chosen = windows.max(by: {
-            (ResponseParsingSupport.numberValue($0["limit_window_seconds"]) ?? 0) <
-            (ResponseParsingSupport.numberValue($1["limit_window_seconds"]) ?? 0)
-        }), let used = ResponseParsingSupport.numberValue(chosen["used_percent"]) else {
+        let windows = limits.values.compactMap { $0 as? [String: Any] }.compactMap { window in
+            Self.parseCodexWindow(window, now: now)
+        }
+        guard !windows.isEmpty else {
             throw ResponseParserError.unsupportedFormat
         }
-        let remaining = max(0, min(100, 100 - used))
-        let duration = ResponseParsingSupport.numberValue(chosen["limit_window_seconds"]) ?? 0
-        let isWeekly = duration >= 6 * 86_400
-        let reset = ResponseParsingSupport.resetDescription(chosen["reset_after_seconds"], now: now)
-            ?? ResponseParsingSupport.resetDescription(chosen["reset_at"], now: now)
-            ?? ResponseParsingSupport.stringValue(chosen["reset_description"])
-        return Output(
-            remaining: remaining,
-            label: isWeekly ? tr(.keyResponseParsers7DayQuota2) : tr(.keyResponseParsersQuota),
-            daysText: isWeekly ? tr(.keyResponseParsers7Days4) : tr(.keyResponseParsersQuota2),
-            reset: reset
+        return Output(windows: windows.sorted(by: Self.windowSort))
+    }
+
+    private static func parseCodexWindow(
+        _ window: [String: Any],
+        now: Date
+    ) -> OfficialQuotaWindow? {
+        guard let used = ResponseParsingSupport.numberValue(window["used_percent"]) else {
+            return nil
+        }
+        let duration = ResponseParsingSupport.numberValue(window["limit_window_seconds"])
+
+        let kind: OfficialQuotaWindow.Kind
+        if let duration, abs(duration - 5 * 3_600) < 1 {
+            kind = .fiveHour
+        } else if let duration, abs(duration - 7 * 86_400) < 1 {
+            kind = .sevenDay
+        } else {
+            kind = .other
+        }
+
+        let label: String
+        let daysText: String
+        switch kind {
+        case .fiveHour:
+            label = tr(.keyResponseParsers5HourQuota)
+            daysText = tr(.keyResponseParsers5Hours)
+        case .sevenDay:
+            label = tr(.keyResponseParsers7DayQuota2)
+            daysText = tr(.keyResponseParsers7Days4)
+        case .other:
+            let isWeekly = duration.map { $0 >= 6 * 86_400 } ?? false
+            label = isWeekly ? tr(.keyResponseParsers7DayQuota2) : tr(.keyResponseParsersQuota)
+            daysText = isWeekly ? tr(.keyResponseParsers7Days4) : tr(.keyResponseParsersQuota2)
+        }
+
+        let reset = ResponseParsingSupport.resetDescription(window["reset_after_seconds"], now: now)
+            ?? ResponseParsingSupport.resetDescription(window["reset_at"], now: now)
+            ?? ResponseParsingSupport.stringValue(window["reset_description"])
+        return OfficialQuotaWindow(
+            kind: kind,
+            remaining: max(0, min(100, 100 - used)),
+            label: label,
+            daysText: daysText,
+            reset: reset,
+            durationSeconds: duration
         )
+    }
+
+    private static func windowSort(
+        _ lhs: OfficialQuotaWindow,
+        _ rhs: OfficialQuotaWindow
+    ) -> Bool {
+        if lhs.kind.sortOrder != rhs.kind.sortOrder {
+            return lhs.kind.sortOrder < rhs.kind.sortOrder
+        }
+        return (lhs.durationSeconds ?? 0) > (rhs.durationSeconds ?? 0)
     }
 }
