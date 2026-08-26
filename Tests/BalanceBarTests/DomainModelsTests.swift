@@ -192,6 +192,92 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(legacySnapshot.officialQuotaWindowsForMenu.count, 1)
     }
 
+    func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h0m",
+            durationSeconds: 18_000
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "1h30m",
+            durationSeconds: 604_800
+        )
+        let windows = [fiveHour, sevenDay]
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            sevenDay.remaining,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: windows
+        )
+
+        let fiveHourPresentation = snapshot.menuBarSnapshot(preferredQuotaWindow: .fiveHour)
+        XCTAssertEqual(fiveHourPresentation.amount, fiveHour.remaining)
+        XCTAssertEqual(fiveHourPresentation.unit, fiveHour.label)
+        XCTAssertEqual(fiveHourPresentation.message, fiveHour.reset)
+        XCTAssertEqual(fiveHourPresentation.officialQuotaWindows, snapshot.officialQuotaWindows)
+
+        let sevenDayPresentation = snapshot.menuBarSnapshot(preferredQuotaWindow: .sevenDay)
+        XCTAssertEqual(sevenDayPresentation.amount, sevenDay.remaining)
+        XCTAssertEqual(sevenDayPresentation.unit, sevenDay.label)
+        XCTAssertEqual(sevenDayPresentation.message, sevenDay.reset)
+
+        let onlySevenDay = Snapshot.official(
+            "OpenAI",
+            sevenDay.remaining,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [sevenDay]
+        )
+        let fiveHourFallback = onlySevenDay.menuBarSnapshot(preferredQuotaWindow: .fiveHour)
+        XCTAssertEqual(fiveHourFallback.amount, sevenDay.remaining)
+        XCTAssertEqual(fiveHourFallback.unit, sevenDay.label)
+
+        let onlyFiveHour = Snapshot.official(
+            "OpenAI",
+            fiveHour.remaining,
+            fiveHour.label,
+            fiveHour.reset,
+            date,
+            windows: [fiveHour]
+        )
+        let missingSevenDay = onlyFiveHour.menuBarSnapshot(preferredQuotaWindow: .sevenDay)
+        XCTAssertEqual(missingSevenDay.kind, .error)
+        XCTAssertEqual(missingSevenDay.menuBarPrimary, "!")
+        XCTAssertNil(missingSevenDay.amount)
+        XCTAssertNil(missingSevenDay.unit)
+
+        let legacy = Snapshot.official(
+            "OpenAI",
+            63,
+            "Quota",
+            "later",
+            date,
+            windows: [OfficialQuotaWindow(
+                kind: .other,
+                remaining: 63,
+                label: "Quota",
+                daysText: "Quota",
+                reset: "later",
+                durationSeconds: nil
+            )]
+        )
+        let legacyPresentation = legacy.menuBarSnapshot(preferredQuotaWindow: .fiveHour)
+        XCTAssertEqual(legacyPresentation.amount, 63)
+        XCTAssertEqual(legacyPresentation.unit, "Quota")
+        XCTAssertEqual(legacyPresentation.officialQuotaWindows, legacy.officialQuotaWindows)
+    }
+
     func testBalanceSnapshotAndCacheKeepProviderClientIsolation() {
         let date = Date(timeIntervalSince1970: 1_700_000_001)
         let balance = Snapshot.balance(

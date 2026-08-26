@@ -567,6 +567,116 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
+    func testLiveStatusItemUsesSelectedOfficialQuotaWindowForCompactPresentation() throws {
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true
+        )
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h0m",
+            durationSeconds: 18_000
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "1h30m",
+            durationSeconds: 604_800
+        )
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            sevenDay.remaining,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [sevenDay, fiveHour]
+        )
+        let fiveHourSettings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 10,
+            keepMenuOpenAfterRefresh: true,
+            quotaWindowPreference: .fiveHour
+        )
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: fiveHourSettings
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "80%")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "1h0m")
+
+        let sevenDaySettings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 10,
+            keepMenuOpenAfterRefresh: true,
+            quotaWindowPreference: .sevenDay
+        )
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: sevenDaySettings
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "45%")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "1h30m")
+
+        let onlyFiveHour = Snapshot.official(
+            "OpenAI",
+            fiveHour.remaining,
+            fiveHour.label,
+            fiveHour.reset,
+            date,
+            windows: [fiveHour]
+        )
+        controller.update(
+            snapshot: onlyFiveHour,
+            refreshDate: nil,
+            menuInput: input,
+            settings: sevenDaySettings
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "!")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "")
+        controller.teardown()
+    }
+
+    @MainActor
     func testLiveStatusItemOfficialAmountOnlyKeepsPrimaryInkAnchored() throws {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(

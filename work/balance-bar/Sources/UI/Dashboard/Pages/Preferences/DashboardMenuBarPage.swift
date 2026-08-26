@@ -291,6 +291,7 @@ final class DashboardMenuBarPage {
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
+    static let quotaWindowPreferenceIdentifier = AppPreferences.menuBarQuotaWindowPreferenceKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
     static let iconOffsetSliderMinimumIdentifier = "menuBarIconOffsetSliderMinimum"
@@ -445,6 +446,7 @@ final class DashboardMenuBarPage {
     private weak var amountOffsetSlider: NSSlider?
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
+    private weak var quotaWindowPreferenceControl: NSPopUpButton?
     private var fontSizePresetTrackingObserver: NSObjectProtocol?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
@@ -618,6 +620,11 @@ final class DashboardMenuBarPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
+        let quotaWindowPreferenceControl = makeQuotaWindowPreferenceControl(
+            value: input.preferences.menuBarQuotaWindowPreference,
+            relay: input.relay
+        )
+        self.quotaWindowPreferenceControl = quotaWindowPreferenceControl
         let animationToggle = DashboardSettingsComponents.makeSwitch(
             identifier: "animateCodexActivity",
             isOn: input.preferences.animateCodexActivity,
@@ -692,6 +699,11 @@ final class DashboardMenuBarPage {
             ]
         )
         let displaySection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPageDisplayItems), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
+                tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
+                subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
+                control: quotaWindowPreferenceControl
+            ),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageAgentIcon), subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus), control: iconToggle),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageBalanceAmount), subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance), control: amountToggle),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageResetCountdown), subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable), control: resetToggle)
@@ -815,8 +827,8 @@ final class DashboardMenuBarPage {
         )
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
-            animationSection,
             displaySection,
+            animationSection,
             typographyAndPositionSection
         ])
     }
@@ -897,6 +909,15 @@ final class DashboardMenuBarPage {
             )
         }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
+        if let quotaWindowPreferenceControl,
+           let selectedIndex = OfficialQuotaWindowPreference.allCases.firstIndex(
+               of: preferences.menuBarQuotaWindowPreference
+           ) {
+            if quotaWindowPreferenceControl.indexOfSelectedItem != selectedIndex {
+                quotaWindowPreferenceControl.selectItem(at: selectedIndex)
+            }
+            quotaWindowPreferenceControl.synchronizeTitleAndSelectedItem()
+        }
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
         applyWidthAdjustment(
@@ -1265,6 +1286,41 @@ final class DashboardMenuBarPage {
         control.toolTip = tr(.keyDashboardMenuBarPageLarge1310PtMedium1179PtSmall1048Pt)
         control.widthAnchor.constraint(equalToConstant: Self.fontSizePresetWidth).isActive = true
         return FontPresetControls(view: control, control: control)
+    }
+
+    private func makeQuotaWindowPreferenceControl(
+        value: OfficialQuotaWindowPreference,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.quotaWindowPreferenceIdentifier,
+            items: OfficialQuotaWindowPreference.allCases.map { preference in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.quotaWindowPreferenceLabel(preference),
+                    representedObject: preference.rawValue
+                )
+            },
+            selectedIndex: OfficialQuotaWindowPreference.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarQuotaWindowPreference(_:))
+        )
+        let minimumWidth: CGFloat = 108
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription)
+        return control
+    }
+
+    private static func quotaWindowPreferenceLabel(
+        _ preference: OfficialQuotaWindowPreference
+    ) -> String {
+        switch preference {
+        case .fiveHour:
+            return tr(.keyDashboardMenuBarPageFiveHourQuota)
+        case .sevenDay:
+            return tr(.keyDashboardMenuBarPageSevenDayQuota)
+        }
     }
 
     private func observeFontSizePresetTracking(

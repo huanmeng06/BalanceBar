@@ -2782,6 +2782,185 @@ final class UpdateTests: XCTestCase {
         XCTAssertLessThan(row.frame.height, 120)
     }
 
+    func testDashboardUpdateActionsKeepOneTrailingColumnAcrossStatesAndWindowWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "UpdateTests.UI.trailing-column.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let pageController = DashboardGeneralPage()
+        let relay = DashboardPreferencePageRelay()
+        let page = pageController.make(.init(
+            preferences: preferences,
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: .checking(current: try XCTUnwrap(AppSemanticVersion("1.2.3")))
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 360),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 360))
+        window.contentView = host
+        page.frame = host.bounds
+        page.autoresizingMask = [.width, .height]
+        host.addSubview(page)
+
+        let updateButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+        let controls = try XCTUnwrap(updateButton.superview as? NSStackView)
+        let row = try XCTUnwrap(controls.superview)
+        let ignoredButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "ignoreUpdateButton" }
+        )
+        let notesButton = try XCTUnwrap(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
+        )
+
+        func assertTrailingAlignment(
+            _ state: UpdateCheckState,
+            width: CGFloat,
+            file: StaticString = #filePath,
+            line: UInt = #line
+        ) {
+            pageController.refresh(updateState: state)
+            window.setContentSize(NSSize(width: width, height: 360))
+            page.setFrameSize(NSSize(width: width, height: 360))
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+
+            let visibleButtons = controls.arrangedSubviews.filter { !$0.isHidden }
+            XCTAssertFalse(visibleButtons.isEmpty, file: file, line: line)
+            guard let trailingButton = visibleButtons.last else { return }
+            let trailingFrame = trailingButton.convert(trailingButton.bounds, to: row)
+            XCTAssertEqual(
+                trailingFrame.maxX,
+                row.bounds.maxX - 20,
+                accuracy: 0.5,
+                "\(state) at width \(width) must use the row's trailing inset",
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(
+                controls.frame.maxX,
+                row.bounds.maxX - 20,
+                accuracy: 0.5,
+                "controls at width \(width) must stay anchored to the row trailing inset",
+                file: file,
+                line: line
+            )
+        }
+
+        let current = try XCTUnwrap(AppSemanticVersion("1.2.3"))
+        let latest = try XCTUnwrap(AppSemanticVersion("1.2.5"))
+        assertTrailingAlignment(.idle(current: current), width: 720)
+        assertTrailingAlignment(.checking(current: current), width: 720)
+        assertTrailingAlignment(.latest(current: current), width: 720)
+        assertTrailingAlignment(.failed(.network), width: 720)
+        assertTrailingAlignment(.downloading(current: current, latest: latest, progress: 25), width: 720)
+        assertTrailingAlignment(.installing(current: current, latest: latest, progress: 25), width: 720)
+        assertTrailingAlignment(.restarting(current: current, latest: latest), width: 720)
+        assertTrailingAlignment(.available(current: current, latest: latest), width: 720)
+
+        XCTAssertFalse(ignoredButton.isHidden)
+        XCTAssertFalse(notesButton.isHidden)
+
+        let narrowPageController = DashboardGeneralPage()
+        let narrowRelay = DashboardPreferencePageRelay()
+        let narrowPage = narrowPageController.make(.init(
+            preferences: preferences,
+            currentProviderName: "OpenAI",
+            relay: narrowRelay,
+            updateState: .available(
+                current: current,
+                latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
+            )
+        ))
+        let narrowWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 360),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        defer { narrowWindow.orderOut(nil) }
+        let narrowHost = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 360))
+        narrowWindow.contentView = narrowHost
+        narrowPage.frame = narrowHost.bounds
+        narrowPage.autoresizingMask = []
+        narrowHost.addSubview(narrowPage)
+
+        let narrowUpdateButton = try XCTUnwrap(
+            updateTestDescendants(of: narrowPage)
+                .compactMap { $0 as? NSButton }
+                .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+        )
+        let narrowControls = try XCTUnwrap(narrowUpdateButton.superview as? DashboardUpdateControlsStackView)
+        let narrowRow = try XCTUnwrap(narrowControls.superview)
+
+        func assertNarrowTrailingAlignment(
+            _ state: UpdateCheckState,
+            orientation: NSUserInterfaceLayoutOrientation,
+            file: StaticString = #filePath,
+            line: UInt = #line
+        ) {
+            narrowPageController.refresh(updateState: state)
+            narrowWindow.layoutIfNeeded()
+            narrowPage.layoutSubtreeIfNeeded()
+
+            XCTAssertEqual(narrowControls.orientation, orientation, file: file, line: line)
+            let visibleButtons = narrowControls.arrangedSubviews.filter { !$0.isHidden }
+            XCTAssertFalse(visibleButtons.isEmpty, file: file, line: line)
+            for button in visibleButtons {
+                let buttonFrame = button.convert(button.bounds, to: narrowRow)
+                XCTAssertEqual(
+                    buttonFrame.maxX,
+                    narrowRow.bounds.maxX - 20,
+                    accuracy: 0.5,
+                    "\(state) at narrow width must keep every action on the row trailing column",
+                    file: file,
+                    line: line
+                )
+            }
+            XCTAssertEqual(
+                narrowControls.frame.maxX,
+                narrowRow.bounds.maxX - 20,
+                accuracy: 0.5,
+                "controls at narrow width must stay anchored to the row trailing inset",
+                file: file,
+                line: line
+            )
+        }
+
+        assertNarrowTrailingAlignment(
+            .available(
+                current: current,
+                latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))
+            ),
+            orientation: .vertical
+        )
+        assertNarrowTrailingAlignment(.checking(current: current), orientation: .horizontal)
+        assertNarrowTrailingAlignment(.latest(current: current), orientation: .horizontal)
+        assertNarrowTrailingAlignment(
+            .available(current: current, latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))),
+            orientation: .vertical
+        )
+    }
+
     func testDashboardUpdateCopyIsLocalizedAcrossAllSupportedLanguages() throws {
         let states: [AppLanguage] = [
             .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .english,

@@ -680,7 +680,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (.english, "Animation", "Play the icon animation while a task is running"),
             (.traditionalChineseTaiwan, "動畫", "任務進行時播放圖示動畫"),
             (.traditionalChineseHongKong, "動畫", "任務進行時播放圖示動畫"),
-            (.japanese, "アニメーション", "タスク実行中にアイコンアニメーションを再生")
+            (.japanese, "アニメーション", "タスク実行中にアイコンアニメーションを再生"),
+            (.korean, "애니메이션", "작업 실행 중 아이콘 애니메이션 재생"),
+            (.spanish, "Animación", "Reproducir la animación del icono mientras se ejecuta una tarea"),
+            (.german, "Animation", "Symbolanimation während einer laufenden Aufgabe abspielen"),
+            (.french, "Animation", "Lire l’animation de l’icône pendant l’exécution d’une tâche")
         ]
 
         for (language, animationSectionTitle, animationRowTitle) in cases {
@@ -706,7 +710,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 return XCTFail("Expected menu bar section headings for \(language)")
             }
             XCTAssertLessThan(previewIndex, animationIndex)
-            XCTAssertLessThan(animationIndex, displayIndex)
+            XCTAssertLessThan(previewIndex, displayIndex)
+            XCTAssertLessThan(displayIndex, animationIndex)
             XCTAssertEqual(labelStrings.filter { $0 == animationSectionTitle }.count, 1)
             XCTAssertEqual(labelStrings.filter { $0 == animationRowTitle }.count, 1)
 
@@ -737,6 +742,211 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .isEmpty
             )
             defaults.removePersistentDomain(forName: suiteName)
+        }
+    }
+
+    func testQuotaWindowPreferenceSelectorUsesLocalizedOptionsPersistsAndKeepsLayoutStable() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let languages: [AppLanguage] = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .japanese,
+            .korean,
+            .spanish,
+            .german,
+            .french,
+            .english
+        ]
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-hour",
+                daysText: "5 hours",
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: "7-day",
+                daysText: "7 days",
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            45,
+            "7-day",
+            "1h30m",
+            date,
+            windows: windows
+        )
+
+        for language in languages {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.QuotaWindowPreference.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let preferences = AppPreferences(defaults: defaults)
+            let relay = DashboardPreferencePageRelay()
+            var changedPreferences: [OfficialQuotaWindowPreference] = []
+            relay.onMenuBarQuotaWindowPreferenceChanged = { preference in
+                changedPreferences.append(preference)
+                preferences.menuBarQuotaWindowPreference = preference
+            }
+            let controller = DashboardMenuBarPage()
+            let page = controller.make(.init(
+                preferences: preferences,
+                snapshot: snapshot,
+                menuBarSnapshot: { current in
+                    current.menuBarSnapshot(
+                        preferredQuotaWindow: preferences.menuBarQuotaWindowPreference
+                    )
+                },
+                iconImage: nil,
+                relay: relay
+            ))
+            page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+            let window = NSWindow(
+                contentRect: page.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            window.layoutIfNeeded()
+
+            let popup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaWindowPreferenceIdentifier }
+            )
+            XCTAssertEqual(
+                popup.itemTitles,
+                [
+                    tr(.keyDashboardMenuBarPageFiveHourQuota, language: language),
+                    tr(.keyDashboardMenuBarPageSevenDayQuota, language: language)
+                ]
+            )
+            if language == .simplifiedChinese {
+                XCTAssertEqual(
+                    tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language),
+                    "额度周期"
+                )
+                XCTAssertEqual(
+                    tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription, language: language),
+                    "选择菜单栏中优先展示的额度周期"
+                )
+            }
+            XCTAssertFalse(popup.itemTitles.contains { $0.hasPrefix("⟦") })
+            XCTAssertEqual(popup.indexOfSelectedItem, 0)
+            XCTAssertEqual(
+                popup.item(at: 0)?.representedObject as? String,
+                OfficialQuotaWindowPreference.fiveHour.rawValue
+            )
+            XCTAssertEqual(
+                popup.item(at: 1)?.representedObject as? String,
+                OfficialQuotaWindowPreference.sevenDay.rawValue
+            )
+            XCTAssertGreaterThanOrEqual(
+                popup.constraints
+                    .filter { $0.firstAttribute == .width && $0.relation == .greaterThanOrEqual }
+                    .map(\.constant)
+                    .max() ?? 0,
+                ceil(popup.fittingSize.width)
+            )
+
+            let selectorRow = try XCTUnwrap(popup.superview)
+            let displayHeading = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first {
+                        $0.stringValue == tr(.keyDashboardMenuBarPageDisplayItems, language: language)
+                    }
+            )
+            let displayRows = try XCTUnwrap(selectorRow.superview as? NSStackView)
+            XCTAssertTrue(displayRows.arrangedSubviews.first === selectorRow)
+            XCTAssertTrue(
+                descendants(of: selectorRow)
+                    .compactMap { $0 as? NSTextField }
+                    .contains {
+                        $0.stringValue == tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language)
+                    }
+            )
+            XCTAssertTrue(
+                descendants(of: selectorRow)
+                    .compactMap { $0 as? NSTextField }
+                    .contains {
+                        $0.stringValue == tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription, language: language)
+                    }
+            )
+            XCTAssertTrue(
+                displayHeading.convert(displayHeading.bounds, to: page).minY
+                    < selectorRow.convert(selectorRow.bounds, to: page).minY
+            )
+
+            let previewPrimary = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier }
+            )
+            XCTAssertEqual(previewPrimary.stringValue, "80%")
+            let narrowRowHeight = selectorRow.frame.height
+
+            popup.selectItem(at: 1)
+            relay.menuBarQuotaWindowPreference(popup)
+            XCTAssertEqual(changedPreferences, [.sevenDay])
+            XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .sevenDay)
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { current in
+                    current.menuBarSnapshot(
+                        preferredQuotaWindow: preferences.menuBarQuotaWindowPreference
+                    )
+                },
+                iconImage: nil
+            )
+            window.layoutIfNeeded()
+            XCTAssertEqual(popup.indexOfSelectedItem, 1)
+            XCTAssertEqual(previewPrimary.stringValue, "45%")
+
+            window.setContentSize(NSSize(width: 740, height: 900))
+            window.layoutIfNeeded()
+            XCTAssertGreaterThan(selectorRow.frame.height, 0)
+            XCTAssertLessThanOrEqual(selectorRow.frame.height, narrowRowHeight + 0.5)
+            for label in descendants(of: selectorRow).compactMap({ $0 as? NSTextField }) {
+                XCTAssertGreaterThanOrEqual(label.frame.minY, -1)
+                XCTAssertLessThanOrEqual(label.frame.maxY, selectorRow.bounds.height + 1)
+            }
+
+            let reloadedPage = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: snapshot,
+                menuBarSnapshot: { current in
+                    current.menuBarSnapshot(
+                        preferredQuotaWindow: AppPreferences(defaults: defaults).menuBarQuotaWindowPreference
+                    )
+                },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay()
+            ))
+            XCTAssertEqual(
+                try XCTUnwrap(
+                    descendants(of: reloadedPage)
+                        .compactMap { $0 as? NSPopUpButton }
+                        .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaWindowPreferenceIdentifier }
+                ).indexOfSelectedItem,
+                1
+            )
+            window.contentView = nil
         }
     }
 
