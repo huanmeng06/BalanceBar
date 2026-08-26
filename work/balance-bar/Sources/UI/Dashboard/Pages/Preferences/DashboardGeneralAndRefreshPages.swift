@@ -166,6 +166,17 @@ final class DashboardUpdateControlsStackView: NSStackView, DashboardSettingsRowC
             height: visibleButtons.map { $0.fittingSize.height }.max() ?? 0
         )
     }
+
+    func invalidateLayoutAfterContentChange() {
+        // Button title and hidden-state changes can update the arranged views'
+        // intrinsic sizes without invalidating this custom stack's cached row
+        // width. Propagate the invalidation so the existing trailing anchor is
+        // remeasured before the next window layout pass.
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+        superview?.needsLayout = true
+        superview?.superview?.needsLayout = true
+    }
 }
 
 final class DashboardGeneralPage {
@@ -367,6 +378,7 @@ final class DashboardGeneralPage {
         apply(presentation, to: updateIgnoreButton)
         apply(presentation, to: updateNotesButton)
         updateBadge?.isHidden = !presentation.showsUpdateBadge
+        (updateButton.superview as? DashboardUpdateControlsStackView)?.invalidateLayoutAfterContentChange()
     }
 
     private func apply(
