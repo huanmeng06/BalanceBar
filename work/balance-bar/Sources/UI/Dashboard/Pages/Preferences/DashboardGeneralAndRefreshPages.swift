@@ -86,10 +86,10 @@ struct DashboardUpdatePresentation: Equatable {
             )
         case .failed(let failure):
             let subtitle: String
-            if let reason = localizedUpdateCheckFailureReason(for: failure, language: language) {
+            if let details = localizedUpdateCheckFailureDetails(for: failure, language: language) {
                 subtitle = tr(
                     .keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgainReason,
-                    arguments: [reason],
+                    arguments: [details.reason, details.suggestion],
                     language: language
                 )
             } else {
@@ -117,31 +117,68 @@ struct DashboardUpdatePresentation: Equatable {
         }
     }
 
-    private static func localizedUpdateCheckFailureReason(
+    private static func localizedUpdateCheckFailureDetails(
         for failure: UpdateFailure,
         language: AppLanguage
-    ) -> String? {
+    ) -> (reason: String, suggestion: String)? {
         switch failure {
         case .network:
-            return tr(
-                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonNetwork,
-                language: language
+            return (
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonNetwork,
+                    language: language
+                ),
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionNetwork,
+                    language: language
+                )
             )
         case .httpStatus(let statusCode):
-            return tr(
-                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpStatusValue,
-                arguments: [String(statusCode)],
-                language: language
+            let reasonKey: LocalizationKey
+            switch statusCode {
+            case 403:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpForbiddenValue
+            case 404:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpNotFoundValue
+            case 429:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue
+            case 500...599:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpServerErrorValue
+            default:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpStatusValue
+            }
+            let suggestionKey: LocalizationKey = statusCode == 429
+                ? .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests
+                : .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttp
+            return (
+                tr(
+                    reasonKey,
+                    arguments: [String(statusCode)],
+                    language: language
+                ),
+                tr(suggestionKey, language: language)
             )
         case .invalidResponse:
-            return tr(
-                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidResponse,
-                language: language
+            return (
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidResponse,
+                    language: language
+                ),
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionInvalidResponse,
+                    language: language
+                )
             )
         case .invalidReleaseVersion:
-            return tr(
-                .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidReleaseVersion,
-                language: language
+            return (
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidReleaseVersion,
+                    language: language
+                ),
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionInvalidReleaseVersion,
+                    language: language
+                )
             )
         case .assetUnavailable, .downloadFailed, .verificationFailed, .installationFailed, .invalidCurrentVersion:
             return nil

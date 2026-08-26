@@ -2585,7 +2585,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(
             updateTestDescendants(of: page).compactMap { $0 as? NSTextField }
                 .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }?.stringValue,
-            "检查更新失败，请重试。原因：网络请求失败"
+            "检查更新失败，请重试。\n原因：网络请求失败\n建议：请检查网络或代理设置后重试。"
         )
 
         pageController.refresh(updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))))
@@ -2995,15 +2995,15 @@ final class UpdateTests: XCTestCase {
             )
             XCTAssertEqual(
                 failure.subtitle,
-                language == .simplifiedChinese ? "检查更新失败，请重试。原因：网络请求失败" :
-                    language == .traditionalChineseTaiwan ? "檢查更新失敗，請重試。原因：網路請求失敗" :
-                    language == .traditionalChineseHongKong ? "檢查更新失敗，請再試。原因：網絡請求失敗" :
-                    language == .japanese ? "アップデートの確認に失敗しました。再試行してください。原因：ネットワーク要求に失敗しました" :
-                    language == .korean ? "업데이트 확인 실패; 다시 시도하세요. 원인: 네트워크 요청에 실패했습니다" :
-                    language == .spanish ? "Falló la búsqueda de actualizaciones; inténtalo de nuevo. Motivo: La solicitud de red falló" :
-                    language == .german ? "Updateprüfung fehlgeschlagen; erneut versuchen. Grund: Die Netzwerkanfrage ist fehlgeschlagen" :
-                    language == .french ? "La recherche de mises à jour a échoué ; réessayez. Motif : La requête réseau a échoué" :
-                    "Update check failed; try again. Reason: The network request failed"
+                language == .simplifiedChinese ? "检查更新失败，请重试。\n原因：网络请求失败\n建议：请检查网络或代理设置后重试。" :
+                    language == .traditionalChineseTaiwan ? "檢查更新失敗，請重試。\n原因：網路請求失敗\n建議：請檢查網路或代理設定後重試。" :
+                    language == .traditionalChineseHongKong ? "檢查更新失敗，請再試。\n原因：網絡請求失敗\n建議：請檢查網絡或代理設定後重試。" :
+                    language == .japanese ? "アップデートの確認に失敗しました。再試行してください。\n原因：ネットワーク要求に失敗しました\n対処：ネットワークまたはプロキシ設定を確認して、再試行してください。" :
+                    language == .korean ? "업데이트 확인 실패; 다시 시도하세요.\n원인: 네트워크 요청에 실패했습니다\n권장 조치: 네트워크 또는 프록시 설정을 확인한 후 다시 시도하세요." :
+                    language == .spanish ? "Falló la búsqueda de actualizaciones; inténtalo de nuevo.\nMotivo: La solicitud de red falló\nSugerencia: Comprueba la configuración de red o del proxy y vuelve a intentarlo." :
+                    language == .german ? "Updateprüfung fehlgeschlagen; erneut versuchen.\nGrund: Die Netzwerkanfrage ist fehlgeschlagen\nEmpfehlung: Überprüfe deine Netzwerk- oder Proxy-Einstellungen und versuche es erneut." :
+                    language == .french ? "La recherche de mises à jour a échoué ; réessayez.\nMotif : La requête réseau a échoué\nSuggestion : Vérifiez vos paramètres réseau ou proxy, puis réessayez." :
+                    "Update check failed; try again.\nReason: The network request failed\nSuggestion: Check your network or proxy settings, then try again."
             )
             XCTAssertTrue(failure.buttonEnabled)
             XCTAssertFalse(failure.showsUpdateBadge)
@@ -3016,21 +3016,49 @@ final class UpdateTests: XCTestCase {
                 for: .failed(.httpStatus(403)),
                 language: .simplifiedChinese
             ).subtitle,
-            "检查更新失败，请重试。原因：服务器返回 HTTP 状态码 403"
+            "检查更新失败，请重试。\n原因：服务器拒绝请求（HTTP 403）\n建议：请稍后重试；若持续出现，请检查代理设置。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(404)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。\n原因：找不到更新服务（HTTP 404）\n建议：请稍后重试；若持续出现，请检查代理设置。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(429)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。\n原因：请求过于频繁（HTTP 429）\n建议：请稍后重试，避免连续点击。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(503)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。\n原因：更新服务器暂时异常（HTTP 503）\n建议：请稍后重试；若持续出现，请检查代理设置。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(418)),
+                language: .english
+            ).subtitle,
+            "Update check failed; try again.\nReason: The server returned an unexpected status (HTTP 418)\nSuggestion: Try again later; if the problem persists, check your proxy settings."
         )
         XCTAssertEqual(
             DashboardUpdatePresentation.make(
                 for: .failed(.invalidResponse),
                 language: .english
             ).subtitle,
-            "Update check failed; try again. Reason: The server response was invalid"
+            "Update check failed; try again.\nReason: The server response was invalid\nSuggestion: Try again later; if the problem persists, contact the maintainer."
         )
         XCTAssertEqual(
             DashboardUpdatePresentation.make(
                 for: .failed(.invalidReleaseVersion),
                 language: .japanese
             ).subtitle,
-            "アップデートの確認に失敗しました。再試行してください。原因：リリースバージョンが無効です"
+            "アップデートの確認に失敗しました。再試行してください。\n原因：リリースバージョンが無効です\n対処：メンテナーにリリースバージョンを確認してもらってください。"
         )
     }
 
