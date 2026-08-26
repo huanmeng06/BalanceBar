@@ -541,6 +541,25 @@ enum OpenCodexCardLayout {
     static let amountX = cardWidth - horizontalInset - amountWidth
     static let refreshTimeX = cardWidth - horizontalInset - 81
 
+    // Keep the official quota rows on the same AppKit text and progress
+    // metrics as the existing single-window quota card. The expanded card
+    // gets its extra height from these row metrics and the inter-row gap,
+    // rather than shrinking the rendered content.
+    static let quotaAmountPointSize: CGFloat = 31
+    static let quotaDetailPointSize: CGFloat = 13
+    static let quotaResetPointSize: CGFloat = 13
+    static let quotaRowHeight: CGFloat = 60
+    static let quotaRowGap: CGFloat = 14
+    static let quotaBottomInset: CGFloat = 8
+    static let quotaTitleGap: CGFloat = 11
+    static let quotaAmountOffset: CGFloat = 10
+    static let quotaResetOffset: CGFloat = 20
+    static let quotaDetailOffset: CGFloat = 39
+    static let quotaAmountHeight: CGFloat = 48
+    static let quotaResetHeight: CGFloat = 17
+    static let quotaDetailHeight: CGFloat = 18
+    static let quotaProgressHeight: CGFloat = 5
+
     static func frames(
         for category: OpenCodexCardCategory,
         linkPrefixWidth: CGFloat = 62,
@@ -579,10 +598,30 @@ enum OpenCodexCardLayout {
                         height: 17
                     )
                     : nil,
-                quotaDetail: CGRect(x: horizontalInset, y: 47, width: 128, height: 18),
-                reset: CGRect(x: horizontalInset, y: 28, width: 128, height: 17),
-                amount: CGRect(x: amountX, y: 18, width: amountWidth, height: 48),
-                progress: CGRect(x: horizontalInset, y: 8, width: contentWidth, height: 5),
+                quotaDetail: CGRect(
+                    x: horizontalInset,
+                    y: 47,
+                    width: 128,
+                    height: quotaDetailHeight
+                ),
+                reset: CGRect(
+                    x: horizontalInset,
+                    y: 28,
+                    width: 128,
+                    height: quotaResetHeight
+                ),
+                amount: CGRect(
+                    x: amountX,
+                    y: 18,
+                    width: amountWidth,
+                    height: quotaAmountHeight
+                ),
+                progress: CGRect(
+                    x: horizontalInset,
+                    y: 8,
+                    width: contentWidth,
+                    height: quotaProgressHeight
+                ),
                 linkPrefix: nil,
                 link: nil,
                 quotaRows: []
@@ -612,10 +651,10 @@ enum OpenCodexCardLayout {
         includesAccount: Bool,
         includesSubscription: Bool
     ) -> OpenCodexCardFrames {
-        let rowHeight: CGFloat = 42
-        let rowGap: CGFloat = 8
-        let bottomInset: CGFloat = 8
-        let titleGap: CGFloat = 11
+        let rowHeight = quotaRowHeight
+        let rowGap = quotaRowGap
+        let bottomInset = quotaBottomInset
+        let titleGap = quotaTitleGap
         let accountShift: CGFloat = includesAccount ? 19 : 0
         let rowAreaHeight = CGFloat(windowCount) * rowHeight
             + CGFloat(max(0, windowCount - 1)) * rowGap
@@ -630,10 +669,30 @@ enum OpenCodexCardLayout {
             let y = bottomInset
                 + CGFloat(windowCount - 1 - index) * (rowHeight + rowGap)
             return OpenCodexQuotaRowFrames(
-                quotaDetail: CGRect(x: horizontalInset, y: y + 25, width: 128, height: 17),
-                reset: CGRect(x: horizontalInset, y: y + 8, width: 128, height: 15),
-                amount: CGRect(x: amountX, y: y + 8, width: amountWidth, height: 29),
-                progress: CGRect(x: horizontalInset, y: y, width: contentWidth, height: 5)
+                quotaDetail: CGRect(
+                    x: horizontalInset,
+                    y: y + quotaDetailOffset,
+                    width: 128,
+                    height: quotaDetailHeight
+                ),
+                reset: CGRect(
+                    x: horizontalInset,
+                    y: y + quotaResetOffset,
+                    width: 128,
+                    height: quotaResetHeight
+                ),
+                amount: CGRect(
+                    x: amountX,
+                    y: y + quotaAmountOffset,
+                    width: amountWidth,
+                    height: quotaAmountHeight
+                ),
+                progress: CGRect(
+                    x: horizontalInset,
+                    y: y,
+                    width: contentWidth,
+                    height: quotaProgressHeight
+                )
             )
         }
 

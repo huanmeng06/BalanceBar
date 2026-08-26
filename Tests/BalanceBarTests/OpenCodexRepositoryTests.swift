@@ -1201,18 +1201,43 @@ final class OpenCodexRepositoryTests: XCTestCase {
             officialQuotaWindows: windows
         )
 
-        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 157))
+        XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 199))
         XCTAssertEqual(frames.quotaRows.count, 2)
-        XCTAssertEqual(frames.account, CGRect(x: 14, y: 111, width: 190, height: 17))
-        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 111, width: 78, height: 17))
-        XCTAssertEqual(frames.title, CGRect(x: 14, y: 130, width: 189, height: 20))
-        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 131, width: 81, height: 17))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 153, width: 190, height: 17))
+        XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 153, width: 78, height: 17))
+        XCTAssertEqual(frames.title, CGRect(x: 14, y: 172, width: 189, height: 20))
+        XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 173, width: 81, height: 17))
 
         let fiveHour = frames.quotaRows[0]
         let sevenDay = frames.quotaRows[1]
         XCTAssertGreaterThan(fiveHour.progress.minY, sevenDay.progress.minY)
+        XCTAssertEqual(
+            fiveHour.progress.minY - (sevenDay.progress.minY + OpenCodexCardLayout.quotaRowHeight),
+            OpenCodexCardLayout.quotaRowGap,
+            accuracy: 0.001
+        )
         XCTAssertEqual(fiveHour.progress.width, 276)
         XCTAssertEqual(sevenDay.progress.width, 276)
+        let baseline = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true
+        )
+        XCTAssertGreaterThan(frames.cardSize.height, baseline.cardSize.height)
+        for row in frames.quotaRows {
+            XCTAssertEqual(row.amount.width, baseline.amount.width)
+            XCTAssertEqual(row.amount.height, baseline.amount.height)
+            XCTAssertEqual(row.quotaDetail.width, baseline.quotaDetail.width)
+            XCTAssertEqual(row.quotaDetail.height, baseline.quotaDetail.height)
+            XCTAssertEqual(row.reset.width, baseline.reset?.width ?? 0)
+            XCTAssertEqual(row.reset.height, baseline.reset?.height ?? 0)
+            XCTAssertEqual(row.progress.width, baseline.progress?.width ?? 0)
+            XCTAssertEqual(row.progress.height, baseline.progress?.height ?? 0)
+            XCTAssertGreaterThanOrEqual(row.quotaDetail.minY, 0)
+            XCTAssertLessThanOrEqual(row.quotaDetail.maxY, frames.cardSize.height)
+            XCTAssertGreaterThanOrEqual(row.reset.minY, 0)
+            XCTAssertLessThanOrEqual(row.reset.maxY, frames.cardSize.height)
+        }
         XCTAssertLessThanOrEqual(sevenDay.progress.maxY, sevenDay.reset.minY)
         XCTAssertLessThanOrEqual(sevenDay.reset.maxY, sevenDay.quotaDetail.minY)
         XCTAssertLessThanOrEqual(fiveHour.progress.maxY, fiveHour.reset.minY)

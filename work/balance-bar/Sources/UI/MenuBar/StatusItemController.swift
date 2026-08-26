@@ -1688,7 +1688,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
                 let amount = makeOverviewLabel(
                     "\(Int(window.remaining))%",
-                    font: .monospacedDigitSystemFont(ofSize: 22, weight: .semibold)
+                    font: .monospacedDigitSystemFont(
+                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                        weight: .semibold
+                    )
                 )
                 amount.alignment = .right
                 amount.frame = row.amount
@@ -1696,7 +1699,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
                 let quotaDetail = makeMarqueeOverviewLabel(
                     window.label,
-                    font: .systemFont(ofSize: 13, weight: .medium),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                        weight: .medium
+                    ),
                     textColor: .labelColor,
                     frame: overviewMarqueeFrame(row.quotaDetail, avoiding: amount)
                 )
@@ -1707,7 +1713,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 } ?? tr(.keySnapshotResetValue, arguments: [tr(.keyLocalizationUnknown)])
                 let reset = makeMarqueeOverviewLabel(
                     resetText,
-                    font: .systemFont(ofSize: 13, weight: .regular),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                        weight: .regular
+                    ),
                     textColor: .secondaryLabelColor,
                     frame: overviewMarqueeFrame(row.reset, avoiding: amount)
                 )
@@ -1723,13 +1732,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
             let amount = makeOverviewLabel(
                 snapshot.overviewLargeAmount,
-                font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold)
+                font: .monospacedDigitSystemFont(
+                    ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                    weight: .semibold
+                )
             )
             amount.alignment = .right
             amount.frame = layout.amount
             let quotaDetail = makeMarqueeOverviewLabel(
                 snapshot.overviewQuotaDetail,
-                font: .systemFont(ofSize: 13, weight: .medium),
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                    weight: .medium
+                ),
                 textColor: .labelColor,
                 frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: amount)
             )
@@ -1750,7 +1765,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             } else {
                 let reset = makeMarqueeOverviewLabel(
                     snapshot.overviewReset(refreshDate: refreshDate, formatter: Self.timeFormatter),
-                    font: .systemFont(ofSize: 13, weight: .regular),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                        weight: .regular
+                    ),
                     textColor: .secondaryLabelColor,
                     frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: amount)
                 )
@@ -1823,18 +1841,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .official(let remaining, let label, let reset, _):
             progress = QuotaProgressView(percentage: remaining)
             progress?.frame = layout.progress ?? .zero
-            primary = makeOverviewLabel("\(Int(remaining))%", font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
+            primary = makeOverviewLabel(
+                "\(Int(remaining))%",
+                font: .monospacedDigitSystemFont(
+                    ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                    weight: .semibold
+                )
+            )
             primary.alignment = .right
             primary.frame = layout.amount
             detail = makeMarqueeOverviewLabel(
                 label,
-                font: .systemFont(ofSize: 13, weight: .medium),
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                    weight: .medium
+                ),
                 textColor: .labelColor,
                 frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
             )
             secondary = makeMarqueeOverviewLabel(
                 reset.map { tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)]) } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
-                font: .systemFont(ofSize: 13, weight: .regular),
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                    weight: .regular
+                ),
                 textColor: .secondaryLabelColor,
                 frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: primary)
             )
