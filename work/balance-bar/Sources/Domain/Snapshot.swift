@@ -154,6 +154,57 @@ struct Snapshot {
         return recognized.isEmpty ? Array(officialQuotaWindows.prefix(1)) : recognized
     }
 
+    /// Resolve only the compact/menu-bar presentation from the real quota
+    /// windows carried by this snapshot. The expanded card continues to use
+    /// `officialQuotaWindows` directly, so choosing a window never duplicates,
+    /// rewrites, or hides the source data.
+    func menuBarSnapshot(
+        preferredQuotaWindow: OfficialQuotaWindowPreference
+    ) -> Snapshot {
+        guard kind == .official else { return self }
+
+        let recognized = officialQuotaWindows.filter { $0.kind != .other }
+        // Older responses do not identify their window duration. Preserve the
+        // established single-row presentation instead of guessing which named
+        // preference they represent.
+        guard !recognized.isEmpty else { return self }
+
+        let selected: OfficialQuotaWindow?
+        switch preferredQuotaWindow {
+        case .fiveHour:
+            // Five-hour is the requested primary window, with the only safe
+            // fallback required by the Issue being the real seven-day window.
+            selected = recognized.first(where: { $0.kind == .fiveHour })
+                ?? recognized.first(where: { $0.kind == .sevenDay })
+        case .sevenDay:
+            // Never silently show five-hour data when seven-day is selected.
+            selected = recognized.first(where: { $0.kind == .sevenDay })
+        }
+
+        guard let selected else {
+            return .providerError(
+                provider,
+                reason: tr(.keyProviderModelsQuotaUnavailable),
+                cachedBalance: nil
+            )
+        }
+        return replacingOfficialWindow(selected)
+    }
+
+    private func replacingOfficialWindow(_ window: OfficialQuotaWindow) -> Snapshot {
+        Snapshot(
+            kind: kind,
+            provider: provider,
+            amount: window.remaining,
+            unit: window.label,
+            date: date,
+            message: window.reset,
+            websiteURL: websiteURL,
+            balanceProgressPercentage: balanceProgressPercentage,
+            officialQuotaWindows: officialQuotaWindows
+        )
+    }
+
     var menuBarTitle: String {
         switch kind {
         case .placeholder: return " …"

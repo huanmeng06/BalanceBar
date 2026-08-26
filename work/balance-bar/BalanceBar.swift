@@ -157,7 +157,7 @@ private enum DevelopmentReleaseFixture {
 }
 
 struct PreferencesMigrationPlan {
-    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarQuotaWindowPreferenceKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -227,6 +227,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
             onMenuBarFontSizePreset: { [weak self] preset in
                 self?.applyMenuBarFontSizePreset(preset)
+            },
+            onMenuBarQuotaWindowPreferenceChanged: { [weak self] preference in
+                self?.handleDashboardQuotaWindowPreferenceChanged(preference)
             },
             onUpdateChannelChanged: { [weak self] channel in
                 self?.handleUpdateChannelChanged(channel)
@@ -330,6 +333,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarAmountOffsetX: Double { get { preferences.menuBarAmountOffsetX } set { preferences.menuBarAmountOffsetX = newValue } }
     private var menuBarAmountOffsetY: Double { get { preferences.menuBarAmountOffsetY } set { preferences.menuBarAmountOffsetY = newValue } }
     private var menuBarFontSize: Double { get { preferences.menuBarFontSize } set { preferences.menuBarFontSize = newValue } }
+    private var menuBarQuotaWindowPreference: OfficialQuotaWindowPreference {
+        get { preferences.menuBarQuotaWindowPreference }
+        set { preferences.menuBarQuotaWindowPreference = newValue }
+    }
     private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
     private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
         self?.applyMenuBarWidthAdjustmentFrame(value)
@@ -589,7 +596,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
             amountOffsetY: CGFloat(menuBarAmountOffsetY),
             widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment),
-            fontSize: CGFloat(menuBarFontSize)
+            fontSize: CGFloat(menuBarFontSize),
+            quotaWindowPreference: menuBarQuotaWindowPreference
         )
     }
 
@@ -912,6 +920,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         refresh(reason: .configurationChanged)
+    }
+
+    private func handleDashboardQuotaWindowPreferenceChanged(
+        _ preference: OfficialQuotaWindowPreference
+    ) {
+        menuBarQuotaWindowPreference = preference
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarQuotaWindowPreferenceKey); value=\(preference.rawValue)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
     }
 
     private func handleUpdateChannelChanged(_ channel: UpdateChannel) {
@@ -1250,7 +1269,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             for: snapshot,
             cards: openCodexCards
         )
-        guard snapshot.kind == .openCodex else { return effective }
+        let resolved = effective.menuBarSnapshot(
+            preferredQuotaWindow: menuBarQuotaWindowPreference
+        )
+        guard snapshot.kind == .openCodex else { return resolved }
 
         let match = OpenCodexCardPresentation.menuBarCardMatch(from: openCodexCards)
         let cardSummary = openCodexCards.enumerated()
@@ -1261,18 +1283,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             snapshot.unit ?? "none",
             cardSummary,
             match.diagnosticReason,
-            snapshotKindDiagnosticName(effective.kind),
-            effective.menuBarPrimary,
-            effective.menuBarSecondary
+            snapshotKindDiagnosticName(resolved.kind),
+            resolved.menuBarPrimary,
+            resolved.menuBarSecondary
         ].joined(separator: "|")
         SwitchLog.write(
-            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(effective.kind)); primary=\(effective.menuBarPrimary); secondary=\(effective.menuBarSecondary)",
+            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(resolved.kind)); primary=\(resolved.menuBarPrimary); secondary=\(resolved.menuBarSecondary)",
             level: .debug,
             category: "open-codex.menu-bar",
             throttleKey: "open-codex-menu-resolution-\(signature)",
             minimumInterval: 1
         )
-        return effective
+        return resolved
     }
 
     private func updateDashboard(for snapshot: Snapshot, refreshDate: Date?) {

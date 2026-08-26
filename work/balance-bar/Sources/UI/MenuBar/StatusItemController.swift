@@ -473,6 +473,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let amountOffsetX: CGFloat
         let amountOffsetY: CGFloat
         var widthAdjustment: CGFloat
+        let quotaWindowPreference: OfficialQuotaWindowPreference
         /// Shared logical AppKit point size for both official rows and the
         /// single-line third-party amount. The secondary row is derived from
         /// the default 13:10 ratio in the renderer.
@@ -489,7 +490,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             amountOffsetX: CGFloat = 0,
             amountOffsetY: CGFloat = 0,
             widthAdjustment: CGFloat = 0,
-            fontSize: CGFloat = MenuBarLayout.primaryFontPointSize
+            fontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
+            quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -501,6 +503,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.amountOffsetX = amountOffsetX
             self.amountOffsetY = amountOffsetY
             self.widthAdjustment = widthAdjustment
+            self.quotaWindowPreference = quotaWindowPreference
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -607,6 +610,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var menuBarButtonBoundsForTesting: NSRect? {
         statusItem?.button?.bounds
     }
+
+    var menuBarPrimaryTextForTesting: String { menuBarPrimaryLabel.stringValue }
+
+    var menuBarSecondaryTextForTesting: String { menuBarSecondaryLabel.stringValue }
 
     // Exposes the controller's actual menu for headless production-path tests.
     // The application still owns and renders this same NSMenu instance.
@@ -1413,7 +1420,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             for: snapshot,
             cards: menuInput.openCodexCards
         )
-        guard snapshot.kind == .openCodex else { return effective }
+        let resolved = effective.menuBarSnapshot(
+            preferredQuotaWindow: settings.quotaWindowPreference
+        )
+        guard snapshot.kind == .openCodex else { return resolved }
         let match = OpenCodexCardPresentation.menuBarCardMatch(from: menuInput.openCodexCards)
         let cardSummary = menuInput.openCodexCards.enumerated()
             .map { index, card in
@@ -1425,18 +1435,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             snapshot.unit ?? "none",
             cardSummary,
             match.diagnosticReason,
-            snapshotKindDiagnosticName(effective.kind),
-            effective.menuBarPrimary,
-            effective.menuBarSecondary
+            snapshotKindDiagnosticName(resolved.kind),
+            resolved.menuBarPrimary,
+            resolved.menuBarSecondary
         ].joined(separator: "|")
         SwitchLog.write(
-            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(effective.kind)); primary=\(effective.menuBarPrimary); secondary=\(effective.menuBarSecondary)",
+            "OpenCodex menu bar resolution; runtime_selector=\(snapshot.unit ?? "none"); cards=[\(cardSummary)]; match=\(match.diagnosticReason); selected_selector=\(selection); effective_kind=\(snapshotKindDiagnosticName(resolved.kind)); primary=\(resolved.menuBarPrimary); secondary=\(resolved.menuBarSecondary)",
             level: .debug,
             category: "open-codex.menu-bar",
             throttleKey: "open-codex-menu-resolution-\(signature)",
             minimumInterval: 1
         )
-        return effective
+        return resolved
     }
 
     private func snapshotKindDiagnosticName(_ kind: Snapshot.Kind) -> String {

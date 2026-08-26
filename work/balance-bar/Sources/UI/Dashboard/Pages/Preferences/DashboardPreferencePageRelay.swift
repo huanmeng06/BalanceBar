@@ -7,6 +7,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onInterval: ((String, TimeInterval) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
     var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
+    var onMenuBarQuotaWindowPreferenceChanged: ((OfficialQuotaWindowPreference) -> Void)?
     var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
     var onOpenSystemMenuBarSettings: (() -> Void)?
@@ -44,6 +45,12 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let preset = MenuBarFontSizePreset(rawValue: rawValue) else { return }
         onMenuBarFontSizePreset?(preset)
+    }
+
+    @objc func menuBarQuotaWindowPreference(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let preference = OfficialQuotaWindowPreference(rawValue: rawValue) else { return }
+        onMenuBarQuotaWindowPreferenceChanged?(preference)
     }
 
     @objc func updateChannel(_ sender: NSPopUpButton) {
