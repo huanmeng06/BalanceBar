@@ -632,11 +632,11 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
         XCTAssertEqual(
             service.availableReleasesForPresentation.map(\.tagName),
-            ["v1.2.5", "v1.2.4"]
+            ["v1.2.5", "v1.2.4", "v1.2.3"]
         )
         XCTAssertEqual(
             service.availableReleasesForPresentation.compactMap(\.body),
-            ["1.2.5 body", "1.2.4 body"]
+            ["1.2.5 body", "1.2.4 body", "1.2.3 body"]
         )
         XCTAssertEqual(
             service.availableReleaseForPresentation?.tagName,
@@ -678,7 +678,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(latest, AppSemanticVersion("2.0.0-beta.1"))
     }
 
-    func testUpdateServiceBetaJumpNotesExcludeStableBoundaryAndCurrentVersion() throws {
+    func testUpdateServiceBetaJumpNotesExcludeStableBoundaryAndIncludeCurrentVersion() throws {
         let fetcher = StubReleaseFetcher()
         let queue = DispatchQueue(label: "UpdateTests.beta-release-notes-range")
         let service = UpdateService(
@@ -712,7 +712,7 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
         XCTAssertEqual(
             service.availableReleasesForPresentation.map(\.tagName),
-            ["v1.3.2", "v1.3.1", "v1.2.5", "v1.2.4"]
+            ["v1.3.2", "v1.3.1", "v1.2.5", "v1.2.4", "v1.2.3"]
         )
         XCTAssertEqual(
             service.availableReleasesForPresentation.compactMap(\.body),
@@ -720,7 +720,8 @@ final class UpdateTests: XCTestCase {
                 "1.3.2 beta body",
                 "1.3.1 beta body",
                 "1.2.5 beta body",
-                "1.2.4 beta body"
+                "1.2.4 beta body",
+                "current beta body"
             ]
         )
     }
@@ -757,11 +758,48 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
         XCTAssertEqual(
             service.availableReleasesForPresentation.map(\.tagName),
-            ["v1.3.0"]
+            ["v1.3.0", "v1.2.3"]
         )
         XCTAssertEqual(
             service.availableReleasesForPresentation.compactMap(\.body),
-            ["1.3.0 stable body"]
+            ["1.3.0 stable body", "current stable body"]
+        )
+    }
+
+    func testUpdateServiceBetaNotesExcludeCurrentStableReleaseAtChannelBoundary() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.beta-current-channel-boundary")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.2.3",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.2.4")
+            }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.2.3", prerelease: false, body: "current stable body"),
+            makeRelease(tag: "v1.2.4", prerelease: true, body: "1.2.4 beta body")
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.map(\.tagName),
+            ["v1.2.4"]
+        )
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.compactMap(\.body),
+            ["1.2.4 beta body"]
         )
     }
 
@@ -1436,6 +1474,7 @@ final class UpdateTests: XCTestCase {
         controller.show(
             currentVersion: try XCTUnwrap(AppSemanticVersion("1.2.3")),
             releases: [
+                makeRelease(tag: "v1.2.3", body: "Current release body"),
                 makeRelease(tag: "v1.2.5", body: "Target release body"),
                 makeRelease(tag: "v1.2.4", body: "Middle release body")
             ]
@@ -1450,9 +1489,12 @@ final class UpdateTests: XCTestCase {
         let rendered = notesTextView.string
         let targetRange = (rendered as NSString).range(of: "1.2.5")
         let middleRange = (rendered as NSString).range(of: "1.2.4")
+        let currentRange = (rendered as NSString).range(of: "1.2.3")
         XCTAssertNotEqual(targetRange.location, NSNotFound)
         XCTAssertNotEqual(middleRange.location, NSNotFound)
+        XCTAssertNotEqual(currentRange.location, NSNotFound)
         XCTAssertLessThan(targetRange.location, middleRange.location)
+        XCTAssertLessThan(middleRange.location, currentRange.location)
         XCTAssertLessThan(
             (rendered as NSString).range(of: "Target release body").location,
             (rendered as NSString).range(of: "Middle release body").location
