@@ -194,21 +194,26 @@ final class DomainModelsTests: XCTestCase {
 
     func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let exactCalendar = Calendar(identifier: .gregorian)
+        let exactLocale = Locale(identifier: "en_GB")
+        let exactTimeZone = TimeZone(secondsFromGMT: 0)!
         let fiveHour = OfficialQuotaWindow(
             kind: .fiveHour,
             remaining: 80,
             label: "5-hour",
             daysText: "5 hours",
-            reset: "1h0m",
-            durationSeconds: 18_000
+            reset: "same",
+            durationSeconds: 18_000,
+            resetAt: date.addingTimeInterval(3_600)
         )
         let sevenDay = OfficialQuotaWindow(
             kind: .sevenDay,
             remaining: 45,
             label: "7-day",
             daysText: "7 days",
-            reset: "1h30m",
-            durationSeconds: 604_800
+            reset: "same",
+            durationSeconds: 604_800,
+            resetAt: date.addingTimeInterval(7_200)
         )
         let windows = [fiveHour, sevenDay]
         let snapshot = Snapshot.official(
@@ -225,11 +230,39 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(fiveHourPresentation.unit, fiveHour.label)
         XCTAssertEqual(fiveHourPresentation.message, fiveHour.reset)
         XCTAssertEqual(fiveHourPresentation.officialQuotaWindows, snapshot.officialQuotaWindows)
+        XCTAssertEqual(
+            fiveHourPresentation.officialResetDisplayValue(
+                now: date,
+                calendar: exactCalendar,
+                locale: exactLocale,
+                timeZone: exactTimeZone
+            ),
+            fiveHour.resetDisplayText(
+                now: date,
+                calendar: exactCalendar,
+                locale: exactLocale,
+                timeZone: exactTimeZone
+            )
+        )
 
         let sevenDayPresentation = snapshot.menuBarSnapshot(preferredQuotaWindow: .sevenDay)
         XCTAssertEqual(sevenDayPresentation.amount, sevenDay.remaining)
         XCTAssertEqual(sevenDayPresentation.unit, sevenDay.label)
         XCTAssertEqual(sevenDayPresentation.message, sevenDay.reset)
+        XCTAssertEqual(
+            sevenDayPresentation.officialResetDisplayValue(
+                now: date,
+                calendar: exactCalendar,
+                locale: exactLocale,
+                timeZone: exactTimeZone
+            ),
+            sevenDay.resetDisplayText(
+                now: date,
+                calendar: exactCalendar,
+                locale: exactLocale,
+                timeZone: exactTimeZone
+            )
+        )
 
         let onlySevenDay = Snapshot.official(
             "OpenAI",

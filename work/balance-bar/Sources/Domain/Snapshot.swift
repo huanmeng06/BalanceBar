@@ -105,6 +105,35 @@ struct Snapshot {
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
     let officialQuotaWindows: [OfficialQuotaWindow]
+    /// The window selected for the compact/menu-bar presentation. The full
+    /// quota card keeps all source windows, so this marker prevents the
+    /// selected row's exact reset timestamp from being replaced by the
+    /// representative (weekly) window when shared snapshot properties render.
+    let selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind?
+
+    init(
+        kind: Kind,
+        provider: String,
+        amount: Double?,
+        unit: String?,
+        date: Date?,
+        message: String?,
+        websiteURL: URL?,
+        balanceProgressPercentage: Double?,
+        officialQuotaWindows: [OfficialQuotaWindow],
+        selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil
+    ) {
+        self.kind = kind
+        self.provider = provider
+        self.amount = amount
+        self.unit = unit
+        self.date = date
+        self.message = message
+        self.websiteURL = websiteURL
+        self.balanceProgressPercentage = balanceProgressPercentage
+        self.officialQuotaWindows = officialQuotaWindows
+        self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
+    }
 
     static let placeholder = Snapshot(
         kind: .placeholder,
@@ -278,7 +307,8 @@ struct Snapshot {
             message: window.reset,
             websiteURL: websiteURL,
             balanceProgressPercentage: balanceProgressPercentage,
-            officialQuotaWindows: officialQuotaWindows
+            officialQuotaWindows: officialQuotaWindows,
+            selectedOfficialQuotaWindowKind: window.kind
         )
     }
 
@@ -436,7 +466,10 @@ struct Snapshot {
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String? {
         guard kind == .official else { return nil }
-        let representative = officialQuotaWindows.first(where: { $0.kind == .sevenDay })
+        let representative = selectedOfficialQuotaWindowKind.flatMap { selectedKind in
+            officialQuotaWindows.first(where: { $0.kind == selectedKind })
+        }
+            ?? officialQuotaWindows.first(where: { $0.kind == .sevenDay })
             ?? officialQuotaWindows.first(where: { $0.kind == .fiveHour })
             ?? officialQuotaWindows.first
         return representative?.resetDisplayText(
