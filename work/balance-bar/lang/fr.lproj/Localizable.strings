@@ -244,8 +244,8 @@
 "dashboard.menu.bar.page.preview" = "Aperçu";
 "dashboard.menu.bar.page.current_layout" = "Disposition actuelle";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barre des menus est mise à jour en temps réel avec les données du fournisseur";
-"dashboard.menu.bar.page.quota_display_priority" = "Priorité d’affichage du quota";
-"dashboard.menu.bar.page.quota_display_priority_description" = "Choisissez quelle période de quota officiel Codex afficher dans la barre des menus";
+"dashboard.menu.bar.page.quota_display_priority" = "Période de quota";
+"dashboard.menu.bar.page.quota_display_priority_description" = "Choisissez quelle période de quota afficher en priorité dans la barre des menus";
 "dashboard.menu.bar.page.five_hour_quota" = "Quota sur 5 heures";
 "dashboard.menu.bar.page.seven_day_quota" = "Quota sur 7 jours";
 "dashboard.menu.bar.page.animation" = "Animation";

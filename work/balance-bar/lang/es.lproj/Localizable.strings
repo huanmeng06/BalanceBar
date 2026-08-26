@@ -244,8 +244,8 @@
 "dashboard.menu.bar.page.preview" = "Vista previa";
 "dashboard.menu.bar.page.current_layout" = "Diseño actual";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barra de menús se actualiza en tiempo real con los datos del proveedor";
-"dashboard.menu.bar.page.quota_display_priority" = "Prioridad de visualización de la cuota";
-"dashboard.menu.bar.page.quota_display_priority_description" = "Elige qué periodo de cuota oficial de Codex se muestra en la barra de menús";
+"dashboard.menu.bar.page.quota_display_priority" = "Periodo de cuota";
+"dashboard.menu.bar.page.quota_display_priority_description" = "Elige qué periodo de cuota priorizar en la barra de menús";
 "dashboard.menu.bar.page.five_hour_quota" = "Cuota de 5 horas";
 "dashboard.menu.bar.page.seven_day_quota" = "Cuota de 7 días";
 "dashboard.menu.bar.page.animation" = "Animación";

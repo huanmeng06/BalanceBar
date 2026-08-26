@@ -835,6 +835,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     tr(.keyDashboardMenuBarPageSevenDayQuota, language: language)
                 ]
             )
+            if language == .simplifiedChinese {
+                XCTAssertEqual(
+                    tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language),
+                    "额度周期"
+                )
+                XCTAssertEqual(
+                    tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription, language: language),
+                    "选择菜单栏中优先展示的额度周期"
+                )
+            }
             XCTAssertFalse(popup.itemTitles.contains { $0.hasPrefix("⟦") })
             XCTAssertEqual(popup.indexOfSelectedItem, 1)
             XCTAssertEqual(

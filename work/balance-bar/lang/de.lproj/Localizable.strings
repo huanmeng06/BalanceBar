@@ -244,8 +244,8 @@
 "dashboard.menu.bar.page.preview" = "Vorschau";
 "dashboard.menu.bar.page.current_layout" = "Aktuelles Layout";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "Die Menüleiste wird in Echtzeit mit Anbieterdaten aktualisiert";
-"dashboard.menu.bar.page.quota_display_priority" = "Priorität der Kontingentanzeige";
-"dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, welches offizielle Codex-Kontingent in der Menüleiste angezeigt wird";
+"dashboard.menu.bar.page.quota_display_priority" = "Kontingentzeitraum";
+"dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, welcher Kontingentzeitraum in der Menüleiste bevorzugt angezeigt wird";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Stunden-Kontingent";
 "dashboard.menu.bar.page.seven_day_quota" = "7-Tage-Kontingent";
 "dashboard.menu.bar.page.animation" = "Animation";
