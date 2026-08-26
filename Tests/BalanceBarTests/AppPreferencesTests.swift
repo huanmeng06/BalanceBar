@@ -75,7 +75,7 @@ final class AppPreferencesTests: XCTestCase {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .sevenDay)
+        XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
         preferences.menuBarQuotaWindowPreference = .fiveHour
         XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
         XCTAssertEqual(
@@ -88,7 +88,7 @@ final class AppPreferencesTests: XCTestCase {
         )
 
         defaults.set("unsupported", forKey: AppPreferences.menuBarQuotaWindowPreferenceKey)
-        XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .sevenDay)
+        XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
     }
 
     func testNumericPreferencesDefaultsBoundsAndRoundTrips() {

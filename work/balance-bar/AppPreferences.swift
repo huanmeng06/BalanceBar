@@ -4,7 +4,7 @@ enum OfficialQuotaWindowPreference: String, CaseIterable, Equatable {
     case fiveHour
     case sevenDay
 
-    static let defaultValue: Self = .sevenDay
+    static let defaultValue: Self = .fiveHour
 
     var kind: OfficialQuotaWindow.Kind {
         switch self {

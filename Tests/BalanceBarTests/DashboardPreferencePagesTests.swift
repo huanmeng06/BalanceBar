@@ -846,7 +846,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 )
             }
             XCTAssertFalse(popup.itemTitles.contains { $0.hasPrefix("⟦") })
-            XCTAssertEqual(popup.indexOfSelectedItem, 1)
+            XCTAssertEqual(popup.indexOfSelectedItem, 0)
             XCTAssertEqual(
                 popup.item(at: 0)?.representedObject as? String,
                 OfficialQuotaWindowPreference.fiveHour.rawValue
@@ -897,13 +897,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSTextField }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.previewPrimaryIdentifier }
             )
-            XCTAssertEqual(previewPrimary.stringValue, "45%")
+            XCTAssertEqual(previewPrimary.stringValue, "80%")
             let narrowRowHeight = selectorRow.frame.height
 
-            popup.selectItem(at: 0)
+            popup.selectItem(at: 1)
             relay.menuBarQuotaWindowPreference(popup)
-            XCTAssertEqual(changedPreferences, [.fiveHour])
-            XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
+            XCTAssertEqual(changedPreferences, [.sevenDay])
+            XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .sevenDay)
             controller.refresh(
                 snapshot: snapshot,
                 preferences: preferences,
@@ -915,8 +915,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 iconImage: nil
             )
             window.layoutIfNeeded()
-            XCTAssertEqual(popup.indexOfSelectedItem, 0)
-            XCTAssertEqual(previewPrimary.stringValue, "80%")
+            XCTAssertEqual(popup.indexOfSelectedItem, 1)
+            XCTAssertEqual(previewPrimary.stringValue, "45%")
 
             window.setContentSize(NSSize(width: 740, height: 900))
             window.layoutIfNeeded()
@@ -944,7 +944,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                         .compactMap { $0 as? NSPopUpButton }
                         .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaWindowPreferenceIdentifier }
                 ).indexOfSelectedItem,
-                0
+                1
             )
             window.contentView = nil
         }
