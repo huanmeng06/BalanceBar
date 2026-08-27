@@ -77,7 +77,7 @@
 "snapshot.value_remaining_value.2" = "%1$@ restant : %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Mis à jour : %1$@ · Suit automatiquement CC Switch";
-"snapshot.reset_value.3" = " · %1$@";
+"snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Le quota officiel est mis à jour chaque minute%1$@";
 "snapshot.waiting_for_opencodex_status" = "En attente de l’état d’OpenCodex";
 "snapshot.unknown_error" = "Erreur inconnue";
@@ -170,7 +170,7 @@
 "dashboard.general.and.refresh.pages.update_channel" = "Canal de mise à jour";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Choisissez de rechercher les versions stables ou bêta";
 "dashboard.general.and.refresh.pages.stable" = "Stable";
-"dashboard.general.and.refresh.pages.beta_test" = "Bêta";
+"dashboard.general.and.refresh.pages.beta_test" = "Version bêta";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "Cliquez pour rechercher les nouvelles versions sur GitHub";
 "dashboard.general.and.refresh.pages.check_for_updates" = "Rechercher des mises à jour";
 "dashboard.general.and.refresh.pages.checking_for_updates" = "Recherche de mises à jour…";
@@ -230,8 +230,8 @@
 "dashboard.general.and.refresh.pages.refresh" = "Actualiser";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Fréquence d’actualisation du solde pendant les tâches";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "Actualise le solde du fournisseur sélectionné à la fréquence choisie pendant une tâche";
-"dashboard.general.and.refresh.pages.balance_data" = "Données de solde";
-"dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Recharger le fournisseur actuel maintenant";
+"dashboard.general.and.refresh.pages.balance_data" = "Informations sur le solde";
+"dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Actualiser maintenant les données du fournisseur actuel";
 "dashboard.general.and.refresh.pages.application" = "Application";
 "dashboard.general.and.refresh.pages.language" = "Langue";
 "dashboard.general.and.refresh.pages.changes_apply_to_the_entire_interface_immediately" = "Les changements s’appliquent immédiatement à toute l’interface";
@@ -282,10 +282,10 @@
 "dashboard.menu.bar.page.quota_reset_display_both" = "Les deux";
 "dashboard.menu.bar.page.animation" = "Animation";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animer l’icône de la barre des menus pendant une tâche";
-"dashboard.menu.bar.page.display_items" = "Éléments affichés";
+"dashboard.menu.bar.page.display_items" = "Contenu affiché";
 "dashboard.menu.bar.page.agent_icon" = "Icône de l’état de la tâche";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "Affiche l’état de la tâche actuelle";
-"dashboard.menu.bar.page.balance_amount" = "Montant du solde";
+"dashboard.menu.bar.page.balance_amount" = "Valeur d’utilisation";
 "dashboard.menu.bar.page.shows_a_percentage_or_api_balance" = "Affiche un pourcentage ou un solde API";
 "dashboard.menu.bar.page.reset_countdown" = "Compte à rebours de la réinitialisation";
 "dashboard.menu.bar.page.only_shown_when_official_quota_data_is_available" = "Affiché uniquement lorsque les données de quota officiel sont disponibles";
@@ -297,7 +297,7 @@
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Ajuste la position verticale : de -10,0 pt (bas) à +10,0 pt (haut) ; valeur par défaut : 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Taille et position de la police";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Taille de la police de la barre des menus";
-"dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajuste la taille de la police de la barre des menus";
+"dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajuste la taille du texte de la barre des menus";
 "dashboard.menu.bar.page.icon_offset" = "Position verticale de l’icône";
 "dashboard.menu.bar.page.amount_offset" = "Position verticale du montant";
 "dashboard.menu.bar.page.menu_bar_width" = "Espacement avec les autres icônes de la barre des menus";
@@ -318,7 +318,7 @@
 "dashboard.menu.page.dropdown_menu" = "Menu déroulant";
 "dashboard.menu.page.quick_switch" = "Changement rapide";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Afficher un sélecteur rapide de fournisseurs CC Switch dans le menu";
-"dashboard.menu.page.keep_open_after_refresh" = "Garder ouvert après l’actualisation";
+"dashboard.menu.page.keep_open_after_refresh" = "Garder le menu ouvert après l’actualisation";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "Rouvrir automatiquement le menu après avoir cliqué sur « Actualiser maintenant »";
 "dashboard.menu.page.the_open_main_window_item_is_always_shown" = "L’élément « Ouvrir la fenêtre principale » est toujours affiché";
 "dashboard.menu.page.open_main_window" = "Ouvrir la fenêtre principale";
@@ -328,12 +328,12 @@
 "dashboard.menu.page.open_cc_switch" = "Ouvrir CC Switch";
 "dashboard.menu.page.show_the_cc_switch_main_window" = "Afficher la fenêtre principale de CC Switch";
 "dashboard.menu.page.open_opencodex" = "Ouvrir OpenCodex";
-"dashboard.menu.page.show_the_opencodex_dashboard" = "Afficher le tableau de bord OpenCodex";
+"dashboard.menu.page.show_the_opencodex_dashboard" = "Afficher la console OpenCodex";
 "dashboard.menu.page.view_status" = "État du service";
 "dashboard.menu.page.show_customizable_service_status_links" = "Liens d’état de service personnalisés";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Afficher les liens d’état de service dans le menu";
 "dashboard.menu.page.open_project" = "Accès rapides";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "Afficher les liens d’état personnalisables";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "Liens d’état des services personnalisables";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Afficher les liens d’état dans la barre des menus";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Sélectionnez ce fournisseur pour consulter les heures de réinitialisation détaillées du quota";
 "dashboard.provider.pages.usage" = "Utilisation";
@@ -389,7 +389,7 @@
 "status.item.controller.opencodex_management_api_is_unavailable" = "L’API de gestion d’OpenCodex est indisponible";
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "Les modèles sélectionnés d’OpenCodex ne sont pas encore disponibles";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "Aucun modèle OpenCodex sélectionné n’est configuré";
-"status.item.controller.current" = " · Actuel";
+"status.item.controller.current" = "· Actuel";
 "status.item.controller.reset_value" = "%1$@";
 "status.item.controller.reset_time_unavailable" = "Heure indisponible";
 "status.item.controller.remaining_balance" = "Solde restant";

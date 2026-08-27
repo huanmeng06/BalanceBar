@@ -77,7 +77,7 @@
 "snapshot.value_remaining_value.2" = "%1$@ restante: %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Actualizado: %1$@ · Sigue CC Switch automáticamente";
-"snapshot.reset_value.3" = " · %1$@";
+"snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "La cuota oficial se actualiza cada minuto%1$@";
 "snapshot.waiting_for_opencodex_status" = "Esperando el estado de OpenCodex";
 "snapshot.unknown_error" = "Error desconocido";
@@ -170,7 +170,7 @@
 "dashboard.general.and.refresh.pages.update_channel" = "Canal de actualización";
 "dashboard.general.and.refresh.pages.update_channel_description" = "Elige si quieres buscar actualizaciones estables o beta";
 "dashboard.general.and.refresh.pages.stable" = "Estable";
-"dashboard.general.and.refresh.pages.beta_test" = "Prueba beta";
+"dashboard.general.and.refresh.pages.beta_test" = "Versión beta";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "Haz clic para buscar nuevas versiones en GitHub";
 "dashboard.general.and.refresh.pages.check_for_updates" = "Buscar actualizaciones";
 "dashboard.general.and.refresh.pages.checking_for_updates" = "Buscando actualizaciones…";
@@ -230,8 +230,8 @@
 "dashboard.general.and.refresh.pages.refresh" = "Actualizar";
 "dashboard.general.and.refresh.pages.balance_updates_during_tasks" = "Frecuencia de actualización del saldo durante las tareas";
 "dashboard.general.and.refresh.pages.requests_the_current_provider_s_balance_while_an_agent_is_running" = "Actualiza el saldo del proveedor seleccionado con la frecuencia elegida mientras se ejecuta una tarea";
-"dashboard.general.and.refresh.pages.balance_data" = "Datos de saldo";
-"dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Volver a cargar el proveedor actual ahora";
+"dashboard.general.and.refresh.pages.balance_data" = "Información del saldo";
+"dashboard.general.and.refresh.pages.reload_the_current_provider_now" = "Actualizar ahora los datos del proveedor actual";
 "dashboard.general.and.refresh.pages.application" = "Aplicación";
 "dashboard.general.and.refresh.pages.language" = "Idioma";
 "dashboard.general.and.refresh.pages.changes_apply_to_the_entire_interface_immediately" = "Los cambios se aplican inmediatamente a toda la interfaz";
@@ -282,10 +282,10 @@
 "dashboard.menu.bar.page.quota_reset_display_both" = "Ambos";
 "dashboard.menu.bar.page.animation" = "Animación";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Anima el icono de la barra de menús mientras se ejecuta una tarea";
-"dashboard.menu.bar.page.display_items" = "Elementos visibles";
+"dashboard.menu.bar.page.display_items" = "Contenido mostrado";
 "dashboard.menu.bar.page.agent_icon" = "Icono del estado de la tarea";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "Muestra el estado de la tarea actual";
-"dashboard.menu.bar.page.balance_amount" = "Importe del saldo";
+"dashboard.menu.bar.page.balance_amount" = "Valor de uso";
 "dashboard.menu.bar.page.shows_a_percentage_or_api_balance" = "Muestra un porcentaje o el saldo de la API";
 "dashboard.menu.bar.page.reset_countdown" = "Cuenta atrás del restablecimiento";
 "dashboard.menu.bar.page.only_shown_when_official_quota_data_is_available" = "Solo se muestra cuando hay datos de cuota oficiales";
@@ -297,7 +297,7 @@
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Ajusta la posición vertical: de -10,0 pt (abajo) a +10,0 pt (arriba); valor predeterminado: 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Tamaño y posición de la fuente";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Tamaño de fuente de la barra de menús";
-"dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajusta el tamaño de fuente de la barra de menús";
+"dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajusta el tamaño del texto de la barra de menús";
 "dashboard.menu.bar.page.icon_offset" = "Posición vertical del icono";
 "dashboard.menu.bar.page.amount_offset" = "Posición vertical del importe";
 "dashboard.menu.bar.page.menu_bar_width" = "Espacio respecto a los demás iconos de la barra de menús";
@@ -318,7 +318,7 @@
 "dashboard.menu.page.dropdown_menu" = "Menú desplegable";
 "dashboard.menu.page.quick_switch" = "Cambio rápido";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Mostrar un selector rápido de proveedores de CC Switch en el menú";
-"dashboard.menu.page.keep_open_after_refresh" = "Mantener abierto después de actualizar";
+"dashboard.menu.page.keep_open_after_refresh" = "Mantener el menú abierto después de actualizar";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "Volver a abrir automáticamente el menú después de hacer clic en «Actualizar ahora»";
 "dashboard.menu.page.the_open_main_window_item_is_always_shown" = "El elemento Abrir ventana principal siempre se muestra";
 "dashboard.menu.page.open_main_window" = "Abrir ventana principal";
@@ -328,12 +328,12 @@
 "dashboard.menu.page.open_cc_switch" = "Abrir CC Switch";
 "dashboard.menu.page.show_the_cc_switch_main_window" = "Mostrar la ventana principal de CC Switch";
 "dashboard.menu.page.open_opencodex" = "Abrir OpenCodex";
-"dashboard.menu.page.show_the_opencodex_dashboard" = "Mostrar el panel de OpenCodex";
+"dashboard.menu.page.show_the_opencodex_dashboard" = "Mostrar la consola de OpenCodex";
 "dashboard.menu.page.view_status" = "Estado del servicio";
 "dashboard.menu.page.show_customizable_service_status_links" = "Enlaces de estado de servicios personalizados";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Mostrar enlaces de estado de servicios en el menú";
 "dashboard.menu.page.open_project" = "Enlaces rápidos";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "Mostrar enlaces de estado de servicios personalizables";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "Enlaces de estado de servicios personalizables";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Mostrar enlaces de estado en la barra de menús";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Selecciona este proveedor para consultar en detalle las horas de reinicio de la cuota";
 "dashboard.provider.pages.usage" = "Uso";
@@ -389,7 +389,7 @@
 "status.item.controller.opencodex_management_api_is_unavailable" = "La API de administración de OpenCodex no está disponible";
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "Los modelos elegidos de OpenCodex aún no están disponibles";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "No hay modelos elegidos de OpenCodex configurados";
-"status.item.controller.current" = " · Actual";
+"status.item.controller.current" = "· Actual";
 "status.item.controller.reset_value" = "%1$@";
 "status.item.controller.reset_time_unavailable" = "Hora no disponible";
 "status.item.controller.remaining_balance" = "Saldo restante";

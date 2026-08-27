@@ -523,27 +523,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (
                 .simplifiedChinese,
                 ["打开主窗口", "打开 ChatGPT", "打开 CC Switch", "打开 OpenCodex"],
-                ["显示 BalanceBar 主窗口", "显示 ChatGPT", "显示 CC Switch 主窗口", "显示 OpenCodex 仪表盘"]
+                ["显示 BalanceBar 主窗口", "显示 ChatGPT", "显示 CC Switch 主窗口", "显示 OpenCodex 控制台"]
             ),
             (
                 .traditionalChineseTaiwan,
                 ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
-                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 儀表板"]
+                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
             ),
             (
                 .traditionalChineseHongKong,
                 ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
-                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 儀表板"]
+                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
             ),
             (
                 .japanese,
                 ["メインウインドウを開く", "ChatGPT を開く", "CC Switch を開く", "OpenCodex を開く"],
-                ["BalanceBar のメインウインドウを表示", "ChatGPT を表示", "CC Switch のメインウインドウを表示", "OpenCodex ダッシュボードを表示"]
+                ["BalanceBar のメインウインドウを表示", "ChatGPT を表示", "CC Switch のメインウインドウを表示", "OpenCodex コンソールを表示"]
             ),
             (
                 .english,
                 ["Open Main Window", "Open ChatGPT", "Open CC Switch", "Open OpenCodex"],
-                ["Show the BalanceBar main window", "Show ChatGPT", "Show the CC Switch main window", "Show the OpenCodex dashboard"]
+                ["Show the BalanceBar main window", "Show ChatGPT", "Show the CC Switch main window", "Show the OpenCodex console"]
             )
         ]
 
@@ -1753,7 +1753,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(labelStrings.contains("字号与位置"))
         XCTAssertFalse(labelStrings.contains("字号"))
         XCTAssertFalse(labelStrings.contains("细节微调"))
-        XCTAssertTrue(labelStrings.contains("调整菜单栏字体大小"))
+        XCTAssertTrue(labelStrings.contains("调整菜单栏文字大小"))
         let rowTitles = ["菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"]
         let rowIndices = rowTitles.compactMap { labelStrings.firstIndex(of: $0) }
         XCTAssertEqual(rowIndices.count, rowTitles.count)
@@ -1904,7 +1904,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer { window.orderOut(nil) }
 
             let subtitleText = language == .japanese
-                ? "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"
+                ? "サービスプロバイダーのデータをメニューバーにリアルタイム表示"
                 : "The menu bar updates with Provider data in real time"
             let subtitle = try XCTUnwrap(
                 descendants(of: page)
@@ -2377,7 +2377,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertTrue(labels.contains { $0.stringValue == "Font Size & Position" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Font Size" })
-        XCTAssertTrue(labels.contains { $0.stringValue == "Adjusts the menu bar font size" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Adjust menu bar text size" })
         XCTAssertFalse(labels.contains { $0.stringValue == "11.7 / 9.0 pt" })
 
         let previewPrimary = try XCTUnwrap(
@@ -2574,7 +2574,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .simplifiedChinese,
                 ["字号与位置", "菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"],
                 [
-                    "调整菜单栏字体大小",
+                    "调整菜单栏文字大小",
                     "微调图标的上下位置Y 轴 + 0.0 pt",
                     "微调数值的上下位置Y 轴 + 0.0 pt",
                     "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.0 pt"
@@ -2585,7 +2585,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .traditionalChineseTaiwan,
                 ["字號與位置", "選單列字號", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
-                    "調整選單列字體大小",
+                    "調整選單列文字大小",
                     "微調圖示的上下位置 Y 軸 + 0.0 pt",
                     "微調數值的上下位置 Y 軸 + 0.0 pt",
                     "調整 BalanceBar 與其他選單列圖示的間距 寬度 + 0.0 pt"
@@ -2596,7 +2596,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .traditionalChineseHongKong,
                 ["字號與位置", "選單列字型大小", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
-                    "調整選單列字型大小",
+                    "調整選單列文字大小",
                     "微調圖示的上下位置 Y 軸 + 0.0 pt",
                     "微調數值的上下位置 Y 軸 + 0.0 pt",
                     "調整 BalanceBar 與其他選單列圖示的間距 寬度 + 0.0 pt"
@@ -2607,7 +2607,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .japanese,
                 ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの上下位置", "数値の上下位置", "他のメニューバーアイコンとの間隔"],
                 [
-                    "メニューバーのフォントサイズを調整",
+                    "メニューバーの文字サイズを調整",
                     "アイコンの上下位置を微調整 Y 軸 + 0.0 pt",
                     "数値の上下位置を微調整 Y 軸 + 0.0 pt",
                     "BalanceBar と他のメニューバーアイコンとの間隔を調整 幅 + 0.0 pt"
@@ -2618,7 +2618,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .english,
                 ["Font Size & Position", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
                 [
-                    "Adjusts the menu bar font size",
+                    "Adjust menu bar text size",
                     "Fine-tune the icon's vertical position Y axis + 0.0 pt",
                     "Fine-tune the amount's vertical position Y axis + 0.0 pt",
                     "Adjust the gap between BalanceBar and other menu bar icons Width + 0.0 pt"
@@ -2629,7 +2629,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .korean,
                 ["글꼴 크기 및 위치", "메뉴 막대 글꼴 크기", "아이콘 세로 위치", "수치 세로 위치", "다른 메뉴 막대 아이콘과의 간격"],
                 [
-                    "메뉴 막대 글꼴 크기 조정",
+                    "메뉴 막대 글자 크기 조정",
                     "아이콘 세로 위치 미세 조정 Y 축 + 0.0 pt",
                     "수치 세로 위치 미세 조정 Y 축 + 0.0 pt",
                     "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정 너비 + 0.0 pt"
@@ -2640,7 +2640,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .spanish,
                 ["Tamaño y posición de la fuente", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del importe", "Espacio respecto a los demás iconos de la barra de menús"],
                 [
-                    "Ajusta el tamaño de fuente de la barra de menús",
+                    "Ajusta el tamaño del texto de la barra de menús",
                     "Ajusta con precisión la posición vertical del icono Eje Y + 0.0 pt",
                     "Ajusta con precisión la posición vertical del importe Eje Y + 0.0 pt",
                     "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús Ancho + 0.0 pt"
@@ -2651,7 +2651,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .german,
                 ["Schriftgröße und Position", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Betragsposition", "Abstand zu anderen Menüleistensymbolen"],
                 [
-                    "Passt die Schriftgröße der Menüleiste an",
+                    "Passt die Textgröße der Menüleiste an",
                     "Vertikale Symbolposition fein einstellen Y-Achse + 0.0 pt",
                     "Vertikale Betragsposition fein einstellen Y-Achse + 0.0 pt",
                     "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen Breite + 0.0 pt"
@@ -2662,7 +2662,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .french,
                 ["Taille et position de la police", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale du montant", "Espacement avec les autres icônes de la barre des menus"],
                 [
-                    "Ajuste la taille de la police de la barre des menus",
+                    "Ajuste la taille du texte de la barre des menus",
                     "Ajuste précisément la position verticale de l’icône Axe Y + 0.0 pt",
                     "Ajuste précisément la position verticale du montant Axe Y + 0.0 pt",
                     "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus Largeur + 0.0 pt"

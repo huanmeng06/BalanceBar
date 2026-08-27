@@ -474,11 +474,11 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow,
                 "Refresh settings description",
-                "立即刷新目前供應商",
-                "立即刷新目前供應商",
-                "立即重新读取当前供应商",
-                "Reload the current Provider now",
-                "現在のプロバイダーをすぐに再読み込み"
+                "立即刷新目前服務商資料",
+                "立即刷新目前服務商資料",
+                "立即刷新当前服务商数据",
+                "Refresh the current provider's data now",
+                "現在のプロバイダーのデータを今すぐ更新"
             ),
             (
                 .keyDashboardGeneralAndRefreshPagesRefreshSettings,
@@ -510,11 +510,11 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyDashboardMenuPageKeepOpenAfterRefresh,
                 "Menu settings title",
-                "刷新後保持展開",
-                "刷新後保持展開",
-                "刷新后保持展开",
-                "Keep Open After Refresh",
-                "更新後も開いたままにする"
+                "刷新後保持選單開啟",
+                "刷新後保持選單開啟",
+                "刷新后保持菜单打开",
+                "Keep the menu open after refresh",
+                "更新後もメニューを開いたままにする"
             ),
             (
                 .keyDashboardMenuPageReopenTheMenuAfterRefreshNow,
