@@ -717,14 +717,14 @@ final class DashboardMenuBarPage {
         )
         let displaySection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPageDisplayItems), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardMenuBarPageIconDisplayMode),
-                subtitle: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
-                control: iconDisplayModeControl
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
                 subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
                 control: quotaWindowPreferenceControl
+            ),
+            DashboardSettingsComponents.makeSettingsRow(
+                tr(.keyDashboardMenuBarPageIconDisplayMode),
+                subtitle: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
+                control: iconDisplayModeControl
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuBarPageQuotaResetDisplayMode),
