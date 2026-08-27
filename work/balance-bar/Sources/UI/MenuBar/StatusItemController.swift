@@ -751,14 +751,99 @@ struct AccountEmailTextLayout: Equatable {
     }
 }
 
+private final class AccountEmailTooltipViewController: NSViewController {
+    private static let maximumTextWidth: CGFloat = 280
+    private static let minimumTextWidth: CGFloat = 160
+    private static let horizontalInset: CGFloat = 12
+    private static let verticalInset: CGFloat = 8
+
+    private let email: String
+
+    init(email: String) {
+        self.email = email
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        let font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize)
+        let textWidth = min(
+            Self.maximumTextWidth,
+            max(
+                Self.minimumTextWidth,
+                ceil(AccountMarqueeView.textWidth(of: email, font: font))
+            )
+        )
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byCharWrapping
+        let measuredText = NSAttributedString(
+            string: email,
+            attributes: [
+                .font: font,
+                .paragraphStyle: paragraphStyle
+            ]
+        ).boundingRect(
+            with: NSSize(
+                width: textWidth,
+                height: .greatestFiniteMagnitude
+            ),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let textHeight = max(
+            ceil(font.ascender - font.descender + 2),
+            ceil(measuredText.height)
+        )
+        let view = NSView(
+            frame: NSRect(
+                x: 0,
+                y: 0,
+                width: textWidth + Self.horizontalInset * 2,
+                height: textHeight + Self.verticalInset * 2
+            )
+        )
+        let label = NSTextField(wrappingLabelWithString: email)
+        label.font = font
+        label.textColor = .labelColor
+        label.alignment = .left
+        label.lineBreakMode = .byCharWrapping
+        label.usesSingleLineMode = false
+        label.maximumNumberOfLines = 0
+        label.isEditable = false
+        label.isSelectable = false
+        label.drawsBackground = false
+        label.isBordered = false
+        label.frame = NSRect(
+            x: Self.horizontalInset,
+            y: Self.verticalInset,
+            width: textWidth,
+            height: textHeight
+        )
+        label.setAccessibilityRole(.staticText)
+        label.setAccessibilityLabel(email)
+        label.setAccessibilityValue(email)
+        view.addSubview(label)
+        self.view = view
+    }
+}
+
 final class AccountEmailTextField: NSTextField {
+    static let tooltipDelay: TimeInterval = 0.15
+
     var accountAccessibilityValue = ""
     private var hoverTrackingArea: NSTrackingArea?
+    private var tooltipTimer: Timer?
+    private var tooltipPopover: NSPopover?
+    private var tooltipText = ""
     private var displayedText = ""
     private var displayedFont = NSFont.systemFont(ofSize: 13)
     private var displayedTextColor = NSColor.secondaryLabelColor
 
     private(set) var isEmailHovered = false
+    private(set) var isTooltipScheduled = false
+    private(set) var isTooltipVisible = false
 
     var isUnderlined: Bool {
         guard !displayedText.isEmpty else { return false }
@@ -791,10 +876,12 @@ final class AccountEmailTextField: NSTextField {
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
         setEmailHovered(true)
+        scheduleTooltipPresentation()
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
+        cancelTooltipPresentation()
         setEmailHovered(false)
     }
 
@@ -812,13 +899,101 @@ final class AccountEmailTextField: NSTextField {
     /// above; this keeps the lifecycle testable without synthesizing a window
     /// event or relying on a click.
     func setHoveringForTesting(_ isHovering: Bool) {
+        if !isHovering {
+            cancelTooltipPresentation()
+        }
         setEmailHovered(isHovering)
+    }
+
+    /// Keeps the full value on AppKit's native tooltip property as a fallback,
+    /// while the short-delay popover is used when the label is in a visible
+    /// menu window.
+    func setTooltipText(_ text: String) {
+        tooltipText = text
+        toolTip = text
+        guard tooltipPopover != nil else { return }
+        closeTooltipPresentation()
+        if isEmailHovered {
+            scheduleTooltipPresentation()
+        }
     }
 
     private func setEmailHovered(_ isHovering: Bool) {
         guard isEmailHovered != isHovering else { return }
         isEmailHovered = isHovering
         applyDisplayedTextAttributes()
+    }
+
+    private func scheduleTooltipPresentation() {
+        guard !isTooltipVisible,
+              tooltipTimer == nil,
+              !tooltipText.isEmpty else {
+            return
+        }
+        let timer = Timer(
+            timeInterval: Self.tooltipDelay,
+            repeats: false
+        ) { [weak self] _ in
+            self?.presentTooltip()
+        }
+        tooltipTimer = timer
+        isTooltipScheduled = true
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func cancelTooltipPresentation() {
+        tooltipTimer?.invalidate()
+        tooltipTimer = nil
+        isTooltipScheduled = false
+        closeTooltipPresentation()
+    }
+
+    private func presentTooltip() {
+        tooltipTimer = nil
+        isTooltipScheduled = false
+        guard isEmailHovered,
+              let window,
+              window.isVisible,
+              !tooltipText.isEmpty else {
+            return
+        }
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = false
+        popover.contentViewController = AccountEmailTooltipViewController(
+            email: tooltipText
+        )
+        tooltipPopover = popover
+
+        // Cancel AppKit's slower default tooltip once the accelerated native
+        // popover is ready. Restore it when the pointer leaves as a fallback.
+        toolTip = nil
+        popover.show(
+            relativeTo: bounds,
+            of: self,
+            preferredEdge: .maxY
+        )
+        guard popover.isShown else {
+            tooltipPopover = nil
+            toolTip = tooltipText
+            return
+        }
+        isTooltipVisible = true
+    }
+
+    private func closeTooltipPresentation() {
+        tooltipPopover?.close()
+        tooltipPopover = nil
+        isTooltipVisible = false
+        if toolTip != tooltipText {
+            toolTip = tooltipText
+        }
+    }
+
+    deinit {
+        tooltipTimer?.invalidate()
+        tooltipPopover?.close()
     }
 
     private func applyDisplayedTextAttributes() {
@@ -904,7 +1079,7 @@ final class AccountEmailView: NSView {
     }
 
     private func updateAccessibilityAndTooltip() {
-        emailLabel.toolTip = fullEmail
+        emailLabel.setTooltipText(fullEmail)
         emailLabel.accountAccessibilityValue = fullEmail
         emailLabel.setAccessibilityLabel(fullEmail)
         emailLabel.setAccessibilityValue(fullEmail)
