@@ -692,11 +692,11 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
         XCTAssertEqual(
             service.availableReleasesForPresentation.map(\.tagName),
-            ["v1.2.5", "v1.2.4", "v1.2.3"]
+            ["v1.2.5", "v1.2.4"]
         )
         XCTAssertEqual(
             service.availableReleasesForPresentation.compactMap(\.body),
-            ["1.2.5 body", "1.2.4 body", "1.2.3 body"]
+            ["1.2.5 body", "1.2.4 body"]
         )
         XCTAssertEqual(
             service.availableReleaseForPresentation?.tagName,
@@ -769,7 +769,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.1.0")
     }
 
-    func testUpdateServiceBetaJumpNotesIncludeStableReleaseAndCurrentVersion() throws {
+    func testUpdateServiceBetaJumpNotesIncludeStableReleaseAndExcludeCurrentVersion() throws {
         let fetcher = StubReleaseFetcher()
         let queue = DispatchQueue(label: "UpdateTests.beta-release-notes-range")
         let service = UpdateService(
@@ -803,7 +803,7 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
         XCTAssertEqual(
             service.availableReleasesForPresentation.map(\.tagName),
-            ["v1.3.2", "v1.3.1", "v1.3.0", "v1.2.5", "v1.2.4", "v1.2.3"]
+            ["v1.3.2", "v1.3.1", "v1.3.0", "v1.2.5", "v1.2.4"]
         )
         XCTAssertEqual(
             service.availableReleasesForPresentation.compactMap(\.body),
@@ -812,8 +812,7 @@ final class UpdateTests: XCTestCase {
                 "1.3.1 beta body",
                 "stable boundary body",
                 "1.2.5 beta body",
-                "1.2.4 beta body",
-                "current beta body"
+                "1.2.4 beta body"
             ]
         )
     }
@@ -850,11 +849,11 @@ final class UpdateTests: XCTestCase {
         wait(for: [available], timeout: 2)
         XCTAssertEqual(
             service.availableReleasesForPresentation.map(\.tagName),
-            ["v1.3.0", "v1.2.3"]
+            ["v1.3.0"]
         )
         XCTAssertEqual(
             service.availableReleasesForPresentation.compactMap(\.body),
-            ["1.3.0 stable body", "current stable body"]
+            ["1.3.0 stable body"]
         )
     }
 
@@ -1600,13 +1599,12 @@ final class UpdateTests: XCTestCase {
         )
     }
 
-    func testUpdateNotesWindowRendersMultipleReleaseBodiesWithTargetFirst() throws {
+    func testUpdateNotesWindowRendersOnlyPresentedReleaseBodiesWithTargetFirst() throws {
         let controller = UpdateNotesWindowController(onInstall: {})
         defer { controller.close() }
         controller.show(
             currentVersion: try XCTUnwrap(AppSemanticVersion("1.2.3")),
             releases: [
-                makeRelease(tag: "v1.2.3", body: "Current release body"),
                 makeRelease(tag: "v1.2.5", body: "Target release body"),
                 makeRelease(tag: "v1.2.4", body: "Middle release body")
             ]
@@ -1621,19 +1619,17 @@ final class UpdateTests: XCTestCase {
         let rendered = notesTextView.string
         let targetRange = (rendered as NSString).range(of: "1.2.5")
         let middleRange = (rendered as NSString).range(of: "1.2.4")
-        let currentRange = (rendered as NSString).range(of: "1.2.3")
         XCTAssertNotEqual(targetRange.location, NSNotFound)
         XCTAssertNotEqual(middleRange.location, NSNotFound)
-        XCTAssertNotEqual(currentRange.location, NSNotFound)
         XCTAssertLessThan(targetRange.location, middleRange.location)
-        XCTAssertLessThan(middleRange.location, currentRange.location)
+        XCTAssertEqual((rendered as NSString).range(of: "1.2.3").location, NSNotFound)
         XCTAssertLessThan(
             (rendered as NSString).range(of: "Target release body").location,
             (rendered as NSString).range(of: "Middle release body").location
         )
-        XCTAssertLessThan(
-            (rendered as NSString).range(of: "Middle release body").location,
-            (rendered as NSString).range(of: "Current release body").location
+        XCTAssertEqual(
+            (rendered as NSString).range(of: "Current release body").location,
+            NSNotFound
         )
     }
 
