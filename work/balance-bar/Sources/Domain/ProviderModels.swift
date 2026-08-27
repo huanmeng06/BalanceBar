@@ -579,8 +579,8 @@ enum OpenCodexCardLayout {
     static let contentWidth = cardWidth - horizontalInset * 2
     static let subscriptionWidth: CGFloat = 78
     static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
-    // The fade occupies the final inset inside this viewport, so the account
-    // frame may end at the subscription leading edge without overlap.
+    // Geometry-only fallback used when the right-aligned subscription text has
+    // not been measured yet. Runtime callers refine this to the text edge.
     static let accountWidthWithSubscription = subscriptionX - horizontalInset
     static let amountWidth: CGFloat = 141
     static let amountX = cardWidth - horizontalInset - amountWidth
@@ -610,6 +610,7 @@ enum OpenCodexCardLayout {
         linkPrefixWidth: CGFloat = 62,
         includesAccount: Bool = false,
         includesSubscription: Bool = false,
+        subscriptionTextWidth: CGFloat? = nil,
         officialQuotaWindows: [OfficialQuotaWindow] = []
     ) -> OpenCodexCardFrames {
         let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
@@ -617,7 +618,8 @@ enum OpenCodexCardLayout {
             return expandedQuotaFrames(
                 windowCount: recognizedWindowCount,
                 includesAccount: includesAccount,
-                includesSubscription: includesSubscription
+                includesSubscription: includesSubscription,
+                subscriptionTextWidth: subscriptionTextWidth
             )
         }
 
@@ -626,7 +628,7 @@ enum OpenCodexCardLayout {
             let hasSubscription = includesAccount && includesSubscription
             let accountShift: CGFloat = includesAccount ? 19 : 0
             let accountWidth = hasSubscription
-                ? accountWidthWithSubscription
+                ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
                 : contentWidth
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: 102 + accountShift),
@@ -694,7 +696,8 @@ enum OpenCodexCardLayout {
     private static func expandedQuotaFrames(
         windowCount: Int,
         includesAccount: Bool,
-        includesSubscription: Bool
+        includesSubscription: Bool,
+        subscriptionTextWidth: CGFloat?
     ) -> OpenCodexCardFrames {
         let rowHeight = quotaRowHeight
         let rowGap = quotaRowGap
@@ -708,7 +711,7 @@ enum OpenCodexCardLayout {
         let cardHeight = titleY + 20 + 7
         let hasSubscription = includesAccount && includesSubscription
         let accountWidth = hasSubscription
-            ? accountWidthWithSubscription
+            ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
             : contentWidth
         let rows = (0..<windowCount).map { index in
             let y = bottomInset
@@ -764,6 +767,18 @@ enum OpenCodexCardLayout {
             link: nil,
             quotaRows: rows
         )
+    }
+
+    /// The subscription label is right-aligned within its fixed layout frame.
+    /// When its rendered width is known, let the account marquee use the empty
+    /// leading part of that frame and end at the subscription text itself.
+    /// Keeping the unmeasured fallback preserves the geometry-only layout seam.
+    static func accountWidth(forSubscriptionTextWidth textWidth: CGFloat?) -> CGFloat {
+        guard let textWidth else { return accountWidthWithSubscription }
+
+        let clampedTextWidth = min(max(0, textWidth), subscriptionWidth)
+        let subscriptionTextMinX = subscriptionX + subscriptionWidth - clampedTextWidth
+        return max(0, min(contentWidth, subscriptionTextMinX - horizontalInset))
     }
 }
 

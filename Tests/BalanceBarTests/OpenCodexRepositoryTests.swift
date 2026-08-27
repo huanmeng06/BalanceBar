@@ -1147,35 +1147,47 @@ final class OpenCodexRepositoryTests: XCTestCase {
     }
 
     func testOpenAISubscriptionTextSharesAccountRowAndReservesRightAlignedSpace() {
+        let renderedSubscriptionTextWidth: CGFloat = 34
         let frames = OpenCodexCardLayout.frames(
             for: .quota,
             includesAccount: true,
-            includesSubscription: true
+            includesSubscription: true,
+            subscriptionTextWidth: renderedSubscriptionTextWidth
         )
 
         XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 121))
-        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 198, height: 17))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 242, height: 17))
         XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 75, width: 78, height: 17))
         XCTAssertEqual(frames.title, CGRect(x: 14, y: 94, width: 189, height: 20))
         XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 95, width: 81, height: 17))
         XCTAssertEqual(frames.account?.minY, frames.subscription?.minY)
         XCTAssertEqual(frames.account?.height, frames.subscription?.height)
-        XCTAssertLessThanOrEqual(frames.account?.maxX ?? 0, frames.subscription?.minX ?? 0)
+        XCTAssertEqual(
+            frames.account?.maxX ?? 0,
+            (frames.subscription?.maxX ?? 0) - renderedSubscriptionTextWidth,
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(frames.account?.maxX ?? 0, frames.subscription?.minX ?? 0)
         XCTAssertLessThanOrEqual(frames.subscription?.maxX ?? 0, frames.cardSize.width - 14)
 
         let errorFrames = ErrorCardLayout.errorFrames(
             for: "quota unavailable",
             includesAccount: true,
-            includesSubscription: true
+            includesSubscription: true,
+            subscriptionTextWidth: renderedSubscriptionTextWidth
         )
-        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 198, height: 17))
+        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 242, height: 17))
         XCTAssertEqual(errorFrames.subscription, CGRect(x: 212, y: 58, width: 78, height: 17))
         XCTAssertEqual(errorFrames.account?.minY, errorFrames.subscription?.minY)
         XCTAssertEqual(errorFrames.account?.height, errorFrames.subscription?.height)
         XCTAssertEqual(
             errorFrames.account?.maxX ?? 0,
-            errorFrames.subscription?.minX ?? 0,
+            (errorFrames.subscription?.maxX ?? 0) - renderedSubscriptionTextWidth,
             accuracy: 0.001
+        )
+        XCTAssertGreaterThan(
+            errorFrames.account?.maxX ?? 0,
+            errorFrames.subscription?.minX ?? 0
         )
     }
 

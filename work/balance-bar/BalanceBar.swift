@@ -1616,8 +1616,8 @@ enum ErrorCardLayout {
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
     static let subscriptionWidth: CGFloat = 78
     static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
-    // The account marquee's final fade inset is inside this viewport, keeping
-    // the visible text separated from the adjacent subscription label.
+    // Geometry-only fallback used when the right-aligned subscription text has
+    // not been measured yet. Runtime callers refine this to the text edge.
     static let accountWidthWithSubscription = subscriptionX - horizontalInset
 
     // Match the compact third-party balance card for a single-line error.
@@ -1699,7 +1699,8 @@ enum ErrorCardLayout {
     static func errorFrames(
         for message: String,
         includesAccount: Bool = false,
-        includesSubscription: Bool = false
+        includesSubscription: Bool = false,
+        subscriptionTextWidth: CGFloat? = nil
     ) -> ErrorFrames {
         let text = detailText(for: message, width: detailWidth)
         let detailH = measuredHeight(of: text, width: detailWidth)
@@ -1707,7 +1708,7 @@ enum ErrorCardLayout {
         let hasSubscription = includesAccount && includesSubscription
         let accountShift: CGFloat = includesAccount ? 19 : 0
         let accountWidth = hasSubscription
-            ? accountWidthWithSubscription
+            ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
             : contentWidth
         let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
@@ -1734,6 +1735,18 @@ enum ErrorCardLayout {
             detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),
             detailText: text
         )
+    }
+
+    /// The subscription label is right-aligned within its fixed layout frame.
+    /// Use its measured text width so the account marquee reaches the visible
+    /// subscription text instead of stopping at the frame's unused leading
+    /// space.
+    static func accountWidth(forSubscriptionTextWidth textWidth: CGFloat?) -> CGFloat {
+        guard let textWidth else { return accountWidthWithSubscription }
+
+        let clampedTextWidth = min(max(0, textWidth), subscriptionWidth)
+        let subscriptionTextMinX = subscriptionX + subscriptionWidth - clampedTextWidth
+        return max(0, min(contentWidth, subscriptionTextMinX - horizontalInset))
     }
 
     /// Wrapping label for the error detail. Uses word wrapping on text prepared

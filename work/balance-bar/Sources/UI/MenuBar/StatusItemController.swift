@@ -515,6 +515,7 @@ struct StatusItemVisibilityStateMachine {
 
 final class StatusItemController: NSObject, NSMenuDelegate {
     private static let statusItemVisibilityStabilityDelay: TimeInterval = 0.2
+    private static let subscriptionFont = NSFont.systemFont(ofSize: 13, weight: .regular)
 
     struct Actions {
         let manualRefresh: () -> Void
@@ -1756,11 +1757,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let officialQuotaWindows = snapshot.kind == .official
             ? snapshot.officialQuotaWindowsForMenu
             : []
+        let subscription = menuInput.openAIAccount?.subscription
+        let subscriptionTextWidth = subscription.map {
+            AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
+        }
         let layout = OpenCodexCardLayout.frames(
             for: isBalance ? .balance : .quota,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth,
             includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
-            includesSubscription: snapshot.kind == .official && menuInput.openAIAccount?.subscription != nil,
+            includesSubscription: snapshot.kind == .official && subscription != nil,
+            subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
             officialQuotaWindows: officialQuotaWindows
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
@@ -1782,7 +1788,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
             view.addSubview(accountLabel)
         }
-        if let subscription = menuInput.openAIAccount?.subscription,
+        if let subscription,
            let subscriptionFrame = layout.subscription {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
@@ -2060,7 +2066,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let frames = ErrorCardLayout.errorFrames(
             for: message,
             includesAccount: menuInput.openAIAccount != nil,
-            includesSubscription: menuInput.openAIAccount?.subscription != nil
+            includesSubscription: menuInput.openAIAccount?.subscription != nil,
+            subscriptionTextWidth: menuInput.openAIAccount?.subscription.map {
+                AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
+            }
         )
         let view = NSView(frame: NSRect(origin: .zero, size: frames.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: ErrorCardLayout.titleFont)
@@ -2158,7 +2167,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func makeSubscriptionLabel(_ text: String, frame: NSRect) -> NSTextField {
-        let label = makeOverviewLabel(text, font: .systemFont(ofSize: 13, weight: .regular))
+        let label = makeOverviewLabel(text, font: Self.subscriptionFont)
         label.textColor = .secondaryLabelColor
         label.alignment = .right
         label.frame = frame

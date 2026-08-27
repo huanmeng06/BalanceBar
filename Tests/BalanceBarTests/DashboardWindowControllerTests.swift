@@ -1210,16 +1210,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(scrollAnimation.repeatCount, .infinity)
         XCTAssertGreaterThan(scrollAnimation.duration, 0)
-        XCTAssertEqual(
-            accountView.frame,
-            try XCTUnwrap(
-                OpenCodexCardLayout.frames(
-                    for: .quota,
-                    includesAccount: true,
-                    includesSubscription: true
-                ).account
-            )
-        )
         XCTAssertLessThanOrEqual(accountView.frame.maxX, overview.bounds.maxX)
         let subscriptionLabel = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
@@ -1230,6 +1220,19 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(subscriptionLabel.textColor, .secondaryLabelColor)
         XCTAssertEqual(subscriptionLabel.alignment, .right)
         XCTAssertEqual(subscriptionLabel.lineBreakMode, .byTruncatingTail)
+        let subscriptionTextWidth = AccountMarqueeView.textWidth(
+            of: subscriptionLabel.stringValue,
+            font: try XCTUnwrap(subscriptionLabel.font)
+        )
+        let expectedAccountFrame = try XCTUnwrap(
+            OpenCodexCardLayout.frames(
+                for: .quota,
+                includesAccount: true,
+                includesSubscription: true,
+                subscriptionTextWidth: subscriptionTextWidth
+            ).account
+        )
+        XCTAssertEqual(accountView.frame, expectedAccountFrame)
         let subscriptionFrame = try XCTUnwrap(
             OpenCodexCardLayout.frames(
                 for: .quota,
@@ -1241,7 +1244,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(subscriptionLabel.superview === overview)
         XCTAssertEqual(accountView.frame.minY, subscriptionLabel.frame.minY)
         XCTAssertEqual(accountView.frame.height, subscriptionLabel.frame.height)
-        XCTAssertEqual(accountView.frame.maxX, subscriptionLabel.frame.minX, accuracy: 0.001)
+        XCTAssertEqual(
+            accountView.frame.maxX,
+            subscriptionLabel.frame.maxX - subscriptionTextWidth,
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(accountView.frame.maxX, subscriptionLabel.frame.minX)
         XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
         XCTAssertNotNil(
             allControls(of: overview, as: NSTextField.self).first {
@@ -1256,9 +1264,24 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let switchedAccountView = try XCTUnwrap(
             switchedOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first
         )
+        let switchedSubscriptionLabel = try XCTUnwrap(
+            allControls(of: switchedOverview, as: NSTextField.self).first {
+                $0.stringValue == "Pro · 20x"
+            }
+        )
+        let switchedSubscriptionTextWidth = AccountMarqueeView.textWidth(
+            of: switchedSubscriptionLabel.stringValue,
+            font: try XCTUnwrap(switchedSubscriptionLabel.font)
+        )
         XCTAssertFalse(switchedAccountView.isScrollable)
         XCTAssertFalse(switchedAccountView.showsEdgeFade)
         XCTAssertEqual(switchedAccountView.accountLabel.frame.width, switchedAccountView.bounds.width)
+        XCTAssertEqual(
+            switchedAccountView.frame.maxX,
+            switchedSubscriptionLabel.frame.maxX - switchedSubscriptionTextWidth,
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(switchedAccountView.frame.maxX, switchedSubscriptionLabel.frame.minX)
         XCTAssertNil(
             allControls(of: switchedOverview, as: NSTextField.self).first {
                 $0.stringValue.contains(longEmail)
@@ -1269,11 +1292,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.stringValue == "person@example.com"
             }?.stringValue,
             "person@example.com"
-        )
-        XCTAssertNotNil(
-            allControls(of: switchedOverview, as: NSTextField.self).first {
-                $0.stringValue == "Pro · 20x"
-            }
         )
         XCTAssertNil(
             allControls(of: switchedOverview, as: NSTextField.self).first {
