@@ -5,6 +5,12 @@ protocol DashboardSettingsRowControlLayout: AnyObject {
     var usesDedicatedRow: Bool { get }
 }
 
+private enum DashboardSettingsControlPlacement: Equatable {
+    case horizontal
+    case verticalBesideContent
+    case dedicatedRow
+}
+
 private final class DashboardSettingsRowView: NSView {
     let minimumHeight: CGFloat
     let verticalPadding: CGFloat
@@ -13,8 +19,8 @@ private final class DashboardSettingsRowView: NSView {
     weak var cardView: DashboardSettingsCardView?
     private var lastMeasuredWidth: CGFloat = -1
     private var lastPreferredHeight: CGFloat = -1
-    private var usesDedicatedControlRow = false
-    private var horizontalControlConstraints: [NSLayoutConstraint] = []
+    private var controlPlacement: DashboardSettingsControlPlacement = .horizontal
+    private var sideBySideControlConstraints: [NSLayoutConstraint] = []
     private var dedicatedControlConstraints: [NSLayoutConstraint] = []
 
     init(minimumHeight: CGFloat, verticalPadding: CGFloat) {
@@ -38,7 +44,7 @@ private final class DashboardSettingsRowView: NSView {
             return total + height
         } + max(0, CGFloat(visibleLabels.count - 1)) * labelsView.spacing
         let controlHeight = controlView?.fittingSize.height ?? 0
-        if usesDedicatedControlRow {
+        if controlPlacement == .dedicatedRow {
             return ceil(max(
                 minimumHeight,
                 labelHeight + controlHeight + DashboardSettingsComponents.settingsRowContentControlSpacing + verticalPadding * 2
@@ -61,7 +67,15 @@ private final class DashboardSettingsRowView: NSView {
                 availableContentAndControlWidth - actionWidth - 20
             )
             let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < minimumReadableContentWidth
-            updateControlPlacementIfNeeded(adaptiveControl.usesDedicatedRow || contentNeedsDedicatedRow)
+            let placement: DashboardSettingsControlPlacement
+            if contentNeedsDedicatedRow {
+                placement = .dedicatedRow
+            } else if adaptiveControl.usesDedicatedRow {
+                placement = .verticalBesideContent
+            } else {
+                placement = .horizontal
+            }
+            updateControlPlacementIfNeeded(placement)
         }
         super.layout()
         let currentWidth = bounds.width
@@ -125,19 +139,27 @@ private final class DashboardSettingsRowView: NSView {
     }
 
     func installControlLayoutConstraints(
-        horizontal: [NSLayoutConstraint],
+        sideBySide: [NSLayoutConstraint],
         dedicated: [NSLayoutConstraint]
     ) {
-        horizontalControlConstraints = horizontal
+        sideBySideControlConstraints = sideBySide
         dedicatedControlConstraints = dedicated
-        NSLayoutConstraint.activate(horizontal)
+        NSLayoutConstraint.activate(sideBySide)
     }
 
-    private func updateControlPlacementIfNeeded(_ usesDedicatedRow: Bool) {
-        guard self.usesDedicatedControlRow != usesDedicatedRow else { return }
-        self.usesDedicatedControlRow = usesDedicatedRow
-        NSLayoutConstraint.deactivate(usesDedicatedRow ? horizontalControlConstraints : dedicatedControlConstraints)
-        NSLayoutConstraint.activate(usesDedicatedRow ? dedicatedControlConstraints : horizontalControlConstraints)
+    private func updateControlPlacementIfNeeded(_ placement: DashboardSettingsControlPlacement) {
+        guard controlPlacement != placement else { return }
+        controlPlacement = placement
+        NSLayoutConstraint.deactivate(
+            sideBySideControlConstraints +
+                dedicatedControlConstraints
+        )
+        switch placement {
+        case .horizontal, .verticalBesideContent:
+            NSLayoutConstraint.activate(sideBySideControlConstraints)
+        case .dedicatedRow:
+            NSLayoutConstraint.activate(dedicatedControlConstraints)
+        }
         invalidateIntrinsicContentSize()
         needsLayout = true
     }
@@ -797,7 +819,7 @@ enum DashboardSettingsComponents {
                 labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
                 control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20)
             ])
-            let horizontalConstraints = [
+            let sideBySideConstraints = [
                 labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
                 labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
                 labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding),
@@ -811,7 +833,7 @@ enum DashboardSettingsComponents {
                 control.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -padding)
             ]
             row.installControlLayoutConstraints(
-                horizontal: horizontalConstraints,
+                sideBySide: sideBySideConstraints,
                 dedicated: dedicatedConstraints
             )
             if controlWidthConstrainedToRow {

@@ -2924,6 +2924,34 @@ final class UpdateTests: XCTestCase {
                 "medium-width content and actions must not overlap for \(language)"
             )
 
+            var foundVerticalActionsBesideContent = false
+            for width in stride(from: CGFloat(320), through: 1400, by: 20) {
+                page.setFrameSize(NSSize(width: width, height: 420))
+                let candidate = frames()
+                guard controls.orientation == .vertical,
+                      candidate.labels.maxX < candidate.controls.minX - 0.5 else {
+                    continue
+                }
+                XCTAssertEqual(
+                    candidate.labels.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "title and subtitle should be vertically centered beside a vertical action column for \(language)"
+                )
+                XCTAssertEqual(
+                    candidate.controls.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "vertical action column should be centered in the update row for \(language)"
+                )
+                foundVerticalActionsBesideContent = true
+                break
+            }
+            XCTAssertTrue(
+                foundVerticalActionsBesideContent,
+                "a width with vertical actions beside the content should be reachable for \(language)"
+            )
+
             page.setFrameSize(NSSize(width: 760, height: 420))
             let wide = frames()
             assertCardHeight("card height must follow the wide update row for \(language)")
