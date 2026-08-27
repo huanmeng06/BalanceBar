@@ -329,11 +329,11 @@
 "dashboard.menu.page.show_the_cc_switch_main_window" = "CC Switch のメインウインドウを表示";
 "dashboard.menu.page.open_opencodex" = "OpenCodex を開く";
 "dashboard.menu.page.show_the_opencodex_dashboard" = "OpenCodex コンソールを表示";
-"dashboard.menu.page.view_status" = "サービスのステータス";
-"dashboard.menu.page.show_customizable_service_status_links" = "カスタムサービスステータスリンク";
+"dashboard.menu.page.view_status" = "ステータスを表示";
+"dashboard.menu.page.show_customizable_service_status_links" = "「ステータスを表示」リンクをカスタマイズ";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "メニューにサービスステータスリンクを表示";
 "dashboard.menu.page.open_project" = "クイックリンク";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "カスタマイズ可能なサービスステータスリンク";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "「ステータスを表示」リンクをカスタマイズ";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "メニューバーにステータスリンクを表示";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "このプロバイダーを選択すると、クォータのリセット時刻を詳しく確認できます";
 "dashboard.provider.pages.usage" = "使用量";

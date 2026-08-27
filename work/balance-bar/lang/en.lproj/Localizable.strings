@@ -329,11 +329,11 @@
 "dashboard.menu.page.show_the_cc_switch_main_window" = "Show the CC Switch main window";
 "dashboard.menu.page.open_opencodex" = "Open OpenCodex";
 "dashboard.menu.page.show_the_opencodex_dashboard" = "Show the OpenCodex console";
-"dashboard.menu.page.view_status" = "Service status";
-"dashboard.menu.page.show_customizable_service_status_links" = "Custom service status links";
+"dashboard.menu.page.view_status" = "View Status";
+"dashboard.menu.page.show_customizable_service_status_links" = "Customize “View Status” links";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Show service status links in the menu";
 "dashboard.menu.page.open_project" = "Quick links";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "Custom service status links";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "Customize “View Status” links";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Show status links in the menu bar";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Select this provider to view detailed quota reset times";
 "dashboard.provider.pages.usage" = "Usage";

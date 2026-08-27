@@ -329,11 +329,11 @@
 "dashboard.menu.page.show_the_cc_switch_main_window" = "CC Switch 주 윈도우 표시";
 "dashboard.menu.page.open_opencodex" = "OpenCodex 열기";
 "dashboard.menu.page.show_the_opencodex_dashboard" = "OpenCodex 콘솔 표시";
-"dashboard.menu.page.view_status" = "서비스 상태";
-"dashboard.menu.page.show_customizable_service_status_links" = "사용자 지정 서비스 상태 링크";
+"dashboard.menu.page.view_status" = "상태 보기";
+"dashboard.menu.page.show_customizable_service_status_links" = "‘상태 보기’ 링크 사용자 지정";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "메뉴에 서비스 상태 링크 표시";
 "dashboard.menu.page.open_project" = "빠른 링크";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "사용자 지정 가능한 서비스 상태 링크";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "‘상태 보기’ 링크 사용자 지정";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "메뉴 막대에 상태 링크 표시";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "이 공급자로 전환하면 할당량 재설정 시간을 자세히 볼 수 있습니다";
 "dashboard.provider.pages.usage" = "사용량";

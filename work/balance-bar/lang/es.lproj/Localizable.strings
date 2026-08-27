@@ -329,11 +329,11 @@
 "dashboard.menu.page.show_the_cc_switch_main_window" = "Mostrar la ventana principal de CC Switch";
 "dashboard.menu.page.open_opencodex" = "Abrir OpenCodex";
 "dashboard.menu.page.show_the_opencodex_dashboard" = "Mostrar la consola de OpenCodex";
-"dashboard.menu.page.view_status" = "Estado del servicio";
-"dashboard.menu.page.show_customizable_service_status_links" = "Enlaces de estado de servicios personalizados";
+"dashboard.menu.page.view_status" = "Ver estado";
+"dashboard.menu.page.show_customizable_service_status_links" = "Personalizar los enlaces de «Ver estado»";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Mostrar enlaces de estado de servicios en el menú";
 "dashboard.menu.page.open_project" = "Enlaces rápidos";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "Enlaces de estado de servicios personalizables";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "Personalizar los enlaces de «Ver estado»";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Mostrar enlaces de estado en la barra de menús";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Selecciona este proveedor para consultar en detalle las horas de reinicio de la cuota";
 "dashboard.provider.pages.usage" = "Uso";

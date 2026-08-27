@@ -582,6 +582,38 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testStatusLinkSettingsUseViewStatusTerminologyAcrossLanguages() {
+        let expected: [AppLanguage: (title: String, subtitle: String)] = [
+            .simplifiedChinese: ("查看状态", "自定义“查看状态”链接"),
+            .traditionalChineseTaiwan: ("檢視狀態", "自訂「檢視狀態」連結"),
+            .traditionalChineseHongKong: ("檢視狀態", "自訂「檢視狀態」連結"),
+            .japanese: ("ステータスを表示", "「ステータスを表示」リンクをカスタマイズ"),
+            .english: ("View Status", "Customize “View Status” links"),
+            .korean: ("상태 보기", "‘상태 보기’ 링크 사용자 지정"),
+            .spanish: ("Ver estado", "Personalizar los enlaces de «Ver estado»"),
+            .german: ("Status anzeigen", "Links für „Status anzeigen“ anpassen"),
+            .french: ("Voir l’état", "Personnaliser les liens « Voir l’état »")
+        ]
+
+        for language in allLanguages {
+            XCTAssertEqual(
+                tr(.keyDashboardMenuPageViewStatus, language: language),
+                expected[language]?.title,
+                "status-link title for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks, language: language),
+                expected[language]?.subtitle,
+                "status-link subtitle for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2, language: language),
+                expected[language]?.subtitle,
+                "status-link auxiliary subtitle for \(language)"
+            )
+        }
+    }
+
     func testCodexQuotaWindowLabelsAreLocalizedAcrossAllSupportedLanguages() {
         let store = LocalizationResourceStore(bundle: testBundle)
         let languages: [AppLanguage] = [

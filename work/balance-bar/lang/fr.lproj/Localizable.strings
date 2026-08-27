@@ -329,11 +329,11 @@
 "dashboard.menu.page.show_the_cc_switch_main_window" = "Afficher la fenêtre principale de CC Switch";
 "dashboard.menu.page.open_opencodex" = "Ouvrir OpenCodex";
 "dashboard.menu.page.show_the_opencodex_dashboard" = "Afficher la console OpenCodex";
-"dashboard.menu.page.view_status" = "État du service";
-"dashboard.menu.page.show_customizable_service_status_links" = "Liens d’état de service personnalisés";
+"dashboard.menu.page.view_status" = "Voir l’état";
+"dashboard.menu.page.show_customizable_service_status_links" = "Personnaliser les liens « Voir l’état »";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Afficher les liens d’état de service dans le menu";
 "dashboard.menu.page.open_project" = "Accès rapides";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "Liens d’état des services personnalisables";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "Personnaliser les liens « Voir l’état »";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Afficher les liens d’état dans la barre des menus";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Sélectionnez ce fournisseur pour consulter les heures de réinitialisation détaillées du quota";
 "dashboard.provider.pages.usage" = "Utilisation";

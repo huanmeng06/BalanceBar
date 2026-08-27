@@ -329,11 +329,11 @@
 "dashboard.menu.page.show_the_cc_switch_main_window" = "CC-Switch-Hauptfenster anzeigen";
 "dashboard.menu.page.open_opencodex" = "OpenCodex öffnen";
 "dashboard.menu.page.show_the_opencodex_dashboard" = "OpenCodex-Konsole anzeigen";
-"dashboard.menu.page.view_status" = "Dienststatus";
-"dashboard.menu.page.show_customizable_service_status_links" = "Benutzerdefinierte Dienststatuslinks";
+"dashboard.menu.page.view_status" = "Status anzeigen";
+"dashboard.menu.page.show_customizable_service_status_links" = "Links für „Status anzeigen“ anpassen";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Dienststatuslinks im Menü anzeigen";
 "dashboard.menu.page.open_project" = "Schnellzugriff";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "Anpassbare Dienststatuslinks";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "Links für „Status anzeigen“ anpassen";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Statuslinks in der Menüleiste anzeigen";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Diesen Anbieter auswählen, um detaillierte Kontingent-Rücksetzzeiten anzuzeigen";
 "dashboard.provider.pages.usage" = "Nutzung";

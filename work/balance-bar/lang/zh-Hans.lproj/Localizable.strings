@@ -329,11 +329,11 @@
 "dashboard.menu.page.show_the_cc_switch_main_window" = "显示 CC Switch 主窗口";
 "dashboard.menu.page.open_opencodex" = "打开 OpenCodex";
 "dashboard.menu.page.show_the_opencodex_dashboard" = "显示 OpenCodex 控制台";
-"dashboard.menu.page.view_status" = "服务状态";
-"dashboard.menu.page.show_customizable_service_status_links" = "自定义服务状态链接";
+"dashboard.menu.page.view_status" = "查看状态";
+"dashboard.menu.page.show_customizable_service_status_links" = "自定义“查看状态”链接";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "在菜单中显示服务状态链接";
 "dashboard.menu.page.open_project" = "快捷入口";
-"dashboard.menu.page.show_customizable_service_status_links.2" = "自定义服务状态链接";
+"dashboard.menu.page.show_customizable_service_status_links.2" = "自定义“查看状态”链接";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "在菜单栏中显示状态链接";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "切换到此服务商后可查看详细的额度重置时间";
 "dashboard.provider.pages.usage" = "用量";
