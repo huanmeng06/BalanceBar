@@ -219,6 +219,9 @@ enum OpenCodexCardData: Equatable {
         reset: String?,
         updatedAt: Date
     )
+    /// Timestamp-aware form used by the official OpenCodex card. Keep the
+    /// legacy case above for source compatibility with injected card data.
+    case officialWithWindow(window: OfficialQuotaWindow, updatedAt: Date)
     case balance(
         amount: Double,
         unit: String,
@@ -228,11 +231,21 @@ enum OpenCodexCardData: Equatable {
     )
     case unavailable(category: OpenCodexCardCategory, reason: String)
 
+    /// Compatibility-friendly factory for timestamp-aware official cards.
+    /// The existing `.official(remaining:label:reset:updatedAt:)` case remains
+    /// available to callers that only have legacy relative text.
+    static func official(
+        window: OfficialQuotaWindow,
+        updatedAt: Date
+    ) -> OpenCodexCardData {
+        .officialWithWindow(window: window, updatedAt: updatedAt)
+    }
+
     var category: OpenCodexCardCategory {
         switch self {
         case .loading(let category), .unavailable(let category, _):
             return category
-        case .official:
+        case .official, .officialWithWindow:
             return .quota
         case .balance:
             return .balance
@@ -243,7 +256,7 @@ enum OpenCodexCardData: Equatable {
         switch self {
         case .loading(let category):
             return "loading/\(category.diagnosticName)"
-        case .official:
+        case .official, .officialWithWindow:
             return "official/quota"
         case .balance:
             return "balance"
@@ -254,10 +267,30 @@ enum OpenCodexCardData: Equatable {
 
     var isSuccessful: Bool {
         switch self {
-        case .official, .balance:
+        case .official, .officialWithWindow, .balance:
             return true
         case .loading, .unavailable:
             return false
+        }
+    }
+
+    /// Normalize both official card representations to the shared quota
+    /// window model used by the main menu card and menu-bar preview.
+    var officialWindow: OfficialQuotaWindow? {
+        switch self {
+        case .official(let remaining, let label, let reset, _):
+            return OfficialQuotaWindow(
+                kind: .other,
+                remaining: remaining,
+                label: label,
+                daysText: label,
+                reset: reset,
+                durationSeconds: nil
+            )
+        case .officialWithWindow(let window, _):
+            return window
+        case .loading, .balance, .unavailable:
+            return nil
         }
     }
 }
@@ -456,6 +489,15 @@ enum OpenCodexCardPresentation {
                 label,
                 reset,
                 updatedAt
+            )
+        case .officialWithWindow(let window, let updatedAt):
+            return .official(
+                card.provider,
+                window.remaining,
+                window.label,
+                window.reset,
+                updatedAt,
+                windows: [window]
             )
         case .balance(let amount, let unit, let progressPercentage, let websiteURL, let updatedAt):
             return .balance(

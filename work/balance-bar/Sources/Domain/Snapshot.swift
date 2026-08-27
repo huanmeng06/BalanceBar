@@ -15,6 +15,83 @@ struct OfficialQuotaWindow: Equatable {
     let daysText: String
     let reset: String?
     let durationSeconds: Double?
+    /// The original absolute reset timestamp, when the API supplied a valid
+    /// future value. Relative reset text remains separate so it can continue
+    /// to use the API's existing countdown semantics.
+    let resetAt: Date?
+
+    init(
+        kind: Kind,
+        remaining: Double,
+        label: String,
+        daysText: String,
+        reset: String?,
+        durationSeconds: Double?,
+        resetAt: Date? = nil
+    ) {
+        self.kind = kind
+        self.remaining = remaining
+        self.label = label
+        self.daysText = daysText
+        self.reset = reset
+        self.durationSeconds = durationSeconds
+        self.resetAt = resetAt
+    }
+
+    /// Keep unrecognized/legacy windows on the existing relative-only path.
+    /// Only the two Codex windows identified by Issue #202 may expose a
+    /// precise timestamp in the quota card.
+    func resetDisplayText(
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard let reset else { return nil }
+        guard kind != .other,
+              let resetAt,
+              let exactDate = OfficialQuotaResetFormatter.string(
+                  for: resetAt,
+                  relativeTo: now,
+                  calendar: calendar,
+                  locale: locale,
+                  timeZone: timeZone
+              ) else {
+            return reset
+        }
+        return tr(.keySnapshotValueValue, arguments: [reset, exactDate])
+    }
+}
+
+enum OfficialQuotaResetFormatter {
+    /// Format a valid future reset timestamp in the user's local calendar and
+    /// time zone. The `j` template field delegates 12/24-hour preference to
+    /// Foundation's locale data, while the date template is only used after a
+    /// local-calendar day boundary.
+    static func string(
+        for resetAt: Date?,
+        relativeTo now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard let resetAt, resetAt > now else { return nil }
+
+        var localizedCalendar = calendar
+        localizedCalendar.locale = locale
+        localizedCalendar.timeZone = timeZone
+        let template = localizedCalendar.isDate(resetAt, inSameDayAs: now)
+            ? "jm"
+            : "Mdjm"
+
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = localizedCalendar
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        let text = formatter.string(from: resetAt)
+        return text.isEmpty ? nil : text
+    }
 }
 
 struct Snapshot {
@@ -28,6 +105,35 @@ struct Snapshot {
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
     let officialQuotaWindows: [OfficialQuotaWindow]
+    /// The window selected for the compact/menu-bar presentation. The full
+    /// quota card keeps all source windows, so this marker prevents the
+    /// selected row's exact reset timestamp from being replaced by the
+    /// representative (weekly) window when shared snapshot properties render.
+    let selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind?
+
+    init(
+        kind: Kind,
+        provider: String,
+        amount: Double?,
+        unit: String?,
+        date: Date?,
+        message: String?,
+        websiteURL: URL?,
+        balanceProgressPercentage: Double?,
+        officialQuotaWindows: [OfficialQuotaWindow],
+        selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil
+    ) {
+        self.kind = kind
+        self.provider = provider
+        self.amount = amount
+        self.unit = unit
+        self.date = date
+        self.message = message
+        self.websiteURL = websiteURL
+        self.balanceProgressPercentage = balanceProgressPercentage
+        self.officialQuotaWindows = officialQuotaWindows
+        self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
+    }
 
     static let placeholder = Snapshot(
         kind: .placeholder,
@@ -201,7 +307,8 @@ struct Snapshot {
             message: window.reset,
             websiteURL: websiteURL,
             balanceProgressPercentage: balanceProgressPercentage,
-            officialQuotaWindows: officialQuotaWindows
+            officialQuotaWindows: officialQuotaWindows,
+            selectedOfficialQuotaWindowKind: window.kind
         )
     }
 
@@ -226,7 +333,7 @@ struct Snapshot {
     }
 
     var menuBarSecondary: String {
-        kind == .official ? (message ?? "—") : ""
+        kind == .official ? (officialResetDisplayValue() ?? "—") : ""
     }
 
     var menuBarToolTip: String {
@@ -234,7 +341,7 @@ struct Snapshot {
         if kind == .openCodex {
             return tr(.keySnapshotValueValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationStatusUnknown))])
         }
-        return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationUnknown))])
+        return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))])
     }
 
     var overviewProvider: String {
@@ -248,7 +355,7 @@ struct Snapshot {
     func overviewReset(refreshDate: Date?, formatter: DateFormatter) -> String {
         switch kind {
         case .official:
-            return tr(.keySnapshotResetValue, arguments: [String(describing: message ?? tr(.keyLocalizationUnknown))])
+            return tr(.keySnapshotResetValue, arguments: [String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))])
         case .balance:
             return tr(.keySnapshotLastRefreshedValue, arguments: [String(describing: formatter.string(from: refreshDate ?? date ?? Date()))])
         case .openCodex:
@@ -330,7 +437,7 @@ struct Snapshot {
     var compactResetTitle: String {
         switch kind {
         case .official:
-            return tr(.keySnapshotResetValue2, arguments: [String(describing: message ?? tr(.keyLocalizationWaitingForQuotaData))])
+            return tr(.keySnapshotResetValue2, arguments: [String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationWaitingForQuotaData))])
         default:
             return ""
         }
@@ -341,7 +448,7 @@ struct Snapshot {
         case .balance:
             return tr(.keySnapshotUpdatedValueFollowsCcSwitchAutomatically, arguments: [String(describing: date?.formatted(date: .omitted, time: .shortened) ?? tr(.keyLocalizationJustNow))])
         case .official:
-            let resetText = message.map {
+            let resetText = officialResetDisplayValue().map {
                 tr(.keySnapshotResetValue3, arguments: [String(describing: $0)])
             } ?? ""
             return tr(.keySnapshotOfficialQuotaUpdatesEveryMinutevalue, arguments: [String(describing: resetText)])
@@ -350,6 +457,27 @@ struct Snapshot {
         case .error: return message ?? tr(.keySnapshotUnknownError)
         case .placeholder: return tr(.keySnapshotWaitingForCcSwitchStatus)
         }
+    }
+
+    func officialResetDisplayValue(
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard kind == .official else { return nil }
+        let representative = selectedOfficialQuotaWindowKind.flatMap { selectedKind in
+            officialQuotaWindows.first(where: { $0.kind == selectedKind })
+        }
+            ?? officialQuotaWindows.first(where: { $0.kind == .sevenDay })
+            ?? officialQuotaWindows.first(where: { $0.kind == .fiveHour })
+            ?? officialQuotaWindows.first
+        return representative?.resetDisplayText(
+            now: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        ) ?? message
     }
 
     private func format(_ amount: Double, _ unit: String) -> String {
