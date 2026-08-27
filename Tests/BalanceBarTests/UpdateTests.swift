@@ -2131,6 +2131,16 @@ final class UpdateTests: XCTestCase {
             buttons.arrangedSubviews.compactMap { $0.identifier?.rawValue },
             ["viewUpdateGithubButton", "laterUpdateButton", "ignoreUpdateButton", "installUpdateButton"]
         )
+        buttons.layoutSubtreeIfNeeded()
+        let githubButton = try XCTUnwrap(
+            buttons.arrangedSubviews.first { $0.identifier?.rawValue == "viewUpdateGithubButton" }
+        )
+        let installButton = try XCTUnwrap(
+            buttons.arrangedSubviews.first { $0.identifier?.rawValue == "installUpdateButton" }
+        )
+        XCTAssertEqual(buttons.orientation, .horizontal)
+        XCTAssertEqual(githubButton.frame.minX, buttons.bounds.minX, accuracy: 0.5)
+        XCTAssertEqual(installButton.frame.maxX, buttons.bounds.maxX, accuracy: 0.5)
         XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
         XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
         XCTAssertTrue(scrollView.layer?.masksToBounds ?? false)
@@ -2425,8 +2435,9 @@ final class UpdateTests: XCTestCase {
                     updateTestDescendants(of: contentView)
                         .first { $0.identifier?.rawValue == "updateNotesButtons" } as? NSStackView
                 )
-                XCTAssertEqual(buttons.arrangedSubviews.count, 4)
-                for button in buttons.arrangedSubviews {
+                let actionButtons = buttons.arrangedSubviews.compactMap { $0 as? NSButton }
+                XCTAssertEqual(actionButtons.count, 4)
+                for button in actionButtons {
                     XCTAssertGreaterThanOrEqual(button.frame.minX, -0.5)
                     XCTAssertLessThanOrEqual(button.frame.maxX, buttons.bounds.maxX + 0.5)
                     XCTAssertGreaterThanOrEqual(button.frame.minY, -0.5)
