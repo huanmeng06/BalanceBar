@@ -289,7 +289,7 @@ final class DashboardGeneralPage {
         let currentProviderText = tr(.keyDashboardGeneralAndRefreshPagesCurrentProviderValue, arguments: [String(describing: input.currentProviderName)])
         let system = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesSystem), rows: [
             DashboardSettingsComponents.makeSettingsRow(
-                "CC Switch",
+                tr(.keyDashboardGeneralAndRefreshPagesCcSwitch),
                 subtitle: currentProviderText,
                 control: openButton
             )

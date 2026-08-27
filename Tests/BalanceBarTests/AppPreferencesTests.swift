@@ -475,9 +475,19 @@ final class AppPreferencesTests: XCTestCase {
         preferences.statusLinks = custom
 
         XCTAssertEqual(preferences.statusLinks, custom)
-        XCTAssertEqual(AppPreferences.makeDefaultStatusLinks().first?.title, "OpenAI Status")
+        XCTAssertEqual(AppPreferences.makeDefaultStatusLinks().first?.title, tr(.keyAppPreferencesOpenaiStatus))
         XCTAssertEqual(AppPreferences.makeDefaultStatusLinks().first?.url, "https://status.openai.com/")
         XCTAssertNotEqual(AppPreferences.makeDefaultStatusLinks(), custom)
+    }
+
+    func testDefaultStatusLinkTitleUsesSelectedLanguage() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        AppLanguage.selected = .simplifiedChinese
+        XCTAssertEqual(AppPreferences.makeDefaultStatusLinks().first?.title, "OpenAI 状态")
+        AppLanguage.selected = .english
+        XCTAssertEqual(AppPreferences.makeDefaultStatusLinks().first?.title, "OpenAI Status")
     }
 
     func testDefaultStatusLinksFollowCurrentLanguageProvider() {

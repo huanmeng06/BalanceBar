@@ -288,7 +288,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 396)
+        XCTAssertEqual(expectedKeys.count, 399)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -440,7 +440,7 @@ final class LocalizationTests: XCTestCase {
                 "Snapshot status summary",
                 "最後刷新：10:00",
                 "最後刷新：10:00",
-                "最后刷新：10:00",
+                "上次刷新：10:00",
                 "Last refreshed: 10:00",
                 "最終更新：10:00"
             ),
@@ -519,11 +519,11 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyDashboardMenuPageReopenTheMenuAfterRefreshNow,
                 "Menu settings description",
-                "按一下立即刷新後重新開啟選單",
-                "按一下立即刷新後重新開啟選單",
-                "点击立即刷新后重新打开菜单",
-                "Reopen the menu after Refresh Now",
-                "「今すぐ更新」後にメニューを再度開く"
+                "按一下「立即刷新」後自動重新開啟選單",
+                "按一下「立即刷新」後自動重新開啟選單",
+                "点击“立即刷新”后自动重新打开菜单",
+                "Reopen the menu after clicking “Refresh Now”",
+                "「今すぐ更新」をクリックした後、メニューを自動的に再度開く"
             ),
             (
                 .keyDashboardProviderPagesRefreshNow,
