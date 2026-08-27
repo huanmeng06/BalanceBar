@@ -1101,14 +1101,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func showUpdateNotes() {
         guard case .available(let current, _) = updateService.state,
               let release = updateService.availableReleaseForPresentation else { return }
-        showUpdateNotes(currentVersion: current, release: release)
+        let releases = updateService.availableReleasesForPresentation
+        showUpdateNotes(
+            currentVersion: current,
+            releases: releases.isEmpty ? [release] : releases
+        )
     }
 
     private func showUpdateNotes(
         currentVersion: AppSemanticVersion,
-        release: GitHubRelease
+        releases: [GitHubRelease]
     ) {
-        updateNotesWindowController.show(currentVersion: currentVersion, release: release)
+        updateNotesWindowController.show(currentVersion: currentVersion, releases: releases)
     }
 
     private func showDashboardSection(

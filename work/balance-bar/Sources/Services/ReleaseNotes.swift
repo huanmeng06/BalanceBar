@@ -16,11 +16,59 @@ struct ReleaseNotesResolution: Equatable {
 /// is the single source of truth for the update notes window.
 final class ReleaseNotesStore {
     func resolve(release: GitHubRelease?) -> ReleaseNotesResolution {
-        if let body = release?.body?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !body.isEmpty {
+        if let body = normalizedBody(for: release) {
             return ReleaseNotesResolution(markdown: body, source: .githubRelease)
         }
         return ReleaseNotesResolution(markdown: nil, source: .unavailable)
+    }
+
+    /// Combines the bodies for a jump update while keeping each body tied to
+    /// its parsed release version. Empty bodies and malformed versions are
+    /// ignored so one incomplete release cannot hide the usable notes from
+    /// the rest of the update range.
+    func resolve(releases: [GitHubRelease]) -> ReleaseNotesResolution {
+        let entries = releases.compactMap { release -> (release: GitHubRelease, version: AppSemanticVersion, body: String)? in
+            guard let version = release.version,
+                  let body = normalizedBody(for: release) else {
+                return nil
+            }
+            return (release: release, version: version, body: body)
+        }
+        let sortedEntries = entries.sorted { left, right in
+            if sameVersion(left.version, right.version) {
+                return left.release.tagName < right.release.tagName
+            }
+            return left.version > right.version
+        }
+
+        var uniqueEntries: [(release: GitHubRelease, version: AppSemanticVersion, body: String)] = []
+        for entry in sortedEntries
+        where !uniqueEntries.contains(where: { sameVersion($0.version, entry.version) }) {
+            uniqueEntries.append(entry)
+        }
+        guard !uniqueEntries.isEmpty else {
+            return ReleaseNotesResolution(markdown: nil, source: .unavailable)
+        }
+        if uniqueEntries.count == 1 {
+            return ReleaseNotesResolution(markdown: uniqueEntries[0].body, source: .githubRelease)
+        }
+
+        let markdown = uniqueEntries.map { entry in
+            "## \(entry.version)\n\n\(entry.body)"
+        }.joined(separator: "\n\n---\n\n")
+        return ReleaseNotesResolution(markdown: markdown, source: .githubRelease)
+    }
+
+    private func normalizedBody(for release: GitHubRelease?) -> String? {
+        guard let body = release?.body?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !body.isEmpty else {
+            return nil
+        }
+        return body
+    }
+
+    private func sameVersion(_ lhs: AppSemanticVersion, _ rhs: AppSemanticVersion) -> Bool {
+        !(lhs < rhs) && !(rhs < lhs)
     }
 }
 
