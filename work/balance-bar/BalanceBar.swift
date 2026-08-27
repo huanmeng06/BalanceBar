@@ -1616,6 +1616,9 @@ enum ErrorCardLayout {
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
     static let subscriptionWidth: CGFloat = 78
     static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
+    // Keep the account marquee's transparent edge a few points before the
+    // actual right-aligned subscription glyphs.
+    static let subscriptionTextSafetyGap: CGFloat = 4
     // Geometry-only fallback used when the right-aligned subscription text has
     // not been measured yet. Runtime callers refine this to the text edge.
     static let accountWidthWithSubscription = subscriptionX - horizontalInset
@@ -1740,13 +1743,21 @@ enum ErrorCardLayout {
     /// The subscription label is right-aligned within its fixed layout frame.
     /// Use its measured text width so the account marquee reaches the visible
     /// subscription text instead of stopping at the frame's unused leading
-    /// space.
+    /// space, while keeping the same safety gap as the normal card.
     static func accountWidth(forSubscriptionTextWidth textWidth: CGFloat?) -> CGFloat {
         guard let textWidth else { return accountWidthWithSubscription }
 
         let clampedTextWidth = min(max(0, textWidth), subscriptionWidth)
         let subscriptionTextMinX = subscriptionX + subscriptionWidth - clampedTextWidth
-        return max(0, min(contentWidth, subscriptionTextMinX - horizontalInset))
+        return max(
+            0,
+            min(
+                contentWidth,
+                subscriptionTextMinX
+                    - subscriptionTextSafetyGap
+                    - horizontalInset
+            )
+        )
     }
 
     /// Wrapping label for the error detail. Uses word wrapping on text prepared

@@ -1175,7 +1175,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(accountLabel.lineBreakMode, .byClipping)
         XCTAssertEqual(accountLabel.stringValue, longEmail)
         XCTAssertTrue(accountView.isScrollable)
-        XCTAssertTrue(accountView.showsEdgeFade)
+        XCTAssertFalse(accountView.isScrolling)
+        XCTAssertFalse(accountView.showsEdgeFade)
         XCTAssertEqual(accountView.accountLabel.frame.width, accountView.measuredTextWidth)
         XCTAssertEqual(accountView.accountLabel.frame.minX, accountView.bounds.minX)
         XCTAssertEqual(accountView.edgeFadeInset, 8, accuracy: 0.001)
@@ -1184,30 +1185,44 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             accountView.bounds.width,
             accuracy: 0.5
         )
+        XCTAssertNil(accountView.layer?.mask)
+        accountView.applyScrollOffsetForTesting(-1)
+        XCTAssertTrue(accountView.isScrolling)
+        XCTAssertTrue(accountView.showsEdgeFade)
         let edgeFadeMask = try XCTUnwrap(accountView.layer?.mask as? CAGradientLayer)
         XCTAssertEqual(edgeFadeMask.startPoint, CGPoint(x: 0, y: 0.5))
         XCTAssertEqual(edgeFadeMask.endPoint, CGPoint(x: 1, y: 0.5))
         XCTAssertEqual(edgeFadeMask.locations?.count, 4)
         XCTAssertGreaterThan(edgeFadeMask.locations?[1].doubleValue ?? 0, 0)
         XCTAssertLessThan(edgeFadeMask.locations?[2].doubleValue ?? 1, 1)
+        accountView.applyScrollOffsetForTesting(0)
+        XCTAssertFalse(accountView.isScrolling)
+        XCTAssertFalse(accountView.showsEdgeFade)
+        XCTAssertNil(accountView.layer?.mask)
         let scrollAnimation = AccountMarqueeView.scrollAnimation(
             forOverflow: accountView.scrollOverflow
         )
         XCTAssertEqual(scrollAnimation.values?.count, 5)
         let keyTimes = try XCTUnwrap(scrollAnimation.keyTimes)
         XCTAssertEqual(keyTimes.count, 5)
-        XCTAssertEqual(keyTimes[1].doubleValue, 0.16, accuracy: 0.001)
-        XCTAssertEqual(keyTimes[3].doubleValue, 0.66, accuracy: 0.001)
+        let initialPause = keyTimes[1].doubleValue * scrollAnimation.duration
+        let outwardTravel = (keyTimes[2].doubleValue - keyTimes[1].doubleValue)
+            * scrollAnimation.duration
+        let returnPause = (keyTimes[3].doubleValue - keyTimes[2].doubleValue)
+            * scrollAnimation.duration
+        let inwardTravel = (1 - keyTimes[3].doubleValue) * scrollAnimation.duration
         XCTAssertEqual(
-            keyTimes[1].doubleValue - keyTimes[0].doubleValue,
-            keyTimes[3].doubleValue - keyTimes[2].doubleValue,
+            initialPause,
+            returnPause,
             accuracy: 0.001
         )
         XCTAssertEqual(
-            keyTimes[2].doubleValue - keyTimes[1].doubleValue,
-            keyTimes[4].doubleValue - keyTimes[3].doubleValue,
+            outwardTravel,
+            inwardTravel,
             accuracy: 0.001
         )
+        XCTAssertLessThan(initialPause, 2)
+        XCTAssertGreaterThan(outwardTravel, 0)
         XCTAssertEqual(scrollAnimation.repeatCount, .infinity)
         XCTAssertGreaterThan(scrollAnimation.duration, 0)
         XCTAssertLessThanOrEqual(accountView.frame.maxX, overview.bounds.maxX)
@@ -1246,8 +1261,14 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(accountView.frame.height, subscriptionLabel.frame.height)
         XCTAssertEqual(
             accountView.frame.maxX,
-            subscriptionLabel.frame.maxX - subscriptionTextWidth,
+            subscriptionLabel.frame.maxX
+                - subscriptionTextWidth
+                - OpenCodexCardLayout.subscriptionTextSafetyGap,
             accuracy: 0.001
+        )
+        XCTAssertGreaterThanOrEqual(
+            subscriptionLabel.frame.maxX - subscriptionTextWidth - accountView.frame.maxX,
+            OpenCodexCardLayout.subscriptionTextSafetyGap - 0.001
         )
         XCTAssertGreaterThan(accountView.frame.maxX, subscriptionLabel.frame.minX)
         XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
@@ -1278,7 +1299,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(switchedAccountView.accountLabel.frame.width, switchedAccountView.bounds.width)
         XCTAssertEqual(
             switchedAccountView.frame.maxX,
-            switchedSubscriptionLabel.frame.maxX - switchedSubscriptionTextWidth,
+            switchedSubscriptionLabel.frame.maxX
+                - switchedSubscriptionTextWidth
+                - OpenCodexCardLayout.subscriptionTextSafetyGap,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(switchedAccountView.frame.maxX, switchedSubscriptionLabel.frame.minX)
@@ -1399,7 +1422,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.updateText(longText)
         view.layout()
         XCTAssertTrue(view.isScrollable)
-        XCTAssertTrue(view.showsEdgeFade)
+        XCTAssertFalse(view.isScrolling)
+        XCTAssertFalse(view.showsEdgeFade)
         XCTAssertEqual(view.frame.minX, 14, accuracy: 0.001)
         XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
         XCTAssertEqual(
@@ -1407,6 +1431,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             view.measuredTextWidth - view.bounds.width,
             accuracy: 0.001
         )
+        XCTAssertNil(view.layer?.mask)
+        view.applyScrollOffsetForTesting(-1)
+        XCTAssertTrue(view.isScrolling)
+        XCTAssertTrue(view.showsEdgeFade)
         let narrowMask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
         XCTAssertEqual(narrowMask.frame, view.layer?.bounds ?? view.bounds)
         XCTAssertEqual(narrowMask.startPoint, CGPoint(x: 0, y: 0.5))
@@ -1430,6 +1458,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.setFrameSize(NSSize(width: wideWidth, height: 18))
         view.layout()
         XCTAssertFalse(view.isScrollable)
+        XCTAssertFalse(view.isScrolling)
         XCTAssertFalse(view.showsEdgeFade)
         XCTAssertNil(view.layer?.mask)
         XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
@@ -1438,13 +1467,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.setFrameSize(NSSize(width: 64, height: 18))
         view.layout()
         XCTAssertTrue(view.isScrollable)
-        XCTAssertTrue(view.showsEdgeFade)
+        XCTAssertFalse(view.isScrolling)
+        XCTAssertFalse(view.showsEdgeFade)
         XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
         XCTAssertEqual(
             view.scrollOverflow,
             view.measuredTextWidth - view.bounds.width,
             accuracy: 0.001
         )
+        XCTAssertNil(view.layer?.mask)
+        view.applyScrollOffsetForTesting(-1)
+        XCTAssertTrue(view.isScrolling)
+        XCTAssertTrue(view.showsEdgeFade)
         let restoredMask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
         XCTAssertEqual(restoredMask.frame, view.layer?.bounds ?? view.bounds)
         XCTAssertEqual(restoredMask.startPoint, CGPoint(x: 0, y: 0.5))
@@ -1453,6 +1487,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.updateText(shortText)
         view.layout()
         XCTAssertFalse(view.isScrollable)
+        XCTAssertFalse(view.isScrolling)
         XCTAssertFalse(view.showsEdgeFade)
         XCTAssertEqual(view.scrollOverflow, 0, accuracy: 0.001)
         XCTAssertNil(view.layer?.mask)
@@ -1462,8 +1497,52 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         view.updateText(longText)
         view.layout()
         XCTAssertTrue(view.isScrollable)
-        XCTAssertTrue(view.showsEdgeFade)
+        XCTAssertFalse(view.isScrolling)
+        XCTAssertFalse(view.showsEdgeFade)
         XCTAssertGreaterThan(view.scrollOverflow, 0)
+    }
+
+    func testAccountMarqueeStartsAnimationWhenAttachedAndFadesOnlyAfterActualOffset() throws {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 128, height: 18))
+        let view = AccountMarqueeView(
+            text: String(repeating: "long-account-name-", count: 8),
+            font: .systemFont(ofSize: 13),
+            textColor: .secondaryLabelColor,
+            frame: container.bounds
+        )
+        defer { view.removeFromSuperview() }
+
+        container.addSubview(view)
+
+        XCTAssertTrue(view.isScrollable)
+        XCTAssertNotNil(view.accountLabel.layer?.animation(forKey: AccountMarqueeView.animationKey))
+        XCTAssertEqual(view.scrollOffset, 0, accuracy: 0.001)
+        XCTAssertFalse(view.isScrolling)
+        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertNil(view.layer?.mask)
+        XCTAssertFalse(
+            AccountMarqueeScrollState(
+                offset: 0,
+                overflow: view.scrollOverflow
+            ).isActive
+        )
+        XCTAssertFalse(
+            AccountMarqueeScrollState(
+                offset: -0.25,
+                overflow: view.scrollOverflow
+            ).isActive
+        )
+
+        view.applyScrollOffsetForTesting(-1)
+        XCTAssertTrue(view.isScrolling)
+        XCTAssertEqual(view.scrollOffset, -1, accuracy: 0.001)
+        XCTAssertTrue(view.showsEdgeFade)
+        XCTAssertNotNil(view.layer?.mask as? CAGradientLayer)
+
+        view.applyScrollOffsetForTesting(0)
+        XCTAssertFalse(view.isScrolling)
+        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertNil(view.layer?.mask)
     }
 
     func testLocalizedOverviewQuotaAndResetReuseAccountMarqueeLayout() throws {

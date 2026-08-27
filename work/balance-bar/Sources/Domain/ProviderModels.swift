@@ -579,6 +579,10 @@ enum OpenCodexCardLayout {
     static let contentWidth = cardWidth - horizontalInset * 2
     static let subscriptionWidth: CGFloat = 78
     static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
+    // Keep the marquee's transparent edge a few points before the actual
+    // right-aligned subscription glyphs. This is a layout gap, not a text or
+    // language-specific adjustment.
+    static let subscriptionTextSafetyGap: CGFloat = 4
     // Geometry-only fallback used when the right-aligned subscription text has
     // not been measured yet. Runtime callers refine this to the text edge.
     static let accountWidthWithSubscription = subscriptionX - horizontalInset
@@ -771,14 +775,23 @@ enum OpenCodexCardLayout {
 
     /// The subscription label is right-aligned within its fixed layout frame.
     /// When its rendered width is known, let the account marquee use the empty
-    /// leading part of that frame and end at the subscription text itself.
+    /// leading part of that frame and end a small safety gap before the
+    /// subscription text itself.
     /// Keeping the unmeasured fallback preserves the geometry-only layout seam.
     static func accountWidth(forSubscriptionTextWidth textWidth: CGFloat?) -> CGFloat {
         guard let textWidth else { return accountWidthWithSubscription }
 
         let clampedTextWidth = min(max(0, textWidth), subscriptionWidth)
         let subscriptionTextMinX = subscriptionX + subscriptionWidth - clampedTextWidth
-        return max(0, min(contentWidth, subscriptionTextMinX - horizontalInset))
+        return max(
+            0,
+            min(
+                contentWidth,
+                subscriptionTextMinX
+                    - subscriptionTextSafetyGap
+                    - horizontalInset
+            )
+        )
     }
 }
 

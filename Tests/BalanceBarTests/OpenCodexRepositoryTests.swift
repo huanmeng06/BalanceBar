@@ -1156,7 +1156,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
 
         XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 121))
-        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 242, height: 17))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 238, height: 17))
         XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 75, width: 78, height: 17))
         XCTAssertEqual(frames.title, CGRect(x: 14, y: 94, width: 189, height: 20))
         XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 95, width: 81, height: 17))
@@ -1164,7 +1164,9 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(frames.account?.height, frames.subscription?.height)
         XCTAssertEqual(
             frames.account?.maxX ?? 0,
-            (frames.subscription?.maxX ?? 0) - renderedSubscriptionTextWidth,
+            (frames.subscription?.maxX ?? 0)
+                - renderedSubscriptionTextWidth
+                - OpenCodexCardLayout.subscriptionTextSafetyGap,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(frames.account?.maxX ?? 0, frames.subscription?.minX ?? 0)
@@ -1176,13 +1178,15 @@ final class OpenCodexRepositoryTests: XCTestCase {
             includesSubscription: true,
             subscriptionTextWidth: renderedSubscriptionTextWidth
         )
-        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 242, height: 17))
+        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 238, height: 17))
         XCTAssertEqual(errorFrames.subscription, CGRect(x: 212, y: 58, width: 78, height: 17))
         XCTAssertEqual(errorFrames.account?.minY, errorFrames.subscription?.minY)
         XCTAssertEqual(errorFrames.account?.height, errorFrames.subscription?.height)
         XCTAssertEqual(
             errorFrames.account?.maxX ?? 0,
-            (errorFrames.subscription?.maxX ?? 0) - renderedSubscriptionTextWidth,
+            (errorFrames.subscription?.maxX ?? 0)
+                - renderedSubscriptionTextWidth
+                - OpenCodexCardLayout.subscriptionTextSafetyGap,
             accuracy: 0.001
         )
         XCTAssertGreaterThan(

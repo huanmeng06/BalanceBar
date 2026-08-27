@@ -175,23 +175,44 @@ struct AccountMarqueeLayout: Equatable {
     }
 }
 
+/// Describes the visual state of a marquee from the offset actually applied to
+/// its scrolling label. A marquee may be configured and waiting at offset zero
+/// before its first movement; that state must remain unmasked.
+struct AccountMarqueeScrollState: Equatable {
+    static let activationThreshold: CGFloat = 0.5
+
+    let offset: CGFloat
+    let isActive: Bool
+
+    init(offset: CGFloat, overflow: CGFloat) {
+        self.offset = offset
+        self.isActive = overflow > 0 && offset < -Self.activationThreshold
+    }
+}
+
 final class AccountMarqueeView: NSView {
     static let animationKey = "BalanceBar.accountMarquee"
     static let defaultEdgeFadeWidth = AccountMarqueeLayout.defaultFadeWidth
     private static let minimumScrollDuration: TimeInterval = 5
     private static let scrollPixelsPerSecond: CGFloat = 24
+    private static let minimumTravelDuration: TimeInterval = 1
+    private static let scrollPauseDuration: TimeInterval = 0.8
+    private static let scrollActivityInterval: TimeInterval = 1.0 / 30.0
 
     let accountLabel: NSTextField
     private(set) var measuredTextWidth: CGFloat = 0
     private(set) var isScrollable = false
+    private(set) var isScrolling = false
     private(set) var showsEdgeFade = false
     private(set) var edgeFadeInset: CGFloat = 0
     private(set) var scrollOverflow: CGFloat = 0
+    private(set) var scrollOffset: CGFloat = 0
 
     private var edgeFadeMask: CAGradientLayer?
     private var contentLayout: AccountMarqueeLayout?
     private var configuredText: String?
     private var configuredFontSignature: String?
+    private var scrollActivityTimer: Timer?
 
     init(text: String, font: NSFont, textColor: NSColor, frame: NSRect) {
         accountLabel = NSTextField(labelWithString: text)
@@ -234,8 +255,12 @@ final class AccountMarqueeView: NSView {
 
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
-        configureContentIfNeeded()
-        startScrollingIfNeeded()
+        if superview == nil {
+            stopScrolling()
+        } else {
+            configureContentIfNeeded()
+            startScrollingIfNeeded()
+        }
     }
 
     deinit {
@@ -295,8 +320,10 @@ final class AccountMarqueeView: NSView {
                 NSNumber(value: Double($0))
             }
             edgeFadeMask = mask
-            layer?.mask = mask
-            showsEdgeFade = true
+            // Keep the initial, zero-offset frame fully readable. The mask is
+            // attached only after the presentation layer reports real motion.
+            layer?.mask = nil
+            showsEdgeFade = false
             updateEdgeFadeMaskFrame()
         } else {
             layer?.mask = nil
@@ -317,21 +344,81 @@ final class AccountMarqueeView: NSView {
 
     private func startScrollingIfNeeded() {
         guard isScrollable,
-              window != nil,
-              accountLabel.layer != nil,
-              accountLabel.layer?.animation(forKey: Self.animationKey) == nil else {
+              window != nil || superview != nil,
+              let labelLayer = accountLabel.layer else {
             return
         }
 
         let overflow = contentLayout?.scrollDistance ?? scrollOverflow
         guard overflow > 0 else { return }
 
-        let animation = Self.scrollAnimation(forOverflow: overflow)
-        accountLabel.layer?.add(animation, forKey: Self.animationKey)
+        if labelLayer.animation(forKey: Self.animationKey) == nil {
+            let animation = Self.scrollAnimation(forOverflow: overflow)
+            labelLayer.add(animation, forKey: Self.animationKey)
+        }
+        startScrollActivityMonitoring()
     }
 
     private func stopScrolling() {
         accountLabel.layer?.removeAnimation(forKey: Self.animationKey)
+        scrollActivityTimer?.invalidate()
+        scrollActivityTimer = nil
+        applyScrollState(AccountMarqueeScrollState(offset: 0, overflow: 0))
+    }
+
+    private func startScrollActivityMonitoring() {
+        guard scrollActivityTimer == nil else {
+            updateScrollActivity()
+            return
+        }
+
+        let timer = Timer(
+            timeInterval: Self.scrollActivityInterval,
+            repeats: true
+        ) { [weak self] _ in
+            self?.updateScrollActivity()
+        }
+        scrollActivityTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        updateScrollActivity()
+    }
+
+    private func updateScrollActivity() {
+        guard let labelLayer = accountLabel.layer,
+              labelLayer.animation(forKey: Self.animationKey) != nil else {
+            applyScrollState(AccountMarqueeScrollState(offset: 0, overflow: 0))
+            return
+        }
+
+        let offset = (labelLayer.presentation()?
+            .value(forKeyPath: "transform.translation.x") as? NSNumber)
+            .map { CGFloat($0.doubleValue) } ?? 0
+        applyScrollState(
+            AccountMarqueeScrollState(offset: offset, overflow: scrollOverflow)
+        )
+    }
+
+    private func applyScrollState(_ state: AccountMarqueeScrollState) {
+        scrollOffset = state.offset
+        isScrolling = state.isActive
+
+        guard state.isActive != showsEdgeFade else { return }
+        if state.isActive, let mask = edgeFadeMask {
+            layer?.mask = mask
+            updateEdgeFadeMaskFrame()
+        } else {
+            layer?.mask = nil
+        }
+        showsEdgeFade = state.isActive
+    }
+
+    /// Test seam for checking the mask contract without depending on a live
+    /// WindowServer presentation frame. Production activity is sampled from
+    /// the label layer's presentation transform in `updateScrollActivity()`.
+    func applyScrollOffsetForTesting(_ offset: CGFloat) {
+        applyScrollState(
+            AccountMarqueeScrollState(offset: offset, overflow: scrollOverflow)
+        )
     }
 
     static func textWidth(of text: String, font: NSFont) -> CGFloat {
@@ -345,12 +432,23 @@ final class AccountMarqueeView: NSView {
     static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
         let offset = NSNumber(value: -Double(max(0, overflow)))
-        animation.values = [0, 0, offset, offset, 0]
-        animation.keyTimes = [0, 0.16, 0.5, 0.66, 1]
-        animation.duration = max(
-            minimumScrollDuration,
-            Double(max(0, overflow) / scrollPixelsPerSecond) + 4
+        let travelDuration = max(
+            minimumTravelDuration,
+            Double(max(0, overflow) / scrollPixelsPerSecond)
         )
+        let phaseDuration = 2 * scrollPauseDuration + 2 * travelDuration
+        let pauseFraction = scrollPauseDuration / phaseDuration
+        let travelFraction = travelDuration / phaseDuration
+
+        animation.values = [0, 0, offset, offset, 0]
+        animation.keyTimes = [
+            NSNumber(value: 0),
+            NSNumber(value: pauseFraction),
+            NSNumber(value: pauseFraction + travelFraction),
+            NSNumber(value: pauseFraction + travelFraction + pauseFraction),
+            NSNumber(value: 1)
+        ]
+        animation.duration = max(minimumScrollDuration, phaseDuration)
         animation.repeatCount = .infinity
         animation.timingFunctions = [
             CAMediaTimingFunction(name: .easeInEaseOut),
