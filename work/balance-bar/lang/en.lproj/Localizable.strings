@@ -258,6 +258,10 @@
 "dashboard.menu.bar.page.preview" = "Preview";
 "dashboard.menu.bar.page.current_layout" = "Current Layout";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "The menu bar updates with Provider data in real time";
+"dashboard.menu.bar.page.icon_display_mode" = "Menu Bar Icon Display";
+"dashboard.menu.bar.page.icon_display_mode_description" = "Choose to always show the icon, or only while a task is running";
+"dashboard.menu.bar.page.icon_display_mode_always_visible" = "Always Visible";
+"dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Only While Running";
 "dashboard.menu.bar.page.quota_display_priority" = "Quota Period";
 "dashboard.menu.bar.page.quota_display_priority_description" = "Choose which quota period to prioritize in the menu bar";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Hour Quota";

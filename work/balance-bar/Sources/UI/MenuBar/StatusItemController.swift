@@ -1295,6 +1295,108 @@ struct StatusItemVisibilityStateMachine {
     }
 }
 
+/// Applies the user-selected menu-bar display policy to Codex activity
+/// samples. A false sample is only allowed to hide the status item after two
+/// stable samples separated by the normal activity polling cadence. This
+/// keeps startup, monitor recovery, and quick task transitions visible while
+/// reusing the activity value emitted by ActivityCoordinator.
+struct MenuBarIconDisplayStateMachine {
+    static let idleConfirmationSampleCount = 2
+    static let idleConfirmationInterval: TimeInterval = 0.25
+
+    private struct IdleCandidate {
+        var sampleCount: Int
+        let firstSampleAt: Date
+        var lastSampleAt: Date
+    }
+
+    private(set) var shouldDisplay = true
+    private var mode: MenuBarIconDisplayMode = .alwaysVisible
+    private var idleCandidate: IdleCandidate?
+
+    var needsAdditionalIdleSample: Bool {
+        guard let idleCandidate else { return false }
+        return idleCandidate.sampleCount < Self.idleConfirmationSampleCount
+    }
+
+    var idleCandidateSampleCount: Int {
+        idleCandidate?.sampleCount ?? 0
+    }
+
+    mutating func reset() {
+        shouldDisplay = true
+        mode = .alwaysVisible
+        idleCandidate = nil
+    }
+
+    @discardableResult
+    mutating func setMode(
+        _ mode: MenuBarIconDisplayMode,
+        codexTaskRunning: Bool,
+        at date: Date
+    ) -> Bool {
+        guard self.mode != mode else { return shouldDisplay }
+        self.mode = mode
+        guard mode == .onlyWhileRunning, !codexTaskRunning else {
+            shouldDisplay = true
+            idleCandidate = nil
+            return shouldDisplay
+        }
+        idleCandidate = IdleCandidate(
+            sampleCount: 1,
+            firstSampleAt: date,
+            lastSampleAt: date
+        )
+        return shouldDisplay
+    }
+
+    @discardableResult
+    mutating func ingest(
+        mode: MenuBarIconDisplayMode,
+        codexTaskRunning: Bool,
+        at date: Date
+    ) -> Bool {
+        setMode(mode, codexTaskRunning: codexTaskRunning, at: date)
+        guard mode == .onlyWhileRunning else {
+            shouldDisplay = true
+            idleCandidate = nil
+            return shouldDisplay
+        }
+
+        guard !codexTaskRunning else {
+            shouldDisplay = true
+            idleCandidate = nil
+            return shouldDisplay
+        }
+
+        if var candidate = idleCandidate {
+            guard date.timeIntervalSince(candidate.lastSampleAt)
+                >= Self.idleConfirmationInterval else {
+                return shouldDisplay
+            }
+            candidate.sampleCount += 1
+            candidate.lastSampleAt = date
+            idleCandidate = candidate
+        } else {
+            idleCandidate = IdleCandidate(
+                sampleCount: 1,
+                firstSampleAt: date,
+                lastSampleAt: date
+            )
+        }
+
+        guard let candidate = idleCandidate,
+              candidate.sampleCount >= Self.idleConfirmationSampleCount,
+              candidate.lastSampleAt.timeIntervalSince(candidate.firstSampleAt)
+                >= Self.idleConfirmationInterval else {
+            return shouldDisplay
+        }
+
+        shouldDisplay = false
+        return shouldDisplay
+    }
+}
+
 final class StatusItemController: NSObject, NSMenuDelegate {
     private static let statusItemVisibilityStabilityDelay: TimeInterval = 0.2
     private static let subscriptionFont = NSFont.systemFont(ofSize: 13, weight: .regular)
@@ -1346,6 +1448,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showIcon: Bool
         let showAmount: Bool
         let showReset: Bool
+        let iconDisplayMode: MenuBarIconDisplayMode
         let horizontalPadding: CGFloat
         let keepMenuOpenAfterRefresh: Bool
         let iconOffsetX: CGFloat
@@ -1366,6 +1469,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showReset: Bool,
             horizontalPadding: CGFloat,
             keepMenuOpenAfterRefresh: Bool,
+            iconDisplayMode: MenuBarIconDisplayMode = .defaultValue,
             iconOffsetX: CGFloat = 0,
             iconOffsetY: CGFloat = 0,
             amountOffsetX: CGFloat = 0,
@@ -1378,6 +1482,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showIcon = showIcon
             self.showAmount = showAmount
             self.showReset = showReset
+            self.iconDisplayMode = iconDisplayMode
             self.horizontalPadding = horizontalPadding
             self.keepMenuOpenAfterRefresh = keepMenuOpenAfterRefresh
             self.iconOffsetX = iconOffsetX
@@ -1466,6 +1571,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private(set) var statusItemInstallCount = 0
     private(set) var statusItemVisibility: StatusItemVisibility = .unknown
     private var statusItemVisibilityStateMachine = StatusItemVisibilityStateMachine()
+    private var menuBarIconDisplayStateMachine = MenuBarIconDisplayStateMachine()
     private weak var observedStatusItemWindow: NSWindow?
     private var statusItemWindowObservers: [NSObjectProtocol] = []
     private var screenParametersObserver: NSObjectProtocol?
@@ -1547,6 +1653,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings
     ) {
         lifecycleGeneration += 1
+        let isNewStatusItem = statusItem == nil
+        if isNewStatusItem {
+            menuBarIconDisplayStateMachine.reset()
+            menuBarIconDisplayStateMachine.setMode(
+                settings.iconDisplayMode,
+                codexTaskRunning: isCodexTaskRunning,
+                at: Date()
+            )
+        }
         statusItemVisibilityStateMachine.reset()
         updateStatusItemVisibility(.unknown)
         statusMenu.delegate = self
@@ -1565,6 +1680,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lifecycleGeneration += 1
         removeStatusItemWindowObservation()
         statusItemVisibilityStateMachine.reset()
+        menuBarIconDisplayStateMachine.reset()
         updateStatusItemVisibility(.unknown)
         statusItemAttachmentCheckScheduled = false
         statusItemReanchorAttempts = 0
@@ -1590,10 +1706,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput: MenuInput,
         settings: MenuBarSettings
     ) {
+        let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
         self.settings = settings
+        if iconDisplayModeChanged {
+            menuBarIconDisplayStateMachine.setMode(
+                settings.iconDisplayMode,
+                codexTaskRunning: isCodexTaskRunning,
+                at: Date()
+            )
+        }
         layoutStatusItem(for: snapshot)
         rebuildOrDeferMenu()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
@@ -1685,6 +1809,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.isClaudeTaskRunning = claudeTaskRunning
         self.animationEnabled = animationEnabled
         updateActivityIcon()
+        menuBarIconDisplayStateMachine.ingest(
+            mode: settings.iconDisplayMode,
+            codexTaskRunning: codexTaskRunning,
+            at: Date()
+        )
+        applyMenuBarIconDisplayPolicy()
+    }
+
+    /// Accepts a repeated Codex monitor sample without re-running the activity
+    /// icon animation path. ActivityCoordinator remains the only producer of
+    /// task state; this method only advances the display debounce.
+    func observeCodexTaskSample(_ running: Bool) {
+        isCodexTaskRunning = running
+        menuBarIconDisplayStateMachine.ingest(
+            mode: settings.iconDisplayMode,
+            codexTaskRunning: running,
+            at: Date()
+        )
+        applyMenuBarIconDisplayPolicy()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -1716,7 +1859,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let statusItem, let button = statusItem.button else { return }
         statusItemVisibilityStateMachine.reset()
         updateStatusItemVisibility(.unknown)
-        statusItem.isVisible = true
+        statusItem.isVisible = menuBarIconDisplayStateMachine.shouldDisplay
         statusItem.length = 56
         button.title = ""
         button.attributedTitle = NSAttributedString(string: "")
@@ -1921,6 +2064,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             statusItemReanchorAttempts = 0
             return
         }
+        guard menuBarIconDisplayStateMachine.shouldDisplay else {
+            // An intentionally hidden status item still owns its NSStatusItem
+            // and must not be mistaken for an AppKit attachment failure.
+            statusItemReanchorAttempts = 0
+            return
+        }
         guard reanchor else { return }
         guard statusItemReanchorAttempts < 3 else {
             SwitchLog.write(
@@ -1970,6 +2119,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             } else {
                 claudeThinkingAnimator?.stop()
             }
+        }
+    }
+
+    private func applyMenuBarIconDisplayPolicy() {
+        guard let statusItem else { return }
+        let shouldDisplay = menuBarIconDisplayStateMachine.shouldDisplay
+        guard statusItem.isVisible != shouldDisplay else { return }
+        statusItem.isVisible = shouldDisplay
+        SwitchLog.write(
+            "menu bar display mode applied; mode=\(settings.iconDisplayMode.rawValue); codex_running=\(isCodexTaskRunning); visible=\(shouldDisplay)",
+            category: "ui.status-item"
+        )
+        if shouldDisplay {
+            scheduleStatusItemAttachmentCheck(
+                reason: "activity-running",
+                reanchor: true
+            )
         }
     }
 
@@ -2125,7 +2291,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.toolTip = effectiveSnapshot.menuBarToolTip
         button.isHidden = false
         button.isEnabled = true
-        statusItem.isVisible = true
+        applyMenuBarIconDisplayPolicy()
     }
 
     private func applyMenuBarFonts() {

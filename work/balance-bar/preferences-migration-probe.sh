@@ -19,6 +19,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarAmountOffsetYKey = "menuBarAmountOffsetY"' \
         '    static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"' \
         '    static let balanceDisplayThresholdKey = "balanceDisplayThreshold"' \
+        '    static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"' \
         '    static let menuBarFontSizePresetKey = "menuBarFontSizePreset"' \
         '    static let menuBarFontSizeKey = "menuBarFontSize"' \
         '    static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"' \
@@ -42,6 +43,7 @@ let production: [String: Any] = [
     "activityPollInterval": NSNumber(value: 0.5),
     "menuBarStatusItemWidthAdjustment": NSNumber(value: 0.7),
     "balanceDisplayThreshold": NSNumber(value: 0.15),
+    "menuBarIconDisplayMode": "onlyWhileRunning",
     "menuBarFontSizePreset": "medium",
     "menuBarFontSize": NSNumber(value: 14.2),
     "menuBarPrimaryFontSize": NSNumber(value: 14.2),
@@ -56,6 +58,7 @@ let local: [String: Any] = [
     "showMenuBarIcon": NSNumber(value: true),
     "showMenuBarReset": NSNumber(value: false),
     "showMenuBarAmount": NSNumber(value: true),
+    "menuBarIconDisplayMode": "alwaysVisible",
     "unknownLocalValue": "must not migrate"
 ]
 
@@ -69,6 +72,7 @@ require((selected["showMenuBarIcon"] as? NSNumber)?.boolValue == false, "product
 require((selected["activityPollInterval"] as? NSNumber)?.doubleValue == 0.5, "production value migrates")
 require((selected["menuBarStatusItemWidthAdjustment"] as? NSNumber)?.doubleValue == 0.7, "width adjustment migrates")
 require((selected["balanceDisplayThreshold"] as? NSNumber)?.doubleValue == 0.15, "balance display threshold migrates")
+require((selected["menuBarIconDisplayMode"] as? String) == "onlyWhileRunning", "menu bar icon display mode migrates")
 require((selected["menuBarFontSizePreset"] as? String) == "medium", "font size preset migrates")
 require((selected["menuBarFontSize"] as? NSNumber)?.doubleValue == 14.2, "shared font size migrates")
 require((selected["menuBarPrimaryFontSize"] as? NSNumber)?.doubleValue == 14.2, "primary font size migrates")
@@ -84,6 +88,7 @@ require(selected["NSStatusItem Preferred Position Item-0"] == nil, "system posit
 let existingTarget: [String: Any] = [
     "showMenuBarIcon": NSNumber(value: true),
     "appLanguage": "zh-Hans",
+    "menuBarIconDisplayMode": "alwaysVisible",
     "menuBarQuotaWindowPreference": "sevenDay",
     "menuBarQuotaResetDisplayMode": "remaining"
 ]
@@ -94,6 +99,7 @@ let selectedWithExisting = PreferencesMigrationPlan.selectedValues(
 )
 require(selectedWithExisting["showMenuBarIcon"] == nil, "existing target value is preserved")
 require(selectedWithExisting["appLanguage"] == nil, "existing target language is preserved")
+require(selectedWithExisting["menuBarIconDisplayMode"] == nil, "existing target icon display mode is preserved")
 require(selectedWithExisting["menuBarQuotaWindowPreference"] == nil, "existing target quota window preference is preserved")
 require(selectedWithExisting["menuBarQuotaResetDisplayMode"] == nil, "existing target quota reset display mode is preserved")
 
@@ -113,7 +119,14 @@ let noSources = PreferencesMigrationPlan.selectedValues(
 )
 require(noSources.isEmpty, "missing source domains are safe")
 
-print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; quota window and reset display preferences migrate; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
+let localOnly = PreferencesMigrationPlan.selectedValues(
+    target: [:],
+    production: [:],
+    local: ["menuBarIconDisplayMode": "onlyWhileRunning"]
+)
+require((localOnly["menuBarIconDisplayMode"] as? String) == "onlyWhileRunning", "local icon display mode fallback migrates")
+
+print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; menu bar icon display, quota window, and reset display preferences migrate; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
 SWIFT
 } | swiftc -framework Foundation -o "$probe_binary" -
 

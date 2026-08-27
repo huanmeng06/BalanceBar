@@ -291,6 +291,7 @@ final class DashboardMenuBarPage {
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
+    static let iconDisplayModeIdentifier = AppPreferences.menuBarIconDisplayModeKey
     static let quotaWindowPreferenceIdentifier = AppPreferences.menuBarQuotaWindowPreferenceKey
     static let quotaResetDisplayModeIdentifier = AppPreferences.menuBarQuotaResetDisplayModeKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
@@ -450,6 +451,7 @@ final class DashboardMenuBarPage {
     private weak var amountOffsetSlider: NSSlider?
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
+    private weak var iconDisplayModeControl: NSPopUpButton?
     private weak var quotaWindowPreferenceControl: NSPopUpButton?
     private weak var quotaResetDisplayModeControl: NSPopUpButton?
     private var fontSizePresetTrackingObserver: NSObjectProtocol?
@@ -630,6 +632,11 @@ final class DashboardMenuBarPage {
             relay: input.relay
         )
         self.quotaWindowPreferenceControl = quotaWindowPreferenceControl
+        let iconDisplayModeControl = makeIconDisplayModeControl(
+            value: input.preferences.menuBarIconDisplayMode,
+            relay: input.relay
+        )
+        self.iconDisplayModeControl = iconDisplayModeControl
         let quotaResetDisplayModeControl = makeQuotaResetDisplayModeControl(
             value: input.preferences.menuBarQuotaResetDisplayMode,
             relay: input.relay
@@ -709,6 +716,11 @@ final class DashboardMenuBarPage {
             ]
         )
         let displaySection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPageDisplayItems), rows: [
+            DashboardSettingsComponents.makeSettingsRow(
+                tr(.keyDashboardMenuBarPageIconDisplayMode),
+                subtitle: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
+                control: iconDisplayModeControl
+            ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
                 subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
@@ -933,6 +945,15 @@ final class DashboardMenuBarPage {
                 quotaWindowPreferenceControl.selectItem(at: selectedIndex)
             }
             quotaWindowPreferenceControl.synchronizeTitleAndSelectedItem()
+        }
+        if let iconDisplayModeControl,
+           let selectedIndex = MenuBarIconDisplayMode.allCases.firstIndex(
+               of: preferences.menuBarIconDisplayMode
+           ) {
+            if iconDisplayModeControl.indexOfSelectedItem != selectedIndex {
+                iconDisplayModeControl.selectItem(at: selectedIndex)
+            }
+            iconDisplayModeControl.synchronizeTitleAndSelectedItem()
         }
         if let quotaResetDisplayModeControl,
            let selectedIndex = OfficialQuotaResetDisplayMode.allCases.firstIndex(
@@ -1337,6 +1358,30 @@ final class DashboardMenuBarPage {
         return control
     }
 
+    private func makeIconDisplayModeControl(
+        value: MenuBarIconDisplayMode,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.iconDisplayModeIdentifier,
+            items: MenuBarIconDisplayMode.allCases.map { mode in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.iconDisplayModeLabel(mode),
+                    representedObject: mode.rawValue
+                )
+            },
+            selectedIndex: MenuBarIconDisplayMode.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarIconDisplayMode(_:))
+        )
+        let minimumWidth: CGFloat = 108
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuBarPageIconDisplayModeDescription)
+        return control
+    }
+
     private func makeQuotaResetDisplayModeControl(
         value: OfficialQuotaResetDisplayMode,
         relay: DashboardPreferencePageRelay
@@ -1369,6 +1414,17 @@ final class DashboardMenuBarPage {
             return tr(.keyDashboardMenuBarPageFiveHourQuota)
         case .sevenDay:
             return tr(.keyDashboardMenuBarPageSevenDayQuota)
+        }
+    }
+
+    private static func iconDisplayModeLabel(
+        _ mode: MenuBarIconDisplayMode
+    ) -> String {
+        switch mode {
+        case .alwaysVisible:
+            return tr(.keyDashboardMenuBarPageIconDisplayModeAlwaysVisible)
+        case .onlyWhileRunning:
+            return tr(.keyDashboardMenuBarPageIconDisplayModeOnlyWhileRunning)
         }
     }
 

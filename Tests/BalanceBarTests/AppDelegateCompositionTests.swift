@@ -464,6 +464,88 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(machine.needsAdditionalHiddenSample)
     }
 
+    func testMenuBarIconDisplayStateMachineDebouncesIdleAndRecoversImmediately() {
+        var machine = MenuBarIconDisplayStateMachine()
+        let start = Date(timeIntervalSince1970: 2_000)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .alwaysVisible,
+                codexTaskRunning: false,
+                at: start
+            )
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 0)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                codexTaskRunning: false,
+                at: start
+            ),
+            "the first idle sample must not hide the item"
+        )
+        XCTAssertTrue(machine.needsAdditionalIdleSample)
+        XCTAssertTrue(
+            machine.setMode(
+                .onlyWhileRunning,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(1)
+            ),
+            "reapplying the same mode must not count as another activity sample"
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 1)
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval / 2
+                )
+            ),
+            "a short-lived idle sample must keep the item visible"
+        )
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval
+                )
+            ) == false,
+            "stable idle must hide the item"
+        )
+        XCTAssertFalse(machine.shouldDisplay)
+        XCTAssertFalse(machine.needsAdditionalIdleSample)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                codexTaskRunning: true,
+                at: start.addingTimeInterval(0.4)
+            ),
+            "a running sample must show the item immediately"
+        )
+        XCTAssertTrue(machine.shouldDisplay)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(0.5)
+            ),
+            "a new idle candidate starts visible after recovery"
+        )
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .alwaysVisible,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(1)
+            )
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 0)
+    }
+
     @MainActor
     func testStatusItemStartIsIdempotentAndTeardownIsSafe() throws {
         let controller = StatusItemController(
@@ -563,6 +645,95 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
 
         controller.teardown()
+        controller.teardown()
+    }
+
+    @MainActor
+    func testStatusItemDisplayModeHidesInPlaceAndRestoresWhenCodexRuns() {
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true
+        )
+        let makeSettings: (MenuBarIconDisplayMode) -> StatusItemController.MenuBarSettings = { mode in
+            StatusItemController.MenuBarSettings(
+                showIcon: true,
+                showAmount: true,
+                showReset: true,
+                horizontalPadding: 6,
+                keepMenuOpenAfterRefresh: true,
+                iconDisplayMode: mode
+            )
+        }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: input,
+            settings: makeSettings(.onlyWhileRunning)
+        )
+        let installCount = controller.statusItemInstallCount
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(controller.isVisible, "the first idle sample remains visible")
+        RunLoop.main.run(
+            until: Date().addingTimeInterval(
+                MenuBarIconDisplayStateMachine.idleConfirmationInterval
+                + 0.05
+            )
+        )
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: input,
+            settings: makeSettings(.onlyWhileRunning)
+        )
+        XCTAssertTrue(
+            controller.isVisible,
+            "a layout refresh must not count as a second idle activity sample"
+        )
+        controller.observeCodexTaskSample(false)
+        XCTAssertFalse(controller.isVisible, "stable idle hides the existing status item")
+        XCTAssertEqual(controller.statusItemInstallCount, installCount)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(controller.isVisible, "Codex activity shows the existing status item immediately")
+        XCTAssertEqual(controller.statusItemInstallCount, installCount)
         controller.teardown()
     }
 
