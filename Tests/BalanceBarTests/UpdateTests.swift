@@ -3121,6 +3121,9 @@ final class UpdateTests: XCTestCase {
         )
         let narrowControls = try XCTUnwrap(narrowUpdateButton.superview as? DashboardUpdateControlsStackView)
         let narrowRow = try XCTUnwrap(narrowControls.superview)
+        let narrowLabels = try XCTUnwrap(
+            narrowRow.subviews.compactMap { $0 as? NSStackView }.first { $0 !== narrowControls }
+        )
 
         func assertNarrowTrailingAlignment(
             _ state: UpdateCheckState,
@@ -3135,8 +3138,34 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(narrowControls.orientation, orientation, file: file, line: line)
             let visibleButtons = narrowControls.arrangedSubviews.filter { !$0.isHidden }
             XCTAssertFalse(visibleButtons.isEmpty, file: file, line: line)
+            let labelsFrame = narrowLabels.convert(narrowLabels.bounds, to: narrowRow)
+            let controlsFrame = narrowControls.convert(narrowControls.bounds, to: narrowRow)
+            XCTAssertFalse(
+                labelsFrame.intersects(controlsFrame),
+                "\(state) content and actions must not overlap at narrow width",
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                narrowRow.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame),
+                "\(state) content must remain inside the row at narrow width",
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                narrowRow.bounds.insetBy(dx: 0, dy: -0.5).contains(controlsFrame),
+                "\(state) actions must remain inside the row at narrow width",
+                file: file,
+                line: line
+            )
             for button in visibleButtons {
                 let buttonFrame = button.convert(button.bounds, to: narrowRow)
+                XCTAssertTrue(
+                    narrowRow.bounds.insetBy(dx: 0, dy: -0.5).contains(buttonFrame),
+                    "\(state) button must remain inside the row at narrow width",
+                    file: file,
+                    line: line
+                )
                 XCTAssertEqual(
                     buttonFrame.maxX,
                     narrowRow.bounds.maxX - 20,
@@ -3154,6 +3183,31 @@ final class UpdateTests: XCTestCase {
                 file: file,
                 line: line
             )
+
+            let presentation = DashboardUpdatePresentation.make(for: state)
+            XCTAssertEqual(
+                narrowUpdateButton.isEnabled,
+                presentation.buttonEnabled,
+                "\(state) button enabled state must remain semantic",
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(
+                narrowUpdateButton.tag,
+                presentation.performsInstall ? 1 : 0,
+                "\(state) button action tag must remain semantic",
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(
+                visibleButtons.compactMap { $0.identifier?.rawValue },
+                presentation.showsReleaseNotesButton
+                    ? ["ignoreUpdateButton", "viewUpdateNotesButton", "checkForUpdatesButton"]
+                    : ["checkForUpdatesButton"],
+                "\(state) action visibility and order must remain stable",
+                file: file,
+                line: line
+            )
         }
 
         assertNarrowTrailingAlignment(
@@ -3163,12 +3217,194 @@ final class UpdateTests: XCTestCase {
             ),
             orientation: .vertical
         )
+        assertNarrowTrailingAlignment(.idle(current: current), orientation: .horizontal)
         assertNarrowTrailingAlignment(.checking(current: current), orientation: .horizontal)
         assertNarrowTrailingAlignment(.latest(current: current), orientation: .horizontal)
+        assertNarrowTrailingAlignment(.failed(.network), orientation: .horizontal)
+        assertNarrowTrailingAlignment(.downloading(current: current, latest: latest, progress: 25), orientation: .horizontal)
+        assertNarrowTrailingAlignment(.installing(current: current, latest: latest, progress: 25), orientation: .horizontal)
+        assertNarrowTrailingAlignment(.restarting(current: current, latest: latest), orientation: .horizontal)
         assertNarrowTrailingAlignment(
             .available(current: current, latest: try XCTUnwrap(AppSemanticVersion("123.456.789"))),
             orientation: .vertical
         )
+    }
+
+    func testDashboardUpdateRowProtectsContentColumnForLongWordLanguages() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let current = try XCTUnwrap(AppSemanticVersion("1.2.3"))
+        let latest = try XCTUnwrap(AppSemanticVersion("123.456.789"))
+        for language in [AppLanguage.spanish, .german, .french] {
+            AppLanguage.selected = language
+            let suiteName = "UpdateTests.UI.content-column.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let preferences = AppPreferences(defaults: defaults)
+            let pageController = DashboardGeneralPage()
+            let relay = DashboardPreferencePageRelay()
+            let page = pageController.make(.init(
+                preferences: preferences,
+                currentProviderName: "OpenAI",
+                relay: relay,
+                updateState: .available(current: current, latest: latest)
+            ))
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 320, height: 420),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            defer { window.orderOut(nil) }
+            let host = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 420))
+            window.contentView = host
+            page.frame = host.bounds
+            page.autoresizingMask = []
+            host.addSubview(page)
+
+            let updateButton = try XCTUnwrap(
+                updateTestDescendants(of: page)
+                    .compactMap { $0 as? NSButton }
+                    .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
+            )
+            let controls = try XCTUnwrap(updateButton.superview as? DashboardUpdateControlsStackView)
+            let row = try XCTUnwrap(controls.superview)
+            let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
+            let card = try XCTUnwrap(rowsStack.superview)
+            let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            let labels = try XCTUnwrap(
+                row.subviews.compactMap { $0 as? NSStackView }.first { $0 !== controls }
+            )
+            let subtitle = try XCTUnwrap(
+                updateTestDescendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }
+            )
+
+            func frames() -> (labels: NSRect, controls: NSRect, subtitle: NSRect) {
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+                return (
+                    labels.convert(labels.bounds, to: row),
+                    controls.convert(controls.bounds, to: row),
+                    subtitle.convert(subtitle.bounds, to: row)
+                )
+            }
+
+            func assertCardHeight(_ message: String) {
+                XCTAssertEqual(
+                    card.frame.height,
+                    DashboardSettingsComponents.settingsCardHeight(
+                        rowsStack: rowsStack,
+                        separators: separators
+                    ),
+                    accuracy: 0.5,
+                    message
+                )
+            }
+
+            let narrow = frames()
+            assertCardHeight("card height must follow the narrow update row for \(language)")
+            XCTAssertEqual(controls.orientation, .vertical, "available actions should use a dedicated row for \(language)")
+            XCTAssertEqual(narrow.labels.minX, 20, accuracy: 0.5, "content leading inset for \(language)")
+            XCTAssertEqual(
+                narrow.labels.maxX,
+                row.bounds.maxX - 20,
+                accuracy: 0.5,
+                "content must use the full row width when actions reflow for \(language)"
+            )
+            XCTAssertGreaterThanOrEqual(
+                narrow.subtitle.width,
+                row.bounds.width - 40,
+                "subtitle must not inherit the old compressed action-column width for \(language)"
+            )
+            XCTAssertFalse(narrow.labels.intersects(narrow.controls), "content and actions must not overlap for \(language)")
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(narrow.labels), "content must remain inside the row for \(language)")
+            XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(narrow.controls), "actions must remain inside the row for \(language)")
+            XCTAssertEqual(narrow.controls.maxX, row.bounds.maxX - 20, accuracy: 0.5, "action trailing column for \(language)")
+            for button in controls.arrangedSubviews where !button.isHidden {
+                let buttonFrame = button.convert(button.bounds, to: row)
+                XCTAssertTrue(row.bounds.insetBy(dx: 0, dy: -0.5).contains(buttonFrame), "button must remain inside the row for \(language)")
+                XCTAssertEqual(buttonFrame.maxX, row.bounds.maxX - 20, accuracy: 0.5, "button trailing column for \(language)")
+            }
+            let narrowRowHeight = row.frame.height
+            let narrowCardHeight = card.frame.height
+
+            page.setFrameSize(NSSize(width: 720, height: 420))
+            let medium = frames()
+            let mediumTitleLabel = (labels.arrangedSubviews.first as? NSStackView)?.arrangedSubviews
+                .compactMap { $0 as? NSTextField }
+                .first
+            assertCardHeight("card height must follow the medium update row for \(language)")
+            XCTAssertEqual(
+                controls.orientation,
+                .horizontal,
+                "actions should retain their horizontal order on the dedicated row for \(language)"
+            )
+            XCTAssertEqual(
+                medium.labels.maxX,
+                row.bounds.maxX - 20,
+                accuracy: 0.5,
+                "medium-width content must use the full row when the title accessory needs the action column"
+            )
+            XCTAssertGreaterThanOrEqual(
+                mediumTitleLabel?.frame.width ?? 0,
+                mediumTitleLabel?.fittingSize.width ?? .greatestFiniteMagnitude,
+                "medium-width content must keep the complete localized title on one readable line for \(language)"
+            )
+            XCTAssertFalse(
+                medium.labels.intersects(medium.controls),
+                "medium-width content and actions must not overlap for \(language)"
+            )
+
+            var foundVerticalActionsBesideContent = false
+            for width in stride(from: CGFloat(320), through: 1400, by: 20) {
+                page.setFrameSize(NSSize(width: width, height: 420))
+                let candidate = frames()
+                guard controls.orientation == .vertical,
+                      candidate.labels.maxX < candidate.controls.minX - 0.5 else {
+                    continue
+                }
+                XCTAssertEqual(
+                    candidate.labels.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "title and subtitle should be vertically centered beside a vertical action column for \(language)"
+                )
+                XCTAssertEqual(
+                    candidate.controls.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "vertical action column should be centered in the update row for \(language)"
+                )
+                foundVerticalActionsBesideContent = true
+                break
+            }
+            XCTAssertTrue(
+                foundVerticalActionsBesideContent,
+                "a width with vertical actions beside the content should be reachable for \(language)"
+            )
+
+            page.setFrameSize(NSSize(width: 760, height: 420))
+            let wide = frames()
+            assertCardHeight("card height must follow the wide update row for \(language)")
+            XCTAssertEqual(controls.orientation, .horizontal, "wide window should retain horizontal actions for \(language)")
+            XCTAssertLessThan(wide.labels.maxX, wide.controls.minX, "wide content and actions should remain separate for \(language)")
+            XCTAssertLessThanOrEqual(wide.labels.maxX, wide.controls.minX - 19.5, "wide row gap for \(language)")
+            XCTAssertEqual(wide.controls.maxX, row.bounds.maxX - 20, accuracy: 0.5, "wide action trailing column for \(language)")
+            XCTAssertLessThan(row.frame.height, narrowRowHeight, "wide row should shrink after actions reflow back for \(language)")
+            XCTAssertLessThan(card.frame.height, narrowCardHeight, "wide card should shrink after actions reflow back for \(language)")
+
+            page.setFrameSize(NSSize(width: 320, height: 420))
+            let narrowAgain = frames()
+            assertCardHeight("card height must be reversible for the narrow update row for \(language)")
+            XCTAssertEqual(controls.orientation, .vertical, "narrow window should restore the dedicated action row for \(language)")
+            XCTAssertEqual(narrowAgain.labels.width, narrow.labels.width, accuracy: 0.5, "content width must be reversible for \(language)")
+            XCTAssertEqual(narrowAgain.subtitle.width, narrow.subtitle.width, accuracy: 0.5, "subtitle width must be reversible for \(language)")
+            XCTAssertEqual(row.frame.height, narrowRowHeight, accuracy: 0.5, "row height must be reversible for \(language)")
+            XCTAssertEqual(card.frame.height, narrowCardHeight, accuracy: 0.5, "card height must be reversible for \(language)")
+        }
     }
 
     func testDashboardUpdateCopyIsLocalizedAcrossAllSupportedLanguages() throws {

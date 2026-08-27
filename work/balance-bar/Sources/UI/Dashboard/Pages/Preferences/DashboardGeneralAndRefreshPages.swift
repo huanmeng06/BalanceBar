@@ -191,11 +191,13 @@ struct DashboardUpdatePresentation: Equatable {
 /// themselves retain their existing rounded style, targets, and dimensions.
 final class DashboardUpdateControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
+    private(set) var usesDedicatedRow = false
 
     func updateAvailableRowWidth(_ width: CGFloat) {
         let normalizedWidth = max(0, width)
-        guard abs(normalizedWidth - availableRowWidth) > 0.5 else { return }
-        availableRowWidth = normalizedWidth
+        if abs(normalizedWidth - availableRowWidth) > 0.5 {
+            availableRowWidth = normalizedWidth
+        }
         updateOrientationIfNeeded()
     }
 
@@ -218,11 +220,19 @@ final class DashboardUpdateControlsStackView: NSStackView, DashboardSettingsRowC
     private func updateOrientationIfNeeded() {
         let wantsVertical = availableRowWidth > 0 && availableRowWidth + 0.5 < horizontalFittingWidth
         let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
-        if orientation != desiredOrientation {
+        let orientationChanged = orientation != desiredOrientation
+        let placementChanged = usesDedicatedRow != wantsVertical
+        if orientationChanged {
             orientation = desiredOrientation
             alignment = wantsVertical ? .trailing : .centerY
+        }
+        if placementChanged {
+            usesDedicatedRow = wantsVertical
+        }
+        if orientationChanged || placementChanged {
             invalidateIntrinsicContentSize()
             superview?.needsLayout = true
+            superview?.superview?.needsLayout = true
         }
     }
 
@@ -248,6 +258,7 @@ final class DashboardUpdateControlsStackView: NSStackView, DashboardSettingsRowC
         // intrinsic sizes without invalidating this custom stack's cached row
         // width. Propagate the invalidation so the existing trailing anchor is
         // remeasured before the next window layout pass.
+        updateOrientationIfNeeded()
         invalidateIntrinsicContentSize()
         needsLayout = true
         superview?.needsLayout = true
