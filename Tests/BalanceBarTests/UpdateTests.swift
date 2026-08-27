@@ -43,6 +43,12 @@ final class UpdateTests: XCTestCase {
             return requests.last
         }
 
+        static var requestCount: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return requests.count
+        }
+
         override class func canInit(with request: URLRequest) -> Bool { true }
         override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -329,8 +335,62 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(request.url?.path, endpoint.path)
         XCTAssertEqual(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "per_page" })?.value, "100")
         XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Cache-Control"), "no-cache")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Pragma"), "no-cache")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/vnd.github+json")
         XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), "BalanceBar")
+    }
+
+    func testGitHubReleaseClientDoesNotUseCachedSuccessWhenNetworkBecomesUnavailable() {
+        let endpoint = URL(string: "https://api.github.test/repos/huanmeng06/BalanceBar/releases")!
+        let cachedBody = releaseListBody(tag: "v1.0.1", assets: [])
+        let stateLock = NSLock()
+        var networkAvailable = true
+        var hasCachedResponse = false
+        StubURLProtocol.setHandler { request in
+            stateLock.lock()
+            defer { stateLock.unlock() }
+
+            // Model the stale-response path that URLSession/HTTP caching can
+            // take when a request uses the default policy.
+            if request.cachePolicy == .useProtocolCachePolicy, hasCachedResponse {
+                return StubURLResult(data: cachedBody)
+            }
+            guard networkAvailable else {
+                return StubURLResult(error: URLError(.notConnectedToInternet))
+            }
+            hasCachedResponse = true
+            return StubURLResult(data: cachedBody)
+        }
+
+        let client = GitHubReleaseClient(session: session, endpoint: endpoint)
+        let firstExpectation = expectation(description: "initial release fetched")
+        var firstResult: Result<[GitHubRelease], GitHubReleaseClientError>?
+        client.fetchReleases {
+            firstResult = $0
+            firstExpectation.fulfill()
+        }
+        wait(for: [firstExpectation], timeout: 2)
+        guard case .success = firstResult else {
+            return XCTFail("expected the initial network response, got \(String(describing: firstResult))")
+        }
+
+        stateLock.lock()
+        networkAvailable = false
+        stateLock.unlock()
+
+        let secondExpectation = expectation(description: "offline release check fails")
+        var secondResult: Result<[GitHubRelease], GitHubReleaseClientError>?
+        client.fetchReleases {
+            secondResult = $0
+            secondExpectation.fulfill()
+        }
+        wait(for: [secondExpectation], timeout: 2)
+        guard case .failure(.transport) = secondResult else {
+            return XCTFail("expected the offline request to fail instead of using cached data, got \(String(describing: secondResult))")
+        }
+        XCTAssertEqual(StubURLProtocol.requestCount, 2)
     }
 
     func testGitHubReleaseClientSurfacesHTTPAndInvalidJSONFailures() {
@@ -930,6 +990,46 @@ final class UpdateTests: XCTestCase {
         }
         fetcher.resolve(.success([makeRelease(tag: "v1.0.0")]))
         wait(for: [secondLatest], timeout: 2)
+    }
+
+    func testUpdateServiceDoesNotReusePreviousSuccessAfterNetworkFailure() throws {
+        let current = try XCTUnwrap(AppSemanticVersion("1.0.0"))
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.success-then-failure")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: current.description,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+
+        let firstAvailable = waitForState(service, queue: queue) { state in
+            if case .available(let observedCurrent, let latest) = state {
+                return observedCurrent == current
+                    && latest == AppSemanticVersion("1.1.0")
+            }
+            return false
+        }
+        service.checkForUpdates()
+        fetcher.resolve(.success([makeRelease(tag: "v1.1.0")]))
+        wait(for: [firstAvailable], timeout: 2)
+        XCTAssertEqual(service.state, .available(current: current, latest: AppSemanticVersion("1.1.0")!))
+        XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.1.0")
+
+        let secondFailure = waitForState(service, queue: queue) { state in
+            if case .failed(.network) = state { return true }
+            return false
+        }
+        service.checkForUpdates()
+        XCTAssertEqual(service.state, .checking(current: current))
+        XCTAssertEqual(fetcher.requestCount, 2)
+        XCTAssertNil(service.availableReleaseForPresentation)
+        fetcher.resolve(.failure(.transport))
+        wait(for: [secondFailure], timeout: 2)
+
+        XCTAssertEqual(service.state, .failed(.network))
+        XCTAssertNil(service.availableReleaseForPresentation)
     }
 
     func testUpdateServiceRejectsInvalidStableReleaseVersion() throws {
@@ -2481,6 +2581,13 @@ final class UpdateTests: XCTestCase {
             "新版本可用：1.0.6 -> 1.0.7"
         )
 
+        pageController.refresh(updateState: .failed(.network))
+        XCTAssertEqual(
+            updateTestDescendants(of: page).compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == "checkForUpdatesSubtitle" }?.stringValue,
+            "检查更新失败，请重试。\n原因：网络请求失败\n建议：请检查网络或代理设置后重试。"
+        )
+
         pageController.refresh(updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))))
         XCTAssertTrue(updateIgnoreButton.isHidden)
         XCTAssertTrue(updateNotesButton.isHidden)
@@ -3122,9 +3229,73 @@ final class UpdateTests: XCTestCase {
                 for: .failed(.network),
                 language: language
             )
+            XCTAssertEqual(
+                failure.subtitle,
+                language == .simplifiedChinese ? "检查更新失败，请重试。\n原因：网络请求失败\n建议：请检查网络或代理设置后重试。" :
+                    language == .traditionalChineseTaiwan ? "檢查更新失敗，請重試。\n原因：網路請求失敗\n建議：請檢查網路或代理設定後重試。" :
+                    language == .traditionalChineseHongKong ? "檢查更新失敗，請再試。\n原因：網絡請求失敗\n建議：請檢查網絡或代理設定後重試。" :
+                    language == .japanese ? "アップデートの確認に失敗しました。再試行してください。\n原因：ネットワーク要求に失敗しました\n対処：ネットワークまたはプロキシ設定を確認して、再試行してください。" :
+                    language == .korean ? "업데이트 확인 실패; 다시 시도하세요.\n원인: 네트워크 요청에 실패했습니다\n권장 조치: 네트워크 또는 프록시 설정을 확인한 후 다시 시도하세요." :
+                    language == .spanish ? "Falló la búsqueda de actualizaciones; inténtalo de nuevo.\nMotivo: La solicitud de red falló\nSugerencia: Comprueba la configuración de red o del proxy y vuelve a intentarlo." :
+                    language == .german ? "Updateprüfung fehlgeschlagen; erneut versuchen.\nGrund: Die Netzwerkanfrage ist fehlgeschlagen\nEmpfehlung: Überprüfe deine Netzwerk- oder Proxy-Einstellungen und versuche es erneut." :
+                    language == .french ? "La recherche de mises à jour a échoué ; réessayez.\nMotif : La requête réseau a échoué\nSuggestion : Vérifiez vos paramètres réseau ou proxy, puis réessayez." :
+                    "Update check failed; try again.\nReason: The network request failed\nSuggestion: Check your network or proxy settings, then try again."
+            )
             XCTAssertTrue(failure.buttonEnabled)
             XCTAssertFalse(failure.showsUpdateBadge)
         }
+    }
+
+    func testDashboardUpdateFailureSubtitleIncludesSpecificReasonDetails() throws {
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(403)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。\n原因：服务器拒绝请求（HTTP 403）\n建议：请稍后重试；若持续出现，请检查代理设置。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(404)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。\n原因：找不到更新服务（HTTP 404）\n建议：请稍后重试；若持续出现，请检查代理设置。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(429)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。\n原因：请求过于频繁（HTTP 429）\n建议：请稍后重试，避免连续点击。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(503)),
+                language: .simplifiedChinese
+            ).subtitle,
+            "检查更新失败，请重试。\n原因：更新服务器暂时异常（HTTP 503）\n建议：请稍后重试；若持续出现，请检查代理设置。"
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.httpStatus(418)),
+                language: .english
+            ).subtitle,
+            "Update check failed; try again.\nReason: The server returned an unexpected status (HTTP 418)\nSuggestion: Try again later; if the problem persists, check your proxy settings."
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.invalidResponse),
+                language: .english
+            ).subtitle,
+            "Update check failed; try again.\nReason: The server response was invalid\nSuggestion: Try again later; if the problem persists, contact the maintainer."
+        )
+        XCTAssertEqual(
+            DashboardUpdatePresentation.make(
+                for: .failed(.invalidReleaseVersion),
+                language: .japanese
+            ).subtitle,
+            "アップデートの確認に失敗しました。再試行してください。\n原因：リリースバージョンが無効です\n対処：メンテナーにリリースバージョンを確認してもらってください。"
+        )
     }
 
     // MARK: - Fixtures

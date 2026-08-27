@@ -1718,7 +1718,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 view.addSubview(quotaDetail)
 
-                let resetText = window.reset.map {
+                let resetText = window.resetDisplayText().map {
                     tr(.keySnapshotResetValue, arguments: [String(describing: $0)])
                 } ?? tr(.keySnapshotResetValue, arguments: [tr(.keyLocalizationUnknown)])
                 let reset = makeMarqueeOverviewLabel(
@@ -1829,7 +1829,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         provider.frame = layout.title
         let updatedAt: Date?
         switch card.data {
-        case .official(_, _, _, let date), .balance(_, _, _, _, let date):
+        case .official(_, _, _, let date), .officialWithWindow(_, let date), .balance(_, _, _, _, let date):
             updatedAt = date
         case .loading, .unavailable:
             updatedAt = nil
@@ -1848,7 +1848,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         var progress: QuotaProgressView?
         var websiteLink: HoverLinkTextField?
         switch card.data {
-        case .official(let remaining, let label, let reset, _):
+        case .official, .officialWithWindow:
+            let window = card.data.officialWindow!
+            let remaining = window.remaining
+            let label = window.label
             progress = QuotaProgressView(percentage: remaining)
             progress?.frame = layout.progress ?? .zero
             primary = makeOverviewLabel(
@@ -1870,7 +1873,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 frame: overviewMarqueeFrame(layout.quotaDetail, avoiding: primary)
             )
             secondary = makeMarqueeOverviewLabel(
-                reset.map { tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)]) } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
+                window.resetDisplayText().map {
+                    tr(.keyStatusItemControllerResetValue, arguments: [String(describing: $0)])
+                } ?? tr(.keyStatusItemControllerResetTimeUnavailable),
                 font: .systemFont(
                     ofSize: OpenCodexCardLayout.quotaResetPointSize,
                     weight: .regular

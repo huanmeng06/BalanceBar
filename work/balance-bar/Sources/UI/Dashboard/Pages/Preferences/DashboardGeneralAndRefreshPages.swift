@@ -86,17 +86,25 @@ struct DashboardUpdatePresentation: Equatable {
             )
         case .failed(let failure):
             let subtitle: String
-            switch failure {
-            case .assetUnavailable:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesNoVerifiableInstallerIsAvailableTryAgain, language: language)
-            case .verificationFailed:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesDownloadVerificationFailedTheCurrentVersionWasNotChanged, language: language)
-            case .installationFailed:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesInstallationFailedTheCurrentVersionWasNotChanged, language: language)
-            case .invalidCurrentVersion:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesTheCurrentVersionCouldNotBeReadTryAgain, language: language)
-            default:
-                subtitle = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgain, language: language)
+            if let details = localizedUpdateCheckFailureDetails(for: failure, language: language) {
+                subtitle = tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgainReason,
+                    arguments: [details.reason, details.suggestion],
+                    language: language
+                )
+            } else {
+                switch failure {
+                case .assetUnavailable:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesNoVerifiableInstallerIsAvailableTryAgain, language: language)
+                case .verificationFailed:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesDownloadVerificationFailedTheCurrentVersionWasNotChanged, language: language)
+                case .installationFailed:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesInstallationFailedTheCurrentVersionWasNotChanged, language: language)
+                case .invalidCurrentVersion:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesTheCurrentVersionCouldNotBeReadTryAgain, language: language)
+                default:
+                    subtitle = tr(.keyDashboardGeneralAndRefreshPagesUpdateCheckFailedTryAgain, language: language)
+                }
             }
             return DashboardUpdatePresentation(
                 subtitle: subtitle,
@@ -106,6 +114,74 @@ struct DashboardUpdatePresentation: Equatable {
                 showsReleaseNotesButton: false,
                 showsUpdateBadge: false
             )
+        }
+    }
+
+    private static func localizedUpdateCheckFailureDetails(
+        for failure: UpdateFailure,
+        language: AppLanguage
+    ) -> (reason: String, suggestion: String)? {
+        switch failure {
+        case .network:
+            return (
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonNetwork,
+                    language: language
+                ),
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionNetwork,
+                    language: language
+                )
+            )
+        case .httpStatus(let statusCode):
+            let reasonKey: LocalizationKey
+            switch statusCode {
+            case 403:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpForbiddenValue
+            case 404:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpNotFoundValue
+            case 429:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpTooManyRequestsValue
+            case 500...599:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpServerErrorValue
+            default:
+                reasonKey = .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonHttpStatusValue
+            }
+            let suggestionKey: LocalizationKey = statusCode == 429
+                ? .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttpTooManyRequests
+                : .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionHttp
+            return (
+                tr(
+                    reasonKey,
+                    arguments: [String(statusCode)],
+                    language: language
+                ),
+                tr(suggestionKey, language: language)
+            )
+        case .invalidResponse:
+            return (
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidResponse,
+                    language: language
+                ),
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionInvalidResponse,
+                    language: language
+                )
+            )
+        case .invalidReleaseVersion:
+            return (
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureReasonInvalidReleaseVersion,
+                    language: language
+                ),
+                tr(
+                    .keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionInvalidReleaseVersion,
+                    language: language
+                )
+            )
+        case .assetUnavailable, .downloadFailed, .verificationFailed, .installationFailed, .invalidCurrentVersion:
+            return nil
         }
     }
 }

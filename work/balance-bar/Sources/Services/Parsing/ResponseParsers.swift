@@ -50,6 +50,34 @@ enum ResponseParsingSupport {
         return text
     }
 
+    /// Extract only an absolute API timestamp. Relative seconds are
+    /// deliberately rejected here so a rounded countdown cannot be turned
+    /// into a fabricated wall-clock reset time.
+    static func resetDate(_ value: Any?, now: Date = Date()) -> Date? {
+        let date: Date?
+        if let number = numberValue(value) {
+            guard number.isFinite else { return nil }
+            let timestamp = number > 10_000_000_000 ? number / 1_000 : number
+            guard timestamp > 1_000_000_000, timestamp < 10_000_000_000 else { return nil }
+            date = Date(timeIntervalSince1970: timestamp)
+        } else if let text = stringValue(value)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty {
+            if let number = Double(text) {
+                return resetDate(number, now: now)
+            }
+            let formatter = ISO8601DateFormatter()
+            date = formatter.date(from: text) ?? {
+                formatter.formatOptions.insert(.withFractionalSeconds)
+                return formatter.date(from: text)
+            }()
+        } else {
+            return nil
+        }
+
+        guard let date, date > now else { return nil }
+        return date
+    }
+
     private static func remainingTime(until date: Date, now: Date) -> String {
         let seconds = max(0, Int(date.timeIntervalSince(now).rounded(.down)))
         let days = seconds / 86_400
@@ -207,6 +235,8 @@ enum OfficialQuotaResponseParser {
                 ?? windows.first
         }
 
+        var representativeWindow: OfficialQuotaWindow? { representative }
+
         // Keep the existing single-window accessors for quick-switch summaries
         // and callers that still need one representative quota. The weekly
         // window remains preferred, preserving the compact status text and
@@ -215,6 +245,7 @@ enum OfficialQuotaResponseParser {
         var label: String { representative?.label ?? tr(.keyResponseParsersQuota) }
         var daysText: String { representative?.daysText ?? tr(.keyResponseParsersQuota2) }
         var reset: String? { representative?.reset }
+        var resetAt: Date? { representative?.resetAt }
     }
 
     static func parse(
@@ -302,8 +333,9 @@ enum OfficialQuotaResponseParser {
             daysText = isWeekly ? tr(.keyResponseParsers7Days4) : tr(.keyResponseParsersQuota2)
         }
 
+        let rawResetAt = window["reset_at"] ?? window["resets_at"]
         let reset = ResponseParsingSupport.resetDescription(window["reset_after_seconds"], now: now)
-            ?? ResponseParsingSupport.resetDescription(window["reset_at"], now: now)
+            ?? ResponseParsingSupport.resetDescription(rawResetAt, now: now)
             ?? ResponseParsingSupport.stringValue(window["reset_description"])
         return OfficialQuotaWindow(
             kind: kind,
@@ -311,7 +343,8 @@ enum OfficialQuotaResponseParser {
             label: label,
             daysText: daysText,
             reset: reset,
-            durationSeconds: duration
+            durationSeconds: duration,
+            resetAt: ResponseParsingSupport.resetDate(rawResetAt, now: now)
         )
     }
 
