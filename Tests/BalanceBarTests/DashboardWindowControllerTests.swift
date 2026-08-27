@@ -1176,12 +1176,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(accountLabel.stringValue, longEmail)
         XCTAssertTrue(accountView.isScrollable)
         XCTAssertTrue(accountView.showsEdgeFade)
-        XCTAssertGreaterThan(accountView.accountLabel.frame.width, accountView.bounds.width)
-        XCTAssertEqual(accountView.accountLabel.frame.minX, 0)
+        XCTAssertEqual(accountView.accountLabel.frame.width, accountView.measuredTextWidth)
+        XCTAssertEqual(accountView.accountLabel.frame.minX, accountView.bounds.minX)
         XCTAssertEqual(accountView.edgeFadeInset, 8, accuracy: 0.001)
         XCTAssertEqual(
             accountView.measuredTextWidth - accountView.scrollOverflow,
-            accountView.bounds.width - accountView.edgeFadeInset,
+            accountView.bounds.width,
             accuracy: 0.5
         )
         let edgeFadeMask = try XCTUnwrap(accountView.layer?.mask as? CAGradientLayer)
@@ -1189,7 +1189,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertGreaterThan(edgeFadeMask.locations?[1].doubleValue ?? 0, 0)
         XCTAssertLessThan(edgeFadeMask.locations?[2].doubleValue ?? 1, 1)
         let scrollAnimation = AccountMarqueeView.scrollAnimation(
-            forOverflow: accountView.measuredTextWidth - accountView.bounds.width
+            forOverflow: accountView.scrollOverflow
         )
         XCTAssertEqual(scrollAnimation.values?.count, 5)
         let keyTimes = try XCTUnwrap(scrollAnimation.keyTimes)
@@ -1307,6 +1307,137 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.stringValue.contains("Account") || $0.stringValue.contains("account-")
             }
         )
+    }
+
+    func testAccountMarqueeLayoutUsesViewportInsetAndActualOverflowAcrossLanguages() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let viewport = NSRect(x: 14, y: 75, width: 128, height: 18)
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let short = AccountMarqueeLayout(
+            measuredTextWidth: 32,
+            clipBounds: viewport
+        )
+
+        XCTAssertFalse(short.isScrollable)
+        XCTAssertEqual(short.edgeFadeWidth, 0, accuracy: 0.001)
+        XCTAssertEqual(short.scrollDistance, 0, accuracy: 0.001)
+        XCTAssertEqual(short.maskLocations, [])
+        XCTAssertEqual(short.contentFrame, viewport)
+
+        for language in [
+            AppLanguage.english,
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .japanese,
+            .korean,
+            .spanish,
+            .german,
+            .french
+        ] {
+            AppLanguage.selected = language
+            let localizedText = String(
+                repeating: tr(.keyResponseParsers7DayQuota2) + " ",
+                count: 6
+            )
+            let textWidth = AccountMarqueeView.textWidth(of: localizedText, font: font)
+            let layout = AccountMarqueeLayout(
+                measuredTextWidth: textWidth,
+                clipBounds: viewport
+            )
+
+            XCTAssertTrue(layout.isScrollable, "expected overflow for \(language)")
+            XCTAssertEqual(layout.contentFrame.minX, viewport.minX)
+            XCTAssertEqual(layout.contentFrame.minY, viewport.minY)
+            XCTAssertEqual(layout.contentFrame.width, textWidth, accuracy: 0.001)
+            XCTAssertEqual(layout.scrollDistance, textWidth - viewport.width, accuracy: 0.001)
+            XCTAssertEqual(layout.clipBounds, viewport)
+            XCTAssertEqual(layout.maskLocations.count, 4)
+            XCTAssertEqual(layout.maskLocations.first ?? -1, 0, accuracy: 0.001)
+            XCTAssertEqual(layout.maskLocations.last ?? -1, 1, accuracy: 0.001)
+            XCTAssertGreaterThan(layout.maskLocations[1], 0)
+            XCTAssertLessThan(layout.maskLocations[2], 1)
+        }
+    }
+
+    func testAccountMarqueeRecomputesForDynamicTextAndNarrowWideNarrowResize() throws {
+        let shortText = "Quota"
+        let longText = String(repeating: "A very long localized quota title ", count: 8)
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let view = AccountMarqueeView(
+            text: shortText,
+            font: font,
+            textColor: .labelColor,
+            frame: NSRect(x: 14, y: 75, width: 128, height: 18)
+        )
+
+        XCTAssertFalse(view.isScrollable)
+        XCTAssertFalse(view.showsEdgeFade)
+
+        view.updateText(longText)
+        view.layout()
+        XCTAssertTrue(view.isScrollable)
+        XCTAssertTrue(view.showsEdgeFade)
+        XCTAssertEqual(view.frame.minX, 14, accuracy: 0.001)
+        XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
+        XCTAssertEqual(
+            view.scrollOverflow,
+            view.measuredTextWidth - view.bounds.width,
+            accuracy: 0.001
+        )
+        let narrowMask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
+        XCTAssertEqual(narrowMask.frame, view.layer?.bounds ?? view.bounds)
+
+        let animation = AccountMarqueeView.scrollAnimation(forOverflow: view.scrollOverflow)
+        let endpoint = try XCTUnwrap(animation.values?[2] as? NSNumber)
+        XCTAssertEqual(endpoint.doubleValue, -Double(view.scrollOverflow), accuracy: 0.001)
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            view.appearance = NSAppearance(named: appearanceName)
+            view.layout()
+            let mask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
+            XCTAssertEqual(mask.frame, view.layer?.bounds ?? view.bounds)
+            XCTAssertEqual(mask.locations?.count, 4)
+        }
+
+        let wideWidth = view.measuredTextWidth + 32
+        view.setFrameSize(NSSize(width: wideWidth, height: 18))
+        view.layout()
+        XCTAssertFalse(view.isScrollable)
+        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
+        XCTAssertEqual(view.accountLabel.frame.width, view.bounds.width, accuracy: 0.001)
+
+        view.setFrameSize(NSSize(width: 64, height: 18))
+        view.layout()
+        XCTAssertTrue(view.isScrollable)
+        XCTAssertTrue(view.showsEdgeFade)
+        XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
+        XCTAssertEqual(
+            view.scrollOverflow,
+            view.measuredTextWidth - view.bounds.width,
+            accuracy: 0.001
+        )
+        let restoredMask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
+        XCTAssertEqual(restoredMask.frame, view.layer?.bounds ?? view.bounds)
+
+        view.updateText(shortText)
+        view.layout()
+        XCTAssertFalse(view.isScrollable)
+        XCTAssertFalse(view.showsEdgeFade)
+        XCTAssertEqual(view.scrollOverflow, 0, accuracy: 0.001)
+        XCTAssertNil(view.layer?.mask)
+        XCTAssertEqual(view.accountLabel.frame.minX, view.bounds.minX, accuracy: 0.001)
+        XCTAssertEqual(view.accountLabel.frame.width, view.bounds.width, accuracy: 0.001)
+
+        view.updateText(longText)
+        view.layout()
+        XCTAssertTrue(view.isScrollable)
+        XCTAssertTrue(view.showsEdgeFade)
+        XCTAssertGreaterThan(view.scrollOverflow, 0)
     }
 
     func testLocalizedOverviewQuotaAndResetReuseAccountMarqueeLayout() throws {

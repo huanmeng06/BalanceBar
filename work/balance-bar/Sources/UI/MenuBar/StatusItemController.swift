@@ -116,9 +116,68 @@ final class MenuBarWidthDisplayCoalescer: NSObject {
     }
 }
 
+/// Pure geometry for one single-line marquee viewport. The viewport belongs
+/// to the caller's content inset; the fade is only a mask at that viewport's
+/// edges and is never added to the scrolling text's measured width.
+struct AccountMarqueeLayout: Equatable {
+    static let defaultFadeWidth: CGFloat = 8
+
+    let clipBounds: NSRect
+    let measuredTextWidth: CGFloat
+    let isScrollable: Bool
+    let edgeFadeWidth: CGFloat
+    let contentWidth: CGFloat
+    let scrollDistance: CGFloat
+    let maskLocations: [CGFloat]
+
+    init(
+        measuredTextWidth: CGFloat,
+        clipBounds: NSRect,
+        fadeWidth: CGFloat = Self.defaultFadeWidth
+    ) {
+        let viewportWidth = max(0, clipBounds.width)
+        let textWidth = max(0, measuredTextWidth)
+        let overflow = max(0, textWidth - viewportWidth)
+        let scrollable = viewportWidth > 0 && overflow > 0
+        let effectiveFadeWidth = scrollable
+            ? min(max(0, fadeWidth), min(viewportWidth / 4, overflow))
+            : 0
+
+        self.clipBounds = clipBounds
+        self.measuredTextWidth = textWidth
+        self.isScrollable = scrollable
+        self.edgeFadeWidth = effectiveFadeWidth
+        self.contentWidth = scrollable ? textWidth : max(viewportWidth, textWidth)
+        self.scrollDistance = scrollable ? overflow : 0
+
+        if effectiveFadeWidth > 0, viewportWidth > 0 {
+            let fadeFraction = effectiveFadeWidth / viewportWidth
+            self.maskLocations = [
+                0,
+                fadeFraction,
+                1 - fadeFraction,
+                1
+            ]
+        } else {
+            self.maskLocations = []
+        }
+    }
+
+    /// The text starts in the same coordinate space as the viewport's leading
+    /// edge. This is intentionally not shifted by the fade width.
+    var contentFrame: NSRect {
+        NSRect(
+            x: clipBounds.minX,
+            y: clipBounds.minY,
+            width: contentWidth,
+            height: clipBounds.height
+        )
+    }
+}
+
 final class AccountMarqueeView: NSView {
     static let animationKey = "BalanceBar.accountMarquee"
-    private static let edgeFadeWidth: CGFloat = 8
+    static let defaultEdgeFadeWidth = AccountMarqueeLayout.defaultFadeWidth
     private static let minimumScrollDuration: TimeInterval = 5
     private static let scrollPixelsPerSecond: CGFloat = 24
 
@@ -130,6 +189,9 @@ final class AccountMarqueeView: NSView {
     private(set) var scrollOverflow: CGFloat = 0
 
     private var edgeFadeMask: CAGradientLayer?
+    private var contentLayout: AccountMarqueeLayout?
+    private var configuredText: String?
+    private var configuredFontSignature: String?
 
     init(text: String, font: NSFont, textColor: NSColor, frame: NSRect) {
         accountLabel = NSTextField(labelWithString: text)
@@ -147,7 +209,7 @@ final class AccountMarqueeView: NSView {
         accountLabel.wantsLayer = true
         addSubview(accountLabel)
 
-        configureContent()
+        configureContentIfNeeded(force: true)
     }
 
     required init?(coder: NSCoder) {
@@ -156,7 +218,8 @@ final class AccountMarqueeView: NSView {
 
     override func layout() {
         super.layout()
-        edgeFadeMask?.frame = bounds
+        configureContentIfNeeded()
+        updateEdgeFadeMaskFrame()
     }
 
     override func viewDidMoveToWindow() {
@@ -164,12 +227,14 @@ final class AccountMarqueeView: NSView {
         if window == nil {
             stopScrolling()
         } else {
+            configureContentIfNeeded()
             startScrollingIfNeeded()
         }
     }
 
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
+        configureContentIfNeeded()
         startScrollingIfNeeded()
     }
 
@@ -177,49 +242,72 @@ final class AccountMarqueeView: NSView {
         stopScrolling()
     }
 
-    private func configureContent() {
-        measuredTextWidth = Self.textWidth(of: accountLabel.stringValue, font: accountLabel.font ?? .systemFont(ofSize: 13))
-        isScrollable = measuredTextWidth > bounds.width + 0.5
-        edgeFadeInset = isScrollable && bounds.width > 0
-            ? min(Self.edgeFadeWidth, bounds.width / 4)
-            : 0
-        let contentWidth = isScrollable
-            ? measuredTextWidth + edgeFadeInset
-            : max(bounds.width, measuredTextWidth)
-        accountLabel.frame = NSRect(
-            x: 0,
-            y: 0,
-            width: contentWidth,
-            height: bounds.height
-        )
-        scrollOverflow = max(0, accountLabel.frame.maxX - bounds.width)
+    /// Updates the semantic text without replacing the accessible text field.
+    /// Re-measurement is immediate so dynamic menu copy cannot use the old
+    /// overflow distance for one or more frames.
+    func updateText(_ text: String) {
+        guard accountLabel.stringValue != text else { return }
+        accountLabel.stringValue = text
+        configuredText = nil
+        configureContentIfNeeded(force: true)
+    }
 
-        guard isScrollable, bounds.width > 0 else {
-            layer?.mask = nil
-            edgeFadeMask = nil
-            showsEdgeFade = false
+    private func configureContentIfNeeded(force: Bool = false) {
+        let font = accountLabel.font ?? .systemFont(ofSize: 13)
+        let text = accountLabel.stringValue
+        let fontSignature = Self.fontSignature(for: font)
+        let nextLayout = AccountMarqueeLayout(
+            measuredTextWidth: Self.textWidth(of: text, font: font),
+            clipBounds: bounds,
+            fadeWidth: Self.defaultEdgeFadeWidth
+        )
+        guard force
+            || contentLayout != nextLayout
+            || configuredText != text
+            || configuredFontSignature != fontSignature else {
             return
         }
 
-        let mask = CAGradientLayer()
-        mask.colors = [
-            NSColor.clear.cgColor,
-            NSColor.black.cgColor,
-            NSColor.black.cgColor,
-            NSColor.clear.cgColor
-        ]
-        let fadeWidth = edgeFadeInset
-        let fadeFraction = fadeWidth / bounds.width
-        mask.locations = [
-            0,
-            NSNumber(value: Double(fadeFraction)),
-            NSNumber(value: Double(1 - fadeFraction)),
-            1
-        ]
-        mask.frame = bounds
-        edgeFadeMask = mask
-        layer?.mask = mask
-        showsEdgeFade = true
+        stopScrolling()
+        contentLayout = nextLayout
+        configuredText = text
+        configuredFontSignature = fontSignature
+        measuredTextWidth = nextLayout.measuredTextWidth
+        isScrollable = nextLayout.isScrollable
+        edgeFadeInset = nextLayout.edgeFadeWidth
+        scrollOverflow = nextLayout.scrollDistance
+        accountLabel.frame = nextLayout.contentFrame
+
+        if nextLayout.isScrollable {
+            let mask = edgeFadeMask ?? CAGradientLayer()
+            mask.colors = [
+                NSColor.clear.cgColor,
+                NSColor.black.cgColor,
+                NSColor.black.cgColor,
+                NSColor.clear.cgColor
+            ]
+            mask.locations = nextLayout.maskLocations.map {
+                NSNumber(value: Double($0))
+            }
+            edgeFadeMask = mask
+            layer?.mask = mask
+            showsEdgeFade = true
+            updateEdgeFadeMaskFrame()
+        } else {
+            layer?.mask = nil
+            edgeFadeMask = nil
+            showsEdgeFade = false
+        }
+
+        startScrollingIfNeeded()
+    }
+
+    private func updateEdgeFadeMaskFrame() {
+        guard let mask = edgeFadeMask else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.frame = layer?.bounds ?? bounds
+        CATransaction.commit()
     }
 
     private func startScrollingIfNeeded() {
@@ -230,7 +318,7 @@ final class AccountMarqueeView: NSView {
             return
         }
 
-        let overflow = scrollOverflow
+        let overflow = contentLayout?.scrollDistance ?? scrollOverflow
         guard overflow > 0 else { return }
 
         let animation = Self.scrollAnimation(forOverflow: overflow)
@@ -243,6 +331,10 @@ final class AccountMarqueeView: NSView {
 
     static func textWidth(of text: String, font: NSFont) -> CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    private static func fontSignature(for font: NSFont) -> String {
+        "\(font.fontName)|\(font.pointSize)|\(font.fontDescriptor.symbolicTraits.rawValue)"
     }
 
     static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
@@ -2036,9 +2128,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // primary column, but the rendered value often occupies only its
         // rightmost portion (for example `77%`). Let localized detail text
         // use that empty space. If the value itself reaches the column's
-        // leading edge, retain the original safe frame width and let the
-        // marquee scroll. This keeps scrolling as the overflow fallback,
-        // rather than the first response to a barely-overlong translation.
+        // leading edge, keep the viewport bounded by the actual safe gap and
+        // let the marquee scroll. This keeps scrolling as the overflow
+        // fallback, rather than the first response to a barely-overlong
+        // translation.
         let amountFont = amountLabel.font ?? .systemFont(ofSize: 13)
         let amountTextWidth = AccountMarqueeView.textWidth(
             of: amountLabel.stringValue,
@@ -2046,8 +2139,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let renderedAmountMinX = amountLabel.frame.maxX - amountTextWidth
         let safeAmountMinX = max(amountLabel.frame.minX, renderedAmountMinX)
-        let availableWidth = safeAmountMinX - 8 - baseFrame.minX
-        let expandedWidth = max(baseFrame.width, availableWidth)
+        let availableWidth = max(
+            0,
+            safeAmountMinX - AccountMarqueeView.defaultEdgeFadeWidth - baseFrame.minX
+        )
+        // Keep the viewport itself inside the gap before the rendered amount;
+        // the marquee's mask then fades only inside this bounded frame.
+        let expandedWidth = availableWidth
         return NSRect(
             x: baseFrame.minX,
             y: baseFrame.minY,
