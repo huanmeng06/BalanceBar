@@ -1198,6 +1198,16 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             wrappedTooltipLayout.contentSize.height,
             wrappedTooltipLayout.textHeight + AccountEmailTooltipLayout.verticalInset * 2
         )
+        let threeLineTooltipEmail = String(repeating: "x", count: 110) + "@gmail.com"
+        let threeLineTooltipLayout = AccountEmailTooltipLayout.make(
+            for: threeLineTooltipEmail,
+            font: tooltipFont
+        )
+        XCTAssertGreaterThan(threeLineTooltipLayout.textHeight, wrappedTooltipLayout.textHeight)
+        XCTAssertGreaterThan(
+            threeLineTooltipLayout.textHeight,
+            minimumSingleLineHeight * 2
+        )
         XCTAssertGreaterThan(tooltipLayout.textHeight, 0)
         XCTAssertFalse(accountView.isMarqueeEnabled)
         XCTAssertEqual(accountView.fullEmail, longEmail)

@@ -787,9 +787,19 @@ struct AccountEmailTooltipLayout: Equatable {
             ),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
+        let measurementLabel = NSTextField(wrappingLabelWithString: email)
+        measurementLabel.font = font
+        measurementLabel.lineBreakMode = .byCharWrapping
+        measurementLabel.usesSingleLineMode = false
+        measurementLabel.maximumNumberOfLines = 0
+        measurementLabel.preferredMaxLayoutWidth = textWidth
+        measurementLabel.cell?.wraps = true
+        measurementLabel.cell?.truncatesLastVisibleLine = false
+        measurementLabel.cell?.lineBreakMode = .byCharWrapping
         let textHeight = max(
             ceil(font.ascender - font.descender + 2),
-            ceil(measuredText.height) + textHeightMeasurementSlack
+            ceil(measuredText.height) + textHeightMeasurementSlack,
+            ceil(measurementLabel.fittingSize.height)
         )
         return Self(
             textWidth: textWidth,
