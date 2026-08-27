@@ -1619,7 +1619,13 @@ enum ErrorCardLayout {
     static let refreshTimeWidth: CGFloat = 81
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
     static let subscriptionWidth: CGFloat = 78
-    static let subscriptionGap: CGFloat = 8
+    static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
+    // Keep the account marquee's transparent edge a few points before the
+    // actual right-aligned subscription glyphs.
+    static let subscriptionTextSafetyGap: CGFloat = 8
+    // Geometry-only fallback used when the right-aligned subscription text has
+    // not been measured yet. Runtime callers refine this to the text edge.
+    static let accountWidthWithSubscription = subscriptionX - horizontalInset
 
     // Match the compact third-party balance card for a single-line error.
     static let minimumCardHeight: CGFloat = 86
@@ -1700,7 +1706,8 @@ enum ErrorCardLayout {
     static func errorFrames(
         for message: String,
         includesAccount: Bool = false,
-        includesSubscription: Bool = false
+        includesSubscription: Bool = false,
+        subscriptionTextWidth: CGFloat? = nil
     ) -> ErrorFrames {
         let text = detailText(for: message, width: detailWidth)
         let detailH = measuredHeight(of: text, width: detailWidth)
@@ -1708,7 +1715,7 @@ enum ErrorCardLayout {
         let hasSubscription = includesAccount && includesSubscription
         let accountShift: CGFloat = includesAccount ? 19 : 0
         let accountWidth = hasSubscription
-            ? contentWidth - subscriptionWidth - subscriptionGap
+            ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
             : contentWidth
         let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
@@ -1724,7 +1731,7 @@ enum ErrorCardLayout {
                 : nil,
             subscription: hasSubscription
                 ? NSRect(
-                    x: cardWidth - horizontalInset - subscriptionWidth,
+                    x: subscriptionX,
                     y: 58 + extraDetailHeight,
                     width: subscriptionWidth,
                     height: 17
@@ -1734,6 +1741,26 @@ enum ErrorCardLayout {
             amount: NSRect(x: amountX, y: amountY, width: amountWidth, height: 48),
             detail: NSRect(x: horizontalInset, y: 7, width: detailWidth, height: detailH),
             detailText: text
+        )
+    }
+
+    /// The subscription label is right-aligned within its fixed layout frame.
+    /// Use its measured text width so the account marquee reaches the visible
+    /// subscription text instead of stopping at the frame's unused leading
+    /// space, while keeping the same safety gap as the normal card.
+    static func accountWidth(forSubscriptionTextWidth textWidth: CGFloat?) -> CGFloat {
+        guard let textWidth else { return accountWidthWithSubscription }
+
+        let clampedTextWidth = min(max(0, textWidth), subscriptionWidth)
+        let subscriptionTextMinX = subscriptionX + subscriptionWidth - clampedTextWidth
+        return max(
+            0,
+            min(
+                contentWidth,
+                subscriptionTextMinX
+                    - subscriptionTextSafetyGap
+                    - horizontalInset
+            )
         )
     }
 
