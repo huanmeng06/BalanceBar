@@ -508,6 +508,349 @@ final class AccountMarqueeView: NSView {
     }
 }
 
+/// The account row is deliberately different from quota/reset copy. Account
+/// emails stay still and use a measured middle truncation so the visible
+/// value never needs to move underneath the subscription column. The full
+/// value remains on the native label for accessibility and AppKit's hover
+/// tooltip.
+struct AccountEmailTextLayout: Equatable {
+    static let ellipsis = "…"
+
+    let displayText: String
+    let prefix: String
+    let suffix: String
+    let measuredTextWidth: CGFloat
+    let availableWidth: CGFloat
+    let isTruncated: Bool
+
+    private struct Candidate {
+        let displayText: String
+        let prefix: String
+        let suffix: String
+        let usesFullDomain: Bool
+        let hasPrefix: Bool
+        let prefixCharacterCount: Int
+        let suffixCharacterCount: Int
+    }
+
+    static func make(
+        for text: String,
+        font: NSFont,
+        availableWidth: CGFloat
+    ) -> Self {
+        let width = max(0, availableWidth)
+        let measuredTextWidth = AccountMarqueeView.textWidth(of: text, font: font)
+        if measuredTextWidth <= width {
+            return Self(
+                displayText: text,
+                prefix: text,
+                suffix: "",
+                measuredTextWidth: measuredTextWidth,
+                availableWidth: width,
+                isTruncated: false
+            )
+        }
+
+        let ellipsis = Self.ellipsis
+        let measure: (String) -> CGFloat = {
+            AccountMarqueeView.textWidth(of: $0, font: font)
+        }
+
+        func makeLayout(from candidate: Candidate) -> Self {
+            Self(
+                displayText: candidate.displayText,
+                prefix: candidate.prefix,
+                suffix: candidate.suffix,
+                measuredTextWidth: measure(candidate.displayText),
+                availableWidth: width,
+                isTruncated: true
+            )
+        }
+
+        func isBetter(_ candidate: Candidate, than current: Candidate?) -> Bool {
+            guard let current else { return true }
+            if candidate.usesFullDomain != current.usesFullDomain {
+                return candidate.usesFullDomain
+            }
+            if candidate.hasPrefix != current.hasPrefix {
+                return candidate.hasPrefix
+            }
+            if candidate.suffixCharacterCount != current.suffixCharacterCount {
+                return candidate.suffixCharacterCount > current.suffixCharacterCount
+            }
+            if candidate.prefixCharacterCount != current.prefixCharacterCount {
+                return candidate.prefixCharacterCount > current.prefixCharacterCount
+            }
+            return candidate.displayText.count > current.displayText.count
+        }
+
+        func candidate(
+            prefix: String,
+            suffix: String,
+            usesFullDomain: Bool,
+            prefixCharacterCount: Int,
+            suffixCharacterCount: Int
+        ) -> Candidate? {
+            let displayText = prefix + ellipsis + suffix
+            guard measure(displayText) <= width + 0.001 else { return nil }
+            return Candidate(
+                displayText: displayText,
+                prefix: prefix,
+                suffix: suffix,
+                usesFullDomain: usesFullDomain,
+                hasPrefix: prefixCharacterCount > 0,
+                prefixCharacterCount: prefixCharacterCount,
+                suffixCharacterCount: suffixCharacterCount
+            )
+        }
+
+        func bestDomainCandidate(
+            localCharacters: [Character],
+            domainCharacters: [Character],
+            includeAtSign: Bool,
+            requirePrefix: Bool
+        ) -> Candidate? {
+            var best: Candidate?
+            for prefixCount in 0...localCharacters.count {
+                if requirePrefix && prefixCount == 0 { continue }
+                let prefix = String(localCharacters.prefix(prefixCount))
+                for domainStart in 0...domainCharacters.count {
+                    let domainTail = String(domainCharacters.dropFirst(domainStart))
+                    let suffix = includeAtSign ? "@" + domainTail : domainTail
+                    guard let next = candidate(
+                        prefix: prefix,
+                        suffix: suffix,
+                        usesFullDomain: domainStart == 0,
+                        prefixCharacterCount: prefixCount,
+                        suffixCharacterCount: domainTail.count
+                    ) else { continue }
+                    if isBetter(next, than: best) {
+                        best = next
+                    }
+                }
+            }
+            return best
+        }
+
+        if let atIndex = text.lastIndex(of: "@") {
+            let localPart = String(text[..<atIndex])
+            let domainPart = String(text[text.index(after: atIndex)...])
+            let localCharacters = Array(localPart)
+            let domainCharacters = Array(domainPart)
+
+            // A complete @-domain wins whenever the actual font measurement
+            // allows it. If the domain itself is too long, the same search
+            // keeps its right-hand graphemes and then spends the remaining
+            // width on the local-part prefix.
+            if let best = bestDomainCandidate(
+                localCharacters: localCharacters,
+                domainCharacters: domainCharacters,
+                includeAtSign: true,
+                requirePrefix: true
+            ) {
+                return makeLayout(from: best)
+            }
+            if let best = bestDomainCandidate(
+                localCharacters: localCharacters,
+                domainCharacters: domainCharacters,
+                includeAtSign: true,
+                requirePrefix: false
+            ) {
+                return makeLayout(from: best)
+            }
+
+            // Extremely narrow viewports may not fit the @ together with any
+            // domain grapheme. Keep the domain's right tail rather than
+            // silently falling back to a leading hard clip.
+            if let best = bestDomainCandidate(
+                localCharacters: localCharacters,
+                domainCharacters: domainCharacters,
+                includeAtSign: false,
+                requirePrefix: true
+            ) {
+                return makeLayout(from: best)
+            }
+            if let best = bestDomainCandidate(
+                localCharacters: localCharacters,
+                domainCharacters: domainCharacters,
+                includeAtSign: false,
+                requirePrefix: false
+            ) {
+                return makeLayout(from: best)
+            }
+        }
+
+        // Addresses without a usable @, and very narrow addresses for which
+        // even the @-domain candidates do not fit, still get a true middle
+        // truncation. Character iteration keeps composed Unicode graphemes
+        // intact instead of splitting UTF-8 or UTF-16 storage.
+        let characters = Array(text)
+        if characters.count > 1 {
+            var best: Candidate?
+            for prefixCount in 0..<(characters.count) {
+                let maxSuffixCount = characters.count - prefixCount - 1
+                let prefix = String(characters.prefix(prefixCount))
+                for suffixCount in 0...maxSuffixCount {
+                    let suffix = String(characters.suffix(suffixCount))
+                    guard let next = candidate(
+                        prefix: prefix,
+                        suffix: suffix,
+                        usesFullDomain: false,
+                        prefixCharacterCount: prefixCount,
+                        suffixCharacterCount: suffixCount
+                    ) else { continue }
+                    if let current = best {
+                        let nextVisibleCount = prefixCount + suffixCount
+                        let currentVisibleCount = current.prefixCharacterCount
+                            + current.suffixCharacterCount
+                        if nextVisibleCount > currentVisibleCount
+                            || (nextVisibleCount == currentVisibleCount
+                                && min(prefixCount, suffixCount)
+                                    > min(
+                                        current.prefixCharacterCount,
+                                        current.suffixCharacterCount
+                                    ))
+                            || (nextVisibleCount == currentVisibleCount
+                                && min(prefixCount, suffixCount)
+                                    == min(
+                                        current.prefixCharacterCount,
+                                        current.suffixCharacterCount
+                                    )
+                                && isBetter(next, than: current)) {
+                            best = next
+                        }
+                    } else {
+                        best = next
+                    }
+                }
+            }
+            if let best {
+                return makeLayout(from: best)
+            }
+        }
+
+        if measure(ellipsis) <= width {
+            return Self(
+                displayText: ellipsis,
+                prefix: "",
+                suffix: "",
+                measuredTextWidth: measure(ellipsis),
+                availableWidth: width,
+                isTruncated: true
+            )
+        }
+
+        return Self(
+            displayText: "",
+            prefix: "",
+            suffix: "",
+            measuredTextWidth: 0,
+            availableWidth: width,
+            isTruncated: true
+        )
+    }
+}
+
+final class AccountEmailTextField: NSTextField {
+    var accountAccessibilityValue = ""
+
+    override func accessibilityValue() -> String? {
+        accountAccessibilityValue
+    }
+}
+
+final class AccountEmailView: NSView {
+    static let accessibilityIdentifier = NSUserInterfaceItemIdentifier("accountEmail")
+
+    let emailLabel: AccountEmailTextField
+    private(set) var fullEmail: String
+    private(set) var textLayout: AccountEmailTextLayout
+
+    var displayedEmail: String { textLayout.displayText }
+    var isMarqueeEnabled: Bool { false }
+
+    init(email: String, font: NSFont, textColor: NSColor, frame: NSRect) {
+        fullEmail = email
+        emailLabel = AccountEmailTextField(frame: .zero)
+        textLayout = AccountEmailTextLayout(
+            displayText: "",
+            prefix: "",
+            suffix: "",
+            measuredTextWidth: 0,
+            availableWidth: max(0, frame.width),
+            isTruncated: !email.isEmpty
+        )
+        super.init(frame: frame)
+
+        emailLabel.font = font
+        emailLabel.textColor = textColor
+        emailLabel.alignment = .left
+        emailLabel.lineBreakMode = .byClipping
+        emailLabel.usesSingleLineMode = true
+        emailLabel.maximumNumberOfLines = 1
+        emailLabel.isEditable = false
+        emailLabel.isSelectable = false
+        emailLabel.drawsBackground = false
+        emailLabel.isBordered = false
+        emailLabel.identifier = Self.accessibilityIdentifier
+        emailLabel.toolTip = email
+        emailLabel.setAccessibilityRole(.staticText)
+        addSubview(emailLabel)
+
+        refreshLayout()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        emailLabel.frame = bounds
+        refreshLayout()
+    }
+
+    /// Test seam for AppKit's native tooltip hit region. Production uses the
+    /// NSTextField `toolTip` property, whose own hover tracking shows and
+    /// hides the system tooltip without changing this view's frame.
+    func tooltipText(at point: NSPoint) -> String? {
+        bounds.contains(point) ? fullEmail : nil
+    }
+
+    func updateText(_ email: String) {
+        guard fullEmail != email else {
+            refreshLayout()
+            return
+        }
+        fullEmail = email
+        refreshLayout()
+    }
+
+    private func updateAccessibilityAndTooltip() {
+        emailLabel.toolTip = fullEmail
+        emailLabel.accountAccessibilityValue = fullEmail
+        emailLabel.setAccessibilityLabel(fullEmail)
+        emailLabel.setAccessibilityValue(fullEmail)
+    }
+
+    private func refreshLayout() {
+        emailLabel.frame = bounds
+        let font = emailLabel.font ?? .systemFont(ofSize: 13)
+        let nextLayout = AccountEmailTextLayout.make(
+            for: fullEmail,
+            font: font,
+            availableWidth: bounds.width
+        )
+        guard nextLayout != textLayout || emailLabel.stringValue != nextLayout.displayText else {
+            updateAccessibilityAndTooltip()
+            return
+        }
+        textLayout = nextLayout
+        emailLabel.stringValue = nextLayout.displayText
+        updateAccessibilityAndTooltip()
+    }
+}
+
 enum StatusItemVisibility: Equatable {
     case unknown
     case visible
@@ -1929,7 +2272,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if let account = menuInput.openAIAccount, let accountFrame = layout.account {
             let accountLabel = makeAccountLabel(
-                account.text(),
+                account,
                 frame: accountFrame
             )
             view.addSubview(accountLabel)
@@ -2223,7 +2566,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.addSubview(provider)
         if let account = menuInput.openAIAccount, let accountFrame = frames.account {
             let accountLabel = makeAccountLabel(
-                account.text(),
+                account,
                 frame: accountFrame
             )
             view.addSubview(accountLabel)
@@ -2320,13 +2663,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return label
     }
 
-    private func makeAccountLabel(_ text: String, frame: NSRect) -> AccountMarqueeView {
-        makeMarqueeOverviewLabel(
-            text,
-            font: .systemFont(ofSize: 13, weight: .regular),
-            textColor: .secondaryLabelColor,
-            frame: frame
-        )
+    private func makeAccountLabel(
+        _ account: OpenAIAccountPresentation,
+        frame: NSRect
+    ) -> NSView {
+        switch account.state {
+        case .available(let email):
+            return AccountEmailView(
+                email: email,
+                font: .systemFont(ofSize: 13, weight: .regular),
+                textColor: .secondaryLabelColor,
+                frame: frame
+            )
+        case .unavailable:
+            // Keep the existing marquee path for the localized unavailable
+            // state; only an actual account email gets the new static layout.
+            return makeMarqueeOverviewLabel(
+                account.text(),
+                font: .systemFont(ofSize: 13, weight: .regular),
+                textColor: .secondaryLabelColor,
+                frame: frame
+            )
+        }
     }
 
     static func formatBalanceSummary(_ amount: Double, unit: String) -> String {

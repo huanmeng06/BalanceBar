@@ -1105,7 +1105,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
-    func testOpenAIAccountSubtitleMarqueesLongEmailsAndHidesOutsideOfficialCodex() throws {
+    func testOpenAIAccountSubtitleUsesStaticMiddleTruncationAndHidesOutsideOfficialCodex() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english
@@ -1153,7 +1153,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
 
         let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let longEmail = "account-alpha-20260827-singapore-long-identifier-beta-usage-quota-gamma-openai-official-delta-window-resize-epsilon-manual-check@example-super-long-domain.test"
+        let longEmail = "account-alpha-20260827-singapore-long-identifier-beta-usage-quota-gamma-openai-official-delta-window-resize-epsilon-manual-check@gmail.com"
         controller.start(
             snapshot: .official("OpenAI Official", 83, "7-Day Quota", "2 hours", date),
             refreshDate: date,
@@ -1163,76 +1163,36 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
 
         let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let accountView = try XCTUnwrap(
-            overview.subviews.compactMap { $0 as? AccountMarqueeView }.first
+            overview.subviews.compactMap { $0 as? AccountEmailView }.first
         )
-        let accountLabel = try XCTUnwrap(
-            allControls(of: overview, as: NSTextField.self).first {
-                $0.stringValue.contains("@")
-            }
-        )
+        let accountLabel = accountView.emailLabel
         XCTAssertEqual(accountLabel.font?.pointSize, 13)
         XCTAssertEqual(accountLabel.textColor, .secondaryLabelColor)
         XCTAssertEqual(accountLabel.lineBreakMode, .byClipping)
-        XCTAssertEqual(accountLabel.stringValue, longEmail)
-        XCTAssertTrue(accountView.isScrollable)
-        XCTAssertFalse(accountView.isScrolling)
-        XCTAssertFalse(accountView.showsEdgeFade)
-        XCTAssertEqual(accountView.accountLabel.frame.width, accountView.measuredTextWidth)
-        XCTAssertEqual(accountView.accountLabel.frame.minX, accountView.bounds.minX)
-        XCTAssertEqual(accountView.edgeFadeInset, 8, accuracy: 0.001)
+        XCTAssertFalse(accountView.isMarqueeEnabled)
+        XCTAssertEqual(accountView.fullEmail, longEmail)
+        XCTAssertTrue(accountView.textLayout.isTruncated)
+        XCTAssertTrue(accountView.displayedEmail.contains(AccountEmailTextLayout.ellipsis))
+        XCTAssertTrue(accountView.displayedEmail.hasPrefix(accountView.textLayout.prefix))
+        XCTAssertTrue(accountView.displayedEmail.hasSuffix("@gmail.com"))
+        XCTAssertGreaterThan(accountView.textLayout.prefix.count, 0)
+        XCTAssertLessThanOrEqual(
+            accountView.textLayout.measuredTextWidth,
+            accountView.bounds.width + 0.001
+        )
+        XCTAssertEqual(accountView.emailLabel.frame, accountView.bounds)
+        XCTAssertEqual(accountView.emailLabel.toolTip, longEmail)
+        XCTAssertEqual(accountView.emailLabel.accessibilityLabel(), longEmail)
+        XCTAssertEqual(accountView.emailLabel.accessibilityValue() as? String, longEmail)
         XCTAssertEqual(
-            accountView.measuredTextWidth - accountView.scrollOverflow,
-            accountView.bounds.width,
-            accuracy: 0.5
+            accountView.tooltipText(at: NSPoint(x: 1, y: accountView.bounds.midY)),
+            longEmail
         )
-        XCTAssertEqual(
-            accountView.scrollDistance,
-            accountView.scrollOverflow + accountView.edgeFadeInset,
-            accuracy: 0.001
-        )
-        XCTAssertNil(accountView.layer?.mask)
-        accountView.applyScrollOffsetForTesting(-1)
-        XCTAssertTrue(accountView.isScrolling)
-        XCTAssertTrue(accountView.showsEdgeFade)
-        let edgeFadeMask = try XCTUnwrap(accountView.layer?.mask as? CAGradientLayer)
-        XCTAssertEqual(edgeFadeMask.startPoint, CGPoint(x: 0, y: 0.5))
-        XCTAssertEqual(edgeFadeMask.endPoint, CGPoint(x: 1, y: 0.5))
-        XCTAssertEqual(edgeFadeMask.locations?.count, 4)
-        XCTAssertGreaterThan(edgeFadeMask.locations?[1].doubleValue ?? 0, 0)
-        XCTAssertLessThan(edgeFadeMask.locations?[2].doubleValue ?? 1, 1)
-        accountView.applyScrollOffsetForTesting(0)
-        XCTAssertFalse(accountView.isScrolling)
-        XCTAssertFalse(accountView.showsEdgeFade)
-        XCTAssertNil(accountView.layer?.mask)
-        let scrollAnimation = AccountMarqueeView.scrollAnimation(
-            forOverflow: accountView.scrollOverflow,
-            trailingFadeBuffer: accountView.edgeFadeInset
-        )
-        let endpoint = try XCTUnwrap(scrollAnimation.values?[2] as? NSNumber)
-        XCTAssertEqual(endpoint.doubleValue, -Double(accountView.scrollDistance), accuracy: 0.001)
-        XCTAssertEqual(scrollAnimation.values?.count, 5)
-        let keyTimes = try XCTUnwrap(scrollAnimation.keyTimes)
-        XCTAssertEqual(keyTimes.count, 5)
-        let initialPause = keyTimes[1].doubleValue * scrollAnimation.duration
-        let outwardTravel = (keyTimes[2].doubleValue - keyTimes[1].doubleValue)
-            * scrollAnimation.duration
-        let returnPause = (keyTimes[3].doubleValue - keyTimes[2].doubleValue)
-            * scrollAnimation.duration
-        let inwardTravel = (1 - keyTimes[3].doubleValue) * scrollAnimation.duration
-        XCTAssertEqual(
-            initialPause,
-            returnPause,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            outwardTravel,
-            inwardTravel,
-            accuracy: 0.001
-        )
-        XCTAssertLessThan(initialPause, 2)
-        XCTAssertGreaterThan(outwardTravel, 0)
-        XCTAssertEqual(scrollAnimation.repeatCount, .infinity)
-        XCTAssertGreaterThan(scrollAnimation.duration, 0)
+        XCTAssertNil(accountView.tooltipText(at: NSPoint(x: -1, y: accountView.bounds.midY)))
+        XCTAssertNil(accountView.emailLabel.target)
+        XCTAssertNil(accountView.emailLabel.action)
+        XCTAssertNil(accountView.layer?.animation(forKey: AccountMarqueeView.animationKey))
+        XCTAssertNil(accountView.emailLabel.layer?.animation(forKey: AccountMarqueeView.animationKey))
         XCTAssertLessThanOrEqual(accountView.frame.maxX, overview.bounds.maxX)
         let subscriptionLabel = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
@@ -1291,7 +1251,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let switchedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
         let switchedAccountView = try XCTUnwrap(
-            switchedOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first
+            switchedOverview.subviews.compactMap { $0 as? AccountEmailView }.first
         )
         let switchedSubscriptionLabel = try XCTUnwrap(
             allControls(of: switchedOverview, as: NSTextField.self).first {
@@ -1302,9 +1262,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             of: switchedSubscriptionLabel.stringValue,
             font: try XCTUnwrap(switchedSubscriptionLabel.font)
         )
-        XCTAssertFalse(switchedAccountView.isScrollable)
-        XCTAssertFalse(switchedAccountView.showsEdgeFade)
-        XCTAssertEqual(switchedAccountView.accountLabel.frame.width, switchedAccountView.bounds.width)
+        XCTAssertFalse(switchedAccountView.textLayout.isTruncated)
+        XCTAssertFalse(switchedAccountView.isMarqueeEnabled)
+        XCTAssertEqual(switchedAccountView.emailLabel.frame.width, switchedAccountView.bounds.width)
+        XCTAssertEqual(switchedAccountView.displayedEmail, "person@example.com")
+        XCTAssertEqual(switchedAccountView.emailLabel.toolTip, "person@example.com")
+        XCTAssertEqual(
+            switchedAccountView.emailLabel.accessibilityValue() as? String,
+            "person@example.com"
+        )
         XCTAssertEqual(
             switchedAccountView.frame.maxX,
             switchedSubscriptionLabel.frame.maxX
@@ -1317,12 +1283,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             allControls(of: switchedOverview, as: NSTextField.self).first {
                 $0.stringValue.contains(longEmail)
             }
-        )
-        XCTAssertEqual(
-            allControls(of: switchedOverview, as: NSTextField.self).first {
-                $0.stringValue == "person@example.com"
-            }?.stringValue,
-            "person@example.com"
         )
         XCTAssertNil(
             allControls(of: switchedOverview, as: NSTextField.self).first {
@@ -1358,6 +1318,114 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.stringValue.contains("Account") || $0.stringValue.contains("account-")
             }
         )
+        XCTAssertTrue(
+            allControls(of: nonOfficialOverview, as: AccountEmailView.self).isEmpty
+        )
+    }
+
+    func testAccountEmailTextLayoutPreservesDomainsAndUnicodeWithoutOverflow() {
+        let font = NSFont.systemFont(ofSize: 13)
+        let short = "person@example.com"
+        let shortLayout = AccountEmailTextLayout.make(
+            for: short,
+            font: font,
+            availableWidth: AccountMarqueeView.textWidth(of: short, font: font) + 1
+        )
+        XCTAssertFalse(shortLayout.isTruncated)
+        XCTAssertEqual(shortLayout.displayText, short)
+
+        let long = "前缀用户-非常长的标识-東京と한글@gmail.com"
+        let longLayout = AccountEmailTextLayout.make(
+            for: long,
+            font: font,
+            availableWidth: 150
+        )
+        XCTAssertTrue(longLayout.isTruncated)
+        XCTAssertTrue(longLayout.displayText.contains(AccountEmailTextLayout.ellipsis))
+        XCTAssertTrue(longLayout.displayText.hasSuffix("@gmail.com"))
+        XCTAssertTrue(longLayout.prefix.hasPrefix("前"))
+        XCTAssertLessThanOrEqual(longLayout.measuredTextWidth, 150.001)
+
+        let longDomain = "local-part-with-unicode-👩‍💻-and-graphemes@subdomain-with-a-very-long-name.example"
+        let longDomainLayout = AccountEmailTextLayout.make(
+            for: longDomain,
+            font: font,
+            availableWidth: 118
+        )
+        XCTAssertTrue(longDomainLayout.isTruncated)
+        XCTAssertTrue(longDomainLayout.displayText.contains(AccountEmailTextLayout.ellipsis))
+        XCTAssertTrue(longDomainLayout.displayText.hasSuffix("example"))
+        if longDomainLayout.displayText.contains("👩") {
+            XCTAssertTrue(longDomainLayout.displayText.contains("👩‍💻"))
+        }
+        XCTAssertLessThanOrEqual(longDomainLayout.measuredTextWidth, 118.001)
+
+        let languages = [
+            "account-with-a-long-name@example.com",
+            "账号-非常长@example.cn",
+            "帳號-非常長@example.tw",
+            "帳號-非常長@example.hk",
+            "アカウント-とても長い@example.jp",
+            "계정-매우긴이름@example.kr",
+            "cuenta-muy-larga@example.es",
+            "konto-sehr-lang@example.de",
+            "compte-très-long@example.fr"
+        ]
+        for email in languages {
+            let layout = AccountEmailTextLayout.make(
+                for: email,
+                font: font,
+                availableWidth: 100
+            )
+            XCTAssertLessThanOrEqual(
+                layout.measuredTextWidth,
+                100.001,
+                "display overflowed for \(email)"
+            )
+            XCTAssertTrue(layout.displayText.contains(AccountEmailTextLayout.ellipsis))
+        }
+    }
+
+    func testAccountEmailViewRecomputesStaticDisplayForDynamicTextAndResize() throws {
+        let email = "resize-sensitive-account@example.com"
+        let view = AccountEmailView(
+            email: email,
+            font: .systemFont(ofSize: 13),
+            textColor: .secondaryLabelColor,
+            frame: NSRect(x: 14, y: 75, width: 110, height: 18)
+        )
+        let initialFrame = view.frame
+        XCTAssertTrue(view.textLayout.isTruncated)
+        XCTAssertEqual(view.emailLabel.toolTip, email)
+        XCTAssertNil(view.emailLabel.layer?.animation(forKey: AccountMarqueeView.animationKey))
+
+        view.setFrameSize(NSSize(width: 260, height: 18))
+        view.layoutSubtreeIfNeeded()
+        XCTAssertFalse(view.textLayout.isTruncated)
+        XCTAssertEqual(view.displayedEmail, email)
+        XCTAssertEqual(view.emailLabel.frame, view.bounds)
+
+        let updatedEmail = "动态更新-長い-アカウント@example.example"
+        view.updateText(updatedEmail)
+        XCTAssertEqual(view.fullEmail, updatedEmail)
+        XCTAssertEqual(view.emailLabel.toolTip, updatedEmail)
+        XCTAssertEqual(view.emailLabel.accessibilityValue() as? String, updatedEmail)
+        XCTAssertEqual(
+            view.tooltipText(at: NSPoint(x: view.bounds.midX, y: view.bounds.midY)),
+            updatedEmail
+        )
+
+        view.setFrameSize(NSSize(width: 92, height: 18))
+        view.layoutSubtreeIfNeeded()
+        XCTAssertTrue(view.textLayout.isTruncated)
+        XCTAssertLessThanOrEqual(
+            view.textLayout.measuredTextWidth,
+            view.bounds.width + 0.001
+        )
+        XCTAssertEqual(view.frame.minX, initialFrame.minX)
+        XCTAssertEqual(view.frame.minY, initialFrame.minY)
+        XCTAssertEqual(view.frame.height, initialFrame.height)
+        XCTAssertNil(view.emailLabel.layer?.animation(forKey: AccountMarqueeView.animationKey))
     }
 
     func testAccountMarqueeLayoutUsesViewportInsetAndActualOverflowAcrossLanguages() {
