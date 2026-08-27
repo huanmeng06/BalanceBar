@@ -318,7 +318,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         installButton.action = #selector(install(_:))
         installButton.keyEquivalent = "\r"
 
-        let buttons = UpdateNotesButtonsStackView(views: [laterButton, ignoreButton, githubButton, installButton])
+        let buttons = UpdateNotesButtonsStackView(views: [githubButton, laterButton, ignoreButton, installButton])
         buttons.identifier = NSUserInterfaceItemIdentifier("updateNotesButtons")
         buttons.orientation = .horizontal
         buttons.alignment = .centerY

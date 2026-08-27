@@ -2129,7 +2129,7 @@ final class UpdateTests: XCTestCase {
         )
         XCTAssertEqual(
             buttons.arrangedSubviews.compactMap { $0.identifier?.rawValue },
-            ["laterUpdateButton", "ignoreUpdateButton", "viewUpdateGithubButton", "installUpdateButton"]
+            ["viewUpdateGithubButton", "laterUpdateButton", "ignoreUpdateButton", "installUpdateButton"]
         )
         XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
         XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
