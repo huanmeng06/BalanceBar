@@ -118,7 +118,9 @@ final class MenuBarWidthDisplayCoalescer: NSObject {
 
 /// Pure geometry for one single-line marquee viewport. The viewport belongs
 /// to the caller's content inset; the fade is only a mask at that viewport's
-/// edges and is never added to the scrolling text's measured width.
+/// edges and is never added to the scrolling text's measured width. The
+/// trailing fade buffer extends the animation endpoint past the raw text
+/// overflow so the final glyphs stop before the trailing fade begins.
 struct AccountMarqueeLayout: Equatable {
     static let defaultFadeWidth: CGFloat = 8
 
@@ -127,6 +129,8 @@ struct AccountMarqueeLayout: Equatable {
     let isScrollable: Bool
     let edgeFadeWidth: CGFloat
     let contentWidth: CGFloat
+    let textOverflow: CGFloat
+    let trailingFadeBuffer: CGFloat
     let scrollDistance: CGFloat
     let maskLocations: [CGFloat]
 
@@ -148,7 +152,11 @@ struct AccountMarqueeLayout: Equatable {
         self.isScrollable = scrollable
         self.edgeFadeWidth = effectiveFadeWidth
         self.contentWidth = scrollable ? textWidth : max(viewportWidth, textWidth)
-        self.scrollDistance = scrollable ? overflow : 0
+        self.textOverflow = overflow
+        self.trailingFadeBuffer = scrollable ? effectiveFadeWidth : 0
+        self.scrollDistance = scrollable
+            ? overflow + effectiveFadeWidth
+            : 0
 
         if effectiveFadeWidth > 0, viewportWidth > 0 {
             let fadeFraction = effectiveFadeWidth / viewportWidth
@@ -172,6 +180,17 @@ struct AccountMarqueeLayout: Equatable {
             width: contentWidth,
             height: clipBounds.height
         )
+    }
+
+    /// The label frame at the far end of its animation. This is kept as a
+    /// geometry seam so callers/tests can verify that text ends before the
+    /// viewport's trailing fade rather than underneath the subscription row.
+    var endpointContentFrame: NSRect {
+        contentFrame.offsetBy(dx: -scrollDistance, dy: 0)
+    }
+
+    var trailingOpaqueMaxX: CGFloat {
+        clipBounds.maxX - edgeFadeWidth
     }
 }
 
@@ -208,6 +227,7 @@ final class AccountMarqueeView: NSView {
     private(set) var showsEdgeFade = false
     private(set) var edgeFadeInset: CGFloat = 0
     private(set) var scrollOverflow: CGFloat = 0
+    private(set) var scrollDistance: CGFloat = 0
     private(set) var scrollOffset: CGFloat = 0
 
     private var edgeFadeMask: CAGradientLayer?
@@ -302,7 +322,8 @@ final class AccountMarqueeView: NSView {
         measuredTextWidth = nextLayout.measuredTextWidth
         isScrollable = nextLayout.isScrollable
         edgeFadeInset = nextLayout.edgeFadeWidth
-        scrollOverflow = nextLayout.scrollDistance
+        scrollOverflow = nextLayout.textOverflow
+        scrollDistance = nextLayout.scrollDistance
         accountLabel.frame = nextLayout.contentFrame
 
         if nextLayout.isScrollable {
@@ -351,11 +372,15 @@ final class AccountMarqueeView: NSView {
             return
         }
 
-        let overflow = contentLayout?.scrollDistance ?? scrollOverflow
+        let overflow = contentLayout?.textOverflow ?? scrollOverflow
         guard overflow > 0 else { return }
 
         if labelLayer.animation(forKey: Self.animationKey) == nil {
-            let animation = Self.scrollAnimation(forOverflow: overflow)
+            let trailingFadeBuffer = contentLayout?.trailingFadeBuffer ?? edgeFadeInset
+            let animation = Self.scrollAnimation(
+                forOverflow: overflow,
+                trailingFadeBuffer: trailingFadeBuffer
+            )
             labelLayer.add(animation, forKey: Self.animationKey)
         }
         startScrollActivityMonitoring()
@@ -445,14 +470,19 @@ final class AccountMarqueeView: NSView {
         "\(font.fontName)|\(font.pointSize)|\(font.fontDescriptor.symbolicTraits.rawValue)"
     }
 
-    static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
+    static func scrollAnimation(
+        forOverflow overflow: CGFloat,
+        trailingFadeBuffer: CGFloat = 0
+    ) -> CAKeyframeAnimation {
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
         let safeOverflow = max(0, overflow)
-        let offset = NSNumber(value: -Double(safeOverflow))
+        let safeTrailingFadeBuffer = max(0, trailingFadeBuffer)
+        let scrollDistance = safeOverflow + safeTrailingFadeBuffer
+        let offset = NSNumber(value: -Double(scrollDistance))
         let scrollSpeed = Self.scrollSpeed(forOverflow: safeOverflow)
         let travelDuration = max(
             minimumTravelDuration,
-            Double(safeOverflow / scrollSpeed)
+            Double(scrollDistance / scrollSpeed)
         )
         let phaseDuration = 2 * scrollPauseDuration + 2 * travelDuration
         let pauseFraction = scrollPauseDuration / phaseDuration
