@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "메뉴 막대에서 우선 표시할 할당량 기간 선택";
 "dashboard.menu.bar.page.five_hour_quota" = "5시간 할당량";
 "dashboard.menu.bar.page.seven_day_quota" = "7일 할당량";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "재설정 시간 표시";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "메뉴 막대에 남은 시간, 재설정 시각 또는 둘 다 표시할지 선택";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "남은 시간";
+"dashboard.menu.bar.page.quota_reset_display_target" = "재설정 시각";
+"dashboard.menu.bar.page.quota_reset_display_both" = "둘 다";
 "dashboard.menu.bar.page.animation" = "애니메이션";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "작업 실행 중 아이콘 애니메이션 재생";
 "dashboard.menu.bar.page.display_items" = "표시 항목";

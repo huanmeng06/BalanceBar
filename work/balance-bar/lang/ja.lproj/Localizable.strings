@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "メニューバーで優先表示するクォータ期間を選択";
 "dashboard.menu.bar.page.five_hour_quota" = "5時間クォータ";
 "dashboard.menu.bar.page.seven_day_quota" = "7日間クォータ";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "リセット時刻の表示";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "メニューバーに残り時間、リセット時刻、または両方を表示するか選択";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "残り時間";
+"dashboard.menu.bar.page.quota_reset_display_target" = "リセット時刻";
+"dashboard.menu.bar.page.quota_reset_display_both" = "両方";
 "dashboard.menu.bar.page.animation" = "アニメーション";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "タスク実行中にアイコンアニメーションを再生";
 "dashboard.menu.bar.page.display_items" = "表示項目";

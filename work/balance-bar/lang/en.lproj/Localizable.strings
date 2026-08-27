@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Choose which quota period to prioritize in the menu bar";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Hour Quota";
 "dashboard.menu.bar.page.seven_day_quota" = "7-Day Quota";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "Reset Time Display";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "Choose whether the menu bar shows the remaining time, reset time, or both";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "Remaining Time";
+"dashboard.menu.bar.page.quota_reset_display_target" = "Reset Time";
+"dashboard.menu.bar.page.quota_reset_display_both" = "Both";
 "dashboard.menu.bar.page.animation" = "Animation";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Play the icon animation while a task is running";
 "dashboard.menu.bar.page.display_items" = "Display Items";

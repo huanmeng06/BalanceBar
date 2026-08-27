@@ -292,6 +292,7 @@ final class DashboardMenuBarPage {
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
     static let quotaWindowPreferenceIdentifier = AppPreferences.menuBarQuotaWindowPreferenceKey
+    static let quotaResetDisplayModeIdentifier = AppPreferences.menuBarQuotaResetDisplayModeKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
     static let iconOffsetSliderMinimumIdentifier = "menuBarIconOffsetSliderMinimum"
@@ -359,10 +360,13 @@ final class DashboardMenuBarPage {
         for snapshot: Snapshot,
         showAmount: Bool,
         showReset: Bool,
+        quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
         resolving snapshotResolver: (Snapshot) -> Snapshot
     ) -> Presentation {
         let effective = snapshotResolver(snapshot)
-        let secondary = effective.kind == .official ? effective.menuBarSecondary : ""
+        let secondary = effective.kind == .official
+            ? effective.menuBarSecondary(displayMode: quotaResetDisplayMode)
+            : ""
         return Presentation(
             primary: showAmount ? effective.menuBarPrimary : "",
             secondary: secondary,
@@ -447,6 +451,7 @@ final class DashboardMenuBarPage {
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
     private weak var quotaWindowPreferenceControl: NSPopUpButton?
+    private weak var quotaResetDisplayModeControl: NSPopUpButton?
     private var fontSizePresetTrackingObserver: NSObjectProtocol?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
@@ -625,6 +630,11 @@ final class DashboardMenuBarPage {
             relay: input.relay
         )
         self.quotaWindowPreferenceControl = quotaWindowPreferenceControl
+        let quotaResetDisplayModeControl = makeQuotaResetDisplayModeControl(
+            value: input.preferences.menuBarQuotaResetDisplayMode,
+            relay: input.relay
+        )
+        self.quotaResetDisplayModeControl = quotaResetDisplayModeControl
         let animationToggle = DashboardSettingsComponents.makeSwitch(
             identifier: "animateCodexActivity",
             isOn: input.preferences.animateCodexActivity,
@@ -703,6 +713,11 @@ final class DashboardMenuBarPage {
                 tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
                 subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
                 control: quotaWindowPreferenceControl
+            ),
+            DashboardSettingsComponents.makeSettingsRow(
+                tr(.keyDashboardMenuBarPageQuotaResetDisplayMode),
+                subtitle: tr(.keyDashboardMenuBarPageQuotaResetDisplayModeDescription),
+                control: quotaResetDisplayModeControl
             ),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageAgentIcon), subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus), control: iconToggle),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageBalanceAmount), subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance), control: amountToggle),
@@ -859,6 +874,7 @@ final class DashboardMenuBarPage {
             for: snapshot,
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
+            quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
             resolving: menuBarSnapshot
         )
         previewPrimary.stringValue = presentation.primary
@@ -917,6 +933,15 @@ final class DashboardMenuBarPage {
                 quotaWindowPreferenceControl.selectItem(at: selectedIndex)
             }
             quotaWindowPreferenceControl.synchronizeTitleAndSelectedItem()
+        }
+        if let quotaResetDisplayModeControl,
+           let selectedIndex = OfficialQuotaResetDisplayMode.allCases.firstIndex(
+               of: preferences.menuBarQuotaResetDisplayMode
+           ) {
+            if quotaResetDisplayModeControl.indexOfSelectedItem != selectedIndex {
+                quotaResetDisplayModeControl.selectItem(at: selectedIndex)
+            }
+            quotaResetDisplayModeControl.synchronizeTitleAndSelectedItem()
         }
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
@@ -1312,6 +1337,30 @@ final class DashboardMenuBarPage {
         return control
     }
 
+    private func makeQuotaResetDisplayModeControl(
+        value: OfficialQuotaResetDisplayMode,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.quotaResetDisplayModeIdentifier,
+            items: OfficialQuotaResetDisplayMode.allCases.map { mode in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.quotaResetDisplayModeLabel(mode),
+                    representedObject: mode.rawValue
+                )
+            },
+            selectedIndex: OfficialQuotaResetDisplayMode.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarQuotaResetDisplayMode(_:))
+        )
+        let minimumWidth: CGFloat = 108
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuBarPageQuotaResetDisplayModeDescription)
+        return control
+    }
+
     private static func quotaWindowPreferenceLabel(
         _ preference: OfficialQuotaWindowPreference
     ) -> String {
@@ -1320,6 +1369,19 @@ final class DashboardMenuBarPage {
             return tr(.keyDashboardMenuBarPageFiveHourQuota)
         case .sevenDay:
             return tr(.keyDashboardMenuBarPageSevenDayQuota)
+        }
+    }
+
+    private static func quotaResetDisplayModeLabel(
+        _ mode: OfficialQuotaResetDisplayMode
+    ) -> String {
+        switch mode {
+        case .remaining:
+            return tr(.keyDashboardMenuBarPageQuotaResetDisplayRemaining)
+        case .resetAt:
+            return tr(.keyDashboardMenuBarPageQuotaResetDisplayTarget)
+        case .both:
+            return tr(.keyDashboardMenuBarPageQuotaResetDisplayBoth)
         }
     }
 

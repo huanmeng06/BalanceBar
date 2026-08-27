@@ -563,6 +563,158 @@ final class DomainModelsTests: XCTestCase {
         )
     }
 
+    func testCompactQuotaResetDisplayModesUseSelectedWindowAndSafeFallbacks() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let calendar = Calendar(identifier: .gregorian)
+        let locale = Locale(identifier: "en_GB")
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(3_600)
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 604_800,
+            resetAt: now.addingTimeInterval(7_200)
+        )
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            sevenDay.remaining,
+            sevenDay.label,
+            sevenDay.reset,
+            now,
+            windows: [sevenDay, fiveHour]
+        )
+        let fiveHourSnapshot = snapshot.menuBarSnapshot(preferredQuotaWindow: .fiveHour)
+        let sevenDaySnapshot = snapshot.menuBarSnapshot(preferredQuotaWindow: .sevenDay)
+        let fiveHourTarget = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: fiveHour.resetAt,
+                relativeTo: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+        let sevenDayTarget = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(
+                for: sevenDay.resetAt,
+                relativeTo: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        )
+
+        XCTAssertEqual(
+            fiveHourSnapshot.menuBarSecondary(
+                displayMode: .remaining,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            fiveHour.reset
+        )
+        XCTAssertEqual(
+            fiveHourSnapshot.menuBarSecondary(
+                displayMode: .resetAt,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            fiveHourTarget
+        )
+        XCTAssertEqual(
+            fiveHourSnapshot.menuBarSecondary(
+                displayMode: .both,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            tr(.keySnapshotValueValue, arguments: [fiveHour.reset!, fiveHourTarget])
+        )
+        XCTAssertEqual(
+            sevenDaySnapshot.menuBarSecondary(
+                displayMode: .resetAt,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            sevenDayTarget
+        )
+        XCTAssertEqual(
+            sevenDaySnapshot.menuBarSecondary(
+                displayMode: .both,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            tr(.keySnapshotValueValue, arguments: [sevenDay.reset!, sevenDayTarget])
+        )
+
+        let invalidTimestamp = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 18_000,
+            resetAt: now.addingTimeInterval(-1)
+        )
+        XCTAssertEqual(
+            invalidTimestamp.resetDisplayText(
+                displayMode: .resetAt,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            invalidTimestamp.reset
+        )
+        XCTAssertEqual(
+            invalidTimestamp.resetDisplayText(
+                displayMode: .both,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            invalidTimestamp.reset
+        )
+        let missingTimestamp = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 604_800
+        )
+        XCTAssertEqual(
+            missingTimestamp.resetDisplayText(
+                displayMode: .resetAt,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ),
+            missingTimestamp.reset
+        )
+    }
+
     func testOfficialQuotaResetFormattingFollowsLocaleHourCycle() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let resetAt = Date(timeIntervalSince1970: 1_700_003_600)

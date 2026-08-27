@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, welcher Kontingentzeitraum in der Menüleiste bevorzugt angezeigt wird";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Stunden-Kontingent";
 "dashboard.menu.bar.page.seven_day_quota" = "7-Tage-Kontingent";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "Rücksetzzeit anzeigen";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "Wählen Sie, ob die Menüleiste die verbleibende Zeit, die Rücksetzzeit oder beides anzeigt";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "Verbleibende Zeit";
+"dashboard.menu.bar.page.quota_reset_display_target" = "Rücksetzzeit";
+"dashboard.menu.bar.page.quota_reset_display_both" = "Beides";
 "dashboard.menu.bar.page.animation" = "Animation";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Symbolanimation während einer laufenden Aufgabe abspielen";
 "dashboard.menu.bar.page.display_items" = "Angezeigte Elemente";

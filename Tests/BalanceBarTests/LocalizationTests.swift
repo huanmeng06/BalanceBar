@@ -288,7 +288,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 380)
+        XCTAssertEqual(expectedKeys.count, 385)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(

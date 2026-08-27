@@ -950,6 +950,152 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testQuotaResetDisplayModeSelectorUsesLocalizedOptionsPersistsAndRefreshesPreview() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let languages: [AppLanguage] = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .japanese,
+            .korean,
+            .spanish,
+            .german,
+            .french,
+            .english
+        ]
+        let now = Date()
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            80,
+            "5-hour",
+            "1h",
+            now,
+            windows: [OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-hour",
+                daysText: "5 hours",
+                reset: "1h",
+                durationSeconds: 18_000,
+                resetAt: now.addingTimeInterval(3_600)
+            )]
+        )
+
+        for language in languages {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.QuotaResetDisplayMode.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let preferences = AppPreferences(defaults: defaults)
+            let relay = DashboardPreferencePageRelay()
+            var changedModes: [OfficialQuotaResetDisplayMode] = []
+            let controller = DashboardMenuBarPage()
+            relay.onMenuBarQuotaResetDisplayModeChanged = { mode in
+                changedModes.append(mode)
+                preferences.menuBarQuotaResetDisplayMode = mode
+                controller.refresh(
+                    snapshot: snapshot,
+                    preferences: preferences,
+                    menuBarSnapshot: { $0 },
+                    iconImage: nil
+                )
+            }
+            let page = controller.make(.init(
+                preferences: preferences,
+                snapshot: snapshot,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: relay
+            ))
+            page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+            let window = NSWindow(
+                contentRect: page.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            window.layoutIfNeeded()
+
+            let popup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
+            )
+            XCTAssertEqual(
+                popup.itemTitles,
+                [
+                    tr(.keyDashboardMenuBarPageQuotaResetDisplayRemaining, language: language),
+                    tr(.keyDashboardMenuBarPageQuotaResetDisplayTarget, language: language),
+                    tr(.keyDashboardMenuBarPageQuotaResetDisplayBoth, language: language)
+                ]
+            )
+            XCTAssertFalse(popup.itemTitles.contains { $0.hasPrefix("⟦") })
+            XCTAssertEqual(
+                popup.indexOfSelectedItem,
+                try XCTUnwrap(OfficialQuotaResetDisplayMode.allCases.firstIndex(of: .both))
+            )
+            XCTAssertEqual(
+                popup.action,
+                #selector(DashboardPreferencePageRelay.menuBarQuotaResetDisplayMode(_:))
+            )
+            XCTAssertGreaterThanOrEqual(
+                popup.constraints
+                    .filter { $0.firstAttribute == .width && $0.relation == .greaterThanOrEqual }
+                    .map(\.constant)
+                    .max() ?? 0,
+                ceil(popup.fittingSize.width)
+            )
+
+            let previewSecondary = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.previewSecondaryIdentifier }
+            )
+            XCTAssertFalse(previewSecondary.stringValue.isEmpty)
+            XCTAssertNotEqual(previewSecondary.stringValue, "1h")
+
+            let modeRow = try XCTUnwrap(popup.superview)
+            let narrowRowHeight = modeRow.frame.height
+            popup.selectItem(
+                at: try XCTUnwrap(OfficialQuotaResetDisplayMode.allCases.firstIndex(of: .remaining))
+            )
+            relay.menuBarQuotaResetDisplayMode(popup)
+            XCTAssertEqual(changedModes, [.remaining])
+            XCTAssertEqual(preferences.menuBarQuotaResetDisplayMode, .remaining)
+            XCTAssertEqual(previewSecondary.stringValue, "1h")
+
+            window.setContentSize(NSSize(width: 740, height: 900))
+            window.layoutIfNeeded()
+            XCTAssertGreaterThan(modeRow.frame.height, 0)
+            XCTAssertLessThanOrEqual(modeRow.frame.height, narrowRowHeight + 0.5)
+            for label in descendants(of: modeRow).compactMap({ $0 as? NSTextField }) {
+                XCTAssertGreaterThanOrEqual(label.frame.minY, -1)
+                XCTAssertLessThanOrEqual(label.frame.maxY, modeRow.bounds.height + 1)
+            }
+
+            let reloadedPage = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: snapshot,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay()
+            ))
+            XCTAssertEqual(
+                try XCTUnwrap(
+                    descendants(of: reloadedPage)
+                        .compactMap { $0 as? NSPopUpButton }
+                        .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
+                ).indexOfSelectedItem,
+                try XCTUnwrap(OfficialQuotaResetDisplayMode.allCases.firstIndex(of: .remaining))
+            )
+            window.contentView = nil
+        }
+    }
+
     func testCodexActivityAnimationRelayPersistsTheExistingPreference() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

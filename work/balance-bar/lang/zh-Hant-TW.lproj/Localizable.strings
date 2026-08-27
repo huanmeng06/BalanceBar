@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "選擇選單列中優先顯示的額度週期";
 "dashboard.menu.bar.page.five_hour_quota" = "5 小時額度";
 "dashboard.menu.bar.page.seven_day_quota" = "7 日額度";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "重置時間顯示";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "選擇選單列顯示剩餘時間、目標時間或兩者";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "剩餘時間";
+"dashboard.menu.bar.page.quota_reset_display_target" = "目標時間";
+"dashboard.menu.bar.page.quota_reset_display_both" = "兩者";
 "dashboard.menu.bar.page.animation" = "動畫";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任務進行時播放圖示動畫";
 "dashboard.menu.bar.page.display_items" = "顯示項目";

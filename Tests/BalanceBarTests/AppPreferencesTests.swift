@@ -91,6 +91,29 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
     }
 
+    func testMenuBarQuotaResetDisplayModeDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(
+            preferences.menuBarQuotaResetDisplayMode,
+            .both
+        )
+        preferences.menuBarQuotaResetDisplayMode = .resetAt
+        XCTAssertEqual(preferences.menuBarQuotaResetDisplayMode, .resetAt)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBarQuotaResetDisplayModeKey),
+            OfficialQuotaResetDisplayMode.resetAt.rawValue
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarQuotaResetDisplayMode,
+            .resetAt
+        )
+
+        defaults.set("unsupported", forKey: AppPreferences.menuBarQuotaResetDisplayModeKey)
+        XCTAssertEqual(preferences.menuBarQuotaResetDisplayMode, .both)
+    }
+
     func testNumericPreferencesDefaultsBoundsAndRoundTrips() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -445,7 +468,8 @@ final class AppPreferencesTests: XCTestCase {
             AppPreferences.menuBarFontSizePresetKey: MenuBarFontSizePreset.medium.rawValue,
             AppPreferences.menuBarPrimaryFontSizeKey: 14.2,
             AppPreferences.menuBarSecondaryFontSizeKey: 9.6,
-            AppPreferences.menuBarQuotaWindowPreferenceKey: OfficialQuotaWindowPreference.fiveHour.rawValue
+            AppPreferences.menuBarQuotaWindowPreferenceKey: OfficialQuotaWindowPreference.fiveHour.rawValue,
+            AppPreferences.menuBarQuotaResetDisplayModeKey: OfficialQuotaResetDisplayMode.resetAt.rawValue
         ] as [String: Any]
         AppPreferencesMigration.migrate(defaults: defaults, bundleIdentifier: suite, productionDomain: source, localDomain: [:])
         XCTAssertFalse(preferences.showMenuBarIcon)
@@ -456,6 +480,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
         XCTAssertEqual(preferences.menuBarFontSizePreset, .medium)
         XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
+        XCTAssertEqual(preferences.menuBarQuotaResetDisplayMode, .resetAt)
         XCTAssertEqual(preferences.menuBarFontSize, 11.7, accuracy: 0.001)
         XCTAssertEqual(
             preferences.menuBarSecondaryFontSize,

@@ -11,6 +11,7 @@ struct DashboardPreferencePageActions {
     let onLanguage: (AppLanguage) -> Void
     let onMenuBarFontSizePreset: (MenuBarFontSizePreset) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
+    let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
@@ -49,6 +50,7 @@ final class DashboardPreferencePages {
         relay.onLanguage = actions.onLanguage
         relay.onMenuBarFontSizePreset = actions.onMenuBarFontSizePreset
         relay.onMenuBarQuotaWindowPreferenceChanged = actions.onMenuBarQuotaWindowPreferenceChanged
+        relay.onMenuBarQuotaResetDisplayModeChanged = actions.onMenuBarQuotaResetDisplayModeChanged
         relay.onUpdateChannelChanged = actions.onUpdateChannelChanged
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
         relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
