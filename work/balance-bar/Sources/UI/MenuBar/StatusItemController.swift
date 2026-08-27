@@ -755,6 +755,7 @@ struct AccountEmailTooltipLayout: Equatable {
     static let maximumTextWidth: CGFloat = 280
     static let minimumTextWidth: CGFloat = 160
     static let textMeasurementSlack: CGFloat = 8
+    static let textHeightMeasurementSlack: CGFloat = 2
     static let horizontalInset: CGFloat = 12
     static let verticalInset: CGFloat = 8
 
@@ -788,7 +789,7 @@ struct AccountEmailTooltipLayout: Equatable {
         )
         let textHeight = max(
             ceil(font.ascender - font.descender + 2),
-            ceil(measuredText.height)
+            ceil(measuredText.height) + textHeightMeasurementSlack
         )
         return Self(
             textWidth: textWidth,
@@ -986,9 +987,10 @@ final class AccountEmailTextField: NSTextField {
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = false
-        popover.contentViewController = AccountEmailTooltipViewController(
-            email: tooltipText
-        )
+        let tooltipViewController = AccountEmailTooltipViewController(email: tooltipText)
+        tooltipViewController.loadViewIfNeeded()
+        popover.contentViewController = tooltipViewController
+        popover.contentSize = tooltipViewController.view.frame.size
         tooltipPopover = popover
 
         // Cancel AppKit's slower default tooltip once the accelerated native

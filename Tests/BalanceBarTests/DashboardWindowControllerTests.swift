@@ -1183,6 +1183,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             AccountMarqueeView.textWidth(of: tooltipEmail, font: tooltipFont)
                 + AccountEmailTooltipLayout.textMeasurementSlack
         )
+        let wrappedTooltipEmail = "huanmeng2048609305137151358071145141919810@gmail.com"
+        let wrappedTooltipLayout = AccountEmailTooltipLayout.make(
+            for: wrappedTooltipEmail,
+            font: tooltipFont
+        )
+        let minimumSingleLineHeight = ceil(tooltipFont.ascender - tooltipFont.descender + 2)
+        XCTAssertGreaterThan(wrappedTooltipLayout.textHeight, minimumSingleLineHeight)
+        XCTAssertLessThanOrEqual(
+            wrappedTooltipLayout.textWidth,
+            AccountEmailTooltipLayout.maximumTextWidth
+        )
+        XCTAssertEqual(
+            wrappedTooltipLayout.contentSize.height,
+            wrappedTooltipLayout.textHeight + AccountEmailTooltipLayout.verticalInset * 2
+        )
         XCTAssertGreaterThan(tooltipLayout.textHeight, 0)
         XCTAssertFalse(accountView.isMarqueeEnabled)
         XCTAssertEqual(accountView.fullEmail, longEmail)
