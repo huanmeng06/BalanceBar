@@ -2,6 +2,13 @@ import AppKit
 
 protocol DashboardSettingsRowControlLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
+    var usesDedicatedRow: Bool { get }
+}
+
+private enum DashboardSettingsControlPlacement: Equatable {
+    case horizontal
+    case verticalBesideContent
+    case dedicatedRow
 }
 
 private final class DashboardSettingsRowView: NSView {
@@ -12,6 +19,9 @@ private final class DashboardSettingsRowView: NSView {
     weak var cardView: DashboardSettingsCardView?
     private var lastMeasuredWidth: CGFloat = -1
     private var lastPreferredHeight: CGFloat = -1
+    private var controlPlacement: DashboardSettingsControlPlacement = .horizontal
+    private var sideBySideControlConstraints: [NSLayoutConstraint] = []
+    private var dedicatedControlConstraints: [NSLayoutConstraint] = []
 
     init(minimumHeight: CGFloat, verticalPadding: CGFloat) {
         self.minimumHeight = max(DashboardSettingsComponents.standardRowHeight, minimumHeight)
@@ -34,6 +44,12 @@ private final class DashboardSettingsRowView: NSView {
             return total + height
         } + max(0, CGFloat(visibleLabels.count - 1)) * labelsView.spacing
         let controlHeight = controlView?.fittingSize.height ?? 0
+        if controlPlacement == .dedicatedRow {
+            return ceil(max(
+                minimumHeight,
+                labelHeight + controlHeight + DashboardSettingsComponents.settingsRowContentControlSpacing + verticalPadding * 2
+            ))
+        }
         return ceil(max(minimumHeight, max(labelHeight, controlHeight) + verticalPadding * 2))
     }
 
@@ -43,7 +59,23 @@ private final class DashboardSettingsRowView: NSView {
 
     override func layout() {
         if let adaptiveControl = controlView as? DashboardSettingsRowControlLayout {
-            adaptiveControl.updateAvailableRowWidth(max(0, bounds.width - 40))
+            let availableContentAndControlWidth = max(0, bounds.width - 40)
+            adaptiveControl.updateAvailableRowWidth(availableContentAndControlWidth)
+            let actionWidth = controlView?.fittingSize.width ?? 0
+            let contentWidthWhenHorizontal = max(
+                0,
+                availableContentAndControlWidth - actionWidth - 20
+            )
+            let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < minimumReadableContentWidth
+            let placement: DashboardSettingsControlPlacement
+            if contentNeedsDedicatedRow {
+                placement = .dedicatedRow
+            } else if adaptiveControl.usesDedicatedRow {
+                placement = .verticalBesideContent
+            } else {
+                placement = .horizontal
+            }
+            updateControlPlacementIfNeeded(placement)
         }
         super.layout()
         let currentWidth = bounds.width
@@ -56,6 +88,80 @@ private final class DashboardSettingsRowView: NSView {
             invalidateIntrinsicContentSize()
             cardView?.updateHeightIfNeeded()
         }
+    }
+
+    private var minimumReadableContentWidth: CGFloat {
+        guard let labelsView else { return 0 }
+        return labelsView.arrangedSubviews
+            .filter { !$0.isHidden }
+            .map(minimumReadableWidth(in:))
+            .max() ?? 0
+    }
+
+    private func minimumReadableWidth(in view: NSView) -> CGFloat {
+        if let textField = view as? NSTextField {
+            guard textField.lineBreakMode == .byWordWrapping else { return 0 }
+            return widestUnbreakableRunWidth(in: textField)
+        }
+
+        if let stack = view as? NSStackView {
+            let visibleSubviews = stack.arrangedSubviews.filter { !$0.isHidden }
+            let childWidths = visibleSubviews.map(minimumReadableWidth(in:))
+            guard !childWidths.isEmpty else { return 0 }
+            if stack.orientation == .horizontal {
+                return childWidths.reduce(CGFloat(0), +)
+                    + max(0, CGFloat(childWidths.count - 1)) * stack.spacing
+            }
+            return childWidths.max() ?? 0
+        }
+
+        let textWidth = textFields(in: view)
+            .filter { $0.lineBreakMode == .byWordWrapping }
+            .map(widestUnbreakableRunWidth(in:))
+            .max() ?? 0
+        let fittingWidth = view.fittingSize.width
+        return max(textWidth, fittingWidth.isFinite && fittingWidth > 0 ? fittingWidth : 0)
+    }
+
+    private func textFields(in view: NSView) -> [NSTextField] {
+        if let textField = view as? NSTextField {
+            return [textField]
+        }
+        return view.subviews.flatMap(textFields(in:))
+    }
+
+    private func widestUnbreakableRunWidth(in textField: NSTextField) -> CGFloat {
+        let font = textField.font ?? .systemFont(ofSize: NSFont.systemFontSize)
+        return textField.stringValue
+            .split { $0.isWhitespace || $0.isNewline }
+            .map { String($0).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+    }
+
+    func installControlLayoutConstraints(
+        sideBySide: [NSLayoutConstraint],
+        dedicated: [NSLayoutConstraint]
+    ) {
+        sideBySideControlConstraints = sideBySide
+        dedicatedControlConstraints = dedicated
+        NSLayoutConstraint.activate(sideBySide)
+    }
+
+    private func updateControlPlacementIfNeeded(_ placement: DashboardSettingsControlPlacement) {
+        guard controlPlacement != placement else { return }
+        controlPlacement = placement
+        NSLayoutConstraint.deactivate(
+            sideBySideControlConstraints +
+                dedicatedControlConstraints
+        )
+        switch placement {
+        case .horizontal, .verticalBesideContent:
+            NSLayoutConstraint.activate(sideBySideControlConstraints)
+        case .dedicatedRow:
+            NSLayoutConstraint.activate(dedicatedControlConstraints)
+        }
+        invalidateIntrinsicContentSize()
+        needsLayout = true
     }
 }
 
@@ -205,6 +311,7 @@ private final class DashboardSettingsCardView: NSView {
 enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
     static let standardRowHeight: CGFloat = 62
+    static let settingsRowContentControlSpacing: CGFloat = 12
 
     /// CJK UI copy is naturally breakable between characters. Word wrapping
     /// treats a run without spaces as one large word, which leaves an entire
@@ -705,29 +812,44 @@ enum DashboardSettingsComponents {
         row.controlView = control
         row.addSubview(labels)
         let padding = max(0, verticalPadding)
-        var constraints = [
-            labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
-            labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
-            labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding)
-        ]
         if let control {
             control.translatesAutoresizingMaskIntoConstraints = false
             row.addSubview(control)
-            constraints.append(contentsOf: [
-                control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
-                control.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-                labels.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -20)
+            NSLayoutConstraint.activate([
+                labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
+                control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20)
             ])
+            let sideBySideConstraints = [
+                labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
+                labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding),
+                labels.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -20),
+                control.centerYAnchor.constraint(equalTo: row.centerYAnchor)
+            ]
+            let dedicatedConstraints = [
+                labels.topAnchor.constraint(equalTo: row.topAnchor, constant: padding),
+                labels.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+                control.topAnchor.constraint(greaterThanOrEqualTo: labels.bottomAnchor, constant: settingsRowContentControlSpacing),
+                control.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -padding)
+            ]
+            row.installControlLayoutConstraints(
+                sideBySide: sideBySideConstraints,
+                dedicated: dedicatedConstraints
+            )
             if controlWidthConstrainedToRow {
-                constraints.append(
+                let widthConstraint =
                     control.widthAnchor.constraint(lessThanOrEqualTo: row.widthAnchor, constant: -40)
-                )
+                widthConstraint.isActive = true
             }
         } else {
-            constraints.append(labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -20))
+            NSLayoutConstraint.activate([
+                labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
+                labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
+                labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding),
+                labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -20)
+            ])
         }
-        NSLayoutConstraint.activate(constraints)
         return row
     }
 
