@@ -1154,7 +1154,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
 
         XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 121))
-        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 190, height: 17))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 75, width: 198, height: 17))
         XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 75, width: 78, height: 17))
         XCTAssertEqual(frames.title, CGRect(x: 14, y: 94, width: 189, height: 20))
         XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 95, width: 81, height: 17))
@@ -1168,11 +1168,15 @@ final class OpenCodexRepositoryTests: XCTestCase {
             includesAccount: true,
             includesSubscription: true
         )
-        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 190, height: 17))
+        XCTAssertEqual(errorFrames.account, CGRect(x: 14, y: 58, width: 198, height: 17))
         XCTAssertEqual(errorFrames.subscription, CGRect(x: 212, y: 58, width: 78, height: 17))
         XCTAssertEqual(errorFrames.account?.minY, errorFrames.subscription?.minY)
         XCTAssertEqual(errorFrames.account?.height, errorFrames.subscription?.height)
-        XCTAssertLessThanOrEqual(errorFrames.account?.maxX ?? 0, errorFrames.subscription?.minX ?? 0)
+        XCTAssertEqual(
+            errorFrames.account?.maxX ?? 0,
+            errorFrames.subscription?.minX ?? 0,
+            accuracy: 0.001
+        )
     }
 
     func testOfficialQuotaLayoutExpandsForOrderedFiveHourAndSevenDayRows() {
@@ -1203,7 +1207,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
 
         XCTAssertEqual(frames.cardSize, CGSize(width: 304, height: 199))
         XCTAssertEqual(frames.quotaRows.count, 2)
-        XCTAssertEqual(frames.account, CGRect(x: 14, y: 153, width: 190, height: 17))
+        XCTAssertEqual(frames.account, CGRect(x: 14, y: 153, width: 198, height: 17))
         XCTAssertEqual(frames.subscription, CGRect(x: 212, y: 153, width: 78, height: 17))
         XCTAssertEqual(frames.title, CGRect(x: 14, y: 172, width: 189, height: 20))
         XCTAssertEqual(frames.refreshTime, CGRect(x: 209, y: 173, width: 81, height: 17))

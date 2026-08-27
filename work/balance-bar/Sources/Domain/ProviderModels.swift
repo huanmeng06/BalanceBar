@@ -578,7 +578,10 @@ enum OpenCodexCardLayout {
     static let horizontalInset: CGFloat = 14
     static let contentWidth = cardWidth - horizontalInset * 2
     static let subscriptionWidth: CGFloat = 78
-    static let subscriptionGap: CGFloat = 8
+    static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
+    // The fade occupies the final inset inside this viewport, so the account
+    // frame may end at the subscription leading edge without overlap.
+    static let accountWidthWithSubscription = subscriptionX - horizontalInset
     static let amountWidth: CGFloat = 141
     static let amountX = cardWidth - horizontalInset - amountWidth
     static let refreshTimeX = cardWidth - horizontalInset - 81
@@ -623,7 +626,7 @@ enum OpenCodexCardLayout {
             let hasSubscription = includesAccount && includesSubscription
             let accountShift: CGFloat = includesAccount ? 19 : 0
             let accountWidth = hasSubscription
-                ? contentWidth - subscriptionWidth - subscriptionGap
+                ? accountWidthWithSubscription
                 : contentWidth
             return OpenCodexCardFrames(
                 cardSize: CGSize(width: cardWidth, height: 102 + accountShift),
@@ -634,7 +637,7 @@ enum OpenCodexCardLayout {
                     : nil,
                 subscription: hasSubscription
                     ? CGRect(
-                        x: cardWidth - horizontalInset - subscriptionWidth,
+                        x: subscriptionX,
                         y: 75,
                         width: subscriptionWidth,
                         height: 17
@@ -705,7 +708,7 @@ enum OpenCodexCardLayout {
         let cardHeight = titleY + 20 + 7
         let hasSubscription = includesAccount && includesSubscription
         let accountWidth = hasSubscription
-            ? contentWidth - subscriptionWidth - subscriptionGap
+            ? accountWidthWithSubscription
             : contentWidth
         let rows = (0..<windowCount).map { index in
             let y = bottomInset
@@ -747,7 +750,7 @@ enum OpenCodexCardLayout {
                 : nil,
             subscription: hasSubscription
                 ? CGRect(
-                    x: cardWidth - horizontalInset - subscriptionWidth,
+                    x: subscriptionX,
                     y: baseTitleY,
                     width: subscriptionWidth,
                     height: 17

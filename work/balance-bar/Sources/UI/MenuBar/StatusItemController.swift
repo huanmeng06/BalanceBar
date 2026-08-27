@@ -280,6 +280,11 @@ final class AccountMarqueeView: NSView {
 
         if nextLayout.isScrollable {
             let mask = edgeFadeMask ?? CAGradientLayer()
+            // CAGradientLayer defaults to a vertical axis. The marquee is a
+            // single-line viewport, so the fade must run across its actual
+            // horizontal clip bounds instead of fading the glyphs by height.
+            mask.startPoint = CGPoint(x: 0, y: 0.5)
+            mask.endPoint = CGPoint(x: 1, y: 0.5)
             mask.colors = [
                 NSColor.clear.cgColor,
                 NSColor.black.cgColor,
@@ -2139,12 +2144,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let renderedAmountMinX = amountLabel.frame.maxX - amountTextWidth
         let safeAmountMinX = max(amountLabel.frame.minX, renderedAmountMinX)
-        let availableWidth = max(
-            0,
-            safeAmountMinX - AccountMarqueeView.defaultEdgeFadeWidth - baseFrame.minX
-        )
-        // Keep the viewport itself inside the gap before the rendered amount;
-        // the marquee's mask then fades only inside this bounded frame.
+        let availableWidth = max(0, safeAmountMinX - baseFrame.minX)
+        // Give the marquee the whole safe viewport. Its horizontal mask owns
+        // the final fade inset, so the transparent edge ends exactly at the
+        // rendered amount rather than introducing a second hard-cut gap.
         let expandedWidth = availableWidth
         return NSRect(
             x: baseFrame.minX,

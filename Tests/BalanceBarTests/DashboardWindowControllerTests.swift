@@ -1185,6 +1185,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             accuracy: 0.5
         )
         let edgeFadeMask = try XCTUnwrap(accountView.layer?.mask as? CAGradientLayer)
+        XCTAssertEqual(edgeFadeMask.startPoint, CGPoint(x: 0, y: 0.5))
+        XCTAssertEqual(edgeFadeMask.endPoint, CGPoint(x: 1, y: 0.5))
         XCTAssertEqual(edgeFadeMask.locations?.count, 4)
         XCTAssertGreaterThan(edgeFadeMask.locations?[1].doubleValue ?? 0, 0)
         XCTAssertLessThan(edgeFadeMask.locations?[2].doubleValue ?? 1, 1)
@@ -1239,7 +1241,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(subscriptionLabel.superview === overview)
         XCTAssertEqual(accountView.frame.minY, subscriptionLabel.frame.minY)
         XCTAssertEqual(accountView.frame.height, subscriptionLabel.frame.height)
-        XCTAssertLessThanOrEqual(accountView.frame.maxX, subscriptionLabel.frame.minX)
+        XCTAssertEqual(accountView.frame.maxX, subscriptionLabel.frame.minX, accuracy: 0.001)
         XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
         XCTAssertNotNil(
             allControls(of: overview, as: NSTextField.self).first {
@@ -1389,6 +1391,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let narrowMask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
         XCTAssertEqual(narrowMask.frame, view.layer?.bounds ?? view.bounds)
+        XCTAssertEqual(narrowMask.startPoint, CGPoint(x: 0, y: 0.5))
+        XCTAssertEqual(narrowMask.endPoint, CGPoint(x: 1, y: 0.5))
 
         let animation = AccountMarqueeView.scrollAnimation(forOverflow: view.scrollOverflow)
         let endpoint = try XCTUnwrap(animation.values?[2] as? NSNumber)
@@ -1399,6 +1403,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             view.layout()
             let mask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
             XCTAssertEqual(mask.frame, view.layer?.bounds ?? view.bounds)
+            XCTAssertEqual(mask.startPoint, CGPoint(x: 0, y: 0.5))
+            XCTAssertEqual(mask.endPoint, CGPoint(x: 1, y: 0.5))
             XCTAssertEqual(mask.locations?.count, 4)
         }
 
@@ -1423,6 +1429,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         let restoredMask = try XCTUnwrap(view.layer?.mask as? CAGradientLayer)
         XCTAssertEqual(restoredMask.frame, view.layer?.bounds ?? view.bounds)
+        XCTAssertEqual(restoredMask.startPoint, CGPoint(x: 0, y: 0.5))
+        XCTAssertEqual(restoredMask.endPoint, CGPoint(x: 1, y: 0.5))
 
         view.updateText(shortText)
         view.layout()
@@ -1551,7 +1559,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             font: try XCTUnwrap(amount.font)
         )
         let safeAmountMinX = max(amount.frame.minX, amount.frame.maxX - amountTextWidth)
-        let expectedRightEdge = safeAmountMinX - 8
+        let expectedRightEdge = safeAmountMinX
         XCTAssertEqual(quota.frame.minX, frames.quotaDetail.minX)
         XCTAssertEqual(quota.frame.minY, frames.quotaDetail.minY)
         XCTAssertEqual(quota.frame.height, frames.quotaDetail.height)
@@ -1752,17 +1760,17 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             OfficialQuotaWindow(
                 kind: .fiveHour,
                 remaining: 80,
-                label: String(repeating: windows[0].label + " ", count: 4),
+                label: String(repeating: windows[0].label + " ", count: 8),
                 daysText: windows[0].daysText,
-                reset: String(repeating: "2d0h ", count: 6),
+                reset: String(repeating: "2d0h ", count: 8),
                 durationSeconds: windows[0].durationSeconds
             ),
             OfficialQuotaWindow(
                 kind: .sevenDay,
                 remaining: 45,
-                label: String(repeating: windows[1].label + " ", count: 4),
+                label: String(repeating: windows[1].label + " ", count: 8),
                 daysText: windows[1].daysText,
-                reset: String(repeating: "7d0h ", count: 6),
+                reset: String(repeating: "7d0h ", count: 8),
                 durationSeconds: windows[1].durationSeconds
             )
         ]

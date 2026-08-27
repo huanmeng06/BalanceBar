@@ -1615,7 +1615,10 @@ enum ErrorCardLayout {
     static let refreshTimeWidth: CGFloat = 81
     static let refreshTimeX: CGFloat = cardWidth - horizontalInset - refreshTimeWidth
     static let subscriptionWidth: CGFloat = 78
-    static let subscriptionGap: CGFloat = 8
+    static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
+    // The account marquee's final fade inset is inside this viewport, keeping
+    // the visible text separated from the adjacent subscription label.
+    static let accountWidthWithSubscription = subscriptionX - horizontalInset
 
     // Match the compact third-party balance card for a single-line error.
     static let minimumCardHeight: CGFloat = 86
@@ -1704,7 +1707,7 @@ enum ErrorCardLayout {
         let hasSubscription = includesAccount && includesSubscription
         let accountShift: CGFloat = includesAccount ? 19 : 0
         let accountWidth = hasSubscription
-            ? contentWidth - subscriptionWidth - subscriptionGap
+            ? accountWidthWithSubscription
             : contentWidth
         let cardHeight = minimumCardHeight + extraDetailHeight + accountShift
         // The compact one-line amount center is 1pt above the geometric center
@@ -1720,7 +1723,7 @@ enum ErrorCardLayout {
                 : nil,
             subscription: hasSubscription
                 ? NSRect(
-                    x: cardWidth - horizontalInset - subscriptionWidth,
+                    x: subscriptionX,
                     y: 58 + extraDetailHeight,
                     width: subscriptionWidth,
                     height: 17
