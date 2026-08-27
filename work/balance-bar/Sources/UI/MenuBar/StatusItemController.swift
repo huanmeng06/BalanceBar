@@ -195,8 +195,8 @@ final class AccountMarqueeView: NSView {
     static let defaultEdgeFadeWidth = AccountMarqueeLayout.defaultFadeWidth
     private static let minimumScrollDuration: TimeInterval = 5
     private static let minimumScrollSpeed: CGFloat = 36
-    private static let maximumScrollSpeed: CGFloat = 110
-    private static let scrollSpeedResponseLength: CGFloat = 240
+    private static let maximumScrollSpeed: CGFloat = 180
+    private static let scrollSpeedResponseLength: CGFloat = 320
     private static let minimumTravelDuration: TimeInterval = 1
     private static let scrollPauseDuration: TimeInterval = 0.8
     private static let scrollActivityInterval: TimeInterval = 1.0 / 30.0

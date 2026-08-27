@@ -1558,7 +1558,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             mediumSpeed - shortSpeed
         )
         XCTAssertGreaterThan(extremeSpeed, longSpeed)
-        XCTAssertLessThanOrEqual(extremeSpeed, 110)
+        XCTAssertLessThanOrEqual(extremeSpeed, 180)
 
         let shortAnimation = AccountMarqueeView.scrollAnimation(forOverflow: 120)
         let longAnimation = AccountMarqueeView.scrollAnimation(forOverflow: 1_200)
