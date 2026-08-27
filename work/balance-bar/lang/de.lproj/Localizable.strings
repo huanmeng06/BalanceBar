@@ -262,6 +262,13 @@
 "dashboard.menu.bar.page.icon_display_mode_description" = "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Immer sichtbar";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Nur während der Ausführung";
+"dashboard.menu.bar.page.icon_display_delay" = "Ausblendverzögerung nach Aufgabe";
+"dashboard.menu.bar.page.icon_display_delay_description" = "Wählen Sie, wie lange das Symbol nach Ende einer Aufgabe sichtbar bleibt";
+"dashboard.menu.bar.page.icon_display_delay_ten_seconds" = "10 Sekunden";
+"dashboard.menu.bar.page.icon_display_delay_thirty_seconds" = "30 Sekunden";
+"dashboard.menu.bar.page.icon_display_delay_one_minute" = "1 Minute";
+"dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2 Minuten";
+"dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3 Minuten";
 "dashboard.menu.bar.page.quota_display_priority" = "Kontingentzeitraum";
 "dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, welcher Kontingentzeitraum in der Menüleiste bevorzugt angezeigt wird";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Stunden-Kontingent";

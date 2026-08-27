@@ -467,10 +467,12 @@ final class AppDelegateCompositionTests: XCTestCase {
     func testMenuBarIconDisplayStateMachineDebouncesIdleAndRecoversImmediately() {
         var machine = MenuBarIconDisplayStateMachine()
         let start = Date(timeIntervalSince1970: 2_000)
+        let delay = MenuBarIconDisplayDelay.tenSeconds
 
         XCTAssertTrue(
             machine.ingest(
                 mode: .alwaysVisible,
+                displayDelay: delay,
                 codexTaskRunning: false,
                 at: start
             )
@@ -480,6 +482,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(
             machine.ingest(
                 mode: .onlyWhileRunning,
+                displayDelay: delay,
                 codexTaskRunning: false,
                 at: start
             ),
@@ -498,6 +501,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(
             machine.ingest(
                 mode: .onlyWhileRunning,
+                displayDelay: delay,
                 codexTaskRunning: false,
                 at: start.addingTimeInterval(
                     MenuBarIconDisplayStateMachine.idleConfirmationInterval / 2
@@ -508,19 +512,41 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(
             machine.ingest(
                 mode: .onlyWhileRunning,
+                displayDelay: delay,
                 codexTaskRunning: false,
                 at: start.addingTimeInterval(
                     MenuBarIconDisplayStateMachine.idleConfirmationInterval
                 )
-            ) == false,
-            "stable idle must hide the item"
+            ),
+            "stable idle must remain visible during the selected grace period"
         )
-        XCTAssertFalse(machine.shouldDisplay)
+        XCTAssertTrue(machine.shouldDisplay)
         XCTAssertFalse(machine.needsAdditionalIdleSample)
 
         XCTAssertTrue(
             machine.ingest(
                 mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(delay.duration - 0.01)
+            ),
+            "the item must not hide before the selected grace period elapses"
+        )
+        XCTAssertFalse(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(delay.duration)
+            ),
+            "stable idle must hide once the selected grace period elapses"
+        )
+        XCTAssertFalse(machine.shouldDisplay)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
                 codexTaskRunning: true,
                 at: start.addingTimeInterval(0.4)
             ),
@@ -531,6 +557,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(
             machine.ingest(
                 mode: .onlyWhileRunning,
+                displayDelay: delay,
                 codexTaskRunning: false,
                 at: start.addingTimeInterval(0.5)
             ),
@@ -539,11 +566,55 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(
             machine.ingest(
                 mode: .alwaysVisible,
+                displayDelay: delay,
                 codexTaskRunning: false,
                 at: start.addingTimeInterval(1)
             )
         )
         XCTAssertEqual(machine.idleCandidateSampleCount, 0)
+    }
+
+    func testMenuBarIconDisplayDelayChangesCommitOnlyAnAlreadyStableIdleCandidate() {
+        var machine = MenuBarIconDisplayStateMachine()
+        let start = Date(timeIntervalSince1970: 3_000)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .threeMinutes,
+                codexTaskRunning: false,
+                at: start
+            )
+        )
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .threeMinutes,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval
+                )
+            )
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 2)
+
+        XCTAssertTrue(
+            machine.setDisplayDelay(
+                .threeMinutes,
+                at: start.addingTimeInterval(120)
+            ),
+            "changing the delay must not add an activity sample"
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 2)
+        XCTAssertFalse(
+            machine.setDisplayDelay(
+                .tenSeconds,
+                at: start.addingTimeInterval(120)
+            ),
+            "shortening the delay may commit an already stable elapsed candidate immediately"
+        )
+        XCTAssertFalse(machine.shouldDisplay)
+        XCTAssertEqual(machine.idleCandidateSampleCount, 2)
     }
 
     @MainActor
@@ -722,8 +793,14 @@ final class AppDelegateCompositionTests: XCTestCase {
             controller.isVisible,
             "a layout refresh must not count as a second idle activity sample"
         )
-        controller.observeCodexTaskSample(false)
-        XCTAssertFalse(controller.isVisible, "stable idle hides the existing status item")
+        controller.observeCodexTaskSample(
+            false,
+            at: Date().addingTimeInterval(MenuBarIconDisplayDelay.tenSeconds.duration + 1)
+        )
+        XCTAssertFalse(
+            controller.isVisible,
+            "stable idle hides the existing status item after its grace period"
+        )
         XCTAssertEqual(controller.statusItemInstallCount, installCount)
 
         controller.updateActivity(

@@ -20,6 +20,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarStatusItemWidthAdjustmentKey = "menuBarStatusItemWidthAdjustment"' \
         '    static let balanceDisplayThresholdKey = "balanceDisplayThreshold"' \
         '    static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"' \
+        '    static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"' \
         '    static let menuBarFontSizePresetKey = "menuBarFontSizePreset"' \
         '    static let menuBarFontSizeKey = "menuBarFontSize"' \
         '    static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"' \
@@ -44,6 +45,7 @@ let production: [String: Any] = [
     "menuBarStatusItemWidthAdjustment": NSNumber(value: 0.7),
     "balanceDisplayThreshold": NSNumber(value: 0.15),
     "menuBarIconDisplayMode": "onlyWhileRunning",
+    "menuBarIconDisplayDelay": "thirtySeconds",
     "menuBarFontSizePreset": "medium",
     "menuBarFontSize": NSNumber(value: 14.2),
     "menuBarPrimaryFontSize": NSNumber(value: 14.2),
@@ -59,6 +61,7 @@ let local: [String: Any] = [
     "showMenuBarReset": NSNumber(value: false),
     "showMenuBarAmount": NSNumber(value: true),
     "menuBarIconDisplayMode": "alwaysVisible",
+    "menuBarIconDisplayDelay": "tenSeconds",
     "unknownLocalValue": "must not migrate"
 ]
 
@@ -73,6 +76,7 @@ require((selected["activityPollInterval"] as? NSNumber)?.doubleValue == 0.5, "pr
 require((selected["menuBarStatusItemWidthAdjustment"] as? NSNumber)?.doubleValue == 0.7, "width adjustment migrates")
 require((selected["balanceDisplayThreshold"] as? NSNumber)?.doubleValue == 0.15, "balance display threshold migrates")
 require((selected["menuBarIconDisplayMode"] as? String) == "onlyWhileRunning", "menu bar icon display mode migrates")
+require((selected["menuBarIconDisplayDelay"] as? String) == "thirtySeconds", "menu bar icon display delay migrates")
 require((selected["menuBarFontSizePreset"] as? String) == "medium", "font size preset migrates")
 require((selected["menuBarFontSize"] as? NSNumber)?.doubleValue == 14.2, "shared font size migrates")
 require((selected["menuBarPrimaryFontSize"] as? NSNumber)?.doubleValue == 14.2, "primary font size migrates")
@@ -89,6 +93,7 @@ let existingTarget: [String: Any] = [
     "showMenuBarIcon": NSNumber(value: true),
     "appLanguage": "zh-Hans",
     "menuBarIconDisplayMode": "alwaysVisible",
+    "menuBarIconDisplayDelay": "threeMinutes",
     "menuBarQuotaWindowPreference": "sevenDay",
     "menuBarQuotaResetDisplayMode": "remaining"
 ]
@@ -100,6 +105,7 @@ let selectedWithExisting = PreferencesMigrationPlan.selectedValues(
 require(selectedWithExisting["showMenuBarIcon"] == nil, "existing target value is preserved")
 require(selectedWithExisting["appLanguage"] == nil, "existing target language is preserved")
 require(selectedWithExisting["menuBarIconDisplayMode"] == nil, "existing target icon display mode is preserved")
+require(selectedWithExisting["menuBarIconDisplayDelay"] == nil, "existing target icon display delay is preserved")
 require(selectedWithExisting["menuBarQuotaWindowPreference"] == nil, "existing target quota window preference is preserved")
 require(selectedWithExisting["menuBarQuotaResetDisplayMode"] == nil, "existing target quota reset display mode is preserved")
 
@@ -122,11 +128,15 @@ require(noSources.isEmpty, "missing source domains are safe")
 let localOnly = PreferencesMigrationPlan.selectedValues(
     target: [:],
     production: [:],
-    local: ["menuBarIconDisplayMode": "onlyWhileRunning"]
+    local: [
+        "menuBarIconDisplayMode": "onlyWhileRunning",
+        "menuBarIconDisplayDelay": "threeMinutes"
+    ]
 )
 require((localOnly["menuBarIconDisplayMode"] as? String) == "onlyWhileRunning", "local icon display mode fallback migrates")
+require((localOnly["menuBarIconDisplayDelay"] as? String) == "threeMinutes", "local icon display delay fallback migrates")
 
-print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; menu bar icon display, quota window, and reset display preferences migrate; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
+print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; menu bar icon display and delay, quota window, and reset display preferences migrate; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
 SWIFT
 } | swiftc -framework Foundation -o "$probe_binary" -
 

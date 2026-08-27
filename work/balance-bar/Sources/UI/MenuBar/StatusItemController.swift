@@ -1297,9 +1297,10 @@ struct StatusItemVisibilityStateMachine {
 
 /// Applies the user-selected menu-bar display policy to Codex activity
 /// samples. A false sample is only allowed to hide the status item after two
-/// stable samples separated by the normal activity polling cadence. This
-/// keeps startup, monitor recovery, and quick task transitions visible while
-/// reusing the activity value emitted by ActivityCoordinator.
+/// stable samples separated by the normal activity polling cadence and the
+/// selected post-task grace period. This keeps startup, monitor recovery, and
+/// quick task transitions visible while reusing the activity value emitted by
+/// ActivityCoordinator.
 struct MenuBarIconDisplayStateMachine {
     static let idleConfirmationSampleCount = 2
     static let idleConfirmationInterval: TimeInterval = 0.25
@@ -1312,6 +1313,7 @@ struct MenuBarIconDisplayStateMachine {
 
     private(set) var shouldDisplay = true
     private var mode: MenuBarIconDisplayMode = .alwaysVisible
+    private var displayDelay: MenuBarIconDisplayDelay = .defaultValue
     private var idleCandidate: IdleCandidate?
 
     var needsAdditionalIdleSample: Bool {
@@ -1326,6 +1328,7 @@ struct MenuBarIconDisplayStateMachine {
     mutating func reset() {
         shouldDisplay = true
         mode = .alwaysVisible
+        displayDelay = .defaultValue
         idleCandidate = nil
     }
 
@@ -1351,12 +1354,23 @@ struct MenuBarIconDisplayStateMachine {
     }
 
     @discardableResult
+    mutating func setDisplayDelay(
+        _ delay: MenuBarIconDisplayDelay,
+        at date: Date
+    ) -> Bool {
+        displayDelay = delay
+        return commitIdleIfReady(at: date)
+    }
+
+    @discardableResult
     mutating func ingest(
         mode: MenuBarIconDisplayMode,
+        displayDelay: MenuBarIconDisplayDelay = .defaultValue,
         codexTaskRunning: Bool,
         at date: Date
     ) -> Bool {
         setMode(mode, codexTaskRunning: codexTaskRunning, at: date)
+        setDisplayDelay(displayDelay, at: date)
         guard mode == .onlyWhileRunning else {
             shouldDisplay = true
             idleCandidate = nil
@@ -1385,10 +1399,17 @@ struct MenuBarIconDisplayStateMachine {
             )
         }
 
-        guard let candidate = idleCandidate,
+        return commitIdleIfReady(at: date)
+    }
+
+    private mutating func commitIdleIfReady(at date: Date) -> Bool {
+        guard mode == .onlyWhileRunning,
+              let candidate = idleCandidate,
               candidate.sampleCount >= Self.idleConfirmationSampleCount,
               candidate.lastSampleAt.timeIntervalSince(candidate.firstSampleAt)
-                >= Self.idleConfirmationInterval else {
+                >= Self.idleConfirmationInterval,
+              date.timeIntervalSince(candidate.firstSampleAt)
+                >= displayDelay.duration else {
             return shouldDisplay
         }
 
@@ -1449,6 +1470,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showAmount: Bool
         let showReset: Bool
         let iconDisplayMode: MenuBarIconDisplayMode
+        let iconDisplayDelay: MenuBarIconDisplayDelay
         let horizontalPadding: CGFloat
         let keepMenuOpenAfterRefresh: Bool
         let iconOffsetX: CGFloat
@@ -1470,6 +1492,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             horizontalPadding: CGFloat,
             keepMenuOpenAfterRefresh: Bool,
             iconDisplayMode: MenuBarIconDisplayMode = .defaultValue,
+            iconDisplayDelay: MenuBarIconDisplayDelay = .defaultValue,
             iconOffsetX: CGFloat = 0,
             iconOffsetY: CGFloat = 0,
             amountOffsetX: CGFloat = 0,
@@ -1483,6 +1506,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showAmount = showAmount
             self.showReset = showReset
             self.iconDisplayMode = iconDisplayMode
+            self.iconDisplayDelay = iconDisplayDelay
             self.horizontalPadding = horizontalPadding
             self.keepMenuOpenAfterRefresh = keepMenuOpenAfterRefresh
             self.iconOffsetX = iconOffsetX
@@ -1661,6 +1685,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 codexTaskRunning: isCodexTaskRunning,
                 at: Date()
             )
+            menuBarIconDisplayStateMachine.setDisplayDelay(
+                settings.iconDisplayDelay,
+                at: Date()
+            )
         }
         statusItemVisibilityStateMachine.reset()
         updateStatusItemVisibility(.unknown)
@@ -1707,6 +1735,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings
     ) {
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
+        let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
@@ -1715,6 +1744,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
                 codexTaskRunning: isCodexTaskRunning,
+                at: Date()
+            )
+        }
+        if iconDisplayDelayChanged {
+            menuBarIconDisplayStateMachine.setDisplayDelay(
+                settings.iconDisplayDelay,
                 at: Date()
             )
         }
@@ -1811,6 +1846,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         updateActivityIcon()
         menuBarIconDisplayStateMachine.ingest(
             mode: settings.iconDisplayMode,
+            displayDelay: settings.iconDisplayDelay,
             codexTaskRunning: codexTaskRunning,
             at: Date()
         )
@@ -1820,12 +1856,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Accepts a repeated Codex monitor sample without re-running the activity
     /// icon animation path. ActivityCoordinator remains the only producer of
     /// task state; this method only advances the display debounce.
-    func observeCodexTaskSample(_ running: Bool) {
+    func observeCodexTaskSample(_ running: Bool, at date: Date = Date()) {
         isCodexTaskRunning = running
         menuBarIconDisplayStateMachine.ingest(
             mode: settings.iconDisplayMode,
+            displayDelay: settings.iconDisplayDelay,
             codexTaskRunning: running,
-            at: Date()
+            at: date
         )
         applyMenuBarIconDisplayPolicy()
     }
@@ -2128,7 +2165,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard statusItem.isVisible != shouldDisplay else { return }
         statusItem.isVisible = shouldDisplay
         SwitchLog.write(
-            "menu bar display mode applied; mode=\(settings.iconDisplayMode.rawValue); codex_running=\(isCodexTaskRunning); visible=\(shouldDisplay)",
+            "menu bar display mode applied; mode=\(settings.iconDisplayMode.rawValue); delay_seconds=\(settings.iconDisplayDelay.duration); codex_running=\(isCodexTaskRunning); visible=\(shouldDisplay)",
             category: "ui.status-item"
         )
         if shouldDisplay {

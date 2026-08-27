@@ -136,6 +136,32 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarIconDisplayMode, .alwaysVisible)
     }
 
+    func testMenuBarIconDisplayDelayDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarIconDisplayDelay, .tenSeconds)
+        XCTAssertNil(defaults.string(forKey: AppPreferences.menuBarIconDisplayDelayKey))
+
+        preferences.menuBarIconDisplayDelay = .threeMinutes
+        XCTAssertEqual(preferences.menuBarIconDisplayDelay, .threeMinutes)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBarIconDisplayDelayKey),
+            MenuBarIconDisplayDelay.threeMinutes.rawValue
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarIconDisplayDelay,
+            .threeMinutes
+        )
+
+        defaults.set("unsupported", forKey: AppPreferences.menuBarIconDisplayDelayKey)
+        XCTAssertEqual(preferences.menuBarIconDisplayDelay, .tenSeconds)
+        XCTAssertEqual(
+            MenuBarIconDisplayDelay.allCases.map(\.duration),
+            [10, 30, 60, 120, 180]
+        )
+    }
+
     func testNumericPreferencesDefaultsBoundsAndRoundTrips() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -491,6 +517,7 @@ final class AppPreferencesTests: XCTestCase {
             AppPreferences.menuBarPrimaryFontSizeKey: 14.2,
             AppPreferences.menuBarSecondaryFontSizeKey: 9.6,
             AppPreferences.menuBarIconDisplayModeKey: MenuBarIconDisplayMode.onlyWhileRunning.rawValue,
+            AppPreferences.menuBarIconDisplayDelayKey: MenuBarIconDisplayDelay.twoMinutes.rawValue,
             AppPreferences.menuBarQuotaWindowPreferenceKey: OfficialQuotaWindowPreference.fiveHour.rawValue,
             AppPreferences.menuBarQuotaResetDisplayModeKey: OfficialQuotaResetDisplayMode.resetAt.rawValue
         ] as [String: Any]
@@ -503,6 +530,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
         XCTAssertEqual(preferences.menuBarFontSizePreset, .medium)
         XCTAssertEqual(preferences.menuBarIconDisplayMode, .onlyWhileRunning)
+        XCTAssertEqual(preferences.menuBarIconDisplayDelay, .twoMinutes)
         XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
         XCTAssertEqual(preferences.menuBarQuotaResetDisplayMode, .resetAt)
         XCTAssertEqual(preferences.menuBarFontSize, 11.7, accuracy: 0.001)
