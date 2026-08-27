@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "选择菜单栏中优先展示的额度周期";
 "dashboard.menu.bar.page.five_hour_quota" = "5 小时额度";
 "dashboard.menu.bar.page.seven_day_quota" = "7 日额度";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "重置时间显示";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "选择菜单栏显示剩余时长、目标时间或两者";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "剩余时长";
+"dashboard.menu.bar.page.quota_reset_display_target" = "目标时间";
+"dashboard.menu.bar.page.quota_reset_display_both" = "两者";
 "dashboard.menu.bar.page.animation" = "动画";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务进行时播放图标动画";
 "dashboard.menu.bar.page.display_items" = "显示项目";

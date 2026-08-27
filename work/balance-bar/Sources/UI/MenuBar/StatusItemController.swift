@@ -1358,6 +1358,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// single-line third-party amount. The secondary row is derived from
         /// the default 13:10 ratio in the renderer.
         var fontSize: CGFloat
+        let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
 
         init(
             showIcon: Bool,
@@ -1371,7 +1372,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             amountOffsetY: CGFloat = 0,
             widthAdjustment: CGFloat = 0,
             fontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
-            quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue
+            quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue,
+            quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -1384,6 +1386,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.amountOffsetY = amountOffsetY
             self.widthAdjustment = widthAdjustment
             self.quotaWindowPreference = quotaWindowPreference
+            self.quotaResetDisplayMode = quotaResetDisplayMode
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -2016,7 +2019,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         applyMenuBarFonts()
         let effectiveSnapshot = menuBarSnapshot(for: snapshot)
         let reservedSecondary = settings.showAmount && effectiveSnapshot.kind == .official
-            ? effectiveSnapshot.menuBarSecondary
+            ? effectiveSnapshot.menuBarSecondary(
+                displayMode: settings.quotaResetDisplayMode
+            )
             : ""
         let hasSecondary = settings.showAmount
             && settings.showReset

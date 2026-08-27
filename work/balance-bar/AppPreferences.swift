@@ -1,5 +1,13 @@
 import Foundation
 
+enum OfficialQuotaResetDisplayMode: String, CaseIterable, Equatable {
+    case remaining
+    case resetAt
+    case both
+
+    static let defaultValue: Self = .both
+}
+
 enum OfficialQuotaWindowPreference: String, CaseIterable, Equatable {
     case fiveHour
     case sevenDay
@@ -69,6 +77,8 @@ final class AppPreferences {
     static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
     static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"
     static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
+    static let menuBarQuotaResetDisplayModeKey = "menuBarQuotaResetDisplayMode"
+    static let menuBarQuotaResetDisplayModeDefault: OfficialQuotaResetDisplayMode = .defaultValue
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -125,6 +135,18 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaWindowPreferenceKey)
+        }
+    }
+    var menuBarQuotaResetDisplayMode: OfficialQuotaResetDisplayMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarQuotaResetDisplayModeKey),
+                  let mode = OfficialQuotaResetDisplayMode(rawValue: rawValue) else {
+                return Self.menuBarQuotaResetDisplayModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaResetDisplayModeKey)
         }
     }
     var updateChannel: UpdateChannel {

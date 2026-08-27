@@ -677,6 +677,102 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
+    func testLiveStatusItemUsesQuotaResetDisplayModeForCompactPresentation() throws {
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true
+        )
+        let now = Date()
+        let resetAt = now.addingTimeInterval(3_600)
+        let window = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h0m",
+            durationSeconds: 18_000,
+            resetAt: resetAt
+        )
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            window.remaining,
+            window.label,
+            window.reset,
+            now,
+            windows: [window]
+        )
+        func settings(mode: OfficialQuotaResetDisplayMode) -> StatusItemController.MenuBarSettings {
+            StatusItemController.MenuBarSettings(
+                showIcon: true,
+                showAmount: true,
+                showReset: true,
+                horizontalPadding: 10,
+                keepMenuOpenAfterRefresh: true,
+                quotaWindowPreference: .fiveHour,
+                quotaResetDisplayMode: mode
+            )
+        }
+
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: settings(mode: .remaining)
+        )
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "1h0m")
+
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: settings(mode: .resetAt)
+        )
+        let targetText = try XCTUnwrap(
+            OfficialQuotaResetFormatter.string(for: resetAt, relativeTo: Date())
+        )
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, targetText)
+        XCTAssertNotEqual(controller.menuBarSecondaryTextForTesting, window.reset)
+
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: settings(mode: .both)
+        )
+        XCTAssertEqual(
+            controller.menuBarSecondaryTextForTesting,
+            tr(.keySnapshotValueValue, arguments: [window.reset!, targetText])
+        )
+        controller.teardown()
+    }
+
+    @MainActor
     func testLiveStatusItemOfficialAmountOnlyKeepsPrimaryInkAnchored() throws {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(

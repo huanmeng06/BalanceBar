@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Elige qué periodo de cuota priorizar en la barra de menús";
 "dashboard.menu.bar.page.five_hour_quota" = "Cuota de 5 horas";
 "dashboard.menu.bar.page.seven_day_quota" = "Cuota de 7 días";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "Mostrar el reinicio";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "Elige si la barra de menús muestra el tiempo restante, la hora de reinicio o ambos";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "Tiempo restante";
+"dashboard.menu.bar.page.quota_reset_display_target" = "Hora de reinicio";
+"dashboard.menu.bar.page.quota_reset_display_both" = "Ambos";
 "dashboard.menu.bar.page.animation" = "Animación";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Reproducir la animación del icono mientras se ejecuta una tarea";
 "dashboard.menu.bar.page.display_items" = "Elementos visibles";

@@ -42,24 +42,35 @@ struct OfficialQuotaWindow: Equatable {
     /// Only the two Codex windows identified by Issue #202 may expose a
     /// precise timestamp in the quota card.
     func resetDisplayText(
+        displayMode: OfficialQuotaResetDisplayMode = .both,
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String? {
         guard let reset else { return nil }
-        guard kind != .other,
-              let resetAt,
-              let exactDate = OfficialQuotaResetFormatter.string(
-                  for: resetAt,
-                  relativeTo: now,
-                  calendar: calendar,
-                  locale: locale,
-                  timeZone: timeZone
-              ) else {
+        let exactDate: String? = {
+            guard kind != .other else { return nil }
+            return OfficialQuotaResetFormatter.string(
+                for: resetAt,
+                relativeTo: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        }()
+
+        switch displayMode {
+        case .remaining:
             return reset
+        case .resetAt:
+            return exactDate ?? reset
+        case .both:
+            guard let exactDate else {
+                return reset
+            }
+            return tr(.keySnapshotValueValue, arguments: [reset, exactDate])
         }
-        return tr(.keySnapshotValueValue, arguments: [reset, exactDate])
     }
 }
 
@@ -333,7 +344,25 @@ struct Snapshot {
     }
 
     var menuBarSecondary: String {
-        kind == .official ? (officialResetDisplayValue() ?? "—") : ""
+        menuBarSecondary(displayMode: .defaultValue)
+    }
+
+    func menuBarSecondary(
+        displayMode: OfficialQuotaResetDisplayMode,
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String {
+        kind == .official
+            ? (officialResetDisplayValue(
+                displayMode: displayMode,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            ) ?? "—")
+            : ""
     }
 
     var menuBarToolTip: String {
@@ -460,6 +489,7 @@ struct Snapshot {
     }
 
     func officialResetDisplayValue(
+        displayMode: OfficialQuotaResetDisplayMode = .both,
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent,
@@ -473,6 +503,7 @@ struct Snapshot {
             ?? officialQuotaWindows.first(where: { $0.kind == .fiveHour })
             ?? officialQuotaWindows.first
         return representative?.resetDisplayText(
+            displayMode: displayMode,
             now: now,
             calendar: calendar,
             locale: locale,

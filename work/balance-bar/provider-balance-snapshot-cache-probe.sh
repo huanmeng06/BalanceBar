@@ -8,7 +8,7 @@ probe_binary="$probe_dir/provider-balance-snapshot-cache-probe"
 trap 'rm -rf "$probe_dir"' EXIT
 
 {
-    printf '%s\n' 'import Foundation' 'enum OfficialQuotaWindowPreference { case fiveHour, sevenDay }'
+    printf '%s\n' 'import Foundation' 'enum OfficialQuotaWindowPreference { case fiveHour, sevenDay }' 'enum OfficialQuotaResetDisplayMode { case remaining, resetAt, both; static let defaultValue: Self = .both }'
     cat "$source_dir/Sources/AppCore/LocalizationKeys.swift"
     printf '%s\n' 'func tr(_ key: LocalizationKey, arguments: [String] = []) -> String { key.rawValue }'
     cat "$source_dir/Sources/Domain/Snapshot.swift"

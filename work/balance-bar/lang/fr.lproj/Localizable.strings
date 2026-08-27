@@ -262,6 +262,11 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Choisissez quelle période de quota afficher en priorité dans la barre des menus";
 "dashboard.menu.bar.page.five_hour_quota" = "Quota sur 5 heures";
 "dashboard.menu.bar.page.seven_day_quota" = "Quota sur 7 jours";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "Affichage de la réinitialisation";
+"dashboard.menu.bar.page.quota_reset_display_mode_description" = "Choisissez d’afficher le temps restant, l’heure de réinitialisation ou les deux dans la barre des menus";
+"dashboard.menu.bar.page.quota_reset_display_remaining" = "Temps restant";
+"dashboard.menu.bar.page.quota_reset_display_target" = "Heure de réinitialisation";
+"dashboard.menu.bar.page.quota_reset_display_both" = "Les deux";
 "dashboard.menu.bar.page.animation" = "Animation";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Lire l’animation de l’icône pendant l’exécution d’une tâche";
 "dashboard.menu.bar.page.display_items" = "Éléments affichés";

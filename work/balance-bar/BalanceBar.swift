@@ -157,7 +157,7 @@ private enum DevelopmentReleaseFixture {
 }
 
 struct PreferencesMigrationPlan {
-    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarQuotaWindowPreferenceKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -230,6 +230,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onMenuBarQuotaWindowPreferenceChanged: { [weak self] preference in
                 self?.handleDashboardQuotaWindowPreferenceChanged(preference)
+            },
+            onMenuBarQuotaResetDisplayModeChanged: { [weak self] mode in
+                self?.handleDashboardQuotaResetDisplayModeChanged(mode)
             },
             onUpdateChannelChanged: { [weak self] channel in
                 self?.handleUpdateChannelChanged(channel)
@@ -336,6 +339,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarQuotaWindowPreference: OfficialQuotaWindowPreference {
         get { preferences.menuBarQuotaWindowPreference }
         set { preferences.menuBarQuotaWindowPreference = newValue }
+    }
+    private var menuBarQuotaResetDisplayMode: OfficialQuotaResetDisplayMode {
+        get { preferences.menuBarQuotaResetDisplayMode }
+        set { preferences.menuBarQuotaResetDisplayMode = newValue }
     }
     private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
     private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
@@ -597,7 +604,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             amountOffsetY: CGFloat(menuBarAmountOffsetY),
             widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment),
             fontSize: CGFloat(menuBarFontSize),
-            quotaWindowPreference: menuBarQuotaWindowPreference
+            quotaWindowPreference: menuBarQuotaWindowPreference,
+            quotaResetDisplayMode: menuBarQuotaResetDisplayMode
         )
     }
 
@@ -928,6 +936,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         menuBarQuotaWindowPreference = preference
         SwitchLog.write(
             "preference changed; key=\(AppPreferences.menuBarQuotaWindowPreferenceKey); value=\(preference.rawValue)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardQuotaResetDisplayModeChanged(
+        _ mode: OfficialQuotaResetDisplayMode
+    ) {
+        menuBarQuotaResetDisplayMode = mode
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarQuotaResetDisplayModeKey); value=\(mode.rawValue)",
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
