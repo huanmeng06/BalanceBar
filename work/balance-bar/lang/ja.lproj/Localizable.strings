@@ -53,8 +53,8 @@
 "provider.models.multiple_balance_sources_were_found_the_account_could_not_be_confirmed" = "複数の残高ソースが見つかり、アカウントを確認できませんでした";
 "provider.models.no_verifiable_balance_source_was_found" = "検証可能な残高ソースが見つかりませんでした";
 "snapshot.value_value" = "%1$@ · %2$@";
-"snapshot.value_reset_value" = "%1$@ · リセット：%2$@";
-"snapshot.reset_value" = "リセット：%1$@";
+"snapshot.value_reset_value" = "%1$@ · %2$@";
+"snapshot.reset_value" = "%1$@";
 "snapshot.last_refreshed_value" = "最終更新：%1$@";
 "snapshot.opencodex_status_is_unknown" = "OpenCodex のステータスが不明です";
 "snapshot.loading_the_current_provider" = "現在のプロバイダーを読み込み中…";
@@ -74,9 +74,9 @@
 "snapshot.value_value.2" = "%1$@ · %2$@";
 "snapshot.failed_to_load_balance.2" = "残高の読み込みに失敗しました";
 "snapshot.value_remaining_value.2" = "%1$@ の残り：%2$@%%";
-"snapshot.reset_value.2" = "リセット：%1$@";
+"snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "更新：%1$@ · CC Switch に自動的に追従";
-"snapshot.reset_value.3" = " · リセット：%1$@";
+"snapshot.reset_value.3" = " · %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "公式クォータは毎分更新%1$@";
 "snapshot.waiting_for_opencodex_status" = "OpenCodex のステータスを待機中";
 "snapshot.unknown_error" = "不明なエラー";
@@ -371,8 +371,8 @@
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "OpenCodex の選択モデルはまだ利用できません";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "OpenCodex の選択モデルが設定されていません";
 "status.item.controller.current" = " · 現在";
-"status.item.controller.reset_value" = "リセット：%1$@";
-"status.item.controller.reset_time_unavailable" = "リセット時刻を利用できません";
+"status.item.controller.reset_value" = "%1$@";
+"status.item.controller.reset_time_unavailable" = "時刻を利用できません";
 "status.item.controller.remaining_balance" = "残りのクォータ";
 "status.item.controller.official_link.2" = "公式リンク：";
 "status.item.controller.reading_quota" = "クォータを読み込み中…";

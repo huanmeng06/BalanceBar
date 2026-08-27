@@ -53,8 +53,8 @@
 "provider.models.multiple_balance_sources_were_found_the_account_could_not_be_confirmed" = "Es wurden mehrere Guthabenquellen gefunden; das Konto konnte nicht bestätigt werden";
 "provider.models.no_verifiable_balance_source_was_found" = "Keine überprüfbare Guthabenquelle gefunden";
 "snapshot.value_value" = "%1$@ · %2$@";
-"snapshot.value_reset_value" = "%1$@ · Zurücksetzung: %2$@";
-"snapshot.reset_value" = "Zurücksetzung: %1$@";
+"snapshot.value_reset_value" = "%1$@ · %2$@";
+"snapshot.reset_value" = "%1$@";
 "snapshot.last_refreshed_value" = "Zuletzt aktualisiert: %1$@";
 "snapshot.opencodex_status_is_unknown" = "Der OpenCodex-Status ist unbekannt";
 "snapshot.loading_the_current_provider" = "Aktuellen Anbieter laden…";
@@ -74,9 +74,9 @@
 "snapshot.value_value.2" = "%1$@ · %2$@";
 "snapshot.failed_to_load_balance.2" = "Guthaben konnte nicht geladen werden";
 "snapshot.value_remaining_value.2" = "%1$@ verbleibend: %2$@%%";
-"snapshot.reset_value.2" = "Zurücksetzung: %1$@";
+"snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Aktualisiert: %1$@ · Folgt CC Switch automatisch";
-"snapshot.reset_value.3" = " · Zurücksetzung: %1$@";
+"snapshot.reset_value.3" = " · %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Offizielles Kontingent wird jede Minute aktualisiert%1$@";
 "snapshot.waiting_for_opencodex_status" = "Auf OpenCodex-Status warten";
 "snapshot.unknown_error" = "Unbekannter Fehler";
@@ -371,8 +371,8 @@
 "status.item.controller.opencodex_chosen_models_are_not_available_yet" = "Ausgewählte OpenCodex-Modelle sind noch nicht verfügbar";
 "status.item.controller.no_opencodex_chosen_models_are_configured" = "Keine ausgewählten OpenCodex-Modelle konfiguriert";
 "status.item.controller.current" = " · Aktuell";
-"status.item.controller.reset_value" = "Zurücksetzung: %1$@";
-"status.item.controller.reset_time_unavailable" = "Zurücksetzungszeit nicht verfügbar";
+"status.item.controller.reset_value" = "%1$@";
+"status.item.controller.reset_time_unavailable" = "Zeit nicht verfügbar";
 "status.item.controller.remaining_balance" = "Verbleibendes Guthaben";
 "status.item.controller.official_link.2" = "Offizieller Link:";
 "status.item.controller.reading_quota" = "Kontingent wird gelesen…";

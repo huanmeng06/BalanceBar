@@ -293,7 +293,16 @@ final class OpenCodexRefreshCoordinator {
             let data: OpenCodexCardData
             switch result {
             case .success(let response):
-                data = .official(remaining: response.output.remaining, label: response.output.label, reset: response.output.reset, updatedAt: Date())
+                if let window = response.output.representativeWindow {
+                    data = .official(window: window, updatedAt: Date())
+                } else {
+                    data = .official(
+                        remaining: response.output.remaining,
+                        label: response.output.label,
+                        reset: response.output.reset,
+                        updatedAt: Date()
+                    )
+                }
             case .failure(.missingCredentials):
                 data = .unavailable(category: .quota, reason: tr(.keyOpenCodexRefreshCoordinatorQuotaUnavailableOfficialSignInCredentialsWereNotFound))
             case .failure:
