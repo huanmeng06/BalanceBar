@@ -1622,7 +1622,7 @@ enum ErrorCardLayout {
     static let subscriptionX = cardWidth - horizontalInset - subscriptionWidth
     // Keep the account marquee's transparent edge a few points before the
     // actual right-aligned subscription glyphs.
-    static let subscriptionTextSafetyGap: CGFloat = 4
+    static let subscriptionTextSafetyGap: CGFloat = 8
     // Geometry-only fallback used when the right-aligned subscription text has
     // not been measured yet. Runtime callers refine this to the text edge.
     static let accountWidthWithSubscription = subscriptionX - horizontalInset

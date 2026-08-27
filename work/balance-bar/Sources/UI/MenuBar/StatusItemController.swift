@@ -753,9 +753,86 @@ struct AccountEmailTextLayout: Equatable {
 
 final class AccountEmailTextField: NSTextField {
     var accountAccessibilityValue = ""
+    private var hoverTrackingArea: NSTrackingArea?
+    private var displayedText = ""
+    private var displayedFont = NSFont.systemFont(ofSize: 13)
+    private var displayedTextColor = NSColor.secondaryLabelColor
+
+    private(set) var isEmailHovered = false
+
+    var isUnderlined: Bool {
+        guard !displayedText.isEmpty else { return false }
+        return (attributedStringValue.attribute(
+            .underlineStyle,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSNumber)?.intValue == NSUnderlineStyle.single.rawValue
+    }
 
     override func accessibilityValue() -> String? {
         accountAccessibilityValue
+    }
+
+    override func updateTrackingAreas() {
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        super.updateTrackingAreas()
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        hoverTrackingArea = trackingArea
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        setEmailHovered(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        setEmailHovered(false)
+    }
+
+    /// Updates the rendered text while retaining the hover underline state.
+    /// The parent view calls this after every dynamic text or resize update.
+    func setDisplayedText(_ text: String, font: NSFont, textColor: NSColor) {
+        displayedText = text
+        displayedFont = font
+        displayedTextColor = textColor
+        applyDisplayedTextAttributes()
+    }
+
+    /// Test seam for the same state transition driven by AppKit mouse-enter
+    /// and mouse-exit events. Production hover handling uses the tracking area
+    /// above; this keeps the lifecycle testable without synthesizing a window
+    /// event or relying on a click.
+    func setHoveringForTesting(_ isHovering: Bool) {
+        setEmailHovered(isHovering)
+    }
+
+    private func setEmailHovered(_ isHovering: Bool) {
+        guard isEmailHovered != isHovering else { return }
+        isEmailHovered = isHovering
+        applyDisplayedTextAttributes()
+    }
+
+    private func applyDisplayedTextAttributes() {
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: displayedFont,
+            .foregroundColor: displayedTextColor
+        ]
+        if isEmailHovered {
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
+        attributedStringValue = NSAttributedString(
+            string: displayedText,
+            attributes: attributes
+        )
     }
 }
 
@@ -846,7 +923,11 @@ final class AccountEmailView: NSView {
             return
         }
         textLayout = nextLayout
-        emailLabel.stringValue = nextLayout.displayText
+        emailLabel.setDisplayedText(
+            nextLayout.displayText,
+            font: font,
+            textColor: emailLabel.textColor ?? .secondaryLabelColor
+        )
         updateAccessibilityAndTooltip()
     }
 }

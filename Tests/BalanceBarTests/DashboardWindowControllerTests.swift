@@ -1184,6 +1184,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(accountView.emailLabel.toolTip, longEmail)
         XCTAssertEqual(accountView.emailLabel.accessibilityLabel(), longEmail)
         XCTAssertEqual(accountView.emailLabel.accessibilityValue() as? String, longEmail)
+        XCTAssertFalse(accountLabel.isEmailHovered)
+        XCTAssertFalse(accountLabel.isUnderlined)
+        accountLabel.setHoveringForTesting(true)
+        XCTAssertTrue(accountLabel.isEmailHovered)
+        XCTAssertTrue(accountLabel.isUnderlined)
+        XCTAssertEqual(accountLabel.toolTip, longEmail)
+        accountLabel.setHoveringForTesting(false)
+        XCTAssertFalse(accountLabel.isEmailHovered)
+        XCTAssertFalse(accountLabel.isUnderlined)
         XCTAssertEqual(
             accountView.tooltipText(at: NSPoint(x: 1, y: accountView.bounds.midY)),
             longEmail
@@ -1237,6 +1246,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             subscriptionLabel.frame.maxX - subscriptionTextWidth - accountView.frame.maxX,
             OpenCodexCardLayout.subscriptionTextSafetyGap - 0.001
+        )
+        XCTAssertGreaterThanOrEqual(
+            OpenCodexCardLayout.subscriptionTextSafetyGap,
+            8
         )
         XCTAssertGreaterThan(accountView.frame.maxX, subscriptionLabel.frame.minX)
         XCTAssertEqual(subscriptionLabel.frame.maxX, overview.bounds.width - 14)
@@ -1415,9 +1428,13 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             updatedEmail
         )
 
+        view.emailLabel.setHoveringForTesting(true)
+        XCTAssertTrue(view.emailLabel.isUnderlined)
+
         view.setFrameSize(NSSize(width: 92, height: 18))
         view.layoutSubtreeIfNeeded()
         XCTAssertTrue(view.textLayout.isTruncated)
+        XCTAssertTrue(view.emailLabel.isUnderlined)
         XCTAssertLessThanOrEqual(
             view.textLayout.measuredTextWidth,
             view.bounds.width + 0.001
@@ -1425,6 +1442,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(view.frame.minX, initialFrame.minX)
         XCTAssertEqual(view.frame.minY, initialFrame.minY)
         XCTAssertEqual(view.frame.height, initialFrame.height)
+        view.emailLabel.setHoveringForTesting(false)
+        XCTAssertFalse(view.emailLabel.isUnderlined)
         XCTAssertNil(view.emailLabel.layer?.animation(forKey: AccountMarqueeView.animationKey))
     }
 
