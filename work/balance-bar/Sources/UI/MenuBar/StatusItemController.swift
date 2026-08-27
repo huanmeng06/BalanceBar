@@ -751,30 +751,24 @@ struct AccountEmailTextLayout: Equatable {
     }
 }
 
-private final class AccountEmailTooltipViewController: NSViewController {
-    private static let maximumTextWidth: CGFloat = 280
-    private static let minimumTextWidth: CGFloat = 160
-    private static let horizontalInset: CGFloat = 12
-    private static let verticalInset: CGFloat = 8
+struct AccountEmailTooltipLayout: Equatable {
+    static let maximumTextWidth: CGFloat = 280
+    static let minimumTextWidth: CGFloat = 160
+    static let textMeasurementSlack: CGFloat = 8
+    static let horizontalInset: CGFloat = 12
+    static let verticalInset: CGFloat = 8
 
-    private let email: String
+    let textWidth: CGFloat
+    let textHeight: CGFloat
+    let contentSize: NSSize
 
-    init(email: String) {
-        self.email = email
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func loadView() {
-        let font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize)
+    static func make(for email: String, font: NSFont) -> Self {
         let textWidth = min(
-            Self.maximumTextWidth,
+            maximumTextWidth,
             max(
-                Self.minimumTextWidth,
+                minimumTextWidth,
                 ceil(AccountMarqueeView.textWidth(of: email, font: font))
+                    + textMeasurementSlack
             )
         )
         let paragraphStyle = NSMutableParagraphStyle()
@@ -796,12 +790,39 @@ private final class AccountEmailTooltipViewController: NSViewController {
             ceil(font.ascender - font.descender + 2),
             ceil(measuredText.height)
         )
+        return Self(
+            textWidth: textWidth,
+            textHeight: textHeight,
+            contentSize: NSSize(
+                width: textWidth + horizontalInset * 2,
+                height: textHeight + verticalInset * 2
+            )
+        )
+    }
+}
+
+private final class AccountEmailTooltipViewController: NSViewController {
+
+    private let email: String
+
+    init(email: String) {
+        self.email = email
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        let font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize)
+        let layout = AccountEmailTooltipLayout.make(for: email, font: font)
         let view = NSView(
             frame: NSRect(
                 x: 0,
                 y: 0,
-                width: textWidth + Self.horizontalInset * 2,
-                height: textHeight + Self.verticalInset * 2
+                width: layout.contentSize.width,
+                height: layout.contentSize.height
             )
         )
         let label = NSTextField(wrappingLabelWithString: email)
@@ -811,15 +832,19 @@ private final class AccountEmailTooltipViewController: NSViewController {
         label.lineBreakMode = .byCharWrapping
         label.usesSingleLineMode = false
         label.maximumNumberOfLines = 0
+        label.preferredMaxLayoutWidth = layout.textWidth
         label.isEditable = false
         label.isSelectable = false
         label.drawsBackground = false
         label.isBordered = false
+        label.cell?.wraps = true
+        label.cell?.truncatesLastVisibleLine = false
+        label.cell?.lineBreakMode = .byCharWrapping
         label.frame = NSRect(
-            x: Self.horizontalInset,
-            y: Self.verticalInset,
-            width: textWidth,
-            height: textHeight
+            x: AccountEmailTooltipLayout.horizontalInset,
+            y: AccountEmailTooltipLayout.verticalInset,
+            width: layout.textWidth,
+            height: layout.textHeight
         )
         label.setAccessibilityRole(.staticText)
         label.setAccessibilityLabel(email)

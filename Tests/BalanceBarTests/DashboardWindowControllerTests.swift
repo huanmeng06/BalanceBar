@@ -1172,6 +1172,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(AccountEmailTextField.tooltipDelay, 0.15, accuracy: 0.001)
         XCTAssertFalse(accountLabel.isTooltipScheduled)
         XCTAssertFalse(accountLabel.isTooltipVisible)
+        let tooltipEmail = "huanmeng2048609305@163.com"
+        let tooltipFont = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize)
+        let tooltipLayout = AccountEmailTooltipLayout.make(
+            for: tooltipEmail,
+            font: tooltipFont
+        )
+        XCTAssertGreaterThanOrEqual(
+            tooltipLayout.textWidth,
+            AccountMarqueeView.textWidth(of: tooltipEmail, font: tooltipFont)
+                + AccountEmailTooltipLayout.textMeasurementSlack
+        )
+        XCTAssertGreaterThan(tooltipLayout.textHeight, 0)
         XCTAssertFalse(accountView.isMarqueeEnabled)
         XCTAssertEqual(accountView.fullEmail, longEmail)
         XCTAssertTrue(accountView.textLayout.isTruncated)
