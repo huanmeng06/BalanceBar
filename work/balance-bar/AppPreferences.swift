@@ -22,6 +22,33 @@ enum OfficialQuotaWindowPreference: String, CaseIterable, Equatable {
     }
 }
 
+enum MenuBarIconDisplayMode: String, CaseIterable, Equatable {
+    case alwaysVisible
+    case onlyWhileRunning
+
+    static let defaultValue: Self = .alwaysVisible
+}
+
+enum MenuBarIconDisplayDelay: String, CaseIterable, Equatable {
+    case tenSeconds
+    case thirtySeconds
+    case oneMinute
+    case twoMinutes
+    case threeMinutes
+
+    static let defaultValue: Self = .tenSeconds
+
+    var duration: TimeInterval {
+        switch self {
+        case .tenSeconds: return 10
+        case .thirtySeconds: return 30
+        case .oneMinute: return 60
+        case .twoMinutes: return 120
+        case .threeMinutes: return 180
+        }
+    }
+}
+
 enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
     case large
     case medium
@@ -79,6 +106,10 @@ final class AppPreferences {
     static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
     static let menuBarQuotaResetDisplayModeKey = "menuBarQuotaResetDisplayMode"
     static let menuBarQuotaResetDisplayModeDefault: OfficialQuotaResetDisplayMode = .defaultValue
+    static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"
+    static let menuBarIconDisplayModeDefault: MenuBarIconDisplayMode = .defaultValue
+    static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"
+    static let menuBarIconDisplayDelayDefault: MenuBarIconDisplayDelay = .defaultValue
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -147,6 +178,30 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaResetDisplayModeKey)
+        }
+    }
+    var menuBarIconDisplayMode: MenuBarIconDisplayMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarIconDisplayModeKey),
+                  let mode = MenuBarIconDisplayMode(rawValue: rawValue) else {
+                return Self.menuBarIconDisplayModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarIconDisplayModeKey)
+        }
+    }
+    var menuBarIconDisplayDelay: MenuBarIconDisplayDelay {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarIconDisplayDelayKey),
+                  let delay = MenuBarIconDisplayDelay(rawValue: rawValue) else {
+                return Self.menuBarIconDisplayDelayDefault
+            }
+            return delay
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarIconDisplayDelayKey)
         }
     }
     var updateChannel: UpdateChannel {

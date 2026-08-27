@@ -133,6 +133,313 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testMenuBarIconDisplayModeIsLocalizedFitsAndPersistsAcrossRefresh() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let cases: [(AppLanguage, String, String, [String])] = [
+            (
+                .simplifiedChinese,
+                "菜单栏图标显示",
+                "选择始终显示图标，或仅在任务运行时显示",
+                ["始终显示", "仅在运行时显示"]
+            ),
+            (
+                .traditionalChineseTaiwan,
+                "選單列圖示顯示",
+                "選擇始終顯示圖示，或僅在任務執行時顯示",
+                ["始終顯示", "僅在執行時顯示"]
+            ),
+            (
+                .traditionalChineseHongKong,
+                "選單列圖示顯示",
+                "選擇始終顯示圖示，或僅在任務執行時顯示",
+                ["始終顯示", "僅在執行時顯示"]
+            ),
+            (
+                .english,
+                "Menu Bar Icon Display",
+                "Choose to always show the icon, or only while a task is running",
+                ["Always Visible", "Only While Running"]
+            ),
+            (
+                .japanese,
+                "メニューバーアイコンの表示",
+                "アイコンを常に表示するか、タスク実行中のみ表示するかを選択",
+                ["常に表示", "実行中のみ表示"]
+            ),
+            (
+                .korean,
+                "메뉴 막대 아이콘 표시",
+                "아이콘을 항상 표시하거나 작업 실행 중에만 표시하도록 선택",
+                ["항상 표시", "실행 중에만 표시"]
+            ),
+            (
+                .spanish,
+                "Mostrar el icono de la barra de menús",
+                "Elige mostrar siempre el icono o solo mientras se ejecuta una tarea",
+                ["Siempre visible", "Solo durante la ejecución"]
+            ),
+            (
+                .german,
+                "Anzeige des Menüsymbols",
+                "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird",
+                ["Immer sichtbar", "Nur während der Ausführung"]
+            ),
+            (
+                .french,
+                "Affichage de l’icône de la barre des menus",
+                "Choisissez d’afficher l’icône toujours ou uniquement pendant l’exécution d’une tâche",
+                ["Toujours visible", "Uniquement pendant l’exécution"]
+            )
+        ]
+
+        for (language, title, subtitle, optionTitles) in cases {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.MenuBarIconDisplayMode.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let preferences = AppPreferences(defaults: defaults)
+            let relay = DashboardPreferencePageRelay()
+            relay.onMenuBarIconDisplayModeChanged = { mode in
+                preferences.menuBarIconDisplayMode = mode
+            }
+            let page = DashboardMenuBarPage().make(.init(
+                preferences: preferences,
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: relay,
+                statusItemVisibility: .unknown
+            ))
+
+            let popup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayModeIdentifier }
+            )
+            XCTAssertEqual(popup.itemTitles, optionTitles, "option titles for \(language)")
+            XCTAssertEqual(popup.indexOfSelectedItem, 0)
+            XCTAssertEqual(
+                popup.itemArray.compactMap { $0.representedObject as? String },
+                MenuBarIconDisplayMode.allCases.map(\.rawValue)
+            )
+            XCTAssertGreaterThanOrEqual(popup.fittingSize.width, 108)
+            XCTAssertGreaterThanOrEqual(
+                popup.constraints.first {
+                    $0.firstAttribute == .width && $0.relation == .greaterThanOrEqual
+                }?.constant ?? 0,
+                ceil(popup.fittingSize.width)
+            )
+
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            XCTAssertTrue(labels.contains { $0.stringValue == title }, "title for \(language)")
+            XCTAssertTrue(labels.contains { $0.stringValue == subtitle }, "subtitle for \(language)")
+
+            popup.selectItem(at: 1)
+            relay.menuBarIconDisplayMode(popup)
+            XCTAssertEqual(preferences.menuBarIconDisplayMode, .onlyWhileRunning)
+            XCTAssertEqual(
+                defaults.string(forKey: AppPreferences.menuBarIconDisplayModeKey),
+                MenuBarIconDisplayMode.onlyWhileRunning.rawValue
+            )
+
+            let rebuiltPage = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay(),
+                statusItemVisibility: .unknown
+            ))
+            let rebuiltPopup = try XCTUnwrap(
+                descendants(of: rebuiltPage)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayModeIdentifier }
+            )
+            XCTAssertEqual(rebuiltPopup.indexOfSelectedItem, 1, "reloaded selection for \(language)")
+        }
+    }
+
+    func testMenuBarIconDisplayDelaySelectorIsConditionalLocalizedFitsAndPersists() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        let languages: [AppLanguage] = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .english,
+            .japanese,
+            .korean,
+            .spanish,
+            .german,
+            .french
+        ]
+
+        for language in languages {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.MenuBarIconDisplayDelay.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let preferences = AppPreferences(defaults: defaults)
+            let snapshot = Snapshot.official(
+                "OpenAI",
+                72,
+                "7-day",
+                "2h",
+                Date(timeIntervalSince1970: 1)
+            )
+            let controller = DashboardMenuBarPage()
+            let relay = DashboardPreferencePageRelay()
+            relay.onMenuBarIconDisplayModeChanged = { mode in
+                preferences.menuBarIconDisplayMode = mode
+                controller.refresh(
+                    snapshot: snapshot,
+                    preferences: preferences,
+                    menuBarSnapshot: { $0 },
+                    iconImage: nil
+                )
+            }
+            relay.onMenuBarIconDisplayDelayChanged = { delay in
+                preferences.menuBarIconDisplayDelay = delay
+            }
+            let page = controller.make(.init(
+                preferences: preferences,
+                snapshot: snapshot,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: relay,
+                statusItemVisibility: .unknown
+            ))
+
+            let delayPopup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayDelayIdentifier }
+            )
+            let delayRow = try XCTUnwrap(delayPopup.superview)
+            XCTAssertTrue(
+                delayRow.isHidden,
+                "the delay selector is hidden while Always Visible is selected in (language)"
+            )
+            let displayRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
+            let displaySeparators = displayRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            XCTAssertGreaterThan(displaySeparators.count, 2)
+            XCTAssertFalse(
+                displaySeparators[1].isHidden,
+                "the divider before the hidden delay row remains visible in (language)"
+            )
+            XCTAssertTrue(
+                displaySeparators[2].isHidden,
+                "the divider after the hidden delay row is collapsed in (language)"
+            )
+            XCTAssertEqual(
+                delayPopup.itemTitles,
+                [
+                    tr(.keyDashboardMenuBarPageIconDisplayDelayTenSeconds, language: language),
+                    tr(.keyDashboardMenuBarPageIconDisplayDelayThirtySeconds, language: language),
+                    tr(.keyDashboardMenuBarPageIconDisplayDelayOneMinute, language: language),
+                    tr(.keyDashboardMenuBarPageIconDisplayDelayTwoMinutes, language: language),
+                    tr(.keyDashboardMenuBarPageIconDisplayDelayThreeMinutes, language: language)
+                ],
+                "delay option titles for (language)"
+            )
+            XCTAssertEqual(
+                delayPopup.itemArray.compactMap { $0.representedObject as? String },
+                MenuBarIconDisplayDelay.allCases.map(\.rawValue)
+            )
+            XCTAssertGreaterThanOrEqual(delayPopup.fittingSize.width, 108)
+            XCTAssertGreaterThanOrEqual(
+                delayPopup.constraints.first {
+                    $0.firstAttribute == .width && $0.relation == .greaterThanOrEqual
+                }?.constant ?? 0,
+                ceil(delayPopup.fittingSize.width)
+            )
+            let labels = descendants(of: delayRow).compactMap { $0 as? NSTextField }
+            XCTAssertTrue(
+                labels.contains {
+                    $0.stringValue == tr(
+                        .keyDashboardMenuBarPageIconDisplayDelay,
+                        language: language
+                    )
+                },
+                "delay title for (language)"
+            )
+            XCTAssertTrue(
+                labels.contains {
+                    $0.stringValue == tr(
+                        .keyDashboardMenuBarPageIconDisplayDelayDescription,
+                        language: language
+                    )
+                },
+                "delay subtitle for (language)"
+            )
+            XCTAssertFalse(delayPopup.itemTitles.contains { $0.hasPrefix("⟦") })
+
+            let modePopup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayModeIdentifier }
+            )
+            modePopup.selectItem(at: 1)
+            relay.menuBarIconDisplayMode(modePopup)
+            XCTAssertEqual(preferences.menuBarIconDisplayMode, .onlyWhileRunning)
+            XCTAssertFalse(
+                delayRow.isHidden,
+                "changing to Only While Running reveals the delay selector immediately in (language)"
+            )
+            XCTAssertTrue(
+                displaySeparators.allSatisfy { !$0.isHidden },
+                "all display dividers are visible with the delay selector in (language)"
+            )
+
+            delayPopup.selectItem(at: MenuBarIconDisplayDelay.allCases.count - 1)
+            relay.menuBarIconDisplayDelay(delayPopup)
+            XCTAssertEqual(preferences.menuBarIconDisplayDelay, .threeMinutes)
+            XCTAssertEqual(
+                defaults.string(forKey: AppPreferences.menuBarIconDisplayDelayKey),
+                MenuBarIconDisplayDelay.threeMinutes.rawValue
+            )
+
+            preferences.menuBarIconDisplayMode = .alwaysVisible
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+            XCTAssertTrue(delayRow.isHidden, "switching back hides the delay selector in (language)")
+            XCTAssertFalse(
+                displaySeparators[1].isHidden,
+                "the divider before the hidden delay row remains visible after switching back in (language)"
+            )
+            XCTAssertTrue(
+                displaySeparators[2].isHidden,
+                "the divider after the hidden delay row is collapsed after switching back in (language)"
+            )
+
+            let rebuiltPage = DashboardMenuBarPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                snapshot: snapshot,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                relay: DashboardPreferencePageRelay(),
+                statusItemVisibility: .unknown
+            ))
+            let rebuiltDelayPopup = try XCTUnwrap(
+                descendants(of: rebuiltPage)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayDelayIdentifier }
+            )
+            XCTAssertEqual(rebuiltDelayPopup.indexOfSelectedItem, 4)
+        }
+    }
+
     func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

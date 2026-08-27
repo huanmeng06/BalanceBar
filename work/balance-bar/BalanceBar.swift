@@ -157,7 +157,7 @@ private enum DevelopmentReleaseFixture {
 }
 
 struct PreferencesMigrationPlan {
-    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -227,6 +227,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
             onMenuBarFontSizePreset: { [weak self] preset in
                 self?.applyMenuBarFontSizePreset(preset)
+            },
+            onMenuBarIconDisplayModeChanged: { [weak self] mode in
+                self?.handleDashboardMenuBarIconDisplayModeChanged(mode)
+            },
+            onMenuBarIconDisplayDelayChanged: { [weak self] delay in
+                self?.handleDashboardMenuBarIconDisplayDelayChanged(delay)
             },
             onMenuBarQuotaWindowPreferenceChanged: { [weak self] preference in
                 self?.handleDashboardQuotaWindowPreferenceChanged(preference)
@@ -343,6 +349,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var menuBarQuotaResetDisplayMode: OfficialQuotaResetDisplayMode {
         get { preferences.menuBarQuotaResetDisplayMode }
         set { preferences.menuBarQuotaResetDisplayMode = newValue }
+    }
+    private var menuBarIconDisplayMode: MenuBarIconDisplayMode {
+        get { preferences.menuBarIconDisplayMode }
+        set { preferences.menuBarIconDisplayMode = newValue }
+    }
+    private var menuBarIconDisplayDelay: MenuBarIconDisplayDelay {
+        get { preferences.menuBarIconDisplayDelay }
+        set { preferences.menuBarIconDisplayDelay = newValue }
     }
     private var menuBarStatusItemWidthAdjustmentSession = MenuBarStatusItemWidthAdjustmentSession()
     private lazy var menuBarWidthAdjustmentCoalescer = MenuBarWidthDisplayCoalescer { [weak self] value in
@@ -598,6 +612,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showReset: showMenuBarReset,
             horizontalPadding: menuBarHorizontalPadding,
             keepMenuOpenAfterRefresh: keepMenuOpenAfterRefresh,
+            iconDisplayMode: menuBarIconDisplayMode,
+            iconDisplayDelay: menuBarIconDisplayDelay,
             iconOffsetX: CGFloat(menuBarIconOffsetX),
             iconOffsetY: CGFloat(menuBarIconOffsetY),
             amountOffsetX: CGFloat(menuBarAmountOffsetX),
@@ -941,6 +957,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateStatusItem(for: snapshot)
     }
 
+    private func handleDashboardMenuBarIconDisplayModeChanged(
+        _ mode: MenuBarIconDisplayMode
+    ) {
+        menuBarIconDisplayMode = mode
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarIconDisplayModeKey); value=\(mode.rawValue)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardMenuBarIconDisplayDelayChanged(
+        _ delay: MenuBarIconDisplayDelay
+    ) {
+        menuBarIconDisplayDelay = delay
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarIconDisplayDelayKey); value=\(delay.rawValue)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
+    }
+
     private func handleDashboardQuotaResetDisplayModeChanged(
         _ mode: OfficialQuotaResetDisplayMode
     ) {
@@ -1194,8 +1232,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         if activeClient == .codex {
             updateActiveUsageRefresh(running: running, wasRunning: wasRunning)
         }
-        guard force || stateChanged else { return }
-        updateStatusItemActivity()
+        if force || stateChanged {
+            updateStatusItemActivity()
+        } else {
+            // Feed each accepted monitor sample to the display policy so an
+            // idle transition is confirmed by stable polling, without
+            // changing the activity monitor's meaning or refresh cadence.
+            statusItemController.observeCodexTaskSample(running)
+        }
     }
 
     private func setClaudeTaskRunning(_ running: Bool, force: Bool = false) {

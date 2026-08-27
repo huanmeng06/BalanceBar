@@ -258,6 +258,17 @@
 "dashboard.menu.bar.page.preview" = "Aperçu";
 "dashboard.menu.bar.page.current_layout" = "Disposition actuelle";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barre des menus est mise à jour en temps réel avec les données du fournisseur";
+"dashboard.menu.bar.page.icon_display_mode" = "Affichage de l’icône de la barre des menus";
+"dashboard.menu.bar.page.icon_display_mode_description" = "Choisissez d’afficher l’icône toujours ou uniquement pendant l’exécution d’une tâche";
+"dashboard.menu.bar.page.icon_display_mode_always_visible" = "Toujours visible";
+"dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Uniquement pendant l’exécution";
+"dashboard.menu.bar.page.icon_display_delay" = "Délai de masquage après la tâche";
+"dashboard.menu.bar.page.icon_display_delay_description" = "Choisissez combien de temps garder l’icône visible après la fin d’une tâche";
+"dashboard.menu.bar.page.icon_display_delay_ten_seconds" = "10 secondes";
+"dashboard.menu.bar.page.icon_display_delay_thirty_seconds" = "30 secondes";
+"dashboard.menu.bar.page.icon_display_delay_one_minute" = "1 minute";
+"dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2 minutes";
+"dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3 minutes";
 "dashboard.menu.bar.page.quota_display_priority" = "Période de quota";
 "dashboard.menu.bar.page.quota_display_priority_description" = "Choisissez quelle période de quota afficher en priorité dans la barre des menus";
 "dashboard.menu.bar.page.five_hour_quota" = "Quota sur 5 heures";

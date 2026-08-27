@@ -291,6 +291,8 @@ final class DashboardMenuBarPage {
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
+    static let iconDisplayModeIdentifier = AppPreferences.menuBarIconDisplayModeKey
+    static let iconDisplayDelayIdentifier = AppPreferences.menuBarIconDisplayDelayKey
     static let quotaWindowPreferenceIdentifier = AppPreferences.menuBarQuotaWindowPreferenceKey
     static let quotaResetDisplayModeIdentifier = AppPreferences.menuBarQuotaResetDisplayModeKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
@@ -450,8 +452,14 @@ final class DashboardMenuBarPage {
     private weak var amountOffsetSlider: NSSlider?
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
+    private weak var iconDisplayModeControl: NSPopUpButton?
+    private weak var iconDisplayDelayControl: NSPopUpButton?
+    private weak var iconDisplayDelayRow: NSView?
     private weak var quotaWindowPreferenceControl: NSPopUpButton?
     private weak var quotaResetDisplayModeControl: NSPopUpButton?
+    private weak var displayRowsStack: NSStackView?
+    private weak var displayCardHeightConstraint: NSLayoutConstraint?
+    private var displaySeparators: [NSView] = []
     private var fontSizePresetTrackingObserver: NSObjectProtocol?
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
@@ -494,6 +502,9 @@ final class DashboardMenuBarPage {
 
     func make(_ input: Input) -> NSView {
         removeFontSizePresetTrackingObserver()
+        displayRowsStack = nil
+        displayCardHeightConstraint = nil
+        displaySeparators = []
         let previewContent = NSView()
         let preview: NSView
         if let glassPreview = makeDashboardGlassEffectView(contentView: previewContent, cornerRadius: 7) {
@@ -630,6 +641,16 @@ final class DashboardMenuBarPage {
             relay: input.relay
         )
         self.quotaWindowPreferenceControl = quotaWindowPreferenceControl
+        let iconDisplayModeControl = makeIconDisplayModeControl(
+            value: input.preferences.menuBarIconDisplayMode,
+            relay: input.relay
+        )
+        self.iconDisplayModeControl = iconDisplayModeControl
+        let iconDisplayDelayControl = makeIconDisplayDelayControl(
+            value: input.preferences.menuBarIconDisplayDelay,
+            relay: input.relay
+        )
+        self.iconDisplayDelayControl = iconDisplayDelayControl
         let quotaResetDisplayModeControl = makeQuotaResetDisplayModeControl(
             value: input.preferences.menuBarQuotaResetDisplayMode,
             relay: input.relay
@@ -685,6 +706,29 @@ final class DashboardMenuBarPage {
         self.overflowWarningLabel = overflowWarningLabel
         self.overflowWarningSettingsButton = overflowWarningSettingsButton
         self.overflowWarningRow = overflowWarningRow
+        let quotaWindowPreferenceRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
+            subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
+            control: quotaWindowPreferenceControl
+        )
+        let iconDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageIconDisplayMode),
+            subtitle: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
+            control: iconDisplayModeControl
+        )
+        let iconDisplayDelayRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageIconDisplayDelay),
+            subtitle: tr(.keyDashboardMenuBarPageIconDisplayDelayDescription),
+            control: iconDisplayDelayControl
+        )
+        let shouldShowIconDisplayDelay = input.preferences.menuBarIconDisplayMode == .onlyWhileRunning
+        iconDisplayDelayRow.isHidden = !shouldShowIconDisplayDelay
+        self.iconDisplayDelayRow = iconDisplayDelayRow
+        let quotaResetDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageQuotaResetDisplayMode),
+            subtitle: tr(.keyDashboardMenuBarPageQuotaResetDisplayModeDescription),
+            control: quotaResetDisplayModeControl
+        )
         let previewSection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPagePreview), rows: [
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuBarPageCurrentLayout),
@@ -708,21 +752,24 @@ final class DashboardMenuBarPage {
                 )
             ]
         )
-        let displaySection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPageDisplayItems), rows: [
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
-                subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
-                control: quotaWindowPreferenceControl
-            ),
-            DashboardSettingsComponents.makeSettingsRow(
-                tr(.keyDashboardMenuBarPageQuotaResetDisplayMode),
-                subtitle: tr(.keyDashboardMenuBarPageQuotaResetDisplayModeDescription),
-                control: quotaResetDisplayModeControl
-            ),
+        let displaySection = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyDashboardMenuBarPageDisplayItems),
+            rows: [
+            quotaWindowPreferenceRow,
+            iconDisplayModeRow,
+            iconDisplayDelayRow,
+            quotaResetDisplayModeRow,
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageAgentIcon), subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus), control: iconToggle),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageBalanceAmount), subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance), control: amountToggle),
             DashboardSettingsComponents.makeSettingsRow(tr(.keyDashboardMenuBarPageResetCountdown), subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable), control: resetToggle)
-        ])
+            ],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                self?.displayRowsStack = rowsStack
+                self?.displayCardHeightConstraint = cardHeightConstraint
+                self?.displaySeparators = separators
+                self?.updateIconDisplayDelayVisibility(showing: shouldShowIconDisplayDelay)
+            }
+        )
         let iconOffsetSummaryContent = Self.iconOffsetSummarySubtitle(
             y: input.preferences.menuBarIconOffsetY
         )
@@ -934,6 +981,27 @@ final class DashboardMenuBarPage {
             }
             quotaWindowPreferenceControl.synchronizeTitleAndSelectedItem()
         }
+        if let iconDisplayModeControl,
+           let selectedIndex = MenuBarIconDisplayMode.allCases.firstIndex(
+               of: preferences.menuBarIconDisplayMode
+           ) {
+            if iconDisplayModeControl.indexOfSelectedItem != selectedIndex {
+                iconDisplayModeControl.selectItem(at: selectedIndex)
+            }
+            iconDisplayModeControl.synchronizeTitleAndSelectedItem()
+        }
+        if let iconDisplayDelayControl,
+           let selectedIndex = MenuBarIconDisplayDelay.allCases.firstIndex(
+               of: preferences.menuBarIconDisplayDelay
+           ) {
+            if iconDisplayDelayControl.indexOfSelectedItem != selectedIndex {
+                iconDisplayDelayControl.selectItem(at: selectedIndex)
+            }
+            iconDisplayDelayControl.synchronizeTitleAndSelectedItem()
+        }
+        updateIconDisplayDelayVisibility(
+            showing: preferences.menuBarIconDisplayMode == .onlyWhileRunning
+        )
         if let quotaResetDisplayModeControl,
            let selectedIndex = OfficialQuotaResetDisplayMode.allCases.firstIndex(
                of: preferences.menuBarQuotaResetDisplayMode
@@ -1153,6 +1221,25 @@ final class DashboardMenuBarPage {
         )
     }
 
+    private func updateIconDisplayDelayVisibility(showing: Bool) {
+        iconDisplayDelayRow?.isHidden = !showing
+        // The delay row is between the icon mode and quota reset rows. Hidden
+        // arranged subviews do not remove independently-created separators, so
+        // keep the separator after the icon mode row and hide only the one
+        // that would otherwise leave a line in the collapsed row's position.
+        if displaySeparators.count > 2 {
+            displaySeparators[1].isHidden = false
+            displaySeparators[2].isHidden = !showing
+        }
+        guard let displayRowsStack, let displayCardHeightConstraint else { return }
+        displayRowsStack.layoutSubtreeIfNeeded()
+        displayCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: displayRowsStack,
+            separators: displaySeparators
+        )
+        displayRowsStack.superview?.needsLayout = true
+    }
+
     private func previewPrimaryInkBounds(in background: NSView) -> NSRect? {
         let frameSize = previewPrimary.bounds.size
         guard frameSize.width > 0, frameSize.height > 0,
@@ -1337,6 +1424,54 @@ final class DashboardMenuBarPage {
         return control
     }
 
+    private func makeIconDisplayModeControl(
+        value: MenuBarIconDisplayMode,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.iconDisplayModeIdentifier,
+            items: MenuBarIconDisplayMode.allCases.map { mode in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.iconDisplayModeLabel(mode),
+                    representedObject: mode.rawValue
+                )
+            },
+            selectedIndex: MenuBarIconDisplayMode.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarIconDisplayMode(_:))
+        )
+        let minimumWidth: CGFloat = 108
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuBarPageIconDisplayModeDescription)
+        return control
+    }
+
+    private func makeIconDisplayDelayControl(
+        value: MenuBarIconDisplayDelay,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.iconDisplayDelayIdentifier,
+            items: MenuBarIconDisplayDelay.allCases.map { delay in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.iconDisplayDelayLabel(delay),
+                    representedObject: delay.rawValue
+                )
+            },
+            selectedIndex: MenuBarIconDisplayDelay.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarIconDisplayDelay(_:))
+        )
+        let minimumWidth: CGFloat = 108
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuBarPageIconDisplayDelayDescription)
+        return control
+    }
+
     private func makeQuotaResetDisplayModeControl(
         value: OfficialQuotaResetDisplayMode,
         relay: DashboardPreferencePageRelay
@@ -1369,6 +1504,34 @@ final class DashboardMenuBarPage {
             return tr(.keyDashboardMenuBarPageFiveHourQuota)
         case .sevenDay:
             return tr(.keyDashboardMenuBarPageSevenDayQuota)
+        }
+    }
+
+    private static func iconDisplayModeLabel(
+        _ mode: MenuBarIconDisplayMode
+    ) -> String {
+        switch mode {
+        case .alwaysVisible:
+            return tr(.keyDashboardMenuBarPageIconDisplayModeAlwaysVisible)
+        case .onlyWhileRunning:
+            return tr(.keyDashboardMenuBarPageIconDisplayModeOnlyWhileRunning)
+        }
+    }
+
+    private static func iconDisplayDelayLabel(
+        _ delay: MenuBarIconDisplayDelay
+    ) -> String {
+        switch delay {
+        case .tenSeconds:
+            return tr(.keyDashboardMenuBarPageIconDisplayDelayTenSeconds)
+        case .thirtySeconds:
+            return tr(.keyDashboardMenuBarPageIconDisplayDelayThirtySeconds)
+        case .oneMinute:
+            return tr(.keyDashboardMenuBarPageIconDisplayDelayOneMinute)
+        case .twoMinutes:
+            return tr(.keyDashboardMenuBarPageIconDisplayDelayTwoMinutes)
+        case .threeMinutes:
+            return tr(.keyDashboardMenuBarPageIconDisplayDelayThreeMinutes)
         }
     }
 

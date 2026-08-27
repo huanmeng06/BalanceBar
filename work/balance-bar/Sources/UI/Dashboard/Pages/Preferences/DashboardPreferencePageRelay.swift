@@ -7,6 +7,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onInterval: ((String, TimeInterval) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
     var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
+    var onMenuBarIconDisplayModeChanged: ((MenuBarIconDisplayMode) -> Void)?
+    var onMenuBarIconDisplayDelayChanged: ((MenuBarIconDisplayDelay) -> Void)?
     var onMenuBarQuotaWindowPreferenceChanged: ((OfficialQuotaWindowPreference) -> Void)?
     var onMenuBarQuotaResetDisplayModeChanged: ((OfficialQuotaResetDisplayMode) -> Void)?
     var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
@@ -46,6 +48,18 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let preset = MenuBarFontSizePreset(rawValue: rawValue) else { return }
         onMenuBarFontSizePreset?(preset)
+    }
+
+    @objc func menuBarIconDisplayMode(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let mode = MenuBarIconDisplayMode(rawValue: rawValue) else { return }
+        onMenuBarIconDisplayModeChanged?(mode)
+    }
+
+    @objc func menuBarIconDisplayDelay(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let delay = MenuBarIconDisplayDelay(rawValue: rawValue) else { return }
+        onMenuBarIconDisplayDelayChanged?(delay)
     }
 
     @objc func menuBarQuotaWindowPreference(_ sender: NSPopUpButton) {

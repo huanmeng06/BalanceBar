@@ -258,6 +258,17 @@
 "dashboard.menu.bar.page.preview" = "預覽";
 "dashboard.menu.bar.page.current_layout" = "目前版面";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "選單列會隨供應商資料即時更新";
+"dashboard.menu.bar.page.icon_display_mode" = "選單列圖示顯示";
+"dashboard.menu.bar.page.icon_display_mode_description" = "選擇始終顯示圖示，或僅在任務執行時顯示";
+"dashboard.menu.bar.page.icon_display_mode_always_visible" = "始終顯示";
+"dashboard.menu.bar.page.icon_display_mode_only_while_running" = "僅在執行時顯示";
+"dashboard.menu.bar.page.icon_display_delay" = "任務結束後隱藏延遲";
+"dashboard.menu.bar.page.icon_display_delay_description" = "選擇任務結束後繼續顯示圖示的時間";
+"dashboard.menu.bar.page.icon_display_delay_ten_seconds" = "10 秒";
+"dashboard.menu.bar.page.icon_display_delay_thirty_seconds" = "30 秒";
+"dashboard.menu.bar.page.icon_display_delay_one_minute" = "1 分鐘";
+"dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2 分鐘";
+"dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3 分鐘";
 "dashboard.menu.bar.page.quota_display_priority" = "配額週期";
 "dashboard.menu.bar.page.quota_display_priority_description" = "選擇選單列中優先顯示的配額週期";
 "dashboard.menu.bar.page.five_hour_quota" = "5 小時配額";

@@ -464,6 +464,159 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(machine.needsAdditionalHiddenSample)
     }
 
+    func testMenuBarIconDisplayStateMachineDebouncesIdleAndRecoversImmediately() {
+        var machine = MenuBarIconDisplayStateMachine()
+        let start = Date(timeIntervalSince1970: 2_000)
+        let delay = MenuBarIconDisplayDelay.tenSeconds
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .alwaysVisible,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start
+            )
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 0)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start
+            ),
+            "the first idle sample must not hide the item"
+        )
+        XCTAssertTrue(machine.needsAdditionalIdleSample)
+        XCTAssertTrue(
+            machine.setMode(
+                .onlyWhileRunning,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(1)
+            ),
+            "reapplying the same mode must not count as another activity sample"
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 1)
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval / 2
+                )
+            ),
+            "a short-lived idle sample must keep the item visible"
+        )
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval
+                )
+            ),
+            "stable idle must remain visible during the selected grace period"
+        )
+        XCTAssertTrue(machine.shouldDisplay)
+        XCTAssertFalse(machine.needsAdditionalIdleSample)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(delay.duration - 0.01)
+            ),
+            "the item must not hide before the selected grace period elapses"
+        )
+        XCTAssertFalse(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(delay.duration)
+            ),
+            "stable idle must hide once the selected grace period elapses"
+        )
+        XCTAssertFalse(machine.shouldDisplay)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: true,
+                at: start.addingTimeInterval(0.4)
+            ),
+            "a running sample must show the item immediately"
+        )
+        XCTAssertTrue(machine.shouldDisplay)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(0.5)
+            ),
+            "a new idle candidate starts visible after recovery"
+        )
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .alwaysVisible,
+                displayDelay: delay,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(1)
+            )
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 0)
+    }
+
+    func testMenuBarIconDisplayDelayChangesCommitOnlyAnAlreadyStableIdleCandidate() {
+        var machine = MenuBarIconDisplayStateMachine()
+        let start = Date(timeIntervalSince1970: 3_000)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .threeMinutes,
+                codexTaskRunning: false,
+                at: start
+            )
+        )
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .threeMinutes,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval
+                )
+            )
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 2)
+
+        XCTAssertTrue(
+            machine.setDisplayDelay(
+                .threeMinutes,
+                at: start.addingTimeInterval(120)
+            ),
+            "changing the delay must not add an activity sample"
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 2)
+        XCTAssertFalse(
+            machine.setDisplayDelay(
+                .tenSeconds,
+                at: start.addingTimeInterval(120)
+            ),
+            "shortening the delay may commit an already stable elapsed candidate immediately"
+        )
+        XCTAssertFalse(machine.shouldDisplay)
+        XCTAssertEqual(machine.idleCandidateSampleCount, 2)
+    }
+
     @MainActor
     func testStatusItemStartIsIdempotentAndTeardownIsSafe() throws {
         let controller = StatusItemController(
@@ -563,6 +716,101 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
 
         controller.teardown()
+        controller.teardown()
+    }
+
+    @MainActor
+    func testStatusItemDisplayModeHidesInPlaceAndRestoresWhenCodexRuns() {
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true
+        )
+        let makeSettings: (MenuBarIconDisplayMode) -> StatusItemController.MenuBarSettings = { mode in
+            StatusItemController.MenuBarSettings(
+                showIcon: true,
+                showAmount: true,
+                showReset: true,
+                horizontalPadding: 6,
+                keepMenuOpenAfterRefresh: true,
+                iconDisplayMode: mode
+            )
+        }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: input,
+            settings: makeSettings(.onlyWhileRunning)
+        )
+        let installCount = controller.statusItemInstallCount
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(controller.isVisible, "the first idle sample remains visible")
+        RunLoop.main.run(
+            until: Date().addingTimeInterval(
+                MenuBarIconDisplayStateMachine.idleConfirmationInterval
+                + 0.05
+            )
+        )
+        controller.update(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: input,
+            settings: makeSettings(.onlyWhileRunning)
+        )
+        XCTAssertTrue(
+            controller.isVisible,
+            "a layout refresh must not count as a second idle activity sample"
+        )
+        controller.observeCodexTaskSample(
+            false,
+            at: Date().addingTimeInterval(MenuBarIconDisplayDelay.tenSeconds.duration + 1)
+        )
+        XCTAssertFalse(
+            controller.isVisible,
+            "stable idle hides the existing status item after its grace period"
+        )
+        XCTAssertEqual(controller.statusItemInstallCount, installCount)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(controller.isVisible, "Codex activity shows the existing status item immediately")
+        XCTAssertEqual(controller.statusItemInstallCount, installCount)
         controller.teardown()
     }
 

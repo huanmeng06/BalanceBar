@@ -258,6 +258,17 @@
 "dashboard.menu.bar.page.preview" = "Vista previa";
 "dashboard.menu.bar.page.current_layout" = "Diseño actual";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barra de menús se actualiza en tiempo real con los datos del proveedor";
+"dashboard.menu.bar.page.icon_display_mode" = "Mostrar el icono de la barra de menús";
+"dashboard.menu.bar.page.icon_display_mode_description" = "Elige mostrar siempre el icono o solo mientras se ejecuta una tarea";
+"dashboard.menu.bar.page.icon_display_mode_always_visible" = "Siempre visible";
+"dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Solo durante la ejecución";
+"dashboard.menu.bar.page.icon_display_delay" = "Retraso para ocultar tras la tarea";
+"dashboard.menu.bar.page.icon_display_delay_description" = "Elige cuánto tiempo mantener visible el icono después de terminar una tarea";
+"dashboard.menu.bar.page.icon_display_delay_ten_seconds" = "10 segundos";
+"dashboard.menu.bar.page.icon_display_delay_thirty_seconds" = "30 segundos";
+"dashboard.menu.bar.page.icon_display_delay_one_minute" = "1 minuto";
+"dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2 minutos";
+"dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3 minutos";
 "dashboard.menu.bar.page.quota_display_priority" = "Periodo de cuota";
 "dashboard.menu.bar.page.quota_display_priority_description" = "Elige qué periodo de cuota priorizar en la barra de menús";
 "dashboard.menu.bar.page.five_hour_quota" = "Cuota de 5 horas";
