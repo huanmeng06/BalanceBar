@@ -75,6 +75,16 @@ struct AppSemanticVersion: Comparable, Equatable, Hashable, CustomStringConverti
     /// deterministic for injected test releases.
     var normalizedAssetVersion: String { description }
 
+    /// BalanceBar publishes formal releases at the `a.b.0` boundary.
+    var isFormalRelease: Bool {
+        patch == 0 && prerelease.isEmpty && buildMetadata.isEmpty
+    }
+
+    /// BalanceBar's development releases increment only the patch component.
+    var isDevelopmentRelease: Bool {
+        patch > 0 && prerelease.isEmpty && buildMetadata.isEmpty
+    }
+
     static func < (lhs: AppSemanticVersion, rhs: AppSemanticVersion) -> Bool {
         let coreComparison: ComparisonResult
         if lhs.major != rhs.major {
@@ -161,12 +171,23 @@ enum UpdateChannel: String, CaseIterable, Equatable {
     case stable
     case beta
 
-    /// Stable is the default channel. Beta is deliberately opt-in, but keeps
-    /// the legacy behavior of accepting every non-draft GitHub Release,
-    /// including both stable and prerelease releases.
+    /// Stable is the default channel. BalanceBar's release convention uses
+    /// `a.b.0` for formal releases and `a.b.c` (where `c > 0`) for development
+    /// releases. GitHub's prerelease flag selects the corresponding channel;
+    /// malformed versions remain accepted long enough for UpdateService to
+    /// report its existing invalid-version fallback.
     func accepts(_ release: GitHubRelease) -> Bool {
         guard !release.draft else { return false }
-        return self == .beta || !release.prerelease
+        switch self {
+        case .stable:
+            guard !release.prerelease else { return false }
+            guard let version = release.version else { return true }
+            return version.isFormalRelease
+        case .beta:
+            guard release.prerelease else { return false }
+            guard let version = release.version else { return true }
+            return version.isDevelopmentRelease
+        }
     }
 }
 
