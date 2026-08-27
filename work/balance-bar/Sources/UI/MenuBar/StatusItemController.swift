@@ -194,7 +194,9 @@ final class AccountMarqueeView: NSView {
     static let animationKey = "BalanceBar.accountMarquee"
     static let defaultEdgeFadeWidth = AccountMarqueeLayout.defaultFadeWidth
     private static let minimumScrollDuration: TimeInterval = 5
-    private static let scrollPixelsPerSecond: CGFloat = 24
+    private static let minimumScrollSpeed: CGFloat = 36
+    private static let maximumScrollSpeed: CGFloat = 110
+    private static let scrollSpeedResponseLength: CGFloat = 240
     private static let minimumTravelDuration: TimeInterval = 1
     private static let scrollPauseDuration: TimeInterval = 0.8
     private static let scrollActivityInterval: TimeInterval = 1.0 / 30.0
@@ -425,16 +427,32 @@ final class AccountMarqueeView: NSView {
         ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
+    /// Makes long strings cross the viewport in a reasonable amount of time.
+    /// The saturating exponential curve increases speed quickly for the first
+    /// few hundred points of overflow, then approaches a readable upper bound
+    /// instead of growing linearly without limit.
+    static func scrollSpeed(forOverflow overflow: CGFloat) -> CGFloat {
+        let normalizedOverflow = max(0, overflow) / scrollSpeedResponseLength
+        let curveProgress = CGFloat(1 - exp(-Double(normalizedOverflow)))
+        return min(
+            maximumScrollSpeed,
+            minimumScrollSpeed
+                + (maximumScrollSpeed - minimumScrollSpeed) * curveProgress
+        )
+    }
+
     private static func fontSignature(for font: NSFont) -> String {
         "\(font.fontName)|\(font.pointSize)|\(font.fontDescriptor.symbolicTraits.rawValue)"
     }
 
     static func scrollAnimation(forOverflow overflow: CGFloat) -> CAKeyframeAnimation {
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
-        let offset = NSNumber(value: -Double(max(0, overflow)))
+        let safeOverflow = max(0, overflow)
+        let offset = NSNumber(value: -Double(safeOverflow))
+        let scrollSpeed = Self.scrollSpeed(forOverflow: safeOverflow)
         let travelDuration = max(
             minimumTravelDuration,
-            Double(max(0, overflow) / scrollPixelsPerSecond)
+            Double(safeOverflow / scrollSpeed)
         )
         let phaseDuration = 2 * scrollPauseDuration + 2 * travelDuration
         let pauseFraction = scrollPauseDuration / phaseDuration

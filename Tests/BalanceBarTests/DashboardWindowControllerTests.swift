@@ -1545,6 +1545,27 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertNil(view.layer?.mask)
     }
 
+    func testAccountMarqueeSpeedsUpForLongerOverflowWithConcaveCurve() {
+        let shortSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 120)
+        let mediumSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 480)
+        let longSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 1_200)
+        let extremeSpeed = AccountMarqueeView.scrollSpeed(forOverflow: 12_000)
+
+        XCTAssertGreaterThan(mediumSpeed, shortSpeed)
+        XCTAssertGreaterThan(longSpeed, mediumSpeed)
+        XCTAssertLessThan(
+            longSpeed - mediumSpeed,
+            mediumSpeed - shortSpeed
+        )
+        XCTAssertGreaterThan(extremeSpeed, longSpeed)
+        XCTAssertLessThanOrEqual(extremeSpeed, 110)
+
+        let shortAnimation = AccountMarqueeView.scrollAnimation(forOverflow: 120)
+        let longAnimation = AccountMarqueeView.scrollAnimation(forOverflow: 1_200)
+        XCTAssertGreaterThan(longAnimation.duration, shortAnimation.duration)
+        XCTAssertEqual(longAnimation.repeatCount, .infinity)
+    }
+
     func testLocalizedOverviewQuotaAndResetReuseAccountMarqueeLayout() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
