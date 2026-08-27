@@ -154,6 +154,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     private let installButton = NSButton(title: "", target: nil, action: nil)
     private var currentVersion: AppSemanticVersion?
     private var release: GitHubRelease?
+    private var releases: [GitHubRelease] = []
     private var appearanceObserver: NSObjectProtocol?
 
     init(
@@ -200,8 +201,14 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func show(currentVersion: AppSemanticVersion, release: GitHubRelease) {
+        show(currentVersion: currentVersion, releases: [release])
+    }
+
+    func show(currentVersion: AppSemanticVersion, releases: [GitHubRelease]) {
+        guard let release = releases.first else { return }
         self.currentVersion = currentVersion
         self.release = release
+        self.releases = releases
         guard let window else { return }
         adoptDashboardAppearance()
         if !window.isVisible {
@@ -416,7 +423,12 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         installButton.title = tr(.keyDashboardGeneralAndRefreshPagesDownloadAndInstall, language: language)
         githubButton.isEnabled = release.releaseURL != nil
 
-        let resolution = releaseNotesStore.resolve(release: release)
+        let resolution: ReleaseNotesResolution
+        if releases.count > 1 {
+            resolution = releaseNotesStore.resolve(releases: releases)
+        } else {
+            resolution = releaseNotesStore.resolve(release: release)
+        }
         let markdown = resolution.markdown
             ?? tr(.keyDashboardGeneralAndRefreshPagesReleaseNotesUnavailable, language: language)
         notesTextView.textStorage?.setAttributedString(

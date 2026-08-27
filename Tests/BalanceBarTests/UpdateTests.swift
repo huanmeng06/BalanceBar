@@ -277,6 +277,37 @@ final class UpdateTests: XCTestCase {
         XCTAssertNil(AppSemanticVersion("1.2.3-01"))
     }
 
+    func testUpdateChannelsFollowFormalAndDevelopmentVersionConvention() {
+        let stable = makeRelease(tag: "v1.2.0")
+        let patchReleaseMarkedStable = makeRelease(tag: "v1.2.3")
+        let beta = makeRelease(tag: "v1.2.3", prerelease: true)
+        let betaWithSemVerSuffix = makeRelease(tag: "v1.2.3-beta.1", prerelease: true)
+        let betaAtFormalBoundary = makeRelease(tag: "v1.3.0", prerelease: true)
+        let invalidStable = GitHubRelease(
+            tagName: "not-semver",
+            draft: false,
+            prerelease: false,
+            assets: []
+        )
+        let invalidBeta = GitHubRelease(
+            tagName: "not-semver-beta",
+            draft: false,
+            prerelease: true,
+            assets: []
+        )
+
+        XCTAssertTrue(UpdateChannel.stable.accepts(stable))
+        XCTAssertFalse(UpdateChannel.stable.accepts(patchReleaseMarkedStable))
+        XCTAssertFalse(UpdateChannel.stable.accepts(beta))
+        XCTAssertFalse(UpdateChannel.stable.accepts(betaWithSemVerSuffix))
+        XCTAssertFalse(UpdateChannel.beta.accepts(stable))
+        XCTAssertTrue(UpdateChannel.beta.accepts(beta))
+        XCTAssertFalse(UpdateChannel.beta.accepts(betaWithSemVerSuffix))
+        XCTAssertFalse(UpdateChannel.beta.accepts(betaAtFormalBoundary))
+        XCTAssertTrue(UpdateChannel.stable.accepts(invalidStable))
+        XCTAssertTrue(UpdateChannel.beta.accepts(invalidBeta))
+    }
+
     func testReleaseDecodingFiltersStableReleaseAssetByExactVersionName() throws {
         let body = releaseBody(
             tag: "v1.0.0",
@@ -613,7 +644,7 @@ final class UpdateTests: XCTestCase {
         )
         let available = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
-                return latest == AppSemanticVersion("1.0.5")
+                return latest == AppSemanticVersion("1.1.0")
             }
             return false
         }
@@ -628,8 +659,9 @@ final class UpdateTests: XCTestCase {
         fetcher.resolve(.success([
             makeRelease(tag: "v3.0.0", prerelease: true),
             makeRelease(tag: "v2.0.0", draft: true),
-            makeRelease(tag: "v1.0.4", assets: []),
-            makeRelease(tag: "v1.0.5"),
+            makeRelease(tag: "v1.0.4"),
+            makeRelease(tag: "v1.1.0"),
+            makeRelease(tag: "v1.2.0", assets: []),
             invalid
         ]))
 
@@ -637,7 +669,71 @@ final class UpdateTests: XCTestCase {
         guard case .available(_, let latest) = service.state else {
             return XCTFail("expected stable update to be available")
         }
-        XCTAssertEqual(latest, AppSemanticVersion("1.0.5"))
+        XCTAssertEqual(latest, AppSemanticVersion("1.1.0"))
+    }
+
+    func testUpdateServiceExposesOrderedStableReleaseNotesForJumpUpdate() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.release-notes-range")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.1.0",
+            updateChannel: .stable,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.3.0")
+            }
+            return false
+        }
+
+        let current = makeRelease(
+            tag: "v1.1.0",
+            assets: [],
+            body: "1.1.0 body"
+        )
+        let middle = makeRelease(
+            tag: "v1.2.0",
+            assets: [],
+            body: "1.2.0 body"
+        )
+        let duplicateMiddle = makeRelease(
+            tag: "1.2.0",
+            assets: [],
+            body: nil
+        )
+        let target = makeRelease(
+            tag: "v1.3.0",
+            body: "1.3.0 body"
+        )
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.4.0", assets: [], body: "outside body"),
+            duplicateMiddle,
+            target,
+            makeRelease(tag: "v1.2.1", body: "development body"),
+            current,
+            middle
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.map(\.tagName),
+            ["v1.3.0", "v1.2.0"]
+        )
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.compactMap(\.body),
+            ["1.3.0 body", "1.2.0 body"]
+        )
+        XCTAssertEqual(
+            service.availableReleaseForPresentation?.tagName,
+            "v1.3.0"
+        )
     }
 
     func testUpdateServiceBetaChannelCanSelectAValidPrereleaseAboveStable() throws {
@@ -654,7 +750,7 @@ final class UpdateTests: XCTestCase {
         )
         let available = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
-                return latest == AppSemanticVersion("2.0.0-beta.1")
+                return latest == AppSemanticVersion("2.0.1")
             }
             return false
         }
@@ -662,8 +758,8 @@ final class UpdateTests: XCTestCase {
         service.checkForUpdates()
         fetcher.resolve(.success([
             makeRelease(tag: "v1.1.0"),
-            makeRelease(tag: "v2.0.0-beta.1", prerelease: true),
-            makeRelease(tag: "v9.0.0", prerelease: true, assets: []),
+            makeRelease(tag: "v2.0.1", prerelease: true),
+            makeRelease(tag: "v9.0.1", prerelease: true, assets: []),
             makeRelease(tag: "v8.0.0", draft: true)
         ]))
 
@@ -671,7 +767,162 @@ final class UpdateTests: XCTestCase {
         guard case .available(_, let latest) = service.state else {
             return XCTFail("expected beta update to be available")
         }
-        XCTAssertEqual(latest, AppSemanticVersion("2.0.0-beta.1"))
+        XCTAssertEqual(latest, AppSemanticVersion("2.0.1"))
+    }
+
+    func testUpdateServiceBetaChannelRejectsFormalStableRelease() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.beta-stable-release")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.0.0",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.0.1")
+            }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.1.0", prerelease: false),
+            makeRelease(tag: "v1.0.1", prerelease: true),
+            makeRelease(tag: "v1.2.0", draft: true)
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(service.availableReleaseForPresentation?.tagName, "v1.0.1")
+    }
+
+    func testUpdateServiceBetaJumpNotesIncludeOnlyDevelopmentReleasesAndExcludeCurrentVersion() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.beta-release-notes-range")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.2.3",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.3.2")
+            }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.2.3", prerelease: true, body: "current beta body"),
+            makeRelease(tag: "v1.2.4", prerelease: true, body: "1.2.4 beta body"),
+            makeRelease(tag: "v1.2.5", prerelease: true, body: "1.2.5 beta body"),
+            makeRelease(tag: "v1.3.0", body: "stable boundary body"),
+            makeRelease(tag: "v1.3.1", prerelease: true, body: "1.3.1 beta body"),
+            makeRelease(tag: "v1.3.2", prerelease: true, body: "1.3.2 beta body"),
+            makeRelease(tag: "v1.4.0", prerelease: true, assets: [], body: "outside beta body")
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.map(\.tagName),
+            ["v1.3.2", "v1.3.1", "v1.2.5", "v1.2.4"]
+        )
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.compactMap(\.body),
+            [
+                "1.3.2 beta body",
+                "1.3.1 beta body",
+                "1.2.5 beta body",
+                "1.2.4 beta body"
+            ]
+        )
+    }
+
+    func testUpdateServiceStableChannelStopsAtStableReleaseBeforeBetaTarget() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.stable-release-notes-boundary")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.2.0",
+            updateChannel: .stable,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.3.0")
+            }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.2.4", prerelease: true, body: "1.2.4 beta body"),
+            makeRelease(tag: "v1.3.0", body: "1.3.0 stable body"),
+            makeRelease(tag: "v1.3.2", prerelease: true, body: "1.3.2 beta body"),
+            makeRelease(tag: "v1.3.1", prerelease: true, body: "1.3.1 beta body"),
+            makeRelease(tag: "v1.2.0", body: "current stable body")
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.map(\.tagName),
+            ["v1.3.0"]
+        )
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.compactMap(\.body),
+            ["1.3.0 stable body"]
+        )
+    }
+
+    func testUpdateServiceBetaNotesExcludeCurrentStableReleaseAtChannelBoundary() throws {
+        let fetcher = StubReleaseFetcher()
+        let queue = DispatchQueue(label: "UpdateTests.beta-current-channel-boundary")
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            downloader: StubDownloader(),
+            installer: StubInstaller(),
+            currentVersionString: "1.2.0",
+            updateChannel: .beta,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0
+        )
+        let available = waitForState(service, queue: queue) { state in
+            if case .available(_, let latest) = state {
+                return latest == AppSemanticVersion("1.2.4")
+            }
+            return false
+        }
+
+        service.checkForUpdates()
+        fetcher.resolve(.success([
+            makeRelease(tag: "v1.2.0", prerelease: false, body: "current stable body"),
+            makeRelease(tag: "v1.2.4", prerelease: true, body: "1.2.4 beta body")
+        ]))
+
+        wait(for: [available], timeout: 2)
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.map(\.tagName),
+            ["v1.2.4"]
+        )
+        XCTAssertEqual(
+            service.availableReleasesForPresentation.compactMap(\.body),
+            ["1.2.4 beta body"]
+        )
     }
 
     func testUpdateServiceIgnoresVersionPerChannelAndAllowsNewerRelease() throws {
@@ -744,12 +995,12 @@ final class UpdateTests: XCTestCase {
         )
         let betaAvailable = waitForState(betaService, queue: queue) { state in
             if case .available(_, let latest) = state {
-                return latest == AppSemanticVersion("1.1.0-beta.1")
+                return latest == AppSemanticVersion("1.1.1")
             }
             return false
         }
         betaService.checkForUpdates()
-        betaFetcher.resolve(.success([makeRelease(tag: "v1.1.0-beta.1", prerelease: true)]))
+        betaFetcher.resolve(.success([makeRelease(tag: "v1.1.1", prerelease: true)]))
         wait(for: [betaAvailable], timeout: 2)
         XCTAssertEqual(store.ignoredVersion(for: .beta), nil)
     }
@@ -768,11 +1019,11 @@ final class UpdateTests: XCTestCase {
             minimumCheckingDuration: 0
         )
         let stableRelease = makeRelease(tag: "v1.1.0")
-        let betaRelease = makeRelease(tag: "v2.0.0-beta.1", prerelease: true)
+        let betaRelease = makeRelease(tag: "v2.0.1", prerelease: true)
 
         let betaAvailable = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
-                return latest == AppSemanticVersion("2.0.0-beta.1")
+                return latest == AppSemanticVersion("2.0.1")
             }
             return false
         }
@@ -816,7 +1067,7 @@ final class UpdateTests: XCTestCase {
 
         let betaAvailableAgain = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
-                return latest == AppSemanticVersion("2.0.0-beta.1")
+                return latest == AppSemanticVersion("2.0.1")
             }
             return false
         }
@@ -855,7 +1106,7 @@ final class UpdateTests: XCTestCase {
             XCTFail("the new channel check should be visible as checking")
         }
 
-        fetcher.resolve(.success([makeRelease(tag: "v2.0.0-beta.1", prerelease: true)]))
+        fetcher.resolve(.success([makeRelease(tag: "v2.0.1", prerelease: true)]))
         queue.sync {}
         if case .checking = service.state {
             // The stale Beta response must not settle the new Stable check.
@@ -1099,7 +1350,7 @@ final class UpdateTests: XCTestCase {
             if case .failed(.assetUnavailable) = $0 { return true }
             return false
         }
-        fetcher.resolve(.success([makeRelease(tag: "v1.0.1", assets: [])]))
+        fetcher.resolve(.success([makeRelease(tag: "v1.1.0", assets: [])]))
         wait(for: [failure], timeout: 2)
     }
 
@@ -1116,11 +1367,12 @@ final class UpdateTests: XCTestCase {
             currentVersionString: "1.0.0",
             currentApplicationURL: URL(fileURLWithPath: "/tmp/BalanceBar-test.app"),
             currentBundleIdentifier: "com.huanmeng06.BalanceBar.app",
+            updateChannel: .beta,
             callbackQueue: queue,
             workQueue: queue
         )
         service.checkForUpdates()
-        fetcher.resolve(.success([makeRelease(tag: "v1.0.1")]))
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.1", prerelease: true)]))
         let available = waitForState(service, queue: queue) {
             if case .available = $0 { return true }
             return false
@@ -1165,11 +1417,12 @@ final class UpdateTests: XCTestCase {
             currentVersionString: "1.0.0",
             currentApplicationURL: URL(fileURLWithPath: "/tmp/BalanceBar-test.app"),
             currentBundleIdentifier: "com.huanmeng06.BalanceBar.app",
+            updateChannel: .beta,
             callbackQueue: queue,
             workQueue: queue
         )
         service.checkForUpdates()
-        fetcher.resolve(.success([makeRelease(tag: "v1.0.1")]))
+        fetcher.resolve(.success([makeRelease(tag: "v1.0.1", prerelease: true)]))
         let available = waitForState(service, queue: queue) {
             if case .available = $0 { return true }
             return false
@@ -1336,6 +1589,80 @@ final class UpdateTests: XCTestCase {
                 assets: []
             )),
             ReleaseNotesResolution(markdown: nil, source: .unavailable)
+        )
+    }
+
+    func testReleaseNotesCombineVersionedBodiesInSemVerOrderAndSkipUnavailableEntries() {
+        let store = ReleaseNotesStore()
+        let resolution = store.resolve(releases: [
+            GitHubRelease(
+                tagName: "v1.2.4",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "Older body"
+            ),
+            GitHubRelease(
+                tagName: "v1.2.5",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "  \n  "
+            ),
+            GitHubRelease(
+                tagName: "not-semver",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "Invalid body"
+            ),
+            GitHubRelease(
+                tagName: "v1.2.6",
+                draft: false,
+                prerelease: false,
+                assets: [],
+                body: "Newest body"
+            )
+        ])
+
+        XCTAssertEqual(resolution.source, .githubRelease)
+        XCTAssertEqual(
+            resolution.markdown,
+            "## 1.2.6\n\nNewest body\n\n---\n\n## 1.2.4\n\nOlder body"
+        )
+    }
+
+    func testUpdateNotesWindowRendersOnlyPresentedReleaseBodiesWithTargetFirst() throws {
+        let controller = UpdateNotesWindowController(onInstall: {})
+        defer { controller.close() }
+        controller.show(
+            currentVersion: try XCTUnwrap(AppSemanticVersion("1.2.3")),
+            releases: [
+                makeRelease(tag: "v1.2.5", body: "Target release body"),
+                makeRelease(tag: "v1.2.4", body: "Middle release body")
+            ]
+        )
+
+        let contentView = try XCTUnwrap(controller.window?.contentView)
+        let notesTextView = try XCTUnwrap(
+            updateTestDescendants(of: contentView)
+                .compactMap { $0 as? NSTextView }
+                .first
+        )
+        let rendered = notesTextView.string
+        let targetRange = (rendered as NSString).range(of: "1.2.5")
+        let middleRange = (rendered as NSString).range(of: "1.2.4")
+        XCTAssertNotEqual(targetRange.location, NSNotFound)
+        XCTAssertNotEqual(middleRange.location, NSNotFound)
+        XCTAssertLessThan(targetRange.location, middleRange.location)
+        XCTAssertEqual((rendered as NSString).range(of: "1.2.3").location, NSNotFound)
+        XCTAssertLessThan(
+            (rendered as NSString).range(of: "Target release body").location,
+            (rendered as NSString).range(of: "Middle release body").location
+        )
+        XCTAssertEqual(
+            (rendered as NSString).range(of: "Current release body").location,
+            NSNotFound
         )
     }
 
@@ -2318,7 +2645,7 @@ final class UpdateTests: XCTestCase {
             }
         }
         service.checkForUpdates()
-        fetcher.resolve(.success([makeRelease(tag: "v2.0.0-beta.1", prerelease: true)]))
+        fetcher.resolve(.success([makeRelease(tag: "v2.0.1", prerelease: true)]))
         wait(for: [betaAvailable], timeout: 2)
         XCTAssertEqual(updateButton.title, "下载并安装")
         XCTAssertTrue(updateButton.isEnabled)
@@ -2465,13 +2792,13 @@ final class UpdateTests: XCTestCase {
         service.updateChannel = .beta
         let betaAvailable = waitForState(service, queue: queue) { state in
             if case .available(_, let latest) = state {
-                return latest == AppSemanticVersion("2.0.0-beta.1")
+                return latest == AppSemanticVersion("2.0.1")
             }
             return false
         }
         service.checkForUpdatesIfNeeded(force: true)
         XCTAssertEqual(fetcher.requestCount, 2)
-        fetcher.resolve(.success([makeRelease(tag: "v2.0.0-beta.1", prerelease: true)]))
+        fetcher.resolve(.success([makeRelease(tag: "v2.0.1", prerelease: true)]))
         wait(for: [betaAvailable], timeout: 2)
         XCTAssertEqual(service.updateChannel, .beta)
     }
@@ -3335,7 +3662,8 @@ final class UpdateTests: XCTestCase {
         tag: String,
         draft: Bool = false,
         prerelease: Bool = false,
-        assets: [[String: Any]]? = nil
+        assets: [[String: Any]]? = nil,
+        body: String? = nil
     ) -> GitHubRelease {
         let version = AppSemanticVersion(tag)!
         let releaseAssets = assets.map { values in
@@ -3358,7 +3686,8 @@ final class UpdateTests: XCTestCase {
             tagName: tag,
             draft: draft,
             prerelease: prerelease,
-            assets: releaseAssets
+            assets: releaseAssets,
+            body: body
         )
     }
 
