@@ -101,15 +101,22 @@ final class ReleaseNotesTextView: NSTextView {
     }
 }
 
+private final class UpdateNotesFlexibleSpacerView: NSView {}
+
 private final class UpdateNotesButtonsStackView: NSStackView {
     private var availableWidth: CGFloat = .greatestFiniteMagnitude
 
     override func layout() {
         availableWidth = bounds.width
-        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        let visibleButtons = arrangedSubviews.filter {
+            !$0.isHidden && !($0 is UpdateNotesFlexibleSpacerView)
+        }
+        // The flexible spacer is visible only in the horizontal layout, where
+        // it separates the leading GitHub action from the trailing actions.
+        // Include its two adjacent gaps when deciding whether the actions fit.
         let fittingWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
             total + view.fittingSize.width
-        } + max(0, CGFloat(visibleButtons.count - 1)) * spacing
+        } + max(0, CGFloat(visibleButtons.count)) * spacing
         let wantsVertical = availableWidth > 0 && availableWidth + 0.5 < fittingWidth
         let desiredOrientation: NSUserInterfaceLayoutOrientation = wantsVertical ? .vertical : .horizontal
         if orientation != desiredOrientation {
@@ -117,11 +124,16 @@ private final class UpdateNotesButtonsStackView: NSStackView {
             alignment = wantsVertical ? .trailing : .centerY
             invalidateIntrinsicContentSize()
         }
+        arrangedSubviews
+            .first { $0 is UpdateNotesFlexibleSpacerView }?
+            .isHidden = desiredOrientation == .vertical
         super.layout()
     }
 
     override var intrinsicContentSize: NSSize {
-        let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
+        let visibleButtons = arrangedSubviews.filter {
+            !$0.isHidden && !($0 is UpdateNotesFlexibleSpacerView)
+        }
         guard !visibleButtons.isEmpty else { return .zero }
         if orientation == .vertical {
             return NSSize(
@@ -132,7 +144,7 @@ private final class UpdateNotesButtonsStackView: NSStackView {
         }
         return NSSize(
             width: visibleButtons.reduce(CGFloat(0)) { $0 + $1.fittingSize.width }
-                + max(0, CGFloat(visibleButtons.count - 1)) * spacing,
+                + max(0, CGFloat(visibleButtons.count)) * spacing,
             height: visibleButtons.map { $0.fittingSize.height }.max() ?? 0
         )
     }
@@ -318,10 +330,16 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         installButton.action = #selector(install(_:))
         installButton.keyEquivalent = "\r"
 
-        let buttons = UpdateNotesButtonsStackView(views: [laterButton, ignoreButton, githubButton, installButton])
+        let spacer = UpdateNotesFlexibleSpacerView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let buttons = UpdateNotesButtonsStackView(
+            views: [githubButton, spacer, laterButton, ignoreButton, installButton]
+        )
         buttons.identifier = NSUserInterfaceItemIdentifier("updateNotesButtons")
         buttons.orientation = .horizontal
         buttons.alignment = .centerY
+        buttons.distribution = .fill
         buttons.spacing = 8
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
@@ -350,7 +368,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
             scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor, constant: 24),
             scrollView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor, constant: -24),
             scrollView.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -16),
-            buttons.leadingAnchor.constraint(greaterThanOrEqualTo: contentSurface.leadingAnchor, constant: 24),
+            buttons.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor, constant: 24),
             buttons.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor, constant: -24),
             buttons.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor, constant: -20),
             buttons.heightAnchor.constraint(greaterThanOrEqualToConstant: 28)
