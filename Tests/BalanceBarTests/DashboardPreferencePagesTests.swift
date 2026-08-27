@@ -327,6 +327,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 delayRow.isHidden,
                 "the delay selector is hidden while Always Visible is selected in (language)"
             )
+            let displayRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
+            let displaySeparators = displayRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            XCTAssertGreaterThan(displaySeparators.count, 2)
+            XCTAssertFalse(
+                displaySeparators[1].isHidden,
+                "the divider before the hidden delay row remains visible in (language)"
+            )
+            XCTAssertTrue(
+                displaySeparators[2].isHidden,
+                "the divider after the hidden delay row is collapsed in (language)"
+            )
             XCTAssertEqual(
                 delayPopup.itemTitles,
                 [
@@ -382,6 +393,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 delayRow.isHidden,
                 "changing to Only While Running reveals the delay selector immediately in (language)"
             )
+            XCTAssertTrue(
+                displaySeparators.allSatisfy { !$0.isHidden },
+                "all display dividers are visible with the delay selector in (language)"
+            )
 
             delayPopup.selectItem(at: MenuBarIconDisplayDelay.allCases.count - 1)
             relay.menuBarIconDisplayDelay(delayPopup)
@@ -399,6 +414,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 iconImage: nil
             )
             XCTAssertTrue(delayRow.isHidden, "switching back hides the delay selector in (language)")
+            XCTAssertFalse(
+                displaySeparators[1].isHidden,
+                "the divider before the hidden delay row remains visible after switching back in (language)"
+            )
+            XCTAssertTrue(
+                displaySeparators[2].isHidden,
+                "the divider after the hidden delay row is collapsed after switching back in (language)"
+            )
 
             let rebuiltPage = DashboardMenuBarPage().make(.init(
                 preferences: AppPreferences(defaults: defaults),

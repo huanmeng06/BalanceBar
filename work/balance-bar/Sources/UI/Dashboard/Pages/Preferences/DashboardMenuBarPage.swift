@@ -1225,9 +1225,11 @@ final class DashboardMenuBarPage {
         iconDisplayDelayRow?.isHidden = !showing
         // The delay row is between the icon mode and quota reset rows. Hidden
         // arranged subviews do not remove independently-created separators, so
-        // hide the two adjacent separators along with the row.
-        for index in [1, 2] where index < displaySeparators.count {
-            displaySeparators[index].isHidden = !showing
+        // keep the separator after the icon mode row and hide only the one
+        // that would otherwise leave a line in the collapsed row's position.
+        if displaySeparators.count > 2 {
+            displaySeparators[1].isHidden = false
+            displaySeparators[2].isHidden = !showing
         }
         guard let displayRowsStack, let displayCardHeightConstraint else { return }
         displayRowsStack.layoutSubtreeIfNeeded()
