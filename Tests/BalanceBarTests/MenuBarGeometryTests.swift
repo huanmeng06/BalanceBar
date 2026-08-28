@@ -67,39 +67,45 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(MenuBarLayout.secondaryFont.pointSize, 10, accuracy: 0.001)
     }
 
-    func testLunaReserveMarkerUsesPrimaryPointSizeAndBaseline() {
-        let label = NSTextField(labelWithString: "45% 🌙")
-        let primaryFont = MenuBarLayout.primaryFont(size: 26)
-        label.font = primaryFont
+    func testLunaReserveMarkerUsesScaledPrimaryPointSizeAndBaselineAcrossPresets() {
+        for preset in MenuBarFontSizePreset.allCases {
+            let label = NSTextField(labelWithString: "45% 🌙")
+            let primaryFont = MenuBarLayout.primaryFont(size: CGFloat(preset.primarySize))
+            label.font = primaryFont
 
-        MenuBarLayout.applyPrimaryText("45% 🌙", to: label)
+            MenuBarLayout.applyPrimaryText("45% 🌙", to: label)
 
-        let attributed = label.attributedStringValue
-        let amountFont = attributed.attribute(
-            .font,
-            at: 0,
-            effectiveRange: nil
-        ) as? NSFont
-        let moonRange = (attributed.string as NSString).range(of: "🌙")
-        let moonFont = attributed.attribute(
-            .font,
-            at: moonRange.location,
-            effectiveRange: nil
-        ) as? NSFont
-        let moonBaseline = attributed.attribute(
-            .baselineOffset,
-            at: moonRange.location,
-            effectiveRange: nil
-        ) as? NSNumber
+            let attributed = label.attributedStringValue
+            let amountFont = attributed.attribute(
+                .font,
+                at: 0,
+                effectiveRange: nil
+            ) as? NSFont
+            let moonRange = (attributed.string as NSString).range(of: "🌙")
+            let moonFont = attributed.attribute(
+                .font,
+                at: moonRange.location,
+                effectiveRange: nil
+            ) as? NSFont
+            let moonBaseline = attributed.attribute(
+                .baselineOffset,
+                at: moonRange.location,
+                effectiveRange: nil
+            ) as? NSNumber
 
-        XCTAssertEqual(amountFont?.pointSize ?? .nan, primaryFont.pointSize, accuracy: 0.001)
-        XCTAssertEqual(moonFont?.pointSize ?? .nan, primaryFont.pointSize, accuracy: 0.001)
-        XCTAssertEqual(
-            moonBaseline?.doubleValue ?? .nan,
-            primaryFont.pointSize * MenuBarLayout.primaryMoonBaselineOffsetRatio,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(label.stringValue, "45% 🌙")
+            XCTAssertEqual(amountFont?.pointSize ?? .nan, primaryFont.pointSize, accuracy: 0.001)
+            XCTAssertEqual(
+                moonFont?.pointSize ?? .nan,
+                primaryFont.pointSize * MenuBarLayout.primaryMoonScale,
+                accuracy: 0.001
+            )
+            XCTAssertEqual(
+                moonBaseline?.doubleValue ?? .nan,
+                primaryFont.pointSize * MenuBarLayout.primaryMoonBaselineOffsetRatio,
+                accuracy: 0.001
+            )
+            XCTAssertEqual(label.stringValue, "45% 🌙")
+        }
     }
 
     func testSingleLinePrimaryAutomaticYOffsetOnlyAppliesToLargePreset() {

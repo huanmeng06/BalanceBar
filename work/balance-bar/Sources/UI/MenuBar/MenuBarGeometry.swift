@@ -147,18 +147,18 @@ enum MenuBarLayout {
         NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
     }
 
-    // Apple Color Emoji's moon glyph has a slightly different visual center
-    // from the percentage glyph at the same baseline. Keep the point size
-    // identical and apply only this optical correction so the two stay
-    // vertically aligned across the supported menu-bar font presets.
+    // Apple Color Emoji's moon glyph is visibly larger than the percentage
+    // glyph at the same logical point size. Keep its scale and baseline
+    // correction as independent optical controls across all font presets.
+    static let primaryMoonScale: CGFloat = 0.68
     static let primaryMoonBaselineOffsetRatio: CGFloat = -0.025
 
     /// Applies the compact primary amount as an attributed string so the
-    /// Reserve marker is rendered at the same logical point size and baseline
-    /// as the percentage. Apple Color Emoji is a fallback glyph rather than
-    /// part of the monospaced-digit font, so making that attribute explicit
-    /// keeps its metrics stable in both the real status item and the Dashboard
-    /// preview.
+    /// Reserve marker is rendered with an explicit optical scale and baseline
+    /// relative to the percentage. Apple Color Emoji is a fallback glyph
+    /// rather than part of the monospaced-digit font, so making that attribute
+    /// explicit keeps its metrics stable in both the real status item and the
+    /// Dashboard preview.
     static func applyPrimaryText(_ text: String, to label: NSTextField) {
         let font = label.font ?? primaryFont
         let attributed = NSMutableAttributedString(
@@ -168,7 +168,7 @@ enum MenuBarLayout {
         let moonRange = (text as NSString).range(of: "🌙", options: .backwards)
         if moonRange.location != NSNotFound {
             let moonFont = NSFont.systemFont(
-                ofSize: font.pointSize,
+                ofSize: font.pointSize * primaryMoonScale,
                 weight: .semibold
             )
             attributed.addAttributes(
