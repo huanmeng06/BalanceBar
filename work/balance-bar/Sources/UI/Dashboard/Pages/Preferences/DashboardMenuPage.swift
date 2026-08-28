@@ -1,6 +1,9 @@
 import AppKit
 
 final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
+    static let lunaReserveDisplayModeIdentifier = AppPreferences.menuLunaReserveDisplayModeKey
+    static let lunaReserveHideExhaustedQuotaIdentifier = AppPreferences.menuLunaReserveHideExhaustedQuotaKey
+
     struct Input {
         let preferences: AppPreferences
         let relay: DashboardPreferencePageRelay
@@ -9,6 +12,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     private weak var balanceDisplayThresholdField: NSTextField?
+    private weak var lunaReserveDisplayModeControl: NSPopUpButton?
+    private weak var lunaReserveHideExhaustedQuotaRow: NSView?
+    private weak var lunaReserveHideExhaustedQuotaSwitch: NSSwitch?
+    private weak var balanceDisplayRowsStack: NSStackView?
+    private weak var balanceDisplayCardHeightConstraint: NSLayoutConstraint?
+    private var balanceDisplaySeparators: [NSView] = []
     private var statusSubtitleLabel: NSTextField?
     private var statusLinksEditor: StatusLinksEditorHostingView?
     private weak var statusLinksRowsStack: NSStackView?
@@ -20,6 +29,35 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     func make(_ input: Input) -> NSView {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
         onBalanceDisplayThresholdChanged = input.onBalanceDisplayThresholdChanged
+        balanceDisplayRowsStack = nil
+        balanceDisplayCardHeightConstraint = nil
+        balanceDisplaySeparators = []
+
+        let lunaReserveDisplayModeControl = makeLunaReserveDisplayModeControl(
+            value: input.preferences.menuLunaReserveDisplayMode,
+            relay: input.relay
+        )
+        self.lunaReserveDisplayModeControl = lunaReserveDisplayModeControl
+
+        let lunaReserveHideExhaustedQuotaSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: Self.lunaReserveHideExhaustedQuotaIdentifier,
+            isOn: input.preferences.menuLunaReserveHideExhaustedQuota,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        self.lunaReserveHideExhaustedQuotaSwitch = lunaReserveHideExhaustedQuotaSwitch
+
+        let lunaReserveDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageLunaReserveDisplayMode),
+            subtitle: tr(.keyDashboardMenuPageLunaReserveDisplayModeDescription),
+            control: lunaReserveDisplayModeControl
+        )
+        let lunaReserveHideExhaustedQuotaRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuPageHideExhaustedQuota),
+            subtitle: tr(.keyDashboardMenuPageHideExhaustedQuotaDescription),
+            control: lunaReserveHideExhaustedQuotaSwitch
+        )
+        self.lunaReserveHideExhaustedQuotaRow = lunaReserveHideExhaustedQuotaRow
         statusLinksRowsStack = nil
         statusLinksCardHeightConstraint = nil
         statusLinksSeparators = []
@@ -49,12 +87,22 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let balanceDisplay = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuPageBalanceDisplay),
             rows: [
+                lunaReserveDisplayModeRow,
+                lunaReserveHideExhaustedQuotaRow,
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
                     subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
                     control: balanceDisplayThreshold
                 )
-            ]
+            ],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                self?.balanceDisplayRowsStack = rowsStack
+                self?.balanceDisplayCardHeightConstraint = cardHeightConstraint
+                self?.balanceDisplaySeparators = separators
+                self?.updateLunaReserveDisplayModeVisibility(
+                    input.preferences.menuLunaReserveDisplayMode
+                )
+            }
         )
 
         let quickSwitch = DashboardSettingsComponents.makeSwitch(
@@ -193,6 +241,26 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         onBalanceDisplayThresholdChanged?(normalized)
     }
 
+    func refresh(preferences: AppPreferences) {
+        balanceDisplayThresholdValue = preferences.balanceDisplayThreshold
+        balanceDisplayThresholdField?.stringValue = Self.formattedBalanceDisplayThreshold(
+            balanceDisplayThresholdValue
+        )
+        if let lunaReserveDisplayModeControl,
+           let selectedIndex = LunaReserveDisplayMode.allCases.firstIndex(
+               of: preferences.menuLunaReserveDisplayMode
+           ) {
+            if lunaReserveDisplayModeControl.indexOfSelectedItem != selectedIndex {
+                lunaReserveDisplayModeControl.selectItem(at: selectedIndex)
+            }
+            lunaReserveDisplayModeControl.synchronizeTitleAndSelectedItem()
+        }
+        lunaReserveHideExhaustedQuotaSwitch?.state = preferences.menuLunaReserveHideExhaustedQuota
+            ? .on
+            : .off
+        updateLunaReserveDisplayModeVisibility(preferences.menuLunaReserveDisplayMode)
+    }
+
     func updateStatusVisibility(_ visible: Bool, animated: Bool) {
         statusSubtitleLabel?.stringValue = visible
             ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2)
@@ -205,6 +273,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     func teardown() {
         balanceDisplayThresholdField?.delegate = nil
         balanceDisplayThresholdField = nil
+        lunaReserveDisplayModeControl = nil
+        lunaReserveHideExhaustedQuotaRow = nil
+        lunaReserveHideExhaustedQuotaSwitch = nil
+        balanceDisplayRowsStack = nil
+        balanceDisplayCardHeightConstraint = nil
+        balanceDisplaySeparators = []
         onBalanceDisplayThresholdChanged = nil
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
@@ -212,6 +286,72 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         statusLinksRowsStack = nil
         statusLinksCardHeightConstraint = nil
         statusLinksSeparators = []
+    }
+
+    private func updateLunaReserveDisplayModeVisibility(_ mode: LunaReserveDisplayMode) {
+        let shouldShowHideOption = mode == .whenQuotaExhausted
+        lunaReserveHideExhaustedQuotaRow?.isHidden = !shouldShowHideOption
+        lunaReserveHideExhaustedQuotaSwitch?.isEnabled = shouldShowHideOption
+        if balanceDisplaySeparators.count > 1 {
+            // When the dependent switch is hidden, keep the separator before
+            // the existing threshold row so the two visible settings remain
+            // visually grouped.
+            balanceDisplaySeparators[0].isHidden = !shouldShowHideOption
+            balanceDisplaySeparators[1].isHidden = false
+        }
+        updateBalanceDisplayLayout()
+    }
+
+    private func updateBalanceDisplayLayout() {
+        guard let balanceDisplayRowsStack,
+              let balanceDisplayCardHeightConstraint else { return }
+        // Do not force a pre-mount layout here. The page has not received its
+        // document width when this callback first runs, and asking an adaptive
+        // row to lay out at width zero would permanently select its dedicated
+        // (stacked-control) constraint set until the next rebuild.
+        balanceDisplayRowsStack.needsLayout = true
+        balanceDisplayCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: balanceDisplayRowsStack,
+            separators: balanceDisplaySeparators
+        )
+        balanceDisplayRowsStack.superview?.invalidateIntrinsicContentSize()
+        balanceDisplayRowsStack.superview?.needsLayout = true
+        balanceDisplayRowsStack.superview?.superview?.needsLayout = true
+    }
+
+    private func makeLunaReserveDisplayModeControl(
+        value: LunaReserveDisplayMode,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.lunaReserveDisplayModeIdentifier,
+            items: LunaReserveDisplayMode.allCases.map { mode in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.lunaReserveDisplayModeLabel(mode),
+                    representedObject: mode.rawValue
+                )
+            },
+            selectedIndex: LunaReserveDisplayMode.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.lunaReserveDisplayMode(_:))
+        )
+        let minimumWidth: CGFloat = 108
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuPageLunaReserveDisplayMode)
+        return control
+    }
+
+    private static func lunaReserveDisplayModeLabel(_ mode: LunaReserveDisplayMode) -> String {
+        switch mode {
+        case .disabled:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeDisabled)
+        case .whenQuotaExhausted:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeWhenQuotaExhausted)
+        case .always:
+            return tr(.keyDashboardMenuPageLunaReserveDisplayModeAlways)
+        }
     }
 
     private func updateStatusLinksLayout() {

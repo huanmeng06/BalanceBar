@@ -43,6 +43,7 @@ struct DashboardCompositionActions {
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
+    let onLunaReserveDisplayModeChanged: (LunaReserveDisplayMode) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
@@ -92,6 +93,7 @@ final class DashboardCompositionController {
             onMenuBarIconDisplayDelayChanged: actions.onMenuBarIconDisplayDelayChanged,
             onMenuBarQuotaWindowPreferenceChanged: actions.onMenuBarQuotaWindowPreferenceChanged,
             onMenuBarQuotaResetDisplayModeChanged: actions.onMenuBarQuotaResetDisplayModeChanged,
+            onLunaReserveDisplayModeChanged: actions.onLunaReserveDisplayModeChanged,
             onUpdateChannelChanged: actions.onUpdateChannelChanged,
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onOpenSystemMenuBarSettings: actions.onOpenSystemMenuBarSettings,
@@ -181,6 +183,11 @@ final class DashboardCompositionController {
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage()
         )
+    }
+
+    func refreshMenuPage() {
+        guard window?.isVisible == true, section == .menu else { return }
+        dashboardPreferencePages.refreshMenu()
     }
 
     /// Mirrors an already-rendered menu bar frame into the visible preview.

@@ -1542,6 +1542,42 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showOpenCCSwitchMenu: Bool
         let showOpenCodexMenu: Bool
         let showStatusMenu: Bool
+        let lunaReserveDisplayMode: LunaReserveDisplayMode
+        let lunaReserveHideExhaustedQuota: Bool
+
+        init(
+            openCodexCards: [OpenCodexModelCard],
+            openCodexState: OpenCodexRuntimeState?,
+            openCodexSwitchInFlight: Bool,
+            choices: [ProviderChoice],
+            quickSwitchSummaries: [String: String],
+            activeClient: AssistantClient,
+            openAIAccount: OpenAIAccountPresentation?,
+            statusLinks: [StatusLink],
+            showQuickSwitchMenu: Bool,
+            showOpenChatGPTMenu: Bool,
+            showOpenCCSwitchMenu: Bool,
+            showOpenCodexMenu: Bool,
+            showStatusMenu: Bool,
+            lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
+            lunaReserveHideExhaustedQuota: Bool = false
+        ) {
+            self.openCodexCards = openCodexCards
+            self.openCodexState = openCodexState
+            self.openCodexSwitchInFlight = openCodexSwitchInFlight
+            self.choices = choices
+            self.quickSwitchSummaries = quickSwitchSummaries
+            self.activeClient = activeClient
+            self.openAIAccount = openAIAccount
+            self.statusLinks = statusLinks
+            self.showQuickSwitchMenu = showQuickSwitchMenu
+            self.showOpenChatGPTMenu = showOpenChatGPTMenu
+            self.showOpenCCSwitchMenu = showOpenCCSwitchMenu
+            self.showOpenCodexMenu = showOpenCodexMenu
+            self.showStatusMenu = showStatusMenu
+            self.lunaReserveDisplayMode = lunaReserveDisplayMode
+            self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
+        }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
             lhs.openCodexCards == rhs.openCodexCards
@@ -1561,6 +1597,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
                 && lhs.showOpenCodexMenu == rhs.showOpenCodexMenu
                 && lhs.showStatusMenu == rhs.showStatusMenu
+                && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
+                && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
         }
     }
 
@@ -2776,9 +2814,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = snapshot.kind == .balance && snapshot.websiteURL != nil
         let isBalance = snapshot.kind == .balance
-        let officialQuotaWindows = snapshot.kind == .official
-            ? snapshot.officialQuotaWindowsForMenu
-            : []
+        let quotaPresentation = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+        )
+        let officialQuotaWindows = quotaPresentation.windows
+        let lunaReserve = quotaPresentation.lunaReserve
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
@@ -2790,8 +2831,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
             officialQuotaWindows: officialQuotaWindows,
-            includesLunaReserve: snapshot.kind == .official && snapshot.lunaReserve != nil,
-            includesLunaReserveProgress: snapshot.kind == .official && snapshot.lunaReserve?.remaining != nil
+            includesLunaReserve: snapshot.kind == .official && lunaReserve != nil,
+            includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -2859,7 +2900,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 view.addSubview(reset)
             }
-            if let lunaReserve = snapshot.lunaReserve,
+            if let lunaReserve,
                let row = layout.lunaReserveRow {
                 if let remaining = lunaReserve.remaining {
                     let progress = QuotaProgressView(percentage: remaining)

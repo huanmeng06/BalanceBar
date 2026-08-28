@@ -1271,7 +1271,7 @@ final class OpenCodexRepositoryTests: XCTestCase {
         }
     }
 
-    func testOfficialQuotaLayoutAddsReserveAsTheCompactBottomRow() {
+    func testOfficialQuotaLayoutPlacesReserveBetweenFiveHourAndSevenDayRows() {
         let windows = [
             OfficialQuotaWindow(
                 kind: .fiveHour,
@@ -1301,16 +1301,19 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(frames.quotaRows.count, 2)
         XCTAssertNotNil(frames.lunaReserveRow)
         XCTAssertEqual(frames.cardSize.height, 273)
-        XCTAssertEqual(frames.lunaReserveRow?.progress.minY, OpenCodexCardLayout.quotaBottomInset)
         XCTAssertEqual(
-            frames.quotaRows[1].progress.minY,
+            frames.lunaReserveRow?.progress.minY,
             OpenCodexCardLayout.quotaBottomInset
                 + OpenCodexCardLayout.quotaRowHeight
                 + OpenCodexCardLayout.quotaRowGap
         )
         XCTAssertEqual(
+            frames.quotaRows[1].progress.minY,
+            OpenCodexCardLayout.quotaBottomInset
+        )
+        XCTAssertEqual(
             frames.quotaRows[0].progress.minY,
-            frames.quotaRows[1].progress.minY
+            frames.lunaReserveRow!.progress.minY
                 + OpenCodexCardLayout.quotaRowHeight
                 + OpenCodexCardLayout.quotaRowGap
         )
@@ -1332,6 +1335,16 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(
             unavailableFrames.quotaRows[1].progress.minY,
             OpenCodexCardLayout.quotaBottomInset
+        )
+        XCTAssertEqual(
+            unavailableFrames.lunaReserveRow?.amount.minY,
+            OpenCodexCardLayout.quotaBottomInset
+                + OpenCodexCardLayout.quotaRowHeight
+                + OpenCodexCardLayout.quotaRowGap
+        )
+        XCTAssertEqual(
+            unavailableFrames.quotaRows[0].progress.minY,
+            unavailableFrames.lunaReserveRow!.amount.minY
                 + OpenCodexCardLayout.lunaReserveNoProgressRowHeight
                 + OpenCodexCardLayout.quotaRowGap
         )

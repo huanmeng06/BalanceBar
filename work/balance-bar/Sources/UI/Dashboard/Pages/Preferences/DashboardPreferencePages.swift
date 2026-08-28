@@ -14,6 +14,7 @@ struct DashboardPreferencePageActions {
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
+    let onLunaReserveDisplayModeChanged: (LunaReserveDisplayMode) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
@@ -54,6 +55,7 @@ final class DashboardPreferencePages {
         relay.onMenuBarIconDisplayDelayChanged = actions.onMenuBarIconDisplayDelayChanged
         relay.onMenuBarQuotaWindowPreferenceChanged = actions.onMenuBarQuotaWindowPreferenceChanged
         relay.onMenuBarQuotaResetDisplayModeChanged = actions.onMenuBarQuotaResetDisplayModeChanged
+        relay.onLunaReserveDisplayModeChanged = actions.onLunaReserveDisplayModeChanged
         relay.onUpdateChannelChanged = actions.onUpdateChannelChanged
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
         relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings
@@ -136,6 +138,10 @@ final class DashboardPreferencePages {
             iconImage: iconImage,
             statusItemVisibility: statusItemVisibility
         )
+    }
+
+    func refreshMenu() {
+        menuPage.refresh(preferences: preferences)
     }
 
     func updateMenuBarPreviewIcon(_ image: NSImage?) {

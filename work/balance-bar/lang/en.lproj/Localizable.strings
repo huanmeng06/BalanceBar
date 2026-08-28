@@ -318,6 +318,13 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "Adjust spacing from other menu bar icons: -10.0 pt narrower to +10.0 pt wider; default 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Enter an amount of at least 0.01 with up to two decimal places";
 "dashboard.menu.page.balance_display" = "Balance Display";
+"dashboard.menu.page.luna_reserve_display_mode" = "🌙 Luna Reserve Display";
+"dashboard.menu.page.luna_reserve_display_mode_description" = "Choose when Luna Reserve is shown in the menu";
+"dashboard.menu.page.luna_reserve_display_mode_disabled" = "Do not show";
+"dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "Show after quota is used up";
+"dashboard.menu.page.luna_reserve_display_mode_always" = "Always show";
+"dashboard.menu.page.hide_exhausted_quota" = "Hide used-up quotas";
+"dashboard.menu.page.hide_exhausted_quota_description" = "When enabled, zeroed quotas are hidden from the menu when 🌙 Luna Reserve is shown.";
 "dashboard.menu.page.low_balance_display_threshold" = "Low balance warning threshold";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "After a top-up, keep the progress bar red while the balance is below this amount";
 "dashboard.menu.page.dropdown_menu" = "Dropdown Menu";

@@ -318,6 +318,13 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "Abstand zu anderen Menüleistensymbolen anpassen: -10,0 pt schmaler bis +10,0 pt breiter; Standard: 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Einen Betrag von mindestens 0,01 mit bis zu zwei Dezimalstellen eingeben";
 "dashboard.menu.page.balance_display" = "Guthabenanzeige";
+"dashboard.menu.page.luna_reserve_display_mode" = "🌙 Luna Reserve-Anzeige";
+"dashboard.menu.page.luna_reserve_display_mode_description" = "Zeitpunkt für die Anzeige von Luna Reserve im Menü auswählen";
+"dashboard.menu.page.luna_reserve_display_mode_disabled" = "Nicht anzeigen";
+"dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "Nach Verbrauch des Kontingents anzeigen";
+"dashboard.menu.page.luna_reserve_display_mode_always" = "Immer anzeigen";
+"dashboard.menu.page.hide_exhausted_quota" = "Verbrauchte Kontingente ausblenden";
+"dashboard.menu.page.hide_exhausted_quota_description" = "Wenn aktiviert, werden Kontingente mit 0 %% im Menü ausgeblendet, sobald 🌙 Luna Reserve angezeigt wird.";
 "dashboard.menu.page.low_balance_display_threshold" = "Warnschwelle für niedriges Guthaben";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Nach einer Aufladung den Fortschrittsbalken rot halten, solange das Guthaben unter diesem Betrag liegt";
 "dashboard.menu.page.dropdown_menu" = "Dropdown-Menü";

@@ -186,6 +186,11 @@ struct OfficialQuotaWindow: Equatable {
     }
 }
 
+struct OfficialQuotaMenuPresentation: Equatable {
+    let windows: [OfficialQuotaWindow]
+    let lunaReserve: LunaReserveQuota?
+}
+
 enum OfficialQuotaResetFormatter {
     /// Format a valid future reset timestamp in the user's local calendar and
     /// time zone. The `j` template field delegates 12/24-hour preference to
@@ -386,6 +391,42 @@ struct Snapshot {
     var officialQuotaWindowsForMenu: [OfficialQuotaWindow] {
         let recognized = officialQuotaWindows.filter { $0.kind != .other }
         return recognized.isEmpty ? Array(officialQuotaWindows.prefix(1)) : recognized
+    }
+
+    /// Resolve the official quota rows shown in the status menu. This keeps
+    /// menu-only visibility preferences out of the snapshot and never changes
+    /// the source windows used by the Dashboard provider page.
+    func officialQuotaMenuPresentation(
+        lunaReserveDisplayMode: LunaReserveDisplayMode,
+        hideExhaustedQuota: Bool
+    ) -> OfficialQuotaMenuPresentation {
+        guard kind == .official else {
+            return OfficialQuotaMenuPresentation(windows: [], lunaReserve: nil)
+        }
+
+        let windows = officialQuotaWindowsForMenu
+        let hasExhaustedQuota = windows.contains {
+            $0.kind != .other && $0.remaining <= 0
+        }
+        let shouldShowLunaReserve: Bool
+        switch lunaReserveDisplayMode {
+        case .disabled:
+            shouldShowLunaReserve = false
+        case .whenQuotaExhausted:
+            shouldShowLunaReserve = hasExhaustedQuota && lunaReserve != nil
+        case .always:
+            shouldShowLunaReserve = lunaReserve != nil
+        }
+
+        let presentedWindows = shouldShowLunaReserve
+            && lunaReserveDisplayMode == .whenQuotaExhausted
+            && hideExhaustedQuota
+            ? windows.filter { $0.remaining > 0 }
+            : windows
+        return OfficialQuotaMenuPresentation(
+            windows: presentedWindows,
+            lunaReserve: shouldShowLunaReserve ? lunaReserve : nil
+        )
     }
 
     /// Resolve only the compact/menu-bar presentation from the real quota

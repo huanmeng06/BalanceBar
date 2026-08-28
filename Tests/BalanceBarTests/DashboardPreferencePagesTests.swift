@@ -790,6 +790,120 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(field.stringValue, "0.25")
     }
 
+    func testLunaReserveMenuDisplaySettingsLocalizePersistAndRevealExhaustedQuotaSwitch() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.LunaReserveDisplayMode.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuPage()
+        let relay = DashboardPreferencePageRelay()
+        var changedModes: [LunaReserveDisplayMode] = []
+        relay.onLunaReserveDisplayModeChanged = { mode in
+            changedModes.append(mode)
+            preferences.menuLunaReserveDisplayMode = mode
+            controller.refresh(preferences: preferences)
+        }
+        relay.onToggle = { identifier, enabled in
+            if identifier == AppPreferences.menuLunaReserveHideExhaustedQuotaKey {
+                preferences.menuLunaReserveHideExhaustedQuota = enabled
+            }
+        }
+
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: relay,
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+        let window = NSWindow(
+            contentRect: page.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        window.layoutIfNeeded()
+        defer {
+            window.contentView = nil
+            controller.teardown()
+        }
+
+        let displayModeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.lunaReserveDisplayModeIdentifier }
+        )
+        XCTAssertEqual(
+            displayModeControl.itemTitles,
+            ["不显示", "额度用完后显示", "始终显示"]
+        )
+        XCTAssertEqual(displayModeControl.indexOfSelectedItem, 2)
+        XCTAssertEqual(
+            displayModeControl.action,
+            #selector(DashboardPreferencePageRelay.lunaReserveDisplayMode(_:))
+        )
+
+        let displayModeRow = try XCTUnwrap(displayModeControl.superview)
+        let hideSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.lunaReserveHideExhaustedQuotaIdentifier }
+        )
+        let hideRow = try XCTUnwrap(hideSwitch.superview)
+        XCTAssertTrue(
+            descendants(of: displayModeRow).compactMap { $0 as? NSTextField }.contains {
+                $0.stringValue == "🌙 Luna Reserve显示方式"
+            }
+        )
+        XCTAssertTrue(
+            descendants(of: displayModeRow).compactMap { $0 as? NSTextField }.contains {
+                $0.stringValue == "选择 Luna Reserve 在菜单中的显示时机"
+            }
+        )
+        let thresholdField = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+        let thresholdRow = try XCTUnwrap(thresholdField.superview)
+        let rowsStack = try XCTUnwrap(displayModeRow.superview as? NSStackView)
+        XCTAssertEqual(
+            rowsStack.arrangedSubviews.filter { !($0 is NSBox) }.map(ObjectIdentifier.init),
+            [displayModeRow, hideRow, thresholdRow].map(ObjectIdentifier.init)
+        )
+        XCTAssertTrue(hideRow.isHidden)
+
+        displayModeControl.selectItem(at: 1)
+        relay.lunaReserveDisplayMode(displayModeControl)
+        XCTAssertEqual(changedModes, [.whenQuotaExhausted])
+        XCTAssertEqual(preferences.menuLunaReserveDisplayMode, .whenQuotaExhausted)
+        XCTAssertFalse(hideRow.isHidden)
+        XCTAssertEqual(hideSwitch.state, .off)
+
+        hideSwitch.state = .on
+        relay.toggle(hideSwitch)
+        XCTAssertTrue(preferences.menuLunaReserveHideExhaustedQuota)
+
+        displayModeControl.selectItem(at: 0)
+        relay.lunaReserveDisplayMode(displayModeControl)
+        XCTAssertEqual(changedModes, [.whenQuotaExhausted, .disabled])
+        XCTAssertTrue(hideRow.isHidden)
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuLunaReserveDisplayMode,
+            .disabled
+        )
+        XCTAssertTrue(AppPreferences(defaults: defaults).menuLunaReserveHideExhaustedQuota)
+    }
+
     func testMenuEntryRowsLocalizeSubtitlesAndPreserveControlsAcrossLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

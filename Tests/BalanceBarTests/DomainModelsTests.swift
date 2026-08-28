@@ -217,6 +217,110 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertTrue(snapshot.menuBarToolTip.contains(reserve.remainingText))
     }
 
+    func testOfficialQuotaMenuPresentationSupportsLunaReserveDisplayModesAndExhaustedHiding() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHourZero = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 0,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h",
+            durationSeconds: 18_000
+        )
+        let sevenDayRemaining = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 60,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "6d",
+            durationSeconds: 604_800
+        )
+        let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
+        let plusSnapshot = Snapshot.official(
+            "OpenAI",
+            60,
+            sevenDayRemaining.label,
+            sevenDayRemaining.reset,
+            date,
+            windows: [fiveHourZero, sevenDayRemaining],
+            lunaReserve: reserve
+        )
+
+        let disabled = plusSnapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .disabled,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(disabled.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(disabled.lunaReserve)
+
+        let threshold = plusSnapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .whenQuotaExhausted,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(threshold.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(threshold.lunaReserve, reserve)
+
+        let thresholdHiding = plusSnapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .whenQuotaExhausted,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(thresholdHiding.windows.map(\.kind), [.sevenDay])
+        XCTAssertEqual(thresholdHiding.lunaReserve, reserve)
+
+        let sevenDayZero = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 0,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "6d",
+            durationSeconds: 604_800
+        )
+        let bothExhausted = Snapshot.official(
+            "OpenAI",
+            0,
+            sevenDayZero.label,
+            sevenDayZero.reset,
+            date,
+            windows: [fiveHourZero, sevenDayZero],
+            lunaReserve: reserve
+        ).officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .whenQuotaExhausted,
+            hideExhaustedQuota: true
+        )
+        XCTAssertTrue(bothExhausted.windows.isEmpty)
+        XCTAssertEqual(bothExhausted.lunaReserve, reserve)
+
+        let proSevenDayZero = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 0,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "6d",
+            durationSeconds: 604_800
+        )
+        let pro = Snapshot.official(
+            "OpenAI",
+            0,
+            proSevenDayZero.label,
+            proSevenDayZero.reset,
+            date,
+            windows: [proSevenDayZero],
+            lunaReserve: reserve
+        ).officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .whenQuotaExhausted,
+            hideExhaustedQuota: true
+        )
+        XCTAssertTrue(pro.windows.isEmpty)
+        XCTAssertEqual(pro.lunaReserve, reserve)
+
+        let always = plusSnapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(always.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(always.lunaReserve, reserve)
+    }
+
     func testLunaReserveDemoModesKeepZeroAvailableAndUnavailableDistinct() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

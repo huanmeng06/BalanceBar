@@ -318,6 +318,13 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "调整与其他菜单栏图标的间距：-10.0 pt 更窄，+10.0 pt 更宽；默认 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "请输入大于等于 0.01 的金额，最多保留两位小数";
 "dashboard.menu.page.balance_display" = "余额显示";
+"dashboard.menu.page.luna_reserve_display_mode" = "🌙 Luna Reserve显示方式";
+"dashboard.menu.page.luna_reserve_display_mode_description" = "选择 Luna Reserve 在菜单中的显示时机";
+"dashboard.menu.page.luna_reserve_display_mode_disabled" = "不显示";
+"dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "额度用完后显示";
+"dashboard.menu.page.luna_reserve_display_mode_always" = "始终显示";
+"dashboard.menu.page.hide_exhausted_quota" = "隐藏已用完额度";
+"dashboard.menu.page.hide_exhausted_quota_description" = "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度。";
 "dashboard.menu.page.low_balance_display_threshold" = "低余额警示阈值";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "充值后若余额仍低于此金额，进度条继续显示为红色";
 "dashboard.menu.page.dropdown_menu" = "下拉菜单";

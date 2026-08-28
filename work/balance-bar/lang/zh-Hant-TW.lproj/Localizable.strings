@@ -318,6 +318,13 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "調整與其他選單列圖示的間距：-10.0 pt 更窄，+10.0 pt 更寬；預設 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "請輸入大於等於 0.01 的金額，最多保留兩位小數";
 "dashboard.menu.page.balance_display" = "餘額顯示";
+"dashboard.menu.page.luna_reserve_display_mode" = "🌙 Luna Reserve 顯示方式";
+"dashboard.menu.page.luna_reserve_display_mode_description" = "選擇 Luna Reserve 在選單中的顯示時機";
+"dashboard.menu.page.luna_reserve_display_mode_disabled" = "不顯示";
+"dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "額度用完後顯示";
+"dashboard.menu.page.luna_reserve_display_mode_always" = "始終顯示";
+"dashboard.menu.page.hide_exhausted_quota" = "隱藏已用完額度";
+"dashboard.menu.page.hide_exhausted_quota_description" = "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的額度。";
 "dashboard.menu.page.low_balance_display_threshold" = "低餘額警示門檻";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "儲值後若餘額仍低於此金額，進度條繼續顯示為紅色";
 "dashboard.menu.page.dropdown_menu" = "下拉選單";

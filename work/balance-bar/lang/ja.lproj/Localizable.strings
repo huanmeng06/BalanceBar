@@ -318,6 +318,13 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "他のメニューバーアイコンとの間隔を調整：-10.0 pt（狭く）～+10.0 pt（広く）、デフォルト 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "0.01 以上の金額を小数点以下 2 桁まで入力してください";
 "dashboard.menu.page.balance_display" = "残高表示";
+"dashboard.menu.page.luna_reserve_display_mode" = "🌙 Luna Reserve の表示方法";
+"dashboard.menu.page.luna_reserve_display_mode_description" = "メニューで Luna Reserve を表示するタイミングを選択";
+"dashboard.menu.page.luna_reserve_display_mode_disabled" = "表示しない";
+"dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "クォータ消費後に表示";
+"dashboard.menu.page.luna_reserve_display_mode_always" = "常に表示";
+"dashboard.menu.page.hide_exhausted_quota" = "使い切ったクォータを隠す";
+"dashboard.menu.page.hide_exhausted_quota_description" = "オンにすると、🌙 Luna Reserve の表示時に残り 0%% のクォータをメニューから隠します。";
 "dashboard.menu.page.low_balance_display_threshold" = "低残高の警告しきい値";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "チャージ後も残高がこの金額を下回っている間は、進捗バーを赤色で表示";
 "dashboard.menu.page.dropdown_menu" = "ドロップダウンメニュー";

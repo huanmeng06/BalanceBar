@@ -114,6 +114,32 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarQuotaResetDisplayMode, .both)
     }
 
+    func testMenuLunaReserveDisplayPreferencesDefaultPersistAndRejectUnknownMode() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuLunaReserveDisplayMode, .always)
+        XCTAssertFalse(preferences.menuLunaReserveHideExhaustedQuota)
+
+        preferences.menuLunaReserveDisplayMode = .whenQuotaExhausted
+        preferences.menuLunaReserveHideExhaustedQuota = true
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuLunaReserveDisplayModeKey),
+            LunaReserveDisplayMode.whenQuotaExhausted.rawValue
+        )
+        XCTAssertEqual(
+            defaults.bool(forKey: AppPreferences.menuLunaReserveHideExhaustedQuotaKey),
+            true
+        )
+
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.menuLunaReserveDisplayMode, .whenQuotaExhausted)
+        XCTAssertTrue(reloaded.menuLunaReserveHideExhaustedQuota)
+
+        defaults.set("unsupported", forKey: AppPreferences.menuLunaReserveDisplayModeKey)
+        XCTAssertEqual(preferences.menuLunaReserveDisplayMode, .always)
+    }
+
     func testMenuBarIconDisplayModeDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

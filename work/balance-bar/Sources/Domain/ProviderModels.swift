@@ -629,7 +629,7 @@ enum OpenCodexCardLayout {
         if category == .quota,
            recognizedWindowCount > 1 || includesLunaReserve {
             return expandedQuotaFrames(
-                windowCount: officialQuotaWindows.count,
+                windows: officialQuotaWindows,
                 includesAccount: includesAccount,
                 includesSubscription: includesSubscription,
                 subscriptionTextWidth: subscriptionTextWidth,
@@ -711,13 +711,14 @@ enum OpenCodexCardLayout {
     }
 
     private static func expandedQuotaFrames(
-        windowCount: Int,
+        windows: [OfficialQuotaWindow],
         includesAccount: Bool,
         includesSubscription: Bool,
         subscriptionTextWidth: CGFloat?,
         includesLunaReserve: Bool,
         includesLunaReserveProgress: Bool
     ) -> OpenCodexCardFrames {
+        let windowCount = windows.count
         let rowHeight = quotaRowHeight
         let rowGap = quotaRowGap
         let bottomInset = quotaBottomInset
@@ -738,10 +739,26 @@ enum OpenCodexCardLayout {
         let accountWidth = hasSubscription
             ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
             : contentWidth
-        let standardRowsBaseY = bottomInset + reserveRowHeight + reserveGap
-        let rows = (0..<windowCount).map { index in
-            let y = standardRowsBaseY
+        let reserveInsertionIndex: Int? = {
+            guard includesLunaReserve else { return nil }
+            guard let fiveHourIndex = windows.firstIndex(where: { $0.kind == .fiveHour }) else {
+                // Pro accounts currently expose only the 7-day window, so the
+                // Reserve belongs immediately above that first standard row.
+                return nil
+            }
+            return fiveHourIndex
+        }()
+        let reserveRowsBelow: Int = {
+            guard includesLunaReserve else { return 0 }
+            guard let reserveInsertionIndex else { return windowCount }
+            return windowCount - reserveInsertionIndex - 1
+        }()
+        let rows = windows.enumerated().map { index, _ in
+            let yWithoutReserve = bottomInset
                 + CGFloat(windowCount - 1 - index) * (rowHeight + rowGap)
+            let isAboveReserve = reserveInsertionIndex.map { index <= $0 } ?? false
+            let y = yWithoutReserve
+                + (isAboveReserve ? reserveRowHeight + reserveGap : 0)
             return OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
                     x: horizontalInset,
@@ -779,26 +796,35 @@ enum OpenCodexCardLayout {
             ? OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
                     x: horizontalInset,
-                    y: bottomInset + quotaDetailOffset - reserveContentShift,
+                    y: bottomInset
+                        + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
+                        + quotaDetailOffset
+                        - reserveContentShift,
                     width: 128,
                     height: quotaDetailHeight
                 ),
                 reset: CGRect(
                     x: horizontalInset,
-                    y: bottomInset + quotaResetOffset - reserveContentShift,
+                    y: bottomInset
+                        + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
+                        + quotaResetOffset
+                        - reserveContentShift,
                     width: 128,
                     height: quotaResetHeight
                 ),
                 amount: CGRect(
                     x: amountX,
-                    y: bottomInset + max(0, quotaAmountOffset - reserveContentShift),
+                    y: bottomInset
+                        + CGFloat(reserveRowsBelow) * (rowHeight + rowGap)
+                        + max(0, quotaAmountOffset - reserveContentShift),
                     width: amountWidth,
                     height: reserveAmountHeight
                 ),
                 progress: includesLunaReserveProgress
                     ? CGRect(
                         x: horizontalInset,
-                        y: bottomInset,
+                        y: bottomInset
+                            + CGFloat(reserveRowsBelow) * (rowHeight + rowGap),
                         width: contentWidth,
                         height: quotaProgressHeight
                     )
