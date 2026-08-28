@@ -1097,6 +1097,23 @@ final class AppDelegateCompositionTests: XCTestCase {
             windows: [fiveHour, sevenDay],
             lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h")
         )
+        let exhaustedSevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 0,
+            label: sevenDay.label,
+            daysText: sevenDay.daysText,
+            reset: sevenDay.reset,
+            durationSeconds: sevenDay.durationSeconds
+        )
+        let exhaustedSnapshot = Snapshot.official(
+            "OpenAI",
+            exhaustedSevenDay.remaining,
+            exhaustedSevenDay.label,
+            exhaustedSevenDay.reset,
+            date,
+            windows: [fiveHour, exhaustedSevenDay],
+            lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h")
+        )
         func settings(
             autoSwitch: Bool,
             resetTimeMode: LunaReserveResetTimeMode
@@ -1120,11 +1137,11 @@ final class AppDelegateCompositionTests: XCTestCase {
             menuInput: input,
             settings: settings(autoSwitch: true, resetTimeMode: .lunaReserve)
         )
-        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "61% 🌙")
-        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "2h")
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "45%")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "7d")
 
         controller.update(
-            snapshot: snapshot,
+            snapshot: exhaustedSnapshot,
             refreshDate: nil,
             menuInput: input,
             settings: settings(autoSwitch: true, resetTimeMode: .originalQuota)

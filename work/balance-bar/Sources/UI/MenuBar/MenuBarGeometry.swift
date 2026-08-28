@@ -146,6 +146,42 @@ enum MenuBarLayout {
     static func secondaryFont(size: CGFloat) -> NSFont {
         NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
     }
+
+    // Apple Color Emoji's moon glyph has a slightly different visual center
+    // from the percentage glyph at the same baseline. Keep the point size
+    // identical and apply only this optical correction so the two stay
+    // vertically aligned across the supported menu-bar font presets.
+    static let primaryMoonBaselineOffsetRatio: CGFloat = -0.025
+
+    /// Applies the compact primary amount as an attributed string so the
+    /// Reserve marker is rendered at the same logical point size and baseline
+    /// as the percentage. Apple Color Emoji is a fallback glyph rather than
+    /// part of the monospaced-digit font, so making that attribute explicit
+    /// keeps its metrics stable in both the real status item and the Dashboard
+    /// preview.
+    static func applyPrimaryText(_ text: String, to label: NSTextField) {
+        let font = label.font ?? primaryFont
+        let attributed = NSMutableAttributedString(
+            string: text,
+            attributes: [.font: font]
+        )
+        let moonRange = (text as NSString).range(of: "🌙", options: .backwards)
+        if moonRange.location != NSNotFound {
+            let moonFont = NSFont.systemFont(
+                ofSize: font.pointSize,
+                weight: .semibold
+            )
+            attributed.addAttributes(
+                [
+                    .font: moonFont,
+                    .baselineOffset: font.pointSize * primaryMoonBaselineOffsetRatio
+                ],
+                range: moonRange
+            )
+        }
+        label.attributedStringValue = attributed
+    }
+
     static let iconSlotWidth: CGFloat = 18
     static let iconTextSpacing: CGFloat = 6
     static let textRowSpacing: CGFloat = -2
@@ -235,6 +271,7 @@ enum MenuBarLayout {
             .map { preset -> CGFloat in
                 let label = NSTextField(labelWithString: primaryText)
                 label.font = primaryFont(size: CGFloat(preset.primarySize))
+                applyPrimaryText(primaryText, to: label)
                 let geometry = geometry(
                     primarySize: label.intrinsicContentSize,
                     secondarySize: .zero,
@@ -527,6 +564,7 @@ enum MenuBarLayout {
         } ?? .large
         let referenceLabel = NSTextField(labelWithString: primaryText)
         referenceLabel.font = primaryFont(size: CGFloat(referencePreset.primarySize))
+        applyPrimaryText(primaryText, to: referenceLabel)
         let referenceGeometry = geometry(
             primarySize: referenceLabel.intrinsicContentSize,
             secondarySize: .zero,

@@ -1015,7 +1015,7 @@ final class DashboardMenuBarPage {
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             resolving: menuBarSnapshot
         )
-        previewPrimary.stringValue = presentation.primary
+        MenuBarLayout.applyPrimaryText(presentation.primary, to: previewPrimary)
         previewSecondary.stringValue = presentation.secondary
         let hasSecondary = presentation.hasSecondary
         let geometry = MenuBarLayout.geometry(

@@ -501,6 +501,23 @@ final class DomainModelsTests: XCTestCase {
             windows: [sevenDay, fiveHour],
             lunaReserve: reserve
         )
+        let exhaustedFiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 0,
+            label: fiveHour.label,
+            daysText: fiveHour.daysText,
+            reset: fiveHour.reset,
+            durationSeconds: fiveHour.durationSeconds
+        )
+        let exhaustedSnapshot = Snapshot.official(
+            "OpenAI",
+            sevenDay.remaining,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [sevenDay, exhaustedFiveHour],
+            lunaReserve: reserve
+        )
 
         let normal = snapshot.menuBarSnapshot(preferredQuotaWindow: .fiveHour)
         XCTAssertEqual(normal.amount, fiveHour.remaining)
@@ -514,7 +531,14 @@ final class DomainModelsTests: XCTestCase {
             fiveHour.reset
         )
 
-        let reservePresentation = snapshot.menuBarSnapshot(
+        let normalWithAutoSwitchEnabled = snapshot.menuBarSnapshot(
+            preferredQuotaWindow: .fiveHour,
+            automaticallyUseLunaReserve: true
+        )
+        XCTAssertEqual(normalWithAutoSwitchEnabled.menuBarPrimary, "80%")
+        XCTAssertFalse(normalWithAutoSwitchEnabled.menuBarUsesLunaReserve)
+
+        let reservePresentation = exhaustedSnapshot.menuBarSnapshot(
             preferredQuotaWindow: .fiveHour,
             automaticallyUseLunaReserve: true
         )
@@ -538,7 +562,7 @@ final class DomainModelsTests: XCTestCase {
             fiveHour.reset
         )
 
-        let weeklyOriginalReset = snapshot.menuBarSnapshot(
+        let weeklyOriginalReset = exhaustedSnapshot.menuBarSnapshot(
             preferredQuotaWindow: .sevenDay,
             automaticallyUseLunaReserve: true
         )
@@ -553,7 +577,7 @@ final class DomainModelsTests: XCTestCase {
         )
     }
 
-    func testMenuBarAutoSwitchRequiresUsableReserveAndAllowsZeroRemainingAndSevenDayOnlyPlans() {
+    func testMenuBarAutoSwitchRequiresExhaustedOriginalQuotaAndUsableReserve() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let fiveHour = OfficialQuotaWindow(
             kind: .fiveHour,
@@ -571,52 +595,79 @@ final class DomainModelsTests: XCTestCase {
             reset: "7d",
             durationSeconds: 604_800
         )
-        func snapshot(with reserve: LunaReserveQuota?) -> Snapshot {
-            Snapshot.official(
+        func snapshot(
+            with reserve: LunaReserveQuota?,
+            windows: [OfficialQuotaWindow] = [fiveHour, sevenDay]
+        ) -> Snapshot {
+            let displayWindow = windows.first(where: { $0.kind == .sevenDay })
+                ?? windows[0]
+            return Snapshot.official(
                 "OpenAI",
-                sevenDay.remaining,
-                sevenDay.label,
-                sevenDay.reset,
+                displayWindow.remaining,
+                displayWindow.label,
+                displayWindow.reset,
                 date,
-                windows: [fiveHour, sevenDay],
+                windows: windows,
                 lunaReserve: reserve
             )
         }
 
+        let exhaustedFiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 0,
+            label: fiveHour.label,
+            daysText: fiveHour.daysText,
+            reset: fiveHour.reset,
+            durationSeconds: fiveHour.durationSeconds
+        )
+
         let unavailable = snapshot(
-            with: LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
+            with: LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil),
+            windows: [exhaustedFiveHour, sevenDay]
         ).menuBarSnapshot(
             preferredQuotaWindow: .fiveHour,
             automaticallyUseLunaReserve: true
         )
         XCTAssertFalse(unavailable.menuBarUsesLunaReserve)
-        XCTAssertEqual(unavailable.menuBarPrimary, "80%")
+        XCTAssertEqual(unavailable.menuBarPrimary, "0%")
 
         let missingRemaining = snapshot(
-            with: LunaReserveQuota(status: .available, remaining: nil, reset: "2h")
+            with: LunaReserveQuota(status: .available, remaining: nil, reset: "2h"),
+            windows: [exhaustedFiveHour, sevenDay]
         ).menuBarSnapshot(
             preferredQuotaWindow: .fiveHour,
             automaticallyUseLunaReserve: true
         )
         XCTAssertFalse(missingRemaining.menuBarUsesLunaReserve)
-        XCTAssertEqual(missingRemaining.menuBarPrimary, "80%")
+        XCTAssertEqual(missingRemaining.menuBarPrimary, "0%")
 
         let zeroRemaining = snapshot(
-            with: LunaReserveQuota(status: .available, remaining: 0, reset: "2h")
+            with: LunaReserveQuota(status: .available, remaining: 0, reset: "2h"),
+            windows: [exhaustedFiveHour, sevenDay]
         ).menuBarSnapshot(
-            preferredQuotaWindow: .fiveHour,
+            // The 5-hour exhaustion is the trigger even when the 7-day
+            // window remains the selected primary window.
+            preferredQuotaWindow: .sevenDay,
             automaticallyUseLunaReserve: true
         )
         XCTAssertTrue(zeroRemaining.menuBarUsesLunaReserve)
         XCTAssertEqual(zeroRemaining.menuBarPrimary, "0% 🌙")
 
+        let exhaustedSevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 0,
+            label: sevenDay.label,
+            daysText: sevenDay.daysText,
+            reset: sevenDay.reset,
+            durationSeconds: sevenDay.durationSeconds
+        )
         let sevenDayOnly = Snapshot.official(
             "OpenAI",
-            sevenDay.remaining,
+            exhaustedSevenDay.remaining,
             sevenDay.label,
             sevenDay.reset,
             date,
-            windows: [sevenDay],
+            windows: [exhaustedSevenDay],
             lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h")
         ).menuBarSnapshot(
             preferredQuotaWindow: .fiveHour,

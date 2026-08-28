@@ -477,7 +477,15 @@ struct Snapshot {
                 cachedBalance: nil
             )
         }
+        // The setting only permits the automatic takeover. Codex enters
+        // Reserve after an identified original quota is exhausted; it must
+        // not be inferred merely from the setting or Reserve data being
+        // present. Keep this check generic across 5-hour and 7-day windows so
+        // plans that expose only one official window work without binding the
+        // takeover to the currently selected primary window.
+        let originalQuotaIsExhausted = recognized.contains { $0.remaining <= 0 }
         guard automaticallyUseLunaReserve,
+              originalQuotaIsExhausted,
               let lunaReserve,
               lunaReserve.status == .available,
               lunaReserve.remaining != nil else {

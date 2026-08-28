@@ -2307,7 +2307,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             && settings.showReset
             && !reservedSecondary.isEmpty
 
-        menuBarPrimaryLabel.stringValue = settings.showAmount ? effectiveSnapshot.menuBarPrimary : ""
+        MenuBarLayout.applyPrimaryText(
+            settings.showAmount ? effectiveSnapshot.menuBarPrimary : "",
+            to: menuBarPrimaryLabel
+        )
         menuBarSecondaryLabel.stringValue = reservedSecondary
         menuBarIconSlot.isHidden = !settings.showIcon
         menuBarTextStack.isHidden = !settings.showAmount

@@ -119,7 +119,7 @@ final class AppPreferencesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         XCTAssertFalse(preferences.menuBarAutoSwitchLunaReserve)
-        XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .lunaReserve)
+        XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .originalQuota)
 
         preferences.menuBarAutoSwitchLunaReserve = true
         preferences.menuBarLunaReserveResetTimeMode = .originalQuota
@@ -138,7 +138,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(reloaded.menuBarLunaReserveResetTimeMode, .originalQuota)
 
         defaults.set("unsupported", forKey: AppPreferences.menuBarLunaReserveResetTimeModeKey)
-        XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .lunaReserve)
+        XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .originalQuota)
     }
 
     func testMenuLunaReserveDisplayPreferencesDefaultPersistAndRejectUnknownMode() {
