@@ -30,6 +30,7 @@ enum MenuBarIconDisplayMode: String, CaseIterable, Equatable {
 }
 
 enum MenuBarIconDisplayDelay: String, CaseIterable, Equatable {
+    case zeroSeconds
     case tenSeconds
     case thirtySeconds
     case oneMinute
@@ -40,6 +41,7 @@ enum MenuBarIconDisplayDelay: String, CaseIterable, Equatable {
 
     var duration: TimeInterval {
         switch self {
+        case .zeroSeconds: return 0
         case .tenSeconds: return 10
         case .thirtySeconds: return 30
         case .oneMinute: return 60

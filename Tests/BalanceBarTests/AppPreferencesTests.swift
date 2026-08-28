@@ -143,6 +143,17 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarIconDisplayDelay, .tenSeconds)
         XCTAssertNil(defaults.string(forKey: AppPreferences.menuBarIconDisplayDelayKey))
 
+        preferences.menuBarIconDisplayDelay = .zeroSeconds
+        XCTAssertEqual(preferences.menuBarIconDisplayDelay, .zeroSeconds)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBarIconDisplayDelayKey),
+            MenuBarIconDisplayDelay.zeroSeconds.rawValue
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarIconDisplayDelay,
+            .zeroSeconds
+        )
+
         preferences.menuBarIconDisplayDelay = .threeMinutes
         XCTAssertEqual(preferences.menuBarIconDisplayDelay, .threeMinutes)
         XCTAssertEqual(
@@ -158,7 +169,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarIconDisplayDelay, .tenSeconds)
         XCTAssertEqual(
             MenuBarIconDisplayDelay.allCases.map(\.duration),
-            [10, 30, 60, 120, 180]
+            [0, 10, 30, 60, 120, 180]
         )
     }
 

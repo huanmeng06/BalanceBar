@@ -608,13 +608,67 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertEqual(machine.idleCandidateSampleCount, 2)
         XCTAssertFalse(
             machine.setDisplayDelay(
-                .tenSeconds,
+                .zeroSeconds,
                 at: start.addingTimeInterval(120)
             ),
-            "shortening the delay may commit an already stable elapsed candidate immediately"
+            "selecting zero delay may commit an already stable elapsed candidate immediately"
         )
         XCTAssertFalse(machine.shouldDisplay)
         XCTAssertEqual(machine.idleCandidateSampleCount, 2)
+    }
+
+    func testMenuBarIconDisplayZeroDelayStillRequiresStableIdleSamples() {
+        var machine = MenuBarIconDisplayStateMachine()
+        let start = Date(timeIntervalSince1970: 4_000)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .zeroSeconds,
+                codexTaskRunning: false,
+                at: start
+            ),
+            "zero delay keeps the item visible after the first idle sample"
+        )
+        XCTAssertEqual(machine.idleCandidateSampleCount, 1)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .zeroSeconds,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval / 2
+                )
+            ),
+            "zero delay still ignores a too-short idle interval"
+        )
+        XCTAssertTrue(machine.shouldDisplay)
+
+        XCTAssertFalse(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .zeroSeconds,
+                codexTaskRunning: false,
+                at: start.addingTimeInterval(
+                    MenuBarIconDisplayStateMachine.idleConfirmationInterval
+                )
+            ),
+            "zero delay hides after the second stable idle sample"
+        )
+        XCTAssertFalse(machine.shouldDisplay)
+        XCTAssertEqual(machine.idleCandidateSampleCount, 2)
+
+        XCTAssertTrue(
+            machine.ingest(
+                mode: .onlyWhileRunning,
+                displayDelay: .zeroSeconds,
+                codexTaskRunning: true,
+                at: start.addingTimeInterval(1)
+            ),
+            "a new task still restores the item immediately"
+        )
+        XCTAssertTrue(machine.shouldDisplay)
     }
 
     @MainActor

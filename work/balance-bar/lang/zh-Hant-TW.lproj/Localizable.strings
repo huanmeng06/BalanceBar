@@ -268,6 +268,7 @@
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "僅在執行時顯示";
 "dashboard.menu.bar.page.icon_display_delay" = "任務結束後隱藏延遲";
 "dashboard.menu.bar.page.icon_display_delay_description" = "選擇任務結束後繼續顯示圖示的時間";
+"dashboard.menu.bar.page.icon_display_delay_zero_seconds" = "0 秒";
 "dashboard.menu.bar.page.icon_display_delay_ten_seconds" = "10 秒";
 "dashboard.menu.bar.page.icon_display_delay_thirty_seconds" = "30 秒";
 "dashboard.menu.bar.page.icon_display_delay_one_minute" = "1 分鐘";
