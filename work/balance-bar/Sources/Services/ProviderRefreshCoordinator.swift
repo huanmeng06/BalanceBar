@@ -1,12 +1,13 @@
 import Foundation
 
-/// Supplies deterministic Luna Reserve data only to the two explicitly named
+/// Supplies deterministic quota data only to the explicitly named
 /// demo bundles. Normal development and production bundles return nil and
 /// continue to use the live official quota response.
 enum DevelopmentLunaReserveDemo {
     enum Mode: String {
         case zero
         case unavailable
+        case fiveHourExhausted = "five-hour-exhausted"
     }
 
     private static let infoPlistKey = "BalanceBarLunaReserveDemo"
@@ -30,10 +31,17 @@ enum DevelopmentLunaReserveDemo {
         providerName: String,
         date: Date = Date()
     ) -> Snapshot {
+        let fiveHourRemaining: Double
+        switch mode {
+        case .fiveHourExhausted:
+            fiveHourRemaining = 0
+        case .zero, .unavailable:
+            fiveHourRemaining = 75
+        }
         let windows = [
             OfficialQuotaWindow(
                 kind: .fiveHour,
-                remaining: 75,
+                remaining: fiveHourRemaining,
                 label: tr(.keyResponseParsers5HourQuota),
                 daysText: tr(.keyResponseParsers5Hours),
                 reset: "2h0m",
@@ -61,6 +69,12 @@ enum DevelopmentLunaReserveDemo {
                 status: .unavailable,
                 remaining: nil,
                 reset: nil
+            )
+        case .fiveHourExhausted:
+            reserve = LunaReserveQuota(
+                status: .available,
+                remaining: 45,
+                reset: "1h30m"
             )
         }
         return .official(

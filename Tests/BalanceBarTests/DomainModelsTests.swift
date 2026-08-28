@@ -336,6 +336,17 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(zero.lunaReserve?.menuTitleText, "🌙 Luna Reserve")
         XCTAssertEqual(zero.lunaReserve?.menuSubtitleText, "1h30m")
 
+        let fiveHourExhausted = DevelopmentLunaReserveDemo.snapshot(
+            mode: .fiveHourExhausted,
+            providerName: "OpenAI",
+            date: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        XCTAssertEqual(fiveHourExhausted.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(fiveHourExhausted.officialQuotaWindows.first?.remaining, 0)
+        XCTAssertEqual(fiveHourExhausted.officialQuotaWindows.last?.remaining, 60)
+        XCTAssertEqual(fiveHourExhausted.lunaReserve?.status, .available)
+        XCTAssertEqual(fiveHourExhausted.lunaReserve?.remaining, 45)
+
         let unavailable = DevelopmentLunaReserveDemo.snapshot(
             mode: .unavailable,
             providerName: "OpenAI",
