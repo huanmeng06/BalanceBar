@@ -1487,6 +1487,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// the default 13:10 ratio in the renderer.
         var fontSize: CGFloat
         let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
+        let autoSwitchLunaReserve: Bool
+        let lunaReserveResetTimeMode: LunaReserveResetTimeMode
 
         init(
             showIcon: Bool,
@@ -1503,7 +1505,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             widthAdjustment: CGFloat = 0,
             fontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
             quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue,
-            quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue
+            quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
+            autoSwitchLunaReserve: Bool = false,
+            lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -1519,6 +1523,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.widthAdjustment = widthAdjustment
             self.quotaWindowPreference = quotaWindowPreference
             self.quotaResetDisplayMode = quotaResetDisplayMode
+            self.autoSwitchLunaReserve = autoSwitchLunaReserve
+            self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -2293,7 +2299,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let effectiveSnapshot = menuBarSnapshot(for: snapshot)
         let reservedSecondary = settings.showAmount && effectiveSnapshot.kind == .official
             ? effectiveSnapshot.menuBarSecondary(
-                displayMode: settings.quotaResetDisplayMode
+                displayMode: settings.quotaResetDisplayMode,
+                lunaReserveResetTimeMode: settings.lunaReserveResetTimeMode
             )
             : ""
         let hasSecondary = settings.showAmount
@@ -2579,7 +2586,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             cards: menuInput.openCodexCards
         )
         let resolved = effective.menuBarSnapshot(
-            preferredQuotaWindow: settings.quotaWindowPreference
+            preferredQuotaWindow: settings.quotaWindowPreference,
+            automaticallyUseLunaReserve: settings.autoSwitchLunaReserve
         )
         guard snapshot.kind == .openCodex else { return resolved }
         let match = OpenCodexCardPresentation.menuBarCardMatch(from: menuInput.openCodexCards)

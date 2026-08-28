@@ -27,6 +27,10 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarSecondaryFontSizeKey = "menuBarSecondaryFontSize"' \
         '    static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"' \
         '    static let menuBarQuotaResetDisplayModeKey = "menuBarQuotaResetDisplayMode"' \
+        '    static let menuBarAutoSwitchLunaReserveKey = "menuBarAutoSwitchLunaReserve"' \
+        '    static let menuBarLunaReserveResetTimeModeKey = "menuBarLunaReserveResetTimeMode"' \
+        '    static let menuLunaReserveDisplayModeKey = "menuLunaReserveDisplayMode"' \
+        '    static let menuLunaReserveHideExhaustedQuotaKey = "menuLunaReserveHideExhaustedQuota"' \
         '}'
     awk '
         /^struct PreferencesMigrationPlan \{/ { capture = 1 }
@@ -52,6 +56,8 @@ let production: [String: Any] = [
     "menuBarSecondaryFontSize": NSNumber(value: 9.6),
     "menuBarQuotaWindowPreference": "fiveHour",
     "menuBarQuotaResetDisplayMode": "resetAt",
+    "menuBarAutoSwitchLunaReserve": NSNumber(value: true),
+    "menuBarLunaReserveResetTimeMode": "originalQuota",
     "appLanguage": "en",
     "unknownSecret": "must not migrate",
     "NSStatusItem Preferred Position Item-0": "must not migrate"
@@ -83,6 +89,8 @@ require((selected["menuBarPrimaryFontSize"] as? NSNumber)?.doubleValue == 14.2, 
 require((selected["menuBarSecondaryFontSize"] as? NSNumber)?.doubleValue == 9.6, "secondary font size migrates")
 require((selected["menuBarQuotaWindowPreference"] as? String) == "fiveHour", "quota window preference migrates")
 require((selected["menuBarQuotaResetDisplayMode"] as? String) == "resetAt", "quota reset display mode migrates")
+require((selected["menuBarAutoSwitchLunaReserve"] as? NSNumber)?.boolValue == true, "Reserve auto-switch preference migrates")
+require((selected["menuBarLunaReserveResetTimeMode"] as? String) == "originalQuota", "Reserve reset time preference migrates")
 require((selected["showMenuBarReset"] as? NSNumber)?.boolValue == false, "local fills missing production key")
 require((selected["showMenuBarAmount"] as? NSNumber)?.boolValue == true, "local fallback value migrates")
 require(selected["unknownSecret"] == nil, "unknown production key is excluded")
@@ -95,7 +103,9 @@ let existingTarget: [String: Any] = [
     "menuBarIconDisplayMode": "alwaysVisible",
     "menuBarIconDisplayDelay": "threeMinutes",
     "menuBarQuotaWindowPreference": "sevenDay",
-    "menuBarQuotaResetDisplayMode": "remaining"
+    "menuBarQuotaResetDisplayMode": "remaining",
+    "menuBarAutoSwitchLunaReserve": NSNumber(value: false),
+    "menuBarLunaReserveResetTimeMode": "lunaReserve"
 ]
 let selectedWithExisting = PreferencesMigrationPlan.selectedValues(
     target: existingTarget,
@@ -108,6 +118,8 @@ require(selectedWithExisting["menuBarIconDisplayMode"] == nil, "existing target 
 require(selectedWithExisting["menuBarIconDisplayDelay"] == nil, "existing target icon display delay is preserved")
 require(selectedWithExisting["menuBarQuotaWindowPreference"] == nil, "existing target quota window preference is preserved")
 require(selectedWithExisting["menuBarQuotaResetDisplayMode"] == nil, "existing target quota reset display mode is preserved")
+require(selectedWithExisting["menuBarAutoSwitchLunaReserve"] == nil, "existing target Reserve auto-switch preference is preserved")
+require(selectedWithExisting["menuBarLunaReserveResetTimeMode"] == nil, "existing target Reserve reset time preference is preserved")
 
 var mergedTarget = existingTarget
 for (key, value) in selectedWithExisting { mergedTarget[key] = value }
@@ -136,7 +148,7 @@ let localOnly = PreferencesMigrationPlan.selectedValues(
 require((localOnly["menuBarIconDisplayMode"] as? String) == "onlyWhileRunning", "local icon display mode fallback migrates")
 require((localOnly["menuBarIconDisplayDelay"] as? String) == "threeMinutes", "local icon display delay fallback migrates")
 
-print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; menu bar icon display and delay, quota window, and reset display preferences migrate; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
+print("preferences migration probe: PASS; production priority; local fallback; existing target preserved; menu bar icon display and delay, quota window, reset display, and Reserve preferences migrate; whitelist only; system/unknown keys excluded; idempotent; missing sources safe")
 SWIFT
 } | swiftc -framework Foundation -o "$probe_binary" -
 

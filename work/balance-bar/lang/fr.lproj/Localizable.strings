@@ -283,6 +283,12 @@
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Temps restant";
 "dashboard.menu.bar.page.quota_reset_display_target" = "Heure de réinitialisation";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Les deux";
+"dashboard.menu.bar.page.auto_switch_luna_reserve" = "Basculer automatiquement vers 🌙 Luna Reserve";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "En entrant dans 🌙 Luna Reserve, bascule automatiquement le quota affiché dans la barre des menus";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "Heure de réinitialisation";
+"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Choisissez l’heure de réinitialisation affichée dans la barre des menus avec 🌙 Luna Reserve";
+"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";
+"dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Quota d’origine";
 "dashboard.menu.bar.page.animation" = "Animation";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animer l’icône de la barre des menus pendant une tâche";
 "dashboard.menu.bar.page.display_items" = "Contenu affiché";

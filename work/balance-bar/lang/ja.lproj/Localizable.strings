@@ -283,6 +283,12 @@
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "残り時間";
 "dashboard.menu.bar.page.quota_reset_display_target" = "リセット時刻";
 "dashboard.menu.bar.page.quota_reset_display_both" = "両方";
+"dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Luna Reserve に自動切り替え";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "🌙 Luna Reserve に入ると、メニューバーに表示するクォータを自動的に切り替えます";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "リセット時刻";
+"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "🌙 Luna Reserve 使用時にメニューバーに表示するリセット時刻を選択";
+"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";
+"dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "元のクォータ";
 "dashboard.menu.bar.page.animation" = "アニメーション";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "タスク実行中にメニューバーアイコンをアニメーション";
 "dashboard.menu.bar.page.display_items" = "表示内容";

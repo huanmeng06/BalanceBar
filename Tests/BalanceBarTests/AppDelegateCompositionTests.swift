@@ -1038,6 +1038,111 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
+    func testLiveStatusItemAutoSwitchesWholePrimaryToLunaReserveAndSelectsResetSource() {
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true
+        )
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 18_000
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 604_800
+        )
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            sevenDay.remaining,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h")
+        )
+        func settings(
+            autoSwitch: Bool,
+            resetTimeMode: LunaReserveResetTimeMode
+        ) -> StatusItemController.MenuBarSettings {
+            StatusItemController.MenuBarSettings(
+                showIcon: true,
+                showAmount: true,
+                showReset: true,
+                horizontalPadding: 10,
+                keepMenuOpenAfterRefresh: true,
+                quotaWindowPreference: .sevenDay,
+                quotaResetDisplayMode: .remaining,
+                autoSwitchLunaReserve: autoSwitch,
+                lunaReserveResetTimeMode: resetTimeMode
+            )
+        }
+
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: settings(autoSwitch: true, resetTimeMode: .lunaReserve)
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "61% 🌙")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "2h")
+
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: settings(autoSwitch: true, resetTimeMode: .originalQuota)
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "61% 🌙")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "7d")
+
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: settings(autoSwitch: false, resetTimeMode: .lunaReserve)
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "45%")
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "7d")
+    }
+
+    @MainActor
     func testLiveStatusItemUsesQuotaResetDisplayModeForCompactPresentation() throws {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(

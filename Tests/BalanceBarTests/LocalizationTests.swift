@@ -379,6 +379,61 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testLunaReserveAutoSwitchSettingsCopyExistsAcrossAllLanguages() {
+        let expected: [AppLanguage: [String]] = [
+            .simplifiedChinese: [
+                "自动切换 🌙 Luna Reserve", "进入 🌙 Luna Reserve 后，自动切换菜单栏显示的额度", "重置时间",
+                "使用 🌙 Luna Reserve 时，选择菜单栏显示的重置时间", "🌙 Luna Reserve", "原额度"
+            ],
+            .traditionalChineseTaiwan: [
+                "自動切換 🌙 Luna Reserve", "進入 🌙 Luna Reserve 後，自動切換選單列顯示的額度", "重設時間",
+                "使用 🌙 Luna Reserve 時，選擇選單列顯示的重設時間", "🌙 Luna Reserve", "原額度"
+            ],
+            .traditionalChineseHongKong: [
+                "自動切換 🌙 Luna Reserve", "進入 🌙 Luna Reserve 後，自動切換選單列顯示的配額", "重設時間",
+                "使用 🌙 Luna Reserve 時，選擇選單列顯示的重設時間", "🌙 Luna Reserve", "原配額"
+            ],
+            .japanese: [
+                "🌙 Luna Reserve に自動切り替え", "🌙 Luna Reserve に入ると、メニューバーに表示するクォータを自動的に切り替えます", "リセット時刻",
+                "🌙 Luna Reserve 使用時にメニューバーに表示するリセット時刻を選択", "🌙 Luna Reserve", "元のクォータ"
+            ],
+            .english: [
+                "Auto-switch to 🌙 Luna Reserve", "When 🌙 Luna Reserve is entered, automatically switch the menu bar quota", "Reset time",
+                "Choose which reset time the menu bar shows when using 🌙 Luna Reserve", "🌙 Luna Reserve", "Original quota"
+            ],
+            .korean: [
+                "🌙 Luna Reserve로 자동 전환", "🌙 Luna Reserve에 진입하면 메뉴 막대에 표시할 할당량을 자동으로 전환합니다", "재설정 시간",
+                "🌙 Luna Reserve 사용 시 메뉴 막대에 표시할 재설정 시간을 선택합니다", "🌙 Luna Reserve", "원래 할당량"
+            ],
+            .spanish: [
+                "Cambiar automáticamente a 🌙 Luna Reserve", "Al entrar en 🌙 Luna Reserve, cambia automáticamente la cuota mostrada en la barra de menús", "Hora de reinicio",
+                "Elige qué hora de reinicio muestra la barra de menús al usar 🌙 Luna Reserve", "🌙 Luna Reserve", "Cuota original"
+            ],
+            .german: [
+                "Automatisch zu 🌙 Luna Reserve wechseln", "Beim Wechsel zu 🌙 Luna Reserve das in der Menüleiste angezeigte Kontingent automatisch umschalten", "Rücksetzzeit",
+                "Auswählen, welche Rücksetzzeit die Menüleiste bei 🌙 Luna Reserve anzeigt", "🌙 Luna Reserve", "Ursprüngliches Kontingent"
+            ],
+            .french: [
+                "Basculer automatiquement vers 🌙 Luna Reserve", "En entrant dans 🌙 Luna Reserve, bascule automatiquement le quota affiché dans la barre des menus", "Heure de réinitialisation",
+                "Choisissez l’heure de réinitialisation affichée dans la barre des menus avec 🌙 Luna Reserve", "🌙 Luna Reserve", "Quota d’origine"
+            ]
+        ]
+        let keys: [LocalizationKey] = [
+            .keyDashboardMenuBarPageAutoSwitchLunaReserve,
+            .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
+            .keyDashboardMenuBarPageLunaReserveResetTime,
+            .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+            .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve,
+            .keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota
+        ]
+
+        for language in allLanguages {
+            let values = keys.map { tr($0, language: language) }
+            XCTAssertEqual(values, expected[language], "Luna Reserve auto-switch settings copy for \(language)")
+            XCTAssertTrue(values.allSatisfy { !$0.hasPrefix("⟦") })
+        }
+    }
+
     func testIgnoreUpdateCopyExistsInEverySupportedLanguage() {
         let key = LocalizationKey.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion
         let expected: [AppLanguage: String] = [
@@ -402,7 +457,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 424)
+        XCTAssertEqual(expectedKeys.count, 430)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(

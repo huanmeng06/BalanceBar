@@ -283,6 +283,12 @@
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "剩余时长";
 "dashboard.menu.bar.page.quota_reset_display_target" = "重置时间";
 "dashboard.menu.bar.page.quota_reset_display_both" = "两者";
+"dashboard.menu.bar.page.auto_switch_luna_reserve" = "自动切换 🌙 Luna Reserve";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "进入 🌙 Luna Reserve 后，自动切换菜单栏显示的额度";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "重置时间";
+"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "使用 🌙 Luna Reserve 时，选择菜单栏显示的重置时间";
+"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";
+"dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "原额度";
 "dashboard.menu.bar.page.animation" = "动画";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务运行时播放菜单栏图标动画";
 "dashboard.menu.bar.page.display_items" = "显示内容";

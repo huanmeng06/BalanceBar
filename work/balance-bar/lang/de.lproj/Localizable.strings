@@ -283,6 +283,12 @@
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Verbleibende Zeit";
 "dashboard.menu.bar.page.quota_reset_display_target" = "Rücksetzzeit";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Beides";
+"dashboard.menu.bar.page.auto_switch_luna_reserve" = "Automatisch zu 🌙 Luna Reserve wechseln";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Beim Wechsel zu 🌙 Luna Reserve das in der Menüleiste angezeigte Kontingent automatisch umschalten";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "Rücksetzzeit";
+"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Auswählen, welche Rücksetzzeit die Menüleiste bei 🌙 Luna Reserve anzeigt";
+"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";
+"dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Ursprüngliches Kontingent";
 "dashboard.menu.bar.page.animation" = "Animation";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Menüleistensymbol während einer Aufgabe animieren";
 "dashboard.menu.bar.page.display_items" = "Angezeigte Inhalte";

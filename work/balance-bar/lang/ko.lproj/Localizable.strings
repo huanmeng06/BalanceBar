@@ -283,6 +283,12 @@
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "남은 시간";
 "dashboard.menu.bar.page.quota_reset_display_target" = "재설정 시각";
 "dashboard.menu.bar.page.quota_reset_display_both" = "둘 다";
+"dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Luna Reserve로 자동 전환";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "🌙 Luna Reserve에 진입하면 메뉴 막대에 표시할 할당량을 자동으로 전환합니다";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "재설정 시간";
+"dashboard.menu.bar.page.luna_reserve_reset_time_description" = "🌙 Luna Reserve 사용 시 메뉴 막대에 표시할 재설정 시간을 선택합니다";
+"dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";
+"dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "원래 할당량";
 "dashboard.menu.bar.page.animation" = "애니메이션";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "작업 실행 중 메뉴 막대 아이콘 애니메이션";
 "dashboard.menu.bar.page.display_items" = "표시 내용";

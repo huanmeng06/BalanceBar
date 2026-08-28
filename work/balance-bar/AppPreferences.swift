@@ -30,6 +30,13 @@ enum LunaReserveDisplayMode: String, CaseIterable, Equatable {
     static let defaultValue: Self = .always
 }
 
+enum LunaReserveResetTimeMode: String, CaseIterable, Equatable {
+    case lunaReserve
+    case originalQuota
+
+    static let defaultValue: Self = .lunaReserve
+}
+
 enum MenuBarIconDisplayMode: String, CaseIterable, Equatable {
     case alwaysVisible
     case onlyWhileRunning
@@ -116,6 +123,10 @@ final class AppPreferences {
     static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
     static let menuBarQuotaResetDisplayModeKey = "menuBarQuotaResetDisplayMode"
     static let menuBarQuotaResetDisplayModeDefault: OfficialQuotaResetDisplayMode = .defaultValue
+    static let menuBarAutoSwitchLunaReserveKey = "menuBarAutoSwitchLunaReserve"
+    static let menuBarAutoSwitchLunaReserveDefault = false
+    static let menuBarLunaReserveResetTimeModeKey = "menuBarLunaReserveResetTimeMode"
+    static let menuBarLunaReserveResetTimeModeDefault: LunaReserveResetTimeMode = .defaultValue
     static let menuLunaReserveDisplayModeKey = "menuLunaReserveDisplayMode"
     static let menuLunaReserveDisplayModeDefault: LunaReserveDisplayMode = .defaultValue
     static let menuLunaReserveHideExhaustedQuotaKey = "menuLunaReserveHideExhaustedQuota"
@@ -192,6 +203,29 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaResetDisplayModeKey)
+        }
+    }
+    var menuBarAutoSwitchLunaReserve: Bool {
+        get {
+            bool(
+                Self.menuBarAutoSwitchLunaReserveKey,
+                default: Self.menuBarAutoSwitchLunaReserveDefault
+            )
+        }
+        set {
+            defaults.set(newValue, forKey: Self.menuBarAutoSwitchLunaReserveKey)
+        }
+    }
+    var menuBarLunaReserveResetTimeMode: LunaReserveResetTimeMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarLunaReserveResetTimeModeKey),
+                  let mode = LunaReserveResetTimeMode(rawValue: rawValue) else {
+                return Self.menuBarLunaReserveResetTimeModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarLunaReserveResetTimeModeKey)
         }
     }
     var menuLunaReserveDisplayMode: LunaReserveDisplayMode {

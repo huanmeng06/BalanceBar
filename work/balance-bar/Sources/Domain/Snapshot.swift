@@ -239,6 +239,10 @@ struct Snapshot {
     /// selected row's exact reset timestamp from being replaced by the
     /// representative (weekly) window when shared snapshot properties render.
     let selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind?
+    /// True only for the derived compact presentation used while the official
+    /// service reports a usable Luna Reserve quota. The source snapshot and
+    /// the expanded Dashboard card remain unchanged.
+    let menuBarUsesLunaReserve: Bool
 
     init(
         kind: Kind,
@@ -251,7 +255,8 @@ struct Snapshot {
         balanceProgressPercentage: Double?,
         officialQuotaWindows: [OfficialQuotaWindow],
         selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil,
-        lunaReserve: LunaReserveQuota? = nil
+        lunaReserve: LunaReserveQuota? = nil,
+        menuBarUsesLunaReserve: Bool = false
     ) {
         self.kind = kind
         self.provider = provider
@@ -264,6 +269,7 @@ struct Snapshot {
         self.officialQuotaWindows = officialQuotaWindows
         self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
         self.lunaReserve = lunaReserve
+        self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
     static let placeholder = Snapshot(
@@ -434,7 +440,8 @@ struct Snapshot {
     /// `officialQuotaWindows` directly, so choosing a window never duplicates,
     /// rewrites, or hides the source data.
     func menuBarSnapshot(
-        preferredQuotaWindow: OfficialQuotaWindowPreference
+        preferredQuotaWindow: OfficialQuotaWindowPreference,
+        automaticallyUseLunaReserve: Bool = false
     ) -> Snapshot {
         guard kind == .official else { return self }
 
@@ -442,28 +449,41 @@ struct Snapshot {
         // Older responses do not identify their window duration. Preserve the
         // established single-row presentation instead of guessing which named
         // preference they represent.
-        guard !recognized.isEmpty else { return self }
-
         let selected: OfficialQuotaWindow?
-        switch preferredQuotaWindow {
-        case .fiveHour:
-            // Five-hour is the requested primary window, with the only safe
-            // fallback required by the Issue being the real seven-day window.
-            selected = recognized.first(where: { $0.kind == .fiveHour })
-                ?? recognized.first(where: { $0.kind == .sevenDay })
-        case .sevenDay:
-            // Never silently show five-hour data when seven-day is selected.
-            selected = recognized.first(where: { $0.kind == .sevenDay })
+        if recognized.isEmpty {
+            selected = nil
+        } else {
+            switch preferredQuotaWindow {
+            case .fiveHour:
+                // Five-hour is the requested primary window, with the only safe
+                // fallback required by the Issue being the real seven-day window.
+                selected = recognized.first(where: { $0.kind == .fiveHour })
+                    ?? recognized.first(where: { $0.kind == .sevenDay })
+            case .sevenDay:
+                // Never silently show five-hour data when seven-day is selected.
+                selected = recognized.first(where: { $0.kind == .sevenDay })
+            }
         }
 
-        guard let selected else {
+        let selectedSnapshot: Snapshot
+        if let selected {
+            selectedSnapshot = replacingOfficialWindow(selected)
+        } else if recognized.isEmpty {
+            selectedSnapshot = self
+        } else {
             return .providerError(
                 provider,
                 reason: tr(.keyProviderModelsQuotaUnavailable),
                 cachedBalance: nil
             )
         }
-        return replacingOfficialWindow(selected)
+        guard automaticallyUseLunaReserve,
+              let lunaReserve,
+              lunaReserve.status == .available,
+              lunaReserve.remaining != nil else {
+            return selectedSnapshot
+        }
+        return selectedSnapshot.replacingMenuBarWithLunaReserve()
     }
 
     private func replacingOfficialWindow(_ window: OfficialQuotaWindow) -> Snapshot {
@@ -478,14 +498,38 @@ struct Snapshot {
             balanceProgressPercentage: balanceProgressPercentage,
             officialQuotaWindows: officialQuotaWindows,
             selectedOfficialQuotaWindowKind: window.kind,
-            lunaReserve: lunaReserve
+            lunaReserve: lunaReserve,
+            menuBarUsesLunaReserve: false
+        )
+    }
+
+    private func replacingMenuBarWithLunaReserve() -> Snapshot {
+        guard kind == .official,
+              let lunaReserve,
+              lunaReserve.status == .available,
+              let remaining = lunaReserve.remaining else {
+            return self
+        }
+        return Snapshot(
+            kind: kind,
+            provider: provider,
+            amount: remaining,
+            unit: tr(.keyLunaReserveTitle),
+            date: date,
+            message: lunaReserve.reset,
+            websiteURL: websiteURL,
+            balanceProgressPercentage: balanceProgressPercentage,
+            officialQuotaWindows: officialQuotaWindows,
+            selectedOfficialQuotaWindowKind: selectedOfficialQuotaWindowKind,
+            lunaReserve: lunaReserve,
+            menuBarUsesLunaReserve: true
         )
     }
 
     var menuBarTitle: String {
         switch kind {
         case .placeholder: return " …"
-        case .official: return " \(Int(amount ?? 0))%"
+        case .official: return " \(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return " \(format(amount ?? 0, unit ?? "USD"))"
         case .openCodex: return " \(unit ?? "OpenCodex")"
         case .error: return " !"
@@ -495,7 +539,7 @@ struct Snapshot {
     var menuBarPrimary: String {
         switch kind {
         case .placeholder: return "…"
-        case .official: return "\(Int(amount ?? 0))%"
+        case .official: return "\(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return format(amount ?? 0, unit ?? "USD")
         case .openCodex: return unit ?? "OpenCodex"
         case .error: return "!"
@@ -508,20 +552,32 @@ struct Snapshot {
 
     func menuBarSecondary(
         displayMode: OfficialQuotaResetDisplayMode,
+        lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String {
-        kind == .official
-            ? (officialResetDisplayValue(
+        guard kind == .official else { return "" }
+        let reset: String?
+        if menuBarUsesLunaReserve && lunaReserveResetTimeMode == .lunaReserve {
+            reset = lunaReserve?.resetDisplayText(
                 displayMode: displayMode,
                 now: now,
                 calendar: calendar,
                 locale: locale,
                 timeZone: timeZone
-            ) ?? "—")
-            : ""
+            )
+        } else {
+            reset = officialResetDisplayValue(
+                displayMode: displayMode,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        }
+        return reset ?? "—"
     }
 
     var menuBarToolTip: String {
