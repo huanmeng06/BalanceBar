@@ -1434,6 +1434,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let openProviderWebsite: () -> Void
         let openStatusLink: (URL) -> Void
         let iconChanged: (NSImage?) -> Void
+        let frameImageChanged: (NSImage?) -> Void
         let visibilityChanged: (StatusItemVisibility) -> Void
 
         init(
@@ -1448,6 +1449,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             openProviderWebsite: @escaping () -> Void,
             openStatusLink: @escaping (URL) -> Void,
             iconChanged: @escaping (NSImage?) -> Void,
+            frameImageChanged: @escaping (NSImage?) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
         ) {
             self.manualRefresh = manualRefresh
@@ -1461,6 +1463,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.openProviderWebsite = openProviderWebsite
             self.openStatusLink = openStatusLink
             self.iconChanged = iconChanged
+            self.frameImageChanged = frameImageChanged
             self.visibilityChanged = visibilityChanged
         }
     }
@@ -1737,6 +1740,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lastMenuBarIconFrameDiagnostic = nil
         lastMenuBarGeometry = nil
         menuBarIconView.onSourceImageChanged = nil
+        menuBarIconView.onFrameImageChanged = nil
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
         menuBarContentStack.removeFromSuperview()
@@ -1954,6 +1958,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             guard let self else { return }
             self.layoutStatusItem(for: self.snapshot)
             self.actions.iconChanged(image)
+        }
+        menuBarIconView.onFrameImageChanged = { [weak self] image in
+            self?.actions.frameImageChanged(image)
         }
         actions.iconChanged(menuBarIconView.image)
         menuBarIconView.imageScaling = .scaleProportionallyDown

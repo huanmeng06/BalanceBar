@@ -47,6 +47,9 @@ final class RotatingTemplateImageView: PassthroughImageView {
     /// Called only when the semantic source icon changes. Animation frames do
     /// not leave this view, so they cannot trigger layout or dashboard work.
     var onSourceImageChanged: ((NSImage?) -> Void)?
+    /// Called after the displayed bitmap changes. Consumers must only mirror
+    /// the bitmap; this is intentionally separate from semantic state work.
+    var onFrameImageChanged: ((NSImage?) -> Void)?
     var isRotating: Bool { rotationTimer != nil }
 
     func setSourceImage(_ image: NSImage) {
@@ -63,6 +66,13 @@ final class RotatingTemplateImageView: PassthroughImageView {
 
     func displayImage(_ image: NSImage) {
         self.image = image
+        onFrameImageChanged?(image)
+    }
+
+    func restoreSourceImage() {
+        guard image !== sourceImage else { return }
+        image = sourceImage
+        onFrameImageChanged?(sourceImage)
     }
 
     func startRotating() {
@@ -80,7 +90,7 @@ final class RotatingTemplateImageView: PassthroughImageView {
         rotationTimer?.invalidate()
         rotationTimer = nil
         animationState.reset()
-        image = sourceImage
+        restoreSourceImage()
     }
 
     private func advanceRotation() {
@@ -185,6 +195,7 @@ final class ClaudeThinkingAnimator {
         timer = nil
         animationState.reset()
         imageView?.setSourceImage(staticImage)
+        imageView?.restoreSourceImage()
     }
 
     private func render(_ index: Int) {

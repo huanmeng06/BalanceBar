@@ -75,20 +75,27 @@ final class MenuBarAnimationTests: XCTestCase {
         let source = NSImage(size: NSSize(width: 16, height: 16))
         let frame = NSImage(size: NSSize(width: 16, height: 16))
         var sourceChanges: [NSImage?] = []
+        var displayedImages: [NSImage?] = []
         imageView.onSourceImageChanged = { sourceChanges.append($0) }
+        imageView.onFrameImageChanged = { displayedImages.append($0) }
 
         imageView.setSourceImage(source)
         XCTAssertEqual(sourceChanges.count, 1)
+        XCTAssertEqual(displayedImages.count, 0)
         XCTAssertTrue(imageView.image === source)
 
         imageView.displayImage(frame)
         XCTAssertEqual(sourceChanges.count, 1)
+        XCTAssertEqual(displayedImages.count, 1)
+        XCTAssertTrue(displayedImages.compactMap { $0 }.last === frame)
         XCTAssertTrue(imageView.image === frame)
 
         imageView.stopRotating()
         imageView.stopRotating()
         XCTAssertFalse(imageView.isRotating)
         XCTAssertEqual(sourceChanges.count, 1)
+        XCTAssertEqual(displayedImages.count, 2)
+        XCTAssertTrue(displayedImages.compactMap { $0 }.last === source)
         XCTAssertTrue(imageView.image === source)
 
         imageView.setSourceImage(source)
@@ -147,6 +154,17 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertFalse(framePath.contains("layoutStatusItem"))
         XCTAssertFalse(framePath.contains("iconChanged"))
 
+        let displayStart = try XCTUnwrap(animationSource.range(of: "func displayImage"))
+        let restoreStart = try XCTUnwrap(
+            animationSource.range(
+                of: "func restoreSourceImage",
+                range: displayStart.upperBound..<animationSource.endIndex
+            )
+        )
+        let displayPath = String(animationSource[displayStart.lowerBound..<restoreStart.lowerBound])
+        XCTAssertTrue(displayPath.contains("onFrameImageChanged"))
+        XCTAssertFalse(displayPath.contains("onSourceImageChanged"))
+
         let semanticStart = try XCTUnwrap(
             statusItemSource.range(of: "menuBarIconView.onSourceImageChanged = {")
         )
@@ -162,5 +180,47 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(semanticPath.contains("layoutStatusItem"))
         XCTAssertTrue(semanticPath.contains("actions.iconChanged"))
         XCTAssertFalse(semanticPath.contains("menuBarIconView.image = image"))
+
+        let compositionSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "work/balance-bar/Sources/UI/Dashboard/DashboardCompositionController.swift"
+            ),
+            encoding: .utf8
+        )
+        let previewUpdateStart = try XCTUnwrap(
+            compositionSource.range(of: "func updateMenuBarPreviewIcon")
+        )
+        let previewUpdateEnd = try XCTUnwrap(
+            compositionSource.range(
+                of: "func refreshMenuBarWidthAdjustment",
+                range: previewUpdateStart.upperBound..<compositionSource.endIndex
+            )
+        )
+        let previewUpdatePath = String(
+            compositionSource[previewUpdateStart.lowerBound..<previewUpdateEnd.lowerBound]
+        )
+        XCTAssertTrue(previewUpdatePath.contains("updateMenuBarPreviewIcon"))
+        XCTAssertFalse(previewUpdatePath.contains("refreshMenuBarPage"))
+
+        let menuBarPageSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "work/balance-bar/Sources/UI/Dashboard/Pages/Preferences/DashboardMenuBarPage.swift"
+            ),
+            encoding: .utf8
+        )
+        let pagePreviewStart = try XCTUnwrap(
+            menuBarPageSource.range(of: "func updatePreviewIcon")
+        )
+        let pagePreviewEnd = try XCTUnwrap(
+            menuBarPageSource.range(
+                of: "private static func makeOverflowWarningRow",
+                range: pagePreviewStart.upperBound..<menuBarPageSource.endIndex
+            )
+        )
+        let pagePreviewPath = String(
+            menuBarPageSource[pagePreviewStart.lowerBound..<pagePreviewEnd.lowerBound]
+        )
+        XCTAssertTrue(pagePreviewPath.contains("previewIcon.image = image"))
+        XCTAssertFalse(pagePreviewPath.contains("layoutSubtreeIfNeeded"))
     }
 }
