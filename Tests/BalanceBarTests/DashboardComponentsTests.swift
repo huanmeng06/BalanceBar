@@ -300,9 +300,98 @@ final class DashboardComponentsTests: XCTestCase {
         }
     }
 
+    func testSettingsRowsKeepControlsAtFourNaturalTextLinesAndMoveAfterWithoutTruncatingLabels() throws {
+        let shortButton = NSButton(title: "Action", target: nil, action: nil)
+        let thresholdButton = NSButton(title: "Action", target: nil, action: nil)
+        let overflowButton = NSButton(title: "Action", target: nil, action: nil)
+        let shortRow = DashboardSettingsComponents.makeSettingsRow(
+            "Title",
+            subtitle: "first line\nsecond line",
+            control: shortButton
+        )
+        let thresholdRow = DashboardSettingsComponents.makeSettingsRow(
+            "Title",
+            subtitle: "first line\nsecond line\nthird line",
+            control: thresholdButton
+        )
+        let overflowRow = DashboardSettingsComponents.makeSettingsRow(
+            "Title",
+            subtitle: "first line\nsecond line\nthird line\nfourth line",
+            control: overflowButton
+        )
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Line reflow",
+            rows: [shortRow, thresholdRow, overflowRow]
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = section
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+
+        func labels(in row: NSView) throws -> NSStackView {
+            try XCTUnwrap(row.subviews.compactMap { $0 as? NSStackView }.first)
+        }
+
+        func assertUncappedText(in row: NSView) throws {
+            let labels = try labels(in: row)
+            let title = try XCTUnwrap(labels.arrangedSubviews.first as? NSTextField)
+            let subtitle = try XCTUnwrap(labels.arrangedSubviews.dropFirst().first as? NSTextField)
+            XCTAssertEqual(title.maximumNumberOfLines, 0)
+            XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
+            XCTAssertLessThanOrEqual(
+                title.cell!.cellSize(
+                    forBounds: NSRect(
+                        x: 0,
+                        y: 0,
+                        width: title.bounds.width,
+                        height: .greatestFiniteMagnitude
+                    )
+                ).height,
+                title.bounds.height + 0.5
+            )
+            XCTAssertLessThanOrEqual(
+                subtitle.cell!.cellSize(
+                    forBounds: NSRect(
+                        x: 0,
+                        y: 0,
+                        width: subtitle.bounds.width,
+                        height: .greatestFiniteMagnitude
+                    )
+                ).height,
+                subtitle.bounds.height + 0.5
+            )
+        }
+
+        let shortLabels = try labels(in: shortRow)
+        let thresholdLabels = try labels(in: thresholdRow)
+        let overflowLabels = try labels(in: overflowRow)
+        let shortLabelsFrame = shortLabels.convert(shortLabels.bounds, to: shortRow)
+        let thresholdLabelsFrame = thresholdLabels.convert(thresholdLabels.bounds, to: thresholdRow)
+        let overflowLabelsFrame = overflowLabels.convert(overflowLabels.bounds, to: overflowRow)
+        let shortButtonFrame = shortButton.convert(shortButton.bounds, to: shortRow)
+        let thresholdButtonFrame = thresholdButton.convert(thresholdButton.bounds, to: thresholdRow)
+        let overflowButtonFrame = overflowButton.convert(overflowButton.bounds, to: overflowRow)
+
+        XCTAssertGreaterThanOrEqual(shortButtonFrame.minX, shortLabelsFrame.maxX + 19.5)
+        XCTAssertEqual(shortButton.frame.midY, shortRow.bounds.midY, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(thresholdButtonFrame.minX, thresholdLabelsFrame.maxX + 19.5)
+        XCTAssertEqual(thresholdButton.frame.midY, thresholdRow.bounds.midY, accuracy: 0.5)
+        XCTAssertLessThanOrEqual(overflowButtonFrame.maxY, overflowLabelsFrame.minY + 0.5)
+        XCTAssertGreaterThan(overflowRow.frame.height, thresholdRow.frame.height)
+        try assertUncappedText(in: shortRow)
+        try assertUncappedText(in: thresholdRow)
+        try assertUncappedText(in: overflowRow)
+    }
+
     func testSettingsRowsProtectTextBeforeOrdinaryControlsAcrossLanguages() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
+        XCTAssertEqual(DashboardSettingsComponents.settingsTextLineReflowThreshold, 4)
         let languages: [AppLanguage] = [
             .simplifiedChinese,
             .traditionalChineseTaiwan,
@@ -418,7 +507,7 @@ final class DashboardComponentsTests: XCTestCase {
                         )
                     ).height,
                     titleLabel.bounds.height + 0.5,
-                    "title must fit its capped frame for \(language), control \(controlIndex)"
+                    "title must fit its measured frame for \(language), control \(controlIndex)"
                 )
                 XCTAssertLessThanOrEqual(
                     subtitleLabel.cell!.cellSize(
@@ -430,7 +519,7 @@ final class DashboardComponentsTests: XCTestCase {
                         )
                     ).height,
                     subtitleLabel.bounds.height + 0.5,
-                    "subtitle must fit its capped frame for \(language), control \(controlIndex)"
+                    "subtitle must fit its measured frame for \(language), control \(controlIndex)"
                 )
                 XCTAssertFalse(
                     labelsFrame.intersects(controlFrame),

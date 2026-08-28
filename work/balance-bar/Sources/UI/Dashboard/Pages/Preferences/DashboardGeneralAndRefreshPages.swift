@@ -193,6 +193,7 @@ struct DashboardUpdatePresentation: Equatable {
 final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
     private(set) var usesDedicatedRow = false
+    var allowsTextDrivenDedicatedRow = false
 
     func updateAvailableRowWidth(_ width: CGFloat) {
         let normalizedWidth = max(0, width)
@@ -268,11 +269,6 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
 }
 
 final class DashboardGeneralPage {
-    // Keep the title/subtitle column readable before the refresh controls are
-    // allowed to squeeze it into several lines. The controls still remain a
-    // single ordered row at this width; only the row placement changes.
-    private static let refreshControlsMinimumInlineContentWidth: CGFloat = 220
-
     struct Input {
         let preferences: AppPreferences
         let currentProviderName: String
@@ -354,6 +350,7 @@ final class DashboardGeneralPage {
         let activeRefreshControls = DashboardAdaptiveControlsStackView(
             views: [runningControls, trailingControls]
         )
+        activeRefreshControls.allowsTextDrivenDedicatedRow = true
         activeRefreshControls.orientation = .horizontal
         activeRefreshControls.alignment = .centerY
         activeRefreshControls.spacing = 5
@@ -367,8 +364,7 @@ final class DashboardGeneralPage {
                 tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
                 control: activeRefreshControls,
-                minimumHeight: DashboardSettingsComponents.standardRowHeight,
-                minimumInlineContentWidth: Self.refreshControlsMinimumInlineContentWidth
+                minimumHeight: DashboardSettingsComponents.standardRowHeight
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardGeneralAndRefreshPagesBalanceData),

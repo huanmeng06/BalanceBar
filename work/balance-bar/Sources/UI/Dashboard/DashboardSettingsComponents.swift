@@ -3,6 +3,7 @@ import AppKit
 protocol DashboardSettingsRowControlLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
     var usesDedicatedRow: Bool { get }
+    var allowsTextDrivenDedicatedRow: Bool { get }
 }
 
 private enum DashboardSettingsControlPlacement: Equatable {
@@ -24,16 +25,13 @@ private final class DashboardSettingsRowView: NSView {
     private var controlPlacement: DashboardSettingsControlPlacement = .horizontal
     private var sideBySideControlConstraints: [NSLayoutConstraint] = []
     private var dedicatedControlConstraints: [NSLayoutConstraint] = []
-    private let minimumInlineContentWidth: CGFloat?
 
     init(
         minimumHeight: CGFloat,
-        verticalPadding: CGFloat,
-        minimumInlineContentWidth: CGFloat?
+        verticalPadding: CGFloat
     ) {
         self.minimumHeight = max(DashboardSettingsComponents.standardRowHeight, minimumHeight)
         self.verticalPadding = max(0, verticalPadding)
-        self.minimumInlineContentWidth = minimumInlineContentWidth.map { max(0, $0) }
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .vertical)
@@ -80,15 +78,19 @@ private final class DashboardSettingsRowView: NSView {
                 0,
                 availableContentAndControlWidth - actionWidth - 20
             )
-            let readableContentWidth = max(
-                minimumReadableContentWidth,
-                minimumInlineContentWidth ?? 0
-            )
-            // Composite controls already expose their own fitting/orientation
-            // contract (including slider tracks and endpoint labels). Keep
-            // those existing layouts unchanged; line-budget placement is for
-            // a row-level control whose width directly competes with text.
-            let lineBudgetNeedsDedicatedRow = !(controlView is NSStackView) &&
+            let readableContentWidth = minimumReadableContentWidth
+            // Keep the controls' own fitting/orientation contract. Ordinary
+            // row controls and explicitly opted-in adaptive controls may move
+            // below the text once the natural text reaches the threshold;
+            // other composite controls keep their existing placement rules.
+            let supportsTextDrivenDedicatedRow = !(controlView is NSStackView) ||
+                adaptiveControl?.allowsTextDrivenDedicatedRow == true
+            // Measure the line budget at the width the labels actually get
+            // while the controls remain beside them. Once that inline text
+            // reaches the threshold, move the controls below the complete
+            // labels; the labels themselves stay uncapped and can use the
+            // newly available width in the dedicated layout.
+            let lineBudgetNeedsDedicatedRow = supportsTextDrivenDedicatedRow &&
                 textNeedsDedicatedRow(at: contentWidthWhenHorizontal)
             let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < readableContentWidth ||
                 lineBudgetNeedsDedicatedRow
@@ -121,23 +123,28 @@ private final class DashboardSettingsRowView: NSView {
             return titleTextField != nil || subtitleTextField != nil
         }
 
-        if let titleTextField,
-           !titleTextField.isHidden,
-           DashboardSettingsComponents.settingsTextLineCount(
-               titleTextField,
-               constrainedTo: titleWidth(at: width)
-           ) > DashboardSettingsComponents.settingsTitleMaximumNumberOfLines {
-            return true
+        let titleLineCount: Int
+        if let titleTextField, !titleTextField.isHidden {
+            titleLineCount = DashboardSettingsComponents.settingsTextLineCount(
+                titleTextField,
+                constrainedTo: titleWidth(at: width)
+            )
+        } else {
+            titleLineCount = 0
         }
-        if let subtitleTextField,
-           !subtitleTextField.isHidden,
-           DashboardSettingsComponents.settingsTextLineCount(
-               subtitleTextField,
-               constrainedTo: width
-           ) > DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines {
-            return true
+        let subtitleLineCount: Int
+        if let subtitleTextField, !subtitleTextField.isHidden {
+            subtitleLineCount = DashboardSettingsComponents.settingsTextLineCount(
+                subtitleTextField,
+                constrainedTo: width
+            )
+        } else {
+            subtitleLineCount = 0
         }
-        return false
+        // The configured budget is inclusive: four natural lines may remain
+        // beside the control; only the fifth line requires a dedicated row.
+        return titleLineCount + subtitleLineCount >
+            DashboardSettingsComponents.settingsTextLineReflowThreshold
     }
 
     private func titleWidth(at contentWidth: CGFloat) -> CGFloat {
@@ -381,8 +388,12 @@ enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
     static let standardRowHeight: CGFloat = 62
     static let settingsRowContentControlSpacing: CGFloat = 12
-    static let settingsTitleMaximumNumberOfLines = 2
-    static let settingsSubtitleMaximumNumberOfLines = 4
+    // This is an inclusive placement budget, not a text truncation limit.
+    // Text fields remain uncapped; a fifth natural line moves the control
+    // below the complete content.
+    static let settingsTextLineReflowThreshold = 4
+    static let settingsTitleMaximumNumberOfLines = 0
+    static let settingsSubtitleMaximumNumberOfLines = 0
 
     /// CJK UI copy is naturally breakable between characters. Word wrapping
     /// treats a run without spaces as one large word, which leaves an entire
@@ -414,9 +425,9 @@ enum DashboardSettingsComponents {
         return .byWordWrapping
     }
 
-    /// Measures the natural AppKit line count without applying the row's
-    /// display cap. The row uses this candidate measurement to move a control
-    /// below its labels before a capped label could become truncated.
+    /// Measures the natural AppKit line count without applying a row display
+    /// cap. The row supplies the labels' current inline width when deciding
+    /// whether the control needs its own row.
     static func settingsTextLineCount(
         _ textField: NSTextField,
         constrainedTo width: CGFloat
@@ -840,13 +851,11 @@ enum DashboardSettingsComponents {
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11,
-        controlWidthConstrainedToRow: Bool = false,
-        minimumInlineContentWidth: CGFloat? = nil
+        controlWidthConstrainedToRow: Bool = false
     ) -> NSView {
         let row = DashboardSettingsRowView(
             minimumHeight: minimumHeight,
-            verticalPadding: verticalPadding,
-            minimumInlineContentWidth: minimumInlineContentWidth
+            verticalPadding: verticalPadding
         )
         // Keep a required floor for short rows. The low-priority equality
         // preserves the old compact geometry as a fallback while allowing
