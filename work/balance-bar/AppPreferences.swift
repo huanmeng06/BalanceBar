@@ -31,8 +31,8 @@ enum LunaReserveDisplayMode: String, CaseIterable, Equatable {
 }
 
 enum LunaReserveResetTimeMode: String, CaseIterable, Equatable {
-    case lunaReserve
     case originalQuota
+    case lunaReserve
 
     static let defaultValue: Self = .originalQuota
 }

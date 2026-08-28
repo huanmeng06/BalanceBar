@@ -1648,11 +1648,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(
             lunaReserveResetTimePopup.itemTitles,
             [
-                tr(.keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve),
-                tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota)
+                tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota),
+                tr(.keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve)
             ]
         )
-        lunaReserveResetTimePopup.selectItem(at: 1)
+        lunaReserveResetTimePopup.selectItem(at: 0)
         relay.menuBarLunaReserveResetTimeMode(lunaReserveResetTimePopup)
         XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .originalQuota)
         autoSwitch.state = .off
