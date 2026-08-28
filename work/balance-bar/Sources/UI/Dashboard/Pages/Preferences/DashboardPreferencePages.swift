@@ -20,7 +20,6 @@ struct DashboardPreferencePageActions {
     let onManualRefresh: () -> Void
     let onCheckForUpdates: () -> Void
     let onInstallUpdate: () -> Void
-    let onIgnoreUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
     let onOpenOpenCodex: () -> Void
     let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
@@ -61,7 +60,6 @@ final class DashboardPreferencePages {
         relay.onManualRefresh = actions.onManualRefresh
         relay.onCheckForUpdates = actions.onCheckForUpdates
         relay.onInstallUpdate = actions.onInstallUpdate
-        relay.onIgnoreUpdate = actions.onIgnoreUpdate
         relay.onOpenUpdateNotes = actions.onOpenUpdateNotes
         relay.onOpenOpenCodex = actions.onOpenOpenCodex
         relay.onRevealLog = { [weak self] in self?.logsPage.reveal() }

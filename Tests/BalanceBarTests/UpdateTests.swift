@@ -959,6 +959,27 @@ final class UpdateTests: XCTestCase {
         )
         XCTAssertEqual(store.ignoredVersion(for: .stable), AppSemanticVersion("1.1.0"))
 
+        let restoredFetcher = StubReleaseFetcher()
+        let restoredService = UpdateService(
+            releaseFetcher: restoredFetcher,
+            currentVersionString: "1.0.0",
+            updateChannel: .stable,
+            callbackQueue: queue,
+            workQueue: queue,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 0,
+            ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore(defaults: defaults)
+        )
+        let restoredLatest = waitForState(restoredService, queue: queue) { state in
+            if case .latest(let current) = state {
+                return current == AppSemanticVersion("1.0.0")
+            }
+            return false
+        }
+        restoredService.checkForUpdates()
+        restoredFetcher.resolve(.success([makeRelease(tag: "v1.1.0")]))
+        wait(for: [restoredLatest], timeout: 2)
+
         let sameVersionLatest = waitForState(service, queue: queue) { state in
             if case .latest(let current) = state {
                 return current == AppSemanticVersion("1.0.0")
@@ -2437,6 +2458,10 @@ final class UpdateTests: XCTestCase {
                 )
                 let actionButtons = buttons.arrangedSubviews.compactMap { $0 as? NSButton }
                 XCTAssertEqual(actionButtons.count, 4)
+                XCTAssertEqual(
+                    actionButtons.compactMap { $0.identifier?.rawValue },
+                    ["viewUpdateGithubButton", "laterUpdateButton", "ignoreUpdateButton", "installUpdateButton"]
+                )
                 for button in actionButtons {
                     XCTAssertGreaterThanOrEqual(button.frame.minX, -0.5)
                     XCTAssertLessThanOrEqual(button.frame.maxX, buttons.bounds.maxX + 0.5)
@@ -2814,7 +2839,7 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(service.updateChannel, .beta)
     }
 
-    func testDashboardGeneralUpdateRowUsesSharedSettingsRowAndRelayActions() throws {
+    func testDashboardGeneralUpdateRowUsesSharedSettingsRowAndOmitsHomeIgnoreAction() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -2825,11 +2850,9 @@ final class UpdateTests: XCTestCase {
         let relay = DashboardPreferencePageRelay()
         var checkCount = 0
         var installCount = 0
-        var ignoreCount = 0
         var openNotesCount = 0
         relay.onCheckForUpdates = { checkCount += 1 }
         relay.onInstallUpdate = { installCount += 1 }
-        relay.onIgnoreUpdate = { ignoreCount += 1 }
         relay.onOpenUpdateNotes = { openNotesCount += 1 }
         var selectedChannel: UpdateChannel?
         relay.onUpdateChannelChanged = { selectedChannel = $0 }
@@ -2864,15 +2887,12 @@ final class UpdateTests: XCTestCase {
         let updateNotesButton = try XCTUnwrap(
             buttons.first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
         )
-        let updateIgnoreButton = try XCTUnwrap(
-            buttons.first { $0.identifier?.rawValue == "ignoreUpdateButton" }
-        )
         let updateBadge = try XCTUnwrap(
             updateTestDescendants(of: page)
                 .first { $0.identifier?.rawValue == "updateAvailableBadge" }
         )
         XCTAssertTrue(updateNotesButton.isHidden)
-        XCTAssertTrue(updateIgnoreButton.isHidden)
+        XCTAssertFalse(buttons.contains { $0.identifier?.rawValue == "ignoreUpdateButton" })
         XCTAssertTrue(updateBadge.isHidden)
         XCTAssertFalse(channelPopup.superview === updateButton.superview)
         channelPopup.selectItem(at: UpdateChannel.allCases.firstIndex(of: .beta)!)
@@ -2899,18 +2919,14 @@ final class UpdateTests: XCTestCase {
         XCTAssertTrue(updateButton.isEnabled)
         XCTAssertEqual(updateNotesButton.title, "查看更新内容")
         XCTAssertFalse(updateNotesButton.isHidden)
-        XCTAssertEqual(updateIgnoreButton.title, "忽略此版本")
-        XCTAssertFalse(updateIgnoreButton.isHidden)
+        XCTAssertFalse(buttons.contains { $0.identifier?.rawValue == "ignoreUpdateButton" })
         XCTAssertFalse(updateBadge.isHidden)
         let controls = try XCTUnwrap(updateButton.superview as? NSStackView)
-        XCTAssertEqual(controls.arrangedSubviews.count, 3)
-        XCTAssertTrue(controls.arrangedSubviews[0] === updateIgnoreButton)
-        XCTAssertTrue(controls.arrangedSubviews[1] === updateNotesButton)
-        XCTAssertTrue(controls.arrangedSubviews[2] === updateButton)
+        XCTAssertEqual(controls.arrangedSubviews.count, 2)
+        XCTAssertTrue(controls.arrangedSubviews[0] === updateNotesButton)
+        XCTAssertTrue(controls.arrangedSubviews[1] === updateButton)
         relay.openUpdateNotes(updateNotesButton)
         XCTAssertEqual(openNotesCount, 1)
-        relay.ignoreUpdate(updateIgnoreButton)
-        XCTAssertEqual(ignoreCount, 1)
         relay.update(updateButton)
         XCTAssertEqual(installCount, 1)
         XCTAssertEqual(
@@ -2927,7 +2943,7 @@ final class UpdateTests: XCTestCase {
         )
 
         pageController.refresh(updateState: .latest(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))))
-        XCTAssertTrue(updateIgnoreButton.isHidden)
+        XCTAssertFalse(buttons.contains { $0.identifier?.rawValue == "ignoreUpdateButton" })
         XCTAssertTrue(updateNotesButton.isHidden)
         XCTAssertTrue(updateBadge.isHidden)
     }
@@ -2977,11 +2993,6 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSButton }
                 .first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
         )
-        let updateIgnoreButton = try XCTUnwrap(
-            updateTestDescendants(of: page)
-                .compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == "ignoreUpdateButton" }
-        )
         let controls = try XCTUnwrap(updateButton.superview as? NSStackView)
         let row = try XCTUnwrap(updateButton.superview?.superview)
         let subtitle = try XCTUnwrap(
@@ -2993,9 +3004,13 @@ final class UpdateTests: XCTestCase {
         XCTAssertEqual(controls.orientation, .vertical)
         XCTAssertGreaterThan(row.frame.height, 62)
         XCTAssertTrue(subtitle.stringValue.contains("123.456.789"))
+        XCTAssertFalse(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .contains { $0.identifier?.rawValue == "ignoreUpdateButton" }
+        )
         XCTAssertLessThanOrEqual(updateButton.frame.maxX, controls.bounds.maxX + 0.5)
         XCTAssertLessThanOrEqual(updateNotesButton.frame.maxX, controls.bounds.maxX + 0.5)
-        XCTAssertLessThanOrEqual(updateIgnoreButton.frame.maxX, controls.bounds.maxX + 0.5)
 
         page.setFrameSize(NSSize(width: 760, height: 300))
         page.layoutSubtreeIfNeeded()
@@ -3042,11 +3057,6 @@ final class UpdateTests: XCTestCase {
         )
         let controls = try XCTUnwrap(updateButton.superview as? NSStackView)
         let row = try XCTUnwrap(controls.superview)
-        let ignoredButton = try XCTUnwrap(
-            updateTestDescendants(of: page)
-                .compactMap { $0 as? NSButton }
-                .first { $0.identifier?.rawValue == "ignoreUpdateButton" }
-        )
         let notesButton = try XCTUnwrap(
             updateTestDescendants(of: page)
                 .compactMap { $0 as? NSButton }
@@ -3098,8 +3108,12 @@ final class UpdateTests: XCTestCase {
         assertTrailingAlignment(.restarting(current: current, latest: latest), width: 720)
         assertTrailingAlignment(.available(current: current, latest: latest), width: 720)
 
-        XCTAssertFalse(ignoredButton.isHidden)
         XCTAssertFalse(notesButton.isHidden)
+        XCTAssertFalse(
+            updateTestDescendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .contains { $0.identifier?.rawValue == "ignoreUpdateButton" }
+        )
 
         let narrowPageController = DashboardGeneralPage()
         let narrowRelay = DashboardPreferencePageRelay()
@@ -3213,7 +3227,7 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(
                 visibleButtons.compactMap { $0.identifier?.rawValue },
                 presentation.showsReleaseNotesButton
-                    ? ["ignoreUpdateButton", "viewUpdateNotesButton", "checkForUpdatesButton"]
+                    ? ["viewUpdateNotesButton", "checkForUpdatesButton"]
                     : ["checkForUpdatesButton"],
                 "\(state) action visibility and order must remain stable",
                 file: file,
@@ -3351,13 +3365,12 @@ final class UpdateTests: XCTestCase {
             XCTAssertEqual(
                 controls.orientation,
                 .horizontal,
-                "actions should retain their horizontal order on the dedicated row for \(language)"
+                "actions should retain their horizontal order at medium width for \(language)"
             )
-            XCTAssertEqual(
+            XCTAssertLessThanOrEqual(
                 medium.labels.maxX,
-                row.bounds.maxX - 20,
-                accuracy: 0.5,
-                "medium-width content must use the full row when the title accessory needs the action column"
+                medium.controls.minX - 19.5,
+                "medium-width content and actions must retain their row gap for \(language)"
             )
             XCTAssertGreaterThanOrEqual(
                 mediumTitleLabel?.frame.width ?? 0,

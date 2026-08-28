@@ -249,7 +249,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onCheckForUpdates: { [weak self] in self?.updateService.checkForUpdates() },
             onInstallUpdate: { [weak self] in self?.updateService.installAvailableUpdate() },
-            onIgnoreUpdate: { [weak self] in self?.updateService.ignoreAvailableUpdate() },
             onOpenUpdateNotes: { [weak self] in self?.showUpdateNotes() },
             onOpenOpenCodex: { [weak self] in self?.openOpenCodex() },
             onOpenCodexModeChanged: { [weak self] mode in
