@@ -1719,6 +1719,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
         menuBarIconView.onImageChanged = nil
+        menuBarIconView.onAnimationFrameChanged = nil
         menuBarContentStack.removeFromSuperview()
         statusMenu.delegate = nil
         statusMenu.removeAllItems()
@@ -1931,6 +1932,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.menuBarIconView.image = image
             self.layoutStatusItem(for: self.snapshot)
             self.actions.iconChanged(image)
+        }
+        // Animation frames still update the real menu-bar icon and its
+        // geometry, but they do not invalidate the Dashboard preview on every
+        // timer tick. The preview is refreshed by semantic image changes,
+        // settings updates, and snapshot updates instead.
+        menuBarIconView.onAnimationFrameChanged = { [weak self] _ in
+            guard let self else { return }
+            self.layoutStatusItem(for: self.snapshot)
         }
         actions.iconChanged(menuBarIconView.image)
         menuBarIconView.imageScaling = .scaleProportionallyDown

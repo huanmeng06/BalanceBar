@@ -31,7 +31,11 @@ final class RotatingTemplateImageView: PassthroughImageView {
     private var rotationFrames: [NSImage] = []
     private var rotationTimer: Timer?
     private var animationState = MenuBarAnimationState()
+    /// Reports source-image changes that can affect the Dashboard preview.
     var onImageChanged: ((NSImage?) -> Void)?
+    /// Reports animation frames without treating each frame as a preview
+    /// content change.
+    var onAnimationFrameChanged: ((NSImage?) -> Void)?
     var isRotating: Bool { rotationTimer != nil }
 
     func setSourceImage(_ image: NSImage) {
@@ -45,7 +49,7 @@ final class RotatingTemplateImageView: PassthroughImageView {
 
     func displayImage(_ image: NSImage) {
         self.image = image
-        onImageChanged?(image)
+        onAnimationFrameChanged?(image)
     }
 
     func startRotating() {
@@ -75,7 +79,7 @@ final class RotatingTemplateImageView: PassthroughImageView {
         }
         let frame = rotationFrames[frameIndex]
         image = frame
-        onImageChanged?(frame)
+        onAnimationFrameChanged?(frame)
     }
 
     private static func makeRotationFrames(from sourceImage: NSImage) -> [NSImage] {
