@@ -405,7 +405,6 @@
 "status.item.controller.reading_balance" = "Reading balance…";
 "status.item.controller.no_live_data_received_yet" = "No live data received yet";
 "luna.reserve.title" = "Luna Reserve";
-"luna.reserve.title_status_value" = "%1$@ · %2$@";
 "luna.reserve.status.loading" = "Loading…";
 "luna.reserve.status.available" = "Available";
 "luna.reserve.status.unavailable" = "Unavailable";
@@ -413,4 +412,6 @@
 "luna.reserve.remaining_unavailable" = "Remaining: unavailable";
 "luna.reserve.reset_value" = "Resets in %1$@";
 "luna.reserve.reset_unavailable" = "Reset time unavailable";
+"luna.reserve.menu_reset_value" = "%1$@";
+"luna.reserve.menu_unavailable" = "Luna Reserve temporarily unavailable";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

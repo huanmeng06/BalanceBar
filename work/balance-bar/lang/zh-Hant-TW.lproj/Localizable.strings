@@ -405,7 +405,6 @@
 "status.item.controller.reading_balance" = "正在讀取餘額…";
 "status.item.controller.no_live_data_received_yet" = "尚未獲得真實資料";
 "luna.reserve.title" = "Luna Reserve";
-"luna.reserve.title_status_value" = "%1$@ · %2$@";
 "luna.reserve.status.loading" = "載入中…";
 "luna.reserve.status.available" = "可用";
 "luna.reserve.status.unavailable" = "無法使用";
@@ -413,4 +412,6 @@
 "luna.reserve.remaining_unavailable" = "剩餘：無法取得";
 "luna.reserve.reset_value" = "%1$@ 後重設";
 "luna.reserve.reset_unavailable" = "重設時間無法取得";
+"luna.reserve.menu_reset_value" = "%1$@";
+"luna.reserve.menu_unavailable" = "Luna Reserve 暫時無法使用";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

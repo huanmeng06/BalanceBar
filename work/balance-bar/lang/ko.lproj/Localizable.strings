@@ -405,7 +405,6 @@
 "status.item.controller.reading_balance" = "잔액 읽는 중…";
 "status.item.controller.no_live_data_received_yet" = "실시간 데이터를 아직 받지 못했습니다";
 "luna.reserve.title" = "Luna Reserve";
-"luna.reserve.title_status_value" = "%1$@ · %2$@";
 "luna.reserve.status.loading" = "로드 중…";
 "luna.reserve.status.available" = "사용 가능";
 "luna.reserve.status.unavailable" = "사용 불가";
@@ -413,4 +412,6 @@
 "luna.reserve.remaining_unavailable" = "남은 한도: 사용 불가";
 "luna.reserve.reset_value" = "%1$@ 후 재설정";
 "luna.reserve.reset_unavailable" = "재설정 시간을 사용할 수 없음";
+"luna.reserve.menu_reset_value" = "%1$@";
+"luna.reserve.menu_unavailable" = "Luna Reserve를 일시적으로 사용할 수 없음";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

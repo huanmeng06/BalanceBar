@@ -300,14 +300,27 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["1h30m"],
                 language: language
             )
+            let menuReset = tr(
+                .keyLunaReserveMenuResetValue,
+                arguments: ["1h30m · 9/4 04:55"],
+                language: language
+            )
+            let menuUnavailable = tr(.keyLunaReserveMenuUnavailable, language: language)
             XCTAssertEqual(title, "Luna Reserve", "title should stay product terminology in (language)")
             XCTAssertFalse(loading.hasPrefix("⟦"), "missing Reserve loading status in (language)")
             XCTAssertFalse(status.hasPrefix("⟦"), "missing Reserve status in (language)")
             XCTAssertTrue(remaining.contains("45"), "missing remaining value in (language)")
             XCTAssertTrue(reset.contains("1h30m"), "missing reset value in (language)")
+            XCTAssertTrue(menuReset.contains("1h30m · 9/4 04:55"), "missing menu reset value in (language)")
+            XCTAssertFalse(menuUnavailable.hasPrefix("⟦"), "missing menu unavailable copy in (language)")
             XCTAssertFalse(remaining.contains("%1$@"), "unrendered remaining placeholder in (language)")
             XCTAssertFalse(reset.contains("%1$@"), "unrendered reset placeholder in (language)")
+            XCTAssertFalse(menuReset.contains("%1$@"), "unrendered menu reset placeholder in (language)")
         }
+        XCTAssertEqual(
+            tr(.keyLunaReserveMenuUnavailable, language: .simplifiedChinese),
+            "Luna Reserve 暂不可用"
+        )
     }
 
     func testIgnoreUpdateCopyExistsInEverySupportedLanguage() {
@@ -333,7 +346,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 416)
+        XCTAssertEqual(expectedKeys.count, 417)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(

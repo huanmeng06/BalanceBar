@@ -55,6 +55,24 @@ struct LunaReserveQuota: Equatable {
         return tr(.keyLunaReserveResetValue, arguments: [reset])
     }
 
+    var menuTitleText: String {
+        "🌙 \(tr(.keyLunaReserveTitle))"
+    }
+
+    var menuSubtitleText: String {
+        switch status {
+        case .loading:
+            return tr(.keyLunaReserveStatusLoading)
+        case .available:
+            guard let reset = resetDisplayText() else {
+                return tr(.keyLunaReserveResetUnavailable)
+            }
+            return tr(.keyLunaReserveMenuResetValue, arguments: [reset])
+        case .unavailable:
+            return tr(.keyLunaReserveMenuUnavailable)
+        }
+    }
+
     func resetDisplayText(
         displayMode: OfficialQuotaResetDisplayMode = .both,
         now: Date = Date(),

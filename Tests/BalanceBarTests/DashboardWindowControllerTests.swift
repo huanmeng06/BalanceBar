@@ -2133,6 +2133,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(longQuotaViews.allSatisfy { $0.frame.maxX <= longOverview.bounds.maxX })
 
         let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
+        XCTAssertEqual(reserve.menuTitleText, "🌙 Luna Reserve")
+        XCTAssertEqual(reserve.menuSubtitleText, "1h30m")
         controller.update(
             snapshot: .official(
                 "OpenAI Official",
@@ -2162,19 +2164,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertNotNil(
             reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
-                $0.accountLabel.stringValue == tr(.keyLunaReserveTitleStatusValue, arguments: [
-                    tr(.keyLunaReserveTitle),
-                    tr(.keyLunaReserveStatusAvailable)
-                ])
+                $0.accountLabel.stringValue == reserve.menuTitleText
             }
         )
         XCTAssertNotNil(
             reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
-                $0.accountLabel.stringValue == reserve.resetText
+                $0.accountLabel.stringValue == reserve.menuSubtitleText
             }
         )
 
         let unavailableReserve = LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
+        XCTAssertEqual(unavailableReserve.menuTitleText, "🌙 Luna Reserve")
+        XCTAssertEqual(unavailableReserve.menuSubtitleText, "Luna Reserve temporarily unavailable")
         controller.update(
             snapshot: .official(
                 "OpenAI Official",
@@ -2205,15 +2206,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertNotNil(
             unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
-                $0.accountLabel.stringValue == tr(.keyLunaReserveTitleStatusValue, arguments: [
-                    tr(.keyLunaReserveTitle),
-                    tr(.keyLunaReserveStatusUnavailable)
-                ])
+                $0.accountLabel.stringValue == unavailableReserve.menuTitleText
             }
         )
         XCTAssertNotNil(
             unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
-                $0.accountLabel.stringValue == unavailableReserve.resetText
+                $0.accountLabel.stringValue == unavailableReserve.menuSubtitleText
             }
         )
     }

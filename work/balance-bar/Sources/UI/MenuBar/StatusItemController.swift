@@ -2879,13 +2879,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 view.addSubview(amount)
 
                 let quotaDetail = makeMarqueeOverviewLabel(
-                    tr(
-                        .keyLunaReserveTitleStatusValue,
-                        arguments: [
-                            tr(.keyLunaReserveTitle),
-                            lunaReserve.status.localizedText
-                        ]
-                    ),
+                    lunaReserve.menuTitleText,
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                         weight: .medium
@@ -2896,7 +2890,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 view.addSubview(quotaDetail)
 
                 let reset = makeMarqueeOverviewLabel(
-                    lunaReserve.resetText,
+                    lunaReserve.menuSubtitleText,
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaResetPointSize,
                         weight: .regular
