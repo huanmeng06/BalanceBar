@@ -133,6 +133,184 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testBalanceUpdatesDuringTasksUsesOrderedAdaptiveControlsAcrossWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.RefreshControlsLayout.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        relay.onInterval = { identifier, value in
+            switch identifier {
+            case "codexUsageRefreshInterval":
+                preferences.codexUsageRefreshInterval = value
+            case "postCodexRefreshDuration":
+                preferences.postCodexRefreshDuration = value
+            default:
+                break
+            }
+        }
+        let page = DashboardGeneralPage().make(.init(
+            preferences: preferences,
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
+        window.contentView = host
+        page.frame = host.bounds
+        page.autoresizingMask = []
+        host.addSubview(page)
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+
+        let runningPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "codexUsageRefreshInterval" }
+        )
+        let trailingPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "postCodexRefreshDuration" }
+        )
+        let runningControls = try XCTUnwrap(runningPopup.superview as? NSStackView)
+        let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
+        let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
+        let row = try XCTUnwrap(controls.superview)
+        let labels = try XCTUnwrap(
+            row.subviews
+                .compactMap { $0 as? NSStackView }
+                .first { $0 !== controls }
+        )
+        let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
+        let card = try XCTUnwrap(rowsStack.superview)
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+
+        XCTAssertEqual(controls.arrangedSubviews.count, 2)
+        XCTAssertTrue(controls.arrangedSubviews[0] === runningControls)
+        XCTAssertTrue(controls.arrangedSubviews[1] === trailingControls)
+
+        func assertCardHeight(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
+            XCTAssertEqual(
+                card.frame.height,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: separators
+                ),
+                accuracy: 0.5,
+                message,
+                file: file,
+                line: line
+            )
+        }
+
+        func assertLayout(
+            width: CGFloat,
+            orientation: NSUserInterfaceLayoutOrientation,
+            usesDedicatedRow: Bool,
+            file: StaticString = #filePath,
+            line: UInt = #line
+        ) {
+            window.setContentSize(NSSize(width: width, height: 520))
+            host.setFrameSize(NSSize(width: width, height: 520))
+            page.setFrameSize(host.bounds.size)
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+
+            XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
+            let runningFrame = runningControls.convert(runningControls.bounds, to: row)
+            let trailingFrame = trailingControls.convert(trailingControls.bounds, to: row)
+            let labelsFrame = labels.convert(labels.bounds, to: row)
+            let controlsFrame = controls.convert(controls.bounds, to: row)
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(runningFrame),
+                "running controls stay inside the row",
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(trailingFrame),
+                "after controls stay inside the row",
+                file: file,
+                line: line
+            )
+            if orientation == .horizontal {
+                XCTAssertEqual(
+                    runningFrame.maxY,
+                    trailingFrame.maxY,
+                    accuracy: 0.5,
+                    "running controls precede after controls on one line",
+                    file: file,
+                    line: line
+                )
+            } else {
+                XCTAssertGreaterThan(
+                    runningFrame.minY,
+                    trailingFrame.minY,
+                    "running controls remain before after controls in the vertical reflow",
+                    file: file,
+                    line: line
+                )
+            }
+            if usesDedicatedRow {
+                XCTAssertLessThanOrEqual(
+                    controlsFrame.maxY,
+                    labelsFrame.minY + 0.5,
+                    "refresh controls occupy a row below the title and subtitle",
+                    file: file,
+                    line: line
+                )
+                XCTAssertGreaterThan(
+                    row.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    "refresh controls move to a dedicated row before the text column is squeezed",
+                    file: file,
+                    line: line
+                )
+            } else {
+                XCTAssertEqual(
+                    row.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    accuracy: 0.5,
+                    "the single-line refresh control row keeps the standard height",
+                    file: file,
+                    line: line
+                )
+            }
+            if orientation == .vertical {
+                XCTAssertTrue(usesDedicatedRow, "vertical reflow uses a dedicated control row", file: file, line: line)
+            }
+            assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
+        }
+
+        assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
+        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: true)
+        assertLayout(width: 320, orientation: .vertical, usesDedicatedRow: true)
+
+        runningPopup.selectItem(at: 4)
+        relay.interval(runningPopup)
+        trailingPopup.selectItem(at: 2)
+        relay.interval(trailingPopup)
+        XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
+        XCTAssertEqual(preferences.postCodexRefreshDuration, 12)
+        XCTAssertEqual(defaults.double(forKey: "codexUsageRefreshInterval"), 10)
+        XCTAssertEqual(defaults.double(forKey: "postCodexRefreshDuration"), 12)
+    }
+
     func testMenuBarIconDisplayModeIsLocalizedFitsAndPersistsAcrossRefresh() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -316,6 +494,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 relay: relay,
                 statusItemVisibility: .unknown
             ))
+            page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+            let window = NSWindow(
+                contentRect: page.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = page
+            window.layoutIfNeeded()
 
             let delayPopup = try XCTUnwrap(
                 descendants(of: page)
@@ -323,21 +510,60 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayDelayIdentifier }
             )
             let delayRow = try XCTUnwrap(delayPopup.superview)
+            let modePopup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayModeIdentifier }
+            )
+            let modeRow = try XCTUnwrap(modePopup.superview)
+            let taskStatusSwitch = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == "showMenuBarIcon" }
+            )
+            let taskStatusRow = try XCTUnwrap(taskStatusSwitch.superview)
+            let animationSwitch = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == "animateCodexActivity" }
+            )
+            let animationRow = try XCTUnwrap(animationSwitch.superview)
             XCTAssertTrue(
                 delayRow.isHidden,
                 "the delay selector is hidden while Always Visible is selected in (language)"
             )
-            let displayRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
-            let displaySeparators = displayRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-            XCTAssertGreaterThan(displaySeparators.count, 2)
+            let iconTaskStatusRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
+            let iconRows = iconTaskStatusRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+            XCTAssertTrue(
+                zip(iconRows, [taskStatusRow, animationRow, modeRow, delayRow])
+                    .allSatisfy { $0.0 === $0.1 },
+                "icon/task rows follow task status, animation, display mode, delay order in (language)"
+            )
+            let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+            XCTAssertEqual(iconTaskStatusSeparators.count, 3)
             XCTAssertFalse(
-                displaySeparators[1].isHidden,
-                "the divider before the hidden delay row remains visible in (language)"
+                iconTaskStatusSeparators[0].isHidden,
+                "the divider between task status and animation is visible in (language)"
+            )
+            XCTAssertFalse(
+                iconTaskStatusSeparators[1].isHidden,
+                "the divider between animation and display mode is visible in (language)"
             )
             XCTAssertTrue(
-                displaySeparators[2].isHidden,
-                "the divider after the hidden delay row is collapsed in (language)"
+                iconTaskStatusSeparators[2].isHidden,
+                "the divider after display mode is collapsed with hidden delay in (language)"
             )
+            XCTAssertFalse(taskStatusRow.isHidden)
+            XCTAssertFalse(animationRow.isHidden)
+            XCTAssertFalse(modeRow.isHidden)
+            if language == .simplifiedChinese {
+                XCTAssertEqual(
+                    modeRow.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    accuracy: 1,
+                    "Always Visible keeps the display-mode row at one-row height"
+                )
+            }
             XCTAssertEqual(
                 delayPopup.itemTitles,
                 [
@@ -381,20 +607,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertFalse(delayPopup.itemTitles.contains { $0.hasPrefix("⟦") })
 
-            let modePopup = try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? NSPopUpButton }
-                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayModeIdentifier }
-            )
             modePopup.selectItem(at: 1)
             relay.menuBarIconDisplayMode(modePopup)
+            window.layoutIfNeeded()
             XCTAssertEqual(preferences.menuBarIconDisplayMode, .onlyWhileRunning)
             XCTAssertFalse(
                 delayRow.isHidden,
                 "changing to Only While Running reveals the delay selector immediately in (language)"
             )
             XCTAssertTrue(
-                displaySeparators.allSatisfy { !$0.isHidden },
+                iconTaskStatusSeparators.allSatisfy { !$0.isHidden },
                 "all display dividers are visible with the delay selector in (language)"
             )
 
@@ -413,15 +635,49 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 menuBarSnapshot: { $0 },
                 iconImage: nil
             )
+            window.layoutIfNeeded()
             XCTAssertTrue(delayRow.isHidden, "switching back hides the delay selector in (language)")
             XCTAssertFalse(
-                displaySeparators[1].isHidden,
-                "the divider before the hidden delay row remains visible after switching back in (language)"
+                iconTaskStatusSeparators[0].isHidden,
+                "the divider between task status and animation remains visible after switching back in (language)"
+            )
+            XCTAssertFalse(
+                iconTaskStatusSeparators[1].isHidden,
+                "the divider between animation and display mode remains visible after switching back in (language)"
             )
             XCTAssertTrue(
-                displaySeparators[2].isHidden,
-                "the divider after the hidden delay row is collapsed after switching back in (language)"
+                iconTaskStatusSeparators[2].isHidden,
+                "the divider after display mode is collapsed after switching back in (language)"
             )
+
+            relay.onToggle = { identifier, enabled in
+                guard identifier == "showMenuBarIcon" else { return }
+                preferences.showMenuBarIcon = enabled
+                controller.refresh(
+                    snapshot: snapshot,
+                    preferences: preferences,
+                    menuBarSnapshot: { $0 },
+                    iconImage: nil
+                )
+            }
+            taskStatusSwitch.state = .off
+            relay.toggle(taskStatusSwitch)
+            window.layoutIfNeeded()
+            XCTAssertFalse(taskStatusRow.isHidden)
+            XCTAssertTrue(animationRow.isHidden)
+            XCTAssertTrue(modeRow.isHidden)
+            XCTAssertTrue(delayRow.isHidden)
+            XCTAssertTrue(
+                iconTaskStatusSeparators.allSatisfy(\.isHidden),
+                "dependent icon rows have no stray separators when task status icon is off in (language)"
+            )
+
+            taskStatusSwitch.state = .on
+            relay.toggle(taskStatusSwitch)
+            window.layoutIfNeeded()
+            XCTAssertFalse(animationRow.isHidden)
+            XCTAssertFalse(modeRow.isHidden)
+            XCTAssertTrue(delayRow.isHidden)
 
             let rebuiltPage = DashboardMenuBarPage().make(.init(
                 preferences: AppPreferences(defaults: defaults),
@@ -437,6 +693,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayDelayIdentifier }
             )
             XCTAssertEqual(rebuiltDelayPopup.indexOfSelectedItem, 4)
+            window.contentView = nil
         }
     }
 
@@ -617,12 +874,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testMenuPageMixedStatusCardRemeasuresOrdinaryRowsAndRapidVisibilityChanges() throws {
+    func testMenuPageStatusLinksCardRemeasuresItsRowAndEditorAcrossVisibilityChanges() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english
 
-        let suiteName = "DashboardPreferencePagesTests.MixedStatusCard.\(UUID().uuidString)"
+        let suiteName = "DashboardPreferencePagesTests.StatusLinksCard.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -668,6 +925,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == "showStatusMenu" }
         )
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        XCTAssertEqual(separators.count, 1)
+        XCTAssertFalse(separators[0].isHidden)
+        XCTAssertTrue(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .contains { $0.stringValue == tr(.keyDashboardMenuPageStatusLinks) }
+        )
+        let quickLinkSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "showOpenDashboardMenu" }
+        )
+        let quickLinkRow = try XCTUnwrap(quickLinkSwitch.superview)
+        let quickLinkRowsStack = try XCTUnwrap(quickLinkRow.superview as? NSStackView)
+        XCTAssertFalse(quickLinkRowsStack === rowsStack)
 
         func expectedCardHeight() -> CGFloat {
             DashboardSettingsComponents.settingsCardHeight(
@@ -688,7 +960,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             return (statusRow.frame.height, card.frame.height)
         }
 
-        let longSubtitle = "This status-link summary is intentionally long so the ordinary row in the mixed Open Project card must wrap beside its switch and remain fully visible after every width and content transition."
+        let longSubtitle = "This status-link summary is intentionally long so the Status Links row must wrap beside its switch and remain fully visible after every width and content transition."
         subtitle.stringValue = longSubtitle
         subtitle.invalidateIntrinsicContentSize()
         statusRow.needsLayout = true
@@ -719,6 +991,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         for visible in [false, true, false, true, false, true] {
             controller.updateStatusVisibility(visible, animated: false)
+            XCTAssertEqual(separators[0].isHidden, !visible)
             _ = layout(at: 516)
         }
         XCTAssertEqual(editor.currentHeight, editor.layoutHeight, accuracy: 0.5)
@@ -978,23 +1251,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(scrollView.documentView === documentView)
     }
 
-    func testCodexActivityAnimationBelongsToMenuBarWithLocalizedSectionOrder() {
+    func testCodexActivityAnimationBelongsToMenuBarWithLocalizedTaskOrientedSectionOrder() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String, String)] = [
-            (.simplifiedChinese, "动画", "任务运行时播放菜单栏图标动画"),
-            (.english, "Animation", "Animate the menu bar icon while a task runs"),
-            (.traditionalChineseTaiwan, "動畫", "任務執行時播放選單列圖示動畫"),
-            (.traditionalChineseHongKong, "動畫", "任務執行時播放選單列圖示動畫"),
-            (.japanese, "アニメーション", "タスク実行中にメニューバーアイコンをアニメーション"),
-            (.korean, "애니메이션", "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
-            (.spanish, "Animación", "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
-            (.german, "Animation", "Menüleistensymbol während einer Aufgabe animieren"),
-            (.french, "Animation", "Animer l’icône de la barre des menus pendant une tâche")
+        let cases: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "任务运行时播放菜单栏图标动画"),
+            (.english, "Animate the menu bar icon while a task runs"),
+            (.traditionalChineseTaiwan, "任務執行時播放選單列圖示動畫"),
+            (.traditionalChineseHongKong, "任務執行時播放選單列圖示動畫"),
+            (.japanese, "タスク実行中にメニューバーアイコンをアニメーション"),
+            (.korean, "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
+            (.spanish, "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
+            (.german, "Menüleistensymbol während einer Aufgabe animieren"),
+            (.french, "Animer l’icône de la barre des menus pendant une tâche")
         ]
 
-        for (language, animationSectionTitle, animationRowTitle) in cases {
+        for (language, animationRowTitle) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.CodexActivityAnimation.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -1011,21 +1284,58 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let labels = descendants(of: menuBarPage).compactMap { $0 as? NSTextField }
             let labelStrings = labels.map(\.stringValue)
             guard let previewIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPagePreview, language: language)),
-                  let animationIndex = labelStrings.firstIndex(of: animationSectionTitle),
-                  let displayIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageDisplayItems, language: language)) else {
+                  let quotaAndResetIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageQuotaAndReset, language: language)),
+                  let iconAndTaskStatusIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageIconAndTaskStatus, language: language)),
+                  let layoutIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageLayout, language: language)) else {
                 defaults.removePersistentDomain(forName: suiteName)
                 return XCTFail("Expected menu bar section headings for \(language)")
             }
-            XCTAssertLessThan(previewIndex, animationIndex)
-            XCTAssertLessThan(previewIndex, displayIndex)
-            XCTAssertLessThan(displayIndex, animationIndex)
-            XCTAssertEqual(labelStrings.filter { $0 == animationSectionTitle }.count, 1)
+            let sectionIndices = [
+                previewIndex,
+                quotaAndResetIndex,
+                iconAndTaskStatusIndex,
+                layoutIndex
+            ]
+            XCTAssertEqual(sectionIndices, sectionIndices.sorted())
+            XCTAssertEqual(Set(sectionIndices).count, sectionIndices.count)
+            let quotaRowTitles = [
+                tr(.keyDashboardMenuBarPageBalanceAmount, language: language),
+                tr(.keyDashboardMenuBarPageResetCountdown, language: language),
+                tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language),
+                tr(.keyDashboardMenuBarPageQuotaResetDisplayMode, language: language)
+            ]
+            let quotaRowIndices = quotaRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
+            XCTAssertEqual(quotaRowIndices.count, quotaRowTitles.count)
+            XCTAssertEqual(quotaRowIndices, quotaRowIndices.sorted())
+            let iconRowTitles = [
+                tr(.keyDashboardMenuBarPageAgentIcon, language: language),
+                animationRowTitle,
+                tr(.keyDashboardMenuBarPageIconDisplayMode, language: language),
+                tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language)
+            ]
+            let iconRowIndices = iconRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
+            XCTAssertEqual(iconRowIndices.count, iconRowTitles.count)
+            XCTAssertEqual(iconRowIndices, iconRowIndices.sorted())
+            XCTAssertFalse(
+                labelStrings.contains(tr(.keyDashboardMenuBarPageDisplayItems, language: language)),
+                "the legacy mixed display-content heading is no longer shown in \(language)"
+            )
+            XCTAssertFalse(
+                labelStrings.contains(tr(.keyDashboardMenuBarPageAnimation, language: language)),
+                "animation is a row under Icon & Task Status, not a separate section in \(language)"
+            )
             XCTAssertEqual(labelStrings.filter { $0 == animationRowTitle }.count, 1)
 
             let animationSwitches = descendants(of: menuBarPage)
                 .compactMap { $0 as? NSSwitch }
                 .filter { $0.identifier?.rawValue == "animateCodexActivity" }
             XCTAssertEqual(animationSwitches.count, 1)
+            let animationRow = try XCTUnwrap(animationSwitches.first?.superview)
+            let iconTaskStatusRowsStack = try XCTUnwrap(animationRow.superview as? NSStackView)
+            XCTAssertTrue(
+                iconTaskStatusRowsStack.arrangedSubviews.contains { $0 === animationRow },
+                "animation belongs to Icon & Task Status in \(language)"
+            )
 
             let mode = OpenCodexDashboardMode(automaticDetection: true, manualPort: nil)
             let advancedPage = DashboardAdvancedPage().make(.init(
@@ -1050,6 +1360,146 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             defaults.removePersistentDomain(forName: suiteName)
         }
+    }
+
+    func testMenuBarQuotaRowsFollowVisibilityDependenciesAndRequestedOrder() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarQuotaVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        relay.onToggle = { identifier, enabled in
+            switch identifier {
+            case "showMenuBarAmount":
+                preferences.showMenuBarAmount = enabled
+            case "showMenuBarReset":
+                preferences.showMenuBarReset = enabled
+            default:
+                return
+            }
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+        let window = NSWindow(
+            contentRect: page.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+
+        let amountSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "showMenuBarAmount" }
+        )
+        let resetSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "showMenuBarReset" }
+        )
+        let quotaWindowPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaWindowPreferenceIdentifier }
+        )
+        let quotaResetPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
+        )
+        let amountRow = try XCTUnwrap(amountSwitch.superview)
+        let resetRow = try XCTUnwrap(resetSwitch.superview)
+        let quotaWindowRow = try XCTUnwrap(quotaWindowPopup.superview)
+        let quotaResetRow = try XCTUnwrap(quotaResetPopup.superview)
+        let rowsStack = try XCTUnwrap(amountRow.superview as? NSStackView)
+        let card = try XCTUnwrap(rowsStack.superview)
+        let rowViews = rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+        XCTAssertTrue(
+            zip(rowViews, [amountRow, resetRow, quotaWindowRow, quotaResetRow])
+                .allSatisfy { $0.0 === $0.1 }
+        )
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        XCTAssertEqual(separators.count, 3)
+
+        func assertCardLayout() {
+            window.layoutIfNeeded()
+            XCTAssertEqual(
+                card.frame.height,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: separators
+                ),
+                accuracy: 0.5
+            )
+        }
+
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        assertCardLayout()
+
+        amountSwitch.state = .off
+        relay.toggle(amountSwitch)
+        XCTAssertFalse(amountRow.isHidden)
+        XCTAssertTrue(resetRow.isHidden)
+        XCTAssertTrue(quotaWindowRow.isHidden)
+        XCTAssertTrue(quotaResetRow.isHidden)
+        XCTAssertTrue(separators.allSatisfy(\.isHidden))
+        assertCardLayout()
+
+        amountSwitch.state = .on
+        relay.toggle(amountSwitch)
+        XCTAssertFalse(resetRow.isHidden)
+        XCTAssertFalse(quotaWindowRow.isHidden)
+        XCTAssertFalse(quotaResetRow.isHidden)
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+
+        resetSwitch.state = .off
+        relay.toggle(resetSwitch)
+        XCTAssertFalse(amountRow.isHidden)
+        XCTAssertFalse(resetRow.isHidden)
+        XCTAssertTrue(quotaWindowRow.isHidden)
+        XCTAssertTrue(quotaResetRow.isHidden)
+        XCTAssertFalse(separators[0].isHidden)
+        XCTAssertTrue(separators[1].isHidden)
+        XCTAssertTrue(separators[2].isHidden)
+        assertCardLayout()
+
+        resetSwitch.state = .on
+        relay.toggle(resetSwitch)
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        assertCardLayout()
     }
 
     func testQuotaWindowPreferenceSelectorUsesLocalizedOptionsPersistsAndKeepsLayoutStable() throws {
@@ -1171,15 +1621,43 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
 
             let selectorRow = try XCTUnwrap(popup.superview)
-            let displayHeading = try XCTUnwrap(
+            let quotaAndResetHeading = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSTextField }
                     .first {
-                        $0.stringValue == tr(.keyDashboardMenuBarPageDisplayItems, language: language)
+                        $0.stringValue == tr(.keyDashboardMenuBarPageQuotaAndReset, language: language)
                     }
             )
-            let displayRows = try XCTUnwrap(selectorRow.superview as? NSStackView)
-            XCTAssertTrue(displayRows.arrangedSubviews.first === selectorRow)
+            let quotaAndResetRows = try XCTUnwrap(selectorRow.superview as? NSStackView)
+            let quotaRows = quotaAndResetRows.arrangedSubviews.filter { !($0 is NSBox) }
+            XCTAssertEqual(quotaRows.count, 4)
+            XCTAssertTrue(
+                zip(
+                    quotaRows,
+                    [
+                        try XCTUnwrap(
+                            descendants(of: page)
+                                .compactMap { $0 as? NSSwitch }
+                                .first { $0.identifier?.rawValue == "showMenuBarAmount" }
+                                .flatMap(\.superview)
+                        ),
+                        try XCTUnwrap(
+                            descendants(of: page)
+                                .compactMap { $0 as? NSSwitch }
+                                .first { $0.identifier?.rawValue == "showMenuBarReset" }
+                                .flatMap(\.superview)
+                        ),
+                        selectorRow,
+                        try XCTUnwrap(
+                            descendants(of: page)
+                                .compactMap { $0 as? NSPopUpButton }
+                                .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
+                                .flatMap(\.superview)
+                        )
+                    ]
+                ).allSatisfy { $0.0 === $0.1 },
+                "quota rows follow usage, reset countdown, priority, reset display order"
+            )
             XCTAssertTrue(
                 descendants(of: selectorRow)
                     .compactMap { $0 as? NSTextField }
@@ -1195,7 +1673,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     }
             )
             XCTAssertTrue(
-                displayHeading.convert(displayHeading.bounds, to: page).minY
+                quotaAndResetHeading.convert(quotaAndResetHeading.bounds, to: page).minY
                     < selectorRow.convert(selectorRow.bounds, to: page).minY
             )
 
@@ -1750,7 +2228,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
-        XCTAssertTrue(labelStrings.contains("字号与位置"))
+        XCTAssertTrue(labelStrings.contains("布局"))
         XCTAssertFalse(labelStrings.contains("字号"))
         XCTAssertFalse(labelStrings.contains("细节微调"))
         XCTAssertTrue(labelStrings.contains("调整菜单栏文字大小"))
@@ -2375,7 +2853,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(fontPresetControl.toolTip?.contains("11.7/9") == true)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-        XCTAssertTrue(labels.contains { $0.stringValue == "Font Size & Position" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Layout" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Font Size" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Adjust menu bar text size" })
         XCTAssertFalse(labels.contains { $0.stringValue == "11.7 / 9.0 pt" })
@@ -2572,7 +3050,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, [String], [String], String)] = [
             (
                 .simplifiedChinese,
-                ["字号与位置", "菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"],
+                ["布局", "菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"],
                 [
                     "调整菜单栏文字大小",
                     "微调图标的上下位置Y 轴 + 0.0 pt",
@@ -2583,7 +3061,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .traditionalChineseTaiwan,
-                ["字號與位置", "選單列字號", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
+                ["版面", "選單列字號", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
                     "調整選單列文字大小",
                     "微調圖示的上下位置 Y 軸 + 0.0 pt",
@@ -2594,7 +3072,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .traditionalChineseHongKong,
-                ["字號與位置", "選單列字型大小", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
+                ["版面", "選單列字型大小", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
                     "調整選單列文字大小",
                     "微調圖示的上下位置 Y 軸 + 0.0 pt",
@@ -2605,7 +3083,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .japanese,
-                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの上下位置", "数値の上下位置", "他のメニューバーアイコンとの間隔"],
+                ["レイアウト", "メニューバーのフォントサイズ", "アイコンの上下位置", "数値の上下位置", "他のメニューバーアイコンとの間隔"],
                 [
                     "メニューバーの文字サイズを調整",
                     "アイコンの上下位置を微調整 Y 軸 + 0.0 pt",
@@ -2616,7 +3094,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .english,
-                ["Font Size & Position", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
+                ["Layout", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
                 [
                     "Adjust menu bar text size",
                     "Fine-tune the icon's vertical position Y axis + 0.0 pt",
@@ -2627,7 +3105,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .korean,
-                ["글꼴 크기 및 위치", "메뉴 막대 글꼴 크기", "아이콘 세로 위치", "수치 세로 위치", "다른 메뉴 막대 아이콘과의 간격"],
+                ["레이아웃", "메뉴 막대 글꼴 크기", "아이콘 세로 위치", "수치 세로 위치", "다른 메뉴 막대 아이콘과의 간격"],
                 [
                     "메뉴 막대 글자 크기 조정",
                     "아이콘 세로 위치 미세 조정 Y 축 + 0.0 pt",
@@ -2638,7 +3116,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .spanish,
-                ["Tamaño y posición de la fuente", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del importe", "Espacio respecto a los demás iconos de la barra de menús"],
+                ["Diseño", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del importe", "Espacio respecto a los demás iconos de la barra de menús"],
                 [
                     "Ajusta el tamaño del texto de la barra de menús",
                     "Ajusta con precisión la posición vertical del icono Eje Y + 0.0 pt",
@@ -2649,7 +3127,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .german,
-                ["Schriftgröße und Position", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Betragsposition", "Abstand zu anderen Menüleistensymbolen"],
+                ["Layout", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Betragsposition", "Abstand zu anderen Menüleistensymbolen"],
                 [
                     "Passt die Textgröße der Menüleiste an",
                     "Vertikale Symbolposition fein einstellen Y-Achse + 0.0 pt",
@@ -2660,7 +3138,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .french,
-                ["Taille et position de la police", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale du montant", "Espacement avec les autres icônes de la barre des menus"],
+                ["Disposition", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale du montant", "Espacement avec les autres icônes de la barre des menus"],
                 [
                     "Ajuste la taille du texte de la barre des menus",
                     "Ajuste précisément la position verticale de l’icône Axe Y + 0.0 pt",

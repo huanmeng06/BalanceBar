@@ -259,6 +259,8 @@
 "dashboard.menu.bar.page.open_settings" = "Einstellungen öffnen";
 "dashboard.menu.bar.page.preview" = "Vorschau";
 "dashboard.menu.bar.page.current_layout" = "Aktuelles Layout";
+"dashboard.menu.bar.page.quota_and_reset" = "Kontingent und Zurücksetzung";
+"dashboard.menu.bar.page.icon_and_task_status" = "Symbol und Aufgabenstatus";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "Die Menüleiste wird in Echtzeit mit Anbieterdaten aktualisiert";
 "dashboard.menu.bar.page.icon_display_mode" = "Anzeige des Menüsymbols";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird";
@@ -296,6 +298,8 @@
 "dashboard.menu.bar.page.up.2" = "Oben";
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Vertikale Position anpassen: -10,0 pt nach unten bis +10,0 pt nach oben; Standard: 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Schriftgröße und Position";
+"dashboard.menu.bar.page.spacing_and_width" = "Abstand und Breite";
+"dashboard.menu.bar.page.layout" = "Layout";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Schriftgröße der Menüleiste";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Passt die Textgröße der Menüleiste an";
 "dashboard.menu.bar.page.icon_offset" = "Vertikale Symbolposition";
@@ -316,6 +320,7 @@
 "dashboard.menu.page.low_balance_display_threshold" = "Warnschwelle für niedriges Guthaben";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Nach einer Aufladung den Fortschrittsbalken rot halten, solange das Guthaben unter diesem Betrag liegt";
 "dashboard.menu.page.dropdown_menu" = "Dropdown-Menü";
+"dashboard.menu.page.menu_behavior" = "Menüverhalten";
 "dashboard.menu.page.quick_switch" = "Schnellwechsel";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "CC-Switch-Anbieterschnellwahl im Menü anzeigen";
 "dashboard.menu.page.keep_open_after_refresh" = "Menü nach der Aktualisierung geöffnet lassen";
@@ -333,6 +338,7 @@
 "dashboard.menu.page.show_customizable_service_status_links" = "Links für „Status anzeigen“ anpassen";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Dienststatuslinks im Menü anzeigen";
 "dashboard.menu.page.open_project" = "Schnellzugriff";
+"dashboard.menu.page.status_links" = "Statuslinks";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "Links für „Status anzeigen“ anpassen";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Statuslinks in der Menüleiste anzeigen";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Diesen Anbieter auswählen, um detaillierte Kontingent-Rücksetzzeiten anzuzeigen";

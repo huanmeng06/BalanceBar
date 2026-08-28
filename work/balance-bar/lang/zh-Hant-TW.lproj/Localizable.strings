@@ -259,6 +259,8 @@
 "dashboard.menu.bar.page.open_settings" = "開啟設定";
 "dashboard.menu.bar.page.preview" = "預覽";
 "dashboard.menu.bar.page.current_layout" = "目前版面";
+"dashboard.menu.bar.page.quota_and_reset" = "配額與重設";
+"dashboard.menu.bar.page.icon_and_task_status" = "圖示與任務狀態";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "選單列會隨服務商資料即時更新";
 "dashboard.menu.bar.page.icon_display_mode" = "選單列圖示顯示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "選擇始終顯示圖示，或僅在任務執行時顯示";
@@ -296,6 +298,8 @@
 "dashboard.menu.bar.page.up.2" = "上";
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "調整上下位置：-10.0 pt 向下，+10.0 pt 向上；預設 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "字號與位置";
+"dashboard.menu.bar.page.spacing_and_width" = "間距與寬度";
+"dashboard.menu.bar.page.layout" = "版面";
 "dashboard.menu.bar.page.menu_bar_font_size" = "選單列字號";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "調整選單列文字大小";
 "dashboard.menu.bar.page.icon_offset" = "圖示上下位置";
@@ -316,6 +320,7 @@
 "dashboard.menu.page.low_balance_display_threshold" = "低餘額警示門檻";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "儲值後若餘額仍低於此金額，進度條繼續顯示為紅色";
 "dashboard.menu.page.dropdown_menu" = "下拉選單";
+"dashboard.menu.page.menu_behavior" = "選單行為";
 "dashboard.menu.page.quick_switch" = "快速切換";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "在選單中顯示 CC Switch 服務商快速切換";
 "dashboard.menu.page.keep_open_after_refresh" = "刷新後保持選單開啟";
@@ -333,6 +338,7 @@
 "dashboard.menu.page.show_customizable_service_status_links" = "自訂「檢視狀態」連結";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "在選單中顯示服務狀態連結";
 "dashboard.menu.page.open_project" = "快速入口";
+"dashboard.menu.page.status_links" = "狀態連結";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "自訂「檢視狀態」連結";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "在選單列中顯示狀態連結";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "切換到此服務商後可檢視詳細的配額重設時間";

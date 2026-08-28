@@ -259,6 +259,8 @@
 "dashboard.menu.bar.page.open_settings" = "Open Settings";
 "dashboard.menu.bar.page.preview" = "Preview";
 "dashboard.menu.bar.page.current_layout" = "Current Layout";
+"dashboard.menu.bar.page.quota_and_reset" = "Quota & Reset";
+"dashboard.menu.bar.page.icon_and_task_status" = "Icon & Task Status";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "The menu bar updates with Provider data in real time";
 "dashboard.menu.bar.page.icon_display_mode" = "Menu Bar Icon Display";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Choose to always show the icon, or only while a task is running";
@@ -296,6 +298,8 @@
 "dashboard.menu.bar.page.up.2" = "Up";
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Adjust vertical position: -10.0 pt down to +10.0 pt up; default 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Font Size & Position";
+"dashboard.menu.bar.page.spacing_and_width" = "Spacing & Width";
+"dashboard.menu.bar.page.layout" = "Layout";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Menu Bar Font Size";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Adjust menu bar text size";
 "dashboard.menu.bar.page.icon_offset" = "Icon vertical position";
@@ -316,6 +320,7 @@
 "dashboard.menu.page.low_balance_display_threshold" = "Low balance warning threshold";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "After a top-up, keep the progress bar red while the balance is below this amount";
 "dashboard.menu.page.dropdown_menu" = "Dropdown Menu";
+"dashboard.menu.page.menu_behavior" = "Menu behavior";
 "dashboard.menu.page.quick_switch" = "Quick Switch";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Show a CC Switch provider switcher in the menu";
 "dashboard.menu.page.keep_open_after_refresh" = "Keep the menu open after refresh";
@@ -333,6 +338,7 @@
 "dashboard.menu.page.show_customizable_service_status_links" = "Customize “View Status” links";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Show service status links in the menu";
 "dashboard.menu.page.open_project" = "Quick links";
+"dashboard.menu.page.status_links" = "Status Links";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "Customize “View Status” links";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Show status links in the menu bar";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Select this provider to view detailed quota reset times";
