@@ -262,7 +262,7 @@
 "dashboard.menu.bar.page.quota_and_reset" = "Kontingent und Zurücksetzung";
 "dashboard.menu.bar.page.icon_and_task_status" = "Symbol und Aufgabenstatus";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "Die Menüleiste wird in Echtzeit mit Anbieterdaten aktualisiert";
-"dashboard.menu.bar.page.icon_display_mode" = "Anzeigemodus des Symbols";
+"dashboard.menu.bar.page.icon_display_mode" = "Anzeige des Menüsymbols";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Immer sichtbar";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Nur während der Ausführung";
@@ -299,6 +299,7 @@
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Vertikale Position anpassen: -10,0 pt nach unten bis +10,0 pt nach oben; Standard: 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Schriftgröße und Position";
 "dashboard.menu.bar.page.spacing_and_width" = "Abstand und Breite";
+"dashboard.menu.bar.page.layout" = "Layout";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Schriftgröße der Menüleiste";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Passt die Textgröße der Menüleiste an";
 "dashboard.menu.bar.page.icon_offset" = "Vertikale Symbolposition";

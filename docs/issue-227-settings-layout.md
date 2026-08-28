@@ -2,6 +2,8 @@
 
 下面按“页面 → 栏目 → 设置项”展开，内容对应本次调整后的布局。
 
+本次仅调整栏目归属和顺序；已有设置项标题、副标题和选项文案保持不变。新增的栏目标题统一放在九种语言资源中。
+
 ## 1. General（通用）
 
 ### 1.1 System（系统）
@@ -42,18 +44,18 @@
 - Priority quota window
   - 5-Hour Quota
   - 7-Day Quota
+- Usage value
+  - Percentage / API Balance
 - Quota reset display
   - Remaining Time
   - Reset Time
   - Both
-- Usage value
-  - Percentage / API Balance
 - Reset Countdown
   - 仅官方额度数据可用时显示
 
 ### 2.3 Icon & Task Status（图标与任务状态）
 
-- Icon display mode
+- Menu Bar Icon Display
   - Always Visible
   - Only While Running
 - Hide Delay After Task
@@ -66,11 +68,9 @@
 - Task status icon
   - 显示当前任务状态图标
 
-### 2.4 Animation（动画）
-
 - Animate the menu bar icon while a task runs
 
-### 2.5 Font Size & Position（字体大小与位置）
+### 2.4 Layout（布局）
 
 - Menu Bar Font Size
   - Large
@@ -78,9 +78,6 @@
   - Small
 - Icon vertical position
 - Amount vertical position
-
-### 2.6 Spacing & Width（间距与宽度）
-
 - Spacing from other menu bar icons
   - Narrow
   - Wide
@@ -189,9 +186,7 @@ Menu Bar
 ├── Preview
 ├── Quota & Reset
 ├── Icon & Task Status
-├── Animation
-├── Font Size & Position
-└── Spacing & Width
+└── Layout
 
 Menu
 ├── Balance Display

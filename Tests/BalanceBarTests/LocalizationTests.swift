@@ -288,7 +288,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 404)
+        XCTAssertEqual(expectedKeys.count, 405)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -615,16 +615,16 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testDashboardTaskOrientedSectionTitlesAreLocalizedAcrossAllLanguages() {
-        let expected: [AppLanguage: (quotaAndReset: String, iconAndTaskStatus: String, spacingAndWidth: String, menuBehavior: String, statusLinks: String, iconDisplayMode: String)] = [
-            .simplifiedChinese: ("额度与重置", "图标与任务状态", "间距与宽度", "菜单行为", "状态链接", "图标显示方式"),
-            .traditionalChineseTaiwan: ("配額與重設", "圖示與任務狀態", "間距與寬度", "選單行為", "狀態連結", "圖示顯示方式"),
-            .traditionalChineseHongKong: ("配額與重設", "圖示與任務狀態", "間距與寬度", "選單行為", "狀態連結", "圖示顯示方式"),
-            .japanese: ("クォータとリセット", "アイコンとタスクの状態", "間隔と幅", "メニューの動作", "ステータスリンク", "アイコンの表示モード"),
-            .english: ("Quota & Reset", "Icon & Task Status", "Spacing & Width", "Menu behavior", "Status Links", "Icon display mode"),
-            .korean: ("할당량 및 재설정", "아이콘 및 작업 상태", "간격 및 너비", "메뉴 동작", "상태 링크", "아이콘 표시 방식"),
-            .spanish: ("Cuota y reinicio", "Icono y estado de la tarea", "Espaciado y anchura", "Comportamiento del menú", "Enlaces de estado", "Modo de visualización del icono"),
-            .german: ("Kontingent und Zurücksetzung", "Symbol und Aufgabenstatus", "Abstand und Breite", "Menüverhalten", "Statuslinks", "Anzeigemodus des Symbols"),
-            .french: ("Quota et réinitialisation", "Icône et état de la tâche", "Espacement et largeur", "Comportement du menu", "Liens d’état", "Mode d’affichage de l’icône")
+        let expected: [AppLanguage: (quotaAndReset: String, iconAndTaskStatus: String, layout: String, menuBehavior: String, statusLinks: String, iconDisplayMode: String)] = [
+            .simplifiedChinese: ("额度与重置", "图标与任务状态", "布局", "菜单行为", "状态链接", "菜单栏图标显示"),
+            .traditionalChineseTaiwan: ("配額與重設", "圖示與任務狀態", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
+            .traditionalChineseHongKong: ("配額與重設", "圖示與任務狀態", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
+            .japanese: ("クォータとリセット", "アイコンとタスクの状態", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーアイコンの表示"),
+            .english: ("Quota & Reset", "Icon & Task Status", "Layout", "Menu behavior", "Status Links", "Menu Bar Icon Display"),
+            .korean: ("할당량 및 재설정", "아이콘 및 작업 상태", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
+            .spanish: ("Cuota y reinicio", "Icono y estado de la tarea", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
+            .german: ("Kontingent und Zurücksetzung", "Symbol und Aufgabenstatus", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüsymbols"),
+            .french: ("Quota et réinitialisation", "Icône et état de la tâche", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus")
         ]
 
         for language in allLanguages {
@@ -640,9 +640,9 @@ final class LocalizationTests: XCTestCase {
                 "icon/task section title for \(language)"
             )
             XCTAssertEqual(
-                tr(.keyDashboardMenuBarPageSpacingAndWidth, language: language),
-                values?.spacingAndWidth,
-                "spacing section title for \(language)"
+                tr(.keyDashboardMenuBarPageLayout, language: language),
+                values?.layout,
+                "layout section title for \(language)"
             )
             XCTAssertEqual(
                 tr(.keyDashboardMenuPageMenuBehavior, language: language),

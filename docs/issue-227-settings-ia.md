@@ -3,8 +3,8 @@
 ## 基线与约束
 
 - 复核基线：`origin/main` at `7f79efc`（Issue #223 已合并，版本为 1.2.17 / 60）。
-- 本次只调整 Dashboard 设置的分组、顺序和用户可见标题；不改变偏好 key、默认值、迁移、控件类型、回调、导航目标、可访问性标识、动态显隐或业务逻辑。
-- 9 个本地化资源继续使用相同的 `LocalizationKey` 集合；新增的分组标题和调整后的标题只通过资源文件提供。
+- 本次只调整 Dashboard 设置的分组和顺序；已有设置项标题、副标题和选项文案保持不变。不改变偏好 key、默认值、迁移、控件类型、回调、导航目标、可访问性标识、动态显隐或业务逻辑。
+- 9 个本地化资源继续使用相同的 `LocalizationKey` 集合；仅新增栏目标题，并只通过资源文件提供。
 - `DashboardSettingsComponents` 的卡片、行、滚动和自适应布局原语保持不变。动态行仍在原卡片内更新，以保留窄/宽窗口和隐藏行的测量行为。
 
 ## 导航和页面总览
@@ -14,7 +14,7 @@ Dashboard 主导航仍为 General（通用）、Menu Bar（菜单栏）、Menu�
 | 页面或入口 | 旧层级 | 新层级 | 决策 |
 | --- | --- | --- | --- |
 | General | System、Refresh、Application | System、Refresh、Application | 页面已经按连接、刷新和应用设置分开；保持现有 #223 术语和测试契约，避免把刷新策略与应用更新混为一谈。 |
-| Menu Bar | Preview、Display content、Animation、Font Size & Position | Preview、Quota & Reset、Icon & Task Status、Animation、Font Size & Position、Spacing & Width | 以用户任务拆分最拥挤的 Display content，并把宽度/间距从字体和位置中独立出来。 |
+| Menu Bar | Preview、Display content、Animation、Font Size & Position | Preview、Quota & Reset、Icon & Task Status、Layout | 按用户任务拆分最拥挤的 Display content，把动画归入图标/任务状态，并把字体、位置和间距统一归入 Layout。 |
 | Menu | Balance Display、Dropdown Menu、Quick links（其中混入 Status Links） | Balance Display、Menu behavior、Quick links、Status Links | 菜单行为、菜单快捷入口和状态链接是三种不同目标；编辑器与开关归入同一 Status Links 卡片。 |
 | Advanced | OpenCodex、Diagnostics | OpenCodex、Diagnostics | 两块已经分别对应连接设置和诊断；保留动态端口行、日志查看器及其导航/回调。 |
 | Providers | Provider Overview 或 Provider detail；Usage、CC Switch | 同一层级和术语 | Provider 详情已经按用量和 CC Switch 同步分开；不把 Provider 状态复制到通用或菜单栏页面。 |
@@ -38,24 +38,24 @@ Dashboard 主导航仍为 General（通用）、Menu Bar（菜单栏）、Menu�
 
 ### Menu Bar（菜单栏）
 
-新卡片顺序固定为：Preview → Quota & Reset → Icon & Task Status → Animation → Font Size & Position → Spacing & Width。
+新卡片顺序固定为：Preview → Quota & Reset → Icon & Task Status → Layout。
 
 | 条目 | 旧分组 → 新分组 | 归属与排序依据 | 未采用的方案 |
 | --- | --- | --- | --- |
 | Current Layout | Preview → Preview | 先让用户看到设置结果；预览仍实时使用 Provider 数据。 | 不把预览复制到每个设置卡片，避免重复和高度膨胀。 |
 | Menu bar space warning / Open Settings | Preview → Preview | 这是预览结果的动态异常提示，紧跟预览并保留原显隐和系统设置动作。 | 不移到 Advanced：问题发生在菜单栏布局上下文中。 |
 | Priority quota window | Display content → Quota & Reset | 决定优先显示 5-hour 或 7-day quota，是额度展示入口，排在重置显示前。 | 不放到 Providers：这是菜单栏展示偏好，不是 Provider 数据源偏好。 |
-| Quota reset display | Display content → Quota & Reset | 与额度窗口选择连续，负责剩余时长/重置时间的展示形式。 | 不与 Preview 合并：它是可持久化的展示选择，不是预览控件。 |
-| Usage value | Display content → Quota & Reset | 决定菜单栏显示百分比或 API balance，属于额度结果的显示开关。 | 不放入 Icon & Task Status：它控制数值而非图标/任务状态。 |
+| Usage value | Display content → Quota & Reset | 决定菜单栏显示百分比或 API balance，紧随主要额度周期，属于额度结果的显示开关。 | 不放入 Icon & Task Status：它控制数值而非图标/任务状态。 |
+| Quota reset display | Display content → Quota & Reset | 与额度窗口和用量显示连续，负责剩余时长/重置时间的展示形式。 | 不与 Preview 合并：它是可持久化的展示选择，不是预览控件。 |
 | Reset Countdown | Display content → Quota & Reset | 与额度和重置相关，且仍保留“仅官方额度可用时显示”的副标题。 | 不单独建 Reset 卡片：单行卡片增加滚动成本。 |
-| Icon display mode | Display content → Icon & Task Status | 控制图标始终显示或仅任务运行时显示；标题去掉重复的“Menu Bar”上下文，保持语义不变。 | 不与 Animation 合并：显示条件和动画效果是两个独立偏好。 |
+| Menu Bar Icon Display | Display content → Icon & Task Status | 控制图标始终显示或仅任务运行时显示；保留既有标题和语义。 | 不与 Animation 合并：显示条件和动画效果是两个独立偏好。 |
 | Hide Delay After Task | Display content → Icon & Task Status | 仅在 Only While Running 下可见的条件行，紧随显示模式，保持动态分隔线和卡片内高度更新。 | 不把条件行放到单独卡片：会造成模式与其依赖项分离。 |
 | Task status icon | Display content → Icon & Task Status | 与图标显示条件相邻，说明是否显示当前任务状态图标。 | 不放入 Quota & Reset：任务状态不依赖额度数据。 |
-| Animate the menu bar icon while a task runs | Animation → Animation | 任务运行时视觉反馈，单独保留以避免与显示条件混淆。 | 不并入 Icon & Task Status：动画是效果，不是是否显示/显示内容。 |
-| Menu Bar Font Size | Font Size & Position → Font Size & Position | 先设置文字尺寸，再设置两个垂直位置，符合排版调整顺序。 | 不把字体单独成卡：与位置同属排版任务。 |
-| Icon vertical position | Font Size & Position → Font Size & Position | 图标纵向微调，跟随字号。 | 不放入 Icon & Task Status：这是几何调整，不是显示语义。 |
-| Amount vertical position | Font Size & Position → Font Size & Position | 数值纵向微调，紧随图标位置，保持预览与摘要更新。 | 不放入 Quota & Reset：调整的是几何位置，不是额度结果。 |
-| Spacing from other menu bar icons | Font Size & Position → Spacing & Width | 宽度/间距是独立的布局目标；移到末卡后不再让“Font Size & Position”承担宽度语义。 | 不与两个 Y 轴滑块合并：横向间距与垂直定位的操作意图不同。 |
+| Animate the menu bar icon while a task runs | Animation → Icon & Task Status | 任务运行时视觉反馈与图标显隐、任务状态属于同一查找目标；只移动行，不改变开关或动画逻辑。 | 不单独保留 Animation 卡：会把用户需要一起查找的图标状态选项拆开。 |
+| Menu Bar Font Size | Font Size & Position → Layout | 字体大小是整体布局调整的一部分，仍排在两个垂直位置调节之前。 | 不单独成 Font Size 卡：增加卡片数量而没有新增任务边界。 |
+| Icon vertical position | Font Size & Position → Layout | 图标纵向微调，跟随字号。 | 不放入 Icon & Task Status：这是几何调整，不是显示语义。 |
+| Amount vertical position | Font Size & Position → Layout | 数值纵向微调，紧随图标位置，保持预览与摘要更新。 | 不放入 Quota & Reset：调整的是几何位置，不是额度结果。 |
+| Spacing from other menu bar icons | Font Size & Position → Layout | 横向间距与字体、垂直位置共同构成菜单栏布局；保留在 Layout 卡片末行。 | 不单独成 Spacing 卡：单行卡片增加滚动成本。 |
 
 所有菜单栏条目仍使用原来的 preferences、控件 identifier 和 relay action。`iconDisplayDelayRow` 仍属于同一动态卡片，隐藏时只折叠其后分隔线；preview overflow row 仍由 status-item visibility 驱动。
 
@@ -89,7 +89,7 @@ Provider、Claude、更新、Release Notes、OpenCodex、status links 和日志�
 
 1. 保留一个七行 `Display content` 大卡：实现改动最小，但 quota、图标、任务状态和显示开关仍需逐行辨认，未满足“按任务查找”。
 2. 为每个菜单栏开关新增顶层导航：查找更直接，但会改变 General/Menu Bar 层级和导航契约，超出本 Issue 范围。
-3. 把 Animation 合并进 Icon & Task Status：两者都提到图标，但一个是视觉效果、一个是显隐/任务状态，合并会造成语义歧义。
+3. 保留独立 Animation 卡：虽然可以区分视觉效果和显隐/任务状态，但会把同一图标任务拆成两个位置；本次按用户确认的树合并到 Icon & Task Status。
 4. 把 Status Links 编辑器移到单独导航页：可获得更多空间，却改变现有 Menu 入口、动态显隐、滚动锚点和用户路径。
 5. 删除编辑器内部标题以避免外层 Status Links 重复：会破坏 `statusLinks.title.anchor` / `statusLinks.header.anchor` 以及辅助定位契约，因此保留内部标题。
 

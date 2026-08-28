@@ -262,7 +262,7 @@
 "dashboard.menu.bar.page.quota_and_reset" = "クォータとリセット";
 "dashboard.menu.bar.page.icon_and_task_status" = "アイコンとタスクの状態";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "サービスプロバイダーのデータをメニューバーにリアルタイム表示";
-"dashboard.menu.bar.page.icon_display_mode" = "アイコンの表示モード";
+"dashboard.menu.bar.page.icon_display_mode" = "メニューバーアイコンの表示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "アイコンを常に表示するか、タスク実行中のみ表示するかを選択";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "常に表示";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "実行中のみ表示";
@@ -299,6 +299,7 @@
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "上下位置を調整：-10.0 pt（下）～+10.0 pt（上）、デフォルト 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "フォントサイズと位置";
 "dashboard.menu.bar.page.spacing_and_width" = "間隔と幅";
+"dashboard.menu.bar.page.layout" = "レイアウト";
 "dashboard.menu.bar.page.menu_bar_font_size" = "メニューバーのフォントサイズ";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "メニューバーの文字サイズを調整";
 "dashboard.menu.bar.page.icon_offset" = "アイコンの上下位置";

@@ -300,6 +300,7 @@
     case keyDashboardMenuBarPageUp2 = "dashboard.menu.bar.page.up.2"
     case keyDashboardMenuBarPageAdjustsVerticalPositionFrom100PtDownTo100PtUpDefault0Pt2 = "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2"
     case keyDashboardMenuBarPageFontSizePosition = "dashboard.menu.bar.page.font_size_position"
+    case keyDashboardMenuBarPageLayout = "dashboard.menu.bar.page.layout"
     case keyDashboardMenuBarPageMenuBarFontSize = "dashboard.menu.bar.page.menu_bar_font_size"
     case keyDashboardMenuBarPageAdjustsTheMenuBarFontSize = "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size"
     case keyDashboardMenuBarPageIconOffset = "dashboard.menu.bar.page.icon_offset"

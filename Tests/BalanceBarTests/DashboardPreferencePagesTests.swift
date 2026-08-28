@@ -140,55 +140,55 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, String, String, [String])] = [
             (
                 .simplifiedChinese,
-                "图标显示方式",
+                "菜单栏图标显示",
                 "选择始终显示图标，或仅在任务运行时显示",
                 ["始终显示", "仅在运行时显示"]
             ),
             (
                 .traditionalChineseTaiwan,
-                "圖示顯示方式",
+                "選單列圖示顯示",
                 "選擇始終顯示圖示，或僅在任務執行時顯示",
                 ["始終顯示", "僅在執行時顯示"]
             ),
             (
                 .traditionalChineseHongKong,
-                "圖示顯示方式",
+                "選單列圖示顯示",
                 "選擇始終顯示圖示，或僅在任務執行時顯示",
                 ["始終顯示", "僅在執行時顯示"]
             ),
             (
                 .english,
-                "Icon display mode",
+                "Menu Bar Icon Display",
                 "Choose to always show the icon, or only while a task is running",
                 ["Always Visible", "Only While Running"]
             ),
             (
                 .japanese,
-                "アイコンの表示モード",
+                "メニューバーアイコンの表示",
                 "アイコンを常に表示するか、タスク実行中のみ表示するかを選択",
                 ["常に表示", "実行中のみ表示"]
             ),
             (
                 .korean,
-                "아이콘 표시 방식",
+                "메뉴 막대 아이콘 표시",
                 "아이콘을 항상 표시하거나 작업 실행 중에만 표시하도록 선택",
                 ["항상 표시", "실행 중에만 표시"]
             ),
             (
                 .spanish,
-                "Modo de visualización del icono",
+                "Mostrar el icono de la barra de menús",
                 "Elige mostrar siempre el icono o solo mientras se ejecuta una tarea",
                 ["Siempre visible", "Solo durante la ejecución"]
             ),
             (
                 .german,
-                "Anzeigemodus des Symbols",
+                "Anzeige des Menüsymbols",
                 "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird",
                 ["Immer sichtbar", "Nur während der Ausführung"]
             ),
             (
                 .french,
-                "Mode d’affichage de l’icône",
+                "Affichage de l’icône de la barre des menus",
                 "Choisissez d’afficher l’icône toujours ou uniquement pendant l’exécution d’une tâche",
                 ["Toujours visible", "Uniquement pendant l’exécution"]
             )
@@ -329,7 +329,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             let iconTaskStatusRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
             let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-            XCTAssertEqual(iconTaskStatusSeparators.count, 2)
+            XCTAssertEqual(iconTaskStatusSeparators.count, 3)
             XCTAssertFalse(
                 iconTaskStatusSeparators[0].isHidden,
                 "the divider before the hidden delay row remains visible in (language)"
@@ -337,6 +337,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(
                 iconTaskStatusSeparators[1].isHidden,
                 "the divider after the hidden delay row is collapsed in (language)"
+            )
+            XCTAssertFalse(
+                iconTaskStatusSeparators[2].isHidden,
+                "the divider after task status remains visible in (language)"
             )
             XCTAssertEqual(
                 delayPopup.itemTitles,
@@ -421,6 +425,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(
                 iconTaskStatusSeparators[1].isHidden,
                 "the divider after the hidden delay row is collapsed after switching back in (language)"
+            )
+            XCTAssertFalse(
+                iconTaskStatusSeparators[2].isHidden,
+                "the divider after task status remains visible after switching back in (language)"
             )
 
             let rebuiltPage = DashboardMenuBarPage().make(.init(
@@ -992,23 +1000,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(scrollView.documentView === documentView)
     }
 
-    func testCodexActivityAnimationBelongsToMenuBarWithLocalizedTaskOrientedSectionOrder() {
+    func testCodexActivityAnimationBelongsToMenuBarWithLocalizedTaskOrientedSectionOrder() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String, String)] = [
-            (.simplifiedChinese, "动画", "任务运行时播放菜单栏图标动画"),
-            (.english, "Animation", "Animate the menu bar icon while a task runs"),
-            (.traditionalChineseTaiwan, "動畫", "任務執行時播放選單列圖示動畫"),
-            (.traditionalChineseHongKong, "動畫", "任務執行時播放選單列圖示動畫"),
-            (.japanese, "アニメーション", "タスク実行中にメニューバーアイコンをアニメーション"),
-            (.korean, "애니메이션", "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
-            (.spanish, "Animación", "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
-            (.german, "Animation", "Menüleistensymbol während einer Aufgabe animieren"),
-            (.french, "Animation", "Animer l’icône de la barre des menus pendant une tâche")
+        let cases: [(AppLanguage, String)] = [
+            (.simplifiedChinese, "任务运行时播放菜单栏图标动画"),
+            (.english, "Animate the menu bar icon while a task runs"),
+            (.traditionalChineseTaiwan, "任務執行時播放選單列圖示動畫"),
+            (.traditionalChineseHongKong, "任務執行時播放選單列圖示動畫"),
+            (.japanese, "タスク実行中にメニューバーアイコンをアニメーション"),
+            (.korean, "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
+            (.spanish, "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
+            (.german, "Menüleistensymbol während einer Aufgabe animieren"),
+            (.french, "Animer l’icône de la barre des menus pendant une tâche")
         ]
 
-        for (language, animationSectionTitle, animationRowTitle) in cases {
+        for (language, animationRowTitle) in cases {
             AppLanguage.selected = language
             let suiteName = "DashboardPreferencePagesTests.CodexActivityAnimation.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
@@ -1027,9 +1035,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             guard let previewIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPagePreview, language: language)),
                   let quotaAndResetIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageQuotaAndReset, language: language)),
                   let iconAndTaskStatusIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageIconAndTaskStatus, language: language)),
-                  let animationIndex = labelStrings.firstIndex(of: animationSectionTitle),
-                  let typographyAndPositionIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageFontSizePosition, language: language)),
-                  let spacingAndWidthIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageSpacingAndWidth, language: language)) else {
+                  let layoutIndex = labelStrings.firstIndex(of: tr(.keyDashboardMenuBarPageLayout, language: language)) else {
                 defaults.removePersistentDomain(forName: suiteName)
                 return XCTFail("Expected menu bar section headings for \(language)")
             }
@@ -1037,23 +1043,39 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 previewIndex,
                 quotaAndResetIndex,
                 iconAndTaskStatusIndex,
-                animationIndex,
-                typographyAndPositionIndex,
-                spacingAndWidthIndex
+                layoutIndex
             ]
             XCTAssertEqual(sectionIndices, sectionIndices.sorted())
             XCTAssertEqual(Set(sectionIndices).count, sectionIndices.count)
+            let quotaRowTitles = [
+                tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language),
+                tr(.keyDashboardMenuBarPageBalanceAmount, language: language),
+                tr(.keyDashboardMenuBarPageQuotaResetDisplayMode, language: language),
+                tr(.keyDashboardMenuBarPageResetCountdown, language: language)
+            ]
+            let quotaRowIndices = quotaRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
+            XCTAssertEqual(quotaRowIndices.count, quotaRowTitles.count)
+            XCTAssertEqual(quotaRowIndices, quotaRowIndices.sorted())
             XCTAssertFalse(
                 labelStrings.contains(tr(.keyDashboardMenuBarPageDisplayItems, language: language)),
                 "the legacy mixed display-content heading is no longer shown in \(language)"
             )
-            XCTAssertEqual(labelStrings.filter { $0 == animationSectionTitle }.count, 1)
+            XCTAssertFalse(
+                labelStrings.contains(tr(.keyDashboardMenuBarPageAnimation, language: language)),
+                "animation is a row under Icon & Task Status, not a separate section in \(language)"
+            )
             XCTAssertEqual(labelStrings.filter { $0 == animationRowTitle }.count, 1)
 
             let animationSwitches = descendants(of: menuBarPage)
                 .compactMap { $0 as? NSSwitch }
                 .filter { $0.identifier?.rawValue == "animateCodexActivity" }
             XCTAssertEqual(animationSwitches.count, 1)
+            let animationRow = try XCTUnwrap(animationSwitches.first?.superview)
+            let iconTaskStatusRowsStack = try XCTUnwrap(animationRow.superview as? NSStackView)
+            XCTAssertTrue(
+                iconTaskStatusRowsStack.arrangedSubviews.contains { $0 === animationRow },
+                "animation belongs to Icon & Task Status in \(language)"
+            )
 
             let mode = OpenCodexDashboardMode(automaticDetection: true, manualPort: nil)
             let advancedPage = DashboardAdvancedPage().make(.init(
@@ -1778,7 +1800,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
-        XCTAssertTrue(labelStrings.contains("字号与位置"))
+        XCTAssertTrue(labelStrings.contains("布局"))
         XCTAssertFalse(labelStrings.contains("字号"))
         XCTAssertFalse(labelStrings.contains("细节微调"))
         XCTAssertTrue(labelStrings.contains("调整菜单栏文字大小"))
@@ -2057,11 +2079,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let rows = try summaries.map { try XCTUnwrap($0.superview?.superview) }
             let rowsStack = try XCTUnwrap(rows.first?.superview as? NSStackView)
             let card = try XCTUnwrap(rowsStack.superview)
-            XCTAssertTrue(rows.prefix(2).allSatisfy { $0.superview === rowsStack })
-            XCTAssertTrue(
-                rows.dropFirst(2).allSatisfy { $0.superview !== rowsStack },
-                "the width summary belongs to the dedicated spacing card"
-            )
+            XCTAssertTrue(rows.allSatisfy { $0.superview === rowsStack })
             let expectedSuffixes = try XCTUnwrap(expectedSignedSuffixes[language])
             let expectedDescriptionLines = try XCTUnwrap(expectedDescriptions[language])
             // Structured subtitles use word wrapping so AppKit honors the
@@ -2407,7 +2425,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(fontPresetControl.toolTip?.contains("11.7/9") == true)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-        XCTAssertTrue(labels.contains { $0.stringValue == "Font Size & Position" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Layout" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Font Size" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Adjust menu bar text size" })
         XCTAssertFalse(labels.contains { $0.stringValue == "11.7 / 9.0 pt" })
@@ -2604,7 +2622,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, [String], [String], String)] = [
             (
                 .simplifiedChinese,
-                ["字号与位置", "菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"],
+                ["布局", "菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"],
                 [
                     "调整菜单栏文字大小",
                     "微调图标的上下位置Y 轴 + 0.0 pt",
@@ -2615,7 +2633,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .traditionalChineseTaiwan,
-                ["字號與位置", "選單列字號", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
+                ["版面", "選單列字號", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
                     "調整選單列文字大小",
                     "微調圖示的上下位置 Y 軸 + 0.0 pt",
@@ -2626,7 +2644,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .traditionalChineseHongKong,
-                ["字號與位置", "選單列字型大小", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
+                ["版面", "選單列字型大小", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
                     "調整選單列文字大小",
                     "微調圖示的上下位置 Y 軸 + 0.0 pt",
@@ -2637,7 +2655,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .japanese,
-                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの上下位置", "数値の上下位置", "他のメニューバーアイコンとの間隔"],
+                ["レイアウト", "メニューバーのフォントサイズ", "アイコンの上下位置", "数値の上下位置", "他のメニューバーアイコンとの間隔"],
                 [
                     "メニューバーの文字サイズを調整",
                     "アイコンの上下位置を微調整 Y 軸 + 0.0 pt",
@@ -2648,7 +2666,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .english,
-                ["Font Size & Position", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
+                ["Layout", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
                 [
                     "Adjust menu bar text size",
                     "Fine-tune the icon's vertical position Y axis + 0.0 pt",
@@ -2659,7 +2677,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .korean,
-                ["글꼴 크기 및 위치", "메뉴 막대 글꼴 크기", "아이콘 세로 위치", "수치 세로 위치", "다른 메뉴 막대 아이콘과의 간격"],
+                ["레이아웃", "메뉴 막대 글꼴 크기", "아이콘 세로 위치", "수치 세로 위치", "다른 메뉴 막대 아이콘과의 간격"],
                 [
                     "메뉴 막대 글자 크기 조정",
                     "아이콘 세로 위치 미세 조정 Y 축 + 0.0 pt",
@@ -2670,7 +2688,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .spanish,
-                ["Tamaño y posición de la fuente", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del importe", "Espacio respecto a los demás iconos de la barra de menús"],
+                ["Diseño", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del importe", "Espacio respecto a los demás iconos de la barra de menús"],
                 [
                     "Ajusta el tamaño del texto de la barra de menús",
                     "Ajusta con precisión la posición vertical del icono Eje Y + 0.0 pt",
@@ -2681,7 +2699,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .german,
-                ["Schriftgröße und Position", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Betragsposition", "Abstand zu anderen Menüleistensymbolen"],
+                ["Layout", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Betragsposition", "Abstand zu anderen Menüleistensymbolen"],
                 [
                     "Passt die Textgröße der Menüleiste an",
                     "Vertikale Symbolposition fein einstellen Y-Achse + 0.0 pt",
@@ -2692,7 +2710,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .french,
-                ["Taille et position de la police", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale du montant", "Espacement avec les autres icônes de la barre des menus"],
+                ["Disposition", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale du montant", "Espacement avec les autres icônes de la barre des menus"],
                 [
                     "Ajuste la taille du texte de la barre des menus",
                     "Ajuste précisément la position verticale de l’icône Axe Y + 0.0 pt",

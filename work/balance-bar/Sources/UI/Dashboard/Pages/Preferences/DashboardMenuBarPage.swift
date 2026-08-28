@@ -743,25 +743,20 @@ final class DashboardMenuBarPage {
             self?.previewCardHeightConstraint = cardHeightConstraint
             self?.previewSeparators = separators
         })
-        let animationSection = DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuBarPageAnimation),
-            rows: [
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
-                    control: animationToggle
-                )
-            ]
+        let animationRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
+            control: animationToggle
         )
         let quotaAndResetSection = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuBarPageQuotaAndReset),
             rows: [
                 quotaWindowPreferenceRow,
-                quotaResetDisplayModeRow,
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuBarPageBalanceAmount),
                     subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
                     control: amountToggle
                 ),
+                quotaResetDisplayModeRow,
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuBarPageResetCountdown),
                     subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable),
@@ -778,7 +773,8 @@ final class DashboardMenuBarPage {
                     tr(.keyDashboardMenuBarPageAgentIcon),
                     subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
                     control: iconToggle
-                )
+                ),
+                animationRow
             ],
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
                 self?.iconTaskStatusRowsStack = rowsStack
@@ -864,8 +860,8 @@ final class DashboardMenuBarPage {
             for: fontSizeControls.control,
             preferences: input.preferences
         )
-        let typographyAndPositionSection = DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuBarPageFontSizePosition),
+        let layoutSection = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyDashboardMenuBarPageLayout),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuBarPageMenuBarFontSize),
@@ -886,12 +882,7 @@ final class DashboardMenuBarPage {
                     subtitleLabel: amountOffsetSummary,
                     control: amountOffsetControls.view,
                     minimumHeight: 66
-                )
-            ]
-        )
-        let spacingAndWidthSection = DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuBarPageSpacingAndWidth),
-            rows: [
+                ),
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuBarPageMenuBarWidth),
                     subtitleContent: widthAdjustmentSummaryContent,
@@ -913,9 +904,7 @@ final class DashboardMenuBarPage {
             previewSection,
             quotaAndResetSection,
             iconAndTaskStatusSection,
-            animationSection,
-            typographyAndPositionSection,
-            spacingAndWidthSection
+            layoutSection
         ])
     }
 
@@ -1249,11 +1238,13 @@ final class DashboardMenuBarPage {
         iconDisplayDelayRow?.isHidden = !showing
         // The delay row is between the icon mode and task-status rows. Hidden
         // arranged subviews do not remove independently-created separators, so
-        // keep the separator after the icon mode row and hide only the one
-        // that would otherwise leave a line in the collapsed row's position.
-        if iconTaskStatusSeparators.count > 1 {
+        // keep the separators before and after the task-status controls, and
+        // hide only the one that would otherwise leave a line in the
+        // collapsed delay row's position.
+        if iconTaskStatusSeparators.count > 2 {
             iconTaskStatusSeparators[0].isHidden = false
             iconTaskStatusSeparators[1].isHidden = !showing
+            iconTaskStatusSeparators[2].isHidden = false
         }
         guard let iconTaskStatusRowsStack, let iconTaskStatusCardHeightConstraint else { return }
         iconTaskStatusRowsStack.layoutSubtreeIfNeeded()

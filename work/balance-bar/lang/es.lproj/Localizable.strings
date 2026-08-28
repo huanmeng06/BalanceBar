@@ -262,7 +262,7 @@
 "dashboard.menu.bar.page.quota_and_reset" = "Cuota y reinicio";
 "dashboard.menu.bar.page.icon_and_task_status" = "Icono y estado de la tarea";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barra de menús se actualiza en tiempo real con los datos del proveedor";
-"dashboard.menu.bar.page.icon_display_mode" = "Modo de visualización del icono";
+"dashboard.menu.bar.page.icon_display_mode" = "Mostrar el icono de la barra de menús";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Elige mostrar siempre el icono o solo mientras se ejecuta una tarea";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Siempre visible";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Solo durante la ejecución";
@@ -299,6 +299,7 @@
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Ajusta la posición vertical: de -10,0 pt (abajo) a +10,0 pt (arriba); valor predeterminado: 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Tamaño y posición de la fuente";
 "dashboard.menu.bar.page.spacing_and_width" = "Espaciado y anchura";
+"dashboard.menu.bar.page.layout" = "Diseño";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Tamaño de fuente de la barra de menús";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajusta el tamaño del texto de la barra de menús";
 "dashboard.menu.bar.page.icon_offset" = "Posición vertical del icono";
