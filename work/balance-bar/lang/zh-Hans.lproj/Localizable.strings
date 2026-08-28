@@ -404,3 +404,14 @@
 "status.item.controller.reading_quota" = "正在读取额度…";
 "status.item.controller.reading_balance" = "正在读取余额…";
 "status.item.controller.no_live_data_received_yet" = "尚未收到实时数据";
+"luna.reserve.title" = "Luna Reserve";
+"luna.reserve.title_status_value" = "%1$@ · %2$@";
+"luna.reserve.status.loading" = "加载中…";
+"luna.reserve.status.available" = "可用";
+"luna.reserve.status.exhausted" = "已耗尽";
+"luna.reserve.status.unavailable" = "不可用";
+"luna.reserve.remaining_value" = "剩余：%1$@%%";
+"luna.reserve.remaining_unavailable" = "剩余：不可用";
+"luna.reserve.reset_value" = "%1$@ 后重置";
+"luna.reserve.reset_unavailable" = "重置时间不可用";
+"luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

@@ -7,6 +7,25 @@ struct DashboardProviderPageInput {
     let quickSwitchSummaries: [String: String]
     let refreshDate: Date?
     let revision: UInt64
+    let currentProviderIsOfficial: Bool
+
+    init(
+        choices: [ProviderChoice],
+        selectedProviderID: String?,
+        snapshot: Snapshot,
+        quickSwitchSummaries: [String: String],
+        refreshDate: Date?,
+        revision: UInt64,
+        currentProviderIsOfficial: Bool = false
+    ) {
+        self.choices = choices
+        self.selectedProviderID = selectedProviderID
+        self.snapshot = snapshot
+        self.quickSwitchSummaries = quickSwitchSummaries
+        self.refreshDate = refreshDate
+        self.revision = revision
+        self.currentProviderIsOfficial = currentProviderIsOfficial
+    }
 }
 
 enum DashboardProviderListModel {
@@ -282,6 +301,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
     private let refreshLabel = NSTextField(labelWithString: "--:--:--")
     private let statusLabel = NSTextField(labelWithString: tr(.keyDashboardProviderPagesConnectingToCcSwitch))
     private let progressHost = NSView()
+    private let lunaReserveCard = LunaReserveCardView()
     private let providersStack = NSStackView()
     private let relay: DashboardProviderPageRelay
     private let root: NSView
@@ -329,7 +349,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         providersStack.spacing = 0
         let stack = NSStackView(views: [
             header, providerRow, quotaRow, progressHost, statusLabel,
-            separator, providersTitle, providersStack
+            lunaReserveCard, separator, providersTitle, providersStack
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -347,9 +367,11 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
             providerRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             quotaRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             progressHost.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            lunaReserveCard.widthAnchor.constraint(equalTo: stack.widthAnchor),
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
             providersStack.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
+        lunaReserveCard.isHidden = true
         relay.onRefresh = actions.onRefresh
         relay.onSwitchProvider = actions.onSwitchProvider
         relay.onOpenProvider = actions.onOpenProvider
@@ -368,6 +390,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
             resetLabel.stringValue = tr(.keyDashboardProviderPagesCurrentProviderUnavailable)
             refreshLabel.stringValue = "--:--:--"
             statusLabel.stringValue = tr(.keyDashboardProviderPagesWaitingForProvider)
+            lunaReserveCard.isHidden = true
             refreshRows()
             return true
         }
@@ -376,8 +399,32 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
         resetLabel.stringValue = input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: Self.timeFormatter)
         refreshLabel.stringValue = input.refreshDate.map(Self.timeFormatter.string(from:)) ?? "--:--:--"
         statusLabel.stringValue = tr(.keyDashboardProviderPagesFollowingCurrentProvider)
+        refreshLunaReserve(input: input)
         refreshRows()
         return true
+    }
+
+    private func refreshLunaReserve(input: DashboardProviderPageInput) {
+        guard input.currentProviderIsOfficial else {
+            lunaReserveCard.isHidden = true
+            return
+        }
+
+        let quota: LunaReserveQuota
+        switch input.snapshot.kind {
+        case .placeholder:
+            quota = LunaReserveQuota(status: .loading, remaining: nil, reset: nil)
+        case .official:
+            quota = input.snapshot.lunaReserve
+                ?? LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
+        case .error:
+            quota = LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
+        case .balance, .openCodex:
+            lunaReserveCard.isHidden = true
+            return
+        }
+        lunaReserveCard.update(quota: quota)
+        lunaReserveCard.isHidden = false
     }
 
     private func refreshRows() {

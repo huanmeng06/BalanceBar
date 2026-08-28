@@ -181,6 +181,23 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "anthropic-beta"))
     }
 
+    func testCodexRequestPublishesTheOfficialLunaReserveFields() throws {
+        StubURLProtocol.setHandler { _ in
+            StubResult(data: Self.codexReserveBody)
+        }
+        let client = makeClient(codexToken: "fixture-codex-value")
+
+        let result = try waitForResult(client, clientName: .codex, providerID: "codex-reserve-provider")
+
+        guard case .success(let response) = result else {
+            return XCTFail("expected Codex success, got (result)")
+        }
+        let reserve = try XCTUnwrap(response.output.lunaReserve)
+        XCTAssertEqual(reserve.status, .available)
+        XCTAssertEqual(reserve.remaining ?? -1, 62, accuracy: 0.000001)
+        XCTAssertEqual(reserve.reset, "2h0m")
+    }
+
     func testClaudeRequestUsesOfficialEndpointHeadersAndParser() throws {
         StubURLProtocol.setHandler { _ in
             StubResult(data: Self.claudeBody)
@@ -510,6 +527,8 @@ final class OfficialQuotaClientTests: XCTestCase {
     }
 
     private static let codexBody = Data(#"{"rate_limit":{"primary_window":{"used_percent":"20","limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400}}}"#.utf8)
+
+    private static let codexReserveBody = Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000,"reset_after_seconds":3600},"secondary_window":{"used_percent":55,"limit_window_seconds":604800,"reset_after_seconds":5400}},"additional_rate_limits":[{"limit_name":"gpt-reserve","metered_feature":"base_model_inference","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":38,"limit_window_seconds":604800,"reset_after_seconds":7200}}}]}"#.utf8)
 
     private static let claudeBody = Data(#"{"seven_day":{"utilization":"12.5","resets_at":"2023-11-15T00:13:20Z"}}"#.utf8)
 }

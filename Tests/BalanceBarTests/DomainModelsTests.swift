@@ -192,6 +192,31 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(legacySnapshot.officialQuotaWindowsForMenu.count, 1)
     }
 
+    func testOfficialSnapshotCarriesLunaReserveThroughCompactPresentation() {
+        let reserve = LunaReserveQuota(
+            status: .available,
+            remaining: 45,
+            reset: "1h30m"
+        )
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            45,
+            tr(.keyResponseParsers7DayQuota2),
+            "1h30m",
+            Date(timeIntervalSince1970: 1_700_000_000),
+            lunaReserve: reserve
+        )
+
+        XCTAssertEqual(snapshot.lunaReserve, reserve)
+        XCTAssertEqual(
+            snapshot.menuBarSnapshot(preferredQuotaWindow: .fiveHour).lunaReserve,
+            reserve
+        )
+        XCTAssertTrue(snapshot.menuBarToolTip.contains(tr(.keyLunaReserveTitle)))
+        XCTAssertTrue(snapshot.menuBarToolTip.contains(reserve.status.localizedText))
+        XCTAssertTrue(snapshot.menuBarToolTip.contains(reserve.remainingText))
+    }
+
     func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let exactCalendar = Calendar(identifier: .gregorian)

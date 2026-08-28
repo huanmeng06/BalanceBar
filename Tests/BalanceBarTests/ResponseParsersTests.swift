@@ -150,6 +150,134 @@ final class ResponseParsersTests: XCTestCase {
         ])
     }
 
+    func testCodexLunaReserveMapsTheNamedAdditionalRateLimit() throws {
+        let output = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": [
+                    "primary_window": [
+                        "used_percent": 20,
+                        "limit_window_seconds": 18_000,
+                        "reset_after_seconds": 3_600
+                    ],
+                    "secondary_window": [
+                        "used_percent": 55,
+                        "limit_window_seconds": 604_800,
+                        "reset_after_seconds": 5_400
+                    ]
+                ],
+                "additional_rate_limits": [[
+                    "limit_name": "gpt-reserve",
+                    "metered_feature": "base_model_inference",
+                    "rate_limit": [
+                        "allowed": true,
+                        "limit_reached": false,
+                        "primary_window": [
+                            "used_percent": 55,
+                            "limit_window_seconds": 604_800,
+                            "reset_after_seconds": 5_400,
+                            "reset_at": 1_700_005_400
+                        ],
+                        "secondary_window": NSNull()
+                    ]
+                ]]
+            ],
+            client: .codex,
+            now: now
+        )
+
+        let reserve = try XCTUnwrap(output.lunaReserve)
+        XCTAssertEqual(reserve.status, .available)
+        XCTAssertEqual(reserve.remaining ?? -1, 45, accuracy: 0.000001)
+        XCTAssertEqual(reserve.reset, "1h30m")
+        XCTAssertEqual(reserve.resetAt, Date(timeIntervalSince1970: 1_700_005_400))
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay])
+    }
+
+    func testCodexLunaReservePreservesExplicitUnavailableAndExhaustedStates() throws {
+        let standardWindow: [String: Any] = [
+            "used_percent": 20,
+            "limit_window_seconds": 18_000,
+            "reset_after_seconds": 3_600
+        ]
+
+        let unavailable = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": ["primary_window": standardWindow],
+                "additional_rate_limits": [[
+                    "limit_name": "gpt-reserve",
+                    "metered_feature": "base_model_inference",
+                    "rate_limit": ["allowed": false, "limit_reached": true]
+                ]]
+            ],
+            client: .codex,
+            now: now
+        )
+        let unavailableReserve = try XCTUnwrap(unavailable.lunaReserve)
+        XCTAssertEqual(unavailableReserve.status, .unavailable)
+        XCTAssertNil(unavailableReserve.remaining)
+        XCTAssertNil(unavailableReserve.reset)
+
+        let exhausted = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": ["primary_window": standardWindow],
+                "additional_rate_limits": [[
+                    "limit_name": "gpt-reserve",
+                    "metered_feature": "base_model_inference",
+                    "rate_limit": [
+                        "allowed": true,
+                        "limit_reached": true,
+                        "primary_window": [
+                            "used_percent": 100,
+                            "reset_after_seconds": 300
+                        ]
+                    ]
+                ]]
+            ],
+            client: .codex,
+            now: now
+        )
+        let exhaustedReserve = try XCTUnwrap(exhausted.lunaReserve)
+        XCTAssertEqual(exhaustedReserve.status, .exhausted)
+        XCTAssertEqual(exhaustedReserve.remaining ?? -1, 0, accuracy: 0.000001)
+        XCTAssertEqual(exhaustedReserve.reset, "5m")
+    }
+
+    func testCodexLunaReserveRejectsUnrelatedOrMalformedAdditionalLimits() throws {
+        let standardWindow: [String: Any] = [
+            "used_percent": 20,
+            "limit_window_seconds": 18_000
+        ]
+        let output = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": ["primary_window": standardWindow],
+                "additional_rate_limits": [
+                    [
+                        "limit_name": "other-reserve",
+                        "metered_feature": "base_model_inference",
+                        "rate_limit": ["allowed": true]
+                    ],
+                    [
+                        "limit_name": "gpt-reserve",
+                        "metered_feature": "other_feature",
+                        "rate_limit": ["allowed": true]
+                    ],
+                    [
+                        "limit_name": "gpt-reserve",
+                        "metered_feature": "base_model_inference",
+                        "rate_limit": [
+                            "allowed": true,
+                            "primary_window": ["used_percent": "not-a-number"]
+                        ]
+                    ]
+                ]
+            ],
+            client: .codex,
+            now: now
+        )
+
+        XCTAssertNil(output.lunaReserve)
+    }
+
     func testCodexMissingAndLegacyWindowsDoNotSynthesizeTheOtherWindow() throws {
         let weeklyOnly = try OfficialQuotaResponseParser.parse(
             object: [

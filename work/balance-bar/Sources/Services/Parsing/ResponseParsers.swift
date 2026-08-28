@@ -228,6 +228,12 @@ enum BalanceResponseParser {
 enum OfficialQuotaResponseParser {
     struct Output: Equatable {
         let windows: [OfficialQuotaWindow]
+        let lunaReserve: LunaReserveQuota?
+
+        init(windows: [OfficialQuotaWindow], lunaReserve: LunaReserveQuota? = nil) {
+            self.windows = windows
+            self.lunaReserve = lunaReserve
+        }
 
         private var representative: OfficialQuotaWindow? {
             windows.first(where: { $0.kind == .sevenDay })
@@ -297,7 +303,10 @@ enum OfficialQuotaResponseParser {
         guard !windows.isEmpty else {
             throw ResponseParserError.unsupportedFormat
         }
-        return Output(windows: windows.sorted(by: Self.windowSort))
+        return Output(
+            windows: windows.sorted(by: Self.windowSort),
+            lunaReserve: Self.parseCodexLunaReserve(from: object, now: now)
+        )
     }
 
     private static func parseCodexWindow(
@@ -346,6 +355,84 @@ enum OfficialQuotaResponseParser {
             durationSeconds: duration,
             resetAt: ResponseParsingSupport.resetDate(rawResetAt, now: now)
         )
+    }
+
+    /// The official Codex response exposes Luna Reserve as a named
+    /// additional rate limit. Match both stable identity fields before
+    /// presenting it so an unrelated future rate limit cannot be mistaken for
+    /// Reserve.
+    private static func parseCodexLunaReserve(
+        from object: [String: Any],
+        now: Date
+    ) -> LunaReserveQuota? {
+        guard let additionalLimits = object["additional_rate_limits"] as? [[String: Any]],
+              let entry = additionalLimits.first(where: { entry in
+                  ResponseParsingSupport.stringValue(entry["limit_name"]) == "gpt-reserve"
+                      && ResponseParsingSupport.stringValue(entry["metered_feature"]) == "base_model_inference"
+              }),
+              let rateLimit = entry["rate_limit"] as? [String: Any],
+              let allowed = rateLimit["allowed"] as? Bool else {
+            return nil
+        }
+
+        guard allowed else {
+            return LunaReserveQuota(
+                status: .unavailable,
+                remaining: nil,
+                reset: nil
+            )
+        }
+
+        // The observed official payload uses the primary window. Accept the
+        // named secondary window only when the primary one is absent, without
+        // merging or averaging the two source windows.
+        guard let window = (rateLimit["primary_window"] as? [String: Any])
+                ?? (rateLimit["secondary_window"] as? [String: Any]) else {
+            return LunaReserveQuota(
+                status: .unavailable,
+                remaining: nil,
+                reset: nil
+            )
+        }
+
+        let used = ResponseParsingSupport.numberValue(window["used_percent"])
+            .flatMap { $0.isFinite && (0...100).contains($0) ? $0 : nil }
+        let remaining = used.map { max(0, min(100, 100 - $0)) }
+        let limitReached = rateLimit["limit_reached"] as? Bool
+        guard used != nil || limitReached != nil else {
+            return nil
+        }
+        let status: LunaReserveQuota.Status
+        if limitReached == true || remaining == 0 {
+            status = .exhausted
+        } else if used != nil || limitReached == false {
+            status = .available
+        } else {
+            status = .unavailable
+        }
+
+        let rawResetAt = window["reset_at"] ?? window["resets_at"]
+        let reset = Self.lunaReserveResetDescription(window, rawResetAt: rawResetAt, now: now)
+        return LunaReserveQuota(
+            status: status,
+            remaining: remaining,
+            reset: reset,
+            resetAt: ResponseParsingSupport.resetDate(rawResetAt, now: now)
+        )
+    }
+
+    private static func lunaReserveResetDescription(
+        _ window: [String: Any],
+        rawResetAt: Any?,
+        now: Date
+    ) -> String? {
+        if let relative = ResponseParsingSupport.numberValue(window["reset_after_seconds"]),
+           relative.isFinite,
+           relative >= 0 {
+            return ResponseParsingSupport.resetDescription(relative, now: now)
+        }
+        return ResponseParsingSupport.resetDescription(rawResetAt, now: now)
+            ?? ResponseParsingSupport.stringValue(window["reset_description"])
     }
 
     private static func windowSort(

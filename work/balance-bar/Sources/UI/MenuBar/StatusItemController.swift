@@ -2789,7 +2789,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
-            officialQuotaWindows: officialQuotaWindows
+            officialQuotaWindows: officialQuotaWindows,
+            includesLunaReserve: snapshot.kind == .official && snapshot.lunaReserve != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -2815,7 +2816,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
 
-        if !layout.quotaRows.isEmpty {
+        if !layout.quotaRows.isEmpty || layout.lunaReserveRow != nil {
             for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
                 let progress = QuotaProgressView(percentage: window.remaining)
                 progress.frame = row.progress
@@ -2848,6 +2849,53 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 } ?? tr(.keySnapshotResetValue, arguments: [tr(.keyLocalizationUnknown)])
                 let reset = makeMarqueeOverviewLabel(
                     resetText,
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                        weight: .regular
+                    ),
+                    textColor: .secondaryLabelColor,
+                    frame: overviewMarqueeFrame(row.reset, avoiding: amount)
+                )
+                view.addSubview(reset)
+            }
+            if let lunaReserve = snapshot.lunaReserve,
+               let row = layout.lunaReserveRow {
+                if let remaining = lunaReserve.remaining {
+                    let progress = QuotaProgressView(percentage: remaining)
+                    progress.frame = row.progress
+                    view.addSubview(progress)
+                }
+
+                let amount = makeOverviewLabel(
+                    lunaReserve.remaining.map { "\(Int($0))%" } ?? "—",
+                    font: .monospacedDigitSystemFont(
+                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                        weight: .semibold
+                    )
+                )
+                amount.alignment = .right
+                amount.frame = row.amount
+                view.addSubview(amount)
+
+                let quotaDetail = makeMarqueeOverviewLabel(
+                    tr(
+                        .keyLunaReserveTitleStatusValue,
+                        arguments: [
+                            tr(.keyLunaReserveTitle),
+                            lunaReserve.status.localizedText
+                        ]
+                    ),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                        weight: .medium
+                    ),
+                    textColor: .labelColor,
+                    frame: overviewMarqueeFrame(row.quotaDetail, avoiding: amount)
+                )
+                view.addSubview(quotaDetail)
+
+                let reset = makeMarqueeOverviewLabel(
+                    lunaReserve.resetText,
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaResetPointSize,
                         weight: .regular

@@ -404,3 +404,14 @@
 "status.item.controller.reading_quota" = "Kontingent wird gelesen…";
 "status.item.controller.reading_balance" = "Guthaben wird gelesen…";
 "status.item.controller.no_live_data_received_yet" = "Noch keine Live-Daten empfangen";
+"luna.reserve.title" = "Luna Reserve";
+"luna.reserve.title_status_value" = "%1$@ · %2$@";
+"luna.reserve.status.loading" = "Wird geladen…";
+"luna.reserve.status.available" = "Verfügbar";
+"luna.reserve.status.exhausted" = "Aufgebraucht";
+"luna.reserve.status.unavailable" = "Nicht verfügbar";
+"luna.reserve.remaining_value" = "Verbleibend: %1$@%%";
+"luna.reserve.remaining_unavailable" = "Verbleibend: nicht verfügbar";
+"luna.reserve.reset_value" = "Zurücksetzung in %1$@";
+"luna.reserve.reset_unavailable" = "Zurücksetzungszeit nicht verfügbar";
+"luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

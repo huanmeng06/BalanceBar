@@ -404,3 +404,14 @@
 "status.item.controller.reading_quota" = "クォータを読み込み中…";
 "status.item.controller.reading_balance" = "残高を読み込み中…";
 "status.item.controller.no_live_data_received_yet" = "実際のデータはまだ受信されていません";
+"luna.reserve.title" = "Luna Reserve";
+"luna.reserve.title_status_value" = "%1$@ · %2$@";
+"luna.reserve.status.loading" = "読み込み中…";
+"luna.reserve.status.available" = "利用可能";
+"luna.reserve.status.exhausted" = "上限到達";
+"luna.reserve.status.unavailable" = "利用不可";
+"luna.reserve.remaining_value" = "残り：%1$@%%";
+"luna.reserve.remaining_unavailable" = "残り：利用不可";
+"luna.reserve.reset_value" = "%1$@後にリセット";
+"luna.reserve.reset_unavailable" = "リセット時刻を利用できません";
+"luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

@@ -406,6 +406,17 @@
     case keyStatusItemControllerReadingQuota = "status.item.controller.reading_quota"
     case keyStatusItemControllerReadingBalance = "status.item.controller.reading_balance"
     case keyStatusItemControllerNoLiveDataReceivedYet = "status.item.controller.no_live_data_received_yet"
+    case keyLunaReserveTitle = "luna.reserve.title"
+    case keyLunaReserveTitleStatusValue = "luna.reserve.title_status_value"
+    case keyLunaReserveStatusLoading = "luna.reserve.status.loading"
+    case keyLunaReserveStatusAvailable = "luna.reserve.status.available"
+    case keyLunaReserveStatusExhausted = "luna.reserve.status.exhausted"
+    case keyLunaReserveStatusUnavailable = "luna.reserve.status.unavailable"
+    case keyLunaReserveRemainingValue = "luna.reserve.remaining_value"
+    case keyLunaReserveRemainingUnavailable = "luna.reserve.remaining_unavailable"
+    case keyLunaReserveResetValue = "luna.reserve.reset_value"
+    case keyLunaReserveResetUnavailable = "luna.reserve.reset_unavailable"
+    case keyLunaReserveSummaryValue = "luna.reserve.summary_value"
 
     var rawKey: String { rawValue }
   }

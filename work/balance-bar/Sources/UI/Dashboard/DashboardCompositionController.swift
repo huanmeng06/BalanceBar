@@ -7,6 +7,7 @@ struct DashboardCompositionState {
     let devBundleIdentifier: String
     let providerPollInterval: TimeInterval
     let currentProviderName: () -> String
+    let currentProviderIsOfficial: () -> Bool
     let providerChoices: () -> [ProviderChoice]
     let snapshot: () -> Snapshot
     let quickSwitchSummaries: () -> [String: String]
@@ -308,7 +309,8 @@ final class DashboardCompositionController {
             snapshot: snapshot ?? state.snapshot(),
             quickSwitchSummaries: state.quickSwitchSummaries(),
             refreshDate: useLastSuccessfulRefresh ? state.refreshDate() : refreshDate,
-            revision: revision
+            revision: revision,
+            currentProviderIsOfficial: state.currentProviderIsOfficial()
         )
     }
 

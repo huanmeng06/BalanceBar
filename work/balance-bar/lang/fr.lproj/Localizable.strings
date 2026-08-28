@@ -404,3 +404,14 @@
 "status.item.controller.reading_quota" = "Lecture du quota…";
 "status.item.controller.reading_balance" = "Lecture du solde…";
 "status.item.controller.no_live_data_received_yet" = "Aucune donnée en temps réel reçue pour le moment";
+"luna.reserve.title" = "Luna Reserve";
+"luna.reserve.title_status_value" = "%1$@ · %2$@";
+"luna.reserve.status.loading" = "Chargement…";
+"luna.reserve.status.available" = "Disponible";
+"luna.reserve.status.exhausted" = "Épuisée";
+"luna.reserve.status.unavailable" = "Indisponible";
+"luna.reserve.remaining_value" = "Restant : %1$@%%";
+"luna.reserve.remaining_unavailable" = "Restant : indisponible";
+"luna.reserve.reset_value" = "Réinitialisation dans %1$@";
+"luna.reserve.reset_unavailable" = "Heure de réinitialisation indisponible";
+"luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

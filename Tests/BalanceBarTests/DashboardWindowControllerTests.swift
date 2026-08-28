@@ -1906,7 +1906,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(reset.frame.maxX, expectedRightEdge, accuracy: 0.5)
     }
 
-    @MainActor
     func testOfficialCodexMenuCardRendersIndependentFiveHourAndSevenDayRows() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -2132,6 +2131,48 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(longQuotaViews.count, 4)
         XCTAssertTrue(longQuotaViews.allSatisfy { $0.isScrollable })
         XCTAssertTrue(longQuotaViews.allSatisfy { $0.frame.maxX <= longOverview.bounds.maxX })
+
+        let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                lunaReserve: reserve
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let reserveOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let reserveFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesLunaReserve: true
+        )
+        XCTAssertEqual(reserveOverview.bounds.size, reserveFrames.cardSize)
+        XCTAssertEqual(
+            reserveOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [80, 45, 45]
+        )
+        XCTAssertNotNil(
+            reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == tr(.keyLunaReserveTitleStatusValue, arguments: [
+                    tr(.keyLunaReserveTitle),
+                    tr(.keyLunaReserveStatusAvailable)
+                ])
+            }
+        )
+        XCTAssertNotNil(
+            reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == reserve.resetText
+            }
+        )
     }
 
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {

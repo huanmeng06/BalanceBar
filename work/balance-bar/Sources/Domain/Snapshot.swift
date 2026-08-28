@@ -1,5 +1,102 @@
 import Foundation
 
+struct LunaReserveQuota: Equatable {
+    enum Status: Equatable {
+        case loading
+        case available
+        case exhausted
+        case unavailable
+
+        var localizedText: String {
+            switch self {
+            case .loading:
+                return tr(.keyLunaReserveStatusLoading)
+            case .available:
+                return tr(.keyLunaReserveStatusAvailable)
+            case .exhausted:
+                return tr(.keyLunaReserveStatusExhausted)
+            case .unavailable:
+                return tr(.keyLunaReserveStatusUnavailable)
+            }
+        }
+    }
+
+    /// `remaining` is the percentage derived from the official
+    /// `used_percent` field. It remains optional so missing or malformed
+    /// fields never become a fabricated zero.
+    let status: Status
+    let remaining: Double?
+    let reset: String?
+    let resetAt: Date?
+
+    init(
+        status: Status,
+        remaining: Double?,
+        reset: String?,
+        resetAt: Date? = nil
+    ) {
+        self.status = status
+        self.remaining = remaining
+        self.reset = reset
+        self.resetAt = resetAt
+    }
+
+    var remainingText: String {
+        guard let remaining else {
+            return tr(.keyLunaReserveRemainingUnavailable)
+        }
+        return tr(
+            .keyLunaReserveRemainingValue,
+            arguments: [String(describing: Int(remaining))]
+        )
+    }
+
+    var resetText: String {
+        guard let reset = resetDisplayText() else {
+            return tr(.keyLunaReserveResetUnavailable)
+        }
+        return tr(.keyLunaReserveResetValue, arguments: [reset])
+    }
+
+    func resetDisplayText(
+        displayMode: OfficialQuotaResetDisplayMode = .both,
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard let reset else { return nil }
+        let exactDate = OfficialQuotaResetFormatter.string(
+            for: resetAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        )
+        switch displayMode {
+        case .remaining:
+            return reset
+        case .resetAt:
+            return exactDate ?? reset
+        case .both:
+            guard let exactDate else { return reset }
+            return tr(.keySnapshotValueValue, arguments: [reset, exactDate])
+        }
+    }
+
+    var summaryText: String {
+        tr(
+            .keyLunaReserveSummaryValue,
+            arguments: [
+                tr(.keyLunaReserveTitle),
+                status.localizedText,
+                remainingText,
+                resetText
+            ]
+        )
+    }
+}
+
 struct OfficialQuotaWindow: Equatable {
     enum Kind: Int, Equatable, Hashable {
         case fiveHour
@@ -116,6 +213,7 @@ struct Snapshot {
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
     let officialQuotaWindows: [OfficialQuotaWindow]
+    let lunaReserve: LunaReserveQuota?
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -132,7 +230,8 @@ struct Snapshot {
         websiteURL: URL?,
         balanceProgressPercentage: Double?,
         officialQuotaWindows: [OfficialQuotaWindow],
-        selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil
+        selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil,
+        lunaReserve: LunaReserveQuota? = nil
     ) {
         self.kind = kind
         self.provider = provider
@@ -144,6 +243,7 @@ struct Snapshot {
         self.balanceProgressPercentage = balanceProgressPercentage
         self.officialQuotaWindows = officialQuotaWindows
         self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
+        self.lunaReserve = lunaReserve
     }
 
     static let placeholder = Snapshot(
@@ -164,7 +264,8 @@ struct Snapshot {
         _ lane: String,
         _ reset: String?,
         _ date: Date,
-        windows: [OfficialQuotaWindow] = []
+        windows: [OfficialQuotaWindow] = [],
+        lunaReserve: LunaReserveQuota? = nil
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -194,7 +295,8 @@ struct Snapshot {
             message: representative.reset,
             websiteURL: nil,
             balanceProgressPercentage: nil,
-            officialQuotaWindows: resolvedWindows
+            officialQuotaWindows: resolvedWindows,
+            lunaReserve: lunaReserve
         )
     }
 
@@ -319,7 +421,8 @@ struct Snapshot {
             websiteURL: websiteURL,
             balanceProgressPercentage: balanceProgressPercentage,
             officialQuotaWindows: officialQuotaWindows,
-            selectedOfficialQuotaWindowKind: window.kind
+            selectedOfficialQuotaWindowKind: window.kind,
+            lunaReserve: lunaReserve
         )
     }
 
@@ -370,7 +473,17 @@ struct Snapshot {
         if kind == .openCodex {
             return tr(.keySnapshotValueValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationStatusUnknown))])
         }
-        return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))])
+        let reset = String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))
+        guard let lunaReserve else {
+            return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset])
+        }
+        return tr(
+            .keySnapshotValueValue,
+            arguments: [
+                tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset]),
+                lunaReserve.summaryText
+            ]
+        )
     }
 
     var overviewProvider: String {

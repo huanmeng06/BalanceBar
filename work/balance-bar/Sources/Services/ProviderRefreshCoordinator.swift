@@ -253,7 +253,8 @@ final class ProviderRefreshCoordinator {
                         response.output.label,
                         response.output.reset,
                         Date(),
-                        windows: response.output.windows
+                        windows: response.output.windows,
+                        lunaReserve: response.output.lunaReserve
                     ),
                     providerID: providerID,
                     client: client

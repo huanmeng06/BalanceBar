@@ -1271,6 +1271,51 @@ final class OpenCodexRepositoryTests: XCTestCase {
         }
     }
 
+    func testOfficialQuotaLayoutAddsReserveAsTheCompactBottomRow() {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-Hour Quota",
+                daysText: "5 Hours",
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: "7-Day Quota",
+                daysText: "7 Days",
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesLunaReserve: true
+        )
+
+        XCTAssertEqual(frames.quotaRows.count, 2)
+        XCTAssertNotNil(frames.lunaReserveRow)
+        XCTAssertEqual(frames.cardSize.height, 273)
+        XCTAssertEqual(frames.lunaReserveRow?.progress.minY, OpenCodexCardLayout.quotaBottomInset)
+        XCTAssertEqual(
+            frames.quotaRows[1].progress.minY,
+            OpenCodexCardLayout.quotaBottomInset
+                + OpenCodexCardLayout.quotaRowHeight
+                + OpenCodexCardLayout.quotaRowGap
+        )
+        XCTAssertEqual(
+            frames.quotaRows[0].progress.minY,
+            frames.quotaRows[1].progress.minY
+                + OpenCodexCardLayout.quotaRowHeight
+                + OpenCodexCardLayout.quotaRowGap
+        )
+    }
+
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {
         let card = OpenCodexModelCard(
             selector: "openai/gpt-5.6-sol",

@@ -184,6 +184,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             devBundleIdentifier: devBundleIdentifier,
             providerPollInterval: providerPollInterval,
             currentProviderName: { [weak self] in self?.currentProviderName() ?? tr(.keyAppNotFound) },
+            currentProviderIsOfficial: { [weak self] in
+                guard let self, self.activeClient == .codex else { return false }
+                return self.ccSwitchRepository.loadCurrent(appType: self.activeClient.appType)?.isOfficial == true
+            },
             providerChoices: { [weak self] in self?.ccSwitchRepository.loadChoices(appType: self?.activeClient.appType ?? AssistantClient.codex.appType) ?? [] },
             snapshot: { [weak self] in self?.snapshot ?? .placeholder },
             quickSwitchSummaries: { [weak self] in self?.quickSwitchSummariesSnapshot() ?? [:] },
