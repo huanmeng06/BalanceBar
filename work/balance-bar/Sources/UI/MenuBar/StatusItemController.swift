@@ -1736,9 +1736,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         isStatusMenuTracking = false
         lastMenuBarIconFrameDiagnostic = nil
         lastMenuBarGeometry = nil
+        menuBarIconView.onSourceImageChanged = nil
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
-        menuBarIconView.onImageChanged = nil
         menuBarContentStack.removeFromSuperview()
         statusMenu.delegate = nil
         statusMenu.removeAllItems()
@@ -1950,9 +1950,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
-        menuBarIconView.onImageChanged = { [weak self] image in
+        menuBarIconView.onSourceImageChanged = { [weak self] image in
             guard let self else { return }
-            self.menuBarIconView.image = image
             self.layoutStatusItem(for: self.snapshot)
             self.actions.iconChanged(image)
         }
@@ -2161,7 +2160,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             if MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isCodexTaskRunning,
-                preferenceEnabled: animationEnabled
+                preferenceEnabled: animationEnabled,
+                reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             ) {
                 menuBarIconView.startRotating()
             } else {
@@ -2174,7 +2174,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             if MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isClaudeTaskRunning,
-                preferenceEnabled: animationEnabled
+                preferenceEnabled: animationEnabled,
+                reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             ) {
                 claudeThinkingAnimator?.start()
             } else {
