@@ -133,6 +133,162 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testBalanceUpdatesDuringTasksUsesOrderedAdaptiveSingleLineControls() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.RefreshControlsLayout.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        relay.onInterval = { identifier, value in
+            switch identifier {
+            case "codexUsageRefreshInterval":
+                preferences.codexUsageRefreshInterval = value
+            case "postCodexRefreshDuration":
+                preferences.postCodexRefreshDuration = value
+            default:
+                break
+            }
+        }
+        let page = DashboardGeneralPage().make(.init(
+            preferences: preferences,
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6")))
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 720, height: 520))
+        window.contentView = host
+        page.frame = host.bounds
+        page.autoresizingMask = []
+        host.addSubview(page)
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+
+        let runningPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "codexUsageRefreshInterval" }
+        )
+        let trailingPopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == "postCodexRefreshDuration" }
+        )
+        let runningControls = try XCTUnwrap(runningPopup.superview as? NSStackView)
+        let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
+        let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
+        let row = try XCTUnwrap(controls.superview)
+        let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
+        let card = try XCTUnwrap(rowsStack.superview)
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+
+        XCTAssertEqual(controls.arrangedSubviews.count, 2)
+        XCTAssertTrue(controls.arrangedSubviews[0] === runningControls)
+        XCTAssertTrue(controls.arrangedSubviews[1] === trailingControls)
+
+        func assertCardHeight(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
+            XCTAssertEqual(
+                card.frame.height,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: separators
+                ),
+                accuracy: 0.5,
+                message,
+                file: file,
+                line: line
+            )
+        }
+
+        func assertLayout(
+            width: CGFloat,
+            orientation: NSUserInterfaceLayoutOrientation,
+            file: StaticString = #filePath,
+            line: UInt = #line
+        ) {
+            window.setContentSize(NSSize(width: width, height: 520))
+            host.setFrameSize(NSSize(width: width, height: 520))
+            page.setFrameSize(host.bounds.size)
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+
+            XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
+            let runningFrame = runningControls.convert(runningControls.bounds, to: row)
+            let trailingFrame = trailingControls.convert(trailingControls.bounds, to: row)
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(runningFrame),
+                "running controls stay inside the row",
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                row.bounds.insetBy(dx: 0, dy: -0.5).contains(trailingFrame),
+                "after controls stay inside the row",
+                file: file,
+                line: line
+            )
+            if orientation == .horizontal {
+                XCTAssertEqual(
+                    runningFrame.maxY,
+                    trailingFrame.maxY,
+                    accuracy: 0.5,
+                    "running controls precede after controls on one line",
+                    file: file,
+                    line: line
+                )
+                XCTAssertEqual(
+                    row.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    accuracy: 0.5,
+                    "the single-line refresh control row keeps the standard height",
+                    file: file,
+                    line: line
+                )
+            } else {
+                XCTAssertGreaterThan(
+                    runningFrame.minY,
+                    trailingFrame.minY,
+                    "running controls remain before after controls in the vertical reflow",
+                    file: file,
+                    line: line
+                )
+                XCTAssertGreaterThan(
+                    row.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    "narrow refresh controls use the adaptive stacked height",
+                    file: file,
+                    line: line
+                )
+            }
+            assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
+        }
+
+        assertLayout(width: 720, orientation: .horizontal)
+        assertLayout(width: 320, orientation: .vertical)
+
+        runningPopup.selectItem(at: 4)
+        relay.interval(runningPopup)
+        trailingPopup.selectItem(at: 2)
+        relay.interval(trailingPopup)
+        XCTAssertEqual(preferences.codexUsageRefreshInterval, 10)
+        XCTAssertEqual(preferences.postCodexRefreshDuration, 12)
+        XCTAssertEqual(defaults.double(forKey: "codexUsageRefreshInterval"), 10)
+        XCTAssertEqual(defaults.double(forKey: "postCodexRefreshDuration"), 12)
+    }
+
     func testMenuBarIconDisplayModeIsLocalizedFitsAndPersistsAcrossRefresh() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

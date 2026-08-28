@@ -3130,7 +3130,7 @@ final class UpdateTests: XCTestCase {
                 .compactMap { $0 as? NSButton }
                 .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
         )
-        let narrowControls = try XCTUnwrap(narrowUpdateButton.superview as? DashboardUpdateControlsStackView)
+        let narrowControls = try XCTUnwrap(narrowUpdateButton.superview as? DashboardAdaptiveControlsStackView)
         let narrowRow = try XCTUnwrap(narrowControls.superview)
         let narrowLabels = try XCTUnwrap(
             narrowRow.subviews.compactMap { $0 as? NSStackView }.first { $0 !== narrowControls }
@@ -3279,7 +3279,7 @@ final class UpdateTests: XCTestCase {
                     .compactMap { $0 as? NSButton }
                     .first { $0.identifier?.rawValue == "checkForUpdatesButton" }
             )
-            let controls = try XCTUnwrap(updateButton.superview as? DashboardUpdateControlsStackView)
+            let controls = try XCTUnwrap(updateButton.superview as? DashboardAdaptiveControlsStackView)
             let row = try XCTUnwrap(controls.superview)
             let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
             let card = try XCTUnwrap(rowsStack.superview)

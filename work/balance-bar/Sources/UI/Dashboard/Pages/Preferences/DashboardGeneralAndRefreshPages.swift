@@ -186,10 +186,11 @@ struct DashboardUpdatePresentation: Equatable {
     }
 }
 
-/// Keeps the existing update buttons side by side at normal widths and stacks
-/// those same buttons only when the settings row cannot fit them. The buttons
-/// themselves retain their existing rounded style, targets, and dimensions.
-final class DashboardUpdateControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
+/// Keeps a row's existing controls side by side at normal widths and stacks
+/// those same controls only when the settings row cannot fit them. The update
+/// actions and refresh interval pairs both use this layout contract; their
+/// controls retain their existing style, targets, and dimensions.
+final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
     private(set) var usesDedicatedRow = false
 
@@ -346,9 +347,11 @@ final class DashboardGeneralPage {
         trailingControls.orientation = .horizontal
         trailingControls.alignment = .centerY
         trailingControls.spacing = 7
-        let activeRefreshControls = NSStackView(views: [runningControls, trailingControls])
-        activeRefreshControls.orientation = .vertical
-        activeRefreshControls.alignment = .trailing
+        let activeRefreshControls = DashboardAdaptiveControlsStackView(
+            views: [runningControls, trailingControls]
+        )
+        activeRefreshControls.orientation = .horizontal
+        activeRefreshControls.alignment = .centerY
         activeRefreshControls.spacing = 5
         let refreshButton = NSButton(
             title: tr(.keyDashboardGeneralAndRefreshPagesRefreshNow),
@@ -360,7 +363,7 @@ final class DashboardGeneralPage {
                 tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
                 control: activeRefreshControls,
-                minimumHeight: 76
+                minimumHeight: DashboardSettingsComponents.standardRowHeight
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
@@ -427,7 +430,7 @@ final class DashboardGeneralPage {
             subtitle: tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription),
             control: updateChannelPopup
         )
-        let updateControls = DashboardUpdateControlsStackView(views: [updateIgnoreButton, updateNotesButton, updateButton])
+        let updateControls = DashboardAdaptiveControlsStackView(views: [updateIgnoreButton, updateNotesButton, updateButton])
         updateControls.orientation = .horizontal
         updateControls.alignment = .centerY
         updateControls.spacing = 8
@@ -465,7 +468,7 @@ final class DashboardGeneralPage {
         apply(presentation, to: updateIgnoreButton)
         apply(presentation, to: updateNotesButton)
         updateBadge?.isHidden = !presentation.showsUpdateBadge
-        (updateButton.superview as? DashboardUpdateControlsStackView)?.invalidateLayoutAfterContentChange()
+        (updateButton.superview as? DashboardAdaptiveControlsStackView)?.invalidateLayoutAfterContentChange()
     }
 
     private func apply(

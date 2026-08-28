@@ -3,9 +3,9 @@
 ## 基线与约束
 
 - 复核基线：`origin/main` at `7f79efc`（Issue #223 已合并，版本为 1.2.17 / 60）。
-- 本次只调整 Dashboard 设置的分组、顺序和请求的界面显隐关系；已有设置项标题、副标题和选项文案保持不变。不改变偏好 key、默认值、迁移、控件类型、回调、导航目标、可访问性标识、运行时行为或业务逻辑。
+- 本次只调整 Dashboard 设置的分组、顺序、请求的界面显隐关系和必要的自适应布局；已有设置项标题、副标题和选项文案保持不变。不改变偏好 key、默认值、迁移、控件类型、回调、导航目标、可访问性标识、运行时行为或业务逻辑。
 - 9 个本地化资源继续使用相同的 `LocalizationKey` 集合；仅新增栏目标题，并只通过资源文件提供。
-- `DashboardSettingsComponents` 的卡片、行、滚动和自适应布局原语保持不变；仅补充按可见行同步卡片高度和分割线，以保留窄/宽窗口和隐藏行的测量行为。
+- `DashboardSettingsComponents` 的卡片、行、滚动和自适应布局原语保持不变；仅补充按可见行同步卡片高度和分割线，并复用已有更新操作组的控制器自适应横排/竖排行为，以保留窄/宽窗口和隐藏行的测量行为。
 
 ## 导航和页面总览
 
@@ -28,13 +28,15 @@ Dashboard 主导航仍为 General（通用）、Menu Bar（菜单栏）、Menu�
 | 条目 | 旧分组 → 新分组 | 归属与排序依据 | 未采用的方案 |
 | --- | --- | --- | --- |
 | CC Switch | System → System | Provider 连接入口，放在 General 首卡；保留当前 Provider 副标题和 Open CC Switch 按钮。 | 不移到 Providers：它是连接入口而非某个 Provider 的用量详情。 |
-| Balance Updates During Tasks | Refresh → Refresh | 运行中轮询策略，排在手动刷新前，先说明持续更新时机。 | 不与 Application 合并：刷新频率和更新通道的生命周期不同。 |
+| Balance Updates During Tasks | Refresh → Refresh | 运行中轮询策略，排在手动刷新前；现有“运行中”与“结束后”控件按此顺序在宽窗口单行显示，窄窗口自动竖排。 | 不与 Application 合并：刷新频率和更新通道的生命周期不同；不强制固定竖排，避免宽窗口浪费高度。 |
 | Balance Data | Refresh → Refresh | 当前 Provider 的即时刷新动作，紧随持续刷新策略。 | 不移到 Menu Bar：菜单栏预览消费结果但不拥有刷新偏好。 |
 | Language | Application → Application | 全局界面语言，位于应用级设置首位。 | 不放入独立 Localization 页面：会增加导航层级。 |
 | Update Channel | Application → Application | 版本通道选择，位于更新动作之前。 | 不放到 Advanced：它是普通应用偏好。 |
 | Check for Updates | Application → Application | 更新检查、安装、忽略和 Release Notes 动作保持为一个动态行。 | 不拆成多个卡片：会破坏更新状态和按钮的联动语义。 |
 
 `DashboardRefreshPage` 的 Provider fallback polling 和 Claude task status detection 是现有未挂载的辅助页面；本次不新增导航、不删除实现，并在代码盘点中作为 dormant support surface 保留。General 的动态更新、更新检查和 Release Notes 逻辑不变。
+
+Refresh 页的 `Balance Updates During Tasks` 仍使用原有两个 interval preference、选项集合和 relay 回调；只将控制组从固定竖排改为复用 `DashboardAdaptiveControlsStackView` 的宽度感知布局：可用宽度足够时按“运行中 → 结束后”横排，不足时自动竖排，并随行高重新测量。
 
 ### Menu Bar（菜单栏）
 
@@ -96,7 +98,7 @@ Provider、Claude、更新、Release Notes、OpenCodex、status links 和日志�
 ## 验证范围
 
 - `localization-resource-probe.sh`：九种语言键集合一致，新增/调整标题无 Swift 硬编码。
-- Dashboard preference/components/layout XCTest：验证新卡片顺序、动态隐藏行、长文案宽/窄布局、预览/overflow、Status Links 动态高度和滚动锚点。
+- Dashboard preference/components/layout XCTest：验证新卡片顺序、动态隐藏行、长文案宽/窄布局、Refresh 的“运行中 → 结束后”自适应横排/竖排、预览/overflow、Status Links 动态高度和滚动锚点。
 - preference persistence/migration XCTest：验证所有原有 key、默认值、回调和重新构建后的选择保持不变。
 - production build、dev build、`git diff --check`；手工检查 dev app 的九语种页面和窄/宽窗口。
 - 若标准 XCTest runner 受 LaunchServices 或无 GUI 会话阻塞，在交付回执中记录原始命令和阻塞原因，不将其标记为通过。
