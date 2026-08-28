@@ -133,7 +133,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testBalanceUpdatesDuringTasksUsesOrderedAdaptiveControlsAcrossWidths() throws {
+    func testBalanceUpdatesDuringTasksUsesOrderedAdaptiveSingleLineControls() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -191,11 +191,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let trailingControls = try XCTUnwrap(trailingPopup.superview as? NSStackView)
         let controls = try XCTUnwrap(runningControls.superview as? DashboardAdaptiveControlsStackView)
         let row = try XCTUnwrap(controls.superview)
-        let labels = try XCTUnwrap(
-            row.subviews
-                .compactMap { $0 as? NSStackView }
-                .first { $0 !== controls }
-        )
         let rowsStack = try XCTUnwrap(row.superview as? NSStackView)
         let card = try XCTUnwrap(rowsStack.superview)
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
@@ -221,7 +216,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func assertLayout(
             width: CGFloat,
             orientation: NSUserInterfaceLayoutOrientation,
-            usesDedicatedRow: Bool,
             file: StaticString = #filePath,
             line: UInt = #line
         ) {
@@ -234,8 +228,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(controls.orientation, orientation, file: file, line: line)
             let runningFrame = runningControls.convert(runningControls.bounds, to: row)
             let trailingFrame = trailingControls.convert(trailingControls.bounds, to: row)
-            let labelsFrame = labels.convert(labels.bounds, to: row)
-            let controlsFrame = controls.convert(controls.bounds, to: row)
             XCTAssertTrue(
                 row.bounds.insetBy(dx: 0, dy: -0.5).contains(runningFrame),
                 "running controls stay inside the row",
@@ -257,31 +249,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
-            } else {
-                XCTAssertGreaterThan(
-                    runningFrame.minY,
-                    trailingFrame.minY,
-                    "running controls remain before after controls in the vertical reflow",
-                    file: file,
-                    line: line
-                )
-            }
-            if usesDedicatedRow {
-                XCTAssertLessThanOrEqual(
-                    controlsFrame.maxY,
-                    labelsFrame.minY + 0.5,
-                    "refresh controls occupy a row below the title and subtitle",
-                    file: file,
-                    line: line
-                )
-                XCTAssertGreaterThan(
-                    row.frame.height,
-                    DashboardSettingsComponents.standardRowHeight,
-                    "refresh controls move to a dedicated row before the text column is squeezed",
-                    file: file,
-                    line: line
-                )
-            } else {
                 XCTAssertEqual(
                     row.frame.height,
                     DashboardSettingsComponents.standardRowHeight,
@@ -290,16 +257,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     file: file,
                     line: line
                 )
-            }
-            if orientation == .vertical {
-                XCTAssertTrue(usesDedicatedRow, "vertical reflow uses a dedicated control row", file: file, line: line)
+            } else {
+                XCTAssertGreaterThan(
+                    runningFrame.minY,
+                    trailingFrame.minY,
+                    "running controls remain before after controls in the vertical reflow",
+                    file: file,
+                    line: line
+                )
+                XCTAssertGreaterThan(
+                    row.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    "narrow refresh controls use the adaptive stacked height",
+                    file: file,
+                    line: line
+                )
             }
             assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
         }
 
-        assertLayout(width: 720, orientation: .horizontal, usesDedicatedRow: false)
-        assertLayout(width: 516, orientation: .horizontal, usesDedicatedRow: true)
-        assertLayout(width: 320, orientation: .vertical, usesDedicatedRow: true)
+        assertLayout(width: 720, orientation: .horizontal)
+        assertLayout(width: 320, orientation: .vertical)
 
         runningPopup.selectItem(at: 4)
         relay.interval(runningPopup)

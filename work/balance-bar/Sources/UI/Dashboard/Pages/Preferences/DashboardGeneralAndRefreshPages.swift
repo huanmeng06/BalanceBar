@@ -268,11 +268,6 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
 }
 
 final class DashboardGeneralPage {
-    // Keep the title/subtitle column readable before the refresh controls are
-    // allowed to squeeze it into several lines. The controls still remain a
-    // single ordered row at this width; only the row placement changes.
-    private static let refreshControlsMinimumInlineContentWidth: CGFloat = 220
-
     struct Input {
         let preferences: AppPreferences
         let currentProviderName: String
@@ -368,8 +363,7 @@ final class DashboardGeneralPage {
                 tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks),
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning),
                 control: activeRefreshControls,
-                minimumHeight: DashboardSettingsComponents.standardRowHeight,
-                minimumInlineContentWidth: Self.refreshControlsMinimumInlineContentWidth
+                minimumHeight: DashboardSettingsComponents.standardRowHeight
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardGeneralAndRefreshPagesBalanceData),
