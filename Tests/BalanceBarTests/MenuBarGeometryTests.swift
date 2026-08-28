@@ -1534,24 +1534,20 @@ final class MenuBarGeometryTests: XCTestCase {
         let sourceImage = NSImage(size: NSSize(width: 16, height: 16))
         let animationFrame = NSImage(size: NSSize(width: 16, height: 16))
         var semanticImageChangeCount = 0
-        var animationFrameCount = 0
 
         imageView.onImageChanged = { _ in
             semanticImageChangeCount += 1
         }
-        imageView.onAnimationFrameChanged = { _ in
-            animationFrameCount += 1
-        }
 
         imageView.setSourceImage(sourceImage)
-        imageView.displayImage(animationFrame)
+        for _ in 0..<36 {
+            imageView.displayImage(animationFrame)
+        }
 
         XCTAssertEqual(semanticImageChangeCount, 1)
-        XCTAssertEqual(animationFrameCount, 1)
 
         imageView.setSourceImage(sourceImage)
         XCTAssertEqual(semanticImageChangeCount, 2)
-        XCTAssertEqual(animationFrameCount, 1)
     }
 
     private func makeGeometry(
