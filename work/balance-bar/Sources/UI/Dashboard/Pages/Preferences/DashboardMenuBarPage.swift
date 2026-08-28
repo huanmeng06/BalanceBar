@@ -454,9 +454,19 @@ final class DashboardMenuBarPage {
     private weak var fontSizePresetControl: NSPopUpButton?
     private weak var iconDisplayModeControl: NSPopUpButton?
     private weak var iconDisplayDelayControl: NSPopUpButton?
+    private weak var taskStatusIconRow: NSView?
+    private weak var animationRow: NSView?
+    private weak var iconDisplayModeRow: NSView?
     private weak var iconDisplayDelayRow: NSView?
+    private weak var amountDisplayRow: NSView?
+    private weak var resetCountdownRow: NSView?
+    private weak var quotaWindowPreferenceRow: NSView?
+    private weak var quotaResetDisplayModeRow: NSView?
     private weak var quotaWindowPreferenceControl: NSPopUpButton?
     private weak var quotaResetDisplayModeControl: NSPopUpButton?
+    private weak var quotaRowsStack: NSStackView?
+    private weak var quotaCardHeightConstraint: NSLayoutConstraint?
+    private var quotaSeparators: [NSView] = []
     private weak var iconTaskStatusRowsStack: NSStackView?
     private weak var iconTaskStatusCardHeightConstraint: NSLayoutConstraint?
     private var iconTaskStatusSeparators: [NSView] = []
@@ -502,6 +512,9 @@ final class DashboardMenuBarPage {
 
     func make(_ input: Input) -> NSView {
         removeFontSizePresetTrackingObserver()
+        quotaRowsStack = nil
+        quotaCardHeightConstraint = nil
+        quotaSeparators = []
         iconTaskStatusRowsStack = nil
         iconTaskStatusCardHeightConstraint = nil
         iconTaskStatusSeparators = []
@@ -711,24 +724,48 @@ final class DashboardMenuBarPage {
             subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
             control: quotaWindowPreferenceControl
         )
+        self.quotaWindowPreferenceRow = quotaWindowPreferenceRow
+        let amountDisplayRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageBalanceAmount),
+            subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
+            control: amountToggle
+        )
+        self.amountDisplayRow = amountDisplayRow
+        let resetCountdownRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageResetCountdown),
+            subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable),
+            control: resetToggle
+        )
+        self.resetCountdownRow = resetCountdownRow
         let iconDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageIconDisplayMode),
             subtitle: tr(.keyDashboardMenuBarPageIconDisplayModeDescription),
             control: iconDisplayModeControl
         )
+        self.iconDisplayModeRow = iconDisplayModeRow
         let iconDisplayDelayRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageIconDisplayDelay),
             subtitle: tr(.keyDashboardMenuBarPageIconDisplayDelayDescription),
             control: iconDisplayDelayControl
         )
-        let shouldShowIconDisplayDelay = input.preferences.menuBarIconDisplayMode == .onlyWhileRunning
-        iconDisplayDelayRow.isHidden = !shouldShowIconDisplayDelay
         self.iconDisplayDelayRow = iconDisplayDelayRow
         let quotaResetDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageQuotaResetDisplayMode),
             subtitle: tr(.keyDashboardMenuBarPageQuotaResetDisplayModeDescription),
             control: quotaResetDisplayModeControl
         )
+        self.quotaResetDisplayModeRow = quotaResetDisplayModeRow
+        let taskStatusIconRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageAgentIcon),
+            subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
+            control: iconToggle
+        )
+        self.taskStatusIconRow = taskStatusIconRow
+        let animationRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
+            control: animationToggle
+        )
+        self.animationRow = animationRow
         let previewSection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuBarPagePreview), rows: [
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuBarPageCurrentLayout),
@@ -743,44 +780,40 @@ final class DashboardMenuBarPage {
             self?.previewCardHeightConstraint = cardHeightConstraint
             self?.previewSeparators = separators
         })
-        let animationRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
-            control: animationToggle
-        )
         let quotaAndResetSection = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuBarPageQuotaAndReset),
             rows: [
+                amountDisplayRow,
+                resetCountdownRow,
                 quotaWindowPreferenceRow,
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageBalanceAmount),
-                    subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
-                    control: amountToggle
-                ),
-                quotaResetDisplayModeRow,
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageResetCountdown),
-                    subtitle: tr(.keyDashboardMenuBarPageOnlyShownWhenOfficialQuotaDataIsAvailable),
-                    control: resetToggle
+                quotaResetDisplayModeRow
+            ],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                self?.quotaRowsStack = rowsStack
+                self?.quotaCardHeightConstraint = cardHeightConstraint
+                self?.quotaSeparators = separators
+                self?.updateQuotaVisibility(
+                    showAmount: input.preferences.showMenuBarAmount,
+                    showReset: input.preferences.showMenuBarReset
                 )
-            ]
+            }
         )
         let iconAndTaskStatusSection = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuBarPageIconAndTaskStatus),
             rows: [
+                taskStatusIconRow,
+                animationRow,
                 iconDisplayModeRow,
-                iconDisplayDelayRow,
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuBarPageAgentIcon),
-                    subtitle: tr(.keyDashboardMenuBarPageShowsTheCurrentTaskStatus),
-                    control: iconToggle
-                ),
-                animationRow
+                iconDisplayDelayRow
             ],
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
                 self?.iconTaskStatusRowsStack = rowsStack
                 self?.iconTaskStatusCardHeightConstraint = cardHeightConstraint
                 self?.iconTaskStatusSeparators = separators
-                self?.updateIconDisplayDelayVisibility(showing: shouldShowIconDisplayDelay)
+                self?.updateIconAndTaskStatusVisibility(
+                    showTaskStatusIcon: input.preferences.showMenuBarIcon,
+                    displayMode: input.preferences.menuBarIconDisplayMode
+                )
             }
         )
         let iconOffsetSummaryContent = Self.iconOffsetSummarySubtitle(
@@ -985,6 +1018,10 @@ final class DashboardMenuBarPage {
             )
         }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
+        updateQuotaVisibility(
+            showAmount: preferences.showMenuBarAmount,
+            showReset: preferences.showMenuBarReset
+        )
         if let quotaWindowPreferenceControl,
            let selectedIndex = OfficialQuotaWindowPreference.allCases.firstIndex(
                of: preferences.menuBarQuotaWindowPreference
@@ -1012,8 +1049,9 @@ final class DashboardMenuBarPage {
             }
             iconDisplayDelayControl.synchronizeTitleAndSelectedItem()
         }
-        updateIconDisplayDelayVisibility(
-            showing: preferences.menuBarIconDisplayMode == .onlyWhileRunning
+        updateIconAndTaskStatusVisibility(
+            showTaskStatusIcon: preferences.showMenuBarIcon,
+            displayMode: preferences.menuBarIconDisplayMode
         )
         if let quotaResetDisplayModeControl,
            let selectedIndex = OfficialQuotaResetDisplayMode.allCases.firstIndex(
@@ -1234,25 +1272,69 @@ final class DashboardMenuBarPage {
         )
     }
 
-    private func updateIconDisplayDelayVisibility(showing: Bool) {
-        iconDisplayDelayRow?.isHidden = !showing
-        // The delay row is between the icon mode and task-status rows. Hidden
-        // arranged subviews do not remove independently-created separators, so
-        // keep the separators before and after the task-status controls, and
-        // hide only the one that would otherwise leave a line in the
-        // collapsed delay row's position.
-        if iconTaskStatusSeparators.count > 2 {
-            iconTaskStatusSeparators[0].isHidden = false
-            iconTaskStatusSeparators[1].isHidden = !showing
-            iconTaskStatusSeparators[2].isHidden = false
+    private func updateQuotaVisibility(showAmount: Bool, showReset: Bool) {
+        resetCountdownRow?.isHidden = !showAmount
+        let showResetDetails = showAmount && showReset
+        quotaWindowPreferenceRow?.isHidden = !showResetDetails
+        quotaResetDisplayModeRow?.isHidden = !showResetDetails
+
+        // The separators describe the visible row boundaries. In particular,
+        // do not leave a trailing line under the only visible amount row when
+        // the dependent rows are collapsed.
+        if quotaSeparators.count > 2 {
+            quotaSeparators[0].isHidden = !showAmount
+            quotaSeparators[1].isHidden = !showResetDetails
+            quotaSeparators[2].isHidden = !showResetDetails
         }
-        guard let iconTaskStatusRowsStack, let iconTaskStatusCardHeightConstraint else { return }
+        updateQuotaCardLayout()
+    }
+
+    private func updateQuotaCardLayout() {
+        guard let quotaRowsStack,
+              let quotaCardHeightConstraint else { return }
+        quotaRowsStack.needsLayout = true
+        quotaRowsStack.layoutSubtreeIfNeeded()
+        quotaCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+            rowsStack: quotaRowsStack,
+            separators: quotaSeparators
+        )
+        quotaRowsStack.superview?.invalidateIntrinsicContentSize()
+        quotaRowsStack.superview?.needsLayout = true
+        quotaRowsStack.superview?.superview?.needsLayout = true
+    }
+
+    private func updateIconAndTaskStatusVisibility(
+        showTaskStatusIcon: Bool,
+        displayMode: MenuBarIconDisplayMode
+    ) {
+        let showDependentRows = showTaskStatusIcon
+        let showDelay = showDependentRows && displayMode == .onlyWhileRunning
+        animationRow?.isHidden = !showDependentRows
+        iconDisplayModeRow?.isHidden = !showDependentRows
+        iconDisplayDelayRow?.isHidden = !showDelay
+
+        // Rows are ordered as task status → animation → display mode → delay.
+        // A separator is visible only when it separates two visible rows.
+        if iconTaskStatusSeparators.count > 2 {
+            iconTaskStatusSeparators[0].isHidden = !showDependentRows
+            iconTaskStatusSeparators[1].isHidden = !showDependentRows
+            iconTaskStatusSeparators[2].isHidden = !showDelay
+        }
+        updateIconTaskStatusCardLayout()
+    }
+
+    private func updateIconTaskStatusCardLayout() {
+        guard let iconTaskStatusRowsStack,
+              let iconTaskStatusCardHeightConstraint else { return }
+        iconTaskStatusRowsStack.needsLayout = true
         iconTaskStatusRowsStack.layoutSubtreeIfNeeded()
         iconTaskStatusCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
             rowsStack: iconTaskStatusRowsStack,
             separators: iconTaskStatusSeparators
         )
+        iconTaskStatusRowsStack.superview?.invalidateIntrinsicContentSize()
         iconTaskStatusRowsStack.superview?.needsLayout = true
+        iconTaskStatusRowsStack.superview?.superview?.needsLayout = true
     }
 
     private func previewPrimaryInkBounds(in background: NSView) -> NSRect? {

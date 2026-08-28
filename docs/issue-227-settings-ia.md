@@ -3,9 +3,9 @@
 ## 基线与约束
 
 - 复核基线：`origin/main` at `7f79efc`（Issue #223 已合并，版本为 1.2.17 / 60）。
-- 本次只调整 Dashboard 设置的分组和顺序；已有设置项标题、副标题和选项文案保持不变。不改变偏好 key、默认值、迁移、控件类型、回调、导航目标、可访问性标识、动态显隐或业务逻辑。
+- 本次只调整 Dashboard 设置的分组、顺序和请求的界面显隐关系；已有设置项标题、副标题和选项文案保持不变。不改变偏好 key、默认值、迁移、控件类型、回调、导航目标、可访问性标识、运行时行为或业务逻辑。
 - 9 个本地化资源继续使用相同的 `LocalizationKey` 集合；仅新增栏目标题，并只通过资源文件提供。
-- `DashboardSettingsComponents` 的卡片、行、滚动和自适应布局原语保持不变。动态行仍在原卡片内更新，以保留窄/宽窗口和隐藏行的测量行为。
+- `DashboardSettingsComponents` 的卡片、行、滚动和自适应布局原语保持不变；仅补充按可见行同步卡片高度和分割线，以保留窄/宽窗口和隐藏行的测量行为。
 
 ## 导航和页面总览
 
@@ -44,20 +44,20 @@ Dashboard 主导航仍为 General（通用）、Menu Bar（菜单栏）、Menu�
 | --- | --- | --- | --- |
 | Current Layout | Preview → Preview | 先让用户看到设置结果；预览仍实时使用 Provider 数据。 | 不把预览复制到每个设置卡片，避免重复和高度膨胀。 |
 | Menu bar space warning / Open Settings | Preview → Preview | 这是预览结果的动态异常提示，紧跟预览并保留原显隐和系统设置动作。 | 不移到 Advanced：问题发生在菜单栏布局上下文中。 |
-| Priority quota window | Display content → Quota & Reset | 决定优先显示 5-hour 或 7-day quota，是额度展示入口，排在重置显示前。 | 不放到 Providers：这是菜单栏展示偏好，不是 Provider 数据源偏好。 |
-| Usage value | Display content → Quota & Reset | 决定菜单栏显示百分比或 API balance，紧随主要额度周期，属于额度结果的显示开关。 | 不放入 Icon & Task Status：它控制数值而非图标/任务状态。 |
-| Quota reset display | Display content → Quota & Reset | 与额度窗口和用量显示连续，负责剩余时长/重置时间的展示形式。 | 不与 Preview 合并：它是可持久化的展示选择，不是预览控件。 |
-| Reset Countdown | Display content → Quota & Reset | 与额度和重置相关，且仍保留“仅官方额度可用时显示”的副标题。 | 不单独建 Reset 卡片：单行卡片增加滚动成本。 |
-| Menu Bar Icon Display | Display content → Icon & Task Status | 控制图标始终显示或仅任务运行时显示；保留既有标题和语义。 | 不与 Animation 合并：显示条件和动画效果是两个独立偏好。 |
-| Hide Delay After Task | Display content → Icon & Task Status | 仅在 Only While Running 下可见的条件行，紧随显示模式，保持动态分隔线和卡片内高度更新。 | 不把条件行放到单独卡片：会造成模式与其依赖项分离。 |
-| Task status icon | Display content → Icon & Task Status | 与图标显示条件相邻，说明是否显示当前任务状态图标。 | 不放入 Quota & Reset：任务状态不依赖额度数据。 |
-| Animate the menu bar icon while a task runs | Animation → Icon & Task Status | 任务运行时视觉反馈与图标显隐、任务状态属于同一查找目标；只移动行，不改变开关或动画逻辑。 | 不单独保留 Animation 卡：会把用户需要一起查找的图标状态选项拆开。 |
+| Usage value | Display content → Quota & Reset | 先决定是否需要额度相关的后续选项；保留“显示百分比或 API 余额”的原文和开关。 | 不把它放到 Preview：预览消费结果但不拥有此显示偏好。 |
+| Reset Countdown | Display content → Quota & Reset | 仅在 Usage value 打开后出现，排在第二位；开关本身和“仅官方额度数据可用时显示”语义不变。 | 不把它与 Priority quota window 合并：这是独立的显示开关。 |
+| Priority quota window | Display content → Quota & Reset | 仅在 Reset Countdown 打开后出现，决定优先显示 5-hour 或 7-day quota。 | 不放到 Providers：这是菜单栏展示偏好，不是 Provider 数据源偏好。 |
+| Quota reset display | Display content → Quota & Reset | 与 Priority quota window 同步受 Reset Countdown 控制，负责剩余时长/重置时间的展示形式。 | 不与 Preview 合并：它是可持久化的展示选择，不是预览控件。 |
+| Task status icon | Display content → Icon & Task Status | 作为第一项保留任务状态图标开关；关闭时只隐藏本卡片后续相关设置，不改已保存值或运行时语义。 | 不放入 Quota & Reset：任务状态不依赖额度数据。 |
+| Animate the menu bar icon while a task runs | Animation → Icon & Task Status | 作为第二项紧随任务状态图标；只移动行并增加请求的依赖显隐，不改变开关或动画逻辑。 | 不单独保留 Animation 卡：会把同一图标任务拆到两个位置。 |
+| Menu Bar Icon Display | Display content → Icon & Task Status | 作为第三项控制图标始终显示或仅任务运行时显示；保留既有标题、选项和语义。 | 不与 Animation 合并：显示条件和动画效果是两个独立偏好。 |
+| Hide Delay After Task | Display content → Icon & Task Status | 作为第四项，仅在 `Only While Running` 下出现；隐藏时同步折叠尾部分割线和卡片高度，`Always Visible` 保持标准单行高度。 | 不把条件行放到单独卡片：会造成模式与其依赖项分离。 |
 | Menu Bar Font Size | Font Size & Position → Layout | 字体大小是整体布局调整的一部分，仍排在两个垂直位置调节之前。 | 不单独成 Font Size 卡：增加卡片数量而没有新增任务边界。 |
 | Icon vertical position | Font Size & Position → Layout | 图标纵向微调，跟随字号。 | 不放入 Icon & Task Status：这是几何调整，不是显示语义。 |
 | Amount vertical position | Font Size & Position → Layout | 数值纵向微调，紧随图标位置，保持预览与摘要更新。 | 不放入 Quota & Reset：调整的是几何位置，不是额度结果。 |
 | Spacing from other menu bar icons | Font Size & Position → Layout | 横向间距与字体、垂直位置共同构成菜单栏布局；保留在 Layout 卡片末行。 | 不单独成 Spacing 卡：单行卡片增加滚动成本。 |
 
-所有菜单栏条目仍使用原来的 preferences、控件 identifier 和 relay action。`iconDisplayDelayRow` 仍属于同一动态卡片，隐藏时只折叠其后分隔线；preview overflow row 仍由 status-item visibility 驱动。
+所有菜单栏条目仍使用原来的 preferences、控件 identifier 和 relay action。`showMenuBarAmount` 控制后续额度行的可见性，`showMenuBarReset` 控制最后两项的可见性；`showMenuBarIcon` 控制后续图标/任务行的可见性，`iconDisplayDelayRow` 还受 `menuBarIconDisplayMode` 控制。隐藏行只折叠对应分割线和卡片高度，不清除或改写保存值；preview overflow row 仍由 status-item visibility 驱动。
 
 ### Menu（菜单）
 
@@ -70,8 +70,8 @@ Dashboard 主导航仍为 General（通用）、Menu Bar（菜单栏）、Menu�
 | Open ChatGPT | Quick links → Quick links | 外部应用入口，按现有顺序保留。 | 不与 OpenCodex 合并：两个目标和动作不同。 |
 | Open CC Switch | Quick links → Quick links | 外部应用入口，按现有顺序保留。 | 不移到 General：这里控制菜单中是否显示入口。 |
 | Open OpenCodex | Quick links → Quick links | 外部控制台入口，按现有顺序保留。 | 不移到 Advanced：Advanced 配置连接，Menu 控制菜单入口。 |
-| View Status | Quick links → Status Links | 状态服务链接开关与其编辑器同卡，用户可直接理解开关影响的内容。 | 不继续留在 Quick links：会把外部窗口快捷入口和可编辑服务列表混在一起。 |
-| Status Links editor | Quick links → Status Links | 始终保留一个 editor 实例；开关显隐只改变高度/透明度并保持滚动锚点。 | 不新建窗口或独立导航页：会改变现有编辑语义和导航结构。 |
+| View Status | Quick links → Status Links | 状态服务链接开关与其编辑器同卡，用户可直接理解开关影响的内容；编辑器隐藏时不保留无意义的分割线。 | 不继续留在 Quick links：会把外部窗口快捷入口和可编辑服务列表混在一起。 |
+| Status Links editor | Quick links → Status Links | 始终保留一个 editor 实例；开关显隐只改变高度/透明度，并只在编辑器可见时显示与状态行之间的分割线。 | 不新建窗口或独立导航页：会改变现有编辑语义和导航结构。 |
 
 ### Advanced、Providers、Status Links、About
 

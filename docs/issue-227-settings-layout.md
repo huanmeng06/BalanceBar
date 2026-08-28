@@ -41,20 +41,28 @@
 
 ### 2.2 Quota & Reset（额度与重置）
 
+- Usage value
+  - Percentage / API Balance
+- Reset Countdown
+  - 仅官方额度数据可用时显示
 - Priority quota window
   - 5-Hour Quota
   - 7-Day Quota
-- Usage value
-  - Percentage / API Balance
 - Quota reset display
   - Remaining Time
   - Reset Time
   - Both
-- Reset Countdown
-  - 仅官方额度数据可用时显示
+
+Visibility dependencies:
+
+- `Usage value` is always present. When it is off, `Reset Countdown`, `Priority quota window`, and `Quota reset display` are hidden.
+- When `Usage value` is on, `Reset Countdown` is shown. When `Reset Countdown` is on, `Priority quota window` and `Quota reset display` are shown.
 
 ### 2.3 Icon & Task Status（图标与任务状态）
 
+- Task status icon
+  - 显示当前任务状态图标
+- Animate the menu bar icon while a task runs
 - Menu Bar Icon Display
   - Always Visible
   - Only While Running
@@ -65,10 +73,13 @@
   - 1 minute
   - 2 minutes
   - 3 minutes
-- Task status icon
-  - 显示当前任务状态图标
 
-- Animate the menu bar icon while a task runs
+Visibility dependencies:
+
+- `Task status icon` is always present. When it is off, the animation, display-mode, and delay rows are hidden.
+- `Hide Delay After Task` is shown only when `Menu Bar Icon Display` is `Only While Running`.
+
+When `Always Visible` is selected, the delay row and its trailing divider are removed from layout; the display-mode row keeps the normal one-row height.
 
 ### 2.4 Layout（布局）
 
