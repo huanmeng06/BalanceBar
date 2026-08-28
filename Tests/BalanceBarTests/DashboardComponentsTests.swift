@@ -884,7 +884,7 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(QuotaProgressView.progressColor(for: 50.01).isEqual(NSColor.systemGreen))
     }
 
-    func testLunaReserveCardShowsLocalizedStatusRemainingResetAndOptionalProgress() throws {
+    func testLunaReserveCardShowsLocalizedStatusRemainingResetAndCollapsesWithoutProgress() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english
@@ -924,6 +924,13 @@ final class DashboardComponentsTests: XCTestCase {
         card.frame = NSRect(x: 0, y: 0, width: 420, height: 100)
         card.layoutSubtreeIfNeeded()
         XCTAssertEqual(descendantViews(of: card, as: QuotaProgressView.self).count, 1)
+        let progressHost = try XCTUnwrap(
+            descendantViews(of: card, as: NSView.self).first {
+                $0.identifier?.rawValue == "lunaReserveProgressHost"
+            }
+        )
+        XCTAssertFalse(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 6, accuracy: 0.5)
 
         card.update(
             quota: LunaReserveQuota(
@@ -936,6 +943,9 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(fields("lunaReserveRemaining")?.stringValue, tr(.keyLunaReserveRemainingUnavailable))
         XCTAssertEqual(fields("lunaReserveReset")?.stringValue, tr(.keyLunaReserveResetUnavailable))
         XCTAssertTrue(descendantViews(of: card, as: QuotaProgressView.self).isEmpty)
+        card.layoutSubtreeIfNeeded()
+        XCTAssertTrue(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 0, accuracy: 0.5)
 
         card.update(
             quota: LunaReserveQuota(
@@ -948,6 +958,20 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(fields("lunaReserveRemaining")?.stringValue, tr(.keyLunaReserveRemainingUnavailable))
         XCTAssertEqual(fields("lunaReserveReset")?.stringValue, tr(.keyLunaReserveResetUnavailable))
         XCTAssertTrue(descendantViews(of: card, as: QuotaProgressView.self).isEmpty)
+        card.layoutSubtreeIfNeeded()
+        XCTAssertTrue(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 0, accuracy: 0.5)
+
+        card.update(
+            quota: LunaReserveQuota(
+                status: .available,
+                remaining: 45,
+                reset: "1h30m"
+            )
+        )
+        card.layoutSubtreeIfNeeded()
+        XCTAssertFalse(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 6, accuracy: 0.5)
     }
 
     func testHoverLinkInvokesActivationCallbackOnMouseDown() {

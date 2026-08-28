@@ -166,6 +166,7 @@ final class LunaReserveCardView: NSView {
     private let remainingLabel = NSTextField(labelWithString: "")
     private let resetLabel = NSTextField(labelWithString: "")
     private let progressHost = NSView()
+    private var progressHostHeightConstraint: NSLayoutConstraint!
 
     init() {
         super.init(frame: .zero)
@@ -189,13 +190,16 @@ final class LunaReserveCardView: NSView {
         details.orientation = .vertical
         details.alignment = .leading
         details.spacing = 4
+        progressHost.identifier = NSUserInterfaceItemIdentifier("lunaReserveProgressHost")
         progressHost.translatesAutoresizingMaskIntoConstraints = false
-        progressHost.heightAnchor.constraint(equalToConstant: 6).isActive = true
+        progressHostHeightConstraint = progressHost.heightAnchor.constraint(equalToConstant: 6)
+        progressHostHeightConstraint.isActive = true
 
         let stack = NSStackView(views: [heading, details, progressHost])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 7
+        stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -219,6 +223,8 @@ final class LunaReserveCardView: NSView {
         resetLabel.stringValue = quota.resetText
         progressHost.subviews.forEach { $0.removeFromSuperview() }
         if let remaining = quota.remaining {
+            progressHost.isHidden = false
+            progressHostHeightConstraint.constant = 6
             let progress = QuotaProgressView(percentage: remaining)
             progress.translatesAutoresizingMaskIntoConstraints = false
             progressHost.addSubview(progress)
@@ -228,6 +234,12 @@ final class LunaReserveCardView: NSView {
                 progress.topAnchor.constraint(equalTo: progressHost.topAnchor),
                 progress.bottomAnchor.constraint(equalTo: progressHost.bottomAnchor)
             ])
+        } else {
+            // A missing percentage is unknown, not zero. Remove the host from
+            // the stack so unavailable/loading cards do not reserve a blank
+            // progress-bar row.
+            progressHost.isHidden = true
+            progressHostHeightConstraint.constant = 0
         }
     }
 
