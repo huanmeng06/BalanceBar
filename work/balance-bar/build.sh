@@ -5,12 +5,15 @@ set -Eeuo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
     cat <<'EOF'
-Usage: build.sh [production|dev]
+Usage: build.sh [production|dev|demo-zero|demo-unavailable]
 
 Build the macOS app without changing the checked-in Info.plist.
 
   production  Build BalanceBar.app with the production Bundle ID (default).
   dev         Build BalanceBar-dev.app with the fixed development Bundle ID.
+  demo-zero   Build a demo app that shows Luna Reserve as available at 0%.
+  demo-unavailable
+              Build a demo app that shows Luna Reserve as temporarily unavailable.
 EOF
 }
 
@@ -47,11 +50,31 @@ case "$variant" in
         module_cache_dir="$build_dir/swift-module-cache"
         clean_paths=("$build_dir")
         ;;
+    demo-zero)
+        build_dir="$source_dir/build/demo/zero"
+        app_bundle="$build_dir/BalanceBar-LunaReserve-0.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-zero"
+        bundle_name="BalanceBar Demo · Luna Reserve 0%"
+        demo_mode="zero"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
+    demo-unavailable)
+        build_dir="$source_dir/build/demo/unavailable"
+        app_bundle="$build_dir/BalanceBar-LunaReserve-Unavailable.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-unavailable"
+        bundle_name="BalanceBar Demo · Luna Reserve Unavailable"
+        demo_mode="unavailable"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
     *)
         usage >&2
         die "unknown build variant: $variant"
         ;;
 esac
+
+demo_mode="${demo_mode:-}"
 
 contents_dir="$app_bundle/Contents"
 executable_dir="$contents_dir/MacOS"
@@ -154,6 +177,11 @@ bundle_minimum_system="$(plutil -extract LSMinimumSystemVersion raw -o - "$bundl
 if [[ "$variant" == "dev" ]]; then
     plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
+fi
+if [[ -n "$demo_mode" ]]; then
+    plutil -replace CFBundleName -string "$bundle_name" "$bundle_plist"
+    plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
+    plutil -replace BalanceBarLunaReserveDemo -string "$demo_mode" "$bundle_plist"
 fi
 for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg
 do

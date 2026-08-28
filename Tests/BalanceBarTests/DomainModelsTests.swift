@@ -217,6 +217,35 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertTrue(snapshot.menuBarToolTip.contains(reserve.remainingText))
     }
 
+    func testLunaReserveDemoModesKeepZeroAvailableAndUnavailableDistinct() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let zero = DevelopmentLunaReserveDemo.snapshot(
+            mode: .zero,
+            providerName: "OpenAI",
+            date: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        XCTAssertEqual(zero.lunaReserve?.status, .available)
+        XCTAssertEqual(zero.lunaReserve?.remaining, 0)
+        XCTAssertEqual(zero.lunaReserve?.menuTitleText, "🌙 Luna Reserve")
+        XCTAssertEqual(zero.lunaReserve?.menuSubtitleText, "1h30m")
+
+        let unavailable = DevelopmentLunaReserveDemo.snapshot(
+            mode: .unavailable,
+            providerName: "OpenAI",
+            date: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        XCTAssertEqual(unavailable.lunaReserve?.status, .unavailable)
+        XCTAssertNil(unavailable.lunaReserve?.remaining)
+        XCTAssertEqual(unavailable.lunaReserve?.menuTitleText, "🌙 Luna Reserve")
+        XCTAssertEqual(
+            unavailable.lunaReserve?.menuSubtitleText,
+            "Luna Reserve temporarily unavailable"
+        )
+    }
+
     func testMenuBarQuotaWindowSelectionUsesRealWindowsAndSafeMissingFallbacks() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let exactCalendar = Calendar(identifier: .gregorian)
