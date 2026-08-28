@@ -20,39 +20,65 @@ struct MenuBarAnimationState: Equatable {
 
 enum MenuBarActivityAnimationPolicy {
     static func shouldAnimate(taskRunning: Bool, preferenceEnabled: Bool) -> Bool {
-        taskRunning && preferenceEnabled
+        shouldAnimate(
+            taskRunning: taskRunning,
+            preferenceEnabled: preferenceEnabled,
+            reduceMotionEnabled: false
+        )
+    }
+
+    static func shouldAnimate(
+        taskRunning: Bool,
+        preferenceEnabled: Bool,
+        reduceMotionEnabled: Bool
+    ) -> Bool {
+        taskRunning && preferenceEnabled && !reduceMotionEnabled
     }
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
-    private static let frameCount = 36
-    private static let rotationDuration: TimeInterval = 1.15
+    static let frameCount = 36
+    static let rotationDuration: TimeInterval = 1.15
+    static let rotationFrameInterval = rotationDuration / Double(frameCount)
     private var sourceImage: NSImage?
     private var rotationFrames: [NSImage] = []
     private var rotationTimer: Timer?
     private var animationState = MenuBarAnimationState()
-    var onImageChanged: ((NSImage?) -> Void)?
+    /// Called only when the semantic source icon changes. Animation frames do
+    /// not leave this view, so they cannot trigger layout or dashboard work.
+    var onSourceImageChanged: ((NSImage?) -> Void)?
+    /// Called after the displayed bitmap changes. Consumers must only mirror
+    /// the bitmap; this is intentionally separate from semantic state work.
+    var onFrameImageChanged: ((NSImage?) -> Void)?
     var isRotating: Bool { rotationTimer != nil }
 
     func setSourceImage(_ image: NSImage) {
-        if sourceImage !== image {
+        let sourceChanged = sourceImage !== image
+        if sourceChanged {
             rotationFrames = Self.makeRotationFrames(from: image)
         }
         sourceImage = image
         self.image = image
-        onImageChanged?(image)
+        if sourceChanged {
+            onSourceImageChanged?(image)
+        }
     }
 
     func displayImage(_ image: NSImage) {
         self.image = image
-        onImageChanged?(image)
+        onFrameImageChanged?(image)
+    }
+
+    func restoreSourceImage() {
+        guard image !== sourceImage else { return }
+        image = sourceImage
+        onFrameImageChanged?(sourceImage)
     }
 
     func startRotating() {
         guard rotationTimer == nil, !rotationFrames.isEmpty else { return }
         animationState.reset()
-        let interval = Self.rotationDuration / Double(Self.frameCount)
-        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: Self.rotationFrameInterval, repeats: true) { [weak self] _ in
             self?.advanceRotation()
         }
         timer.tolerance = 0.002
@@ -61,12 +87,10 @@ final class RotatingTemplateImageView: PassthroughImageView {
     }
 
     func stopRotating() {
-        let wasRotating = rotationTimer != nil
         rotationTimer?.invalidate()
         rotationTimer = nil
         animationState.reset()
-        image = sourceImage
-        if wasRotating { onImageChanged?(sourceImage) }
+        restoreSourceImage()
     }
 
     private func advanceRotation() {
@@ -74,8 +98,7 @@ final class RotatingTemplateImageView: PassthroughImageView {
             return
         }
         let frame = rotationFrames[frameIndex]
-        image = frame
-        onImageChanged?(frame)
+        displayImage(frame)
     }
 
     private static func makeRotationFrames(from sourceImage: NSImage) -> [NSImage] {
@@ -102,6 +125,9 @@ final class RotatingTemplateImageView: PassthroughImageView {
 }
 
 final class ClaudeThinkingAnimator {
+    static let frameCount = 9
+    static let defaultFrameDuration: TimeInterval = 0.09
+
     private weak var imageView: RotatingTemplateImageView?
     private let staticImage: NSImage
     private let frames: [NSImage]
@@ -114,13 +140,13 @@ final class ClaudeThinkingAnimator {
         imageView: RotatingTemplateImageView,
         staticImage: NSImage,
         animatedSVGURL: URL,
-        frameDuration: TimeInterval = 0.09,
+        frameDuration: TimeInterval = ClaudeThinkingAnimator.defaultFrameDuration,
         outputSize: NSSize = NSSize(width: 16, height: 16)
     ) {
         guard
             let svg = try? String(contentsOf: animatedSVGURL, encoding: .utf8),
             let frames = Self.makeFrames(from: svg),
-            frames.count == 9
+            frames.count == Self.frameCount
         else {
             return nil
         }
@@ -169,6 +195,7 @@ final class ClaudeThinkingAnimator {
         timer = nil
         animationState.reset()
         imageView?.setSourceImage(staticImage)
+        imageView?.restoreSourceImage()
     }
 
     private func render(_ index: Int) {

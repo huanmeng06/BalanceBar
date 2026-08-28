@@ -138,6 +138,10 @@ final class DashboardPreferencePages {
         )
     }
 
+    func updateMenuBarPreviewIcon(_ image: NSImage?) {
+        menuBarPage.updatePreviewIcon(image)
+    }
+
     func refreshMenuBarWidthAdjustment(
         _ widthAdjustment: Double,
         horizontalPadding: CGFloat

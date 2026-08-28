@@ -774,6 +774,65 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
+    func testStatusMenuReusesItemsForUnchangedMenuInput() {
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [ProviderChoice(id: "provider", name: "Provider", isCurrent: true)],
+            quickSwitchSummaries: ["provider": "$1.00"],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [StatusLink(title: "Status", url: "https://status.example")],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: input,
+            settings: settings
+        )
+        let initialItems = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
+
+        controller.updateMenu(input: input)
+
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            initialItems,
+            "a repeated menu input must not rebuild the status menu"
+        )
+    }
+
+    @MainActor
     func testStatusItemDisplayModeHidesInPlaceAndRestoresWhenCodexRuns() {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(

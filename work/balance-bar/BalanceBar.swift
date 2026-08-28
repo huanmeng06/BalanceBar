@@ -546,6 +546,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
                 },
+                frameImageChanged: { [weak self] image in
+                    self?.dashboardComposition.updateMenuBarPreviewIcon(image)
+                },
                 visibilityChanged: { [weak self] _ in
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)

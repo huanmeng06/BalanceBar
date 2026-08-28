@@ -182,6 +182,14 @@ final class DashboardCompositionController {
         )
     }
 
+    /// Mirrors an already-rendered menu bar frame into the visible preview.
+    /// This must stay separate from refreshMenuBarPage so animation frames do
+    /// not rebuild the Dashboard page or recalculate its layout.
+    func updateMenuBarPreviewIcon(_ image: NSImage?) {
+        guard window?.isVisible == true, section == .menuBar else { return }
+        dashboardPreferencePages.updateMenuBarPreviewIcon(image)
+    }
+
     func refreshMenuBarWidthAdjustment(
         _ widthAdjustment: Double,
         horizontalPadding: CGFloat

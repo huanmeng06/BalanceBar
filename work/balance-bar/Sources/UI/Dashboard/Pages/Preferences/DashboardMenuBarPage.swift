@@ -483,6 +483,13 @@ final class DashboardMenuBarPage {
         removeFontSizePresetTrackingObserver()
     }
 
+    /// Updates only the preview bitmap. Animation frames must not repeat the
+    /// full settings-page refresh performed by refresh(...).
+    func updatePreviewIcon(_ image: NSImage?) {
+        guard isBuilt else { return }
+        previewIcon.image = image
+    }
+
     private static func makeOverflowWarningRow(
         label: NSTextField,
         settingsButton: NSButton
