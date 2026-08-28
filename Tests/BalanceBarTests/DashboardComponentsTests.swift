@@ -265,7 +265,11 @@ final class DashboardComponentsTests: XCTestCase {
                 DashboardSettingsComponents.settingsSubtitleLineBreakMode(for: longTitle),
                 "title wrapping mode for \(language)"
             )
-            XCTAssertEqual(title.maximumNumberOfLines, 0, "unlimited title lines for \(language)")
+            XCTAssertEqual(
+                title.maximumNumberOfLines,
+                DashboardSettingsComponents.settingsTitleMaximumNumberOfLines,
+                "title line budget for \(language)"
+            )
             XCTAssertTrue(title.cell?.wraps == true, "title cell wrapping for \(language)")
             XCTAssertFalse(title.cell?.isScrollable == true, "title cell must not scroll for \(language)")
             XCTAssertGreaterThan(narrowHeight, 62, "long title should grow its row for \(language)")
@@ -281,12 +285,171 @@ final class DashboardComponentsTests: XCTestCase {
                 title.bounds.height + 0.5,
                 "title must fit its wrapped frame for \(language)"
             )
-            XCTAssertEqual(control.frame.midY, row.bounds.midY, accuracy: 0.5)
+            let labels = try XCTUnwrap(row.subviews.compactMap { $0 as? NSStackView }.first)
+            let labelsFrame = labels.convert(labels.bounds, to: row)
+            let controlFrame = control.convert(control.bounds, to: row)
+            XCTAssertFalse(labelsFrame.intersects(controlFrame), "text and control must not overlap for \(language)")
+            if controlFrame.maxY > labelsFrame.minY + 0.5 {
+                XCTAssertEqual(control.frame.midY, row.bounds.midY, accuracy: 0.5)
+            }
 
             let wideHeight = try layout(at: 740)
             XCTAssertLessThan(wideHeight, narrowHeight, "title row should shrink after widening for \(language)")
             let narrowAgainHeight = try layout(at: 300)
             XCTAssertEqual(narrowAgainHeight, narrowHeight, accuracy: 0.5)
+        }
+    }
+
+    func testSettingsRowsProtectTextBeforeOrdinaryControlsAcrossLanguages() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let languages: [AppLanguage] = [
+            .simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .japanese,
+            .english,
+            .korean,
+            .spanish,
+            .german,
+            .french
+        ]
+
+        for language in languages {
+            AppLanguage.selected = language
+            let title = [
+                tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesBalanceUpdatesDuringTasks, language: language)
+            ].joined(separator: " · ")
+            let subtitle = [
+                tr(.keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesUpdateChannelDescription, language: language)
+            ].joined(separator: " · ")
+
+            for controlIndex in 0..<3 {
+                let relay = DashboardPreferencePageRelay()
+                let control: NSView
+                switch controlIndex {
+                case 0:
+                    control = DashboardSettingsComponents.makeSwitch(
+                        identifier: "lineBudgetSwitch",
+                        isOn: true,
+                        target: relay,
+                        action: #selector(DashboardPreferencePageRelay.toggle(_:))
+                    )
+                case 1:
+                    control = DashboardSettingsComponents.makePopUpButton(
+                        identifier: "lineBudgetPopup",
+                        items: [
+                            DashboardSettingsComponents.PopUpItem(
+                                title: [
+                                    tr(.keyDashboardGeneralAndRefreshPagesRefreshNow, language: language),
+                                    tr(.keyDashboardGeneralAndRefreshPagesRefreshNow, language: language)
+                                ].joined(separator: " · "),
+                                representedObject: "selected"
+                            )
+                        ],
+                        selectedIndex: 0,
+                        target: relay,
+                        action: #selector(DashboardPreferencePageRelay.interval(_:))
+                    )
+                default:
+                    let button = NSButton(
+                        title: [
+                            tr(.keyDashboardGeneralAndRefreshPagesRefreshNow, language: language),
+                            tr(.keyDashboardGeneralAndRefreshPagesRefreshNow, language: language)
+                        ].joined(separator: " · "),
+                        target: relay,
+                        action: #selector(DashboardPreferencePageRelay.manualRefresh(_:))
+                    )
+                    button.bezelStyle = .rounded
+                    control = button
+                }
+
+                let row = DashboardSettingsComponents.makeSettingsRow(
+                    title,
+                    subtitle: subtitle,
+                    control: control
+                )
+                let section = DashboardSettingsComponents.makeSettingsSection(
+                    "Line budget",
+                    rows: [row]
+                )
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 280, height: 360),
+                    styleMask: [.borderless],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.contentView = section
+                defer { window.orderOut(nil) }
+                window.layoutIfNeeded()
+
+                let labels = try XCTUnwrap(
+                    row.subviews.first { $0 !== control } as? NSStackView,
+                    "expected text stack for \(language), control \(controlIndex)"
+                )
+                let titleView = try XCTUnwrap(labels.arrangedSubviews.first)
+                let titleLabel = try XCTUnwrap(
+                    titleView as? NSTextField ??
+                        (titleView as? NSStackView)?.arrangedSubviews.first as? NSTextField
+                )
+                let subtitleLabel = try XCTUnwrap(labels.arrangedSubviews.dropFirst().first as? NSTextField)
+                let labelsFrame = labels.convert(labels.bounds, to: row)
+                let controlFrame = control.convert(control.bounds, to: row)
+
+                XCTAssertEqual(
+                    titleLabel.maximumNumberOfLines,
+                    DashboardSettingsComponents.settingsTitleMaximumNumberOfLines,
+                    "title budget for \(language), control \(controlIndex)"
+                )
+                XCTAssertEqual(
+                    subtitleLabel.maximumNumberOfLines,
+                    DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines,
+                    "subtitle budget for \(language), control \(controlIndex)"
+                )
+                XCTAssertLessThanOrEqual(
+                    titleLabel.cell!.cellSize(
+                        forBounds: NSRect(
+                            x: 0,
+                            y: 0,
+                            width: titleLabel.bounds.width,
+                            height: .greatestFiniteMagnitude
+                        )
+                    ).height,
+                    titleLabel.bounds.height + 0.5,
+                    "title must fit its capped frame for \(language), control \(controlIndex)"
+                )
+                XCTAssertLessThanOrEqual(
+                    subtitleLabel.cell!.cellSize(
+                        forBounds: NSRect(
+                            x: 0,
+                            y: 0,
+                            width: subtitleLabel.bounds.width,
+                            height: .greatestFiniteMagnitude
+                        )
+                    ).height,
+                    subtitleLabel.bounds.height + 0.5,
+                    "subtitle must fit its capped frame for \(language), control \(controlIndex)"
+                )
+                XCTAssertFalse(
+                    labelsFrame.intersects(controlFrame),
+                    "text and control must not overlap for \(language), control \(controlIndex)"
+                )
+                XCTAssertTrue(
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame),
+                    "text must stay inside the row for \(language), control \(controlIndex)"
+                )
+                XCTAssertTrue(
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(controlFrame),
+                    "control must stay inside the row for \(language), control \(controlIndex)"
+                )
+                XCTAssertLessThanOrEqual(
+                    controlFrame.maxY,
+                    labelsFrame.minY + 0.5,
+                    "long control must use a dedicated row for \(language), control \(controlIndex)"
+                )
+            }
         }
     }
 
@@ -332,7 +495,10 @@ final class DashboardComponentsTests: XCTestCase {
         let narrow = try layout(at: 516)
         XCTAssertFalse(subtitle.usesSingleLineMode)
         XCTAssertEqual(subtitle.lineBreakMode, .byWordWrapping)
-        XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
+        XCTAssertEqual(
+            subtitle.maximumNumberOfLines,
+            DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines
+        )
         XCTAssertTrue(subtitle.cell?.wraps == true)
         XCTAssertGreaterThan(narrow.rowHeight, 62)
         let subtitleFrame = subtitle.convert(subtitle.bounds, to: row)
@@ -524,12 +690,18 @@ final class DashboardComponentsTests: XCTestCase {
                 renderedLines(for: label).contains { normalized($0).contains(normalizedSuffix) },
                 "semantic suffix must remain one line for \(language): \(renderedLines(for: label))"
             )
-            XCTAssertEqual(
-                control.frame.midY,
-                row.bounds.midY,
-                accuracy: 0.5,
-                "slider/control stays centered for \(language)"
-            )
+            let labels = try XCTUnwrap(row.subviews.compactMap { $0 as? NSStackView }.first)
+            let labelsFrame = labels.convert(labels.bounds, to: row)
+            let controlFrame = control.convert(control.bounds, to: row)
+            XCTAssertFalse(labelsFrame.intersects(controlFrame), "text and control must not overlap for \(language)")
+            if controlFrame.maxY > labelsFrame.minY + 0.5 {
+                XCTAssertEqual(
+                    control.frame.midY,
+                    row.bounds.midY,
+                    accuracy: 0.5,
+                    "slider/control stays centered for \(language)"
+                )
+            }
             XCTAssertEqual(
                 narrow.cardHeight,
                 DashboardSettingsComponents.settingsCardHeight(

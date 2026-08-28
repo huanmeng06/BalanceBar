@@ -976,7 +976,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let narrow = layout(at: 516)
         XCTAssertFalse(subtitle.usesSingleLineMode)
         XCTAssertEqual(subtitle.lineBreakMode, .byWordWrapping)
-        XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
+        XCTAssertEqual(
+            subtitle.maximumNumberOfLines,
+            DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines
+        )
         XCTAssertTrue(subtitle.cell?.wraps == true)
         XCTAssertGreaterThan(narrow.statusRowHeight, 62)
         let wide = layout(at: 740)
@@ -2533,7 +2536,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     let row = rows[index]
                     XCTAssertFalse(summary.usesSingleLineMode, "multiline mode for \(language)")
                     XCTAssertEqual(summary.lineBreakMode, expectedLineBreakMode, "wrapping mode for \(language)")
-                    XCTAssertEqual(summary.maximumNumberOfLines, 0, "unlimited lines for \(language)")
+                    XCTAssertEqual(
+                        summary.maximumNumberOfLines,
+                        DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines,
+                        "summary line budget for \(language)"
+                    )
                     XCTAssertTrue(summary.cell?.wraps == true, "cell wrapping for \(language)")
                     if normalizeSettingsText(summary.stringValue).contains(expectedSuffixes[index]) {
                         let renderedLines = renderedTextLines(for: summary).map {
