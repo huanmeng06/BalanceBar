@@ -1525,7 +1525,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    struct MenuInput {
+    struct MenuInput: Equatable {
         let openCodexCards: [OpenCodexModelCard]
         let openCodexState: OpenCodexRuntimeState?
         let openCodexSwitchInFlight: Bool
@@ -1539,6 +1539,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showOpenCCSwitchMenu: Bool
         let showOpenCodexMenu: Bool
         let showStatusMenu: Bool
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.openCodexCards == rhs.openCodexCards
+                && lhs.openCodexState == rhs.openCodexState
+                && lhs.openCodexSwitchInFlight == rhs.openCodexSwitchInFlight
+                && lhs.choices.elementsEqual(rhs.choices) { left, right in
+                    left.id == right.id
+                        && left.name == right.name
+                        && left.isCurrent == right.isCurrent
+                }
+                && lhs.quickSwitchSummaries == rhs.quickSwitchSummaries
+                && lhs.activeClient.rawValue == rhs.activeClient.rawValue
+                && lhs.openAIAccount == rhs.openAIAccount
+                && lhs.statusLinks == rhs.statusLinks
+                && lhs.showQuickSwitchMenu == rhs.showQuickSwitchMenu
+                && lhs.showOpenChatGPTMenu == rhs.showOpenChatGPTMenu
+                && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
+                && lhs.showOpenCodexMenu == rhs.showOpenCodexMenu
+                && lhs.showStatusMenu == rhs.showStatusMenu
+        }
     }
 
     private var statusItem: NSStatusItem?
@@ -1823,6 +1843,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     func updateMenu(input: MenuInput) {
+        // The caller may still perform its periodic local-state read so the
+        // database-watcher fallback remains intact. Reuse the current menu
+        // hierarchy when that read produces the same semantic input.
+        guard menuInput != input else { return }
         menuInput = input
         rebuildOrDeferMenu()
     }
