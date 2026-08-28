@@ -249,8 +249,6 @@ final class LunaReserveCardView: NSView {
             return .secondaryLabelColor
         case .available:
             return .systemGreen
-        case .exhausted:
-            return .systemOrange
         case .unavailable:
             return .secondaryLabelColor
         }

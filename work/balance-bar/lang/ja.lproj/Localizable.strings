@@ -408,7 +408,6 @@
 "luna.reserve.title_status_value" = "%1$@ · %2$@";
 "luna.reserve.status.loading" = "読み込み中…";
 "luna.reserve.status.available" = "利用可能";
-"luna.reserve.status.exhausted" = "上限到達";
 "luna.reserve.status.unavailable" = "利用不可";
 "luna.reserve.remaining_value" = "残り：%1$@%%";
 "luna.reserve.remaining_unavailable" = "残り：利用不可";

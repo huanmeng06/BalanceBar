@@ -410,7 +410,6 @@
     case keyLunaReserveTitleStatusValue = "luna.reserve.title_status_value"
     case keyLunaReserveStatusLoading = "luna.reserve.status.loading"
     case keyLunaReserveStatusAvailable = "luna.reserve.status.available"
-    case keyLunaReserveStatusExhausted = "luna.reserve.status.exhausted"
     case keyLunaReserveStatusUnavailable = "luna.reserve.status.unavailable"
     case keyLunaReserveRemainingValue = "luna.reserve.remaining_value"
     case keyLunaReserveRemainingUnavailable = "luna.reserve.remaining_unavailable"

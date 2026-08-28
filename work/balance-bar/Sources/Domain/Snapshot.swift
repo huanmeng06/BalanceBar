@@ -4,7 +4,6 @@ struct LunaReserveQuota: Equatable {
     enum Status: Equatable {
         case loading
         case available
-        case exhausted
         case unavailable
 
         var localizedText: String {
@@ -13,8 +12,6 @@ struct LunaReserveQuota: Equatable {
                 return tr(.keyLunaReserveStatusLoading)
             case .available:
                 return tr(.keyLunaReserveStatusAvailable)
-            case .exhausted:
-                return tr(.keyLunaReserveStatusExhausted)
             case .unavailable:
                 return tr(.keyLunaReserveStatusUnavailable)
             }

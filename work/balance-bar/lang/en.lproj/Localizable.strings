@@ -408,7 +408,6 @@
 "luna.reserve.title_status_value" = "%1$@ · %2$@";
 "luna.reserve.status.loading" = "Loading…";
 "luna.reserve.status.available" = "Available";
-"luna.reserve.status.exhausted" = "Exhausted";
 "luna.reserve.status.unavailable" = "Unavailable";
 "luna.reserve.remaining_value" = "Remaining: %1$@%%";
 "luna.reserve.remaining_unavailable" = "Remaining: unavailable";

@@ -408,7 +408,6 @@
 "luna.reserve.title_status_value" = "%1$@ · %2$@";
 "luna.reserve.status.loading" = "載入中…";
 "luna.reserve.status.available" = "可用";
-"luna.reserve.status.exhausted" = "已耗盡";
 "luna.reserve.status.unavailable" = "無法使用";
 "luna.reserve.remaining_value" = "剩餘：%1$@%%";
 "luna.reserve.remaining_unavailable" = "剩餘：無法取得";

@@ -397,24 +397,19 @@ enum OfficialQuotaResponseParser {
 
         let used = ResponseParsingSupport.numberValue(window["used_percent"])
             .flatMap { $0.isFinite && (0...100).contains($0) ? $0 : nil }
-        let remaining = used.map { max(0, min(100, 100 - $0)) }
         let limitReached = rateLimit["limit_reached"] as? Bool
         guard used != nil || limitReached != nil else {
             return nil
         }
-        let status: LunaReserveQuota.Status
-        if limitReached == true || remaining == 0 {
-            status = .exhausted
-        } else if used != nil || limitReached == false {
-            status = .available
-        } else {
-            status = .unavailable
-        }
+        // Reaching the limit is still a valid, available Reserve record. It
+        // means the remaining amount is zero, not that the data is unavailable.
+        let remaining = used.map { max(0, min(100, 100 - $0)) }
+            ?? (limitReached == true ? 0 : nil)
 
         let rawResetAt = window["reset_at"] ?? window["resets_at"]
         let reset = Self.lunaReserveResetDescription(window, rawResetAt: rawResetAt, now: now)
         return LunaReserveQuota(
-            status: status,
+            status: .available,
             remaining: remaining,
             reset: reset,
             resetAt: ResponseParsingSupport.resetDate(rawResetAt, now: now)

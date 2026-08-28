@@ -193,7 +193,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay])
     }
 
-    func testCodexLunaReservePreservesExplicitUnavailableAndExhaustedStates() throws {
+    func testCodexLunaReserveKeepsUnavailableSeparateFromZeroRemaining() throws {
         let standardWindow: [String: Any] = [
             "used_percent": 20,
             "limit_window_seconds": 18_000,
@@ -217,7 +217,7 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertNil(unavailableReserve.remaining)
         XCTAssertNil(unavailableReserve.reset)
 
-        let exhausted = try OfficialQuotaResponseParser.parse(
+        let zeroRemaining = try OfficialQuotaResponseParser.parse(
             object: [
                 "rate_limit": ["primary_window": standardWindow],
                 "additional_rate_limits": [[
@@ -236,10 +236,33 @@ final class ResponseParsersTests: XCTestCase {
             client: .codex,
             now: now
         )
-        let exhaustedReserve = try XCTUnwrap(exhausted.lunaReserve)
-        XCTAssertEqual(exhaustedReserve.status, .exhausted)
-        XCTAssertEqual(exhaustedReserve.remaining ?? -1, 0, accuracy: 0.000001)
-        XCTAssertEqual(exhaustedReserve.reset, "5m")
+        let zeroRemainingReserve = try XCTUnwrap(zeroRemaining.lunaReserve)
+        XCTAssertEqual(zeroRemainingReserve.status, .available)
+        XCTAssertEqual(zeroRemainingReserve.remaining ?? -1, 0, accuracy: 0.000001)
+        XCTAssertEqual(zeroRemainingReserve.reset, "5m")
+
+        let limitReachedWithoutUsage = try OfficialQuotaResponseParser.parse(
+            object: [
+                "rate_limit": ["primary_window": standardWindow],
+                "additional_rate_limits": [[
+                    "limit_name": "gpt-reserve",
+                    "metered_feature": "base_model_inference",
+                    "rate_limit": [
+                        "allowed": true,
+                        "limit_reached": true,
+                        "primary_window": [
+                            "reset_after_seconds": 300
+                        ]
+                    ]
+                ]]
+            ],
+            client: .codex,
+            now: now
+        )
+        let limitReachedReserve = try XCTUnwrap(limitReachedWithoutUsage.lunaReserve)
+        XCTAssertEqual(limitReachedReserve.status, .available)
+        XCTAssertEqual(limitReachedReserve.remaining ?? -1, 0, accuracy: 0.000001)
+        XCTAssertEqual(limitReachedReserve.reset, "5m")
     }
 
     func testCodexLunaReserveRejectsUnrelatedOrMalformedAdditionalLimits() throws {
