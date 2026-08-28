@@ -827,9 +827,9 @@ final class DashboardMenuBarPage {
                 amountDisplayRow,
                 resetCountdownRow,
                 quotaWindowPreferenceRow,
+                quotaResetDisplayModeRow,
                 autoSwitchLunaReserveRow,
-                lunaReserveResetTimeRow,
-                quotaResetDisplayModeRow
+                lunaReserveResetTimeRow
             ],
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
                 self?.quotaRowsStack = rowsStack
@@ -1352,9 +1352,9 @@ final class DashboardMenuBarPage {
             amountDisplayRow,
             resetCountdownRow,
             quotaWindowPreferenceRow,
+            quotaResetDisplayModeRow,
             autoSwitchLunaReserveRow,
-            lunaReserveResetTimeRow,
-            quotaResetDisplayModeRow
+            lunaReserveResetTimeRow
         ]
         for (index, separator) in quotaSeparators.enumerated() {
             guard index < rows.count,

@@ -1616,7 +1616,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(
             zip(
                 rowViews,
-                [amountRow, resetRow, quotaWindowRow, autoSwitchRow, lunaReserveResetTimeRow, quotaResetRow]
+                [amountRow, resetRow, quotaWindowRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow]
             )
                 .allSatisfy { $0.0 === $0.1 }
         )
@@ -1862,17 +1862,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
                                 .flatMap(\.superview)
                         ),
                         selectorRow,
-                        autoSwitchRow,
-                        lunaReserveResetTimeRow,
                         try XCTUnwrap(
                             descendants(of: page)
                                 .compactMap { $0 as? NSPopUpButton }
                                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
                                 .flatMap(\.superview)
-                        )
+                        ),
+                        autoSwitchRow,
+                        lunaReserveResetTimeRow
                     ]
                 ).allSatisfy { $0.0 === $0.1 },
-                "quota rows follow usage, reset countdown, priority, Reserve switch, Reserve reset source, reset display order"
+                "quota rows follow usage, reset countdown, priority, reset display, Reserve switch, Reserve reset source order"
             )
             XCTAssertTrue(
                 descendants(of: selectorRow)
