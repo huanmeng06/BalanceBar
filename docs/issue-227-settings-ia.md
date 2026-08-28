@@ -28,7 +28,7 @@ Dashboard 主导航仍为 General（通用）、Menu Bar（菜单栏）、Menu�
 | 条目 | 旧分组 → 新分组 | 归属与排序依据 | 未采用的方案 |
 | --- | --- | --- | --- |
 | CC Switch | System → System | Provider 连接入口，放在 General 首卡；保留当前 Provider 副标题和 Open CC Switch 按钮。 | 不移到 Providers：它是连接入口而非某个 Provider 的用量详情。 |
-| Balance Updates During Tasks | Refresh → Refresh | 运行中轮询策略，排在手动刷新前；现有“运行中”与“结束后”控件按此顺序在宽窗口单行显示，窄窗口自动竖排。 | 不与 Application 合并：刷新频率和更新通道的生命周期不同；不强制固定竖排，避免宽窗口浪费高度。 |
+| Balance Updates During Tasks | Refresh → Refresh | 运行中轮询策略，排在手动刷新前；现有“运行中”与“结束后”控件按此顺序在宽窗口单行显示；当并排布局会把左侧内容压缩到 220pt 以下时提前独立成行，更窄时控件组自动竖排。 | 不与 Application 合并：刷新频率和更新通道的生命周期不同；不强制固定竖排，避免宽窗口浪费高度，同时避免中等宽度下标题/说明被压成多行。 |
 | Balance Data | Refresh → Refresh | 当前 Provider 的即时刷新动作，紧随持续刷新策略。 | 不移到 Menu Bar：菜单栏预览消费结果但不拥有刷新偏好。 |
 | Language | Application → Application | 全局界面语言，位于应用级设置首位。 | 不放入独立 Localization 页面：会增加导航层级。 |
 | Update Channel | Application → Application | 版本通道选择，位于更新动作之前。 | 不放到 Advanced：它是普通应用偏好。 |
@@ -36,7 +36,7 @@ Dashboard 主导航仍为 General（通用）、Menu Bar（菜单栏）、Menu�
 
 `DashboardRefreshPage` 的 Provider fallback polling 和 Claude task status detection 是现有未挂载的辅助页面；本次不新增导航、不删除实现，并在代码盘点中作为 dormant support surface 保留。General 的动态更新、更新检查和 Release Notes 逻辑不变。
 
-Refresh 页的 `Balance Updates During Tasks` 仍使用原有两个 interval preference、选项集合和 relay 回调；只将控制组从固定竖排改为复用 `DashboardAdaptiveControlsStackView` 的宽度感知布局：可用宽度足够时按“运行中 → 结束后”横排，不足时自动竖排，并随行高重新测量。
+Refresh 页的 `Balance Updates During Tasks` 仍使用原有两个 interval preference、选项集合和 relay 回调；只将控制组从固定竖排改为复用 `DashboardAdaptiveControlsStackView` 的宽度感知布局：宽窗口按“运行中 → 结束后”横排；当并排布局会使左侧内容列低于 220pt 时，控制组提前移到独立一行；不足以让控制组横排时，再按同一顺序自动竖排，并随行高重新测量。这个 220pt 是布局阈值，不是用户设置，也不改变任何偏好值或文案。
 
 ### Menu Bar（菜单栏）
 

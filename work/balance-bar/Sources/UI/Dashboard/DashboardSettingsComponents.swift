@@ -22,10 +22,16 @@ private final class DashboardSettingsRowView: NSView {
     private var controlPlacement: DashboardSettingsControlPlacement = .horizontal
     private var sideBySideControlConstraints: [NSLayoutConstraint] = []
     private var dedicatedControlConstraints: [NSLayoutConstraint] = []
+    private let minimumInlineContentWidth: CGFloat?
 
-    init(minimumHeight: CGFloat, verticalPadding: CGFloat) {
+    init(
+        minimumHeight: CGFloat,
+        verticalPadding: CGFloat,
+        minimumInlineContentWidth: CGFloat?
+    ) {
         self.minimumHeight = max(DashboardSettingsComponents.standardRowHeight, minimumHeight)
         self.verticalPadding = max(0, verticalPadding)
+        self.minimumInlineContentWidth = minimumInlineContentWidth.map { max(0, $0) }
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .vertical)
@@ -66,7 +72,11 @@ private final class DashboardSettingsRowView: NSView {
                 0,
                 availableContentAndControlWidth - actionWidth - 20
             )
-            let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < minimumReadableContentWidth
+            let readableContentWidth = max(
+                minimumReadableContentWidth,
+                minimumInlineContentWidth ?? 0
+            )
+            let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < readableContentWidth
             let placement: DashboardSettingsControlPlacement
             if contentNeedsDedicatedRow {
                 placement = .dedicatedRow
@@ -721,11 +731,13 @@ enum DashboardSettingsComponents {
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11,
-        controlWidthConstrainedToRow: Bool = false
+        controlWidthConstrainedToRow: Bool = false,
+        minimumInlineContentWidth: CGFloat? = nil
     ) -> NSView {
         let row = DashboardSettingsRowView(
             minimumHeight: minimumHeight,
-            verticalPadding: verticalPadding
+            verticalPadding: verticalPadding,
+            minimumInlineContentWidth: minimumInlineContentWidth
         )
         // Keep a required floor for short rows. The low-priority equality
         // preserves the old compact geometry as a fallback while allowing
