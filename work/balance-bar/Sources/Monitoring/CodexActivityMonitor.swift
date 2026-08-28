@@ -2,12 +2,22 @@ import Foundation
 import SQLite3
 import Darwin
 
-private func codexFileIdentity(atPath path: String) -> (size: UInt64, modifiedAt: TimeInterval)? {
+private struct CodexFileIdentity: Equatable {
+    let size: UInt64
+    let modifiedAt: TimeInterval
+    let fileID: UInt64
+}
+
+private func codexFileIdentity(atPath path: String) -> CodexFileIdentity? {
     var value = stat()
     guard path.withCString({ Darwin.lstat($0, &value) }) == 0 else { return nil }
     let modifiedAt = TimeInterval(value.st_mtimespec.tv_sec)
         + (TimeInterval(value.st_mtimespec.tv_nsec) / 1_000_000_000)
-    return (UInt64(max(0, value.st_size)), modifiedAt)
+    return CodexFileIdentity(
+        size: UInt64(max(0, value.st_size)),
+        modifiedAt: modifiedAt,
+        fileID: UInt64(value.st_ino)
+    )
 }
 
 final class CodexActivityMonitor {
@@ -39,9 +49,24 @@ final class CodexActivityMonitor {
     ]
 
     private struct SessionCache {
-        let size: UInt64
-        let modifiedAt: TimeInterval
+        let identity: CodexFileIdentity
+        let bytesScanned: UInt64
+        let pendingLine: String
         let running: Bool
+        let terminalSeen: Bool
+    }
+
+    private struct DatabaseSignature: Equatable {
+        let path: String
+        let main: CodexFileIdentity
+        let wal: CodexFileIdentity?
+        let sharedMemory: CodexFileIdentity?
+    }
+
+    private struct LogsActivityCache {
+        let signature: DatabaseSignature
+        let running: Bool
+        let validUntil: TimeInterval
     }
 
     private struct RolloutCandidate {
@@ -53,6 +78,8 @@ final class CodexActivityMonitor {
     private let clock: () -> Date
     private var sessionCache: [String: SessionCache] = [:]
     private var rolloutPathsCache: (scannedAt: Date, candidates: [RolloutCandidate]) = (.distantPast, [])
+    private var latestDatabaseCache: [String: (scannedAt: Date, path: String)] = [:]
+    private var logsActivityCache: LogsActivityCache?
 
     init(codexDirectory: URL? = nil, clock: @escaping () -> Date = { Date() }) {
         self.codexDirectory = codexDirectory
@@ -62,10 +89,16 @@ final class CodexActivityMonitor {
 
     func isTaskRunning(now: Date? = nil) -> Bool {
         let now = now ?? clock()
-        // A rollout task_complete/failure/cancellation event is authoritative.
-        // Only use the delayed logs database when rollout files are unavailable.
-        if let rolloutState = recentRolloutRunningState(now: now) { return rolloutState }
-        return logsDatabaseIsRunning(now: now)
+        // Read the indexed activity log first because it is the cheapest
+        // aggregate signal. A rollout result, when available, remains
+        // authoritative so a delayed log completion cannot resurrect a task
+        // that the session file has already ended.
+        let logsState = logsDatabaseIsRunning(now: now)
+
+        // Keep rollout parsing as a compatibility path for older/incomplete
+        // logs databases. Its state is incremental, so an active append only
+        // parses the bytes that arrived since the previous sample.
+        return recentRolloutRunningState(now: now) ?? logsState ?? false
     }
 
     private func recentRolloutRunningState(now: Date) -> Bool? {
@@ -80,19 +113,19 @@ final class CodexActivityMonitor {
                   let identity = codexFileIdentity(atPath: candidate.path),
                   Self.isWithinActivityWindow(identity.modifiedAt, now: now) else { continue }
             parsedAny = true
-            let sizeValue = identity.size
-            let modifiedValue = identity.modifiedAt
             if let cached = sessionCache[candidate.path],
-               cached.size == sizeValue,
-               cached.modifiedAt == modifiedValue {
+               cached.identity == identity {
                 nextCache[candidate.path] = cached
                 anyRunning = anyRunning || cached.running
                 continue
             }
-            let running = parseSession(path: candidate.path)
-            let entry = SessionCache(size: sizeValue, modifiedAt: modifiedValue, running: running)
+            guard let entry = parseSession(
+                path: candidate.path,
+                identity: identity,
+                cached: sessionCache[candidate.path]
+            ) else { continue }
             nextCache[candidate.path] = entry
-            anyRunning = anyRunning || running
+            anyRunning = anyRunning || entry.running
         }
         sessionCache = nextCache
         return parsedAny ? anyRunning : nil
@@ -102,7 +135,7 @@ final class CodexActivityMonitor {
         if now.timeIntervalSince(rolloutPathsCache.scannedAt) < 1 {
             return rolloutPathsCache.candidates
         }
-        guard let databasePath = latestDatabase(prefix: "state_") else { return [] }
+        guard let databasePath = latestDatabase(prefix: "state_", now: now) else { return [] }
         var database: OpaquePointer?
         guard sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
               let database else { return [] }
@@ -145,27 +178,79 @@ final class CodexActivityMonitor {
         return age >= 0 && age < TimeInterval(activityWindow)
     }
 
-    private func parseSession(path: String) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)),
-              let size = try? handle.seekToEnd() else { return false }
-        let tailOffset = size > UInt64(Self.activityTailBytes)
-            ? size - UInt64(Self.activityTailBytes)
+    private func parseSession(
+        path: String,
+        identity: CodexFileIdentity,
+        cached: SessionCache?
+    ) -> SessionCache? {
+        guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path)) else {
+            return nil
+        }
+        defer { try? handle.close() }
+
+        let canContinue = cached.map {
+            $0.identity.fileID == identity.fileID
+                // A same-size mtime change can be an in-place rewrite. Reset
+                // in that case instead of seeking past the rewritten bytes.
+                && identity.size > $0.identity.size
+                && identity.modifiedAt >= $0.identity.modifiedAt
+                && $0.bytesScanned <= identity.size
+        } ?? false
+        let startOffset: UInt64
+        var running: Bool
+        var terminalSeen: Bool
+        var pendingLine: String
+        if canContinue, let cached {
+            // Codex appends to a session file. Continue from the previous byte
+            // offset and retain an unterminated final line across polls.
+            startOffset = cached.bytesScanned
+            running = cached.running
+            terminalSeen = cached.terminalSeen
+            pendingLine = cached.pendingLine
+        } else {
+            let tailOffset = identity.size > UInt64(Self.activityTailBytes)
+                ? identity.size - UInt64(Self.activityTailBytes)
+                : 0
+            startOffset = tailOffset > UInt64(Self.lifecycleLookbackBytes)
+                ? tailOffset - UInt64(Self.lifecycleLookbackBytes)
+                : 0
+            running = false
+            terminalSeen = false
+            pendingLine = ""
+        }
+
+        guard startOffset <= identity.size,
+              identity.size - startOffset <= UInt64(Int.max) else {
+            return nil
+        }
+        do {
+            try handle.seek(toOffset: startOffset)
+        } catch {
+            return nil
+        }
+        guard let data = try? handle.read(upToCount: Int(identity.size - startOffset)) else {
+            return nil
+        }
+
+        let pendingByteCount = pendingLine.utf8.count
+        let combinedStartOffset = startOffset >= UInt64(pendingByteCount)
+            ? startOffset - UInt64(pendingByteCount)
             : 0
-        let historyOffset = tailOffset > UInt64(Self.lifecycleLookbackBytes)
-            ? tailOffset - UInt64(Self.lifecycleLookbackBytes)
+        let tailOffset = identity.size > UInt64(Self.activityTailBytes)
+            ? identity.size - UInt64(Self.activityTailBytes)
             : 0
-        try? handle.seek(toOffset: historyOffset)
-        let readLength = size - historyOffset
-        guard let data = try? handle.read(upToCount: Int(readLength)) else { return false }
-        var running = false
-        var terminalSeen = false
+        var combined = Data(pendingLine.utf8)
+        combined.append(data)
+        let bytes = Array(combined)
         var lineStart = 0
-        let bytes = Array(data)
-        for index in 0...bytes.count {
-            let isEndOfLine = index == bytes.count || bytes[index] == UInt8(ascii: "\n")
-            guard isEndOfLine else { continue }
+        var index = 0
+        while index < bytes.count {
+            guard bytes[index] == UInt8(ascii: "\n") else {
+                index += 1
+                continue
+            }
             let lineData = Data(bytes[lineStart..<index])
-            let absoluteLineStart = historyOffset + UInt64(lineStart)
+            let absoluteLineStart = combinedStartOffset + UInt64(lineStart)
             consumeSessionLine(
                 lineData,
                 lifecycleOnly: absoluteLineStart < tailOffset,
@@ -173,8 +258,17 @@ final class CodexActivityMonitor {
                 terminalSeen: &terminalSeen
             )
             lineStart = index + 1
+            index += 1
         }
-        return running
+
+        pendingLine = String(decoding: bytes[lineStart..<bytes.count], as: UTF8.self)
+        return SessionCache(
+            identity: identity,
+            bytesScanned: identity.size,
+            pendingLine: pendingLine,
+            running: running,
+            terminalSeen: terminalSeen
+        )
     }
 
     private func consumeSessionLine(
@@ -252,11 +346,24 @@ final class CodexActivityMonitor {
         }
     }
 
-    private func logsDatabaseIsRunning(now: Date) -> Bool {
-        guard let databasePath = latestDatabase(prefix: "logs_") else { return false }
+    private func logsDatabaseIsRunning(now: Date) -> Bool? {
+        guard let databasePath = latestDatabase(prefix: "logs_", now: now),
+              let signature = databaseSignature(atPath: databasePath) else {
+            return nil
+        }
+
+        let nowEpoch = Int64(now.timeIntervalSince1970)
+        if let cached = logsActivityCache,
+           cached.signature == signature,
+           !cached.running || now.timeIntervalSince1970 < cached.validUntil {
+            return cached.running
+        }
+
         var database: OpaquePointer?
         guard sqlite3_open_v2(databasePath, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
-              let database else { return false }
+              let database else {
+            return nil
+        }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 150)
 
@@ -273,65 +380,94 @@ final class CodexActivityMonitor {
         or \(normalized) like '%\"status\":\"in_progress\"%'
         """
         let activity = "\(outputActivity) or \(inProgress)"
-        let completion = ([
-            "\(normalized) like '%\"phase\":\"final\"%'",
-            "\(normalized) like '%\"phase\":\"final_answer\"%'"
-        ] + (Self.terminalTypes.union(Self.responseTerminalTypes)).sorted().map {
+        let completion = (Self.terminalTypes.union(Self.responseTerminalTypes)).sorted().map {
             "\(normalized) like '%\"type\":\"\($0)\"%'"
-        })
-            .joined(separator: " or ")
+        }
+        .joined(separator: " or ")
+        let phaseCompletion = """
+        \(normalized) like '%\"phase\":\"final\"%'
+        or \(normalized) like '%\"phase\":\"final_answer\"%'
+        """
         let sql = """
-        select
-          max(case when \(activity) then ts else 0 end) as latest_activity,
-          max(case when \(inProgress) then ts else 0 end) as latest_in_progress,
-          max(case when \(completion) then ts else 0 end) as latest_done
-        from logs indexed by idx_logs_ts
-        where thread_id is not null
-          and ts >= ?
-          and (\(activity) or \(completion))
-        group by thread_id
+        SELECT
+          max(CASE WHEN \(activity) THEN ts ELSE 0 END) AS latest_activity,
+          max(CASE WHEN \(inProgress) THEN ts ELSE 0 END) AS latest_in_progress,
+          max(CASE WHEN (\(completion)) OR (\(phaseCompletion)) THEN ts ELSE 0 END) AS latest_done
+        FROM logs INDEXED BY idx_logs_ts
+        WHERE thread_id IS NOT NULL
+          AND ts >= ?
+          AND ((\(activity)) OR (\(completion)) OR (\(phaseCompletion)))
+        GROUP BY thread_id;
         """
 
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else { return false }
+              let statement else {
+            return nil
+        }
         defer { sqlite3_finalize(statement) }
-        let nowEpoch = Int64(now.timeIntervalSince1970)
         sqlite3_bind_int64(statement, 1, nowEpoch - Int64(Self.activityWindow))
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var runningUntil: TimeInterval?
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             let latestActivity = sqlite3_column_int64(statement, 0)
             let latestInProgress = sqlite3_column_int64(statement, 1)
             let latestDone = sqlite3_column_int64(statement, 2)
             if latestInProgress > latestDone,
                latestActivity > latestDone,
                nowEpoch - latestActivity < Int64(Self.activityWindow) {
-                return true
+                let expiresAt = TimeInterval(latestActivity + Int64(Self.activityWindow))
+                runningUntil = max(runningUntil ?? .leastNormalMagnitude, expiresAt)
+            } else if latestInProgress > latestDone,
+                      latestActivity > 0,
+                      latestDone == 0,
+                      nowEpoch - latestActivity < 20 {
+                // Events can share a one-second timestamp. Keep a short grace
+                // period so an active stream does not flicker off at a boundary.
+                let expiresAt = TimeInterval(latestActivity + 20)
+                runningUntil = max(runningUntil ?? .leastNormalMagnitude, expiresAt)
             }
-            // Events can share a one-second timestamp. Keep a short grace
-            // period so an active stream does not flicker off at that boundary.
-            // A known completion wins when both events have the same timestamp,
-            // and output alone is not a positive in-progress signal.
-            if latestInProgress > latestDone,
-               latestActivity > 0,
-               latestDone == 0,
-               nowEpoch - latestActivity < 20 {
-                return true
-            }
+            stepResult = sqlite3_step(statement)
         }
-        return false
+        guard stepResult == SQLITE_DONE else { return nil }
+
+        let running = runningUntil != nil
+        logsActivityCache = LogsActivityCache(
+            signature: signature,
+            running: running,
+            validUntil: runningUntil ?? .infinity
+        )
+        return running
     }
 
-    private func latestDatabase(prefix: String) -> String? {
-        guard let files = try? FileManager.default.contentsOfDirectory(
+    private func databaseSignature(atPath path: String) -> DatabaseSignature? {
+        guard let main = codexFileIdentity(atPath: path) else { return nil }
+        return DatabaseSignature(
+            path: path,
+            main: main,
+            wal: codexFileIdentity(atPath: "\(path)-wal"),
+            sharedMemory: codexFileIdentity(atPath: "\(path)-shm")
+        )
+    }
+
+    private func latestDatabase(prefix: String, now: Date) -> String? {
+        if let cached = latestDatabaseCache[prefix],
+           now.timeIntervalSince(cached.scannedAt) < 1 {
+            return cached.path
+        }
+        guard let path = (try? FileManager.default.contentsOfDirectory(
             at: codexDirectory,
             includingPropertiesForKeys: nil
-        ) else { return nil }
-        return files.compactMap { url -> (version: Int, path: String)? in
+        ))?.compactMap({ url -> (version: Int, path: String)? in
             guard url.pathExtension == "sqlite" else { return nil }
             let name = url.deletingPathExtension().lastPathComponent
             guard name.hasPrefix(prefix), let version = Int(name.dropFirst(prefix.count)) else { return nil }
             return (version, url.path)
-        }.max { $0.version < $1.version }?.path
+        }).max(by: { $0.version < $1.version })?.path else {
+            return nil
+        }
+        latestDatabaseCache[prefix] = (now, path)
+        return path
     }
 }

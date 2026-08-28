@@ -297,6 +297,23 @@ final class CodexActivityMonitorTests: XCTestCase {
         XCTAssertTrue(makeMonitor().isTaskRunning(now: currentDate))
     }
 
+    func testRecentTerminalRolloutOverridesDelayedLogActivity() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("task_complete")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 5, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+
+        XCTAssertFalse(
+            makeMonitor().isTaskRunning(now: currentDate),
+            "a delayed log signal must not override a recent terminal rollout event"
+        )
+    }
+
     func testResponseCompletionOverridesPriorInProgressActivity() throws {
         try makeLogsDatabase(rows: [
             (threadID: "fixture-thread", timestamp: epoch - 5, body: #"{"type":"response.in_progress"}"#),
@@ -481,6 +498,24 @@ final class CodexActivityMonitorTests: XCTestCase {
             monitor.isTaskRunning(now: currentDate),
             "a changed rollout file must invalidate the cached active result before the path cache refreshes"
         )
+    }
+
+    func testSessionCacheResetsWhenFileIsRewrittenAtTheSameSize() throws {
+        let sessionURL = try writeSession([eventMessage("task_started")])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        // task_started and task_stopped are intentionally equal-length JSONL
+        // records. A same-size rewrite must not make the incremental scanner
+        // seek past the replacement terminal event.
+        let replacement = eventMessage("task_stopped") + "\n"
+        try Data(replacement.utf8).write(to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(0.1)
+        try setSessionModificationDate(sessionURL, to: currentDate)
+
+        XCTAssertFalse(monitor.isTaskRunning(now: currentDate))
     }
 
     func testExpiredLogActivityIsIgnored() throws {
