@@ -2173,6 +2173,49 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.accountLabel.stringValue == reserve.resetText
             }
         )
+
+        let unavailableReserve = LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                lunaReserve: unavailableReserve
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let unavailableOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let unavailableFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesLunaReserve: true,
+            includesLunaReserveProgress: false
+        )
+        XCTAssertEqual(unavailableOverview.bounds.size, unavailableFrames.cardSize)
+        XCTAssertEqual(
+            unavailableOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [80, 45]
+        )
+        XCTAssertNotNil(
+            unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == tr(.keyLunaReserveTitleStatusValue, arguments: [
+                    tr(.keyLunaReserveTitle),
+                    tr(.keyLunaReserveStatusUnavailable)
+                ])
+            }
+        )
+        XCTAssertNotNil(
+            unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == unavailableReserve.resetText
+            }
+        )
     }
 
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {

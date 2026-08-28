@@ -609,6 +609,11 @@ enum OpenCodexCardLayout {
     static let quotaResetHeight: CGFloat = 17
     static let quotaDetailHeight: CGFloat = 18
     static let quotaProgressHeight: CGFloat = 5
+    // An unavailable Reserve has no percentage to visualize. Keep enough
+    // height for its two text lines and amount placeholder, but remove the
+    // progress-bar slot and the gap that preceded it.
+    static let lunaReserveNoProgressRowHeight: CGFloat = 42
+    static let lunaReserveNoProgressAmountHeight: CGFloat = 42
 
     static func frames(
         for category: OpenCodexCardCategory,
@@ -617,7 +622,8 @@ enum OpenCodexCardLayout {
         includesSubscription: Bool = false,
         subscriptionTextWidth: CGFloat? = nil,
         officialQuotaWindows: [OfficialQuotaWindow] = [],
-        includesLunaReserve: Bool = false
+        includesLunaReserve: Bool = false,
+        includesLunaReserveProgress: Bool = true
     ) -> OpenCodexCardFrames {
         let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
         if category == .quota,
@@ -627,7 +633,8 @@ enum OpenCodexCardLayout {
                 includesAccount: includesAccount,
                 includesSubscription: includesSubscription,
                 subscriptionTextWidth: subscriptionTextWidth,
-                includesLunaReserve: includesLunaReserve
+                includesLunaReserve: includesLunaReserve,
+                includesLunaReserveProgress: includesLunaReserveProgress
             )
         }
 
@@ -708,16 +715,22 @@ enum OpenCodexCardLayout {
         includesAccount: Bool,
         includesSubscription: Bool,
         subscriptionTextWidth: CGFloat?,
-        includesLunaReserve: Bool
+        includesLunaReserve: Bool,
+        includesLunaReserveProgress: Bool
     ) -> OpenCodexCardFrames {
         let rowHeight = quotaRowHeight
         let rowGap = quotaRowGap
         let bottomInset = quotaBottomInset
         let titleGap = quotaTitleGap
         let accountShift: CGFloat = includesAccount ? 19 : 0
-        let rowCount = windowCount + (includesLunaReserve ? 1 : 0)
-        let rowAreaHeight = CGFloat(rowCount) * rowHeight
-            + CGFloat(max(0, rowCount - 1)) * rowGap
+        let reserveRowHeight = includesLunaReserve
+            ? (includesLunaReserveProgress ? rowHeight : lunaReserveNoProgressRowHeight)
+            : 0
+        let reserveGap = includesLunaReserve && windowCount > 0 ? rowGap : 0
+        let rowAreaHeight = CGFloat(windowCount) * rowHeight
+            + CGFloat(max(0, windowCount - 1)) * rowGap
+            + reserveGap
+            + reserveRowHeight
         let baseTitleY = bottomInset + rowAreaHeight + titleGap
         let titleY = baseTitleY + accountShift
         let cardHeight = titleY + 20 + 7
@@ -725,9 +738,10 @@ enum OpenCodexCardLayout {
         let accountWidth = hasSubscription
             ? accountWidth(forSubscriptionTextWidth: subscriptionTextWidth)
             : contentWidth
+        let standardRowsBaseY = bottomInset + reserveRowHeight + reserveGap
         let rows = (0..<windowCount).map { index in
-            let y = bottomInset
-                + CGFloat(windowCount - 1 - index + (includesLunaReserve ? 1 : 0)) * (rowHeight + rowGap)
+            let y = standardRowsBaseY
+                + CGFloat(windowCount - 1 - index) * (rowHeight + rowGap)
             return OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
                     x: horizontalInset,
@@ -755,32 +769,40 @@ enum OpenCodexCardLayout {
                 )
             )
         }
+        let reserveContentShift = includesLunaReserveProgress
+            ? 0
+            : rowHeight - lunaReserveNoProgressRowHeight
+        let reserveAmountHeight = includesLunaReserveProgress
+            ? quotaAmountHeight
+            : lunaReserveNoProgressAmountHeight
         let lunaReserveRow = includesLunaReserve
             ? OpenCodexQuotaRowFrames(
                 quotaDetail: CGRect(
                     x: horizontalInset,
-                    y: bottomInset + quotaDetailOffset,
+                    y: bottomInset + quotaDetailOffset - reserveContentShift,
                     width: 128,
                     height: quotaDetailHeight
                 ),
                 reset: CGRect(
                     x: horizontalInset,
-                    y: bottomInset + quotaResetOffset,
+                    y: bottomInset + quotaResetOffset - reserveContentShift,
                     width: 128,
                     height: quotaResetHeight
                 ),
                 amount: CGRect(
                     x: amountX,
-                    y: bottomInset + quotaAmountOffset,
+                    y: bottomInset + max(0, quotaAmountOffset - reserveContentShift),
                     width: amountWidth,
-                    height: quotaAmountHeight
+                    height: reserveAmountHeight
                 ),
-                progress: CGRect(
-                    x: horizontalInset,
-                    y: bottomInset,
-                    width: contentWidth,
-                    height: quotaProgressHeight
-                )
+                progress: includesLunaReserveProgress
+                    ? CGRect(
+                        x: horizontalInset,
+                        y: bottomInset,
+                        width: contentWidth,
+                        height: quotaProgressHeight
+                    )
+                    : .zero
             )
             : nil
 

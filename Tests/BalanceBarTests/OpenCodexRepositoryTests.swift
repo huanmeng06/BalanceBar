@@ -1314,6 +1314,28 @@ final class OpenCodexRepositoryTests: XCTestCase {
                 + OpenCodexCardLayout.quotaRowHeight
                 + OpenCodexCardLayout.quotaRowGap
         )
+
+        let unavailableFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesLunaReserve: true,
+            includesLunaReserveProgress: false
+        )
+        XCTAssertEqual(unavailableFrames.cardSize.height, 255)
+        XCTAssertEqual(unavailableFrames.lunaReserveRow?.progress ?? .zero, .zero)
+        XCTAssertEqual(
+            unavailableFrames.lunaReserveRow?.amount.height,
+            OpenCodexCardLayout.lunaReserveNoProgressAmountHeight
+        )
+        XCTAssertEqual(
+            unavailableFrames.quotaRows[1].progress.minY,
+            OpenCodexCardLayout.quotaBottomInset
+                + OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+                + OpenCodexCardLayout.quotaRowGap
+        )
+        XCTAssertLessThan(unavailableFrames.cardSize.height, frames.cardSize.height)
     }
 
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {

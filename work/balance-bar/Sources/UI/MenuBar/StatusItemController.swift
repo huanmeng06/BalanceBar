@@ -2790,7 +2790,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
             officialQuotaWindows: officialQuotaWindows,
-            includesLunaReserve: snapshot.kind == .official && snapshot.lunaReserve != nil
+            includesLunaReserve: snapshot.kind == .official && snapshot.lunaReserve != nil,
+            includesLunaReserveProgress: snapshot.kind == .official && snapshot.lunaReserve?.remaining != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
