@@ -3,6 +3,7 @@ import AppKit
 protocol DashboardSettingsRowControlLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
     var usesDedicatedRow: Bool { get }
+    var allowsTextDrivenDedicatedRow: Bool { get }
 }
 
 private enum DashboardSettingsControlPlacement: Equatable {
@@ -17,21 +18,20 @@ private final class DashboardSettingsRowView: NSView {
     weak var labelsView: NSStackView?
     weak var controlView: NSView?
     weak var cardView: DashboardSettingsCardView?
+    weak var titleTextField: NSTextField?
+    weak var subtitleTextField: NSTextField?
     private var lastMeasuredWidth: CGFloat = -1
     private var lastPreferredHeight: CGFloat = -1
     private var controlPlacement: DashboardSettingsControlPlacement = .horizontal
     private var sideBySideControlConstraints: [NSLayoutConstraint] = []
     private var dedicatedControlConstraints: [NSLayoutConstraint] = []
-    private let minimumInlineContentWidth: CGFloat?
 
     init(
         minimumHeight: CGFloat,
-        verticalPadding: CGFloat,
-        minimumInlineContentWidth: CGFloat?
+        verticalPadding: CGFloat
     ) {
         self.minimumHeight = max(DashboardSettingsComponents.standardRowHeight, minimumHeight)
         self.verticalPadding = max(0, verticalPadding)
-        self.minimumInlineContentWidth = minimumInlineContentWidth.map { max(0, $0) }
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.required, for: .vertical)
@@ -64,23 +64,40 @@ private final class DashboardSettingsRowView: NSView {
     }
 
     override func layout() {
-        if let adaptiveControl = controlView as? DashboardSettingsRowControlLayout {
+        // Plain composite stacks own their internal alignment (for example a
+        // slider with endpoint labels). Leave them on the existing centered
+        // path; stacks that explicitly conform to the adaptive contract still
+        // receive their normal row-width update below.
+        if let controlView,
+           !(controlView is NSStackView && !(controlView is DashboardSettingsRowControlLayout)) {
             let availableContentAndControlWidth = max(0, bounds.width - 40)
-            adaptiveControl.updateAvailableRowWidth(availableContentAndControlWidth)
-            let actionWidth = controlView?.fittingSize.width ?? 0
+            let adaptiveControl = controlView as? DashboardSettingsRowControlLayout
+            adaptiveControl?.updateAvailableRowWidth(availableContentAndControlWidth)
+            let actionWidth = controlView.fittingSize.width
             let contentWidthWhenHorizontal = max(
                 0,
                 availableContentAndControlWidth - actionWidth - 20
             )
-            let readableContentWidth = max(
-                minimumReadableContentWidth,
-                minimumInlineContentWidth ?? 0
-            )
-            let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < readableContentWidth
+            let readableContentWidth = minimumReadableContentWidth
+            // Keep the controls' own fitting/orientation contract. Ordinary
+            // row controls and explicitly opted-in adaptive controls may move
+            // below the text once the natural text reaches the threshold;
+            // other composite controls keep their existing placement rules.
+            let supportsTextDrivenDedicatedRow = !(controlView is NSStackView) ||
+                adaptiveControl?.allowsTextDrivenDedicatedRow == true
+            // Measure the line budget at the width the labels actually get
+            // while the controls remain beside them. Once that inline text
+            // reaches the threshold, move the controls below the complete
+            // labels; the labels themselves stay uncapped and can use the
+            // newly available width in the dedicated layout.
+            let lineBudgetNeedsDedicatedRow = supportsTextDrivenDedicatedRow &&
+                textNeedsDedicatedRow(at: contentWidthWhenHorizontal)
+            let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < readableContentWidth ||
+                lineBudgetNeedsDedicatedRow
             let placement: DashboardSettingsControlPlacement
             if contentNeedsDedicatedRow {
                 placement = .dedicatedRow
-            } else if adaptiveControl.usesDedicatedRow {
+            } else if adaptiveControl?.usesDedicatedRow == true {
                 placement = .verticalBesideContent
             } else {
                 placement = .horizontal
@@ -98,6 +115,55 @@ private final class DashboardSettingsRowView: NSView {
             invalidateIntrinsicContentSize()
             cardView?.updateHeightIfNeeded()
         }
+    }
+
+    private func textNeedsDedicatedRow(at contentWidth: CGFloat) -> Bool {
+        let width = max(1, contentWidth)
+        if contentWidth <= 0 {
+            return titleTextField != nil || subtitleTextField != nil
+        }
+
+        let titleLineCount: Int
+        if let titleTextField, !titleTextField.isHidden {
+            titleLineCount = DashboardSettingsComponents.settingsTextLineCount(
+                titleTextField,
+                constrainedTo: titleWidth(at: width)
+            )
+        } else {
+            titleLineCount = 0
+        }
+        let subtitleLineCount: Int
+        if let subtitleTextField, !subtitleTextField.isHidden {
+            subtitleLineCount = DashboardSettingsComponents.settingsTextLineCount(
+                subtitleTextField,
+                constrainedTo: width
+            )
+        } else {
+            subtitleLineCount = 0
+        }
+        // The configured budget is inclusive: four natural lines may remain
+        // beside the control; only the fifth line requires a dedicated row.
+        return titleLineCount + subtitleLineCount >
+            DashboardSettingsComponents.settingsTextLineReflowThreshold
+    }
+
+    private func titleWidth(at contentWidth: CGFloat) -> CGFloat {
+        guard let titleTextField,
+              let titleStack = titleTextField.superview as? NSStackView,
+              titleStack.orientation == .horizontal else {
+            return contentWidth
+        }
+        let visibleSiblings = titleStack.arrangedSubviews.filter {
+            $0 !== titleTextField && !$0.isHidden
+        }
+        let siblingWidth = visibleSiblings.reduce(CGFloat(0)) { total, view in
+            let fittingWidth = view.fittingSize.width
+            return total + (fittingWidth.isFinite && fittingWidth > 0 ? fittingWidth : 0)
+        }
+        let siblingSpacing = visibleSiblings.isEmpty
+            ? 0
+            : CGFloat(visibleSiblings.count) * titleStack.spacing
+        return max(1, contentWidth - siblingWidth - siblingSpacing)
     }
 
     private var minimumReadableContentWidth: CGFloat {
@@ -322,6 +388,12 @@ enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
     static let standardRowHeight: CGFloat = 62
     static let settingsRowContentControlSpacing: CGFloat = 12
+    // This is an inclusive placement budget, not a text truncation limit.
+    // Text fields remain uncapped; a fifth natural line moves the control
+    // below the complete content.
+    static let settingsTextLineReflowThreshold = 4
+    static let settingsTitleMaximumNumberOfLines = 0
+    static let settingsSubtitleMaximumNumberOfLines = 0
 
     /// CJK UI copy is naturally breakable between characters. Word wrapping
     /// treats a run without spaces as one large word, which leaves an entire
@@ -351,6 +423,54 @@ enum DashboardSettingsComponents {
         for subtitle: LocalizedSubtitle
     ) -> NSLineBreakMode {
         return .byWordWrapping
+    }
+
+    /// Measures the natural AppKit line count without applying a row display
+    /// cap. The row supplies the labels' current inline width when deciding
+    /// whether the control needs its own row.
+    static func settingsTextLineCount(
+        _ textField: NSTextField,
+        constrainedTo width: CGFloat
+    ) -> Int {
+        guard width > 0, !textField.stringValue.isEmpty else { return 0 }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = textField.lineBreakMode
+        if #available(macOS 10.15, *) {
+            paragraphStyle.lineBreakStrategy = textField.lineBreakStrategy
+        }
+        let storage = NSTextStorage(
+            string: textField.stringValue,
+            attributes: [
+                .font: textField.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                .paragraphStyle: paragraphStyle
+            ]
+        )
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(
+            size: NSSize(width: max(1, width), height: .greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 0
+        textContainer.lineBreakMode = textField.lineBreakMode
+        layoutManager.addTextContainer(textContainer)
+        storage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        var lineCount = 0
+        var glyphIndex = 0
+        while glyphIndex < layoutManager.numberOfGlyphs {
+            var glyphRange = NSRange()
+            layoutManager.lineFragmentRect(
+                forGlyphAt: glyphIndex,
+                effectiveRange: &glyphRange,
+                withoutAdditionalLayout: true
+            )
+            let nextGlyphIndex = NSMaxRange(glyphRange)
+            guard nextGlyphIndex > glyphIndex else { break }
+            lineCount += 1
+            glyphIndex = nextGlyphIndex
+        }
+        return lineCount
     }
 
     /// Builds the text used by AppKit for one subtitle layout pass. The
@@ -731,13 +851,11 @@ enum DashboardSettingsComponents {
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11,
-        controlWidthConstrainedToRow: Bool = false,
-        minimumInlineContentWidth: CGFloat? = nil
+        controlWidthConstrainedToRow: Bool = false
     ) -> NSView {
         let row = DashboardSettingsRowView(
             minimumHeight: minimumHeight,
-            verticalPadding: verticalPadding,
-            minimumInlineContentWidth: minimumInlineContentWidth
+            verticalPadding: verticalPadding
         )
         // Keep a required floor for short rows. The low-priority equality
         // preserves the old compact geometry as a fallback while allowing
@@ -758,7 +876,7 @@ enum DashboardSettingsComponents {
         // width that clips long translations inside the fixed row.
         label.usesSingleLineMode = false
         label.lineBreakMode = Self.settingsSubtitleLineBreakMode(for: title)
-        label.maximumNumberOfLines = 0
+        label.maximumNumberOfLines = Self.settingsTitleMaximumNumberOfLines
         label.cell?.wraps = true
         label.cell?.isScrollable = false
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -811,15 +929,17 @@ enum DashboardSettingsComponents {
             } else {
                 Self.settingsSubtitleLineBreakMode(for: subtitleText)
             }
-            detail.maximumNumberOfLines = 0
+            detail.maximumNumberOfLines = Self.settingsSubtitleMaximumNumberOfLines
             detail.cell?.wraps = true
             detail.cell?.isScrollable = false
             detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             detail.setContentHuggingPriority(.defaultLow, for: .horizontal)
             labels.addArrangedSubview(detail)
+            row.subtitleTextField = detail
         }
         labels.translatesAutoresizingMaskIntoConstraints = false
         labels.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        row.titleTextField = label
         row.labelsView = labels
         row.controlView = control
         row.addSubview(labels)

@@ -277,22 +277,31 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 XCTAssertGreaterThan(
                     row.frame.height,
                     DashboardSettingsComponents.standardRowHeight,
-                    "refresh controls move to a dedicated row before the text column is squeezed",
+                    "refresh controls move to a dedicated row at the text line threshold",
                     file: file,
                     line: line
                 )
             } else {
-                XCTAssertEqual(
-                    row.frame.height,
-                    DashboardSettingsComponents.standardRowHeight,
-                    accuracy: 0.5,
-                    "the single-line refresh control row keeps the standard height",
+                XCTAssertFalse(
+                    labelsFrame.intersects(controlsFrame),
+                    "refresh controls stay beside the text without overlap",
                     file: file,
                     line: line
                 )
-            }
-            if orientation == .vertical {
-                XCTAssertTrue(usesDedicatedRow, "vertical reflow uses a dedicated control row", file: file, line: line)
+                XCTAssertGreaterThanOrEqual(
+                    controlsFrame.minX,
+                    labelsFrame.maxX + 19.5,
+                    "refresh controls stay in the right-side column",
+                    file: file,
+                    line: line
+                )
+                XCTAssertGreaterThanOrEqual(
+                    row.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    "the refresh row grows for its side-by-side content when needed",
+                    file: file,
+                    line: line
+                )
             }
             assertCardHeight("refresh card height follows its adaptive control row", file: file, line: line)
         }
@@ -949,6 +958,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let quickLinkRow = try XCTUnwrap(quickLinkSwitch.superview)
         let quickLinkRowsStack = try XCTUnwrap(quickLinkRow.superview as? NSStackView)
         XCTAssertFalse(quickLinkRowsStack === rowsStack)
+        let statusLabels = try XCTUnwrap(
+            statusRow.subviews
+                .compactMap { $0 as? NSStackView }
+                .first
+        )
 
         func expectedCardHeight() -> CGFloat {
             DashboardSettingsComponents.settingsCardHeight(
@@ -964,19 +978,29 @@ final class DashboardPreferencePagesTests: XCTestCase {
             window.setContentSize(NSSize(width: width, height: 820))
             window.layoutIfNeeded()
             XCTAssertEqual(card.frame.height, expectedCardHeight(), accuracy: 0.5)
-            XCTAssertEqual(statusSwitch.frame.midY, statusRow.bounds.midY, accuracy: 0.5)
+            let statusLabelsFrame = statusLabels.convert(statusLabels.bounds, to: statusRow)
+            let statusSwitchFrame = statusSwitch.convert(statusSwitch.bounds, to: statusRow)
+            if statusSwitchFrame.maxY <= statusLabelsFrame.minY + 0.5 {
+                XCTAssertGreaterThan(statusRow.frame.height, DashboardSettingsComponents.standardRowHeight)
+            } else {
+                XCTAssertEqual(statusSwitch.frame.midY, statusRow.bounds.midY, accuracy: 0.5)
+            }
             XCTAssertEqual(editor.frame.height, editor.currentHeight, accuracy: 0.5)
             return (statusRow.frame.height, card.frame.height)
         }
 
-        let longSubtitle = "This status-link summary is intentionally long so the Status Links row must wrap beside its switch and remain fully visible after every width and content transition."
+        let longSubtitle = "This status-link summary is intentionally long so the Status Links row must reflow its switch without truncating the complete text after every width and content transition."
         subtitle.stringValue = longSubtitle
         subtitle.invalidateIntrinsicContentSize()
         statusRow.needsLayout = true
         let narrow = layout(at: 516)
         XCTAssertFalse(subtitle.usesSingleLineMode)
         XCTAssertEqual(subtitle.lineBreakMode, .byWordWrapping)
-        XCTAssertEqual(subtitle.maximumNumberOfLines, 0)
+        XCTAssertEqual(
+            subtitle.maximumNumberOfLines,
+            DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines,
+            "status subtitle remains uncapped so the complete text is measurable"
+        )
         XCTAssertTrue(subtitle.cell?.wraps == true)
         XCTAssertGreaterThan(narrow.statusRowHeight, 62)
         let wide = layout(at: 740)
@@ -2533,7 +2557,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     let row = rows[index]
                     XCTAssertFalse(summary.usesSingleLineMode, "multiline mode for \(language)")
                     XCTAssertEqual(summary.lineBreakMode, expectedLineBreakMode, "wrapping mode for \(language)")
-                    XCTAssertEqual(summary.maximumNumberOfLines, 0, "unlimited lines for \(language)")
+                    XCTAssertEqual(
+                        summary.maximumNumberOfLines,
+                        DashboardSettingsComponents.settingsSubtitleMaximumNumberOfLines,
+                        "summary line budget for \(language)"
+                    )
                     XCTAssertTrue(summary.cell?.wraps == true, "cell wrapping for \(language)")
                     if normalizeSettingsText(summary.stringValue).contains(expectedSuffixes[index]) {
                         let renderedLines = renderedTextLines(for: summary).map {
