@@ -2150,17 +2150,25 @@ final class UpdateTests: XCTestCase {
         )
         XCTAssertEqual(
             buttons.arrangedSubviews.compactMap { $0.identifier?.rawValue },
-            ["viewUpdateGithubButton", "laterUpdateButton", "ignoreUpdateButton", "installUpdateButton"]
+            ["viewUpdateGithubButton", "ignoreUpdateButton", "laterUpdateButton", "installUpdateButton"]
         )
         buttons.layoutSubtreeIfNeeded()
         let githubButton = try XCTUnwrap(
             buttons.arrangedSubviews.first { $0.identifier?.rawValue == "viewUpdateGithubButton" }
+        )
+        let ignoreButtonInStack = try XCTUnwrap(
+            buttons.arrangedSubviews.first { $0.identifier?.rawValue == "ignoreUpdateButton" }
         )
         let installButton = try XCTUnwrap(
             buttons.arrangedSubviews.first { $0.identifier?.rawValue == "installUpdateButton" }
         )
         XCTAssertEqual(buttons.orientation, .horizontal)
         XCTAssertEqual(githubButton.frame.minX, buttons.bounds.minX, accuracy: 0.5)
+        XCTAssertEqual(
+            ignoreButtonInStack.frame.minX,
+            githubButton.frame.maxX + buttons.spacing,
+            accuracy: 0.5
+        )
         XCTAssertEqual(installButton.frame.maxX, buttons.bounds.maxX, accuracy: 0.5)
         XCTAssertEqual(scrollView.layer?.cornerRadius ?? 0, 12, accuracy: 0.001)
         XCTAssertEqual(scrollView.layer?.cornerCurve, .continuous)
@@ -2458,6 +2466,10 @@ final class UpdateTests: XCTestCase {
                 )
                 let actionButtons = buttons.arrangedSubviews.compactMap { $0 as? NSButton }
                 XCTAssertEqual(actionButtons.count, 4)
+                XCTAssertEqual(
+                    actionButtons.compactMap { $0.identifier?.rawValue },
+                    ["viewUpdateGithubButton", "ignoreUpdateButton", "laterUpdateButton", "installUpdateButton"]
+                )
                 for button in actionButtons {
                     XCTAssertGreaterThanOrEqual(button.frame.minX, -0.5)
                     XCTAssertLessThanOrEqual(button.frame.maxX, buttons.bounds.maxX + 0.5)
