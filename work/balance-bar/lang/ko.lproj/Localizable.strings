@@ -268,6 +268,7 @@
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "실행 중에만 표시";
 "dashboard.menu.bar.page.icon_display_delay" = "작업 종료 후 숨김 지연";
 "dashboard.menu.bar.page.icon_display_delay_description" = "작업 종료 후 아이콘을 계속 표시할 시간을 선택";
+"dashboard.menu.bar.page.icon_display_delay_zero_seconds" = "0초";
 "dashboard.menu.bar.page.icon_display_delay_ten_seconds" = "10초";
 "dashboard.menu.bar.page.icon_display_delay_thirty_seconds" = "30초";
 "dashboard.menu.bar.page.icon_display_delay_one_minute" = "1분";

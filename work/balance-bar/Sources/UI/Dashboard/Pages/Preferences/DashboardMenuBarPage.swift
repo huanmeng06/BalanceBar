@@ -1619,6 +1619,8 @@ final class DashboardMenuBarPage {
         _ delay: MenuBarIconDisplayDelay
     ) -> String {
         switch delay {
+        case .zeroSeconds:
+            return tr(.keyDashboardMenuBarPageIconDisplayDelayZeroSeconds)
         case .tenSeconds:
             return tr(.keyDashboardMenuBarPageIconDisplayDelayTenSeconds)
         case .thirtySeconds:

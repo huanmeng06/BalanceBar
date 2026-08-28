@@ -249,6 +249,26 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .french), "Suivre le système")
     }
 
+    func testZeroSecondIconDisplayDelayCopyExistsInEverySupportedLanguage() {
+        let key = LocalizationKey.keyDashboardMenuBarPageIconDisplayDelayZeroSeconds
+        let expected: [AppLanguage: String] = [
+            .simplifiedChinese: "0 秒",
+            .traditionalChineseTaiwan: "0 秒",
+            .traditionalChineseHongKong: "0 秒",
+            .japanese: "0 秒",
+            .english: "0 seconds",
+            .korean: "0초",
+            .spanish: "0 segundos",
+            .german: "0 Sekunden",
+            .french: "0 secondes"
+        ]
+
+        for language in allLanguages {
+            XCTAssertEqual(tr(key, language: language), expected[language])
+            XCTAssertFalse(tr(key, language: language).hasPrefix("⟦"))
+        }
+    }
+
     func testUpdateVersionSubtitleKeepsExistingTwoPlaceholderContract() {
         let key = LocalizationKey.keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue
         for language in allLanguages {
@@ -288,7 +308,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 405)
+        XCTAssertEqual(expectedKeys.count, 406)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(

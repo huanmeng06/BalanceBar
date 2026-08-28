@@ -567,6 +567,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(
                 delayPopup.itemTitles,
                 [
+                    tr(.keyDashboardMenuBarPageIconDisplayDelayZeroSeconds, language: language),
                     tr(.keyDashboardMenuBarPageIconDisplayDelayTenSeconds, language: language),
                     tr(.keyDashboardMenuBarPageIconDisplayDelayThirtySeconds, language: language),
                     tr(.keyDashboardMenuBarPageIconDisplayDelayOneMinute, language: language),
@@ -618,6 +619,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(
                 iconTaskStatusSeparators.allSatisfy { !$0.isHidden },
                 "all display dividers are visible with the delay selector in (language)"
+            )
+
+            delayPopup.selectItem(at: 0)
+            relay.menuBarIconDisplayDelay(delayPopup)
+            XCTAssertEqual(preferences.menuBarIconDisplayDelay, .zeroSeconds)
+            XCTAssertEqual(
+                defaults.string(forKey: AppPreferences.menuBarIconDisplayDelayKey),
+                MenuBarIconDisplayDelay.zeroSeconds.rawValue
             )
 
             delayPopup.selectItem(at: MenuBarIconDisplayDelay.allCases.count - 1)
@@ -692,7 +701,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSPopUpButton }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.iconDisplayDelayIdentifier }
             )
-            XCTAssertEqual(rebuiltDelayPopup.indexOfSelectedItem, 4)
+            XCTAssertEqual(rebuiltDelayPopup.indexOfSelectedItem, 5)
             window.contentView = nil
         }
     }

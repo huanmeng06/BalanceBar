@@ -270,6 +270,7 @@
     case keyDashboardMenuBarPageIconDisplayModeOnlyWhileRunning = "dashboard.menu.bar.page.icon_display_mode_only_while_running"
     case keyDashboardMenuBarPageIconDisplayDelay = "dashboard.menu.bar.page.icon_display_delay"
     case keyDashboardMenuBarPageIconDisplayDelayDescription = "dashboard.menu.bar.page.icon_display_delay_description"
+    case keyDashboardMenuBarPageIconDisplayDelayZeroSeconds = "dashboard.menu.bar.page.icon_display_delay_zero_seconds"
     case keyDashboardMenuBarPageIconDisplayDelayTenSeconds = "dashboard.menu.bar.page.icon_display_delay_ten_seconds"
     case keyDashboardMenuBarPageIconDisplayDelayThirtySeconds = "dashboard.menu.bar.page.icon_display_delay_thirty_seconds"
     case keyDashboardMenuBarPageIconDisplayDelayOneMinute = "dashboard.menu.bar.page.icon_display_delay_one_minute"
