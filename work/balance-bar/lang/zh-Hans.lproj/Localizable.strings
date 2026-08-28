@@ -259,8 +259,10 @@
 "dashboard.menu.bar.page.open_settings" = "打开设置";
 "dashboard.menu.bar.page.preview" = "预览";
 "dashboard.menu.bar.page.current_layout" = "当前布局";
+"dashboard.menu.bar.page.quota_and_reset" = "额度与重置";
+"dashboard.menu.bar.page.icon_and_task_status" = "图标与任务状态";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "菜单栏会随服务商数据实时更新";
-"dashboard.menu.bar.page.icon_display_mode" = "菜单栏图标显示";
+"dashboard.menu.bar.page.icon_display_mode" = "图标显示方式";
 "dashboard.menu.bar.page.icon_display_mode_description" = "选择始终显示图标，或仅在任务运行时显示";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "始终显示";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "仅在运行时显示";
@@ -296,6 +298,7 @@
 "dashboard.menu.bar.page.up.2" = "上";
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "调整上下位置：-10.0 pt 向下，+10.0 pt 向上；默认 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "字号与位置";
+"dashboard.menu.bar.page.spacing_and_width" = "间距与宽度";
 "dashboard.menu.bar.page.menu_bar_font_size" = "菜单栏字号";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "调整菜单栏文字大小";
 "dashboard.menu.bar.page.icon_offset" = "图标上下位置";
@@ -316,6 +319,7 @@
 "dashboard.menu.page.low_balance_display_threshold" = "低余额警示阈值";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "充值后若余额仍低于此金额，进度条继续显示为红色";
 "dashboard.menu.page.dropdown_menu" = "下拉菜单";
+"dashboard.menu.page.menu_behavior" = "菜单行为";
 "dashboard.menu.page.quick_switch" = "快速切换";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "在菜单中显示 CC Switch 服务商快捷切换";
 "dashboard.menu.page.keep_open_after_refresh" = "刷新后保持菜单打开";
@@ -333,6 +337,7 @@
 "dashboard.menu.page.show_customizable_service_status_links" = "自定义“查看状态”链接";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "在菜单中显示服务状态链接";
 "dashboard.menu.page.open_project" = "快捷入口";
+"dashboard.menu.page.status_links" = "状态链接";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "自定义“查看状态”链接";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "在菜单栏中显示状态链接";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "切换到此服务商后可查看详细的额度重置时间";

@@ -259,8 +259,10 @@
 "dashboard.menu.bar.page.open_settings" = "Ouvrir les réglages";
 "dashboard.menu.bar.page.preview" = "Aperçu";
 "dashboard.menu.bar.page.current_layout" = "Disposition actuelle";
+"dashboard.menu.bar.page.quota_and_reset" = "Quota et réinitialisation";
+"dashboard.menu.bar.page.icon_and_task_status" = "Icône et état de la tâche";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barre des menus est mise à jour en temps réel avec les données du fournisseur";
-"dashboard.menu.bar.page.icon_display_mode" = "Affichage de l’icône de la barre des menus";
+"dashboard.menu.bar.page.icon_display_mode" = "Mode d’affichage de l’icône";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Choisissez d’afficher l’icône toujours ou uniquement pendant l’exécution d’une tâche";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Toujours visible";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Uniquement pendant l’exécution";
@@ -296,6 +298,7 @@
 "dashboard.menu.bar.page.up.2" = "Haut";
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Ajuste la position verticale : de -10,0 pt (bas) à +10,0 pt (haut) ; valeur par défaut : 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Taille et position de la police";
+"dashboard.menu.bar.page.spacing_and_width" = "Espacement et largeur";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Taille de la police de la barre des menus";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajuste la taille du texte de la barre des menus";
 "dashboard.menu.bar.page.icon_offset" = "Position verticale de l’icône";
@@ -316,6 +319,7 @@
 "dashboard.menu.page.low_balance_display_threshold" = "Seuil d’alerte de solde faible";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Après une recharge, conserve la barre de progression en rouge tant que le solde reste inférieur à ce montant";
 "dashboard.menu.page.dropdown_menu" = "Menu déroulant";
+"dashboard.menu.page.menu_behavior" = "Comportement du menu";
 "dashboard.menu.page.quick_switch" = "Changement rapide";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Afficher un sélecteur rapide de fournisseurs CC Switch dans le menu";
 "dashboard.menu.page.keep_open_after_refresh" = "Garder le menu ouvert après l’actualisation";
@@ -333,6 +337,7 @@
 "dashboard.menu.page.show_customizable_service_status_links" = "Personnaliser les liens « Voir l’état »";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Afficher les liens d’état de service dans le menu";
 "dashboard.menu.page.open_project" = "Accès rapides";
+"dashboard.menu.page.status_links" = "Liens d’état";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "Personnaliser les liens « Voir l’état »";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Afficher les liens d’état dans la barre des menus";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Sélectionnez ce fournisseur pour consulter les heures de réinitialisation détaillées du quota";

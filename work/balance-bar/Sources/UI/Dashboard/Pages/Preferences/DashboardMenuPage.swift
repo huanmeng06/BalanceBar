@@ -76,7 +76,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
 
-        let items = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuPageDropdownMenu), rows: [
+        let items = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardMenuPageMenuBehavior), rows: [
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuPageQuickSwitch),
                 subtitle: tr(.keyDashboardMenuPageShowTheCcSwitchProviderSubmenu),
@@ -98,7 +98,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         openMainWindow.isEnabled = false
         openMainWindow.toolTip = tr(.keyDashboardMenuPageTheOpenMainWindowItemIsAlwaysShown)
 
-        var projectRows: [NSView] = [
+        let quickLinkRows: [NSView] = [
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuPageOpenMainWindow),
                 subtitle: tr(.keyDashboardMenuPageShowTheBalancebarMainWindow),
@@ -129,7 +129,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         statusSubtitleLabel = statusSubtitle
         let statusVisible = input.preferences.showStatusMenu
         updateStatusVisibility(statusVisible, animated: false)
-        projectRows.append(DashboardSettingsComponents.makeSettingsRow(
+        let statusRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuPageViewStatus),
             subtitle: statusVisible
                 ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks)
@@ -141,18 +141,21 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 target: input.relay,
                 action: #selector(DashboardPreferencePageRelay.toggle(_:))
             )
-        ))
+        )
 
         // Keep one editor instance in the page for both states so toggling
         // animates its height in place instead of rebuilding the whole page.
         let editor = input.makeStatusLinksEditor()
         statusLinksEditor = editor
         editor.setVisible(statusVisible, animated: false)
-        projectRows.append(editor)
-        let projects = DashboardSettingsComponents.makeSettingsSection(
+        let quickLinks = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuPageOpenProject),
-            rows: projectRows,
-            separatorIndices: [0, 1, 2, 3],
+            rows: quickLinkRows
+        )
+        let statusLinks = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyDashboardMenuPageStatusLinks),
+            rows: [statusRow, editor],
+            separatorIndices: [0],
             rowHeight: { row in
                 (row as? StatusLinksEditorHostingView)?.currentHeight
             }
@@ -160,7 +163,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         DispatchQueue.main.async { [weak editor] in
             editor?.logGeometry(label: "initial")
         }
-        return DashboardSettingsComponents.makeSettingsPage([balanceDisplay, items, projects])
+        return DashboardSettingsComponents.makeSettingsPage([balanceDisplay, items, quickLinks, statusLinks])
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {

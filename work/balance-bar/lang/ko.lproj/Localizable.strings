@@ -259,8 +259,10 @@
 "dashboard.menu.bar.page.open_settings" = "설정 열기";
 "dashboard.menu.bar.page.preview" = "미리보기";
 "dashboard.menu.bar.page.current_layout" = "현재 레이아웃";
+"dashboard.menu.bar.page.quota_and_reset" = "할당량 및 재설정";
+"dashboard.menu.bar.page.icon_and_task_status" = "아이콘 및 작업 상태";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "메뉴 막대가 서비스 제공자 데이터에 따라 실시간으로 업데이트됩니다";
-"dashboard.menu.bar.page.icon_display_mode" = "메뉴 막대 아이콘 표시";
+"dashboard.menu.bar.page.icon_display_mode" = "아이콘 표시 방식";
 "dashboard.menu.bar.page.icon_display_mode_description" = "아이콘을 항상 표시하거나 작업 실행 중에만 표시하도록 선택";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "항상 표시";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "실행 중에만 표시";
@@ -296,6 +298,7 @@
 "dashboard.menu.bar.page.up.2" = "위";
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "세로 위치 조정: -10.0pt(아래)부터 +10.0pt(위)까지; 기본값 0pt";
 "dashboard.menu.bar.page.font_size_position" = "글꼴 크기 및 위치";
+"dashboard.menu.bar.page.spacing_and_width" = "간격 및 너비";
 "dashboard.menu.bar.page.menu_bar_font_size" = "메뉴 막대 글꼴 크기";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "메뉴 막대 글자 크기 조정";
 "dashboard.menu.bar.page.icon_offset" = "아이콘 세로 위치";
@@ -316,6 +319,7 @@
 "dashboard.menu.page.low_balance_display_threshold" = "잔액 부족 경고 기준";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "충전 후 잔액이 이 금액보다 적으면 진행 막대를 계속 빨간색으로 표시";
 "dashboard.menu.page.dropdown_menu" = "드롭다운 메뉴";
+"dashboard.menu.page.menu_behavior" = "메뉴 동작";
 "dashboard.menu.page.quick_switch" = "빠른 전환";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "메뉴에 CC Switch 공급자 빠른 전환 표시";
 "dashboard.menu.page.keep_open_after_refresh" = "새로 고친 후 메뉴를 열어 두기";
@@ -333,6 +337,7 @@
 "dashboard.menu.page.show_customizable_service_status_links" = "‘상태 보기’ 링크 사용자 지정";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "메뉴에 서비스 상태 링크 표시";
 "dashboard.menu.page.open_project" = "빠른 링크";
+"dashboard.menu.page.status_links" = "상태 링크";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "‘상태 보기’ 링크 사용자 지정";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "메뉴 막대에 상태 링크 표시";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "이 공급자로 전환하면 할당량 재설정 시간을 자세히 볼 수 있습니다";

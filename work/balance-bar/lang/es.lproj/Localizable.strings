@@ -259,8 +259,10 @@
 "dashboard.menu.bar.page.open_settings" = "Abrir ajustes";
 "dashboard.menu.bar.page.preview" = "Vista previa";
 "dashboard.menu.bar.page.current_layout" = "Diseño actual";
+"dashboard.menu.bar.page.quota_and_reset" = "Cuota y reinicio";
+"dashboard.menu.bar.page.icon_and_task_status" = "Icono y estado de la tarea";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barra de menús se actualiza en tiempo real con los datos del proveedor";
-"dashboard.menu.bar.page.icon_display_mode" = "Mostrar el icono de la barra de menús";
+"dashboard.menu.bar.page.icon_display_mode" = "Modo de visualización del icono";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Elige mostrar siempre el icono o solo mientras se ejecuta una tarea";
 "dashboard.menu.bar.page.icon_display_mode_always_visible" = "Siempre visible";
 "dashboard.menu.bar.page.icon_display_mode_only_while_running" = "Solo durante la ejecución";
@@ -296,6 +298,7 @@
 "dashboard.menu.bar.page.up.2" = "Arriba";
 "dashboard.menu.bar.page.adjusts_vertical_position_from_10_0_pt_down_to_10_0_pt_up_default_0_pt.2" = "Ajusta la posición vertical: de -10,0 pt (abajo) a +10,0 pt (arriba); valor predeterminado: 0 pt";
 "dashboard.menu.bar.page.font_size_position" = "Tamaño y posición de la fuente";
+"dashboard.menu.bar.page.spacing_and_width" = "Espaciado y anchura";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Tamaño de fuente de la barra de menús";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Ajusta el tamaño del texto de la barra de menús";
 "dashboard.menu.bar.page.icon_offset" = "Posición vertical del icono";
@@ -316,6 +319,7 @@
 "dashboard.menu.page.low_balance_display_threshold" = "Umbral de advertencia de saldo bajo";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Después de una recarga, mantiene la barra de progreso roja mientras el saldo sea inferior a este importe";
 "dashboard.menu.page.dropdown_menu" = "Menú desplegable";
+"dashboard.menu.page.menu_behavior" = "Comportamiento del menú";
 "dashboard.menu.page.quick_switch" = "Cambio rápido";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Mostrar un selector rápido de proveedores de CC Switch en el menú";
 "dashboard.menu.page.keep_open_after_refresh" = "Mantener el menú abierto después de actualizar";
@@ -333,6 +337,7 @@
 "dashboard.menu.page.show_customizable_service_status_links" = "Personalizar los enlaces de «Ver estado»";
 "dashboard.menu.page.show_status_links_in_the_menu_bar" = "Mostrar enlaces de estado de servicios en el menú";
 "dashboard.menu.page.open_project" = "Enlaces rápidos";
+"dashboard.menu.page.status_links" = "Enlaces de estado";
 "dashboard.menu.page.show_customizable_service_status_links.2" = "Personalizar los enlaces de «Ver estado»";
 "dashboard.menu.page.show_status_links_in_the_menu_bar.2" = "Mostrar enlaces de estado en la barra de menús";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information" = "Selecciona este proveedor para consultar en detalle las horas de reinicio de la cuota";
