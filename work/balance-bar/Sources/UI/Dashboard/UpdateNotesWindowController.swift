@@ -112,8 +112,7 @@ private final class UpdateNotesButtonsStackView: NSStackView {
             !$0.isHidden && !($0 is UpdateNotesFlexibleSpacerView)
         }
         // The flexible spacer is visible only in the horizontal layout, where
-        // it separates the leading GitHub/ignore actions from the trailing
-        // actions.
+        // it separates the leading GitHub action from the trailing actions.
         // Include its two adjacent gaps when deciding whether the actions fit.
         let fittingWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
             total + view.fittingSize.width
@@ -335,7 +334,7 @@ final class UpdateNotesWindowController: NSWindowController, NSWindowDelegate {
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let buttons = UpdateNotesButtonsStackView(
-            views: [githubButton, ignoreButton, spacer, laterButton, installButton]
+            views: [githubButton, spacer, laterButton, ignoreButton, installButton]
         )
         buttons.identifier = NSUserInterfaceItemIdentifier("updateNotesButtons")
         buttons.orientation = .horizontal
