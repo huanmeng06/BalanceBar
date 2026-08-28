@@ -467,10 +467,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertEqual(labels.first { $0.stringValue == "余额显示" }?.stringValue, "余额显示")
-        XCTAssertEqual(labels.first { $0.stringValue == "低余额显示阈值" }?.stringValue, "低余额显示阈值")
+        XCTAssertEqual(labels.first { $0.stringValue == "低余额警示阈值" }?.stringValue, "低余额警示阈值")
         XCTAssertEqual(
-            labels.first { $0.stringValue == "充值后余额仍未达到此金额时，进度条保持红色状态" }?.stringValue,
-            "充值后余额仍未达到此金额时，进度条保持红色状态"
+            labels.first { $0.stringValue == "充值后若余额仍低于此金额，进度条继续显示为红色" }?.stringValue,
+            "充值后若余额仍低于此金额，进度条继续显示为红色"
         )
 
         guard let field = descendants(of: page)
@@ -523,27 +523,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
             (
                 .simplifiedChinese,
                 ["打开主窗口", "打开 ChatGPT", "打开 CC Switch", "打开 OpenCodex"],
-                ["显示 BalanceBar 主窗口", "显示 ChatGPT", "显示 CC Switch 主窗口", "显示 OpenCodex 仪表盘"]
+                ["显示 BalanceBar 主窗口", "显示 ChatGPT", "显示 CC Switch 主窗口", "显示 OpenCodex 控制台"]
             ),
             (
                 .traditionalChineseTaiwan,
                 ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
-                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 儀表板"]
+                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
             ),
             (
                 .traditionalChineseHongKong,
                 ["開啟主視窗", "開啟 ChatGPT", "開啟 CC Switch", "開啟 OpenCodex"],
-                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 儀表板"]
+                ["顯示 BalanceBar 主視窗", "顯示 ChatGPT", "顯示 CC Switch 主視窗", "顯示 OpenCodex 控制台"]
             ),
             (
                 .japanese,
                 ["メインウインドウを開く", "ChatGPT を開く", "CC Switch を開く", "OpenCodex を開く"],
-                ["BalanceBar のメインウインドウを表示", "ChatGPT を表示", "CC Switch のメインウインドウを表示", "OpenCodex ダッシュボードを表示"]
+                ["BalanceBar のメインウインドウを表示", "ChatGPT を表示", "CC Switch のメインウインドウを表示", "OpenCodex コンソールを表示"]
             ),
             (
                 .english,
                 ["Open Main Window", "Open ChatGPT", "Open CC Switch", "Open OpenCodex"],
-                ["Show the BalanceBar main window", "Show ChatGPT", "Show the CC Switch main window", "Show the OpenCodex dashboard"]
+                ["Show the BalanceBar main window", "Show ChatGPT", "Show the CC Switch main window", "Show the OpenCodex console"]
             )
         ]
 
@@ -656,7 +656,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let subtitle = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSTextField }
-                .first { $0.stringValue == "Show customizable service status links" }
+                .first { $0.stringValue == tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks) }
         )
         let statusRow = try XCTUnwrap(subtitle.superview?.superview)
         let rowsStack = try XCTUnwrap(statusRow.superview as? NSStackView)
@@ -983,15 +983,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { AppLanguage.selected = previousLanguage }
 
         let cases: [(AppLanguage, String, String)] = [
-            (.simplifiedChinese, "动画", "任务进行时播放图标动画"),
-            (.english, "Animation", "Play the icon animation while a task is running"),
-            (.traditionalChineseTaiwan, "動畫", "任務進行時播放圖示動畫"),
-            (.traditionalChineseHongKong, "動畫", "任務進行時播放圖示動畫"),
-            (.japanese, "アニメーション", "タスク実行中にアイコンアニメーションを再生"),
-            (.korean, "애니메이션", "작업 실행 중 아이콘 애니메이션 재생"),
-            (.spanish, "Animación", "Reproducir la animación del icono mientras se ejecuta una tarea"),
-            (.german, "Animation", "Symbolanimation während einer laufenden Aufgabe abspielen"),
-            (.french, "Animation", "Lire l’animation de l’icône pendant l’exécution d’une tâche")
+            (.simplifiedChinese, "动画", "任务运行时播放菜单栏图标动画"),
+            (.english, "Animation", "Animate the menu bar icon while a task runs"),
+            (.traditionalChineseTaiwan, "動畫", "任務執行時播放選單列圖示動畫"),
+            (.traditionalChineseHongKong, "動畫", "任務執行時播放選單列圖示動畫"),
+            (.japanese, "アニメーション", "タスク実行中にメニューバーアイコンをアニメーション"),
+            (.korean, "애니메이션", "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
+            (.spanish, "Animación", "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
+            (.german, "Animation", "Menüleistensymbol während einer Aufgabe animieren"),
+            (.french, "Animation", "Animer l’icône de la barre des menus pendant une tâche")
         ]
 
         for (language, animationSectionTitle, animationRowTitle) in cases {
@@ -1145,11 +1145,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             if language == .simplifiedChinese {
                 XCTAssertEqual(
                     tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language),
-                    "额度周期"
+                    "优先额度周期"
                 )
                 XCTAssertEqual(
                     tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription, language: language),
-                    "选择菜单栏中优先展示的额度周期"
+                    "选择菜单栏优先显示 5 小时额度还是 7 日额度"
                 )
             }
             XCTAssertFalse(popup.itemTitles.contains { $0.hasPrefix("⟦") })
@@ -1738,23 +1738,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let amountSummary = labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
         XCTAssertEqual(
             iconSummary.map { normalizeSettingsText($0.stringValue) },
-            "微调图标上下像素位置Y 轴 - 0.3 pt"
+            "微调图标的上下位置Y 轴 - 0.3 pt"
         )
         XCTAssertEqual(
             amountSummary.map { normalizeSettingsText($0.stringValue) },
-            "微调金额上下像素位置Y 轴 + 0.5 pt"
+            "微调数值的上下位置Y 轴 + 0.5 pt"
         )
         XCTAssertEqual(
             labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "调整 BalanceBar 与其他项目的空隙宽度 + 0.6 pt"
+            "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.6 pt"
         )
         let labelStrings = labels.map(\.stringValue)
         XCTAssertTrue(labelStrings.contains("字号与位置"))
         XCTAssertFalse(labelStrings.contains("字号"))
         XCTAssertFalse(labelStrings.contains("细节微调"))
-        XCTAssertTrue(labelStrings.contains("调整菜单栏字体大小"))
-        let rowTitles = ["菜单栏字号", "图标偏移", "金额偏移", "菜单栏宽度"]
+        XCTAssertTrue(labelStrings.contains("调整菜单栏文字大小"))
+        let rowTitles = ["菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"]
         let rowIndices = rowTitles.compactMap { labelStrings.firstIndex(of: $0) }
         XCTAssertEqual(rowIndices.count, rowTitles.count)
         XCTAssertEqual(rowIndices, rowIndices.sorted())
@@ -1857,12 +1857,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.iconOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调图标上下像素位置 Y 轴 + 0.7 pt"
+            "微调图标的上下位置 Y 轴 + 0.7 pt"
         )
         XCTAssertEqual(
             refreshedLabels.first { $0.identifier?.rawValue == DashboardMenuBarPage.amountOffsetSummaryIdentifier }
                 .map { normalizeSettingsText($0.stringValue) },
-            "微调金额上下像素位置 Y 轴 - 0.8 pt"
+            "微调数值的上下位置 Y 轴 - 0.8 pt"
         )
         XCTAssertEqual(
             refreshedSliders.first { $0.identifier?.rawValue == AppPreferences.menuBarIconOffsetYKey }?.doubleValue ?? .nan,
@@ -1904,7 +1904,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer { window.orderOut(nil) }
 
             let subtitleText = language == .japanese
-                ? "メニューバーはプロバイダーデータに応じてリアルタイムに更新されます"
+                ? "サービスプロバイダーのデータをメニューバーにリアルタイム表示"
                 : "The menu bar updates with Provider data in real time"
             let subtitle = try XCTUnwrap(
                 descendants(of: page)
@@ -1974,15 +1974,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .french: ["Axe Y + 0.0 pt", "Axe Y + 0.0 pt", "Largeur + 0.0 pt"]
         ]
         let expectedDescriptions: [AppLanguage: [String]] = [
-            .simplifiedChinese: ["微调图标上下像素位置", "微调金额上下像素位置", "调整 BalanceBar 与其他项目的空隙"],
-            .traditionalChineseTaiwan: ["微調圖示上下像素位置", "微調金額上下像素位置", "調整 BalanceBar 與其他項目的間距"],
-            .traditionalChineseHongKong: ["微調圖示上下像素位置", "微調金額上下像素位置", "調整 BalanceBar 與其他項目的間距"],
-            .japanese: ["アイコンの上下位置を微調整", "金額の上下位置を微調整", "BalanceBar と他の項目との間隔を調整"],
-            .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjusts the gap between BalanceBar and other items"],
-            .korean: ["아이콘의 세로 위치 미세 조정", "금액의 세로 위치 미세 조정", "BalanceBar와 다른 항목 사이 간격 조정"],
-            .spanish: ["Ajusta con precisión la posición vertical del icono", "Ajusta con precisión la posición vertical del importe", "Ajusta el espacio entre BalanceBar y los demás elementos"],
-            .german: ["Vertikale Position des Symbols fein einstellen", "Vertikale Position des Betrags fein einstellen", "Passt den Abstand zwischen BalanceBar und anderen Elementen an"],
-            .french: ["Ajuste précisément la position verticale de l’icône", "Ajuste précisément la position verticale du montant", "Ajuste l’écart entre BalanceBar et les autres éléments"]
+            .simplifiedChinese: ["微调图标的上下位置", "微调数值的上下位置", "调整 BalanceBar 与其他菜单栏图标的间距"],
+            .traditionalChineseTaiwan: ["微調圖示的上下位置", "微調數值的上下位置", "調整 BalanceBar 與其他選單列圖示的間距"],
+            .traditionalChineseHongKong: ["微調圖示的上下位置", "微調數值的上下位置", "調整 BalanceBar 與其他選單列圖示的間距"],
+            .japanese: ["アイコンの上下位置を微調整", "数値の上下位置を微調整", "BalanceBar と他のメニューバーアイコンとの間隔を調整"],
+            .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjust the gap between BalanceBar and other menu bar icons"],
+            .korean: ["아이콘 세로 위치 미세 조정", "수치 세로 위치 미세 조정", "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정"],
+            .spanish: ["Ajusta con precisión la posición vertical del icono", "Ajusta con precisión la posición vertical del importe", "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús"],
+            .german: ["Vertikale Symbolposition fein einstellen", "Vertikale Betragsposition fein einstellen", "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen"],
+            .french: ["Ajuste précisément la position verticale de l’icône", "Ajuste précisément la position verticale du montant", "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus"]
         ]
         let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
 
@@ -2298,11 +2298,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             normalizeSettingsText(summaries[1].stringValue),
-            "金額の上下位置を微調整 Y 軸 + 0.8 pt"
+            "数値の上下位置を微調整 Y 軸 + 0.8 pt"
         )
         XCTAssertEqual(
             normalizeSettingsText(summaries[2].stringValue),
-            "BalanceBar と他の項目との間隔を調整 幅 - 0.4 pt"
+            "BalanceBar と他のメニューバーアイコンとの間隔を調整 幅 - 0.4 pt"
         )
         XCTAssertEqual(sliders[0].doubleValue, -0.7, accuracy: 0.001)
         XCTAssertEqual(sliders[1].doubleValue, 0.8, accuracy: 0.001)
@@ -2377,7 +2377,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertTrue(labels.contains { $0.stringValue == "Font Size & Position" })
         XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Font Size" })
-        XCTAssertTrue(labels.contains { $0.stringValue == "Adjusts the menu bar font size" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Adjust menu bar text size" })
         XCTAssertFalse(labels.contains { $0.stringValue == "11.7 / 9.0 pt" })
 
         let previewPrimary = try XCTUnwrap(
@@ -2519,7 +2519,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             summary.map { normalizeSettingsText($0.stringValue) },
-            "调整 BalanceBar 与其他项目的空隙宽度 + 7.4 pt"
+            "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 7.4 pt"
         )
 
         controller.finishWidthAdjustment(7.4, horizontalPadding: 10)
@@ -2572,102 +2572,102 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let cases: [(AppLanguage, [String], [String], String)] = [
             (
                 .simplifiedChinese,
-                ["字号与位置", "菜单栏字号", "图标偏移", "金额偏移", "菜单栏宽度"],
+                ["字号与位置", "菜单栏字号", "图标上下位置", "数值上下位置", "与其他菜单栏图标的间距"],
                 [
-                    "调整菜单栏字体大小",
-                    "微调图标上下像素位置Y 轴 + 0.0 pt",
-                    "微调金额上下像素位置Y 轴 + 0.0 pt",
-                    "调整 BalanceBar 与其他项目的空隙宽度 + 0.0 pt"
+                    "调整菜单栏文字大小",
+                    "微调图标的上下位置Y 轴 + 0.0 pt",
+                    "微调数值的上下位置Y 轴 + 0.0 pt",
+                    "调整 BalanceBar 与其他菜单栏图标的间距宽度 + 0.0 pt"
                 ],
-                "从 -10.0 pt（窄）调整到 +10.0 pt（宽），默认 0 pt"
+                "调整与其他菜单栏图标的间距：-10.0 pt 更窄，+10.0 pt 更宽；默认 0 pt"
             ),
             (
                 .traditionalChineseTaiwan,
-                ["字號與位置", "選單列字號", "圖示偏移", "金額偏移", "選單列寬度"],
+                ["字號與位置", "選單列字號", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
-                    "調整選單列字體大小",
-                    "微調圖示上下像素位置Y 軸 + 0.0 pt",
-                    "微調金額上下像素位置Y 軸 + 0.0 pt",
-                    "調整 BalanceBar 與其他項目的間距寬度 + 0.0 pt"
+                    "調整選單列文字大小",
+                    "微調圖示的上下位置 Y 軸 + 0.0 pt",
+                    "微調數值的上下位置 Y 軸 + 0.0 pt",
+                    "調整 BalanceBar 與其他選單列圖示的間距 寬度 + 0.0 pt"
                 ],
-                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt"
+                "調整與其他選單列圖示的間距：-10.0 pt 更窄，+10.0 pt 更寬；預設 0 pt"
             ),
             (
                 .traditionalChineseHongKong,
-                ["字號與位置", "選單列字型大小", "圖示偏移", "金額偏移", "選單列寬度"],
+                ["字號與位置", "選單列字型大小", "圖示上下位置", "數值上下位置", "與其他選單列圖示的間距"],
                 [
-                    "調整選單列字型大小",
-                    "微調圖示上下像素位置Y 軸 + 0.0 pt",
-                    "微調金額上下像素位置Y 軸 + 0.0 pt",
-                    "調整 BalanceBar 與其他項目的間距寬度 + 0.0 pt"
+                    "調整選單列文字大小",
+                    "微調圖示的上下位置 Y 軸 + 0.0 pt",
+                    "微調數值的上下位置 Y 軸 + 0.0 pt",
+                    "調整 BalanceBar 與其他選單列圖示的間距 寬度 + 0.0 pt"
                 ],
-                "從 -10.0 pt（窄）調整到 +10.0 pt（寬），預設 0 pt"
+                "調整與其他選單列圖示的間距：-10.0 pt 更窄，+10.0 pt 更寬；預設 0 pt"
             ),
             (
                 .japanese,
-                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの位置調整", "金額の位置調整", "メニューバーの幅"],
+                ["フォントサイズと位置", "メニューバーのフォントサイズ", "アイコンの上下位置", "数値の上下位置", "他のメニューバーアイコンとの間隔"],
                 [
-                    "メニューバーのフォントサイズを調整",
-                    "アイコンの上下位置を微調整Y 軸 + 0.0 pt",
-                    "金額の上下位置を微調整Y 軸 + 0.0 pt",
-                    "BalanceBar と他の項目との間隔を調整幅 + 0.0 pt"
+                    "メニューバーの文字サイズを調整",
+                    "アイコンの上下位置を微調整 Y 軸 + 0.0 pt",
+                    "数値の上下位置を微調整 Y 軸 + 0.0 pt",
+                    "BalanceBar と他のメニューバーアイコンとの間隔を調整 幅 + 0.0 pt"
                 ],
-                "メニューバーの幅を -10.0 pt（狭い）から +10.0 pt（広い）まで調整（デフォルト 0 pt）"
+                "他のメニューバーアイコンとの間隔を調整：-10.0 pt（狭く）～+10.0 pt（広く）、デフォルト 0 pt"
             ),
             (
                 .english,
-                ["Font Size & Position", "Menu Bar Font Size", "Icon Offset", "Amount Offset", "Menu Bar Width"],
+                ["Font Size & Position", "Menu Bar Font Size", "Icon vertical position", "Amount vertical position", "Spacing from other menu bar icons"],
                 [
-                    "Adjusts the menu bar font size",
+                    "Adjust menu bar text size",
                     "Fine-tune the icon's vertical position Y axis + 0.0 pt",
                     "Fine-tune the amount's vertical position Y axis + 0.0 pt",
-                    "Adjusts the gap between BalanceBar and other items Width + 0.0 pt"
+                    "Adjust the gap between BalanceBar and other menu bar icons Width + 0.0 pt"
                 ],
-                "Adjusts menu bar width from -10.0 pt (narrow) to +10.0 pt (wide); default 0 pt"
+                "Adjust spacing from other menu bar icons: -10.0 pt narrower to +10.0 pt wider; default 0 pt"
             ),
             (
                 .korean,
-                ["글꼴 크기 및 위치", "메뉴 막대 글꼴 크기", "아이콘 오프셋", "금액 오프셋", "메뉴 막대 너비"],
+                ["글꼴 크기 및 위치", "메뉴 막대 글꼴 크기", "아이콘 세로 위치", "수치 세로 위치", "다른 메뉴 막대 아이콘과의 간격"],
                 [
-                    "메뉴 막대 글꼴 크기 조정",
-                    "아이콘의 세로 위치 미세 조정 Y 축 + 0.0 pt",
-                    "금액의 세로 위치 미세 조정 Y 축 + 0.0 pt",
-                    "BalanceBar와 다른 항목 사이 간격 조정 너비 + 0.0 pt"
+                    "메뉴 막대 글자 크기 조정",
+                    "아이콘 세로 위치 미세 조정 Y 축 + 0.0 pt",
+                    "수치 세로 위치 미세 조정 Y 축 + 0.0 pt",
+                    "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정 너비 + 0.0 pt"
                 ],
-                "-10.0pt(좁게)에서 +10.0pt(넓게)까지 메뉴 막대 너비 조정; 기본값 0pt"
+                "다른 메뉴 막대 아이콘과의 간격 조정: -10.0pt(더 좁게)에서 +10.0pt(더 넓게); 기본값 0pt"
             ),
             (
                 .spanish,
-                ["Tamaño y posición de la fuente", "Tamaño de fuente de la barra de menús", "Desplazamiento del icono", "Desplazamiento del importe", "Ancho de la barra de menús"],
+                ["Tamaño y posición de la fuente", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del importe", "Espacio respecto a los demás iconos de la barra de menús"],
                 [
-                    "Ajusta el tamaño de fuente de la barra de menús",
+                    "Ajusta el tamaño del texto de la barra de menús",
                     "Ajusta con precisión la posición vertical del icono Eje Y + 0.0 pt",
                     "Ajusta con precisión la posición vertical del importe Eje Y + 0.0 pt",
-                    "Ajusta el espacio entre BalanceBar y los demás elementos Ancho + 0.0 pt"
+                    "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús Ancho + 0.0 pt"
                 ],
-                "Ajusta el ancho de la barra de menús de -10,0 pt (estrecho) a +10,0 pt (ancho); valor predeterminado: 0 pt"
+                "Ajusta el espacio respecto a los demás iconos: de -10,0 pt (más estrecho) a +10,0 pt (más ancho); valor predeterminado: 0 pt"
             ),
             (
                 .german,
-                ["Schriftgröße und Position", "Schriftgröße der Menüleiste", "Symbolversatz", "Betragsversatz", "Breite der Menüleiste"],
+                ["Schriftgröße und Position", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Betragsposition", "Abstand zu anderen Menüleistensymbolen"],
                 [
-                    "Passt die Schriftgröße der Menüleiste an",
-                    "Vertikale Position des Symbols fein einstellen Y Achse + 0.0 pt",
-                    "Vertikale Position des Betrags fein einstellen Y Achse + 0.0 pt",
-                    "Passt den Abstand zwischen BalanceBar und anderen Elementen an Breite + 0.0 pt"
+                    "Passt die Textgröße der Menüleiste an",
+                    "Vertikale Symbolposition fein einstellen Y-Achse + 0.0 pt",
+                    "Vertikale Betragsposition fein einstellen Y-Achse + 0.0 pt",
+                    "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen Breite + 0.0 pt"
                 ],
-                "Passt die Breite der Menüleiste von -10,0 pt (schmal) bis +10,0 pt (breit) an; Standard: 0 pt"
+                "Abstand zu anderen Menüleistensymbolen anpassen: -10,0 pt schmaler bis +10,0 pt breiter; Standard: 0 pt"
             ),
             (
                 .french,
-                ["Taille et position de la police", "Taille de la police de la barre des menus", "Décalage de l’icône", "Décalage du montant", "Largeur de la barre des menus"],
+                ["Taille et position de la police", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale du montant", "Espacement avec les autres icônes de la barre des menus"],
                 [
-                    "Ajuste la taille de la police de la barre des menus",
+                    "Ajuste la taille du texte de la barre des menus",
                     "Ajuste précisément la position verticale de l’icône Axe Y + 0.0 pt",
                     "Ajuste précisément la position verticale du montant Axe Y + 0.0 pt",
-                    "Ajuste l’écart entre BalanceBar et les autres éléments Largeur + 0.0 pt"
+                    "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus Largeur + 0.0 pt"
                 ],
-                "Ajuste la largeur de la barre des menus de -10,0 pt (étroite) à +10,0 pt (large) ; valeur par défaut : 0 pt"
+                "Ajuste l’espacement avec les autres icônes : de -10,0 pt (plus étroit) à +10,0 pt (plus large) ; valeur par défaut : 0 pt"
             )
         ]
 
@@ -3195,11 +3195,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 "目前連接埠：\(expectedPort)",
                 "現在のポート：\(expectedPort)"
             )
-            let expectedDashboardTitle = copy(
-                "打开 OpenCodex 仪表盘",
-                "Open OpenCodex Dashboard",
-                "開啟 OpenCodex 儀表板",
-                "OpenCodex ダッシュボードを開く"
+            let expectedDashboardTitle = tr(
+                .keyDashboardAdvancedPageOpenOpencodexDashboard,
+                language: language
             )
             let expectedButtonTitle = copy("打开", "Open", "開啟", "開く")
 
@@ -3248,13 +3246,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
             guard let manualTitle = labels.first(where: { $0.stringValue == expectedManualTitle }) else {
                 return XCTFail("Expected manual port title \(expectedManualTitle)")
             }
-            guard let manualDetail = labels.first(where: {
-                let value = $0.stringValue
-                return value.contains("十进制 1–65535")
-                    || value.contains("十進位 1–65535")
-                    || value.contains("decimal 1–65535")
-                    || value.contains("1～65535")
-            }) else {
+            let expectedManualDetail = tr(
+                .keyDashboardAdvancedPageOnlyTrimmedDecimal165535IsAcceptedClearTheFieldToRestoreAutomaticDetection,
+                language: language
+            )
+            guard let manualDetail = labels.first(where: { $0.stringValue == expectedManualDetail }) else {
                 return XCTFail("Expected manual port subtitle")
             }
             XCTAssertFalse(manualTitle.isEditable)
@@ -3271,7 +3267,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
 
             XCTAssertFalse(labels.contains { $0.stringValue.contains("手动端口只用于") })
-            XCTAssertFalse(labels.contains { $0.stringValue.contains("The manual port only") })
             XCTAssertFalse(labels.contains { $0.stringValue.contains("/#dashboard") })
 
             guard let dashboardTitle = labels.first(where: { $0.stringValue == expectedDashboardTitle }) else {
@@ -3529,8 +3524,21 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(iconWidth, DashboardAboutGitHubButton.iconSize, accuracy: 0.5)
         XCTAssertLessThan(iconWidth, button.circularBackgroundFrameForTesting.width)
         XCTAssertEqual(button.destinationURL, DashboardAboutPage.githubRepositoryURL)
-        let accessibilityLabel = button.accessibilityLabel()
-        XCTAssertTrue(accessibilityLabel == "GitHub 项目" || accessibilityLabel == "GitHub repository")
+        guard let accessibilityLabel = button.accessibilityLabel() else {
+            return XCTFail("Expected a localized GitHub accessibility label")
+        }
+        let supportedAccessibilityLabels = [
+            AppLanguage.simplifiedChinese,
+            .traditionalChineseTaiwan,
+            .traditionalChineseHongKong,
+            .japanese,
+            .english,
+            .korean,
+            .spanish,
+            .german,
+            .french
+        ].map { tr(.keyDashboardAboutPageGithubRepository, language: $0) }
+        XCTAssertTrue(supportedAccessibilityLabels.contains(accessibilityLabel))
 
         XCTAssertTrue(button.target === button)
         XCTAssertEqual(button.action, #selector(DashboardAboutGitHubButton.activate(_:)))

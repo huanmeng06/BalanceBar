@@ -35,7 +35,7 @@ final class DomainModelsTests: XCTestCase {
             email: nil
         )
         XCTAssertEqual(unavailable?.state, .unavailable)
-        XCTAssertEqual(unavailable?.text(language: .simplifiedChinese), "账号不可用")
+        XCTAssertEqual(unavailable?.text(language: .simplifiedChinese), "账户不可用")
         XCTAssertEqual(unavailable?.text(language: .traditionalChineseTaiwan), "帳號不可用")
         XCTAssertEqual(unavailable?.text(language: .japanese), "アカウントを利用できません")
         XCTAssertEqual(unavailable?.text(language: .english), "Account unavailable")

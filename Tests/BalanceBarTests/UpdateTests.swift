@@ -2859,7 +2859,7 @@ final class UpdateTests: XCTestCase {
                     )
                 }
         )
-        XCTAssertEqual(channelPopup.itemTitles, ["正式版", "Beta 测试版"])
+        XCTAssertEqual(channelPopup.itemTitles, ["正式版", "Beta 版"])
         XCTAssertEqual(channelPopup.selectedItem?.representedObject as? String, UpdateChannel.stable.rawValue)
         let updateNotesButton = try XCTUnwrap(
             buttons.first { $0.identifier?.rawValue == "viewUpdateNotesButton" }
@@ -3555,13 +3555,13 @@ final class UpdateTests: XCTestCase {
             )
             XCTAssertEqual(
                 UpdateChannel.beta.localizedTitle(using: language),
-                language == .simplifiedChinese ? "Beta 测试版" :
-                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "Beta 測試版" :
-                    language == .japanese ? "ベータテスト" :
-                    language == .korean ? "베타 테스트" :
-                    language == .spanish ? "Prueba beta" :
-                    language == .german ? "Betatest" :
-                    language == .french ? "Bêta" : "Beta Test"
+                language == .simplifiedChinese ? "Beta 版" :
+                    (language == .traditionalChineseTaiwan || language == .traditionalChineseHongKong) ? "Beta 版" :
+                    language == .japanese ? "ベータ版" :
+                    language == .korean ? "베타 버전" :
+                    language == .spanish ? "Versión beta" :
+                    language == .german ? "Beta-Version" :
+                    language == .french ? "Version bêta" : "Beta"
             )
             let failure = DashboardUpdatePresentation.make(
                 for: .failed(.network),
@@ -3611,7 +3611,7 @@ final class UpdateTests: XCTestCase {
                 for: .failed(.httpStatus(503)),
                 language: .simplifiedChinese
             ).subtitle,
-            "检查更新失败，请重试。\n原因：更新服务器暂时异常（HTTP 503）\n建议：请稍后重试；若持续出现，请检查代理设置。"
+            "检查更新失败，请重试。\n原因：更新服务器暂时不可用（HTTP 503）\n建议：请稍后重试；若持续出现，请检查代理设置。"
         )
         XCTAssertEqual(
             DashboardUpdatePresentation.make(

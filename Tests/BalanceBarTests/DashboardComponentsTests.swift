@@ -211,11 +211,11 @@ final class DashboardComponentsTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         let fixtures: [(AppLanguage, String)] = [
-            (.english, "Play the icon animation while a task is running"),
-            (.korean, "작업 실행 중 아이콘 애니메이션 재생"),
-            (.spanish, "Reproducir la animación del icono mientras se ejecuta una tarea"),
-            (.german, "Symbolanimation während einer laufenden Aufgabe abspielen"),
-            (.french, "Lire l’animation de l’icône pendant l’exécution d’une tâche")
+            (.english, "Animate the menu bar icon while a task runs"),
+            (.korean, "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
+            (.spanish, "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
+            (.german, "Menüleistensymbol während einer Aufgabe animieren"),
+            (.french, "Animer l’icône de la barre des menus pendant une tâche")
         ]
 
         for (language, longTitle) in fixtures {

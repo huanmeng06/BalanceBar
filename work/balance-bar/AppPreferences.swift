@@ -130,7 +130,7 @@ final class AppPreferences {
 
     static func makeDefaultStatusLinks() -> [StatusLink] {
         [
-            StatusLink(title: "OpenAI Status", url: "https://status.openai.com/"),
+            StatusLink(title: tr(.keyAppPreferencesOpenaiStatus), url: "https://status.openai.com/"),
             StatusLink(title: tr(.keyAppPreferencesTiboSUpdates), url: "https://x.com/thsottiaux")
         ]
     }

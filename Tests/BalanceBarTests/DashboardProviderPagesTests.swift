@@ -221,7 +221,7 @@ final class DashboardProviderPagesTests: XCTestCase {
         XCTAssertTrue(initialAction.isEnabled)
         XCTAssertNil(initialAction.identifier)
         XCTAssertTrue(initialAction.title.contains("刷新") || initialAction.title.contains("Refresh"))
-        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("当前供应商") || $0.stringValue.contains("Current Provider") })
+        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("当前服务商") || $0.stringValue.contains("Current provider") })
     }
 
     func testOverviewDisappearanceClearsEveryCurrentField() throws {
@@ -242,7 +242,7 @@ final class DashboardProviderPagesTests: XCTestCase {
         )))
         XCTAssertNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "Current" })
         XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "—" })
-        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("Current Provider unavailable") || $0.stringValue.contains("当前供应商不可用") })
+        XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("Current provider unavailable") || $0.stringValue.contains("当前服务商不可用") })
     }
 }
 

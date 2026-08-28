@@ -1,6 +1,7 @@
   // Stable typed keys for every bundled Localizable.strings resource.
   enum LocalizationKey: String, CaseIterable {
     case keyAppPreferencesTiboSUpdates = "app.preferences.tibo_s_updates"
+    case keyAppPreferencesOpenaiStatus = "app.preferences.openai_status"
     case keyAppNotFound = "app.not_found"
     case keyAppNotFound2 = "app.not_found.2"
     case keyAppTheCurrentCcSwitchValueProviderWasNotFound = "app.the_current_cc_switch_value_provider_was_not_found"
@@ -213,6 +214,7 @@
     case keyDashboardGeneralAndRefreshPagesUpdateCheckFailureSuggestionInvalidReleaseVersion = "dashboard.general.and.refresh.pages.update_check_failure_suggestion_invalid_release_version"
     case keyDashboardGeneralAndRefreshPagesRetry = "dashboard.general.and.refresh.pages.retry"
     case keyDashboardGeneralAndRefreshPagesOpenCcSwitch = "dashboard.general.and.refresh.pages.open_cc_switch"
+    case keyDashboardGeneralAndRefreshPagesCcSwitch = "dashboard.general.and.refresh.pages.cc_switch"
     case keyDashboardGeneralAndRefreshPagesCurrentProviderValue = "dashboard.general.and.refresh.pages.current_provider_value"
     case keyDashboardGeneralAndRefreshPagesSystem = "dashboard.general.and.refresh.pages.system"
     case keyDashboardGeneralAndRefreshPagesEvery1Sec = "dashboard.general.and.refresh.pages.every_1_sec"
@@ -355,6 +357,7 @@
     case keyDashboardProviderPagesLoading2 = "dashboard.provider.pages.loading.2"
     case keyDashboardProviderPagesWaitingForQuotaData = "dashboard.provider.pages.waiting_for_quota_data"
     case keyDashboardProviderPagesConnectingToCcSwitch = "dashboard.provider.pages.connecting_to_cc_switch"
+    case keyDashboardProviderPagesCcSwitch = "dashboard.provider.pages.cc_switch"
     case keyDashboardProviderPagesOverview = "dashboard.provider.pages.overview"
     case keyDashboardProviderPagesCurrentBalanceSyncStatusAndCodexProvider = "dashboard.provider.pages.current_balance_sync_status_and_codex_provider"
     case keyDashboardProviderPagesProviders = "dashboard.provider.pages.providers"

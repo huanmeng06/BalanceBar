@@ -173,7 +173,7 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
         ])
 
         actionButton.bezelStyle = .roundRect
-        let connection = DashboardSettingsComponents.makeSettingsSection("CC Switch", rows: [
+        let connection = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardProviderPagesCcSwitch), rows: [
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardProviderPagesSyncStatus),
                 subtitle: "",

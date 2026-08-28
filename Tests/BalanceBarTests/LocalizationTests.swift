@@ -288,7 +288,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 396)
+        XCTAssertEqual(expectedKeys.count, 399)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -440,7 +440,7 @@ final class LocalizationTests: XCTestCase {
                 "Snapshot status summary",
                 "最後刷新：10:00",
                 "最後刷新：10:00",
-                "最后刷新：10:00",
+                "上次刷新：10:00",
                 "Last refreshed: 10:00",
                 "最終更新：10:00"
             ),
@@ -474,11 +474,11 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow,
                 "Refresh settings description",
-                "立即刷新目前供應商",
-                "立即刷新目前供應商",
-                "立即重新读取当前供应商",
-                "Reload the current Provider now",
-                "現在のプロバイダーをすぐに再読み込み"
+                "立即刷新目前服務商資料",
+                "立即刷新目前服務商資料",
+                "立即刷新当前服务商数据",
+                "Refresh the current provider's data now",
+                "現在のプロバイダーのデータを今すぐ更新"
             ),
             (
                 .keyDashboardGeneralAndRefreshPagesRefreshSettings,
@@ -510,20 +510,20 @@ final class LocalizationTests: XCTestCase {
             (
                 .keyDashboardMenuPageKeepOpenAfterRefresh,
                 "Menu settings title",
-                "刷新後保持展開",
-                "刷新後保持展開",
-                "刷新后保持展开",
-                "Keep Open After Refresh",
-                "更新後も開いたままにする"
+                "刷新後保持選單開啟",
+                "刷新後保持選單開啟",
+                "刷新后保持菜单打开",
+                "Keep the menu open after refresh",
+                "更新後もメニューを開いたままにする"
             ),
             (
                 .keyDashboardMenuPageReopenTheMenuAfterRefreshNow,
                 "Menu settings description",
-                "按一下立即刷新後重新開啟選單",
-                "按一下立即刷新後重新開啟選單",
-                "点击立即刷新后重新打开菜单",
-                "Reopen the menu after Refresh Now",
-                "「今すぐ更新」後にメニューを再度開く"
+                "按一下「立即刷新」後自動重新開啟選單",
+                "按一下「立即刷新」後自動重新開啟選單",
+                "点击“立即刷新”后自动重新打开菜单",
+                "Reopen the menu after clicking “Refresh Now”",
+                "「今すぐ更新」をクリックした後、メニューを自動的に再度開く"
             ),
             (
                 .keyDashboardProviderPagesRefreshNow,
@@ -578,6 +578,38 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(
                 resource.contains("重新整理"),
                 "the \(directory) resource must not retain the unconfirmed refresh term"
+            )
+        }
+    }
+
+    func testStatusLinkSettingsUseViewStatusTerminologyAcrossLanguages() {
+        let expected: [AppLanguage: (title: String, subtitle: String)] = [
+            .simplifiedChinese: ("查看状态", "自定义“查看状态”链接"),
+            .traditionalChineseTaiwan: ("檢視狀態", "自訂「檢視狀態」連結"),
+            .traditionalChineseHongKong: ("檢視狀態", "自訂「檢視狀態」連結"),
+            .japanese: ("ステータスを表示", "「ステータスを表示」リンクをカスタマイズ"),
+            .english: ("View Status", "Customize “View Status” links"),
+            .korean: ("상태 보기", "‘상태 보기’ 링크 사용자 지정"),
+            .spanish: ("Ver estado", "Personalizar los enlaces de «Ver estado»"),
+            .german: ("Status anzeigen", "Links für „Status anzeigen“ anpassen"),
+            .french: ("Voir l’état", "Personnaliser les liens « Voir l’état »")
+        ]
+
+        for language in allLanguages {
+            XCTAssertEqual(
+                tr(.keyDashboardMenuPageViewStatus, language: language),
+                expected[language]?.title,
+                "status-link title for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks, language: language),
+                expected[language]?.subtitle,
+                "status-link subtitle for \(language)"
+            )
+            XCTAssertEqual(
+                tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2, language: language),
+                expected[language]?.subtitle,
+                "status-link auxiliary subtitle for \(language)"
             )
         }
     }
