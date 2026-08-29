@@ -13,6 +13,10 @@ struct OpenCodexRefreshActions {
 /// Owns OpenCodex recognition, preference switching, card planning and card
 /// requests. The UI receives state/cards through value callbacks; this type
 /// does not know about Dashboard or status-item views.
+///
+/// All mutable state is owned by `queue`. Synchronous read accessors marshal
+/// onto that queue so callers cannot observe or mutate partially updated
+/// recognition state.
 final class OpenCodexRefreshCoordinator {
     private let repository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
@@ -21,14 +25,18 @@ final class OpenCodexRefreshCoordinator {
     private let openCodexRepository: OpenCodexRepository
     private let queue: DispatchQueue
     private let actions: OpenCodexRefreshActions
+    private let queueKey = DispatchSpecificKey<Void>()
     private var stateByProvider: [String: OpenCodexRuntimeState] = [:]
     private var candidateByProvider: [String: OpenCodexEndpointCandidate] = [:]
-    private(set) var state: (providerID: String, value: OpenCodexRuntimeState)?
-    private(set) var cards: [OpenCodexModelCard] = []
+    private var state: (providerID: String, value: OpenCodexRuntimeState)?
+    private var cards: [OpenCodexModelCard] = []
     private var plans: [OpenCodexCardPlan] = []
     private var cardData: [OpenCodexCardSource: OpenCodexCardData] = [:]
     private var refreshCoordinator = OpenCodexCardRefreshCoordinator()
     private var requestsInFlight: Set<OpenCodexCardSource> = []
+    private var generation: UInt64 = 0
+    private var stateOperationGeneration: UInt64 = 0
+    private var isInvalidated = false
 
     init(
         repository: CCSwitchRepository,
@@ -46,42 +54,67 @@ final class OpenCodexRefreshCoordinator {
         self.openCodexRepository = openCodexRepository
         self.queue = queue
         self.actions = actions
+        queue.setSpecific(key: queueKey, value: ())
     }
 
     var currentCandidate: OpenCodexEndpointCandidate? {
-        state?.value.candidate
-            ?? repository.loadCurrent(appType: AssistantClient.codex.appType)?.openCodexCandidate
-            ?? repository.loadSummarySources(appType: AssistantClient.codex.appType).compactMap(\.openCodexCandidate).first
+        syncOnQueue {
+            guard !isInvalidated else { return nil }
+            return state?.value.candidate
+                ?? repository.loadCurrent(appType: AssistantClient.codex.appType)?.openCodexCandidate
+                ?? repository.loadSummarySources(appType: AssistantClient.codex.appType).compactMap(\.openCodexCandidate).first
+        }
     }
 
     func isConfirmed(providerID: String, candidate: OpenCodexEndpointCandidate) -> Bool {
-        candidateByProvider[providerID] == candidate
+        syncOnQueue {
+            !isInvalidated && candidateByProvider[providerID] == candidate
+        }
     }
 
     func clear() {
-        plans = []
-        cardData = [:]
-        refreshCoordinator.reset()
-        requestsInFlight.removeAll()
-        state = nil
-        cards = []
-        actions.setState("", nil)
-        actions.setCards([])
+        syncOnQueue {
+            guard !isInvalidated else { return }
+            clearState(notify: true)
+        }
+    }
+
+    /// Invalidates all work owned by this coordinator before the application
+    /// tears down its other services. Completion handlers may still arrive
+    /// from the underlying clients, but they can no longer publish state.
+    func teardown() {
+        syncOnQueue {
+            guard !isInvalidated else { return }
+            isInvalidated = true
+            clearState(notify: false)
+        }
     }
 
     func switchPreference(_ preference: OpenCodexPreference, providerID: String, oldState: OpenCodexRuntimeState) {
         queue.async { [weak self] in
-            guard let self else { return }
+            guard let self,
+                  let context = self.beginStateOperation() else { return }
             self.openCodexRepository.select(preference, from: oldState) { [weak self] result in
                 guard let self else { return }
                 self.queue.async {
-                    guard self.actions.activeClient() == .codex,
-                          self.repository.loadCurrent(appType: AssistantClient.codex.appType)?.id == providerID else { return }
+                    guard self.isCurrent(context),
+                          self.actions.activeClient() == .codex,
+                          self.actions.currentProvider(.codex)?.id == providerID else { return }
                     switch result {
                     case .success(let next):
                         self.publishState(providerID: providerID, state: next)
-                        self.prepareCards(providerID: providerID, state: next, force: true)
-                        self.render(providerID: providerID, providerName: self.repository.loadCurrent(appType: AssistantClient.codex.appType)?.name ?? providerID, state: next, client: .codex)
+                        self.prepareCards(
+                            providerID: providerID,
+                            state: next,
+                            force: true,
+                            lifecycleGeneration: context.lifecycleGeneration
+                        )
+                        self.render(
+                            providerID: providerID,
+                            providerName: self.actions.currentProvider(.codex)?.name ?? providerID,
+                            state: next,
+                            client: .codex
+                        )
                     case .failure(let error):
                         let message = error.message(for: AppLanguage.resolved)
                         let status = tr(.keyOpenCodexRefreshCoordinatorSwitchFailedValue, arguments: [String(describing: message)])
@@ -100,39 +133,90 @@ final class OpenCodexRefreshCoordinator {
         reason: BalanceRefreshReason,
         switched: Bool
     ) {
-        openCodexRepository.readState(for: candidate) { [weak self] result in
-            guard let self else { return }
-            self.queue.async {
-                guard self.actions.activeClient() == client,
-                      self.repository.loadCurrent(appType: client.appType)?.id == providerID else { return }
-                switch result {
-                case .notRecognized:
-                    self.candidateByProvider.removeValue(forKey: providerID)
-                    self.stateByProvider.removeValue(forKey: providerID)
-                    self.clear()
-                    guard let current = self.repository.loadCurrent(appType: client.appType) else { return }
-                    self.actions.refreshStandard(current, client, reason, switched)
-                case .unavailable:
-                    guard let previous = self.stateByProvider[providerID] else {
-                        self.clear()
-                        guard let current = self.repository.loadCurrent(appType: client.appType) else { return }
+        queue.async { [weak self] in
+            guard let self,
+                  let context = self.beginStateOperation() else { return }
+            self.openCodexRepository.readState(for: candidate) { [weak self] result in
+                guard let self else { return }
+                self.queue.async {
+                    guard self.isCurrent(context),
+                          self.actions.activeClient() == client,
+                          self.actions.currentProvider(client)?.id == providerID else { return }
+                    switch result {
+                    case .notRecognized:
+                        self.clearState(notify: true)
+                        guard let current = self.actions.currentProvider(client) else { return }
                         self.actions.refreshStandard(current, client, reason, switched)
-                        return
+                    case .unavailable:
+                        guard let previous = self.stateByProvider[providerID] else {
+                            self.clearState(notify: true)
+                            guard let current = self.actions.currentProvider(client) else { return }
+                            self.actions.refreshStandard(current, client, reason, switched)
+                            return
+                        }
+                        let unavailable = self.unavailableState(from: previous)
+                        self.stateByProvider[providerID] = unavailable
+                        self.publishState(providerID: providerID, state: unavailable)
+                        self.publishCardsUnavailable(reason: tr(.keyOpenCodexRefreshCoordinatorOpencodexManagementApiIsUnavailable))
+                        self.render(providerID: providerID, providerName: providerName, state: unavailable, client: client)
+                    case .recognized(let recognized):
+                        self.candidateByProvider[providerID] = candidate
+                        self.stateByProvider[providerID] = recognized
+                        self.publishState(providerID: providerID, state: recognized)
+                        self.prepareCards(
+                            providerID: providerID,
+                            state: recognized,
+                            force: reason.forcesOpenCodexCardSources || switched,
+                            lifecycleGeneration: context.lifecycleGeneration
+                        )
+                        self.render(providerID: providerID, providerName: providerName, state: recognized, client: client)
                     }
-                    let unavailable = self.unavailableState(from: previous)
-                    self.stateByProvider[providerID] = unavailable
-                    self.publishState(providerID: providerID, state: unavailable)
-                    self.publishCardsUnavailable(reason: tr(.keyOpenCodexRefreshCoordinatorOpencodexManagementApiIsUnavailable))
-                    self.render(providerID: providerID, providerName: providerName, state: unavailable, client: client)
-                case .recognized(let recognized):
-                    self.candidateByProvider[providerID] = candidate
-                    self.stateByProvider[providerID] = recognized
-                    self.publishState(providerID: providerID, state: recognized)
-                    self.prepareCards(providerID: providerID, state: recognized, force: reason.forcesOpenCodexCardSources || switched)
-                    self.render(providerID: providerID, providerName: providerName, state: recognized, client: client)
                 }
             }
         }
+    }
+
+    private struct StateOperationContext {
+        let lifecycleGeneration: UInt64
+        let stateOperationGeneration: UInt64
+    }
+
+    private func beginStateOperation() -> StateOperationContext? {
+        guard !isInvalidated else { return nil }
+        stateOperationGeneration &+= 1
+        return StateOperationContext(
+            lifecycleGeneration: generation,
+            stateOperationGeneration: stateOperationGeneration
+        )
+    }
+
+    private func isCurrent(_ context: StateOperationContext) -> Bool {
+        !isInvalidated
+            && generation == context.lifecycleGeneration
+            && stateOperationGeneration == context.stateOperationGeneration
+    }
+
+    private func clearState(notify: Bool) {
+        generation &+= 1
+        stateOperationGeneration &+= 1
+        stateByProvider.removeAll()
+        candidateByProvider.removeAll()
+        plans = []
+        cardData = [:]
+        refreshCoordinator.reset()
+        requestsInFlight.removeAll()
+        state = nil
+        cards = []
+        guard notify else { return }
+        actions.setState("", nil)
+        actions.setCards([])
+    }
+
+    private func syncOnQueue<T>(_ work: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            return work()
+        }
+        return queue.sync(execute: work)
     }
 
     private func publishState(providerID: String, state: OpenCodexRuntimeState?) {
@@ -148,7 +232,15 @@ final class OpenCodexRefreshCoordinator {
         )
     }
 
-    private func prepareCards(providerID: String, state: OpenCodexRuntimeState, force: Bool) {
+    private func prepareCards(
+        providerID: String,
+        state: OpenCodexRuntimeState,
+        force: Bool,
+        lifecycleGeneration: UInt64
+    ) {
+        // Card requests may outlive a later recognition poll. Their callback
+        // lifetime is governed by the coordinator lifecycle, provider, and
+        // card-entry generation rather than the state-operation generation.
         let sources = repository.loadSummarySources(appType: AssistantClient.codex.appType)
         plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
         let refreshSources = makeRefreshSources(plans: plans, state: state, sources: sources)
@@ -172,14 +264,24 @@ final class OpenCodexRefreshCoordinator {
         publishCards()
         guard state.managementAvailable else { return }
         for source in refreshPlan.dueSources {
-            guard let generation = refreshCoordinator.generation(for: source.source) else { continue }
+            guard let cardGeneration = refreshCoordinator.generation(for: source.source) else { continue }
             requestsInFlight.insert(source.source)
             switch source.source {
             case .official:
-                fetchOfficialCard(providerID: providerID, generation: generation)
+                fetchOfficialCard(
+                    providerID: providerID,
+                    lifecycleGeneration: lifecycleGeneration,
+                    cardGeneration: cardGeneration
+                )
             case .balance(let sourceID):
                 guard let summary = sources.first(where: { $0.id == sourceID }), let query = summary.query else {
-                    updateCard(providerID: providerID, generation: generation, source: source.source, data: .unavailable(category: .balance, reason: tr(.keyOpenCodexRefreshCoordinatorTheBalanceSourceConfigurationIsIncomplete)))
+                    updateCard(
+                        providerID: providerID,
+                        lifecycleGeneration: lifecycleGeneration,
+                        cardGeneration: cardGeneration,
+                        source: source.source,
+                        data: .unavailable(category: .balance, reason: tr(.keyOpenCodexRefreshCoordinatorTheBalanceSourceConfigurationIsIncomplete))
+                    )
                     continue
                 }
                 _ = balanceAPIClient.fetchBalance(query: query, client: .codex, providerID: "opencodex-card:\(sourceID)") { [weak self] result in
@@ -215,7 +317,15 @@ final class OpenCodexRefreshCoordinator {
                     } else {
                         data = .unavailable(category: .balance, reason: tr(.keyOpenCodexRefreshCoordinatorBalanceUnavailableTheUpstreamBalanceCouldNotBeRead))
                     }
-                    self.queue.async { self.updateCard(providerID: providerID, generation: generation, source: source.source, data: data) }
+                    self.queue.async {
+                        self.updateCard(
+                            providerID: providerID,
+                            lifecycleGeneration: lifecycleGeneration,
+                            cardGeneration: cardGeneration,
+                            source: source.source,
+                            data: data
+                        )
+                    }
                 }
             case .unavailable:
                 requestsInFlight.remove(source.source)
@@ -287,7 +397,11 @@ final class OpenCodexRefreshCoordinator {
         [descriptor.id, descriptor.adapter, descriptor.authMode, descriptor.baseURL.absoluteString, descriptor.defaultModel ?? "", descriptor.models.joined(separator: ","), String(descriptor.isOfficial)].joined(separator: "|")
     }
 
-    private func fetchOfficialCard(providerID: String, generation: UUID) {
+    private func fetchOfficialCard(
+        providerID: String,
+        lifecycleGeneration: UInt64,
+        cardGeneration: UUID
+    ) {
         officialQuotaClient.fetchQuota(client: .codex, providerID: providerID, storedAccessToken: nil) { [weak self] result in
             guard let self else { return }
             let data: OpenCodexCardData
@@ -308,13 +422,33 @@ final class OpenCodexRefreshCoordinator {
             case .failure:
                 data = .unavailable(category: .quota, reason: tr(.keyOpenCodexRefreshCoordinatorQuotaUnavailableTheOfficialQuotaEndpointIsTemporarilyUnavailable))
             }
-            self.queue.async { self.updateCard(providerID: providerID, generation: generation, source: .official, data: data) }
+            self.queue.async {
+                self.updateCard(
+                    providerID: providerID,
+                    lifecycleGeneration: lifecycleGeneration,
+                    cardGeneration: cardGeneration,
+                    source: .official,
+                    data: data
+                )
+            }
         }
     }
 
-    private func updateCard(providerID: String, generation: UUID, source: OpenCodexCardSource, data: OpenCodexCardData) {
-        guard refreshCoordinator.generation(for: source) == generation,
-              let visible = refreshCoordinator.store(data, for: source, generation: generation) else { return }
+    private func updateCard(
+        providerID: String,
+        lifecycleGeneration: UInt64,
+        cardGeneration: UUID,
+        source: OpenCodexCardSource,
+        data: OpenCodexCardData
+    ) {
+        // A newer recognition replaces state, not an unchanged card request.
+        // Keep the in-flight cleanup coupled to the same card generation so a
+        // stale request cannot clear a replacement request after reconfiguration.
+        guard !isInvalidated,
+              self.generation == lifecycleGeneration,
+              state?.providerID == providerID,
+              refreshCoordinator.generation(for: source) == cardGeneration,
+              let visible = refreshCoordinator.store(data, for: source, generation: cardGeneration) else { return }
         requestsInFlight.remove(source)
         cardData[source] = visible
         publishCards()

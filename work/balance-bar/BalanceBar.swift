@@ -713,6 +713,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         guard lifecycle.beginTerminate() else { return }
         SwitchLog.write("session terminating", category: "lifecycle")
+        openCodexRefreshCoordinator.teardown()
         timer?.invalidate()
         activityCoordinator.stop()
         menuBarWidthAdjustmentCoalescer.cancel()
