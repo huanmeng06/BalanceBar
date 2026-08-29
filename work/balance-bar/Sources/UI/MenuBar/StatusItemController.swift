@@ -1942,13 +1942,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
-        MenuCursorActivationExperiment.log("menu-will-open-before-activate")
+        MenuCursorActivationExperiment.log("menu-will-open-before-force-activate")
         if MenuCursorActivationExperiment.isEnabled {
-            // Diagnostic only: macOS 14's cooperative activation must not be
-            // promoted to the production cursor policy without manual proof.
-            NSApp.activate()
+            // Diagnostic only. This must never become a production cursor
+            // policy unless manual testing proves it has no focus side effect.
+            NSApp.activate(ignoringOtherApps: true)
         }
-        MenuCursorActivationExperiment.log("menu-will-open-after-activate")
+        MenuCursorActivationExperiment.log("menu-will-open-after-force-activate")
     }
 
     func menuDidClose(_ menu: NSMenu) {
@@ -2854,6 +2854,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        view.isMenuTracking = { [weak self] in self?.isMenuTracking ?? false }
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
 
@@ -3052,6 +3053,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        view.isMenuTracking = { [weak self] in self?.isMenuTracking ?? false }
         let titleText = OpenCodexCardPresentation.identity(for: card)
             + (card.isCurrent ? tr(.keyStatusItemControllerCurrent) : "")
         let provider = makeOverviewLabel(titleText, font: .systemFont(ofSize: 15, weight: .semibold))

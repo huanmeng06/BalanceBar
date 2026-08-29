@@ -1120,6 +1120,69 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
     }
 
+    func testMenuHostedLinkSurvivesThreePopupReopens() {
+        let menu = NSMenu(title: "Issue 265 reopen")
+        let item = NSMenuItem()
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 20, y: 2, width: 180, height: 20)
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        item.view = host
+        menu.addItem(item)
+
+        defer { menu.removeAllItems() }
+        for openNumber in 1...3 {
+            var attached = false
+            var underlined = false
+            var trackingAreaCount = 0
+            var retainedLink = false
+            let probe = Timer(timeInterval: 0.02, repeats: false) { _ in
+                guard host.window != nil else {
+                    menu.cancelTracking()
+                    return
+                }
+                attached = true
+                host.updateTrackingAreas()
+                let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
+                host.forwardHover(atHostPoint: glyphPoint)
+                underlined = link.attributedStringValue.attribute(
+                    .underlineStyle,
+                    at: 0,
+                    effectiveRange: nil
+                ) != nil
+                trackingAreaCount = host.trackingAreas.count
+                retainedLink = host.trackedLink === link
+                menu.cancelTracking()
+            }
+            RunLoop.main.add(probe, forMode: .eventTracking)
+            menu.popUp(positioning: nil, at: .zero, in: nil)
+
+            XCTAssertTrue(attached, "menu open \(openNumber) did not attach the host")
+            XCTAssertTrue(retainedLink)
+            XCTAssertEqual(trackingAreaCount, 1)
+            XCTAssertTrue(underlined, "menu open \(openNumber) did not forward the visible glyph")
+            link.clearHoverState()
+        }
+
+        var activationCount = 0
+        link.onActivate = { activationCount += 1 }
+        host.forwardHover(atHostPoint: host.convert(
+            NSPoint(x: link.visibleTextHitRect.maxX + 8, y: link.visibleTextHitRect.midY),
+            from: link
+        ))
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: NSPoint(
+            x: link.visibleTextHitRect.maxX + 8,
+            y: link.visibleTextHitRect.midY
+        )))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(activationCount, 0)
+
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: link.visibleTextHitRect.center))
+        XCTAssertEqual(activationCount, 1)
+    }
+
     func testHoverLinkGeometryRefreshInstallsTrackingWhenAttachedToWindow() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 220, height: 60),

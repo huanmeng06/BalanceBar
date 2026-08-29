@@ -23,6 +23,19 @@ enum MenuCursorActivationExperiment {
             category: "ui.menu-cursor"
         )
     }
+
+    static func logHost(_ event: String, host: MenuHoverLinkHostView) {
+        guard isEnabled else { return }
+        let linkIdentifier = host.trackedLink.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+        let windowIdentifier = host.window.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+        let superviewIdentifier = host.superview.map { String(describing: ObjectIdentifier($0)) } ?? "nil"
+        let point = host.window.map { $0.mouseLocationOutsideOfEventStream } ?? NSEvent.mouseLocation
+        SwitchLog.write(
+            "menu-cursor-host event=\(event); host=\(ObjectIdentifier(host)); link=\(linkIdentifier); link_is_nil=\(host.trackedLink == nil); window=\(windowIdentifier); superview=\(superviewIdentifier); tracking_areas=\(host.trackingAreas.count); menu_tracking=\(host.isMenuTracking?() ?? false); mouse_point=\(NSStringFromPoint(point))",
+            level: .debug,
+            category: "ui.menu-cursor"
+        )
+    }
 }
 
 var dashboardUsesDarkAppearance: Bool {
@@ -577,27 +590,48 @@ final class HoverLinkTextField: NSTextField {
 final class MenuHoverLinkHostView: NSView {
     private weak var link: HoverLinkTextField?
     private var trackingAreaReference: NSTrackingArea?
+    var isMenuTracking: (() -> Bool)?
+
+    var trackedLink: HoverLinkTextField? { link }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        MenuCursorActivationExperiment.logHost("host-init", host: self)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        MenuCursorActivationExperiment.logHost("host-init", host: self)
+    }
 
     func track(_ link: HoverLinkTextField) {
         self.link = link
+        MenuCursorActivationExperiment.logHost("host-track-link", host: self)
         refreshTrackingArea()
         synchronizeHoverState()
     }
 
     override func updateTrackingAreas() {
+        MenuCursorActivationExperiment.logHost("host-updateTrackingAreas-before", host: self)
         removeTrackingAreaReference()
         super.updateTrackingAreas()
         installTrackingArea()
         synchronizeHoverState()
+        MenuCursorActivationExperiment.logHost("host-updateTrackingAreas-after", host: self)
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        MenuCursorActivationExperiment.logHost("host-viewDidMoveToWindow", host: self)
         refreshTrackingArea()
         synchronizeHoverState()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
+        MenuCursorActivationExperiment.logHost(
+            newWindow == nil ? "host-viewWillMoveToWindow:nil" : "host-viewWillMoveToWindow",
+            host: self
+        )
         if newWindow == nil {
             removeTrackingAreaReference()
             link?.clearHoverState()
@@ -606,10 +640,12 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        MenuCursorActivationExperiment.logHost("host-mouseEntered", host: self)
         forwardHover(from: event)
     }
 
     override func mouseMoved(with event: NSEvent) {
+        MenuCursorActivationExperiment.logHost("host-mouseMoved", host: self)
         forwardHover(from: event)
     }
 
@@ -618,15 +654,18 @@ final class MenuHoverLinkHostView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
+        MenuCursorActivationExperiment.logHost("host-mouseExited", host: self)
         link?.clearHoverState()
     }
 
     override func removeFromSuperview() {
-        tearDownTracking()
+        MenuCursorActivationExperiment.logHost("host-removeFromSuperview", host: self)
+        tearDownWindowTracking()
         super.removeFromSuperview()
     }
 
     func forwardHover(atHostPoint point: NSPoint) {
+        MenuCursorActivationExperiment.logHost("host-forwardHover", host: self)
         link?.updateHover(atHostPoint: point, in: self)
     }
 
@@ -669,10 +708,10 @@ final class MenuHoverLinkHostView: NSView {
         forwardHover(atHostPoint: point)
     }
 
-    private func tearDownTracking() {
+    private func tearDownWindowTracking() {
+        MenuCursorActivationExperiment.logHost("host-teardown-window", host: self)
         removeTrackingAreaReference()
         link?.clearHoverState()
-        link = nil
     }
 }
 
