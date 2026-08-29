@@ -1318,7 +1318,34 @@ test("source validation rejects duplicate PRs and Issue sources from another PR"
   );
 });
 
-test("workflow retries gh pr view and preserves shallow metadata after exhaustion", () => {
+test("workflow keeps broad PR discovery lightweight and enriches only selected PRs", () => {
+  const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
+  const listStart = workflow.indexOf("          gh pr list \\");
+  const listEnd = workflow.indexOf('> "$prs_json"', listStart);
+  assert.ok(listStart >= 0 && listEnd > listStart);
+  const discoveryCommand = workflow.slice(listStart, listEnd);
+
+  assert.match(discoveryCommand, /--limit 1000/);
+  assert.match(discoveryCommand, /--json number,mergeCommit/);
+  assert.doesNotMatch(
+    discoveryCommand,
+    /\b(commits|body|closingIssuesReferences|files|comments|diff|reviews|authors)\b/,
+  );
+
+  const enrichmentStart = workflow.indexOf('gh pr view "$pr_number"', listEnd);
+  assert.ok(enrichmentStart > listEnd);
+  const enrichmentCommand = workflow.slice(enrichmentStart, workflow.indexOf(
+    '                > "$pr_detail_tmp"',
+    enrichmentStart,
+  ));
+  assert.match(
+    enrichmentCommand,
+    /--json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits,files,changedFiles,additions,deletions/,
+  );
+  assert.match(workflow, /done < <\(jq -r '\.\[\]\.number' "\$selection_json"\)/);
+});
+
+test("workflow retries gh pr view and preserves release-range identity after exhaustion", () => {
   const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
   const functionStart = workflow.indexOf("          enrich_pr() {");
   const functionEnd = workflow.indexOf('\n          echo "Enriching selected PRs', functionStart);
@@ -1329,16 +1356,10 @@ test("workflow retries gh pr view and preserves shallow metadata after exhaustio
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-pr-view-"));
   const shallowPath = path.join(directory, "shallow.json");
   const detailPath = path.join(directory, "detail.json");
+  const fallbackPath = path.join(directory, "fallback.json");
   fs.writeFileSync(shallowPath, JSON.stringify([{
     number: 700,
-    title: "shallow title",
-    body: "shallow body",
-    url: "https://github.com/test/repo/pull/700",
-    mergedAt: "2026-08-30T00:00:00Z",
-    labels: [{ name: "bug" }],
-    closingIssuesReferences: [{ number: 701 }],
     mergeCommit: { oid: "merge-700" },
-    commits: [{ oid: "commit-700" }],
   }]));
   fs.writeFileSync(detailPath, JSON.stringify({
     number: 700,
@@ -1355,6 +1376,15 @@ test("workflow retries gh pr view and preserves shallow metadata after exhaustio
     additions: 0,
     deletions: 0,
   }));
+  fs.writeFileSync(fallbackPath, JSON.stringify({
+    number: 700,
+    title: "REST fallback title",
+    body: "REST fallback body",
+    html_url: "https://github.com/test/repo/pull/700",
+    merged_at: "2026-08-30T00:00:00Z",
+    labels: [{ name: "bug" }],
+    merge_commit_sha: "merge-700",
+  }));
 
   const runScenario = (mode) => {
     const script = `set -Eeuo pipefail
@@ -1362,12 +1392,15 @@ exec 2>&1
 RUNNER_TEMP=${JSON.stringify(directory)}
 GITHUB_REPOSITORY="test/repo"
 prs_json="$RUNNER_TEMP/shallow.json"
+fallback_path="$RUNNER_TEMP/fallback.json"
 enrichment_parallelism=4
 diff_context_bytes=12000
 pr_view_max_attempts=3
 pr_view_backoff_seconds=(1 3)
 GH_MODE=${JSON.stringify(mode)}
 view_calls=0
+api_calls=0
+api_path=""
 sleep_calls=0
 sleep() {
   sleep_calls=$((sleep_calls + 1))
@@ -1375,11 +1408,20 @@ sleep() {
 gh() {
   if [[ "$1" == "pr" && "$2" == "view" ]]; then
     view_calls=$((view_calls + 1))
-    if [[ "$GH_MODE" == "fail" || ( "$GH_MODE" == "retry" && "$view_calls" == 1 ) ]]; then
+    if [[ "$GH_MODE" == "fail" || "$GH_MODE" == "fallback" || ( "$GH_MODE" == "retry" && "$view_calls" == 1 ) ]]; then
       return 1
     fi
     cat "$RUNNER_TEMP/detail.json"
     return 0
+  fi
+  if [[ "$1" == "api" ]]; then
+    api_calls=$((api_calls + 1))
+    api_path="$2"
+    if [[ "$GH_MODE" == "fallback" ]]; then
+      cat "$fallback_path"
+      return 0
+    fi
+    return 1
   fi
   if [[ "$1" == "pr" && "$2" == "diff" ]]; then
     return 0
@@ -1388,7 +1430,7 @@ gh() {
 }
 ${functionDefinition}
 enrich_pr 700
-printf 'VIEW_CALLS=%s SLEEP_CALLS=%s\\n' "$view_calls" "$sleep_calls"
+printf 'VIEW_CALLS=%s API_CALLS=%s API_PATH=%s SLEEP_CALLS=%s\\n' "$view_calls" "$api_calls" "$api_path" "$sleep_calls"
 printf 'DETAIL='
 jq -c . "$RUNNER_TEMP/balancebar-pr-700-enriched.json"
 `;
@@ -1400,17 +1442,25 @@ jq -c . "$RUNNER_TEMP/balancebar-pr-700-enriched.json"
 
   try {
     const retryResult = runScenario("retry");
-    assert.match(retryResult, /VIEW_CALLS=2 SLEEP_CALLS=1/);
+    assert.match(retryResult, /VIEW_CALLS=2 API_CALLS=0 API_PATH= SLEEP_CALLS=1/);
     assert.match(retryResult, /retrying in 1s/);
     assert.match(retryResult, /"title":"enriched title"/);
     assert.doesNotMatch(retryResult, /fallback to shallow metadata/);
 
-    const fallbackResult = runScenario("fail");
-    assert.match(fallbackResult, /VIEW_CALLS=3 SLEEP_CALLS=2/);
+    const fallbackResult = runScenario("fallback");
+    assert.match(fallbackResult, /VIEW_CALLS=3 API_CALLS=1 API_PATH=repos\/test\/repo\/pulls\/700 SLEEP_CALLS=2/);
     assert.match(fallbackResult, /classification=github_pr_view_error attempts=3 retries=2/);
-    assert.match(fallbackResult, /fallback to shallow metadata/);
-    assert.match(fallbackResult, /"title":"shallow title"/);
+    assert.match(fallbackResult, /fallback to single PR metadata/);
+    assert.match(fallbackResult, /"title":"REST fallback title"/);
     assert.match(fallbackResult, /"mergeCommit":\{"oid":"merge-700"\}/);
+
+    const identityOnlyResult = runScenario("fail");
+    assert.match(identityOnlyResult, /VIEW_CALLS=3 API_CALLS=1 API_PATH=repos\/test\/repo\/pulls\/700 SLEEP_CALLS=2/);
+    assert.match(identityOnlyResult, /Could not fetch single PR metadata/);
+    assert.match(identityOnlyResult, /release-range identity only/);
+    assert.match(identityOnlyResult, /"number":700/);
+    assert.match(identityOnlyResult, /"mergeCommit":\{"oid":"merge-700"\}/);
+    assert.doesNotMatch(identityOnlyResult, /"title"/);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -1429,7 +1479,7 @@ test("release workflow keeps build, tag, and publish failures fatal", () => {
   assert.match(workflow, /pr_view_max_attempts=3/);
   assert.match(workflow, /pr_view_backoff_seconds=\(1 3\)/);
   assert.match(workflow, /github_pr_view_error/);
-  assert.match(workflow, /fallback to shallow metadata/);
+  assert.match(workflow, /fallback to single PR metadata/);
   assert.match(workflow, /enrichment_parallelism=4/);
   assert.match(workflow, /if jq -e[\s\S]+gh pr diff/);
   assert.match(workflow, /head -c "\$diff_context_bytes"/);

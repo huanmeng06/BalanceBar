@@ -208,7 +208,7 @@ jobs:
             --state merged \
             --base main \
             --limit 1000 \
-            --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits \
+            --json number,mergeCommit \
             > "$prs_json"
 
           event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
@@ -249,10 +249,31 @@ jobs:
             done
             if [[ "$pr_view_succeeded" != "true" ]]; then
               local retry_count=$((pr_view_max_attempts - 1))
-              echo "PR #$pr_number gh pr view failed classification=github_pr_view_error attempts=$pr_view_max_attempts retries=$retry_count; fallback to shallow metadata." >&2
-              jq --argjson pr_number "$pr_number" \
-                'map(select(.number == $pr_number))[0] // {number: $pr_number}' \
-                "$prs_json" > "$pr_detail"
+              echo "PR #$pr_number gh pr view failed classification=github_pr_view_error attempts=$pr_view_max_attempts retries=$retry_count; fallback to single PR metadata." >&2
+              local shallow_merge_commit
+              shallow_merge_commit="$(jq -r --argjson pr_number "$pr_number" \
+                'map(select(.number == $pr_number))[0] | (.mergeCommit.oid // .mergeCommit // empty) | if type == "string" then . else "" end' \
+                "$prs_json")"
+              local fallback_detail_tmp="$RUNNER_TEMP/balancebar-pr-${pr_number}.fallback.json"
+              if gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" \
+                --jq '{number, title, body, url: .html_url, mergedAt: .merged_at, labels, mergeCommit: (if .merge_commit_sha then {oid: .merge_commit_sha} else null end)}' \
+                > "$fallback_detail_tmp"; then
+                if [[ -n "$shallow_merge_commit" ]]; then
+                  jq --arg merge_commit "$shallow_merge_commit" \
+                    'if (.mergeCommit.oid // "") == "" then .mergeCommit = {oid: $merge_commit} else . end' \
+                    "$fallback_detail_tmp" > "$pr_detail"
+                else
+                  mv "$fallback_detail_tmp" "$pr_detail"
+                fi
+              else
+                echo "Could not fetch single PR metadata for PR #$pr_number; retaining release-range identity only." >&2
+                if [[ -n "$shallow_merge_commit" ]]; then
+                  jq -n --argjson pr_number "$pr_number" --arg merge_commit "$shallow_merge_commit" \
+                    '{number: $pr_number, mergeCommit: {oid: $merge_commit}}' > "$pr_detail"
+                else
+                  jq -n --argjson pr_number "$pr_number" '{number: $pr_number}' > "$pr_detail"
+                fi
+              fi
             fi
             local need_diff=false
             if jq -e \
