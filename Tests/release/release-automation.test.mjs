@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,6 +18,7 @@ import {
 } from "../../scripts/release/render-release-notes.mjs";
 import {
   AI_MAX_ATTEMPTS,
+  AI_MAX_OUTPUT_TOKENS,
   AI_MAX_RETRY_AFTER_MS,
   AI_REQUEST_TIMEOUT_MS,
   AI_RETRY_BACKOFF_MS,
@@ -29,6 +31,7 @@ import { buildReleaseContext } from "../../scripts/release/release-context.mjs";
 import {
   buildReleaseInput,
   getReleaseInputStats,
+  pullRequestsInRange,
   RELEASE_INPUT_LIMITS,
   serializedByteLength,
 } from "../../scripts/release/collect-release-input.mjs";
@@ -268,6 +271,7 @@ test("DeepSeek is the default provider and uses JSON chat completions", async ()
 
   const request = buildDeepSeekRequest(fixtureInput(), "deepseek-v4-pro");
   assert.equal(request.model, "deepseek-v4-pro");
+  assert.equal(request.max_tokens, AI_MAX_OUTPUT_TOKENS);
   assert.deepEqual(request.response_format, { type: "json_object" });
   assert.match(request.messages[0].content, /JSON/);
   assert.match(request.messages[0].content, /zhHans/);
@@ -331,6 +335,78 @@ test("DeepSeek empty output is diagnosed, retried, and falls back", async () => 
   assert.match(logger.lines.join("\n"), /request_payload_bytes/);
 });
 
+test("output truncated at the provider limit is classified and retried once", async () => {
+  const logger = captureLogger();
+  const delays = [];
+  let calls = 0;
+  let observedRequest;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    fetchImpl: async (_url, options) => {
+      calls += 1;
+      observedRequest = JSON.parse(options.body);
+      if (calls === 1) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: "response-truncated",
+            choices: [{
+              finish_reason: "length",
+              message: { content: '{"features":[' },
+            }],
+            usage: { prompt_tokens: 120, completion_tokens: 20_000, total_tokens: 20_120 },
+          }),
+        };
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(observedRequest.max_tokens, AI_MAX_OUTPUT_TOKENS);
+  assert.equal(calls, 2);
+  assert.deepEqual(delays, [1_000]);
+  assert.deepEqual(notes, fixtureNotes());
+  const log = logger.lines.join("\n");
+  assert.match(log, /"classification":"output_truncated"/);
+  assert.match(log, /"finish_reason":"length"/);
+  assert.match(log, /"total_tokens":20120/);
+  assert.match(log, /retrying attempt=2\/4/);
+});
+
+test("a second output truncation falls back without more truncation retries", async () => {
+  const logger = captureLogger();
+  const delays = [];
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    fetchImpl: async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ finish_reason: "length", message: { content: '{"fixes":[' } }],
+          usage: { completion_tokens: 20_000 },
+        }),
+      };
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(delays, [1_000]);
+  assert.deepEqual(notes, buildDeterministicReleaseNotes(fixtureInput()));
+  const log = logger.lines.join("\n");
+  assert.match(log, /using deterministic fallback classification=output_truncated attempts=2/);
+  assert.doesNotMatch(log, /retrying attempt=3/);
+});
+
 test("OpenAI remains available as an explicit provider", async () => {
   assert.equal(resolveAIProvider("openai"), "openai");
 
@@ -342,6 +418,7 @@ test("OpenAI remains available as an explicit provider", async () => {
     fetchImpl: async (url, options) => {
       observedUrl = url;
       const request = JSON.parse(options.body);
+      assert.equal(request.max_output_tokens, AI_MAX_OUTPUT_TOKENS);
       assert.equal(request.text.format.type, "json_schema");
       return {
         ok: true,
@@ -356,6 +433,47 @@ test("OpenAI remains available as an explicit provider", async () => {
 
   assert.equal(observedUrl, "https://api.openai.com/v1/responses");
   assert.deepEqual(notes, fixtureNotes());
+});
+
+test("OpenAI max-output truncation is retried once", async () => {
+  const logger = captureLogger();
+  const delays = [];
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "openai",
+    apiKey: "test-openai-key",
+    logger,
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    fetchImpl: async (_url, options) => {
+      calls += 1;
+      const request = JSON.parse(options.body);
+      assert.equal(request.max_output_tokens, AI_MAX_OUTPUT_TOKENS);
+      if (calls === 1) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: "incomplete",
+            incomplete_details: { reason: "max_output_tokens" },
+            usage: { output_tokens: AI_MAX_OUTPUT_TOKENS },
+            output_text: '{"features":[',
+          }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "completed", output_text: JSON.stringify(fixtureNotes()) }),
+      };
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(delays, [1_000]);
+  assert.deepEqual(notes, fixtureNotes());
+  const log = logger.lines.join("\n");
+  assert.match(log, /"classification":"output_truncated"/);
+  assert.match(log, /"finish_reason":"max_output_tokens"/);
 });
 
 test("transient provider failures retry once and then succeed", async () => {
@@ -981,6 +1099,68 @@ test("release input includes all PRs represented by compare commits", () => {
   assert.deepEqual(input.pullRequests.map((pullRequest) => pullRequest.number), [140, 141]);
 });
 
+test("local full git range selects PRs beyond the Compare API commit cap", () => {
+  const rangeCommitShas = Array.from({ length: 260 }, (_, index) => (
+    `range-commit-${String(index + 1).padStart(3, "0")}`
+  ));
+  const pullRequests = rangeCommitShas.map((sha, index) => ({
+    number: 1_000 + index + 1,
+    title: `Range change ${index + 1}`,
+    body: "Documented release-range change.",
+    mergeCommit: { oid: sha },
+    closingIssuesReferences: [],
+  }));
+  pullRequests.push({
+    number: 1_999,
+    title: "Outside release range",
+    body: "Must not be selected.",
+    mergeCommit: { oid: "outside-release-range" },
+    closingIssuesReferences: [],
+  });
+
+  const input = buildReleaseInput({
+    event: {
+      pull_request: {
+        number: 1_260,
+        title: "Current stable merge",
+        body: "Current stable merge.",
+        merged: true,
+        merge_commit_sha: rangeCommitShas[259],
+        closingIssuesReferences: [],
+      },
+    },
+    compare: {
+      commits: [
+        ...rangeCommitShas.slice(0, 250).map((sha) => ({ sha })),
+        { sha: "outside-release-range" },
+      ],
+    },
+    rangeCommitShas,
+    pullRequests,
+    repo: "huanmeng06/BalanceBar",
+    previousTag: "v1.2.0",
+    currentSha: rangeCommitShas[259],
+    version: "1.3.0",
+    tag: "v1.3.0",
+  });
+
+  assert.equal(input.pullRequests.length, 260);
+  assert.ok(input.pullRequests.some((pullRequest) => pullRequest.number === 1_251));
+  assert.ok(input.pullRequests.some((pullRequest) => pullRequest.number === 1_260));
+  assert.doesNotMatch(JSON.stringify(input.pullRequests), /Outside release range/);
+
+  const outsideEventSelection = pullRequestsInRange({
+    pullRequests,
+    compare: { commits: [{ sha: "outside-release-range" }] },
+    rangeCommitShas,
+    eventPullRequest: {
+      number: 1_999,
+      mergeCommit: "outside-release-range",
+    },
+  });
+  assert.equal(outsideEventSelection.some((pullRequest) => pullRequest.number === 1_999), false);
+});
+
 test("release input enriches only in-range PRs and explicitly linked Issues", () => {
   const longBody = "PR body ".repeat(2_000);
   const event = {
@@ -1138,6 +1318,104 @@ test("source validation rejects duplicate PRs and Issue sources from another PR"
   );
 });
 
+test("workflow retries gh pr view and preserves shallow metadata after exhaustion", () => {
+  const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
+  const functionStart = workflow.indexOf("          enrich_pr() {");
+  const functionEnd = workflow.indexOf('\n          echo "Enriching selected PRs', functionStart);
+  assert.ok(functionStart >= 0 && functionEnd > functionStart);
+  const functionDefinition = workflow
+    .slice(functionStart, functionEnd)
+    .replace(/^ {10}/gm, "");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "balancebar-pr-view-"));
+  const shallowPath = path.join(directory, "shallow.json");
+  const detailPath = path.join(directory, "detail.json");
+  fs.writeFileSync(shallowPath, JSON.stringify([{
+    number: 700,
+    title: "shallow title",
+    body: "shallow body",
+    url: "https://github.com/test/repo/pull/700",
+    mergedAt: "2026-08-30T00:00:00Z",
+    labels: [{ name: "bug" }],
+    closingIssuesReferences: [{ number: 701 }],
+    mergeCommit: { oid: "merge-700" },
+    commits: [{ oid: "commit-700" }],
+  }]));
+  fs.writeFileSync(detailPath, JSON.stringify({
+    number: 700,
+    title: "enriched title",
+    body: "enriched body",
+    url: "https://github.com/test/repo/pull/700",
+    mergedAt: "2026-08-30T00:00:00Z",
+    labels: [{ name: "bug" }],
+    closingIssuesReferences: [{ number: 701 }],
+    mergeCommit: { oid: "merge-700" },
+    commits: [{ oid: "commit-700" }],
+    files: [],
+    changedFiles: 0,
+    additions: 0,
+    deletions: 0,
+  }));
+
+  const runScenario = (mode) => {
+    const script = `set -Eeuo pipefail
+exec 2>&1
+RUNNER_TEMP=${JSON.stringify(directory)}
+GITHUB_REPOSITORY="test/repo"
+prs_json="$RUNNER_TEMP/shallow.json"
+enrichment_parallelism=4
+diff_context_bytes=12000
+pr_view_max_attempts=3
+pr_view_backoff_seconds=(1 3)
+GH_MODE=${JSON.stringify(mode)}
+view_calls=0
+sleep_calls=0
+sleep() {
+  sleep_calls=$((sleep_calls + 1))
+}
+gh() {
+  if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    view_calls=$((view_calls + 1))
+    if [[ "$GH_MODE" == "fail" || ( "$GH_MODE" == "retry" && "$view_calls" == 1 ) ]]; then
+      return 1
+    fi
+    cat "$RUNNER_TEMP/detail.json"
+    return 0
+  fi
+  if [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    return 0
+  fi
+  return 1
+}
+${functionDefinition}
+enrich_pr 700
+printf 'VIEW_CALLS=%s SLEEP_CALLS=%s\\n' "$view_calls" "$sleep_calls"
+printf 'DETAIL='
+jq -c . "$RUNNER_TEMP/balancebar-pr-700-enriched.json"
+`;
+    return execFileSync("bash", ["-c", script], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    });
+  };
+
+  try {
+    const retryResult = runScenario("retry");
+    assert.match(retryResult, /VIEW_CALLS=2 SLEEP_CALLS=1/);
+    assert.match(retryResult, /retrying in 1s/);
+    assert.match(retryResult, /"title":"enriched title"/);
+    assert.doesNotMatch(retryResult, /fallback to shallow metadata/);
+
+    const fallbackResult = runScenario("fail");
+    assert.match(fallbackResult, /VIEW_CALLS=3 SLEEP_CALLS=2/);
+    assert.match(fallbackResult, /classification=github_pr_view_error attempts=3 retries=2/);
+    assert.match(fallbackResult, /fallback to shallow metadata/);
+    assert.match(fallbackResult, /"title":"shallow title"/);
+    assert.match(fallbackResult, /"mergeCommit":\{"oid":"merge-700"\}/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("release workflow keeps build, tag, and publish failures fatal", () => {
   const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
   assert.match(workflow, /set -Eeuo pipefail/);
@@ -1146,6 +1424,12 @@ test("release workflow keeps build, tag, and publish failures fatal", () => {
   assert.match(workflow, /gh release create "\$TAG"/);
   assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
   assert.match(workflow, /generate-release-notes\.mjs/);
+  assert.match(workflow, /git rev-list "\$\{PREVIOUS_TAG\}\.\.\$\{MERGE_SHA\}" > "\$range_commits_file"/);
+  assert.match(workflow, /--range-commits "\$range_commits_file"/);
+  assert.match(workflow, /pr_view_max_attempts=3/);
+  assert.match(workflow, /pr_view_backoff_seconds=\(1 3\)/);
+  assert.match(workflow, /github_pr_view_error/);
+  assert.match(workflow, /fallback to shallow metadata/);
   assert.match(workflow, /enrichment_parallelism=4/);
   assert.match(workflow, /if jq -e[\s\S]+gh pr diff/);
   assert.match(workflow, /head -c "\$diff_context_bytes"/);

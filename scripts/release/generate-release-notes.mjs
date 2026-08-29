@@ -69,6 +69,7 @@ export const AI_MAX_ATTEMPTS = 4;
 export const AI_RETRY_BACKOFF_MS = Object.freeze([1_000, 3_000, 8_000]);
 export const AI_REQUEST_TIMEOUT_MS = 75_000;
 export const AI_MAX_RETRY_AFTER_MS = 15_000;
+export const AI_MAX_OUTPUT_TOKENS = 20_000;
 
 const RELEASE_NOTES_INSTRUCTIONS = [
   "You write release notes for the BalanceBar macOS app.",
@@ -142,7 +143,7 @@ export function buildOpenAIRequest(input, model) {
         schema: RELEASE_NOTES_SCHEMA,
       },
     },
-    max_output_tokens: 5000,
+    max_output_tokens: AI_MAX_OUTPUT_TOKENS,
   };
 }
 
@@ -165,7 +166,7 @@ export function buildDeepSeekRequest(input, model) {
       { role: "user", content: JSON.stringify(bounded) },
     ],
     response_format: { type: "json_object" },
-    max_tokens: 5000,
+    max_tokens: AI_MAX_OUTPUT_TOKENS,
   };
 }
 
@@ -289,6 +290,7 @@ function diagnosticFor({
   body,
   requestPayloadBytes,
   requestTimeoutMs,
+  maxOutputTokens,
   classification,
 }) {
   const choice = body?.choices?.[0];
@@ -306,12 +308,19 @@ function diagnosticFor({
     requestId: responseHeader(response, ["x-request-id", "request-id"])
       ?? safeDiagnosticText(body?.id ?? body?.request_id ?? body?.requestId, 120)
       ?? null,
-    finishReason: safeDiagnosticText(choice?.finish_reason ?? body?.finish_reason ?? body?.status, 80)
+    finishReason: safeDiagnosticText(
+      choice?.finish_reason
+        ?? body?.finish_reason
+        ?? body?.incomplete_details?.reason
+        ?? body?.status,
+      80,
+    )
       ?? null,
     usage: safeUsage(body?.usage) ?? null,
     choices: Array.isArray(body?.choices) ? body.choices.length : null,
     requestPayloadBytes,
     requestTimeoutMs: Number.isFinite(Number(requestTimeoutMs)) ? Number(requestTimeoutMs) : null,
+    maxOutputTokens: Number.isFinite(Number(maxOutputTokens)) ? Number(maxOutputTokens) : null,
     retryAfterMs: Number(response?.status) === 429 ? retryAfterMilliseconds(response) : null,
     classification,
     providerErrorCode: safeDiagnosticText(providerError.code ?? providerError.type ?? body?.code, 120) ?? null,
@@ -354,6 +363,25 @@ function networkClassification(error) {
     return "network_timeout";
   }
   return "network_error";
+}
+
+function outputTruncationReason(body) {
+  const finishReason = body?.choices?.[0]?.finish_reason ?? body?.finish_reason;
+  const incompleteReason = body?.incomplete_details?.reason ?? body?.incompleteReason;
+  const reasonText = `${finishReason ?? ""} ${incompleteReason ?? ""}`;
+  if (!containsAny(reasonText, [
+    "length",
+    "max_tokens",
+    "max_output_tokens",
+    "max token",
+    "token_limit",
+    "token limit",
+    "output truncated",
+    "truncated",
+  ])) {
+    return null;
+  }
+  return safeDiagnosticText(finishReason ?? incompleteReason, 80) ?? "length";
 }
 
 function responseFailureClassification(response, body) {
@@ -431,6 +459,7 @@ function createAIError({
   body,
   requestPayloadBytes,
   requestTimeoutMs,
+  maxOutputTokens,
   classification,
   retryable,
   message,
@@ -446,6 +475,7 @@ function createAIError({
       body,
       requestPayloadBytes,
       requestTimeoutMs,
+      maxOutputTokens,
       classification,
     }),
     cause,
@@ -515,6 +545,7 @@ async function requestProviderReleaseNotes(input, context) {
     requestBody,
     requestPayloadBytes,
     requestTimeoutMs,
+    maxOutputTokens,
   } = context;
   const endpoint = provider === "deepseek"
     ? `${baseUrl}/chat/completions`
@@ -596,6 +627,7 @@ async function requestProviderReleaseNotes(input, context) {
     body,
     requestPayloadBytes,
     requestTimeoutMs,
+    maxOutputTokens,
     classification: "provider_response",
   });
 
@@ -630,6 +662,17 @@ async function requestProviderReleaseNotes(input, context) {
       classification: "provider_resource_exhausted",
       retryable: true,
       message: `${provider} reported insufficient system resources`,
+    });
+  }
+  const truncationReason = outputTruncationReason(body);
+  if (truncationReason) {
+    throw createAIError({
+      ...context,
+      response,
+      body,
+      classification: "output_truncated",
+      retryable: true,
+      message: `${provider} output was truncated by the provider (${truncationReason})`,
     });
   }
   if (provider === "openai" && body?.status && body.status !== "completed") {
@@ -1037,6 +1080,7 @@ export async function requestReleaseNotes(input, {
       requestBody,
       requestPayloadBytes,
       requestTimeoutMs: resolvedTimeoutMs,
+      maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
     };
   } catch (error) {
     const wrapped = error instanceof ReleaseNotesAIError
@@ -1061,8 +1105,11 @@ export async function requestReleaseNotes(input, {
 
   logInputSummary(logger, bounded, context.requestPayloadBytes);
   let lastError;
+  let outputTruncationRetries = 0;
+  let attemptsUsed = 0;
   const attempts = resolvedAttempts(maxAttempts);
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    attemptsUsed = attempt;
     try {
       const result = await requestProviderReleaseNotes(bounded, context);
       log(logger, "info", `release-notes-ai: success provider=${context.provider} model=${context.model} attempt=${attempt}`);
@@ -1082,8 +1129,14 @@ export async function requestReleaseNotes(input, {
           cause: error,
         });
       logDiagnostic(logger, attempt, lastError);
-      if (!lastError.retryable || attempt >= attempts) {
+      const isOutputTruncated = lastError.classification === "output_truncated";
+      if (!lastError.retryable
+        || attempt >= attempts
+        || (isOutputTruncated && outputTruncationRetries >= 1)) {
         break;
+      }
+      if (isOutputTruncated) {
+        outputTruncationRetries += 1;
       }
       const backoff = retryDelayMilliseconds(lastError, attempt);
       log(logger, "warn",
@@ -1095,7 +1148,7 @@ export async function requestReleaseNotes(input, {
 
   if (fallbackOnFailure) {
     log(logger, "warn",
-      `release-notes-ai: using deterministic fallback classification=${lastError.classification} attempts=${attempts}`,
+      `release-notes-ai: using deterministic fallback classification=${lastError.classification} attempts=${attemptsUsed}`,
     );
     return buildDeterministicReleaseNotes(bounded);
   }

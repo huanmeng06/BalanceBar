@@ -249,24 +249,50 @@ export function tagVersion(tag) {
   return match ? match[1] : "0.0.0";
 }
 
-export function pullRequestsInRange({ pullRequests, compare, eventPullRequest }) {
-  const compareCommitShas = new Set(
-    (compare?.commits ?? []).map((commit) => commit.sha).filter(Boolean),
-  );
+function commitShaSet(values) {
+  return new Set((values ?? [])
+    .map((value) => (typeof value === "string" ? value : value?.sha ?? value?.oid))
+    .filter((sha) => typeof sha === "string" && sha.length > 0));
+}
+
+export function pullRequestsInRange({
+  pullRequests,
+  compare,
+  rangeCommitShas,
+  eventPullRequest,
+}) {
+  // The workflow supplies the complete local `git rev-list` result. Keep the
+  // compare response fallback for callers/tests that use this module directly.
+  const membershipCommitShas = rangeCommitShas === undefined
+    ? commitShaSet(compare?.commits)
+    : commitShaSet(rangeCommitShas);
   const eventNumber = Number(eventPullRequest?.number);
+  const eventCommitShas = [
+    eventPullRequest?.mergeCommit,
+    ...(eventPullRequest?.commitShas ?? []),
+  ].filter((sha) => typeof sha === "string" && sha.length > 0);
+  const eventIsInRange = rangeCommitShas === undefined
+    ? Boolean(eventPullRequest)
+    : eventCommitShas.some((sha) => membershipCommitShas.has(sha));
 
   const selected = pullRequests.filter((pullRequest) => {
     const mergeCommit = pullRequest.mergeCommit?.oid ?? pullRequest.mergeCommit;
-    return Number(pullRequest.number) === eventNumber
-      || (mergeCommit && compareCommitShas.has(mergeCommit))
-      || (pullRequest.commitShas ?? []).some((sha) => compareCommitShas.has(sha));
+    return (rangeCommitShas === undefined && Number(pullRequest.number) === eventNumber)
+      || (mergeCommit && membershipCommitShas.has(mergeCommit))
+      || (pullRequest.commitShas ?? []).some((sha) => membershipCommitShas.has(sha));
   });
+
+  if (eventIsInRange
+    && eventPullRequest
+    && !selected.some((pullRequest) => Number(pullRequest.number) === eventNumber)) {
+    selected.push(eventPullRequest);
+  }
 
   if (selected.length > 0) {
     return selected;
   }
 
-  return eventPullRequest ? [eventPullRequest] : [];
+  return rangeCommitShas === undefined && eventPullRequest ? [eventPullRequest] : [];
 }
 
 function cloneJson(value) {
@@ -391,6 +417,7 @@ export function getReleaseInputStats(input) {
 export function buildReleaseInput({
   event,
   compare = {},
+  rangeCommitShas,
   pullRequests = [],
   issues = [],
   repo,
@@ -407,6 +434,7 @@ export function buildReleaseInput({
   const selectedPullRequests = pullRequestsInRange({
     pullRequests: normalisedPullRequests,
     compare,
+    rangeCommitShas,
     eventPullRequest,
   });
   const deduplicatedPullRequests = [
@@ -458,15 +486,30 @@ function writeJson(filePath, value) {
   }
 }
 
+function readLines(filePath) {
+  if (!filePath) {
+    return undefined;
+  }
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Release range commit file not found: ${filePath}`);
+  }
+  return fs.readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function main() {
   const options = parseArguments(process.argv.slice(2));
   const event = readJson(options.event, {});
   const compare = readJson(options.compare, {});
+  const rangeCommitShas = readLines(options["range-commits"]);
   const pullRequests = readJson(options.prs, []);
   const issues = readJson(options.issues, []);
   const input = buildReleaseInput({
     event,
     compare,
+    rangeCommitShas,
     pullRequests,
     issues,
     repo: options.repo ?? process.env.GITHUB_REPOSITORY,

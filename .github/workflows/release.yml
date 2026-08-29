@@ -183,6 +183,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           compare_json="$RUNNER_TEMP/balancebar-release-compare.json"
+          range_commits_file="$RUNNER_TEMP/balancebar-release-range-commits.txt"
           prs_json="$RUNNER_TEMP/balancebar-release-prs.json"
           selection_json="$RUNNER_TEMP/balancebar-release-selection.json"
           enriched_prs_json="$RUNNER_TEMP/balancebar-release-enriched-prs.json"
@@ -191,6 +192,12 @@ jobs:
           input_json="$RUNNER_TEMP/balancebar-release-input.json"
           enrichment_parallelism=4
           diff_context_bytes=12000
+          pr_view_max_attempts=3
+          pr_view_backoff_seconds=(1 3)
+
+          git rev-list "${PREVIOUS_TAG}..${MERGE_SHA}" > "$range_commits_file"
+          range_commit_count="$(wc -l < "$range_commits_file" | tr -d '[:space:]')"
+          echo "Local release-range commit membership contains $range_commit_count commit(s)."
 
           gh api \
             "repos/$GITHUB_REPOSITORY/compare/${PREVIOUS_TAG}...${MERGE_SHA}" \
@@ -201,13 +208,14 @@ jobs:
             --state merged \
             --base main \
             --limit 1000 \
-            --json number,mergeCommit,commits \
+            --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits \
             > "$prs_json"
 
           event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
           node scripts/release/collect-release-input.mjs \
             --event "$event_path" \
             --compare "$compare_json" \
+            --range-commits "$range_commits_file" \
             --prs "$prs_json" \
             --repo "$GITHUB_REPOSITORY" \
             --previous-tag "$PREVIOUS_TAG" \
@@ -219,12 +227,33 @@ jobs:
           enrich_pr() {
             local pr_number="$1"
             local pr_detail="$RUNNER_TEMP/balancebar-pr-${pr_number}.json"
+            local pr_detail_tmp="$RUNNER_TEMP/balancebar-pr-${pr_number}.view.json"
             local pr_diff="$RUNNER_TEMP/balancebar-pr-${pr_number}.diff"
             local pr_enriched="$RUNNER_TEMP/balancebar-pr-${pr_number}-enriched.json"
-            gh pr view "$pr_number" \
-              --repo "$GITHUB_REPOSITORY" \
-              --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits,files,changedFiles,additions,deletions \
-              > "$pr_detail"
+            local pr_view_succeeded=false
+            local pr_view_attempt=0
+            for ((pr_view_attempt=1; pr_view_attempt<=pr_view_max_attempts; pr_view_attempt+=1)); do
+              if gh pr view "$pr_number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits,files,changedFiles,additions,deletions \
+                > "$pr_detail_tmp"; then
+                mv "$pr_detail_tmp" "$pr_detail"
+                pr_view_succeeded=true
+                break
+              fi
+              if (( pr_view_attempt < pr_view_max_attempts )); then
+                local retry_delay="${pr_view_backoff_seconds[$((pr_view_attempt - 1))]}"
+                echo "PR #$pr_number gh pr view failed classification=github_pr_view_error attempt=$pr_view_attempt/$pr_view_max_attempts; retrying in ${retry_delay}s." >&2
+                sleep "$retry_delay"
+              fi
+            done
+            if [[ "$pr_view_succeeded" != "true" ]]; then
+              local retry_count=$((pr_view_max_attempts - 1))
+              echo "PR #$pr_number gh pr view failed classification=github_pr_view_error attempts=$pr_view_max_attempts retries=$retry_count; fallback to shallow metadata." >&2
+              jq --argjson pr_number "$pr_number" \
+                'map(select(.number == $pr_number))[0] // {number: $pr_number}' \
+                "$prs_json" > "$pr_detail"
+            fi
             local need_diff=false
             if jq -e \
               '(((.body // "") | gsub("[[:space:]]"; "") | length) < 240) and (((.files // []) | length) > 0) and (((.files // []) | length) <= 12)' \
@@ -317,6 +346,7 @@ jobs:
           node scripts/release/collect-release-input.mjs \
             --event "$event_path" \
             --compare "$compare_json" \
+            --range-commits "$range_commits_file" \
             --prs "$enriched_prs_json" \
             --issues "$issue_details_json" \
             --repo "$GITHUB_REPOSITORY" \
