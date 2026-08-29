@@ -80,11 +80,11 @@ struct LaunchAtLoginState: Equatable {
 
     private static func defaultNotice(for status: LaunchAtLoginStatus) -> LaunchAtLoginNotice {
         switch status {
-        case .enabled, .notRegistered:
+        case .enabled, .notRegistered, .notFound:
             return .none
         case .requiresApproval:
             return .requiresApproval
-        case .notFound, .unknown:
+        case .unknown:
             return .unavailable
         }
     }

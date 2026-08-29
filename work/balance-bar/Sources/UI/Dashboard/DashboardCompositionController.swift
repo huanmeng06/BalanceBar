@@ -31,7 +31,8 @@ struct DashboardCompositionActions {
     let isSortAlphabetically: () -> Bool
     let setSortAlphabetically: (Bool) -> Void
     let onToggle: (String, Bool) -> Void
-    let onLaunchAtLogin: () -> Void
+    let onLaunchAtLogin: (Bool) -> Void
+    let onOpenLaunchAtLoginSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
     let onOffsetAdjust: (String, Int) -> Void
@@ -85,6 +86,7 @@ final class DashboardCompositionController {
         actions: DashboardPreferencePageActions(
             onToggle: actions.onToggle,
             onLaunchAtLogin: actions.onLaunchAtLogin,
+            onOpenLaunchAtLoginSettings: actions.onOpenLaunchAtLoginSettings,
             onInterval: actions.onInterval,
             onBalanceDisplayThresholdChanged: actions.onBalanceDisplayThresholdChanged,
             onOffsetAdjust: actions.onOffsetAdjust,

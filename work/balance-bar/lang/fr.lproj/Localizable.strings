@@ -221,12 +221,7 @@
 "dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "BalanceBar doit être autorisé dans Réglages Système";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour cette option. Vérifiez Réglages Système → Général → Éléments d’ouverture, puis réessayez.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Impossible de lire l’état de l’élément d’ouverture";
-"launch_at_login.approval_alert.title" = "Autorisation requise dans Réglages Système";
-"launch_at_login.approval_alert.body" = "BalanceBar a été ajouté aux éléments d’ouverture, mais vous devez encore l’autoriser à se lancer automatiquement à la connexion.";
-"launch_at_login.unavailable_alert.title" = "Accéder aux éléments d’ouverture ?";
-"launch_at_login.unavailable_alert.body" = "BalanceBar ne peut pas confirmer l’état de son élément d’ouverture. Voulez-vous ouvrir les réglages pour vérifier ou ajouter BalanceBar ?";
-"launch_at_login.open_settings" = "Ouvrir les éléments d’ouverture";
-"launch_at_login.cancel" = "Annuler";
+"dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Ouvrir les réglages";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Fournisseur actuel : %1$@";
 "dashboard.general.and.refresh.pages.system" = "Système";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Toutes les 1 s";

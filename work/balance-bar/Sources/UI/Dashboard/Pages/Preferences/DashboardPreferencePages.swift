@@ -2,7 +2,8 @@ import AppKit
 
 struct DashboardPreferencePageActions {
     let onToggle: (String, Bool) -> Void
-    let onLaunchAtLogin: () -> Void
+    let onLaunchAtLogin: (Bool) -> Void
+    let onOpenLaunchAtLoginSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
     let onOffsetAdjust: (String, Int) -> Void
@@ -54,6 +55,7 @@ final class DashboardPreferencePages {
         self.launchAtLoginController = launchAtLoginController
         relay.onToggle = actions.onToggle
         relay.onLaunchAtLogin = actions.onLaunchAtLogin
+        relay.onOpenLaunchAtLoginSettings = actions.onOpenLaunchAtLoginSettings
         relay.onInterval = actions.onInterval
         relay.onOffsetAdjust = actions.onOffsetAdjust
         relay.onOffsetValue = actions.onOffsetValue

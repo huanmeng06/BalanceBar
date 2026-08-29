@@ -221,12 +221,7 @@
 "dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "需要在系统设置中允许 BalanceBar";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "无法更新“登录时启动”。请检查“系统设置”→“通用”→“登录项”后重试。";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "暂时无法读取登录项状态";
-"launch_at_login.approval_alert.title" = "需要在系统设置中允许";
-"launch_at_login.approval_alert.body" = "BalanceBar 已添加为登录项，但仍需要你在系统设置中允许它登录时自动启动。";
-"launch_at_login.unavailable_alert.title" = "前往登录项设置？";
-"launch_at_login.unavailable_alert.body" = "BalanceBar 暂时无法确认登录项状态。是否打开系统登录项设置，检查或添加 BalanceBar？";
-"launch_at_login.open_settings" = "打开登录项设置";
-"launch_at_login.cancel" = "取消";
+"dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "打开设置";
 "dashboard.general.and.refresh.pages.current_provider_value" = "当前服务商：%1$@";
 "dashboard.general.and.refresh.pages.system" = "系统";
 "dashboard.general.and.refresh.pages.every_1_sec" = "每 1 秒";

@@ -297,6 +297,8 @@ final class DashboardGeneralPage {
     private var updateBadge: NSView?
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
+    private var launchAtLoginOpenSettingsButton: NSButton?
+    private var launchAtLoginControls: DashboardAdaptiveControlsStackView?
 
     func make(_ input: Input) -> NSView {
         let openButton = NSButton(
@@ -322,16 +324,29 @@ final class DashboardGeneralPage {
         let launchAtLoginSubtitleLabel = NSTextField(
             wrappingLabelWithString: launchAtLoginSubtitle(for: input.launchAtLoginState)
         )
+        let launchAtLoginOpenSettingsButton = NSButton(
+            title: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.openLaunchAtLoginSettings(_:))
+        )
+        launchAtLoginOpenSettingsButton.bezelStyle = .rounded
+        let launchAtLoginControls = DashboardAdaptiveControlsStackView(
+            views: [launchAtLoginSwitch, launchAtLoginOpenSettingsButton]
+        )
+        launchAtLoginControls.orientation = .horizontal
+        launchAtLoginControls.alignment = .centerY
+        launchAtLoginControls.spacing = 8
         apply(
             input.launchAtLoginState,
             to: launchAtLoginSwitch,
-            subtitle: launchAtLoginSubtitleLabel
+            subtitle: launchAtLoginSubtitleLabel,
+            openSettingsButton: launchAtLoginOpenSettingsButton
         )
         let launchAtLoginRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
             subtitle: launchAtLoginSubtitle(for: input.launchAtLoginState),
             subtitleLabel: launchAtLoginSubtitleLabel,
-            control: launchAtLoginSwitch
+            control: launchAtLoginControls
         )
 
         let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
@@ -473,6 +488,8 @@ final class DashboardGeneralPage {
         self.updateBadge = updateBadge
         self.launchAtLoginSwitch = launchAtLoginSwitch
         self.launchAtLoginSubtitleLabel = launchAtLoginSubtitleLabel
+        self.launchAtLoginOpenSettingsButton = launchAtLoginOpenSettingsButton
+        self.launchAtLoginControls = launchAtLoginControls
 
         let app = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesApplication), rows: [
             DashboardSettingsComponents.makeSettingsRow(
@@ -495,8 +512,17 @@ final class DashboardGeneralPage {
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
-        guard let launchAtLoginSwitch, let launchAtLoginSubtitleLabel else { return }
-        apply(state, to: launchAtLoginSwitch, subtitle: launchAtLoginSubtitleLabel)
+        guard let launchAtLoginSwitch,
+              let launchAtLoginSubtitleLabel,
+              let launchAtLoginOpenSettingsButton
+        else { return }
+        apply(
+            state,
+            to: launchAtLoginSwitch,
+            subtitle: launchAtLoginSubtitleLabel,
+            openSettingsButton: launchAtLoginOpenSettingsButton
+        )
+        launchAtLoginControls?.invalidateLayoutAfterContentChange()
         launchAtLoginSwitch.superview?.needsLayout = true
         launchAtLoginSubtitleLabel.superview?.needsLayout = true
         launchAtLoginSubtitleLabel.superview?.superview?.needsLayout = true
@@ -527,7 +553,8 @@ final class DashboardGeneralPage {
     private func apply(
         _ state: LaunchAtLoginState,
         to launchAtLoginSwitch: NSSwitch,
-        subtitle: NSTextField
+        subtitle: NSTextField,
+        openSettingsButton: NSButton
     ) {
         switch state.status {
         case .enabled:
@@ -537,12 +564,13 @@ final class DashboardGeneralPage {
             launchAtLoginSwitch.state = .off
             launchAtLoginSwitch.isEnabled = true
         case .requiresApproval:
-            launchAtLoginSwitch.state = .mixed
+            launchAtLoginSwitch.state = .on
             launchAtLoginSwitch.isEnabled = true
         case .notFound, .unknown:
             launchAtLoginSwitch.state = .off
             launchAtLoginSwitch.isEnabled = true
         }
+        openSettingsButton.isHidden = state.status != .requiresApproval
         subtitle.stringValue = launchAtLoginSubtitle(for: state)
         subtitle.invalidateIntrinsicContentSize()
     }

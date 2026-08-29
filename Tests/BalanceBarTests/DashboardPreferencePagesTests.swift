@@ -75,8 +75,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let relay = DashboardPreferencePageRelay()
-        var launchAtLoginActionCount = 0
-        relay.onLaunchAtLogin = { launchAtLoginActionCount += 1 }
+        var launchAtLoginRequests: [Bool] = []
+        relay.onLaunchAtLogin = { launchAtLoginRequests.append($0) }
         let controller = DashboardGeneralPage()
         let page = controller.make(.init(
             preferences: AppPreferences(defaults: defaults),
@@ -92,8 +92,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        let openSettingsButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == "Open Settings" }
+        )
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertTrue(openSettingsButton.isHidden)
         XCTAssertTrue(labels.contains { $0.stringValue == "Launch at Login" })
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
@@ -101,11 +107,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         launchSwitch.state = .on
         relay.launchAtLogin(launchSwitch)
-        XCTAssertEqual(launchAtLoginActionCount, 1)
+        XCTAssertEqual(launchAtLoginRequests, [true])
 
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .requiresApproval))
-        XCTAssertEqual(launchSwitch.state, .mixed)
+        XCTAssertEqual(launchSwitch.state, .on)
         XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertFalse(openSettingsButton.isHidden)
         XCTAssertTrue(labels.contains {
             $0.stringValue == "BalanceBar needs approval in System Settings"
         })
@@ -129,8 +136,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .notFound))
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertTrue(openSettingsButton.isHidden)
+        XCTAssertTrue(labels.contains {
+            $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
+        })
         relay.launchAtLogin(launchSwitch)
-        XCTAssertEqual(launchAtLoginActionCount, 2)
+        XCTAssertEqual(launchAtLoginRequests, [true, false])
     }
 
     func testLaunchAtLoginRowKeepsLongLocalizedTextAndControlSeparatedAcrossWidths() throws {
@@ -150,7 +161,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defaults.removePersistentDomain(forName: suiteName)
             defer { defaults.removePersistentDomain(forName: suiteName) }
 
-            let page = DashboardGeneralPage().make(.init(
+            let controller = DashboardGeneralPage()
+            let page = controller.make(.init(
                 preferences: AppPreferences(defaults: defaults),
                 currentProviderName: "OpenAI",
                 relay: DashboardPreferencePageRelay(),
@@ -161,6 +173,13 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 descendants(of: page)
                     .compactMap { $0 as? NSSwitch }
                     .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
+            )
+            let openSettingsButton = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSButton }
+                    .first {
+                        $0.title == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings)
+                    }
             )
             let subtitle = try XCTUnwrap(
                 descendants(of: page)
@@ -207,6 +226,27 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     row.frame.height,
                     DashboardSettingsComponents.standardRowHeight,
                     "launch row preserves its minimum height for \(language) at \(width)"
+                )
+
+                controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .requiresApproval))
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+                let refreshedLabelsFrame = labels.convert(labels.bounds, to: row)
+                let controls = try XCTUnwrap(launchSwitch.superview)
+                let controlsFrame = controls.convert(controls.bounds, to: row)
+                let buttonFrame = openSettingsButton.convert(openSettingsButton.bounds, to: row)
+                XCTAssertFalse(openSettingsButton.isHidden)
+                XCTAssertTrue(
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(controlsFrame),
+                    "approval controls stay inside the row for \(language) at \(width)"
+                )
+                XCTAssertTrue(
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(buttonFrame),
+                    "approval button stays inside the row for \(language) at \(width)"
+                )
+                XCTAssertFalse(
+                    refreshedLabelsFrame.intersects(controlsFrame),
+                    "approval controls do not overlap labels for \(language) at \(width)"
                 )
             }
         }

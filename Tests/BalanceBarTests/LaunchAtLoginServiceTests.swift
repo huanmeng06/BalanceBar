@@ -55,26 +55,6 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         }
     }
 
-    private final class MockGuidancePresenter: LaunchAtLoginGuidancePresenting {
-        private(set) var guidance: LaunchAtLoginGuidance?
-        private var completion: ((Bool) -> Void)?
-
-        func present(
-            _ guidance: LaunchAtLoginGuidance,
-            for window: NSWindow,
-            completion: @escaping (Bool) -> Void
-        ) {
-            self.guidance = guidance
-            self.completion = completion
-        }
-
-        func complete(openSettings: Bool) {
-            let completion = completion
-            self.completion = nil
-            completion?(openSettings)
-        }
-    }
-
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
     }
@@ -108,6 +88,26 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         XCTAssertEqual(service.unregisterCallCount, 1)
         XCTAssertEqual(service.statusReadCount, 1)
         XCTAssertEqual(state, LaunchAtLoginState(status: .notRegistered))
+    }
+
+    func testControllerRegistersFromNotFoundState() {
+        let service = MockLaunchAtLoginService(status: .notFound)
+        let controller = LaunchAtLoginController(service: service)
+
+        let state = controller.setEnabled(true)
+
+        XCTAssertEqual(service.registerCallCount, 1)
+        XCTAssertEqual(state.status, .enabled)
+    }
+
+    func testControllerUnregistersFromRequiresApprovalState() {
+        let service = MockLaunchAtLoginService(status: .requiresApproval)
+        let controller = LaunchAtLoginController(service: service)
+
+        let state = controller.setEnabled(false)
+
+        XCTAssertEqual(service.unregisterCallCount, 1)
+        XCTAssertEqual(state.status, .notRegistered)
     }
 
     func testControllerReloadsActualStateAfterOperationError() {
@@ -161,51 +161,13 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 1)
     }
 
-    func testSpecialStatesPresentGuidanceWithoutRegistrationAndOpenSettingsOnlyAfterConfirmation() throws {
-        for (status, expectedGuidance) in [
-            (LaunchAtLoginStatus.requiresApproval, LaunchAtLoginGuidance.requiresApproval),
-            (.notFound, .unavailable),
-            (.unknown, .unavailable)
-        ] {
-            let service = MockLaunchAtLoginService(status: status)
-            let presenter = MockGuidancePresenter()
-            let appDelegate = AppDelegate(
-                repository: CCSwitchRepository(
-                    databaseURL: URL(fileURLWithPath: "/nonexistent/issue-262-guidance-\(status).db")
-                ),
-                launchAtLoginService: service,
-                launchAtLoginGuidancePresenter: presenter
-            )
-            defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
-            _ = try XCTUnwrap(
-                appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
-            )
-
-            appDelegate.handleLaunchAtLoginActionForTesting()
-
-            XCTAssertEqual(presenter.guidance, expectedGuidance)
-            XCTAssertEqual(service.registerCallCount, 0)
-            XCTAssertEqual(service.unregisterCallCount, 0)
-            XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
-
-            presenter.complete(openSettings: false)
-            XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
-
-            appDelegate.handleLaunchAtLoginActionForTesting()
-            presenter.complete(openSettings: true)
-            XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 1)
-        }
-    }
-
-    func testDedicatedActionUsesActualNormalStateAndApplicationActivationReloadsExternalChanges() throws {
+    func testDedicatedActionUsesRequestedStateWithoutGuidanceAndApplicationActivationReloadsExternalChanges() throws {
         let service = MockLaunchAtLoginService(status: .notRegistered)
-        let presenter = MockGuidancePresenter()
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-262-activation.db")
             ),
-            launchAtLoginService: service,
-            launchAtLoginGuidancePresenter: presenter
+            launchAtLoginService: service
         )
         defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
         let window = try XCTUnwrap(
@@ -217,9 +179,10 @@ final class LaunchAtLoginServiceTests: XCTestCase {
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
 
-        appDelegate.handleLaunchAtLoginActionForTesting()
+        appDelegate.handleLaunchAtLoginActionForTesting(enabled: true)
         XCTAssertEqual(service.registerCallCount, 1)
         XCTAssertEqual(service.unregisterCallCount, 0)
+        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
         XCTAssertEqual(launchSwitch.state, .on)
 
         service.currentStatus = .notRegistered
@@ -227,10 +190,44 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         XCTAssertEqual(launchSwitch.state, .off)
 
         service.currentStatus = .enabled
-        appDelegate.handleLaunchAtLoginActionForTesting()
+        appDelegate.handleLaunchAtLoginActionForTesting(enabled: false)
         XCTAssertEqual(service.unregisterCallCount, 1)
         XCTAssertEqual(launchSwitch.state, .off)
-        XCTAssertNil(presenter.guidance)
+        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
+    }
+
+    func testRegisterRequiresApprovalKeepsSwitchOnWithInlineSettingsAction() throws {
+        let service = MockLaunchAtLoginService(status: .notRegistered)
+        service.statusAfterRegisterError = .requiresApproval
+        service.registerError = TestError.operationFailed
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-262-approval.db")
+            ),
+            launchAtLoginService: service
+        )
+        defer { appDelegate.dashboardCompositionForTesting.teardownForTesting() }
+        let window = try XCTUnwrap(
+            appDelegate.dashboardCompositionForTesting.makeWindowForTesting(showing: .general)
+        )
+        let controls = descendants(of: try XCTUnwrap(window.contentView))
+        let launchSwitch = try XCTUnwrap(
+            controls.compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
+        )
+        let openSettings = try XCTUnwrap(
+            controls.compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings) }
+        )
+
+        appDelegate.handleLaunchAtLoginActionForTesting(enabled: true)
+
+        XCTAssertEqual(service.registerCallCount, 1)
+        XCTAssertEqual(launchSwitch.state, .on)
+        XCTAssertTrue(openSettings.isHidden == false)
+        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
+        openSettings.performClick(nil)
+        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 1)
     }
 
     func testLoginItemStateDoesNotUseAppPreferencesOrMigrationKeys() {
