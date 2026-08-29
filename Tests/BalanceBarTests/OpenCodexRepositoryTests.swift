@@ -1654,6 +1654,214 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
+    func testOpenCodexRefreshCoordinatorSerializesConfirmationAndClear() {
+        let transport = MutableOpenCodexTransport(candidate: candidate)
+        let repository = OpenCodexRepository(
+            transport: transport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: NoTokenProvider()
+        )
+        let recorder = OpenCodexCoordinatorRecorder()
+        let recognized = expectation(description: "recognized OpenCodex state")
+        let coordinator = makeRefreshCoordinator(
+            repository: repository,
+            recorder: recorder,
+            onRecognized: { recognized.fulfill() }
+        )
+
+        coordinator.refresh(
+            providerID: "fixture-provider",
+            providerName: "Fixture Provider",
+            candidate: candidate,
+            client: .codex,
+            reason: .initial,
+            switched: true
+        )
+        wait(for: [recognized], timeout: 2)
+
+        XCTAssertTrue(coordinator.isConfirmed(providerID: "fixture-provider", candidate: candidate))
+        XCTAssertEqual(coordinator.currentCandidate, candidate)
+
+        let resultLock = NSLock()
+        var confirmationResults: [Bool] = []
+        DispatchQueue.concurrentPerform(iterations: 100) { _ in
+            let result = coordinator.isConfirmed(
+                providerID: "fixture-provider",
+                candidate: candidate
+            )
+            resultLock.lock()
+            confirmationResults.append(result)
+            resultLock.unlock()
+        }
+        XCTAssertEqual(confirmationResults.count, 100)
+        XCTAssertTrue(confirmationResults.allSatisfy { $0 })
+
+        coordinator.clear()
+
+        XCTAssertFalse(coordinator.isConfirmed(providerID: "fixture-provider", candidate: candidate))
+        XCTAssertNil(coordinator.currentCandidate)
+        let events = recorder.snapshot()
+        XCTAssertEqual(events.recognizedStateCount, 1)
+        XCTAssertGreaterThanOrEqual(events.clearedStateCount, 1)
+    }
+
+    func testOpenCodexRefreshCoordinatorIgnoresRecognitionAfterClear() {
+        let gatedTransport = GatedOpenCodexTransport(candidate: candidate)
+        let repository = OpenCodexRepository(
+            transport: gatedTransport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: NoTokenProvider()
+        )
+        let recorder = OpenCodexCoordinatorRecorder()
+        let coordinator = makeRefreshCoordinator(
+            repository: repository,
+            recorder: recorder
+        )
+
+        coordinator.refresh(
+            providerID: "fixture-provider",
+            providerName: "Fixture Provider",
+            candidate: candidate,
+            client: .codex,
+            reason: .initial,
+            switched: true
+        )
+        XCTAssertEqual(gatedTransport.waitForHealthRequest(), .success)
+
+        coordinator.clear()
+        gatedTransport.releaseHealthRequest(at: 0)
+
+        // A synchronous clear drains the callback queued by releaseHealthRequest.
+        coordinator.clear()
+
+        let events = recorder.snapshot()
+        XCTAssertEqual(events.recognizedStateCount, 0)
+        XCTAssertEqual(events.renderCount, 0)
+        XCTAssertEqual(events.standardRefreshCount, 0)
+        XCTAssertFalse(coordinator.isConfirmed(providerID: "fixture-provider", candidate: candidate))
+    }
+
+    func testOpenCodexRefreshCoordinatorKeepsOnlyLatestRecognitionGeneration() {
+        let gatedTransport = GatedOpenCodexTransport(candidate: candidate)
+        let repository = OpenCodexRepository(
+            transport: gatedTransport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: NoTokenProvider()
+        )
+        let recorder = OpenCodexCoordinatorRecorder()
+        let secondRecognition = expectation(description: "latest recognition")
+        let coordinator = makeRefreshCoordinator(
+            repository: repository,
+            recorder: recorder,
+            onRecognized: { secondRecognition.fulfill() }
+        )
+
+        for _ in 0..<2 {
+            coordinator.refresh(
+                providerID: "fixture-provider",
+                providerName: "Fixture Provider",
+                candidate: candidate,
+                client: .codex,
+                reason: .scheduled,
+                switched: false
+            )
+        }
+        XCTAssertEqual(gatedTransport.waitForHealthRequest(), .success)
+        XCTAssertEqual(gatedTransport.waitForHealthRequest(), .success)
+
+        // Complete the newer read first. The older completion must not replace it.
+        gatedTransport.releaseHealthRequest(at: 1)
+        wait(for: [secondRecognition], timeout: 2)
+        gatedTransport.releaseHealthRequest(at: 0)
+
+        // Drain the older completion without changing the recognized-event count.
+        coordinator.clear()
+        let events = recorder.snapshot()
+        XCTAssertEqual(events.recognizedStateCount, 1)
+        XCTAssertEqual(events.renderCount, 1)
+    }
+
+    func testOpenCodexRefreshCoordinatorTeardownInvalidatesLateCallbacksAndFutureWork() {
+        let gatedTransport = GatedOpenCodexTransport(candidate: candidate)
+        let repository = OpenCodexRepository(
+            transport: gatedTransport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: NoTokenProvider()
+        )
+        let recorder = OpenCodexCoordinatorRecorder()
+        let coordinator = makeRefreshCoordinator(
+            repository: repository,
+            recorder: recorder
+        )
+
+        coordinator.refresh(
+            providerID: "fixture-provider",
+            providerName: "Fixture Provider",
+            candidate: candidate,
+            client: .codex,
+            reason: .initial,
+            switched: true
+        )
+        XCTAssertEqual(gatedTransport.waitForHealthRequest(), .success)
+
+        coordinator.teardown()
+        gatedTransport.releaseHealthRequest(at: 0)
+        coordinator.teardown()
+        coordinator.refresh(
+            providerID: "fixture-provider",
+            providerName: "Fixture Provider",
+            candidate: candidate,
+            client: .codex,
+            reason: .manual,
+            switched: false
+        )
+        coordinator.teardown()
+
+        let events = recorder.snapshot()
+        XCTAssertEqual(events.recognizedStateCount, 0)
+        XCTAssertEqual(events.renderCount, 0)
+        XCTAssertFalse(coordinator.isConfirmed(providerID: "fixture-provider", candidate: candidate))
+        XCTAssertNil(coordinator.currentCandidate)
+    }
+
+    private func makeRefreshCoordinator(
+        repository: OpenCodexRepository,
+        recorder: OpenCodexCoordinatorRecorder,
+        onRecognized: (() -> Void)? = nil
+    ) -> OpenCodexRefreshCoordinator {
+        let currentProvider = CCSwitchProvider(
+            id: "fixture-provider",
+            name: "Fixture Provider",
+            isOfficial: false,
+            query: nil,
+            queryFailure: nil,
+            openCodexCandidate: candidate
+        )
+        return OpenCodexRefreshCoordinator(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/open-codex-coordinator.db")
+            ),
+            officialQuotaClient: OfficialQuotaClient(
+                credentialReader: NilOfficialQuotaCredentials()
+            ),
+            balanceAPIClient: BalanceAPIClient(),
+            openCodexRepository: repository,
+            queue: DispatchQueue(label: "fixture.open-codex-refresh"),
+            actions: OpenCodexRefreshActions(
+                activeClient: { .codex },
+                currentProvider: { _ in currentProvider },
+                setState: { providerID, state in
+                    recorder.recordState(providerID: providerID, state: state)
+                    if state != nil { onRecognized?() }
+                },
+                setCards: { recorder.recordCards($0) },
+                refreshMenu: {},
+                render: { _, _, _ in recorder.recordRender() },
+                refreshStandard: { _, _, _, _ in recorder.recordStandardRefresh() }
+            )
+        )
+    }
+
     private func makeCardState(
         selectors: [String],
         descriptors: [String: OpenCodexProviderDescriptor]
@@ -1776,6 +1984,69 @@ private final class CountingTokenProvider: OpenCodexAdminTokenProvider {
     }
 }
 
+private final class NilOfficialQuotaCredentials: OfficialQuotaCredentialReading {
+    func codexAccessToken() -> String? { nil }
+    func codexAccountProfile() -> CodexAccountProfile? { nil }
+    func claudeAccessToken() -> String? { nil }
+}
+
+private final class OpenCodexCoordinatorRecorder {
+    struct Snapshot {
+        let recognizedStateCount: Int
+        let clearedStateCount: Int
+        let renderCount: Int
+        let standardRefreshCount: Int
+        let nonEmptyCardCount: Int
+    }
+
+    private let lock = NSLock()
+    private var recognizedStateCount = 0
+    private var clearedStateCount = 0
+    private var renderCount = 0
+    private var standardRefreshCount = 0
+    private var nonEmptyCardCount = 0
+
+    func recordState(providerID: String, state: OpenCodexRuntimeState?) {
+        lock.lock()
+        defer { lock.unlock() }
+        if state == nil {
+            clearedStateCount += 1
+        } else {
+            recognizedStateCount += 1
+        }
+    }
+
+    func recordCards(_ cards: [OpenCodexModelCard]) {
+        lock.lock()
+        defer { lock.unlock() }
+        if !cards.isEmpty { nonEmptyCardCount += 1 }
+    }
+
+    func recordRender() {
+        lock.lock()
+        renderCount += 1
+        lock.unlock()
+    }
+
+    func recordStandardRefresh() {
+        lock.lock()
+        standardRefreshCount += 1
+        lock.unlock()
+    }
+
+    func snapshot() -> Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return Snapshot(
+            recognizedStateCount: recognizedStateCount,
+            clearedStateCount: clearedStateCount,
+            renderCount: renderCount,
+            standardRefreshCount: standardRefreshCount,
+            nonEmptyCardCount: nonEmptyCardCount
+        )
+    }
+}
+
 private final class StubConfigReader: OpenCodexConfigReader {
     let snapshot: OpenCodexLocalConfigSnapshot?
 
@@ -1796,6 +2067,44 @@ private final class AlwaysFailTransport: OpenCodexHTTPTransport {
         DispatchQueue.global().async {
             completion(.failure(OpenCodexRepositoryError.managementUnavailable))
         }
+    }
+}
+
+private final class GatedOpenCodexTransport: OpenCodexHTTPTransport {
+    typealias Completion = (Result<OpenCodexHTTPResponse, Error>) -> Void
+    private let delegate: MutableOpenCodexTransport
+    private let lock = NSLock()
+    private var pendingHealthRequests: [(URLRequest, Completion)] = []
+    private let healthRequestSemaphore = DispatchSemaphore(value: 0)
+
+    init(candidate: OpenCodexEndpointCandidate) {
+        delegate = MutableOpenCodexTransport(candidate: candidate)
+    }
+
+    func send(
+        _ request: URLRequest,
+        completion: @escaping Completion
+    ) {
+        guard request.url?.path == "/healthz" else {
+            delegate.send(request, completion: completion)
+            return
+        }
+
+        lock.lock()
+        pendingHealthRequests.append((request, completion))
+        lock.unlock()
+        healthRequestSemaphore.signal()
+    }
+
+    func waitForHealthRequest() -> DispatchTimeoutResult {
+        healthRequestSemaphore.wait(timeout: .now() + 2)
+    }
+
+    func releaseHealthRequest(at index: Int) {
+        lock.lock()
+        let request = pendingHealthRequests.remove(at: index)
+        lock.unlock()
+        delegate.send(request.0, completion: request.1)
     }
 }
 
