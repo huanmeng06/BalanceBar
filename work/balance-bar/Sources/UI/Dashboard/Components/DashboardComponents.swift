@@ -297,6 +297,12 @@ final class HoverLinkTextField: NSTextField {
         updateVisibleTextHitRect()
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        refreshTrackingArea()
+        synchronizeHoverStateWithMouseLocation()
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateVisibleTextHitRect()
@@ -339,6 +345,10 @@ final class HoverLinkTextField: NSTextField {
         setHovering(isPointInsideVisibleText(for: event))
     }
 
+    override func mouseMoved(with event: NSEvent) {
+        setHovering(isPointInsideVisibleText(for: event))
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard isPointInsideVisibleText(for: event) else {
             setHovering(false)
@@ -358,6 +368,19 @@ final class HoverLinkTextField: NSTextField {
     override func removeFromSuperview() {
         tearDownInteraction()
         super.removeFromSuperview()
+    }
+
+    /// Menu item hosts use their own tracking area because NSMenu may keep
+    /// movement in its tracking loop instead of delivering it to this view.
+    /// The point is deliberately converted before reusing the same visible
+    /// glyph hit test used by the normal Dashboard tracking path.
+    func updateHover(atHostPoint point: NSPoint, in host: NSView) {
+        let pointInLink = convert(point, from: host)
+        setHovering(visibleTextHitRect.contains(pointInLink))
+    }
+
+    func clearHoverState() {
+        setHovering(false)
     }
 
     private func installTrackingArea() {
@@ -429,10 +452,14 @@ final class HoverLinkTextField: NSTextField {
         guard previousRect != visibleTextHitRect else { return }
 
         window?.invalidateCursorRects(for: self)
-        guard trackingAreaReference != nil else { return }
+        refreshTrackingArea()
+        synchronizeHoverStateWithMouseLocation()
+    }
+
+    private func refreshTrackingArea() {
+        guard trackingAreaReference != nil || window != nil else { return }
         removeTrackingAreaReference()
         installTrackingArea()
-        synchronizeHoverStateWithMouseLocation()
     }
 
     private func calculateVisibleTextHitRect() -> NSRect {
@@ -511,6 +538,111 @@ final class HoverLinkTextField: NSTextField {
         attributedStringValue = NSAttributedString(string: text, attributes: attributes)
         isApplyingStyle = false
         updateVisibleTextHitRect()
+    }
+}
+
+/// A local event bridge for one Provider link hosted by an `NSMenuItem.view`.
+/// It intentionally tracks the card only to forward movement; the link still
+/// owns the glyph-only hover and activation boundary.
+final class MenuHoverLinkHostView: NSView {
+    private weak var link: HoverLinkTextField?
+    private var trackingAreaReference: NSTrackingArea?
+
+    func track(_ link: HoverLinkTextField) {
+        self.link = link
+        refreshTrackingArea()
+        synchronizeHoverState()
+    }
+
+    override func updateTrackingAreas() {
+        removeTrackingAreaReference()
+        super.updateTrackingAreas()
+        installTrackingArea()
+        synchronizeHoverState()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        refreshTrackingArea()
+        synchronizeHoverState()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            removeTrackingAreaReference()
+            link?.clearHoverState()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        forwardHover(from: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        forwardHover(from: event)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        forwardHover(from: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        link?.clearHoverState()
+    }
+
+    override func removeFromSuperview() {
+        tearDownTracking()
+        super.removeFromSuperview()
+    }
+
+    func forwardHover(atHostPoint point: NSPoint) {
+        link?.updateHover(atHostPoint: point, in: self)
+    }
+
+    private func installTrackingArea() {
+        guard link != nil, !bounds.isEmpty else { return }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingAreaReference = area
+    }
+
+    private func refreshTrackingArea() {
+        guard trackingAreaReference != nil || window != nil else { return }
+        removeTrackingAreaReference()
+        installTrackingArea()
+    }
+
+    private func removeTrackingAreaReference() {
+        if let trackingAreaReference {
+            removeTrackingArea(trackingAreaReference)
+            self.trackingAreaReference = nil
+        }
+    }
+
+    private func forwardHover(from event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        forwardHover(atHostPoint: point)
+    }
+
+    private func synchronizeHoverState() {
+        guard let window else {
+            link?.clearHoverState()
+            return
+        }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        forwardHover(atHostPoint: point)
+    }
+
+    private func tearDownTracking() {
+        removeTrackingAreaReference()
+        link?.clearHoverState()
+        link = nil
     }
 }
 
