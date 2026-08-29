@@ -283,6 +283,7 @@ final class LocalizationTests: XCTestCase {
             XCTAssertEqual(AppLanguage.portuguese.localizedTitle(using: language), "Português")
             XCTAssertEqual(AppLanguage.russian.localizedTitle(using: language), "Русский")
             XCTAssertEqual(AppLanguage.italian.localizedTitle(using: language), "Italiano")
+            XCTAssertEqual(AppLanguage.english.localizedTitle(using: language), "English")
             let rendered = tr(
                 .keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue,
                 arguments: ["1.0", "1.1"],
@@ -538,6 +539,27 @@ final class LocalizationTests: XCTestCase {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
         XCTAssertEqual(expectedKeys.count, 433)
+        let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
+
+        func keySequence(from text: String) -> [String] {
+            text.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.hasPrefix("\""),
+                      let equals = trimmed.range(of: "\" = ") else {
+                    return nil
+                }
+                return String(trimmed.dropFirst().prefix(through: trimmed.index(before: equals.lowerBound)))
+            }
+        }
+
+        let englishURL = try XCTUnwrap(
+            testBundle.url(forResource: "en", withExtension: "lproj")
+        ).appendingPathComponent("Localizable.strings")
+        let englishData = try Data(contentsOf: englishURL)
+        let englishText = try XCTUnwrap(
+            String(data: englishData, encoding: .utf16) ?? String(data: englishData, encoding: .utf8)
+        )
+        let expectedKeySequence = keySequence(from: englishText)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -547,17 +569,214 @@ final class LocalizationTests: XCTestCase {
             let text = try XCTUnwrap(
                 String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
             )
-            let actualKeys = Set(
-                text.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+            let actualKeySequence = keySequence(from: text)
+            let actualKeys = Set(actualKeySequence)
+            XCTAssertEqual(actualKeys, expectedKeys, "resource keys for \(language)")
+            if newLanguages.contains(language) {
+                XCTAssertEqual(actualKeySequence, expectedKeySequence, "resource key order for \(language)")
+            }
+        }
+    }
+
+    func testNewLanguageResourcesRejectKnownMechanicalHybridFragments() throws {
+        let newLanguages: [AppLanguage] = [.portuguese, .russian, .italian]
+        let forbiddenFragments = [
+            "Tibo's",
+            "AbrirAI",
+            "ApriAI",
+            "Вверхdates",
+            "Para cimadates",
+            "Sudates",
+            "Reserva Luna",
+            "Резерв Luna",
+            "Riserva Luna",
+            "Attuale provider",
+            "Disponibile provider",
+            "Доступно провайдер",
+            "Stato sincronizzazione",
+            "Ora del ripristino Visualizzazione",
+            "Tra 6 s",
+            "Tra 12 s",
+            "Tra 30 s",
+            "Через 6 с",
+            "Через 12 с",
+            "Через 30 с",
+            "Follows CC Switch automatically",
+            "Too many requests",
+            "Restore Defaults",
+            "Quick links",
+            "Changes apply",
+            "No live data",
+            "received yet",
+            "OpenCodex switch did",
+            "database verification",
+            "Contact ",
+            "maintainer",
+            "Every "
+        ]
+
+        for (directory, language) in resourceDirectories where newLanguages.contains(language) {
+            let resourceURL = try XCTUnwrap(
+                testBundle.url(forResource: directory, withExtension: "lproj")
+            ).appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: resourceURL)
+            let text = try XCTUnwrap(
+                String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
+            )
+            let values = Dictionary(
+                uniqueKeysWithValues: text.split(whereSeparator: \.isNewline).compactMap { line -> (String, String)? in
                     let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard trimmed.hasPrefix("\""),
-                          let equals = trimmed.range(of: "\" = ") else {
+                          let separator = trimmed.range(of: "\" = \""),
+                          trimmed.hasSuffix("\";") else {
                         return nil
                     }
-                    return String(trimmed.dropFirst().prefix(through: trimmed.index(before: equals.lowerBound)))
+                    let keyStart = trimmed.index(after: trimmed.startIndex)
+                    let keyEnd = trimmed.index(before: separator.lowerBound)
+                    let valueStart = separator.upperBound
+                    let valueEnd = trimmed.index(trimmed.endIndex, offsetBy: -2)
+                    return (
+                        String(trimmed[keyStart...keyEnd]),
+                        String(trimmed[valueStart..<valueEnd])
+                    )
                 }
             )
-            XCTAssertEqual(actualKeys, expectedKeys, "resource keys for \(language)")
+            for key in LocalizationKey.allCases {
+                let value = try XCTUnwrap(values[key.rawKey], "missing raw value for \(language.rawValue) key \(key.rawKey)")
+                for fragment in forbiddenFragments {
+                    XCTAssertFalse(
+                        value.localizedCaseInsensitiveContains(fragment),
+                        "\(language.rawValue) key \(key.rawKey) contains suspicious fragment \(fragment): \(value)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testParameterizedAndSemanticContractsHoldAcrossAllTwelveLanguages() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let languages: [AppLanguage] = [
+            .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong,
+            .english, .japanese, .korean, .spanish, .portuguese, .french, .german,
+            .russian, .italian
+        ]
+        let parameterizedCases: [(LocalizationKey, [String])] = [
+            (.keySnapshotValueValue, ["OpenAI", "87%"]),
+            (.keySnapshotLastRefreshedValue, ["19:30"]),
+            (.keySnapshotValueRemainingValueValue, ["OpenAI", "87", "7-Day Quota"]),
+            (.keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue, ["1.0", "1.1"]),
+            (.keyDashboardGeneralAndRefreshPagesDownloadingValue, ["12.5"]),
+            (.keyProviderRefreshCoordinatorOfficialValueValue, ["OpenAI", "network error"]),
+            (.keyLunaReserveRemainingValue, ["45"]),
+            (.keyLunaReserveResetValue, ["1h30m"])
+        ]
+
+        for language in languages {
+            for (key, arguments) in parameterizedCases {
+                let rendered = store.localized(key: key, language: language, arguments: arguments)
+                XCTAssertFalse(rendered.hasPrefix("⟦"), "missing localized format for \(key) in \(language)")
+                for argument in arguments {
+                    XCTAssertTrue(rendered.contains(argument), "missing argument \(argument) for \(key) in \(language)")
+                }
+                for index in 1...arguments.count {
+                    XCTAssertFalse(
+                        rendered.contains("%\(index)$@"),
+                        "unrendered placeholder %\(index)$@ for \(key) in \(language)"
+                    )
+                }
+            }
+
+            let subtitle = store.localizedSubtitle(
+                key: .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
+                language: language,
+                arguments: ["\u{00A0}-\u{00A0}10.0\u{00A0}pt"]
+            )
+            XCTAssertFalse(subtitle.text.contains(LocalizationSemanticMarker.semanticStart))
+            XCTAssertEqual(subtitle.semanticGroups.count, 1, "semantic group for \(language)")
+            XCTAssertEqual(subtitle.atomicGroups.count, 1, "atomic interpolation for \(language)")
+            XCTAssertEqual(
+                subtitle.lineBreakBeforeSemanticGroups,
+                subtitle.semanticGroups,
+                "semantic suffix should start on a new line for \(language)"
+            )
+        }
+    }
+
+    func testAllTwelveResourcesPreserveFormatAndSemanticMarkerContracts() throws {
+        func loadRawValues(directory: String) throws -> [String: String] {
+            let resourceURL = try XCTUnwrap(
+                testBundle.url(forResource: directory, withExtension: "lproj")
+            ).appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: resourceURL)
+            let text = try XCTUnwrap(
+                String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
+            )
+            return Dictionary(
+                uniqueKeysWithValues: text.split(whereSeparator: \.isNewline).compactMap { line -> (String, String)? in
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard trimmed.hasPrefix("\""),
+                          let separator = trimmed.range(of: "\" = \""),
+                          trimmed.hasSuffix("\";") else {
+                        return nil
+                    }
+                    let keyStart = trimmed.index(after: trimmed.startIndex)
+                    let keyEnd = trimmed.index(before: separator.lowerBound)
+                    let valueStart = separator.upperBound
+                    let valueEnd = trimmed.index(trimmed.endIndex, offsetBy: -2)
+                    return (
+                        String(trimmed[keyStart...keyEnd]),
+                        String(trimmed[valueStart..<valueEnd])
+                    )
+                }
+            )
+        }
+
+        let englishValues = try loadRawValues(directory: "en")
+        let placeholderRegex = try NSRegularExpression(pattern: "%[0-9]+\\$@")
+        let formattingMarkers = [
+            "%%",
+            "\\n",
+            LocalizationSemanticMarker.lineBreakBeforeSemantic,
+            LocalizationSemanticMarker.semanticStart,
+            LocalizationSemanticMarker.semanticEnd,
+            LocalizationSemanticMarker.atomicStart,
+            LocalizationSemanticMarker.atomicEnd
+        ]
+        let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
+
+        func placeholderTokens(in value: String) -> [String] {
+            let nsValue = value as NSString
+            return placeholderRegex.matches(
+                in: value,
+                range: NSRange(location: 0, length: nsValue.length)
+            ).map { nsValue.substring(with: $0.range) }.sorted()
+        }
+
+        func markerCount(_ marker: String, in value: String) -> Int {
+            value.components(separatedBy: marker).count - 1
+        }
+
+        for (directory, language) in resourceDirectories {
+            let values = try loadRawValues(directory: directory)
+            for key in LocalizationKey.allCases {
+                let english = try XCTUnwrap(englishValues[key.rawKey])
+                let localized = try XCTUnwrap(values[key.rawKey])
+                XCTAssertEqual(
+                    placeholderTokens(in: localized),
+                    placeholderTokens(in: english),
+                    "placeholder contract for \(key.rawKey) in \(language)"
+                )
+                for marker in formattingMarkers {
+                    if marker == "%%" && !newLanguages.contains(language) {
+                        continue
+                    }
+                    XCTAssertEqual(
+                        markerCount(marker, in: localized),
+                        markerCount(marker, in: english),
+                        "format/semantic marker \(marker) for \(key.rawKey) in \(language)"
+                    )
+                }
+            }
         }
     }
 

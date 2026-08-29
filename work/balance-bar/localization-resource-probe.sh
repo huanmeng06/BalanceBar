@@ -36,6 +36,26 @@ for localization_directory in "${localization_directories[@]}"; do
         || die "$localization_directory contains duplicate keys"
     [[ "$resource_keys" == "$source_keys" ]] \
         || die "$localization_directory key set differs from LocalizationKey"
+
+    case "$localization_directory" in
+        pt.lproj)
+            forbidden_pattern="Tibo's|AbrirAI|Para cimadates|^Do não mostrar$|Reserva Luna|Follows CC Switch automatically|Official cota|Too many|Restore Defaults|Quick links|Preview|Font Size|Vertical position|main window|Changes apply|No live data|received yet|OpenCodex switch|database verification|Unrecognized|Contact .*maintainer|Every [0-9]"
+            ;;
+        ru.lproj)
+            forbidden_pattern="Tibo's|Вверхdates|ОткрытьAI|Резерв Luna|Доступно провайдер|Через [0-9]+ с|Follows CC Switch automatically|Official квота|Too many|Restore Defaults|Quick links|Preview|Font Size|Vertical position|main window|Changes apply|No live data|received yet|OpenCodex switch|database verification|Unrecognized|Contact .*maintainer|Every [0-9]"
+            ;;
+        it.lproj)
+            forbidden_pattern="Tibo's|Sudates|ApriAI|Riserva Luna|^Ufficiale %|Attuale provider|Disponibile provider|Stato sincronizzazione|Ora del ripristino Visualizzazione|Tra [0-9]+ s|Follows CC Switch automatically|Official quota|Too many|Restore Defaults|Quick links|Preview|Font Size|Vertical position|main window|Changes apply|No live data|received yet|OpenCodex switch|database verification|Unrecognized|Contact .*maintainer|Every [0-9]"
+            ;;
+        *)
+            forbidden_pattern=""
+            ;;
+    esac
+    if [[ -n "$forbidden_pattern" ]] \
+        && sed -nE 's/^"[^"]+" = "(.*)";$/\1/p' "$localization_file" \
+            | grep -Eiq "$forbidden_pattern"; then
+        die "$localization_directory contains suspicious hybrid or mechanically corrupted translation text"
+    fi
 done
 
 if [[ -n "$bundle_root" ]]; then
