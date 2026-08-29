@@ -1059,11 +1059,187 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(link.trackingAreas.count, 1)
         XCTAssertEqual(link.trackingAreas[0].rect, link.visibleTextHitRect)
         XCTAssertTrue(link.trackingAreas[0].options.contains(.cursorUpdate))
-        XCTAssertTrue(link.trackingAreas[0].options.contains(.activeAlways))
+        XCTAssertTrue(link.trackingAreas[0].options.contains(.activeInKeyWindow))
+        XCTAssertFalse(link.trackingAreas[0].options.contains(.activeAlways))
         XCTAssertFalse(link.trackingAreas[0].options.contains(.inVisibleRect))
 
         link.updateTrackingAreas()
         XCTAssertEqual(link.trackingAreas.count, 1)
+    }
+
+    func testMenuHostForwardsCoordinatesThroughVisibleGlyphHitTest() {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 40, y: 30, width: 220, height: 20))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 20, y: 0, width: 180, height: 20)
+        host.addSubview(link)
+        link.layout()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView?.addSubview(host)
+        host.track(link)
+        host.updateTrackingAreas()
+
+        XCTAssertEqual(link.interactionMode, .menuHosted)
+        XCTAssertEqual(link.trackingAreas.count, 0)
+        XCTAssertEqual(host.trackingAreas.count, 1)
+        XCTAssertTrue(host.trackingAreas[0].options.contains(.mouseMoved))
+        XCTAssertFalse(host.trackingAreas[0].options.contains(.cursorUpdate))
+        XCTAssertTrue(host.trackingAreas[0].options.contains(.activeAlways))
+
+        let cursorBefore = NSCursor.current
+
+        let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
+        host.forwardHover(atHostPoint: glyphPoint)
+        XCTAssertTrue(NSCursor.current.isEqual(cursorBefore))
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: link.visibleTextHitRect.center))
+        XCTAssertTrue(NSCursor.current.isEqual(cursorBefore))
+
+        let blankPoint = host.convert(
+            NSPoint(x: link.visibleTextHitRect.maxX + 12, y: link.visibleTextHitRect.midY),
+            from: link
+        )
+        host.forwardHover(atHostPoint: blankPoint)
+        XCTAssertTrue(NSCursor.current.isEqual(cursorBefore))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+    }
+
+    func testMenuHostHoverRemainsStableAcrossRepeatedMovementAndBoundaryCrossings() {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 20, y: 2, width: 180, height: 20)
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        host.updateTrackingAreas()
+
+        let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
+        let blankPoint = host.convert(
+            NSPoint(x: link.visibleTextHitRect.maxX + 12, y: link.visibleTextHitRect.midY),
+            from: link
+        )
+        for _ in 0..<30 {
+            host.mouseMoved(with: makeMouseEvent(type: .mouseMoved, location: glyphPoint))
+            XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+            host.mouseMoved(with: makeMouseEvent(type: .mouseMoved, location: blankPoint))
+            XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+            host.mouseMoved(with: makeMouseEvent(type: .mouseMoved, location: glyphPoint))
+            XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        }
+    }
+
+    func testMenuHostTrackingRefreshAndTeardownAreStable() {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 20))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = host.bounds
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+
+        host.updateTrackingAreas()
+        host.updateTrackingAreas()
+        XCTAssertEqual(host.trackingAreas.count, 1)
+
+        let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
+        host.forwardHover(atHostPoint: glyphPoint)
+        XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+        host.removeFromSuperview()
+        XCTAssertEqual(host.trackingAreas.count, 0)
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+    }
+
+    func testMenuHostedLinkSurvivesFivePopupReopens() {
+        let menu = NSMenu(title: "Issue 265 reopen")
+        let item = NSMenuItem()
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 20, y: 2, width: 180, height: 20)
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        item.view = host
+        menu.addItem(item)
+
+        defer { menu.removeAllItems() }
+        for openNumber in 1...5 {
+            var attached = false
+            var underlined = false
+            var trackingAreaCount = 0
+            var retainedLink = false
+            var probeAttempts = 0
+            let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
+                probeAttempts += 1
+                guard host.window != nil else {
+                    if probeAttempts >= 50 {
+                        timer.invalidate()
+                        menu.cancelTracking()
+                    }
+                    return
+                }
+                attached = true
+                let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
+                host.mouseMoved(with: self.makeMouseEvent(
+                    type: .mouseMoved,
+                    location: host.convert(glyphPoint, to: nil)
+                ))
+                underlined = link.attributedStringValue.attribute(
+                    .underlineStyle,
+                    at: 0,
+                    effectiveRange: nil
+                ) != nil
+                trackingAreaCount = host.trackingAreas.count
+                retainedLink = host.trackedLink === link
+                timer.invalidate()
+                menu.cancelTracking()
+            }
+            RunLoop.main.add(probe, forMode: .eventTracking)
+            menu.popUp(positioning: nil, at: .zero, in: nil)
+
+            XCTAssertTrue(attached, "menu open \(openNumber) did not attach the host")
+            XCTAssertTrue(retainedLink)
+            XCTAssertEqual(trackingAreaCount, 1)
+            XCTAssertTrue(underlined, "menu open \(openNumber) did not forward the visible glyph")
+            link.clearHoverState()
+        }
+
+        var activationCount = 0
+        link.onActivate = { activationCount += 1 }
+        host.forwardHover(atHostPoint: host.convert(
+            NSPoint(x: link.visibleTextHitRect.maxX + 8, y: link.visibleTextHitRect.midY),
+            from: link
+        ))
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: NSPoint(
+            x: link.visibleTextHitRect.maxX + 8,
+            y: link.visibleTextHitRect.midY
+        )))
+        XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        XCTAssertEqual(activationCount, 0)
+
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: link.visibleTextHitRect.center))
+        XCTAssertEqual(activationCount, 1)
+    }
+
+    func testHoverLinkGeometryRefreshInstallsTrackingWhenAttachedToWindow() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 220, height: 60),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        let link = HoverLinkTextField(text: "Provider")
+        window.contentView?.addSubview(link)
+        link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)
+        link.layout()
+
+        XCTAssertEqual(link.trackingAreas.count, 1)
+        XCTAssertEqual(link.trackingAreas[0].rect, link.visibleTextHitRect)
     }
 
     func testHoverLinkRemovalClearsHoverStyleAndTrackingArea() {

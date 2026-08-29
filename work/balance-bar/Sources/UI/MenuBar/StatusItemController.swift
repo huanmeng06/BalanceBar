@@ -1668,7 +1668,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var screenParametersObserver: NSObjectProtocol?
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
-    var isMenuTracking: Bool { isStatusMenuTracking }
     var iconImage: NSImage? { menuBarIconView.image }
 
     // Exposes the controller's current outer footprint for headless layout
@@ -2845,7 +2844,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesLunaReserve: snapshot.kind == .official && lunaReserve != nil,
             includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil
         )
-        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
 
@@ -2991,6 +2990,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     link.frame = linkFrame
                     link.onActivate = { [weak self] in self?.actions.openProviderWebsite() }
                     view.addSubview(link)
+                    view.track(link)
                 }
             } else {
                 let reset = makeMarqueeOverviewLabel(
@@ -3042,7 +3042,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             for: category,
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
         )
-        let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
+        let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let titleText = OpenCodexCardPresentation.identity(for: card)
             + (card.isCurrent ? tr(.keyStatusItemControllerCurrent) : "")
         let provider = makeOverviewLabel(titleText, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -3163,7 +3163,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         [provider, refreshTime, primary, detail, secondary].forEach(view.addSubview)
         if let progress { view.addSubview(progress) }
-        if let websiteLink { view.addSubview(websiteLink) }
+        if let websiteLink {
+            view.addSubview(websiteLink)
+            view.track(websiteLink)
+        }
         let preference = menuInput.openCodexState?.preferences.first { $0.selector == card.selector }
         item.target = self
         item.action = #selector(switchOpenCodexPreference(_:))
