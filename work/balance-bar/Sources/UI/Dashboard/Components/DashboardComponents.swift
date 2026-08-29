@@ -1,5 +1,30 @@
 import AppKit
 
+enum MenuCursorActivationExperiment {
+    static var isEnabled: Bool {
+        Bundle.main.bundleIdentifier == "com.huanmeng06.BalanceBar.dev"
+    }
+
+    static func log(_ event: String, isHovered: Bool? = nil) {
+        guard isEnabled else { return }
+        let cursor = NSCursor.current
+        let cursorName: String
+        if cursor.isEqual(NSCursor.pointingHand) {
+            cursorName = "pointing-hand"
+        } else if cursor.isEqual(NSCursor.arrow) {
+            cursorName = "arrow"
+        } else {
+            cursorName = "other"
+        }
+        let hovered = isHovered.map { String($0) } ?? "n/a"
+        SwitchLog.write(
+            "menu-cursor-experiment event=\(event); activation_policy=\(NSApp.activationPolicy().rawValue); is_active=\(NSApp.isActive); frontmost_bundle=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil"); is_hovered=\(hovered); cursor=\(cursorName)",
+            level: .debug,
+            category: "ui.menu-cursor"
+        )
+    }
+}
+
 var dashboardUsesDarkAppearance: Bool {
     NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
 }
@@ -387,7 +412,7 @@ final class HoverLinkTextField: NSTextField {
         guard !visibleTextHitRect.isEmpty else { return }
         let area = NSTrackingArea(
             rect: visibleTextHitRect,
-            options: [.mouseEnteredAndExited, .cursorUpdate, .activeAlways],
+            options: [.mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow],
             owner: self,
             userInfo: nil
         )
@@ -409,12 +434,17 @@ final class HoverLinkTextField: NSTextField {
             }
             return
         }
+        if hovered {
+            MenuCursorActivationExperiment.log("visible-glyph-enter-before-cursor-set", isHovered: hovered)
+        }
         isHovered = hovered
         applyStyle(text: stringValue, underlined: hovered)
         if hovered {
             NSCursor.pointingHand.set()
+            MenuCursorActivationExperiment.log("visible-glyph-enter-after-cursor-set", isHovered: hovered)
         } else {
             NSCursor.arrow.set()
+            MenuCursorActivationExperiment.log("visible-glyph-exit-after-cursor-set", isHovered: hovered)
         }
     }
 
@@ -604,7 +634,7 @@ final class MenuHoverLinkHostView: NSView {
         guard link != nil, !bounds.isEmpty else { return }
         let area = NSTrackingArea(
             rect: .zero,
-            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         )

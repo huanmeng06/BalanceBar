@@ -1059,7 +1059,8 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(link.trackingAreas.count, 1)
         XCTAssertEqual(link.trackingAreas[0].rect, link.visibleTextHitRect)
         XCTAssertTrue(link.trackingAreas[0].options.contains(.cursorUpdate))
-        XCTAssertTrue(link.trackingAreas[0].options.contains(.activeAlways))
+        XCTAssertTrue(link.trackingAreas[0].options.contains(.activeInKeyWindow))
+        XCTAssertFalse(link.trackingAreas[0].options.contains(.activeAlways))
         XCTAssertFalse(link.trackingAreas[0].options.contains(.inVisibleRect))
 
         link.updateTrackingAreas()
@@ -1077,7 +1078,8 @@ final class DashboardComponentsTests: XCTestCase {
 
         XCTAssertEqual(host.trackingAreas.count, 1)
         XCTAssertTrue(host.trackingAreas[0].options.contains(.mouseMoved))
-        XCTAssertTrue(host.trackingAreas[0].options.contains(.cursorUpdate))
+        XCTAssertFalse(host.trackingAreas[0].options.contains(.cursorUpdate))
+        XCTAssertTrue(host.trackingAreas[0].options.contains(.activeAlways))
 
         let previousCursor = NSCursor.current
         defer { previousCursor.set() }

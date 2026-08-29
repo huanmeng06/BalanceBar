@@ -1942,11 +1942,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
+        MenuCursorActivationExperiment.log("menu-will-open-before-activate")
+        if MenuCursorActivationExperiment.isEnabled {
+            // Diagnostic only: macOS 14's cooperative activation must not be
+            // promoted to the production cursor policy without manual proof.
+            NSApp.activate()
+        }
+        MenuCursorActivationExperiment.log("menu-will-open-after-activate")
     }
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = false
+        MenuCursorActivationExperiment.log("menu-did-close")
         guard statusMenuNeedsRebuild else { return }
         statusMenuNeedsRebuild = false
         DispatchQueue.main.async { [weak self] in
