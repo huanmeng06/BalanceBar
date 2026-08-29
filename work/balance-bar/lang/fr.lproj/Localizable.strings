@@ -216,6 +216,11 @@
 "dashboard.general.and.refresh.pages.retry" = "Réessayer";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Ouvrir CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "Lancer à la connexion";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "Lancer automatiquement BalanceBar lorsque vous vous connectez à macOS.";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Pour terminer l’activation, autorisez BalanceBar dans Réglages Système → Général → Éléments d’ouverture.";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour cette option. Vérifiez Réglages Système → Général → Éléments d’ouverture, puis réessayez.";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "L’état de cette option est indisponible. Vérifiez Réglages Système → Général → Éléments d’ouverture.";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Fournisseur actuel : %1$@";
 "dashboard.general.and.refresh.pages.system" = "Système";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Toutes les 1 s";

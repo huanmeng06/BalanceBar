@@ -289,7 +289,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onDidResize: { [weak self] in
                 DispatchQueue.main.async { [weak self] in self?.clampDashboardScrollViewBounds() }
             }
-        )
+        ),
+        launchAtLoginController: launchAtLoginController
     )
     private var dashboardIsVisible: Bool { dashboardComposition.isVisible }
     private var dashboardSection: DashboardSection { dashboardComposition.section }
@@ -324,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
+    private let launchAtLoginController: LaunchAtLoginController
     private let updateService: UpdateService
     private lazy var updateNotesWindowController = UpdateNotesWindowController(
         onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
@@ -397,10 +399,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         repository: CCSwitchRepository = CCSwitchRepository(),
         officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
         openCodexRepository: OpenCodexRepository = OpenCodexRepository(),
-        updateService: UpdateService? = nil
+        updateService: UpdateService? = nil,
+        launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService()
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
+        self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.updateService = updateService ?? UpdateService(
             releaseFetcher: DevelopmentReleaseFixture.releaseFetcher(),
             updateChannel: preferences.updateChannel,
@@ -952,6 +956,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case "animateCodexActivity":
             animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)
+        case LaunchAtLoginController.toggleIdentifier:
+            let state = launchAtLoginController.setEnabled(enabled)
+            dashboardComposition.refreshLaunchAtLogin(state)
+            if state.notice == .operationFailed {
+                SwitchLog.write(
+                    "launch at login operation failed; requested_enabled=\(enabled); observed_status=\(String(describing: state.status))",
+                    level: .error,
+                    category: "configuration"
+                )
+            }
         case "openCodexAutomaticDetection":
             dashboardComposition.handleAutomaticDetection(enabled)
         default:

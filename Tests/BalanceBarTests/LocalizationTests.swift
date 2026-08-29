@@ -538,7 +538,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 433)
+        XCTAssertEqual(expectedKeys.count, 438)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -575,6 +575,39 @@ final class LocalizationTests: XCTestCase {
             if newLanguages.contains(language) {
                 XCTAssertEqual(actualKeySequence, expectedKeySequence, "resource key order for \(language)")
             }
+        }
+    }
+
+    func testLaunchAtLoginCopyIsLocalizedAcrossAllTwelveLanguages() {
+        let expected: [AppLanguage: (String, String)] = [
+            .simplifiedChinese: ("登录时启动", "登录 macOS 时自动启动 BalanceBar。"),
+            .traditionalChineseTaiwan: ("登入時啟動", "登入 macOS 時自動啟動 BalanceBar。"),
+            .traditionalChineseHongKong: ("登入時啟動", "登入 macOS 時自動啟動 BalanceBar。"),
+            .japanese: ("ログイン時に起動", "macOSへのログイン時にBalanceBarを自動的に起動します。"),
+            .english: ("Launch at Login", "Automatically start BalanceBar when you log in to macOS."),
+            .korean: ("로그인 시 실행", "macOS에 로그인할 때 BalanceBar를 자동으로 실행합니다."),
+            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente al iniciar sesión en macOS."),
+            .german: ("Beim Anmelden starten", "BalanceBar beim Anmelden bei macOS automatisch starten."),
+            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar lorsque vous vous connectez à macOS."),
+            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente quando inicia sessão no macOS."),
+            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar при входе в macOS."),
+            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar quando accedi a macOS.")
+        ]
+
+        for language in resourceDirectories.values {
+            guard let expectedCopy = expected[language] else {
+                XCTFail("Missing expected Launch at Login copy for \(language)")
+                continue
+            }
+            let title = tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin, language: language)
+            let description = tr(
+                .keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription,
+                language: language
+            )
+            XCTAssertEqual(title, expectedCopy.0, "Launch at Login title for \(language)")
+            XCTAssertEqual(description, expectedCopy.1, "Launch at Login description for \(language)")
+            XCTAssertFalse(title.hasPrefix("⟦"))
+            XCTAssertFalse(description.hasPrefix("⟦"))
         }
     }
 

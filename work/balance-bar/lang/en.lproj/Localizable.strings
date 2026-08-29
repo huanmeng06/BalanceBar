@@ -216,6 +216,11 @@
 "dashboard.general.and.refresh.pages.retry" = "Retry";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Open CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "Launch at Login";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "Automatically start BalanceBar when you log in to macOS.";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Allow BalanceBar in System Settings → General → Login Items to finish enabling Launch at Login.";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Could not update Launch at Login. Check System Settings → General → Login Items and try again.";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Launch at Login status is unavailable. Check System Settings → General → Login Items.";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Current Provider: %1$@";
 "dashboard.general.and.refresh.pages.system" = "System";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Every 1 sec";

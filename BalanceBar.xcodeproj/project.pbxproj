@@ -91,6 +91,10 @@
 		A100000000000000000000F8 /* LocalizationKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F7 /* LocalizationKeys.swift */; };
 		A10000000000000000000101 /* ReleaseNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000105 /* ReleaseNotes.swift */; };
 		A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000106 /* UpdateNotesWindowController.swift */; };
+		A10000000000000000000120 /* LaunchAtLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000121 /* LaunchAtLoginService.swift */; };
+		A10000000000000000000122 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000123 /* ServiceManagement.framework */; };
+		A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */; };
+		A10000000000000000000126 /* ServiceManagement.framework in Test Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000123 /* ServiceManagement.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -189,6 +193,9 @@
 		A100000000000000000000EA /* UpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000105 /* ReleaseNotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotes.swift; sourceTree = "<group>"; };
 		A10000000000000000000106 /* UpdateNotesWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateNotesWindowController.swift; sourceTree = "<group>"; };
+		A10000000000000000000121 /* LaunchAtLoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginService.swift; sourceTree = "<group>"; };
+		A10000000000000000000123 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
+		A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginServiceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -199,6 +206,7 @@
 				A10000000000000000000025 /* AppKit.framework in Frameworks */,
 				A10000000000000000000026 /* Foundation.framework in Frameworks */,
 				A10000000000000000000027 /* SwiftUI.framework in Frameworks */,
+				A10000000000000000000122 /* ServiceManagement.framework in Frameworks */,
 				A10000000000000000000028 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -208,6 +216,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000031 /* XCTest.framework in Frameworks */,
+				A10000000000000000000126 /* ServiceManagement.framework in Test Frameworks */,
 				A1000000000000000000005D /* libsqlite3.tbd in Test Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -257,6 +266,7 @@
 				A10000000000000000000019 /* SwiftUI.framework */,
 				A1000000000000000000001A /* libsqlite3.tbd */,
 				A1000000000000000000002F /* XCTest.framework */,
+				A10000000000000000000123 /* ServiceManagement.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -304,6 +314,7 @@
 				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
 				A100000000000000000000EA /* UpdateTests.swift */,
+				A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */,
 			);
 			path = BalanceBarTests;
 			sourceTree = "<group>";
@@ -337,6 +348,7 @@
 				A10000000000000000000071 /* OfficialQuotaClient.swift */,
 				A100000000000000000000E8 /* UpdateService.swift */,
 				A10000000000000000000105 /* ReleaseNotes.swift */,
+				A10000000000000000000121 /* LaunchAtLoginService.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
@@ -631,6 +643,7 @@
 				A100000000000000000000E7 /* UpdateService.swift in Sources */,
 				A10000000000000000000101 /* ReleaseNotes.swift in Sources */,
 				A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */,
+				A10000000000000000000120 /* LaunchAtLoginService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -661,6 +674,7 @@
 				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 				A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */,
 				A100000000000000000000E9 /* UpdateTests.swift in Sources */,
+				A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

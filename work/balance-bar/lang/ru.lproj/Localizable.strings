@@ -216,6 +216,11 @@
 "dashboard.general.and.refresh.pages.retry" = "Повторить";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Открыть CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "Запуск при входе";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "Автоматически запускать BalanceBar при входе в macOS.";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Чтобы завершить настройку запуска при входе, разрешите BalanceBar в разделе «Системные настройки» → «Основные» → «Объекты входа».";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Не удалось обновить настройку запуска при входе. Проверьте раздел «Системные настройки» → «Основные» → «Объекты входа» и повторите попытку.";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Состояние запуска при входе недоступно. Проверьте раздел «Системные настройки» → «Основные» → «Объекты входа».";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Текущий провайдер: %1$@";
 "dashboard.general.and.refresh.pages.system" = "Система";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Каждые 1 с";

@@ -274,12 +274,29 @@ final class DashboardGeneralPage {
         let currentProviderName: String
         let relay: DashboardPreferencePageRelay
         let updateState: UpdateCheckState
+        let launchAtLoginState: LaunchAtLoginState
+
+        init(
+            preferences: AppPreferences,
+            currentProviderName: String,
+            relay: DashboardPreferencePageRelay,
+            updateState: UpdateCheckState,
+            launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered)
+        ) {
+            self.preferences = preferences
+            self.currentProviderName = currentProviderName
+            self.relay = relay
+            self.updateState = updateState
+            self.launchAtLoginState = launchAtLoginState
+        }
     }
 
     private var updateSubtitleLabel: NSTextField?
     private var updateButton: NSButton?
     private var updateNotesButton: NSButton?
     private var updateBadge: NSView?
+    private var launchAtLoginSwitch: NSSwitch?
+    private var launchAtLoginSubtitleLabel: NSTextField?
 
     func make(_ input: Input) -> NSView {
         let openButton = NSButton(
@@ -295,6 +312,27 @@ final class DashboardGeneralPage {
                 control: openButton
             )
         ])
+
+        let launchAtLoginSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: LaunchAtLoginController.toggleIdentifier,
+            isOn: input.launchAtLoginState.status == .enabled,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        let launchAtLoginSubtitleLabel = NSTextField(
+            wrappingLabelWithString: launchAtLoginSubtitle(for: input.launchAtLoginState)
+        )
+        apply(
+            input.launchAtLoginState,
+            to: launchAtLoginSwitch,
+            subtitle: launchAtLoginSubtitleLabel
+        )
+        let launchAtLoginRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
+            subtitle: launchAtLoginSubtitle(for: input.launchAtLoginState),
+            subtitleLabel: launchAtLoginSubtitleLabel,
+            control: launchAtLoginSwitch
+        )
 
         let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
             values: [
@@ -433,6 +471,8 @@ final class DashboardGeneralPage {
         self.updateButton = updateButton
         self.updateNotesButton = updateNotesButton
         self.updateBadge = updateBadge
+        self.launchAtLoginSwitch = launchAtLoginSwitch
+        self.launchAtLoginSubtitleLabel = launchAtLoginSubtitleLabel
 
         let app = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesApplication), rows: [
             DashboardSettingsComponents.makeSettingsRow(
@@ -440,6 +480,7 @@ final class DashboardGeneralPage {
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
                 control: languagePopup
             ),
+            launchAtLoginRow,
             updateChannelRow,
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates3),
@@ -453,6 +494,14 @@ final class DashboardGeneralPage {
         return DashboardSettingsComponents.makeSettingsPage([system, refreshing, app])
     }
 
+    func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
+        guard let launchAtLoginSwitch, let launchAtLoginSubtitleLabel else { return }
+        apply(state, to: launchAtLoginSwitch, subtitle: launchAtLoginSubtitleLabel)
+        launchAtLoginSwitch.superview?.needsLayout = true
+        launchAtLoginSubtitleLabel.superview?.needsLayout = true
+        launchAtLoginSubtitleLabel.superview?.superview?.needsLayout = true
+    }
+
     func refresh(updateState: UpdateCheckState) {
         let presentation = DashboardUpdatePresentation.make(for: updateState)
         guard let updateSubtitleLabel, let updateButton else { return }
@@ -460,6 +509,42 @@ final class DashboardGeneralPage {
         apply(presentation, to: updateNotesButton)
         updateBadge?.isHidden = !presentation.showsUpdateBadge
         (updateButton.superview as? DashboardAdaptiveControlsStackView)?.invalidateLayoutAfterContentChange()
+    }
+
+    private func launchAtLoginSubtitle(for state: LaunchAtLoginState) -> String {
+        switch state.notice {
+        case .none:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription)
+        case .requiresApproval:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginRequiresApproval)
+        case .operationFailed:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOperationFailed)
+        case .unavailable:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginUnavailable)
+        }
+    }
+
+    private func apply(
+        _ state: LaunchAtLoginState,
+        to launchAtLoginSwitch: NSSwitch,
+        subtitle: NSTextField
+    ) {
+        switch state.status {
+        case .enabled:
+            launchAtLoginSwitch.state = .on
+            launchAtLoginSwitch.isEnabled = true
+        case .notRegistered:
+            launchAtLoginSwitch.state = .off
+            launchAtLoginSwitch.isEnabled = true
+        case .requiresApproval:
+            launchAtLoginSwitch.state = .mixed
+            launchAtLoginSwitch.isEnabled = false
+        case .unknown:
+            launchAtLoginSwitch.state = .off
+            launchAtLoginSwitch.isEnabled = false
+        }
+        subtitle.stringValue = launchAtLoginSubtitle(for: state)
+        subtitle.invalidateIntrinsicContentSize()
     }
 
     private func apply(

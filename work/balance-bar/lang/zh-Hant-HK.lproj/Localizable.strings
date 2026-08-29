@@ -216,6 +216,11 @@
 "dashboard.general.and.refresh.pages.retry" = "再試";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "開啟 CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "登入時啟動";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "登入 macOS 時自動啟動 BalanceBar。";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "請在「系統設定」→「一般」→「登入項目」中允許 BalanceBar，以完成「登入時啟動」設定。";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "無法更新「登入時啟動」。請檢查「系統設定」→「一般」→「登入項目」後再試一次。";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "「登入時啟動」狀態無法使用。請檢查「系統設定」→「一般」→「登入項目」。";
 "dashboard.general.and.refresh.pages.current_provider_value" = "目前服務商：%1$@";
 "dashboard.general.and.refresh.pages.system" = "系統";
 "dashboard.general.and.refresh.pages.every_1_sec" = "每 1 秒";

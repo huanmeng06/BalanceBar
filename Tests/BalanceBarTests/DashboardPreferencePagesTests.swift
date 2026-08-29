@@ -64,6 +64,149 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(preferences.updateChannel, .beta)
     }
 
+    func testLaunchAtLoginGeneralRowReflectsStatesAndRoutesToggle() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.LaunchAtLogin.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let relay = DashboardPreferencePageRelay()
+        var toggles: [(String, Bool)] = []
+        relay.onToggle = { toggles.append(($0, $1)) }
+        let controller = DashboardGeneralPage()
+        let page = controller.make(.init(
+            preferences: AppPreferences(defaults: defaults),
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            launchAtLoginState: LaunchAtLoginState(status: .notRegistered)
+        ))
+
+        let launchSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
+        )
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertEqual(launchSwitch.state, .off)
+        XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertTrue(labels.contains { $0.stringValue == "Launch at Login" })
+        XCTAssertTrue(labels.contains {
+            $0.stringValue == "Automatically start BalanceBar when you log in to macOS."
+        })
+
+        launchSwitch.state = .on
+        relay.toggle(launchSwitch)
+        XCTAssertEqual(toggles.last?.0, LaunchAtLoginController.toggleIdentifier)
+        XCTAssertEqual(toggles.last?.1, true)
+
+        controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .requiresApproval))
+        XCTAssertEqual(launchSwitch.state, .mixed)
+        XCTAssertFalse(launchSwitch.isEnabled)
+        XCTAssertTrue(labels.contains {
+            $0.stringValue == "Allow BalanceBar in System Settings → General → Login Items to finish enabling Launch at Login."
+        })
+
+        controller.refreshLaunchAtLogin(
+            LaunchAtLoginState(status: .notRegistered, notice: .operationFailed)
+        )
+        XCTAssertEqual(launchSwitch.state, .off)
+        XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertTrue(labels.contains {
+            $0.stringValue == "Could not update Launch at Login. Check System Settings → General → Login Items and try again."
+        })
+
+        controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .unknown))
+        XCTAssertEqual(launchSwitch.state, .off)
+        XCTAssertFalse(launchSwitch.isEnabled)
+        XCTAssertTrue(labels.contains {
+            $0.stringValue == "Launch at Login status is unavailable. Check System Settings → General → Login Items."
+        })
+    }
+
+    func testLaunchAtLoginRowKeepsLongLocalizedTextAndControlSeparatedAcrossWidths() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        for language in [
+            AppLanguage.german,
+            .french,
+            .portuguese,
+            .italian,
+            .russian
+        ] {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.LaunchAtLoginLayout.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let page = DashboardGeneralPage().make(.init(
+                preferences: AppPreferences(defaults: defaults),
+                currentProviderName: "OpenAI",
+                relay: DashboardPreferencePageRelay(),
+                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+                launchAtLoginState: LaunchAtLoginState(status: .notRegistered)
+            ))
+            let launchSwitch = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
+            )
+            let subtitle = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.stringValue == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription) }
+            )
+            let labels = try XCTUnwrap(subtitle.superview)
+            let row = try XCTUnwrap(labels.superview)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 880, height: 760),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            let host = NSView(frame: NSRect(x: 0, y: 0, width: 880, height: 760))
+            window.contentView = host
+            host.addSubview(page)
+            defer {
+                window.contentView = nil
+                window.orderOut(nil)
+            }
+
+            for width in [880.0, 800.0, 516.0, 320.0] {
+                host.setFrameSize(NSSize(width: width, height: 760))
+                page.setFrameSize(host.bounds.size)
+                window.layoutIfNeeded()
+                page.layoutSubtreeIfNeeded()
+
+                let labelsFrame = labels.convert(labels.bounds, to: row)
+                let controlFrame = launchSwitch.convert(launchSwitch.bounds, to: row)
+                XCTAssertTrue(
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(labelsFrame),
+                    "localized labels stay inside the row for \(language) at \(width)"
+                )
+                XCTAssertTrue(
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(controlFrame),
+                    "launch switch stays inside the row for \(language) at \(width)"
+                )
+                XCTAssertFalse(
+                    labelsFrame.intersects(controlFrame),
+                    "localized labels do not overlap launch switch for \(language) at \(width)"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    row.frame.height,
+                    DashboardSettingsComponents.standardRowHeight,
+                    "launch row preserves its minimum height for \(language) at \(width)"
+                )
+            }
+        }
+    }
+
     func testRefreshIntervalPopupsExpandForLongSpanishAndFrenchTitles() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

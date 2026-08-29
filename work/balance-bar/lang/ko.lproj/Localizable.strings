@@ -216,6 +216,11 @@
 "dashboard.general.and.refresh.pages.retry" = "다시 시도";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "CC Switch 열기";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "로그인 시 실행";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "macOS에 로그인할 때 BalanceBar를 자동으로 실행합니다.";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "로그인 시 실행을 완료하려면 시스템 설정 → 일반 → 로그인 항목에서 BalanceBar를 허용하세요.";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "로그인 시 실행을 업데이트할 수 없습니다. 시스템 설정 → 일반 → 로그인 항목을 확인한 후 다시 시도하세요.";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "로그인 시 실행 상태를 사용할 수 없습니다. 시스템 설정 → 일반 → 로그인 항목을 확인하세요.";
 "dashboard.general.and.refresh.pages.current_provider_value" = "현재 서비스 제공자: %1$@";
 "dashboard.general.and.refresh.pages.system" = "시스템";
 "dashboard.general.and.refresh.pages.every_1_sec" = "1초마다";

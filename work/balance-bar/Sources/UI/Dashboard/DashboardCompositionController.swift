@@ -66,6 +66,7 @@ struct DashboardCompositionActions {
 final class DashboardCompositionController {
     private let state: DashboardCompositionState
     private let actions: DashboardCompositionActions
+    private let launchAtLoginController: LaunchAtLoginController
     private var statusLinksScrollAnchorController: StatusLinksScrollAnchorController!
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
@@ -110,7 +111,8 @@ final class DashboardCompositionController {
             },
             onOpenCodexModeChanged: actions.onOpenCodexModeChanged,
             onClamp: actions.onClamp
-        )
+        ),
+        launchAtLoginController: launchAtLoginController
     )
     private lazy var windowController = DashboardWindowController(
         actions: DashboardWindowControllerActions(
@@ -135,9 +137,14 @@ final class DashboardCompositionController {
         )
     )
 
-    init(state: DashboardCompositionState, actions: DashboardCompositionActions) {
+    init(
+        state: DashboardCompositionState,
+        actions: DashboardCompositionActions,
+        launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController()
+    ) {
         self.state = state
         self.actions = actions
+        self.launchAtLoginController = launchAtLoginController
         statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
             dashboardProvider: { [weak self] in self?.windowController.window },
             contentHostProvider: { [weak self] in self?.windowController.contentHost },
@@ -153,7 +160,10 @@ final class DashboardCompositionController {
     var selectedProviderID: String? { windowController.selectedProviderID }
 
     func start() { windowController.start() }
-    func open() { windowController.open() }
+    func open() {
+        windowController.open()
+        refreshLaunchAtLogin()
+    }
     func rebuild() { windowController.rebuild() }
     func showSection(_ section: DashboardSection) { windowController.showSection(section) }
     func showProvider(_ providerID: String) { windowController.showProvider(providerID) }
@@ -235,6 +245,16 @@ final class DashboardCompositionController {
         windowController.setShowsUpdateAvailableBadge(
             DashboardUpdatePresentation.make(for: updateState).showsUpdateBadge
         )
+    }
+
+    func refreshLaunchAtLogin() {
+        guard window?.isVisible == true, section == .general else { return }
+        dashboardPreferencePages.refreshLaunchAtLogin()
+    }
+
+    func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
+        guard window?.isVisible == true, section == .general else { return }
+        dashboardPreferencePages.refreshLaunchAtLogin(state)
     }
 
     func updateMenuStatusVisibility(_ visible: Bool, animated: Bool) {
