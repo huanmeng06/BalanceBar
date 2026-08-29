@@ -16,7 +16,10 @@ final class LocalizationTests: XCTestCase {
         "ko": .korean,
         "es": .spanish,
         "de": .german,
-        "fr": .french
+        "fr": .french,
+        "pt": .portuguese,
+        "ru": .russian,
+        "it": .italian
     ]
 
     private var testBundle: Bundle {
@@ -119,9 +122,23 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testSystemSelectionFallsBackToEnglishForUnknownLanguages() {
-        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["it-IT"]), .english)
-        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["it-IT", "pt-BR"]), .english)
+        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["xx-XX"]), .english)
         XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: []), .english)
+    }
+
+    func testSystemSelectionMatchesPortugueseRussianAndItalianIdentifiers() {
+        let cases: [(String, AppLanguage)] = [
+            ("pt", .portuguese), ("pt-BR", .portuguese), ("pt-PT", .portuguese),
+            ("ru", .russian), ("ru-RU", .russian),
+            ("it", .italian), ("it-IT", .italian)
+        ]
+        for (preferred, expected) in cases {
+            XCTAssertEqual(
+                AppLanguage.resolved(for: .system, preferredLanguages: [preferred]),
+                expected,
+                "expected \(preferred) to resolve to \(expected)"
+            )
+        }
     }
 
     func testSystemSelectionUsesFirstSupportedPreferredLanguage() {
@@ -175,8 +192,7 @@ final class LocalizationTests: XCTestCase {
     func testLanguagePickerOrder() {
         XCTAssertEqual(
             AppLanguage.allCases,
-            [.system, .simplifiedChinese, .traditionalChineseHongKong, .traditionalChineseTaiwan, .english, .japanese, .korean, .spanish, .german]
-                + [.french]
+            [.system, .simplifiedChinese, .traditionalChineseHongKong, .traditionalChineseTaiwan, .english, .japanese, .korean, .spanish, .portuguese, .french, .german, .russian, .italian]
         )
     }
 
@@ -221,6 +237,9 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .spanish), "Seguir el sistema")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .german), "System folgen")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .french), "Suivre le système")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .portuguese), "Usar o idioma do sistema")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .russian), "Использовать язык системы")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .italian), "Usa la lingua di sistema")
 
         // Language options always keep their own original names; only
         // "Follow System" is localized into the current UI language.
@@ -247,6 +266,32 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .spanish), "Seguir el sistema")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .german), "System folgen")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .french), "Suivre le système")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .portuguese), "Usar o idioma do sistema")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .russian), "Использовать язык системы")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .italian), "Usa la lingua di sistema")
+    }
+
+    func testNewLanguageNamesRemainNativeAndCoreCopyIsLocalized() {
+        let cases: [(AppLanguage, String, String)] = [
+            (.portuguese, "Sobre o BalanceBar", "Usar o idioma do sistema"),
+            (.russian, "О BalanceBar", "Использовать язык системы"),
+            (.italian, "Informazioni su BalanceBar", "Usa la lingua di sistema")
+        ]
+        for (language, about, followSystem) in cases {
+            XCTAssertEqual(tr(.keyAppAboutBalancebar, language: language), about)
+            XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: language), followSystem)
+            XCTAssertEqual(AppLanguage.portuguese.localizedTitle(using: language), "Português")
+            XCTAssertEqual(AppLanguage.russian.localizedTitle(using: language), "Русский")
+            XCTAssertEqual(AppLanguage.italian.localizedTitle(using: language), "Italiano")
+            XCTAssertEqual(AppLanguage.english.localizedTitle(using: language), "English")
+            let rendered = tr(
+                .keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue,
+                arguments: ["1.0", "1.1"],
+                language: language
+            )
+            XCTAssertTrue(rendered.contains("1.0") && rendered.contains("1.1"))
+            XCTAssertFalse(rendered.contains("%1$@") || rendered.contains("%2$@"))
+        }
     }
 
     func testZeroSecondIconDisplayDelayCopyExistsInEverySupportedLanguage() {
@@ -493,7 +538,28 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 430)
+        XCTAssertEqual(expectedKeys.count, 433)
+        let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
+
+        func keySequence(from text: String) -> [String] {
+            text.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.hasPrefix("\""),
+                      let equals = trimmed.range(of: "\" = ") else {
+                    return nil
+                }
+                return String(trimmed.dropFirst().prefix(through: trimmed.index(before: equals.lowerBound)))
+            }
+        }
+
+        let englishURL = try XCTUnwrap(
+            testBundle.url(forResource: "en", withExtension: "lproj")
+        ).appendingPathComponent("Localizable.strings")
+        let englishData = try Data(contentsOf: englishURL)
+        let englishText = try XCTUnwrap(
+            String(data: englishData, encoding: .utf16) ?? String(data: englishData, encoding: .utf8)
+        )
+        let expectedKeySequence = keySequence(from: englishText)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -503,17 +569,470 @@ final class LocalizationTests: XCTestCase {
             let text = try XCTUnwrap(
                 String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
             )
-            let actualKeys = Set(
-                text.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+            let actualKeySequence = keySequence(from: text)
+            let actualKeys = Set(actualKeySequence)
+            XCTAssertEqual(actualKeys, expectedKeys, "resource keys for \(language)")
+            if newLanguages.contains(language) {
+                XCTAssertEqual(actualKeySequence, expectedKeySequence, "resource key order for \(language)")
+            }
+        }
+    }
+
+    func testNewLanguageResourcesRejectKnownMechanicalHybridFragments() throws {
+        let newLanguages: [AppLanguage] = [.portuguese, .russian, .italian]
+        let forbiddenFragments = [
+            "Tibo's",
+            "AbrirAI",
+            "Abrir o status da OpenAI",
+            "ApriAI",
+            "Apri lo stato di OpenAI",
+            "Вверхdates",
+            "Para cimadates",
+            "Sudates",
+            "Открыть статус OpenAI",
+            "%1$@ остаток",
+            "Следит за этим провайдером",
+            "Следит за текущим провайдером",
+            "от -10,0 pt уже",
+            "Интервал резервной проверки CC Switch",
+            "Reserva Luna",
+            "Резерв Luna",
+            "Riserva Luna",
+            "Intervalo de verificação de backup",
+            "Redefine em %1$@",
+            "Ora del ripristino non disponibile",
+            "Intervallo di verifica di riserva",
+            "Dopo una ricarica, mantiene rossa",
+            "Escolha se deseja verificar as versões Estável",
+            "evita eventos do sistema perdidos",
+            "As alterações de provedor são sincronizadas imediatamente",
+            "Hora da redefinição",
+            "Após uma recarga, mantém",
+            "резервной проверки",
+            "синхронизируются событиями",
+            "больше недоступен в CC Switch",
+            "versioni Stabile o Beta",
+            "controllo di riserva",
+            "vengono sincronizzate immediatamente dagli eventi",
+            "Visualizzazione dell'ora di ripristino",
+            "Ora del ripristino",
+            "Attuale provider",
+            "Disponibile provider",
+            "Доступно провайдер",
+            "Stato sincronizzazione",
+            "Ora del ripristino Visualizzazione",
+            "Tra 6 s",
+            "Tra 12 s",
+            "Tra 30 s",
+            "Через 6 с",
+            "Через 12 с",
+            "Через 30 с",
+            "Follows CC Switch automatically",
+            "Too many requests",
+            "Restore Defaults",
+            "Quick links",
+            "Changes apply",
+            "No live data",
+            "received yet",
+            "OpenCodex switch did",
+            "database verification",
+            "Contact ",
+            "maintainer",
+            "Every "
+        ]
+
+        for (directory, language) in resourceDirectories where newLanguages.contains(language) {
+            let resourceURL = try XCTUnwrap(
+                testBundle.url(forResource: directory, withExtension: "lproj")
+            ).appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: resourceURL)
+            let text = try XCTUnwrap(
+                String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
+            )
+            let values = Dictionary(
+                uniqueKeysWithValues: text.split(whereSeparator: \.isNewline).compactMap { line -> (String, String)? in
                     let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard trimmed.hasPrefix("\""),
-                          let equals = trimmed.range(of: "\" = ") else {
+                          let separator = trimmed.range(of: "\" = \""),
+                          trimmed.hasSuffix("\";") else {
                         return nil
                     }
-                    return String(trimmed.dropFirst().prefix(through: trimmed.index(before: equals.lowerBound)))
+                    let keyStart = trimmed.index(after: trimmed.startIndex)
+                    let keyEnd = trimmed.index(before: separator.lowerBound)
+                    let valueStart = separator.upperBound
+                    let valueEnd = trimmed.index(trimmed.endIndex, offsetBy: -2)
+                    return (
+                        String(trimmed[keyStart...keyEnd]),
+                        String(trimmed[valueStart..<valueEnd])
+                    )
                 }
             )
-            XCTAssertEqual(actualKeys, expectedKeys, "resource keys for \(language)")
+            for key in LocalizationKey.allCases {
+                let value = try XCTUnwrap(values[key.rawKey], "missing raw value for \(language.rawValue) key \(key.rawKey)")
+                for fragment in forbiddenFragments {
+                    XCTAssertFalse(
+                        value.localizedCaseInsensitiveContains(fragment),
+                        "\(language.rawValue) key \(key.rawKey) contains suspicious fragment \(fragment): \(value)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testIssue252ReviewedCopyMatchesApprovedNativeWording() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let reviewedCopy: [(AppLanguage, LocalizationKey, [String], String)] = [
+            (
+                .portuguese,
+                .keyAppPreferencesOpenaiStatus,
+                [],
+                "Status da OpenAI"
+            ),
+            (
+                .portuguese,
+                .keyLocalizationFollowSystem,
+                [],
+                "Usar o idioma do sistema"
+            ),
+            (
+                .portuguese,
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                ["19:30"],
+                "Atualizado: 19:30 · Sincronização automática com o CC Switch"
+            ),
+            (
+                .portuguese,
+                .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
+                [],
+                "Intervalo de verificação alternativa do CC Switch"
+            ),
+            (
+                .portuguese,
+                .keyDashboardGeneralAndRefreshPagesUpdateChannelDescription,
+                [],
+                "Escolha se deseja verificar as versões estáveis ou beta"
+            ),
+            (
+                .portuguese,
+                .keyDashboardGeneralAndRefreshPagesFileMonitoringIsAlwaysActivePollingPreventsMissedSystemEvents,
+                [],
+                "O monitoramento de arquivos está sempre ativo; a verificação periódica evita a perda de eventos do sistema"
+            ),
+            (
+                .portuguese,
+                .keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency,
+                [],
+                "As alterações de provedor continuam sendo detectadas imediatamente graças aos eventos do banco de dados do CC Switch; este intervalo define apenas a frequência da verificação alternativa."
+            ),
+            (
+                .portuguese,
+                .keyLunaReserveResetValue,
+                ["1h30m"],
+                "Redefinição em 1h30m"
+            ),
+            (
+                .portuguese,
+                .keyDashboardMenuBarPageQuotaResetDisplayTarget,
+                [],
+                "Horário de redefinição"
+            ),
+            (
+                .portuguese,
+                .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+                [],
+                "Após uma recarga, a barra de progresso permanece vermelha enquanto o saldo estiver abaixo deste valor"
+            ),
+            (
+                .portuguese,
+                .keyLunaReserveResetUnavailable,
+                [],
+                "Horário de redefinição indisponível"
+            ),
+            (
+                .portuguese,
+                .keyDashboardProviderPagesFollowingThisProvider,
+                [],
+                "Sincronização automática com este provedor"
+            ),
+            (
+                .portuguese,
+                .keyDashboardProviderPagesFollowingCurrentProvider,
+                [],
+                "Sincronização automática com o provedor atual"
+            ),
+            (
+                .russian,
+                .keyAppPreferencesOpenaiStatus,
+                [],
+                "Статус OpenAI"
+            ),
+            (
+                .russian,
+                .keyLocalizationFollowSystem,
+                [],
+                "Использовать язык системы"
+            ),
+            (
+                .russian,
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                ["19:30"],
+                "Обновлено: 19:30 · Автоматическая синхронизация с CC Switch"
+            ),
+            (
+                .russian,
+                .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
+                [],
+                "Интервал альтернативной проверки CC Switch"
+            ),
+            (
+                .russian,
+                .keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency,
+                [],
+                "Изменения провайдера по-прежнему обнаруживаются сразу благодаря событиям базы данных CC Switch; этот интервал задаёт только частоту альтернативной проверки."
+            ),
+            (
+                .russian,
+                .keySnapshotValueRemainingValueValue,
+                ["OpenAI", "87", "7-Day Quota"],
+                "OpenAI: осталось 87% (7-Day Quota)"
+            ),
+            (
+                .russian,
+                .keyDashboardMenuBarPageAdjustsMenuBarWidthFrom100PtNarrowTo100PtWideDefault0Pt,
+                [],
+                "Настройка расстояния до других значков строки меню: от уменьшения на 10,0 pt до увеличения на 10,0 pt; по умолчанию — 0 pt"
+            ),
+            (
+                .russian,
+                .keyDashboardProviderPagesFollowingThisProvider,
+                [],
+                "Автоматическая синхронизация с этим провайдером"
+            ),
+            (
+                .russian,
+                .keyDashboardProviderPagesFollowingCurrentProvider,
+                [],
+                "Автоматическая синхронизация с текущим провайдером"
+            ),
+            (
+                .russian,
+                .keyDashboardProviderPagesThisProviderDisappearedFromCcSwitch,
+                [],
+                "Этот провайдер больше не отображается в CC Switch"
+            ),
+            (
+                .italian,
+                .keyAppPreferencesOpenaiStatus,
+                [],
+                "Stato di OpenAI"
+            ),
+            (
+                .italian,
+                .keyLocalizationFollowSystem,
+                [],
+                "Usa la lingua di sistema"
+            ),
+            (
+                .italian,
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                ["19:30"],
+                "Aggiornato: 19:30 · Sincronizzazione automatica con CC Switch"
+            ),
+            (
+                .italian,
+                .keyDashboardProviderPagesFollowingThisProvider,
+                [],
+                "Sincronizzazione automatica con questo provider"
+            ),
+            (
+                .italian,
+                .keyDashboardProviderPagesFollowingCurrentProvider,
+                [],
+                "Sincronizzazione automatica con il provider corrente"
+            ),
+            (
+                .italian,
+                .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
+                [],
+                "Intervallo di verifica alternativa di CC Switch"
+            ),
+            (
+                .italian,
+                .keyDashboardGeneralAndRefreshPagesUpdateChannelDescription,
+                [],
+                "Scegli se verificare le versioni stabili o beta"
+            ),
+            (
+                .italian,
+                .keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency,
+                [],
+                "Le modifiche al provider vengono rilevate immediatamente grazie agli eventi del database di CC Switch; questo intervallo determina solo la frequenza del controllo alternativo."
+            ),
+            (
+                .italian,
+                .keyDashboardMenuBarPageQuotaResetDisplayMode,
+                [],
+                "Visualizzazione dell'orario di ripristino"
+            ),
+            (
+                .italian,
+                .keyDashboardMenuBarPageQuotaResetDisplayTarget,
+                [],
+                "Orario di ripristino"
+            ),
+            (
+                .italian,
+                .keyDashboardMenuBarPageLunaReserveResetTime,
+                [],
+                "Orario di ripristino di 🌙 Luna Reserve"
+            ),
+            (
+                .italian,
+                .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+                [],
+                "Dopo una ricarica, la barra di avanzamento rimane rossa finché il saldo resta inferiore a questo importo"
+            ),
+            (
+                .italian,
+                .keyLunaReserveResetUnavailable,
+                [],
+                "Orario di ripristino non disponibile"
+            )
+        ]
+
+        for (language, key, arguments, expected) in reviewedCopy {
+            XCTAssertEqual(
+                store.localized(key: key, language: language, arguments: arguments),
+                expected,
+                "reviewed copy for \(language.rawValue) key \(key.rawKey)"
+            )
+        }
+    }
+
+    func testParameterizedAndSemanticContractsHoldAcrossAllTwelveLanguages() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let languages: [AppLanguage] = [
+            .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong,
+            .english, .japanese, .korean, .spanish, .portuguese, .french, .german,
+            .russian, .italian
+        ]
+        let parameterizedCases: [(LocalizationKey, [String])] = [
+            (.keySnapshotValueValue, ["OpenAI", "87%"]),
+            (.keySnapshotLastRefreshedValue, ["19:30"]),
+            (.keySnapshotValueRemainingValueValue, ["OpenAI", "87", "7-Day Quota"]),
+            (.keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue, ["1.0", "1.1"]),
+            (.keyDashboardGeneralAndRefreshPagesDownloadingValue, ["12.5"]),
+            (.keyProviderRefreshCoordinatorOfficialValueValue, ["OpenAI", "network error"]),
+            (.keyLunaReserveRemainingValue, ["45"]),
+            (.keyLunaReserveResetValue, ["1h30m"])
+        ]
+
+        for language in languages {
+            for (key, arguments) in parameterizedCases {
+                let rendered = store.localized(key: key, language: language, arguments: arguments)
+                XCTAssertFalse(rendered.hasPrefix("⟦"), "missing localized format for \(key) in \(language)")
+                for argument in arguments {
+                    XCTAssertTrue(rendered.contains(argument), "missing argument \(argument) for \(key) in \(language)")
+                }
+                for index in 1...arguments.count {
+                    XCTAssertFalse(
+                        rendered.contains("%\(index)$@"),
+                        "unrendered placeholder %\(index)$@ for \(key) in \(language)"
+                    )
+                }
+            }
+
+            let subtitle = store.localizedSubtitle(
+                key: .keyDashboardMenuBarPageAdjustsTheGapBetweenBalancebarAndOtherItemsWidthvalue,
+                language: language,
+                arguments: ["\u{00A0}-\u{00A0}10.0\u{00A0}pt"]
+            )
+            XCTAssertFalse(subtitle.text.contains(LocalizationSemanticMarker.semanticStart))
+            XCTAssertEqual(subtitle.semanticGroups.count, 1, "semantic group for \(language)")
+            XCTAssertEqual(subtitle.atomicGroups.count, 1, "atomic interpolation for \(language)")
+            XCTAssertEqual(
+                subtitle.lineBreakBeforeSemanticGroups,
+                subtitle.semanticGroups,
+                "semantic suffix should start on a new line for \(language)"
+            )
+        }
+    }
+
+    func testAllTwelveResourcesPreserveFormatAndSemanticMarkerContracts() throws {
+        func loadRawValues(directory: String) throws -> [String: String] {
+            let resourceURL = try XCTUnwrap(
+                testBundle.url(forResource: directory, withExtension: "lproj")
+            ).appendingPathComponent("Localizable.strings")
+            let data = try Data(contentsOf: resourceURL)
+            let text = try XCTUnwrap(
+                String(data: data, encoding: .utf16) ?? String(data: data, encoding: .utf8)
+            )
+            return Dictionary(
+                uniqueKeysWithValues: text.split(whereSeparator: \.isNewline).compactMap { line -> (String, String)? in
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard trimmed.hasPrefix("\""),
+                          let separator = trimmed.range(of: "\" = \""),
+                          trimmed.hasSuffix("\";") else {
+                        return nil
+                    }
+                    let keyStart = trimmed.index(after: trimmed.startIndex)
+                    let keyEnd = trimmed.index(before: separator.lowerBound)
+                    let valueStart = separator.upperBound
+                    let valueEnd = trimmed.index(trimmed.endIndex, offsetBy: -2)
+                    return (
+                        String(trimmed[keyStart...keyEnd]),
+                        String(trimmed[valueStart..<valueEnd])
+                    )
+                }
+            )
+        }
+
+        let englishValues = try loadRawValues(directory: "en")
+        let placeholderRegex = try NSRegularExpression(pattern: "%[0-9]+\\$@")
+        let formattingMarkers = [
+            "%%",
+            "\\n",
+            LocalizationSemanticMarker.lineBreakBeforeSemantic,
+            LocalizationSemanticMarker.semanticStart,
+            LocalizationSemanticMarker.semanticEnd,
+            LocalizationSemanticMarker.atomicStart,
+            LocalizationSemanticMarker.atomicEnd
+        ]
+        let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
+
+        func placeholderTokens(in value: String) -> [String] {
+            let nsValue = value as NSString
+            return placeholderRegex.matches(
+                in: value,
+                range: NSRange(location: 0, length: nsValue.length)
+            ).map { nsValue.substring(with: $0.range) }.sorted()
+        }
+
+        func markerCount(_ marker: String, in value: String) -> Int {
+            value.components(separatedBy: marker).count - 1
+        }
+
+        for (directory, language) in resourceDirectories {
+            let values = try loadRawValues(directory: directory)
+            for key in LocalizationKey.allCases {
+                let english = try XCTUnwrap(englishValues[key.rawKey])
+                let localized = try XCTUnwrap(values[key.rawKey])
+                XCTAssertEqual(
+                    placeholderTokens(in: localized),
+                    placeholderTokens(in: english),
+                    "placeholder contract for \(key.rawKey) in \(language)"
+                )
+                for marker in formattingMarkers {
+                    if marker == "%%" && !newLanguages.contains(language) {
+                        continue
+                    }
+                    XCTAssertEqual(
+                        markerCount(marker, in: localized),
+                        markerCount(marker, in: english),
+                        "format/semantic marker \(marker) for \(key.rawKey) in \(language)"
+                    )
+                }
+            }
         }
     }
 
@@ -1070,6 +1589,12 @@ final class LocalizationTests: XCTestCase {
                     return ["Über BalanceBar", "System folgen", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .french:
                     return ["À propos de BalanceBar", "Suivre le système", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                case .portuguese:
+                    return ["Sobre o BalanceBar", "Usar o idioma do sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                case .russian:
+                    return ["О BalanceBar", "Использовать язык системы", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                case .italian:
+                    return ["Informazioni su BalanceBar", "Usa la lingua di sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .system:
                     return []
                 }

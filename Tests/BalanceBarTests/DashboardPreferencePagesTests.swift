@@ -3404,6 +3404,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 expectedEndpointLabels = ("Schmal", "Breit")
             case .french:
                 expectedEndpointLabels = ("Étroit", "Large")
+            case .portuguese:
+                expectedEndpointLabels = ("Estreito", "Largo")
+            case .russian:
+                expectedEndpointLabels = ("Узкий", "Широкий")
+            case .italian:
+                expectedEndpointLabels = ("Stretto", "Largo")
             case .system:
                 expectedEndpointLabels = ("窄", "宽")
             }
@@ -3421,6 +3427,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 expectedOffsetEndpointLabels = ("Bas", "Haut")
             case .english:
                 expectedOffsetEndpointLabels = ("Down", "Up")
+            case .portuguese:
+                expectedOffsetEndpointLabels = ("Para baixo", "Para cima")
+            case .russian:
+                expectedOffsetEndpointLabels = ("Вниз", "Вверх")
+            case .italian:
+                expectedOffsetEndpointLabels = ("Giù", "Su")
             }
             XCTAssertEqual(
                 labels.first { $0.identifier?.rawValue == DashboardMenuBarPage.widthAdjustmentSliderMinimumIdentifier }?.stringValue,
@@ -3849,7 +3861,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 case .simplifiedChinese: return zh
                 case .traditionalChineseTaiwan, .traditionalChineseHongKong: return zhT
                 case .japanese: return ja
-                case .english, .system, .korean, .spanish, .german, .french: return en
+                case .english, .system, .korean, .spanish, .german, .french, .portuguese, .russian, .italian: return en
                 }
             }
             let suiteName = "DashboardPreferencePagesTests.OpenCodex.\(UUID().uuidString)"

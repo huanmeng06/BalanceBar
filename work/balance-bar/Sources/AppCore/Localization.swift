@@ -10,8 +10,11 @@ enum AppLanguage: String, CaseIterable {
     case japanese
     case korean
     case spanish
-    case german
+    case portuguese
     case french
+    case german
+    case russian
+    case italian
 
     /// Source compatibility for callers that used the pre-Issue-184 value.
     /// It intentionally does not appear in `allCases`, so the picker exposes
@@ -46,6 +49,12 @@ enum AppLanguage: String, CaseIterable {
             self = .german
         case "french":
             self = .french
+        case "portuguese":
+            self = .portuguese
+        case "russian":
+            self = .russian
+        case "italian":
+            self = .italian
         default:
             return nil
         }
@@ -98,6 +107,12 @@ enum AppLanguage: String, CaseIterable {
             return .german
         case .french:
             return .french
+        case .portuguese:
+            return .portuguese
+        case .russian:
+            return .russian
+        case .italian:
+            return .italian
         case .system:
             for preferred in preferredLanguages {
                 let normalized = Self.normalizedPreferredLanguage(preferred)
@@ -122,6 +137,15 @@ enum AppLanguage: String, CaseIterable {
                 if normalized.hasPrefix("fr") {
                     return .french
                 }
+                if normalized.hasPrefix("pt") {
+                    return .portuguese
+                }
+                if normalized.hasPrefix("ru") {
+                    return .russian
+                }
+                if normalized.hasPrefix("it") {
+                    return .italian
+                }
                 if normalized.hasPrefix("en") {
                     return .english
                 }
@@ -136,7 +160,7 @@ enum AppLanguage: String, CaseIterable {
         switch self {
         case .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong:
             return 62
-        case .english, .japanese, .korean, .spanish, .german, .french, .system:
+        case .english, .japanese, .korean, .spanish, .german, .french, .portuguese, .russian, .italian, .system:
             return 72
         }
     }
@@ -167,6 +191,12 @@ enum AppLanguage: String, CaseIterable {
             return tr(.keyLocalizationGermanName, language: language)
         case .french:
             return tr(.keyLocalizationFrenchName, language: language)
+        case .portuguese:
+            return tr(.keyLocalizationPortugueseName, language: language)
+        case .russian:
+            return tr(.keyLocalizationRussianName, language: language)
+        case .italian:
+            return tr(.keyLocalizationItalianName, language: language)
         }
     }
 
@@ -192,6 +222,12 @@ enum AppLanguage: String, CaseIterable {
             return "de"
         case .french:
             return "fr"
+        case .portuguese:
+            return "pt"
+        case .russian:
+            return "ru"
+        case .italian:
+            return "it"
         }
     }
 

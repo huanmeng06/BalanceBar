@@ -3469,6 +3469,9 @@ final class UpdateTests: XCTestCase {
             case .french:
                 XCTAssertEqual(presentation.subtitle, "Nouvelle version disponible : 1.0.6 -> 1.0.7")
                 XCTAssertEqual(presentation.buttonTitle, "Télécharger et installer")
+            case .portuguese, .russian, .italian:
+                XCTAssertFalse(presentation.subtitle.isEmpty)
+                XCTAssertFalse(presentation.buttonTitle.isEmpty)
             case .system:
                 XCTFail("system is not part of this explicit localization matrix")
             }
@@ -3537,6 +3540,9 @@ final class UpdateTests: XCTestCase {
             case .french:
                 XCTAssertEqual(downloading.buttonTitle, "Téléchargement de 25% …")
                 XCTAssertEqual(installing.buttonTitle, "Installation de 25% …")
+            case .portuguese, .russian, .italian:
+                XCTAssertTrue(downloading.buttonTitle.contains("25%"))
+                XCTAssertTrue(installing.buttonTitle.contains("25%"))
             case .system:
                 XCTFail("system is not part of this explicit localization matrix")
             }

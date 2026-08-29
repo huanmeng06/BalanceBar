@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 resource_root="$source_dir/lang"
 bundle_root="${1:-}"
-localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj)
+localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj pt.lproj ru.lproj it.lproj)
 
 die() {
     printf 'localization-resource-probe: error: %s\n' "$*" >&2
@@ -36,6 +36,26 @@ for localization_directory in "${localization_directories[@]}"; do
         || die "$localization_directory contains duplicate keys"
     [[ "$resource_keys" == "$source_keys" ]] \
         || die "$localization_directory key set differs from LocalizationKey"
+
+    case "$localization_directory" in
+        pt.lproj)
+            forbidden_pattern="Tibo's|AbrirAI|Abrir o status da OpenAI|Para cimadates|^Do não mostrar$|Reserva Luna|Intervalo de verificação de backup|Redefine em %1\$@|Escolha se deseja verificar as versões Estável|evita eventos do sistema perdidos|As alterações de provedor são sincronizadas imediatamente|Hora da redefinição|Após uma recarga, mantém|Segue o CC Switch automaticamente|Seguir o sistema|Seguindo este provedor|Seguindo o provedor atual|Este provedor está em uso|O provedor atual está em uso|Follows CC Switch automatically|Official cota|Too many|Restore Defaults|Quick links|Preview|Font Size|Vertical position|main window|Changes apply|No live data|received yet|OpenCodex switch|database verification|Unrecognized|Contact .*maintainer|Every [0-9]"
+            ;;
+        ru.lproj)
+            forbidden_pattern="Tibo's|Вверхdates|ОткрытьAI|Открыть статус OpenAI|Резерв Luna|Доступно провайдер|Следит за|Следовать системе|Автоматически следует за CC Switch|Используется этот провайдер|Используется текущий провайдер|%1\$@ остаток|от -10,0 pt уже|Интервал резервной проверки|синхронизируются событиями|больше недоступен в CC Switch|Через [0-9]+ с|Follows CC Switch automatically|Official квота|Too many|Restore Defaults|Quick links|Preview|Font Size|Vertical position|main window|Changes apply|No live data|received yet|OpenCodex switch|database verification|Unrecognized|Contact .*maintainer|Every [0-9]"
+            ;;
+        it.lproj)
+            forbidden_pattern="Tibo's|Sudates|ApriAI|Apri lo stato di OpenAI|Riserva Luna|^Ufficiale %|Attuale provider|Disponibile provider|Stato sincronizzazione|Ora del ripristino Visualizzazione|Ora del ripristino non disponibile|Intervallo di verifica di riserva|controllo di riserva|vengono sincronizzate immediatamente dagli eventi|Dopo una ricarica, mantiene rossa|versioni Stabile o Beta|Segue automaticamente CC Switch|Segui il sistema|Segue questo provider|Segue il provider corrente|Questo provider è in uso|Il provider corrente è in uso|Follows CC Switch automatically|Official quota|Too many|Restore Defaults|Quick links|Preview|Font Size|Vertical position|main window|Changes apply|No live data|received yet|OpenCodex switch|database verification|Unrecognized|Contact .*maintainer|Every [0-9]"
+            ;;
+        *)
+            forbidden_pattern=""
+            ;;
+    esac
+    if [[ -n "$forbidden_pattern" ]] \
+        && sed -nE 's/^"[^"]+" = "(.*)";$/\1/p' "$localization_file" \
+            | grep -Eiq "$forbidden_pattern"; then
+        die "$localization_directory contains suspicious hybrid or mechanically corrupted translation text"
+    fi
 done
 
 if [[ -n "$bundle_root" ]]; then
