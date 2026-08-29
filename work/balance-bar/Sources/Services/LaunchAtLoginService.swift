@@ -7,6 +7,7 @@ enum LaunchAtLoginStatus: Equatable {
     case enabled
     case notRegistered
     case requiresApproval
+    case notFound
     case unknown
 
     init(_ status: SMAppService.Status) {
@@ -18,7 +19,7 @@ enum LaunchAtLoginStatus: Equatable {
         case .requiresApproval:
             self = .requiresApproval
         case .notFound:
-            self = .unknown
+            self = .notFound
         @unknown default:
             self = .unknown
         }
@@ -32,6 +33,7 @@ protocol LaunchAtLoginService {
 
     func register() throws
     func unregister() throws
+    func openSystemSettingsLoginItems()
 }
 
 /// Production adapter for the app's native login-item service. BalanceBar
@@ -53,6 +55,10 @@ final class SystemLaunchAtLoginService: LaunchAtLoginService {
 
     func unregister() throws {
         try service.unregister()
+    }
+
+    func openSystemSettingsLoginItems() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 }
 
@@ -78,7 +84,7 @@ struct LaunchAtLoginState: Equatable {
             return .none
         case .requiresApproval:
             return .requiresApproval
-        case .unknown:
+        case .notFound, .unknown:
             return .unavailable
         }
     }
@@ -122,13 +128,17 @@ final class LaunchAtLoginController {
         return currentState()
     }
 
+    func openSystemSettingsLoginItems() {
+        service.openSystemSettingsLoginItems()
+    }
+
     private func noticeAfterOperationError(
         for status: LaunchAtLoginStatus
     ) -> LaunchAtLoginNotice {
         switch status {
         case .requiresApproval:
             return .requiresApproval
-        case .unknown:
+        case .notFound, .unknown:
             return .unavailable
         case .enabled, .notRegistered:
             return .operationFailed

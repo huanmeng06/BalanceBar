@@ -176,6 +176,43 @@ private func migrateLegacyPreferencesIfNeeded() {
         localDomain: defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
     )
 }
+
+enum LaunchAtLoginGuidance: Equatable {
+    case requiresApproval
+    case unavailable
+}
+
+protocol LaunchAtLoginGuidancePresenting {
+    func present(
+        _ guidance: LaunchAtLoginGuidance,
+        for window: NSWindow,
+        completion: @escaping (Bool) -> Void
+    )
+}
+
+final class SystemLaunchAtLoginGuidancePresenter: LaunchAtLoginGuidancePresenting {
+    func present(
+        _ guidance: LaunchAtLoginGuidance,
+        for window: NSWindow,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let alert = NSAlert()
+        switch guidance {
+        case .requiresApproval:
+            alert.messageText = tr(.keyLaunchAtLoginApprovalAlertTitle)
+            alert.informativeText = tr(.keyLaunchAtLoginApprovalAlertBody)
+        case .unavailable:
+            alert.messageText = tr(.keyLaunchAtLoginUnavailableAlertTitle)
+            alert.informativeText = tr(.keyLaunchAtLoginUnavailableAlertBody)
+        }
+        alert.addButton(withTitle: tr(.keyLaunchAtLoginOpenSettings))
+        alert.addButton(withTitle: tr(.keyLaunchAtLoginCancel))
+        alert.beginSheetModal(for: window) { response in
+            completion(response == .alertFirstButtonReturn)
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var statusItemController: StatusItemController!
     private lazy var dashboardComposition = DashboardCompositionController(
@@ -212,6 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             isSortAlphabetically: { [weak self] in self?.sortProvidersAlphabetically ?? false },
             setSortAlphabetically: { [weak self] enabled in self?.sortProvidersAlphabetically = enabled },
             onToggle: { [weak self] identifier, enabled in self?.handleDashboardToggle(identifier: identifier, enabled: enabled) },
+            onLaunchAtLogin: { [weak self] in self?.handleLaunchAtLoginAction() },
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
             onBalanceDisplayThresholdChanged: { [weak self] value in
                 self?.handleDashboardBalanceDisplayThresholdChanged(value)
@@ -326,6 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
     private let launchAtLoginController: LaunchAtLoginController
+    private let launchAtLoginGuidancePresenter: LaunchAtLoginGuidancePresenting
     private let updateService: UpdateService
     private lazy var updateNotesWindowController = UpdateNotesWindowController(
         onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
@@ -400,11 +439,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
         openCodexRepository: OpenCodexRepository = OpenCodexRepository(),
         updateService: UpdateService? = nil,
-        launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService()
+        launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService(),
+        launchAtLoginGuidancePresenter: LaunchAtLoginGuidancePresenting = SystemLaunchAtLoginGuidancePresenter()
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
+        self.launchAtLoginGuidancePresenter = launchAtLoginGuidancePresenter
         self.updateService = updateService ?? UpdateService(
             releaseFetcher: DevelopmentReleaseFixture.releaseFetcher(),
             updateChannel: preferences.updateChannel,
@@ -727,6 +768,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         databaseWatcher.stop()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        dashboardComposition.refreshLaunchAtLogin()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -956,20 +1001,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case "animateCodexActivity":
             animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)
-        case LaunchAtLoginController.toggleIdentifier:
-            let state = launchAtLoginController.setEnabled(enabled)
-            dashboardComposition.refreshLaunchAtLogin(state)
-            if state.notice == .operationFailed {
-                SwitchLog.write(
-                    "launch at login operation failed; requested_enabled=\(enabled); observed_status=\(String(describing: state.status))",
-                    level: .error,
-                    category: "configuration"
-                )
-            }
         case "openCodexAutomaticDetection":
             dashboardComposition.handleAutomaticDetection(enabled)
         default:
             break
+        }
+    }
+
+    private func handleLaunchAtLoginAction() {
+        let current = launchAtLoginController.currentState()
+        dashboardComposition.refreshLaunchAtLogin(current)
+
+        switch current.status {
+        case .enabled:
+            applyLaunchAtLogin(enabled: false)
+        case .notRegistered:
+            applyLaunchAtLogin(enabled: true)
+        case .requiresApproval:
+            presentLaunchAtLoginGuidance(.requiresApproval)
+        case .notFound, .unknown:
+            presentLaunchAtLoginGuidance(.unavailable)
+        }
+    }
+
+    private func applyLaunchAtLogin(enabled: Bool) {
+        let state = launchAtLoginController.setEnabled(enabled)
+        dashboardComposition.refreshLaunchAtLogin(state)
+        guard state.notice == .operationFailed else { return }
+        SwitchLog.write(
+            "launch at login operation failed; requested_enabled=\(enabled); observed_status=\(String(describing: state.status))",
+            level: .error,
+            category: "configuration"
+        )
+    }
+
+    private func presentLaunchAtLoginGuidance(_ guidance: LaunchAtLoginGuidance) {
+        guard let window = dashboardComposition.window else { return }
+        launchAtLoginGuidancePresenter.present(guidance, for: window) { [weak self] shouldOpen in
+            guard let self else { return }
+            if shouldOpen {
+                self.launchAtLoginController.openSystemSettingsLoginItems()
+            }
+            self.dashboardComposition.refreshLaunchAtLogin()
         }
     }
 
@@ -1202,6 +1275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
+
+    func handleLaunchAtLoginActionForTesting() {
+        handleLaunchAtLoginAction()
+    }
 
     private func showDashboard() {
         dashboardComposition.open()

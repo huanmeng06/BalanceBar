@@ -75,8 +75,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let relay = DashboardPreferencePageRelay()
-        var toggles: [(String, Bool)] = []
-        relay.onToggle = { toggles.append(($0, $1)) }
+        var launchAtLoginActionCount = 0
+        relay.onLaunchAtLogin = { launchAtLoginActionCount += 1 }
         let controller = DashboardGeneralPage()
         let page = controller.make(.init(
             preferences: AppPreferences(defaults: defaults),
@@ -96,19 +96,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(labels.contains { $0.stringValue == "Launch at Login" })
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Automatically start BalanceBar when you log in to macOS."
+            $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
         })
 
         launchSwitch.state = .on
-        relay.toggle(launchSwitch)
-        XCTAssertEqual(toggles.last?.0, LaunchAtLoginController.toggleIdentifier)
-        XCTAssertEqual(toggles.last?.1, true)
+        relay.launchAtLogin(launchSwitch)
+        XCTAssertEqual(launchAtLoginActionCount, 1)
 
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .requiresApproval))
         XCTAssertEqual(launchSwitch.state, .mixed)
-        XCTAssertFalse(launchSwitch.isEnabled)
+        XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Allow BalanceBar in System Settings → General → Login Items to finish enabling Launch at Login."
+            $0.stringValue == "BalanceBar needs approval in System Settings"
         })
 
         controller.refreshLaunchAtLogin(
@@ -122,10 +121,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .unknown))
         XCTAssertEqual(launchSwitch.state, .off)
-        XCTAssertFalse(launchSwitch.isEnabled)
+        XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Launch at Login status is unavailable. Check System Settings → General → Login Items."
+            $0.stringValue == "Unable to read the login item status"
         })
+
+        controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .notFound))
+        XCTAssertEqual(launchSwitch.state, .off)
+        XCTAssertTrue(launchSwitch.isEnabled)
+        relay.launchAtLogin(launchSwitch)
+        XCTAssertEqual(launchAtLoginActionCount, 2)
     }
 
     func testLaunchAtLoginRowKeepsLongLocalizedTextAndControlSeparatedAcrossWidths() throws {

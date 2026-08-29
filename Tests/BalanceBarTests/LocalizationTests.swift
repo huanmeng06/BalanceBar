@@ -538,7 +538,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 438)
+        XCTAssertEqual(expectedKeys.count, 444)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -580,18 +580,18 @@ final class LocalizationTests: XCTestCase {
 
     func testLaunchAtLoginCopyIsLocalizedAcrossAllTwelveLanguages() {
         let expected: [AppLanguage: (String, String)] = [
-            .simplifiedChinese: ("登录时启动", "登录 macOS 时自动启动 BalanceBar。"),
-            .traditionalChineseTaiwan: ("登入時啟動", "登入 macOS 時自動啟動 BalanceBar。"),
-            .traditionalChineseHongKong: ("登入時啟動", "登入 macOS 時自動啟動 BalanceBar。"),
-            .japanese: ("ログイン時に起動", "macOSへのログイン時にBalanceBarを自動的に起動します。"),
-            .english: ("Launch at Login", "Automatically start BalanceBar when you log in to macOS."),
-            .korean: ("로그인 시 실행", "macOS에 로그인할 때 BalanceBar를 자동으로 실행합니다."),
-            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente al iniciar sesión en macOS."),
-            .german: ("Beim Anmelden starten", "BalanceBar beim Anmelden bei macOS automatisch starten."),
-            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar lorsque vous vous connectez à macOS."),
-            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente quando inicia sessão no macOS."),
-            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar при входе в macOS."),
-            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar quando accedi a macOS.")
+            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar"),
+            .traditionalChineseTaiwan: ("登入時啟動", "登入 Mac 後自動啟動 BalanceBar"),
+            .traditionalChineseHongKong: ("登入時啟動", "登入 Mac 後自動啟動 BalanceBar"),
+            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します"),
+            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac"),
+            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다"),
+            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac"),
+            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten"),
+            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac"),
+            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac"),
+            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac"),
+            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac")
         ]
 
         for language in resourceDirectories.values {

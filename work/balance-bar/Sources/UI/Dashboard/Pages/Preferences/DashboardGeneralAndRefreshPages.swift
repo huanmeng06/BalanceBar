@@ -317,7 +317,7 @@ final class DashboardGeneralPage {
             identifier: LaunchAtLoginController.toggleIdentifier,
             isOn: input.launchAtLoginState.status == .enabled,
             target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+            action: #selector(DashboardPreferencePageRelay.launchAtLogin(_:))
         )
         let launchAtLoginSubtitleLabel = NSTextField(
             wrappingLabelWithString: launchAtLoginSubtitle(for: input.launchAtLoginState)
@@ -538,10 +538,10 @@ final class DashboardGeneralPage {
             launchAtLoginSwitch.isEnabled = true
         case .requiresApproval:
             launchAtLoginSwitch.state = .mixed
-            launchAtLoginSwitch.isEnabled = false
-        case .unknown:
+            launchAtLoginSwitch.isEnabled = true
+        case .notFound, .unknown:
             launchAtLoginSwitch.state = .off
-            launchAtLoginSwitch.isEnabled = false
+            launchAtLoginSwitch.isEnabled = true
         }
         subtitle.stringValue = launchAtLoginSubtitle(for: state)
         subtitle.invalidateIntrinsicContentSize()
