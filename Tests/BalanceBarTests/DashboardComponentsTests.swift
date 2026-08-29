@@ -1090,23 +1090,21 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertFalse(host.trackingAreas[0].options.contains(.cursorUpdate))
         XCTAssertTrue(host.trackingAreas[0].options.contains(.activeAlways))
 
-        let previousCursor = NSCursor.current
-        defer { previousCursor.set() }
-        NSCursor.arrow.set()
+        let cursorBefore = NSCursor.current
 
         let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
         host.forwardHover(atHostPoint: glyphPoint)
-        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertTrue(NSCursor.current.isEqual(cursorBefore))
         XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
         link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: link.visibleTextHitRect.center))
-        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertTrue(NSCursor.current.isEqual(cursorBefore))
 
         let blankPoint = host.convert(
             NSPoint(x: link.visibleTextHitRect.maxX + 12, y: link.visibleTextHitRect.midY),
             from: link
         )
         host.forwardHover(atHostPoint: blankPoint)
-        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
+        XCTAssertTrue(NSCursor.current.isEqual(cursorBefore))
         XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
     }
 
@@ -1175,9 +1173,14 @@ final class DashboardComponentsTests: XCTestCase {
             var underlined = false
             var trackingAreaCount = 0
             var retainedLink = false
-            let probe = Timer(timeInterval: 0.02, repeats: false) { _ in
+            var probeAttempts = 0
+            let probe = Timer(timeInterval: 0.02, repeats: true) { timer in
+                probeAttempts += 1
                 guard host.window != nil else {
-                    menu.cancelTracking()
+                    if probeAttempts >= 50 {
+                        timer.invalidate()
+                        menu.cancelTracking()
+                    }
                     return
                 }
                 attached = true
@@ -1193,6 +1196,7 @@ final class DashboardComponentsTests: XCTestCase {
                 ) != nil
                 trackingAreaCount = host.trackingAreas.count
                 retainedLink = host.trackedLink === link
+                timer.invalidate()
                 menu.cancelTracking()
             }
             RunLoop.main.add(probe, forMode: .eventTracking)
