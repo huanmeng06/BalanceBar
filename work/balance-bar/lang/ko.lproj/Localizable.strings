@@ -410,8 +410,8 @@
 "status.item.controller.official_link" = "공식 링크:";
 "status.item.controller.opencodex" = "OpenCodex";
 "status.item.controller.opencodex_management_api_is_unavailable" = "OpenCodex 관리 API를 사용할 수 없습니다";
-"status.item.controller.opencodex_chosen_models_are_not_available_yet" = "OpenCodex 선택 모델을 아직 사용할 수 없습니다";
-"status.item.controller.no_opencodex_chosen_models_are_configured" = "구성된 OpenCodex 선택 모델이 없습니다";
+"status.item.controller.opencodex_featured_models_are_not_available_yet" = "OpenCodex 추천 모델을 아직 사용할 수 없습니다";
+"status.item.controller.no_opencodex_featured_models_are_configured" = "구성된 OpenCodex 추천 모델이 없습니다";
 "status.item.controller.current" = "· 현재";
 "status.item.controller.reset_value" = "%1$@";
 "status.item.controller.reset_time_unavailable" = "시간을 사용할 수 없음";

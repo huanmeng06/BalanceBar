@@ -410,8 +410,8 @@
 "status.item.controller.official_link" = "Official Link:";
 "status.item.controller.opencodex" = "OpenCodex";
 "status.item.controller.opencodex_management_api_is_unavailable" = "OpenCodex management API is unavailable";
-"status.item.controller.opencodex_chosen_models_are_not_available_yet" = "OpenCodex chosen models are not available yet";
-"status.item.controller.no_opencodex_chosen_models_are_configured" = "No OpenCodex chosen models are configured";
+"status.item.controller.opencodex_featured_models_are_not_available_yet" = "OpenCodex Featured Models are not available yet";
+"status.item.controller.no_opencodex_featured_models_are_configured" = "No OpenCodex Featured Models are configured";
 "status.item.controller.current" = "· Current";
 "status.item.controller.reset_value" = "%1$@";
 "status.item.controller.reset_time_unavailable" = "Time unavailable";

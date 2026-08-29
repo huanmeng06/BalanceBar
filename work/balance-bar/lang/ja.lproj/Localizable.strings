@@ -410,8 +410,8 @@
 "status.item.controller.official_link" = "公式リンク：";
 "status.item.controller.opencodex" = "OpenCodex";
 "status.item.controller.opencodex_management_api_is_unavailable" = "OpenCodex 管理 API を利用できません";
-"status.item.controller.opencodex_chosen_models_are_not_available_yet" = "OpenCodex の選択モデルはまだ利用できません";
-"status.item.controller.no_opencodex_chosen_models_are_configured" = "OpenCodex の選択モデルが設定されていません";
+"status.item.controller.opencodex_featured_models_are_not_available_yet" = "OpenCodex のおすすめモデルはまだ利用できません";
+"status.item.controller.no_opencodex_featured_models_are_configured" = "OpenCodex のおすすめモデルが設定されていません";
 "status.item.controller.current" = "· 現在";
 "status.item.controller.reset_value" = "%1$@";
 "status.item.controller.reset_time_unavailable" = "時刻を利用できません";
