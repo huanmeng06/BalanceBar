@@ -752,13 +752,13 @@ final class LocalizationTests: XCTestCase {
                 .portuguese,
                 .keyDashboardProviderPagesFollowingThisProvider,
                 [],
-                "Este provedor está em uso"
+                "Sincronização automática com este provedor"
             ),
             (
                 .portuguese,
                 .keyDashboardProviderPagesFollowingCurrentProvider,
                 [],
-                "O provedor atual está em uso"
+                "Sincronização automática com o provedor atual"
             ),
             (
                 .russian,
@@ -806,13 +806,13 @@ final class LocalizationTests: XCTestCase {
                 .russian,
                 .keyDashboardProviderPagesFollowingThisProvider,
                 [],
-                "Используется этот провайдер"
+                "Автоматическая синхронизация с этим провайдером"
             ),
             (
                 .russian,
                 .keyDashboardProviderPagesFollowingCurrentProvider,
                 [],
-                "Используется текущий провайдер"
+                "Автоматическая синхронизация с текущим провайдером"
             ),
             (
                 .russian,
@@ -842,13 +842,13 @@ final class LocalizationTests: XCTestCase {
                 .italian,
                 .keyDashboardProviderPagesFollowingThisProvider,
                 [],
-                "Questo provider è in uso"
+                "Sincronizzazione automatica con questo provider"
             ),
             (
                 .italian,
                 .keyDashboardProviderPagesFollowingCurrentProvider,
                 [],
-                "Il provider corrente è in uso"
+                "Sincronizzazione automatica con il provider corrente"
             ),
             (
                 .italian,

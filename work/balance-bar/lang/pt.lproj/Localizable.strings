@@ -371,7 +371,7 @@
 "dashboard.provider.pages.unavailable" = "Indisponível";
 "dashboard.provider.pages.current_provider" = "Provedor atual";
 "dashboard.provider.pages.available_provider" = "Provedor disponível";
-"dashboard.provider.pages.following_this_provider" = "Este provedor está em uso";
+"dashboard.provider.pages.following_this_provider" = "Sincronização automática com este provedor";
 "dashboard.provider.pages.this_provider_is_not_currently_active" = "Este provedor não está ativo no momento";
 "dashboard.provider.pages.refresh_now" = "Atualizar agora";
 "dashboard.provider.pages.switch_to_this_provider" = "Trocar para este provedor";
@@ -385,7 +385,7 @@
 "dashboard.provider.pages.no_codex_provider_found" = "Nenhum provedor do Codex encontrado";
 "dashboard.provider.pages.current_provider_unavailable" = "Provedor atual indisponível";
 "dashboard.provider.pages.waiting_for_provider" = "Aguardando um provedor";
-"dashboard.provider.pages.following_current_provider" = "O provedor atual está em uso";
+"dashboard.provider.pages.following_current_provider" = "Sincronização automática com o provedor atual";
 "dashboard.provider.pages.no_codex_provider_found.2" = "Nenhum provedor do Codex encontrado";
 "dashboard.provider.pages.loading.3" = "Carregando…";
 "dashboard.provider.pages.current" = "Atual";

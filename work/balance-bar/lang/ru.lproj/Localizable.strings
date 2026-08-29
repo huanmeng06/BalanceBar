@@ -371,7 +371,7 @@
 "dashboard.provider.pages.unavailable" = "Недоступно";
 "dashboard.provider.pages.current_provider" = "Текущий провайдер";
 "dashboard.provider.pages.available_provider" = "Доступный провайдер";
-"dashboard.provider.pages.following_this_provider" = "Используется этот провайдер";
+"dashboard.provider.pages.following_this_provider" = "Автоматическая синхронизация с этим провайдером";
 "dashboard.provider.pages.this_provider_is_not_currently_active" = "Этот провайдер сейчас не активен";
 "dashboard.provider.pages.refresh_now" = "Обновить сейчас";
 "dashboard.provider.pages.switch_to_this_provider" = "Переключиться на этого провайдера";
@@ -385,7 +385,7 @@
 "dashboard.provider.pages.no_codex_provider_found" = "Провайдер Codex не найден";
 "dashboard.provider.pages.current_provider_unavailable" = "Текущий провайдер недоступен";
 "dashboard.provider.pages.waiting_for_provider" = "Ожидание провайдера";
-"dashboard.provider.pages.following_current_provider" = "Используется текущий провайдер";
+"dashboard.provider.pages.following_current_provider" = "Автоматическая синхронизация с текущим провайдером";
 "dashboard.provider.pages.no_codex_provider_found.2" = "Провайдер Codex не найден";
 "dashboard.provider.pages.loading.3" = "Загрузка…";
 "dashboard.provider.pages.current" = "Текущий";

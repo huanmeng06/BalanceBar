@@ -371,7 +371,7 @@
 "dashboard.provider.pages.unavailable" = "Non disponibile";
 "dashboard.provider.pages.current_provider" = "Provider attuale";
 "dashboard.provider.pages.available_provider" = "Provider disponibile";
-"dashboard.provider.pages.following_this_provider" = "Questo provider è in uso";
+"dashboard.provider.pages.following_this_provider" = "Sincronizzazione automatica con questo provider";
 "dashboard.provider.pages.this_provider_is_not_currently_active" = "Questo provider non è attualmente attivo";
 "dashboard.provider.pages.refresh_now" = "Aggiorna ora";
 "dashboard.provider.pages.switch_to_this_provider" = "Cambia a questo provider";
@@ -385,7 +385,7 @@
 "dashboard.provider.pages.no_codex_provider_found" = "Nessun provider Codex trovato";
 "dashboard.provider.pages.current_provider_unavailable" = "Provider attuale non disponibile";
 "dashboard.provider.pages.waiting_for_provider" = "In attesa di un provider";
-"dashboard.provider.pages.following_current_provider" = "Il provider corrente è in uso";
+"dashboard.provider.pages.following_current_provider" = "Sincronizzazione automatica con il provider corrente";
 "dashboard.provider.pages.no_codex_provider_found.2" = "Nessun provider Codex trovato";
 "dashboard.provider.pages.loading.3" = "Caricamento…";
 "dashboard.provider.pages.current" = "Attuale";
