@@ -1668,7 +1668,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var screenParametersObserver: NSObjectProtocol?
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
-    var isMenuTracking: Bool { isStatusMenuTracking }
     var iconImage: NSImage? { menuBarIconView.image }
 
     // Exposes the controller's current outer footprint for headless layout
@@ -2846,7 +2845,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
-        view.isMenuTracking = { [weak self] in self?.isMenuTracking ?? false }
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
         provider.frame = layout.title
 
@@ -3045,7 +3043,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             linkPrefixWidth: AppLanguage.resolved.overviewLinkPrefixWidth
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
-        view.isMenuTracking = { [weak self] in self?.isMenuTracking ?? false }
         let titleText = OpenCodexCardPresentation.identity(for: card)
             + (card.isCurrent ? tr(.keyStatusItemControllerCurrent) : "")
         let provider = makeOverviewLabel(titleText, font: .systemFont(ofSize: 15, weight: .semibold))

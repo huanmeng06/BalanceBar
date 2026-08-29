@@ -1096,8 +1096,10 @@ final class DashboardComponentsTests: XCTestCase {
 
         let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
         host.forwardHover(atHostPoint: glyphPoint)
-        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.pointingHand))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
         XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        link.mouseDown(with: makeMouseEvent(type: .leftMouseDown, location: link.visibleTextHitRect.center))
+        XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
 
         let blankPoint = host.convert(
             NSPoint(x: link.visibleTextHitRect.maxX + 12, y: link.visibleTextHitRect.midY),

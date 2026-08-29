@@ -366,7 +366,9 @@ final class HoverLinkTextField: NSTextField {
         guard isPointInsideVisibleText(for: event) else {
             return
         }
-        NSCursor.pointingHand.set()
+        if interactionMode == .normal {
+            NSCursor.pointingHand.set()
+        }
         onActivate?()
     }
 
@@ -429,16 +431,16 @@ final class HoverLinkTextField: NSTextField {
 
     private func setHovering(_ hovered: Bool) {
         guard isHovered != hovered else {
-            if hovered {
+            if hovered, interactionMode == .normal {
                 NSCursor.pointingHand.set()
             }
             return
         }
         isHovered = hovered
         applyStyle(text: stringValue, underlined: hovered)
-        if hovered {
+        if hovered, interactionMode == .normal {
             NSCursor.pointingHand.set()
-        } else {
+        } else if interactionMode == .normal {
             NSCursor.arrow.set()
         }
     }
@@ -458,7 +460,9 @@ final class HoverLinkTextField: NSTextField {
             isHovered = false
             applyStyle(text: stringValue, underlined: false)
         }
-        NSCursor.arrow.set()
+        if interactionMode == .normal {
+            NSCursor.arrow.set()
+        }
     }
 
     private func isPointInsideVisibleText(for event: NSEvent) -> Bool {
@@ -574,7 +578,6 @@ final class HoverLinkTextField: NSTextField {
 final class MenuHoverLinkHostView: NSView {
     private weak var link: HoverLinkTextField?
     private var trackingAreaReference: NSTrackingArea?
-    var isMenuTracking: (() -> Bool)?
 
     var trackedLink: HoverLinkTextField? { link }
 
