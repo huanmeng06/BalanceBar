@@ -16,7 +16,10 @@ final class LocalizationTests: XCTestCase {
         "ko": .korean,
         "es": .spanish,
         "de": .german,
-        "fr": .french
+        "fr": .french,
+        "pt": .portuguese,
+        "ru": .russian,
+        "it": .italian
     ]
 
     private var testBundle: Bundle {
@@ -119,9 +122,23 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testSystemSelectionFallsBackToEnglishForUnknownLanguages() {
-        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["it-IT"]), .english)
-        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["it-IT", "pt-BR"]), .english)
+        XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: ["xx-XX"]), .english)
         XCTAssertEqual(AppLanguage.resolved(for: .system, preferredLanguages: []), .english)
+    }
+
+    func testSystemSelectionMatchesPortugueseRussianAndItalianIdentifiers() {
+        let cases: [(String, AppLanguage)] = [
+            ("pt", .portuguese), ("pt-BR", .portuguese), ("pt-PT", .portuguese),
+            ("ru", .russian), ("ru-RU", .russian),
+            ("it", .italian), ("it-IT", .italian)
+        ]
+        for (preferred, expected) in cases {
+            XCTAssertEqual(
+                AppLanguage.resolved(for: .system, preferredLanguages: [preferred]),
+                expected,
+                "expected \(preferred) to resolve to \(expected)"
+            )
+        }
     }
 
     func testSystemSelectionUsesFirstSupportedPreferredLanguage() {
@@ -175,8 +192,7 @@ final class LocalizationTests: XCTestCase {
     func testLanguagePickerOrder() {
         XCTAssertEqual(
             AppLanguage.allCases,
-            [.system, .simplifiedChinese, .traditionalChineseHongKong, .traditionalChineseTaiwan, .english, .japanese, .korean, .spanish, .german]
-                + [.french]
+            [.system, .simplifiedChinese, .traditionalChineseHongKong, .traditionalChineseTaiwan, .english, .japanese, .korean, .spanish, .german, .french, .portuguese, .russian, .italian]
         )
     }
 
@@ -221,6 +237,9 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .spanish), "Seguir el sistema")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .german), "System folgen")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .french), "Suivre le système")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .portuguese), "Seguir o sistema")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .russian), "Следовать системе")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .italian), "Segui il sistema")
 
         // Language options always keep their own original names; only
         // "Follow System" is localized into the current UI language.
@@ -247,6 +266,31 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .spanish), "Seguir el sistema")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .german), "System folgen")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .french), "Suivre le système")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .portuguese), "Seguir o sistema")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .russian), "Следовать системе")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .italian), "Segui il sistema")
+    }
+
+    func testNewLanguageNamesRemainNativeAndCoreCopyIsLocalized() {
+        let cases: [(AppLanguage, String, String)] = [
+            (.portuguese, "Sobre o BalanceBar", "Seguir o sistema"),
+            (.russian, "О BalanceBar", "Следовать системе"),
+            (.italian, "Informazioni su BalanceBar", "Segui il sistema")
+        ]
+        for (language, about, followSystem) in cases {
+            XCTAssertEqual(tr(.keyAppAboutBalancebar, language: language), about)
+            XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: language), followSystem)
+            XCTAssertEqual(AppLanguage.portuguese.localizedTitle(using: language), "Português")
+            XCTAssertEqual(AppLanguage.russian.localizedTitle(using: language), "Русский")
+            XCTAssertEqual(AppLanguage.italian.localizedTitle(using: language), "Italiano")
+            let rendered = tr(
+                .keyDashboardGeneralAndRefreshPagesNewVersionAvailableValueValue,
+                arguments: ["1.0", "1.1"],
+                language: language
+            )
+            XCTAssertTrue(rendered.contains("1.0") && rendered.contains("1.1"))
+            XCTAssertFalse(rendered.contains("%1$@") || rendered.contains("%2$@"))
+        }
     }
 
     func testZeroSecondIconDisplayDelayCopyExistsInEverySupportedLanguage() {
@@ -493,7 +537,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 430)
+        XCTAssertEqual(expectedKeys.count, 433)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(
@@ -1070,6 +1114,12 @@ final class LocalizationTests: XCTestCase {
                     return ["Über BalanceBar", "System folgen", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .french:
                     return ["À propos de BalanceBar", "Suivre le système", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                case .portuguese:
+                    return ["Sobre o BalanceBar", "Seguir o sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                case .russian:
+                    return ["О BalanceBar", "Следовать системе", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                case .italian:
+                    return ["Informazioni su BalanceBar", "Segui il sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .system:
                     return []
                 }

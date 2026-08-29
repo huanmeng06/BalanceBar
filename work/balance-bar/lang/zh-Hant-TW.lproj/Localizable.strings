@@ -30,6 +30,9 @@
 "localization.spanish_name" = "Español";
 "localization.german_name" = "Deutsch";
 "localization.french_name" = "Français";
+"localization.portuguese_name" = "Português";
+"localization.russian_name" = "Русский";
+"localization.italian_name" = "Italiano";
 "localization.status_unknown" = "狀態未知";
 "localization.unknown" = "未知";
 "localization.quota" = "額度";
