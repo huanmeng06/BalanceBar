@@ -60,6 +60,12 @@ jobs:
 
           echo "version_only=$version_only" >> "$GITHUB_OUTPUT"
 
+      - name: Version-only fast path
+        if: steps.classify.outputs.version_only == 'true'
+        run: |
+          set -Eeuo pipefail
+          echo 'Only the approved version values changed in the current PR head commit.'
+
       - name: Verify macOS 26 build environment
         if: steps.classify.outputs.version_only != 'true'
         run: |
@@ -131,9 +137,3 @@ jobs:
           ONLY_ACTIVE_ARCH=YES
           -parallel-testing-enabled NO
           test-without-building
-
-      - name: Version-only fast path
-        if: steps.classify.outputs.version_only == 'true'
-        run: |
-          set -Eeuo pipefail
-          echo 'Only the approved version values changed in the current PR head commit.'
