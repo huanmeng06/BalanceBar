@@ -176,6 +176,7 @@ private func migrateLegacyPreferencesIfNeeded() {
         localDomain: defaults.persistentDomain(forName: legacyBundleIdentifier) ?? [:]
     )
 }
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var statusItemController: StatusItemController!
     private lazy var dashboardComposition = DashboardCompositionController(
@@ -212,6 +213,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             isSortAlphabetically: { [weak self] in self?.sortProvidersAlphabetically ?? false },
             setSortAlphabetically: { [weak self] enabled in self?.sortProvidersAlphabetically = enabled },
             onToggle: { [weak self] identifier, enabled in self?.handleDashboardToggle(identifier: identifier, enabled: enabled) },
+            onLaunchAtLogin: { [weak self] enabled in self?.handleLaunchAtLoginAction(enabled: enabled) },
+            onOpenLaunchAtLoginSettings: { [weak self] in self?.openLaunchAtLoginSettings() },
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
             onBalanceDisplayThresholdChanged: { [weak self] value in
                 self?.handleDashboardBalanceDisplayThresholdChanged(value)
@@ -289,7 +292,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onDidResize: { [weak self] in
                 DispatchQueue.main.async { [weak self] in self?.clampDashboardScrollViewBounds() }
             }
-        )
+        ),
+        launchAtLoginController: launchAtLoginController
     )
     private var dashboardIsVisible: Bool { dashboardComposition.isVisible }
     private var dashboardSection: DashboardSection { dashboardComposition.section }
@@ -324,6 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var openCodexRefreshCoordinator: OpenCodexRefreshCoordinator!
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
+    private let launchAtLoginController: LaunchAtLoginController
     private let updateService: UpdateService
     private lazy var updateNotesWindowController = UpdateNotesWindowController(
         onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
@@ -397,10 +402,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         repository: CCSwitchRepository = CCSwitchRepository(),
         officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
         openCodexRepository: OpenCodexRepository = OpenCodexRepository(),
-        updateService: UpdateService? = nil
+        updateService: UpdateService? = nil,
+        launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService()
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
+        self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
         self.updateService = updateService ?? UpdateService(
             releaseFetcher: DevelopmentReleaseFixture.releaseFetcher(),
             updateChannel: preferences.updateChannel,
@@ -723,6 +730,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         databaseWatcher.stop()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        dashboardComposition.refreshLaunchAtLogin()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -959,6 +970,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
+    private func handleLaunchAtLoginAction(enabled: Bool) {
+        applyLaunchAtLogin(enabled: enabled)
+    }
+
+    private func applyLaunchAtLogin(enabled: Bool) {
+        let outcome = launchAtLoginController.setEnabled(enabled)
+        dashboardComposition.refreshLaunchAtLogin(outcome.state)
+        guard let error = outcome.error else { return }
+        SwitchLog.write(
+            "launch at login operation threw; requested_enabled=\(enabled); observed_status=\(String(describing: outcome.state.status)); error=\(error)",
+            level: .error,
+            category: "configuration"
+        )
+    }
+
+    private func openLaunchAtLoginSettings() {
+        launchAtLoginController.openSystemSettingsLoginItems()
+    }
+
     private func handleDashboardBalanceDisplayThresholdChanged(_ value: Double) {
         let normalized = AppPreferences.normalizedBalanceDisplayThreshold(value)
         preferences.balanceDisplayThreshold = normalized
@@ -1188,6 +1218,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
+
+    func handleLaunchAtLoginActionForTesting(enabled: Bool) {
+        handleLaunchAtLoginAction(enabled: enabled)
+    }
 
     private func showDashboard() {
         dashboardComposition.open()

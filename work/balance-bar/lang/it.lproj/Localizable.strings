@@ -216,6 +216,12 @@
 "dashboard.general.and.refresh.pages.retry" = "Riprova";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Apri CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "Avvia all'accesso";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "Avvia automaticamente BalanceBar dopo l’accesso al Mac";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "BalanceBar richiede l’autorizzazione in Impostazioni di Sistema";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossibile aggiornare «Avvia all'accesso». Controlla Impostazioni di Sistema → Generali → Elementi login e riprova.";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Impossibile leggere lo stato dell’elemento login";
+"dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Apri impostazioni";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Provider attuale: %1$@";
 "dashboard.general.and.refresh.pages.system" = "Sistema";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Ogni 1 s";

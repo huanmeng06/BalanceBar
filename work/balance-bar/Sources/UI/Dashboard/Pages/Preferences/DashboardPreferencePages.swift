@@ -2,6 +2,8 @@ import AppKit
 
 struct DashboardPreferencePageActions {
     let onToggle: (String, Bool) -> Void
+    let onLaunchAtLogin: (Bool) -> Void
+    let onOpenLaunchAtLoginSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
     let onOffsetAdjust: (String, Int) -> Void
@@ -33,6 +35,7 @@ final class DashboardPreferencePages {
     private let preferences: AppPreferences
     private let devBundleIdentifier: String
     private let actions: DashboardPreferencePageActions
+    private let launchAtLoginController: LaunchAtLoginController
     private let relay = DashboardPreferencePageRelay()
     private let generalPage = DashboardGeneralPage()
     private let menuPage = DashboardMenuPage()
@@ -40,11 +43,19 @@ final class DashboardPreferencePages {
     private let advancedPage = DashboardAdvancedPage()
     private let logsPage = DashboardLogsPage()
 
-    init(preferences: AppPreferences, devBundleIdentifier: String, actions: DashboardPreferencePageActions) {
+    init(
+        preferences: AppPreferences,
+        devBundleIdentifier: String,
+        actions: DashboardPreferencePageActions,
+        launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController()
+    ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.actions = actions
+        self.launchAtLoginController = launchAtLoginController
         relay.onToggle = actions.onToggle
+        relay.onLaunchAtLogin = actions.onLaunchAtLogin
+        relay.onOpenLaunchAtLoginSettings = actions.onOpenLaunchAtLoginSettings
         relay.onInterval = actions.onInterval
         relay.onOffsetAdjust = actions.onOffsetAdjust
         relay.onOffsetValue = actions.onOffsetValue
@@ -88,7 +99,8 @@ final class DashboardPreferencePages {
                 preferences: preferences,
                 currentProviderName: currentProviderName,
                 relay: relay,
-                updateState: updateState
+                updateState: updateState,
+                launchAtLoginState: launchAtLoginController.currentState()
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -186,6 +198,14 @@ final class DashboardPreferencePages {
 
     func refreshUpdateState(_ updateState: UpdateCheckState) {
         generalPage.refresh(updateState: updateState)
+    }
+
+    func refreshLaunchAtLogin() {
+        generalPage.refreshLaunchAtLogin(launchAtLoginController.currentState())
+    }
+
+    func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
+        generalPage.refreshLaunchAtLogin(state)
     }
 
     func handleAutomaticDetection(_ enabled: Bool) {

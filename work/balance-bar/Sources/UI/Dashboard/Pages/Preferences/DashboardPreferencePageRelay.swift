@@ -4,6 +4,8 @@ import AppKit
 /// so preference writes and application actions remain explicit and testable.
 final class DashboardPreferencePageRelay: NSObject {
     var onToggle: ((String, Bool) -> Void)?
+    var onLaunchAtLogin: ((Bool) -> Void)?
+    var onOpenLaunchAtLoginSettings: (() -> Void)?
     var onInterval: ((String, TimeInterval) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
     var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
@@ -31,6 +33,14 @@ final class DashboardPreferencePageRelay: NSObject {
     @objc func toggle(_ sender: NSSwitch) {
         guard let identifier = sender.identifier?.rawValue else { return }
         onToggle?(identifier, sender.state == .on)
+    }
+
+    @objc func launchAtLogin(_ sender: NSSwitch) {
+        onLaunchAtLogin?(sender.state == .on)
+    }
+
+    @objc func openLaunchAtLoginSettings(_ sender: NSButton) {
+        onOpenLaunchAtLoginSettings?()
     }
 
     @objc func interval(_ sender: NSPopUpButton) {
