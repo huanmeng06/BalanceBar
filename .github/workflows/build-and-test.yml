@@ -24,7 +24,44 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Classify current pull request head commit
+        id: classify
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -Eeuo pipefail
+
+          version_only=false
+          if [[ "$GITHUB_EVENT_NAME" == 'pull_request' && -n "$PR_HEAD_SHA" && -n "$PR_NUMBER" ]]; then
+            pr_head_ref="refs/remotes/origin/pr-${PR_NUMBER}-head"
+            if git fetch --no-tags --depth=2 origin \
+              "+refs/pull/${PR_NUMBER}/head:${pr_head_ref}"; then
+              fetched_head_sha="$(git rev-parse "$pr_head_ref" 2>/dev/null || true)"
+              if [[ "$fetched_head_sha" == "$PR_HEAD_SHA" ]]; then
+                if classification="$(.github/scripts/classify-version-only-diff.sh \
+                  "$PR_HEAD_SHA" 2>/dev/null)"; then
+                  echo "Current PR head classification: $classification"
+                  if [[ "$classification" == 'version-only' ]]; then
+                    version_only=true
+                  fi
+                else
+                  echo 'Version-only classifier failed; continuing with full checks.' >&2
+                fi
+              else
+                echo 'Fetched PR head did not match the event SHA; continuing with full checks.' >&2
+              fi
+            else
+              echo 'Could not fetch the PR head ref; continuing with full checks.' >&2
+            fi
+          else
+            echo 'Non-pull-request event; continuing with full checks.'
+          fi
+
+          echo "version_only=$version_only" >> "$GITHUB_OUTPUT"
+
       - name: Verify macOS 26 build environment
+        if: steps.classify.outputs.version_only != 'true'
         run: |
           set -Eeuo pipefail
           xcodebuild -version
@@ -33,6 +70,7 @@ jobs:
           echo "Using macOS SDK $sdk_version with deployment target $BALANCEBAR_DEPLOYMENT_TARGET"
 
       - name: Independent build checks
+        if: steps.classify.outputs.version_only != 'true'
         run: |
           set -Eeuo pipefail
 
@@ -80,6 +118,7 @@ jobs:
           exit "$check_status"
 
       - name: XCTest
+        if: steps.classify.outputs.version_only != 'true'
         run: >-
           xcodebuild
           -project BalanceBar.xcodeproj
@@ -92,3 +131,9 @@ jobs:
           ONLY_ACTIVE_ARCH=YES
           -parallel-testing-enabled NO
           test-without-building
+
+      - name: Version-only fast path
+        if: steps.classify.outputs.version_only == 'true'
+        run: |
+          set -Eeuo pipefail
+          echo 'Only the approved version values changed in the current PR head commit.'
