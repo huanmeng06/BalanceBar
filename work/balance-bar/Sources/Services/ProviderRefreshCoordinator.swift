@@ -1,5 +1,94 @@
 import Foundation
 
+/// Supplies deterministic quota data only to the explicitly named
+/// demo bundles. Normal development and production bundles return nil and
+/// continue to use the live official quota response.
+enum DevelopmentLunaReserveDemo {
+    enum Mode: String {
+        case zero
+        case unavailable
+        case fiveHourExhausted = "five-hour-exhausted"
+    }
+
+    private static let infoPlistKey = "BalanceBarLunaReserveDemo"
+
+    static func snapshot(
+        providerName: String,
+        date: Date = Date()
+    ) -> Snapshot? {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier,
+              bundleIdentifier.contains(".demo."),
+              let rawMode = Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String,
+              let mode = Mode(rawValue: rawMode)
+        else {
+            return nil
+        }
+        return snapshot(mode: mode, providerName: providerName, date: date)
+    }
+
+    static func snapshot(
+        mode: Mode,
+        providerName: String,
+        date: Date = Date()
+    ) -> Snapshot {
+        let fiveHourRemaining: Double
+        switch mode {
+        case .fiveHourExhausted:
+            fiveHourRemaining = 0
+        case .zero, .unavailable:
+            fiveHourRemaining = 75
+        }
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: fiveHourRemaining,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2h0m",
+                durationSeconds: 5 * 3_600
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 60,
+                label: tr(.keyResponseParsers7DayQuota),
+                daysText: tr(.keyResponseParsers7Days),
+                reset: "5d3h",
+                durationSeconds: 7 * 86_400
+            )
+        ]
+        let reserve: LunaReserveQuota
+        switch mode {
+        case .zero:
+            reserve = LunaReserveQuota(
+                status: .available,
+                remaining: 0,
+                reset: "1h30m"
+            )
+        case .unavailable:
+            reserve = LunaReserveQuota(
+                status: .unavailable,
+                remaining: nil,
+                reset: nil
+            )
+        case .fiveHourExhausted:
+            reserve = LunaReserveQuota(
+                status: .available,
+                remaining: 45,
+                reset: "1h30m"
+            )
+        }
+        return .official(
+            providerName,
+            windows[1].remaining,
+            windows[1].label,
+            windows[1].reset,
+            date,
+            windows: windows,
+            lunaReserve: reserve
+        )
+    }
+}
+
 struct ProviderRefreshActions {
     let currentProvider: (AssistantClient) -> CCSwitchProvider?
     let isActiveClient: (AssistantClient) -> Bool
@@ -241,6 +330,14 @@ final class ProviderRefreshCoordinator {
     }
 
     private func fetchOfficialQuota(providerID: String, providerName: String, client: AssistantClient) {
+        if let demoSnapshot = DevelopmentLunaReserveDemo.snapshot(providerName: providerName) {
+            renderForCurrentProvider(
+                demoSnapshot,
+                providerID: providerID,
+                client: client
+            )
+            return
+        }
         officialQuotaClient.fetchQuota(client: client, providerID: providerID) { [weak self] result in
             guard let self else { return }
             switch result {
@@ -253,7 +350,8 @@ final class ProviderRefreshCoordinator {
                         response.output.label,
                         response.output.reset,
                         Date(),
-                        windows: response.output.windows
+                        windows: response.output.windows,
+                        lunaReserve: response.output.lunaReserve
                     ),
                     providerID: providerID,
                     client: client

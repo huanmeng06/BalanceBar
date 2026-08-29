@@ -295,6 +295,8 @@ final class DashboardMenuBarPage {
     static let iconDisplayDelayIdentifier = AppPreferences.menuBarIconDisplayDelayKey
     static let quotaWindowPreferenceIdentifier = AppPreferences.menuBarQuotaWindowPreferenceKey
     static let quotaResetDisplayModeIdentifier = AppPreferences.menuBarQuotaResetDisplayModeKey
+    static let autoSwitchLunaReserveIdentifier = AppPreferences.menuBarAutoSwitchLunaReserveKey
+    static let lunaReserveResetTimeModeIdentifier = AppPreferences.menuBarLunaReserveResetTimeModeKey
     static let widthAdjustmentSliderMinimumIdentifier = "menuBarStatusItemWidthAdjustmentMinimum"
     static let widthAdjustmentSliderMaximumIdentifier = "menuBarStatusItemWidthAdjustmentMaximum"
     static let iconOffsetSliderMinimumIdentifier = "menuBarIconOffsetSliderMinimum"
@@ -363,11 +365,15 @@ final class DashboardMenuBarPage {
         showAmount: Bool,
         showReset: Bool,
         quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
+        lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
         resolving snapshotResolver: (Snapshot) -> Snapshot
     ) -> Presentation {
         let effective = snapshotResolver(snapshot)
         let secondary = effective.kind == .official
-            ? effective.menuBarSecondary(displayMode: quotaResetDisplayMode)
+            ? effective.menuBarSecondary(
+                displayMode: quotaResetDisplayMode,
+                lunaReserveResetTimeMode: lunaReserveResetTimeMode
+            )
             : ""
         return Presentation(
             primary: showAmount ? effective.menuBarPrimary : "",
@@ -461,8 +467,12 @@ final class DashboardMenuBarPage {
     private weak var amountDisplayRow: NSView?
     private weak var resetCountdownRow: NSView?
     private weak var quotaWindowPreferenceRow: NSView?
+    private weak var autoSwitchLunaReserveRow: NSView?
+    private weak var lunaReserveResetTimeRow: NSView?
     private weak var quotaResetDisplayModeRow: NSView?
     private weak var quotaWindowPreferenceControl: NSPopUpButton?
+    private weak var autoSwitchLunaReserveSwitch: NSSwitch?
+    private weak var lunaReserveResetTimeModeControl: NSPopUpButton?
     private weak var quotaResetDisplayModeControl: NSPopUpButton?
     private weak var quotaRowsStack: NSStackView?
     private weak var quotaCardHeightConstraint: NSLayoutConstraint?
@@ -656,11 +666,23 @@ final class DashboardMenuBarPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
+        let autoSwitchLunaReserve = DashboardSettingsComponents.makeSwitch(
+            identifier: Self.autoSwitchLunaReserveIdentifier,
+            isOn: input.preferences.menuBarAutoSwitchLunaReserve,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        self.autoSwitchLunaReserveSwitch = autoSwitchLunaReserve
         let quotaWindowPreferenceControl = makeQuotaWindowPreferenceControl(
             value: input.preferences.menuBarQuotaWindowPreference,
             relay: input.relay
         )
         self.quotaWindowPreferenceControl = quotaWindowPreferenceControl
+        let lunaReserveResetTimeModeControl = makeLunaReserveResetTimeModeControl(
+            value: input.preferences.menuBarLunaReserveResetTimeMode,
+            relay: input.relay
+        )
+        self.lunaReserveResetTimeModeControl = lunaReserveResetTimeModeControl
         let iconDisplayModeControl = makeIconDisplayModeControl(
             value: input.preferences.menuBarIconDisplayMode,
             relay: input.relay
@@ -732,6 +754,18 @@ final class DashboardMenuBarPage {
             control: quotaWindowPreferenceControl
         )
         self.quotaWindowPreferenceRow = quotaWindowPreferenceRow
+        let autoSwitchLunaReserveRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageAutoSwitchLunaReserve),
+            subtitle: tr(.keyDashboardMenuBarPageAutoSwitchLunaReserveDescription),
+            control: autoSwitchLunaReserve
+        )
+        self.autoSwitchLunaReserveRow = autoSwitchLunaReserveRow
+        let lunaReserveResetTimeRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardMenuBarPageLunaReserveResetTime),
+            subtitle: tr(.keyDashboardMenuBarPageLunaReserveResetTimeDescription),
+            control: lunaReserveResetTimeModeControl
+        )
+        self.lunaReserveResetTimeRow = lunaReserveResetTimeRow
         let amountDisplayRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageBalanceAmount),
             subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
@@ -793,7 +827,9 @@ final class DashboardMenuBarPage {
                 amountDisplayRow,
                 resetCountdownRow,
                 quotaWindowPreferenceRow,
-                quotaResetDisplayModeRow
+                quotaResetDisplayModeRow,
+                autoSwitchLunaReserveRow,
+                lunaReserveResetTimeRow
             ],
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
                 self?.quotaRowsStack = rowsStack
@@ -801,7 +837,8 @@ final class DashboardMenuBarPage {
                 self?.quotaSeparators = separators
                 self?.updateQuotaVisibility(
                     showAmount: input.preferences.showMenuBarAmount,
-                    showReset: input.preferences.showMenuBarReset
+                    showReset: input.preferences.showMenuBarReset,
+                    autoSwitchLunaReserve: input.preferences.menuBarAutoSwitchLunaReserve
                 )
             }
         )
@@ -975,9 +1012,10 @@ final class DashboardMenuBarPage {
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
             quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode,
+            lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             resolving: menuBarSnapshot
         )
-        previewPrimary.stringValue = presentation.primary
+        MenuBarLayout.applyPrimaryText(presentation.primary, to: previewPrimary)
         previewSecondary.stringValue = presentation.secondary
         let hasSecondary = presentation.hasSecondary
         let geometry = MenuBarLayout.geometry(
@@ -1027,7 +1065,8 @@ final class DashboardMenuBarPage {
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
         updateQuotaVisibility(
             showAmount: preferences.showMenuBarAmount,
-            showReset: preferences.showMenuBarReset
+            showReset: preferences.showMenuBarReset,
+            autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve
         )
         if let quotaWindowPreferenceControl,
            let selectedIndex = OfficialQuotaWindowPreference.allCases.firstIndex(
@@ -1068,6 +1107,18 @@ final class DashboardMenuBarPage {
                 quotaResetDisplayModeControl.selectItem(at: selectedIndex)
             }
             quotaResetDisplayModeControl.synchronizeTitleAndSelectedItem()
+        }
+        autoSwitchLunaReserveSwitch?.state = preferences.menuBarAutoSwitchLunaReserve
+            ? .on
+            : .off
+        if let lunaReserveResetTimeModeControl,
+           let selectedIndex = LunaReserveResetTimeMode.allCases.firstIndex(
+               of: preferences.menuBarLunaReserveResetTimeMode
+           ) {
+            if lunaReserveResetTimeModeControl.indexOfSelectedItem != selectedIndex {
+                lunaReserveResetTimeModeControl.selectItem(at: selectedIndex)
+            }
+            lunaReserveResetTimeModeControl.synchronizeTitleAndSelectedItem()
         }
         let widthAdjustment = transientWidthAdjustment
             ?? preferences.menuBarStatusItemWidthAdjustment
@@ -1279,19 +1330,40 @@ final class DashboardMenuBarPage {
         )
     }
 
-    private func updateQuotaVisibility(showAmount: Bool, showReset: Bool) {
+    private func updateQuotaVisibility(
+        showAmount: Bool,
+        showReset: Bool,
+        autoSwitchLunaReserve: Bool
+    ) {
         resetCountdownRow?.isHidden = !showAmount
         let showResetDetails = showAmount && showReset
         quotaWindowPreferenceRow?.isHidden = !showResetDetails
+        autoSwitchLunaReserveRow?.isHidden = !showAmount
+        lunaReserveResetTimeRow?.isHidden = !showAmount || !autoSwitchLunaReserve
         quotaResetDisplayModeRow?.isHidden = !showResetDetails
+        autoSwitchLunaReserveSwitch?.isEnabled = showAmount
+        lunaReserveResetTimeModeControl?.isEnabled = showAmount && autoSwitchLunaReserve
 
-        // The separators describe the visible row boundaries. In particular,
-        // do not leave a trailing line under the only visible amount row when
-        // the dependent rows are collapsed.
-        if quotaSeparators.count > 2 {
-            quotaSeparators[0].isHidden = !showAmount
-            quotaSeparators[1].isHidden = !showResetDetails
-            quotaSeparators[2].isHidden = !showResetDetails
+        // The separators describe visible row boundaries. When the dependent
+        // Reserve row is hidden, keep exactly one separator after each visible
+        // row that has another visible row later in the ordered list. This
+        // collapses hidden rows without producing doubled lines.
+        let rows = [
+            amountDisplayRow,
+            resetCountdownRow,
+            quotaWindowPreferenceRow,
+            quotaResetDisplayModeRow,
+            autoSwitchLunaReserveRow,
+            lunaReserveResetTimeRow
+        ]
+        for (index, separator) in quotaSeparators.enumerated() {
+            guard index < rows.count,
+                  index + 1 < rows.count else {
+                separator.isHidden = true
+                continue
+            }
+            let hasVisibleRowAfter = rows[(index + 1)...].contains { $0?.isHidden == false }
+            separator.isHidden = !(rows[index]?.isHidden == false && hasVisibleRowAfter)
         }
         updateQuotaCardLayout()
     }
@@ -1600,6 +1672,30 @@ final class DashboardMenuBarPage {
         return control
     }
 
+    private func makeLunaReserveResetTimeModeControl(
+        value: LunaReserveResetTimeMode,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.lunaReserveResetTimeModeIdentifier,
+            items: LunaReserveResetTimeMode.allCases.map { mode in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.lunaReserveResetTimeModeLabel(mode),
+                    representedObject: mode.rawValue
+                )
+            },
+            selectedIndex: LunaReserveResetTimeMode.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarLunaReserveResetTimeMode(_:))
+        )
+        let minimumWidth: CGFloat = 108
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuBarPageLunaReserveResetTimeDescription)
+        return control
+    }
+
     private static func quotaWindowPreferenceLabel(
         _ preference: OfficialQuotaWindowPreference
     ) -> String {
@@ -1651,6 +1747,17 @@ final class DashboardMenuBarPage {
             return tr(.keyDashboardMenuBarPageQuotaResetDisplayTarget)
         case .both:
             return tr(.keyDashboardMenuBarPageQuotaResetDisplayBoth)
+        }
+    }
+
+    private static func lunaReserveResetTimeModeLabel(
+        _ mode: LunaReserveResetTimeMode
+    ) -> String {
+        switch mode {
+        case .lunaReserve:
+            return tr(.keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve)
+        case .originalQuota:
+            return tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota)
         }
     }
 

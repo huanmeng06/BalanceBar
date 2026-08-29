@@ -22,6 +22,21 @@ enum OfficialQuotaWindowPreference: String, CaseIterable, Equatable {
     }
 }
 
+enum LunaReserveDisplayMode: String, CaseIterable, Equatable {
+    case disabled
+    case whenQuotaExhausted
+    case always
+
+    static let defaultValue: Self = .always
+}
+
+enum LunaReserveResetTimeMode: String, CaseIterable, Equatable {
+    case originalQuota
+    case lunaReserve
+
+    static let defaultValue: Self = .originalQuota
+}
+
 enum MenuBarIconDisplayMode: String, CaseIterable, Equatable {
     case alwaysVisible
     case onlyWhileRunning
@@ -108,6 +123,14 @@ final class AppPreferences {
     static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
     static let menuBarQuotaResetDisplayModeKey = "menuBarQuotaResetDisplayMode"
     static let menuBarQuotaResetDisplayModeDefault: OfficialQuotaResetDisplayMode = .defaultValue
+    static let menuBarAutoSwitchLunaReserveKey = "menuBarAutoSwitchLunaReserve"
+    static let menuBarAutoSwitchLunaReserveDefault = false
+    static let menuBarLunaReserveResetTimeModeKey = "menuBarLunaReserveResetTimeMode"
+    static let menuBarLunaReserveResetTimeModeDefault: LunaReserveResetTimeMode = .defaultValue
+    static let menuLunaReserveDisplayModeKey = "menuLunaReserveDisplayMode"
+    static let menuLunaReserveDisplayModeDefault: LunaReserveDisplayMode = .defaultValue
+    static let menuLunaReserveHideExhaustedQuotaKey = "menuLunaReserveHideExhaustedQuota"
+    static let menuLunaReserveHideExhaustedQuotaDefault = false
     static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"
     static let menuBarIconDisplayModeDefault: MenuBarIconDisplayMode = .defaultValue
     static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"
@@ -180,6 +203,52 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarQuotaResetDisplayModeKey)
+        }
+    }
+    var menuBarAutoSwitchLunaReserve: Bool {
+        get {
+            bool(
+                Self.menuBarAutoSwitchLunaReserveKey,
+                default: Self.menuBarAutoSwitchLunaReserveDefault
+            )
+        }
+        set {
+            defaults.set(newValue, forKey: Self.menuBarAutoSwitchLunaReserveKey)
+        }
+    }
+    var menuBarLunaReserveResetTimeMode: LunaReserveResetTimeMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarLunaReserveResetTimeModeKey),
+                  let mode = LunaReserveResetTimeMode(rawValue: rawValue) else {
+                return Self.menuBarLunaReserveResetTimeModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarLunaReserveResetTimeModeKey)
+        }
+    }
+    var menuLunaReserveDisplayMode: LunaReserveDisplayMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuLunaReserveDisplayModeKey),
+                  let mode = LunaReserveDisplayMode(rawValue: rawValue) else {
+                return Self.menuLunaReserveDisplayModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuLunaReserveDisplayModeKey)
+        }
+    }
+    var menuLunaReserveHideExhaustedQuota: Bool {
+        get {
+            bool(
+                Self.menuLunaReserveHideExhaustedQuotaKey,
+                default: Self.menuLunaReserveHideExhaustedQuotaDefault
+            )
+        }
+        set {
+            defaults.set(newValue, forKey: Self.menuLunaReserveHideExhaustedQuotaKey)
         }
     }
     var menuBarIconDisplayMode: MenuBarIconDisplayMode {

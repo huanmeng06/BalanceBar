@@ -244,6 +244,60 @@ final class DashboardProviderPagesTests: XCTestCase {
         XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue == "—" })
         XCTAssertNotNil(descendants(of: page, as: NSTextField.self).first { $0.stringValue.contains("Current provider unavailable") || $0.stringValue.contains("当前服务商不可用") })
     }
+
+    func testOverviewShowsLunaReserveOnlyWhenOfficialDataContainsIt() throws {
+        let actions = DashboardProviderPageActions(
+            onRefresh: {}, onSwitchProvider: { _ in }, onOpenProvider: { _ in }, onSelectProvider: { _ in },
+            isSortAlphabetically: { false }, setSortAlphabetically: { _ in }
+        )
+        let coordinator = DashboardProviderPageCoordinator(actions: actions)
+        let choice = ProviderChoice(id: "current", name: "Current", isCurrent: true)
+        let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
+        let page = coordinator.makeOverviewPage(input: DashboardProviderPageInput(
+            choices: [choice], selectedProviderID: choice.id,
+            snapshot: .official("Current", 80, "5-hour", "1h0m", Date(), lunaReserve: reserve),
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 1,
+            currentProviderIsOfficial: true
+        ))
+        let card = try XCTUnwrap(
+            descendants(of: page, as: NSView.self).first {
+                $0.identifier?.rawValue == "lunaReserveCard"
+            }
+        )
+        XCTAssertFalse(card.isHidden)
+        XCTAssertNotNil(descendants(of: card, as: NSTextField.self).first {
+            $0.identifier?.rawValue == "lunaReserveRemaining"
+                && $0.stringValue == reserve.remainingText
+        })
+
+        XCTAssertTrue(coordinator.refreshMountedPage(input: DashboardProviderPageInput(
+            choices: [choice], selectedProviderID: choice.id,
+            snapshot: .official("Current", 80, "5-hour", "1h0m", Date()),
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 2,
+            currentProviderIsOfficial: true
+        )))
+        XCTAssertFalse(card.isHidden)
+        XCTAssertEqual(
+            descendants(of: card, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "lunaReserveStatus"
+            }?.stringValue,
+            tr(.keyLunaReserveStatusUnavailable)
+        )
+
+        XCTAssertTrue(coordinator.refreshMountedPage(input: DashboardProviderPageInput(
+            choices: [choice], selectedProviderID: choice.id,
+            snapshot: .placeholder,
+            quickSwitchSummaries: [:], refreshDate: nil, revision: 3,
+            currentProviderIsOfficial: true
+        )))
+        XCTAssertFalse(card.isHidden)
+        XCTAssertEqual(
+            descendants(of: card, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "lunaReserveStatus"
+            }?.stringValue,
+            tr(.keyLunaReserveStatusLoading)
+        )
+    }
 }
 
 private func descendants<T: NSView>(of root: NSView, as type: T.Type) -> [T] {

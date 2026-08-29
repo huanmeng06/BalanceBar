@@ -884,6 +884,96 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertTrue(QuotaProgressView.progressColor(for: 50.01).isEqual(NSColor.systemGreen))
     }
 
+    func testLunaReserveCardShowsLocalizedStatusRemainingResetAndCollapsesWithoutProgress() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let card = LunaReserveCardView()
+        card.update(
+            quota: LunaReserveQuota(
+                status: .available,
+                remaining: 45,
+                reset: "1h30m"
+            )
+        )
+        let fields: (String) -> NSTextField? = { identifier in
+            func find(in view: NSView) -> NSTextField? {
+                for child in view.subviews {
+                    if child.identifier?.rawValue == identifier, let field = child as? NSTextField {
+                        return field
+                    }
+                    if let field = find(in: child) { return field }
+                }
+                return nil
+            }
+            return find(in: card)
+        }
+
+        XCTAssertEqual(fields("lunaReserveTitle")?.stringValue, tr(.keyLunaReserveTitle))
+        XCTAssertEqual(fields("lunaReserveStatus")?.stringValue, tr(.keyLunaReserveStatusAvailable))
+        XCTAssertEqual(
+            fields("lunaReserveRemaining")?.stringValue,
+            tr(.keyLunaReserveRemainingValue, arguments: ["45"])
+        )
+        XCTAssertEqual(
+            fields("lunaReserveReset")?.stringValue,
+            tr(.keyLunaReserveResetValue, arguments: ["1h30m"])
+        )
+
+        card.frame = NSRect(x: 0, y: 0, width: 420, height: 100)
+        card.layoutSubtreeIfNeeded()
+        XCTAssertEqual(descendantViews(of: card, as: QuotaProgressView.self).count, 1)
+        let progressHost = try XCTUnwrap(
+            descendantViews(of: card, as: NSView.self).first {
+                $0.identifier?.rawValue == "lunaReserveProgressHost"
+            }
+        )
+        XCTAssertFalse(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 6, accuracy: 0.5)
+
+        card.update(
+            quota: LunaReserveQuota(
+                status: .unavailable,
+                remaining: nil,
+                reset: nil
+            )
+        )
+        XCTAssertEqual(fields("lunaReserveStatus")?.stringValue, tr(.keyLunaReserveStatusUnavailable))
+        XCTAssertEqual(fields("lunaReserveRemaining")?.stringValue, tr(.keyLunaReserveRemainingUnavailable))
+        XCTAssertEqual(fields("lunaReserveReset")?.stringValue, tr(.keyLunaReserveResetUnavailable))
+        XCTAssertTrue(descendantViews(of: card, as: QuotaProgressView.self).isEmpty)
+        card.layoutSubtreeIfNeeded()
+        XCTAssertTrue(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 0, accuracy: 0.5)
+
+        card.update(
+            quota: LunaReserveQuota(
+                status: .loading,
+                remaining: nil,
+                reset: nil
+            )
+        )
+        XCTAssertEqual(fields("lunaReserveStatus")?.stringValue, tr(.keyLunaReserveStatusLoading))
+        XCTAssertEqual(fields("lunaReserveRemaining")?.stringValue, tr(.keyLunaReserveRemainingUnavailable))
+        XCTAssertEqual(fields("lunaReserveReset")?.stringValue, tr(.keyLunaReserveResetUnavailable))
+        XCTAssertTrue(descendantViews(of: card, as: QuotaProgressView.self).isEmpty)
+        card.layoutSubtreeIfNeeded()
+        XCTAssertTrue(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 0, accuracy: 0.5)
+
+        card.update(
+            quota: LunaReserveQuota(
+                status: .available,
+                remaining: 45,
+                reset: "1h30m"
+            )
+        )
+        card.layoutSubtreeIfNeeded()
+        XCTAssertFalse(progressHost.isHidden)
+        XCTAssertEqual(progressHost.frame.height, 6, accuracy: 0.5)
+    }
+
     func testHoverLinkInvokesActivationCallbackOnMouseDown() {
         let link = HoverLinkTextField(text: "Provider")
         link.frame = NSRect(x: 0, y: 0, width: 120, height: 20)
@@ -1050,6 +1140,12 @@ final class DashboardComponentsTests: XCTestCase {
         }
         for separator in separators {
             XCTAssertEqual(separator.frame.width, rowsStack.frame.width, accuracy: 0.5, file: file, line: line)
+        }
+    }
+
+    private func descendantViews<T: NSView>(of root: NSView, as type: T.Type) -> [T] {
+        root.subviews.flatMap { child in
+            ([child].compactMap { $0 as? T }) + descendantViews(of: child, as: type)
         }
     }
 }

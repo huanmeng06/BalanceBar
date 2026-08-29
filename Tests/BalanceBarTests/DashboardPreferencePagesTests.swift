@@ -790,6 +790,120 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(field.stringValue, "0.25")
     }
 
+    func testLunaReserveMenuDisplaySettingsLocalizePersistAndRevealExhaustedQuotaSwitch() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.LunaReserveDisplayMode.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuPage()
+        let relay = DashboardPreferencePageRelay()
+        var changedModes: [LunaReserveDisplayMode] = []
+        relay.onLunaReserveDisplayModeChanged = { mode in
+            changedModes.append(mode)
+            preferences.menuLunaReserveDisplayMode = mode
+            controller.refresh(preferences: preferences)
+        }
+        relay.onToggle = { identifier, enabled in
+            if identifier == AppPreferences.menuLunaReserveHideExhaustedQuotaKey {
+                preferences.menuLunaReserveHideExhaustedQuota = enabled
+            }
+        }
+
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: relay,
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 516, height: 900)
+        let window = NSWindow(
+            contentRect: page.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        window.layoutIfNeeded()
+        defer {
+            window.contentView = nil
+            controller.teardown()
+        }
+
+        let displayModeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.lunaReserveDisplayModeIdentifier }
+        )
+        XCTAssertEqual(
+            displayModeControl.itemTitles,
+            ["不显示", "额度用完后显示", "始终显示"]
+        )
+        XCTAssertEqual(displayModeControl.indexOfSelectedItem, 2)
+        XCTAssertEqual(
+            displayModeControl.action,
+            #selector(DashboardPreferencePageRelay.lunaReserveDisplayMode(_:))
+        )
+
+        let displayModeRow = try XCTUnwrap(displayModeControl.superview)
+        let hideSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.lunaReserveHideExhaustedQuotaIdentifier }
+        )
+        let hideRow = try XCTUnwrap(hideSwitch.superview)
+        XCTAssertTrue(
+            descendants(of: displayModeRow).compactMap { $0 as? NSTextField }.contains {
+                $0.stringValue == "🌙 Luna Reserve显示方式"
+            }
+        )
+        XCTAssertTrue(
+            descendants(of: displayModeRow).compactMap { $0 as? NSTextField }.contains {
+                $0.stringValue == "选择 Luna Reserve 在菜单中的显示时机"
+            }
+        )
+        let thresholdField = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSTextField }
+                .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+        )
+        let thresholdRow = try XCTUnwrap(thresholdField.superview)
+        let rowsStack = try XCTUnwrap(displayModeRow.superview as? NSStackView)
+        XCTAssertEqual(
+            rowsStack.arrangedSubviews.filter { !($0 is NSBox) }.map(ObjectIdentifier.init),
+            [displayModeRow, hideRow, thresholdRow].map(ObjectIdentifier.init)
+        )
+        XCTAssertTrue(hideRow.isHidden)
+
+        displayModeControl.selectItem(at: 1)
+        relay.lunaReserveDisplayMode(displayModeControl)
+        XCTAssertEqual(changedModes, [.whenQuotaExhausted])
+        XCTAssertEqual(preferences.menuLunaReserveDisplayMode, .whenQuotaExhausted)
+        XCTAssertFalse(hideRow.isHidden)
+        XCTAssertEqual(hideSwitch.state, .off)
+
+        hideSwitch.state = .on
+        relay.toggle(hideSwitch)
+        XCTAssertTrue(preferences.menuLunaReserveHideExhaustedQuota)
+
+        displayModeControl.selectItem(at: 0)
+        relay.lunaReserveDisplayMode(displayModeControl)
+        XCTAssertEqual(changedModes, [.whenQuotaExhausted, .disabled])
+        XCTAssertTrue(hideRow.isHidden)
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuLunaReserveDisplayMode,
+            .disabled
+        )
+        XCTAssertTrue(AppPreferences(defaults: defaults).menuLunaReserveHideExhaustedQuota)
+    }
+
     func testMenuEntryRowsLocalizeSubtitlesAndPreserveControlsAcrossLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -1415,21 +1529,30 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "2h",
             Date(timeIntervalSince1970: 1)
         )
-        relay.onToggle = { identifier, enabled in
-            switch identifier {
-            case "showMenuBarAmount":
-                preferences.showMenuBarAmount = enabled
-            case "showMenuBarReset":
-                preferences.showMenuBarReset = enabled
-            default:
-                return
-            }
+        func refreshPage() {
             controller.refresh(
                 snapshot: snapshot,
                 preferences: preferences,
                 menuBarSnapshot: { $0 },
                 iconImage: nil
             )
+        }
+        relay.onToggle = { identifier, enabled in
+            switch identifier {
+            case "showMenuBarAmount":
+                preferences.showMenuBarAmount = enabled
+            case "showMenuBarReset":
+                preferences.showMenuBarReset = enabled
+            case AppPreferences.menuBarAutoSwitchLunaReserveKey:
+                preferences.menuBarAutoSwitchLunaReserve = enabled
+            default:
+                return
+            }
+            refreshPage()
+        }
+        relay.onMenuBarLunaReserveResetTimeModeChanged = { mode in
+            preferences.menuBarLunaReserveResetTimeMode = mode
+            refreshPage()
         }
         let page = controller.make(.init(
             preferences: preferences,
@@ -1461,6 +1584,11 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == "showMenuBarReset" }
         )
+        let autoSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.autoSwitchLunaReserveIdentifier }
+        )
         let quotaWindowPopup = try XCTUnwrap(
             descendants(of: page)
                 .compactMap { $0 as? NSPopUpButton }
@@ -1471,19 +1599,29 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSPopUpButton }
                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
         )
+        let lunaReserveResetTimePopup = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.lunaReserveResetTimeModeIdentifier }
+        )
         let amountRow = try XCTUnwrap(amountSwitch.superview)
         let resetRow = try XCTUnwrap(resetSwitch.superview)
+        let autoSwitchRow = try XCTUnwrap(autoSwitch.superview)
         let quotaWindowRow = try XCTUnwrap(quotaWindowPopup.superview)
+        let lunaReserveResetTimeRow = try XCTUnwrap(lunaReserveResetTimePopup.superview)
         let quotaResetRow = try XCTUnwrap(quotaResetPopup.superview)
         let rowsStack = try XCTUnwrap(amountRow.superview as? NSStackView)
         let card = try XCTUnwrap(rowsStack.superview)
         let rowViews = rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
         XCTAssertTrue(
-            zip(rowViews, [amountRow, resetRow, quotaWindowRow, quotaResetRow])
+            zip(
+                rowViews,
+                [amountRow, resetRow, quotaWindowRow, quotaResetRow, autoSwitchRow, lunaReserveResetTimeRow]
+            )
                 .allSatisfy { $0.0 === $0.1 }
         )
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-        XCTAssertEqual(separators.count, 3)
+        XCTAssertEqual(separators.count, 5)
 
         func assertCardLayout() {
             window.layoutIfNeeded()
@@ -1497,15 +1635,37 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
         }
 
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaResetRow].allSatisfy { !$0.isHidden })
-        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
+        XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.last?.isHidden == true)
         assertCardLayout()
+
+        autoSwitch.state = .on
+        relay.toggle(autoSwitch)
+        XCTAssertTrue(preferences.menuBarAutoSwitchLunaReserve)
+        XCTAssertFalse(lunaReserveResetTimeRow.isHidden)
+        XCTAssertEqual(
+            lunaReserveResetTimePopup.itemTitles,
+            [
+                tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota),
+                tr(.keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve)
+            ]
+        )
+        lunaReserveResetTimePopup.selectItem(at: 0)
+        relay.menuBarLunaReserveResetTimeMode(lunaReserveResetTimePopup)
+        XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .originalQuota)
+        autoSwitch.state = .off
+        relay.toggle(autoSwitch)
+        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
 
         amountSwitch.state = .off
         relay.toggle(amountSwitch)
         XCTAssertFalse(amountRow.isHidden)
         XCTAssertTrue(resetRow.isHidden)
         XCTAssertTrue(quotaWindowRow.isHidden)
+        XCTAssertTrue(autoSwitchRow.isHidden)
+        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
         XCTAssertTrue(quotaResetRow.isHidden)
         XCTAssertTrue(separators.allSatisfy(\.isHidden))
         assertCardLayout()
@@ -1514,24 +1674,33 @@ final class DashboardPreferencePagesTests: XCTestCase {
         relay.toggle(amountSwitch)
         XCTAssertFalse(resetRow.isHidden)
         XCTAssertFalse(quotaWindowRow.isHidden)
+        XCTAssertFalse(autoSwitchRow.isHidden)
+        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
         XCTAssertFalse(quotaResetRow.isHidden)
-        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.last?.isHidden == true)
 
         resetSwitch.state = .off
         relay.toggle(resetSwitch)
         XCTAssertFalse(amountRow.isHidden)
         XCTAssertFalse(resetRow.isHidden)
         XCTAssertTrue(quotaWindowRow.isHidden)
+        XCTAssertFalse(autoSwitchRow.isHidden)
+        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
         XCTAssertTrue(quotaResetRow.isHidden)
         XCTAssertFalse(separators[0].isHidden)
-        XCTAssertTrue(separators[1].isHidden)
+        XCTAssertFalse(separators[1].isHidden)
         XCTAssertTrue(separators[2].isHidden)
+        XCTAssertTrue(separators[3].isHidden)
+        XCTAssertTrue(separators[4].isHidden)
         assertCardLayout()
 
         resetSwitch.state = .on
         relay.toggle(resetSwitch)
-        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, quotaResetRow].allSatisfy { !$0.isHidden })
-        XCTAssertTrue(separators.allSatisfy { !$0.isHidden })
+        XCTAssertTrue([amountRow, resetRow, quotaWindowRow, autoSwitchRow, quotaResetRow].allSatisfy { !$0.isHidden })
+        XCTAssertTrue(lunaReserveResetTimeRow.isHidden)
+        XCTAssertTrue(separators.dropLast().allSatisfy { !$0.isHidden })
+        XCTAssertTrue(separators.last?.isHidden == true)
         assertCardLayout()
     }
 
@@ -1654,6 +1823,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
 
             let selectorRow = try XCTUnwrap(popup.superview)
+            let autoSwitchRow = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.autoSwitchLunaReserveIdentifier }
+                    .flatMap(\.superview)
+            )
+            let lunaReserveResetTimeRow = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.lunaReserveResetTimeModeIdentifier }
+                    .flatMap(\.superview)
+            )
             let quotaAndResetHeading = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSTextField }
@@ -1663,7 +1844,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             let quotaAndResetRows = try XCTUnwrap(selectorRow.superview as? NSStackView)
             let quotaRows = quotaAndResetRows.arrangedSubviews.filter { !($0 is NSBox) }
-            XCTAssertEqual(quotaRows.count, 4)
+            XCTAssertEqual(quotaRows.count, 6)
             XCTAssertTrue(
                 zip(
                     quotaRows,
@@ -1686,10 +1867,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                                 .compactMap { $0 as? NSPopUpButton }
                                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
                                 .flatMap(\.superview)
-                        )
+                        ),
+                        autoSwitchRow,
+                        lunaReserveResetTimeRow
                     ]
                 ).allSatisfy { $0.0 === $0.1 },
-                "quota rows follow usage, reset countdown, priority, reset display order"
+                "quota rows follow usage, reset countdown, priority, reset display, Reserve switch, Reserve reset source order"
             )
             XCTAssertTrue(
                 descendants(of: selectorRow)

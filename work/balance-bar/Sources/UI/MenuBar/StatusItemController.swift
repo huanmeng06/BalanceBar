@@ -1487,6 +1487,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// the default 13:10 ratio in the renderer.
         var fontSize: CGFloat
         let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
+        let autoSwitchLunaReserve: Bool
+        let lunaReserveResetTimeMode: LunaReserveResetTimeMode
 
         init(
             showIcon: Bool,
@@ -1503,7 +1505,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             widthAdjustment: CGFloat = 0,
             fontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
             quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue,
-            quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue
+            quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
+            autoSwitchLunaReserve: Bool = false,
+            lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -1519,6 +1523,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.widthAdjustment = widthAdjustment
             self.quotaWindowPreference = quotaWindowPreference
             self.quotaResetDisplayMode = quotaResetDisplayMode
+            self.autoSwitchLunaReserve = autoSwitchLunaReserve
+            self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -1542,6 +1548,42 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showOpenCCSwitchMenu: Bool
         let showOpenCodexMenu: Bool
         let showStatusMenu: Bool
+        let lunaReserveDisplayMode: LunaReserveDisplayMode
+        let lunaReserveHideExhaustedQuota: Bool
+
+        init(
+            openCodexCards: [OpenCodexModelCard],
+            openCodexState: OpenCodexRuntimeState?,
+            openCodexSwitchInFlight: Bool,
+            choices: [ProviderChoice],
+            quickSwitchSummaries: [String: String],
+            activeClient: AssistantClient,
+            openAIAccount: OpenAIAccountPresentation?,
+            statusLinks: [StatusLink],
+            showQuickSwitchMenu: Bool,
+            showOpenChatGPTMenu: Bool,
+            showOpenCCSwitchMenu: Bool,
+            showOpenCodexMenu: Bool,
+            showStatusMenu: Bool,
+            lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
+            lunaReserveHideExhaustedQuota: Bool = false
+        ) {
+            self.openCodexCards = openCodexCards
+            self.openCodexState = openCodexState
+            self.openCodexSwitchInFlight = openCodexSwitchInFlight
+            self.choices = choices
+            self.quickSwitchSummaries = quickSwitchSummaries
+            self.activeClient = activeClient
+            self.openAIAccount = openAIAccount
+            self.statusLinks = statusLinks
+            self.showQuickSwitchMenu = showQuickSwitchMenu
+            self.showOpenChatGPTMenu = showOpenChatGPTMenu
+            self.showOpenCCSwitchMenu = showOpenCCSwitchMenu
+            self.showOpenCodexMenu = showOpenCodexMenu
+            self.showStatusMenu = showStatusMenu
+            self.lunaReserveDisplayMode = lunaReserveDisplayMode
+            self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
+        }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
             lhs.openCodexCards == rhs.openCodexCards
@@ -1561,6 +1603,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showOpenCCSwitchMenu == rhs.showOpenCCSwitchMenu
                 && lhs.showOpenCodexMenu == rhs.showOpenCodexMenu
                 && lhs.showStatusMenu == rhs.showStatusMenu
+                && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
+                && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
         }
     }
 
@@ -2255,14 +2299,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let effectiveSnapshot = menuBarSnapshot(for: snapshot)
         let reservedSecondary = settings.showAmount && effectiveSnapshot.kind == .official
             ? effectiveSnapshot.menuBarSecondary(
-                displayMode: settings.quotaResetDisplayMode
+                displayMode: settings.quotaResetDisplayMode,
+                lunaReserveResetTimeMode: settings.lunaReserveResetTimeMode
             )
             : ""
         let hasSecondary = settings.showAmount
             && settings.showReset
             && !reservedSecondary.isEmpty
 
-        menuBarPrimaryLabel.stringValue = settings.showAmount ? effectiveSnapshot.menuBarPrimary : ""
+        MenuBarLayout.applyPrimaryText(
+            settings.showAmount ? effectiveSnapshot.menuBarPrimary : "",
+            to: menuBarPrimaryLabel
+        )
         menuBarSecondaryLabel.stringValue = reservedSecondary
         menuBarIconSlot.isHidden = !settings.showIcon
         menuBarTextStack.isHidden = !settings.showAmount
@@ -2541,7 +2589,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             cards: menuInput.openCodexCards
         )
         let resolved = effective.menuBarSnapshot(
-            preferredQuotaWindow: settings.quotaWindowPreference
+            preferredQuotaWindow: settings.quotaWindowPreference,
+            automaticallyUseLunaReserve: settings.autoSwitchLunaReserve
         )
         guard snapshot.kind == .openCodex else { return resolved }
         let match = OpenCodexCardPresentation.menuBarCardMatch(from: menuInput.openCodexCards)
@@ -2776,9 +2825,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let item = NSMenuItem()
         item.isEnabled = snapshot.kind == .balance && snapshot.websiteURL != nil
         let isBalance = snapshot.kind == .balance
-        let officialQuotaWindows = snapshot.kind == .official
-            ? snapshot.officialQuotaWindowsForMenu
-            : []
+        let quotaPresentation = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: menuInput.lunaReserveDisplayMode,
+            hideExhaustedQuota: menuInput.lunaReserveHideExhaustedQuota
+        )
+        let officialQuotaWindows = quotaPresentation.windows
+        let lunaReserve = quotaPresentation.lunaReserve
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
@@ -2789,7 +2841,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesAccount: snapshot.kind == .official && menuInput.openAIAccount != nil,
             includesSubscription: snapshot.kind == .official && subscription != nil,
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
-            officialQuotaWindows: officialQuotaWindows
+            officialQuotaWindows: officialQuotaWindows,
+            includesLunaReserve: snapshot.kind == .official && lunaReserve != nil,
+            includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil
         )
         let view = NSView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -2815,7 +2869,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
 
-        if !layout.quotaRows.isEmpty {
+        if !layout.quotaRows.isEmpty || layout.lunaReserveRow != nil {
             for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
                 let progress = QuotaProgressView(percentage: window.remaining)
                 progress.frame = row.progress
@@ -2848,6 +2902,47 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 } ?? tr(.keySnapshotResetValue, arguments: [tr(.keyLocalizationUnknown)])
                 let reset = makeMarqueeOverviewLabel(
                     resetText,
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                        weight: .regular
+                    ),
+                    textColor: .secondaryLabelColor,
+                    frame: overviewMarqueeFrame(row.reset, avoiding: amount)
+                )
+                view.addSubview(reset)
+            }
+            if let lunaReserve,
+               let row = layout.lunaReserveRow {
+                if let remaining = lunaReserve.remaining {
+                    let progress = QuotaProgressView(percentage: remaining)
+                    progress.frame = row.progress
+                    view.addSubview(progress)
+                }
+
+                let amount = makeOverviewLabel(
+                    lunaReserve.remaining.map { "\(Int($0))%" } ?? "—",
+                    font: .monospacedDigitSystemFont(
+                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                        weight: .semibold
+                    )
+                )
+                amount.alignment = .right
+                amount.frame = row.amount
+                view.addSubview(amount)
+
+                let quotaDetail = makeMarqueeOverviewLabel(
+                    lunaReserve.menuTitleText,
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                        weight: .medium
+                    ),
+                    textColor: .labelColor,
+                    frame: overviewMarqueeFrame(row.quotaDetail, avoiding: amount)
+                )
+                view.addSubview(quotaDetail)
+
+                let reset = makeMarqueeOverviewLabel(
+                    lunaReserve.menuSubtitleText,
                     font: .systemFont(
                         ofSize: OpenCodexCardLayout.quotaResetPointSize,
                         weight: .regular

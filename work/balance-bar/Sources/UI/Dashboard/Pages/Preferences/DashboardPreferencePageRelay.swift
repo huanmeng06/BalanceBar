@@ -11,6 +11,8 @@ final class DashboardPreferencePageRelay: NSObject {
     var onMenuBarIconDisplayDelayChanged: ((MenuBarIconDisplayDelay) -> Void)?
     var onMenuBarQuotaWindowPreferenceChanged: ((OfficialQuotaWindowPreference) -> Void)?
     var onMenuBarQuotaResetDisplayModeChanged: ((OfficialQuotaResetDisplayMode) -> Void)?
+    var onMenuBarLunaReserveResetTimeModeChanged: ((LunaReserveResetTimeMode) -> Void)?
+    var onLunaReserveDisplayModeChanged: ((LunaReserveDisplayMode) -> Void)?
     var onUpdateChannelChanged: ((UpdateChannel) -> Void)?
     var onOpenCCSwitch: (() -> Void)?
     var onOpenSystemMenuBarSettings: (() -> Void)?
@@ -71,6 +73,18 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let mode = OfficialQuotaResetDisplayMode(rawValue: rawValue) else { return }
         onMenuBarQuotaResetDisplayModeChanged?(mode)
+    }
+
+    @objc func menuBarLunaReserveResetTimeMode(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let mode = LunaReserveResetTimeMode(rawValue: rawValue) else { return }
+        onMenuBarLunaReserveResetTimeModeChanged?(mode)
+    }
+
+    @objc func lunaReserveDisplayMode(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let mode = LunaReserveDisplayMode(rawValue: rawValue) else { return }
+        onLunaReserveDisplayModeChanged?(mode)
     }
 
     @objc func updateChannel(_ sender: NSPopUpButton) {

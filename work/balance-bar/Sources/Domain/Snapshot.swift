@@ -1,5 +1,117 @@
 import Foundation
 
+struct LunaReserveQuota: Equatable {
+    enum Status: Equatable {
+        case loading
+        case available
+        case unavailable
+
+        var localizedText: String {
+            switch self {
+            case .loading:
+                return tr(.keyLunaReserveStatusLoading)
+            case .available:
+                return tr(.keyLunaReserveStatusAvailable)
+            case .unavailable:
+                return tr(.keyLunaReserveStatusUnavailable)
+            }
+        }
+    }
+
+    /// `remaining` is the percentage derived from the official
+    /// `used_percent` field. It remains optional so missing or malformed
+    /// fields never become a fabricated zero.
+    let status: Status
+    let remaining: Double?
+    let reset: String?
+    let resetAt: Date?
+
+    init(
+        status: Status,
+        remaining: Double?,
+        reset: String?,
+        resetAt: Date? = nil
+    ) {
+        self.status = status
+        self.remaining = remaining
+        self.reset = reset
+        self.resetAt = resetAt
+    }
+
+    var remainingText: String {
+        guard let remaining else {
+            return tr(.keyLunaReserveRemainingUnavailable)
+        }
+        return tr(
+            .keyLunaReserveRemainingValue,
+            arguments: [String(describing: Int(remaining))]
+        )
+    }
+
+    var resetText: String {
+        guard let reset = resetDisplayText() else {
+            return tr(.keyLunaReserveResetUnavailable)
+        }
+        return tr(.keyLunaReserveResetValue, arguments: [reset])
+    }
+
+    var menuTitleText: String {
+        "🌙 \(tr(.keyLunaReserveTitle))"
+    }
+
+    var menuSubtitleText: String {
+        switch status {
+        case .loading:
+            return tr(.keyLunaReserveStatusLoading)
+        case .available:
+            guard let reset = resetDisplayText() else {
+                return tr(.keyLunaReserveResetUnavailable)
+            }
+            return tr(.keyLunaReserveMenuResetValue, arguments: [reset])
+        case .unavailable:
+            return tr(.keyLunaReserveMenuUnavailable)
+        }
+    }
+
+    func resetDisplayText(
+        displayMode: OfficialQuotaResetDisplayMode = .both,
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard let reset else { return nil }
+        let exactDate = OfficialQuotaResetFormatter.string(
+            for: resetAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        )
+        switch displayMode {
+        case .remaining:
+            return reset
+        case .resetAt:
+            return exactDate ?? reset
+        case .both:
+            guard let exactDate else { return reset }
+            return tr(.keySnapshotValueValue, arguments: [reset, exactDate])
+        }
+    }
+
+    var summaryText: String {
+        tr(
+            .keyLunaReserveSummaryValue,
+            arguments: [
+                tr(.keyLunaReserveTitle),
+                status.localizedText,
+                remainingText,
+                resetText
+            ]
+        )
+    }
+}
+
 struct OfficialQuotaWindow: Equatable {
     enum Kind: Int, Equatable, Hashable {
         case fiveHour
@@ -74,6 +186,11 @@ struct OfficialQuotaWindow: Equatable {
     }
 }
 
+struct OfficialQuotaMenuPresentation: Equatable {
+    let windows: [OfficialQuotaWindow]
+    let lunaReserve: LunaReserveQuota?
+}
+
 enum OfficialQuotaResetFormatter {
     /// Format a valid future reset timestamp in the user's local calendar and
     /// time zone. The `j` template field delegates 12/24-hour preference to
@@ -116,11 +233,16 @@ struct Snapshot {
     let websiteURL: URL?
     let balanceProgressPercentage: Double?
     let officialQuotaWindows: [OfficialQuotaWindow]
+    let lunaReserve: LunaReserveQuota?
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
     /// representative (weekly) window when shared snapshot properties render.
     let selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind?
+    /// True only for the derived compact presentation used while the official
+    /// service reports a usable Luna Reserve quota. The source snapshot and
+    /// the expanded Dashboard card remain unchanged.
+    let menuBarUsesLunaReserve: Bool
 
     init(
         kind: Kind,
@@ -132,7 +254,9 @@ struct Snapshot {
         websiteURL: URL?,
         balanceProgressPercentage: Double?,
         officialQuotaWindows: [OfficialQuotaWindow],
-        selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil
+        selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil,
+        lunaReserve: LunaReserveQuota? = nil,
+        menuBarUsesLunaReserve: Bool = false
     ) {
         self.kind = kind
         self.provider = provider
@@ -144,6 +268,8 @@ struct Snapshot {
         self.balanceProgressPercentage = balanceProgressPercentage
         self.officialQuotaWindows = officialQuotaWindows
         self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
+        self.lunaReserve = lunaReserve
+        self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
     static let placeholder = Snapshot(
@@ -164,7 +290,8 @@ struct Snapshot {
         _ lane: String,
         _ reset: String?,
         _ date: Date,
-        windows: [OfficialQuotaWindow] = []
+        windows: [OfficialQuotaWindow] = [],
+        lunaReserve: LunaReserveQuota? = nil
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -194,7 +321,8 @@ struct Snapshot {
             message: representative.reset,
             websiteURL: nil,
             balanceProgressPercentage: nil,
-            officialQuotaWindows: resolvedWindows
+            officialQuotaWindows: resolvedWindows,
+            lunaReserve: lunaReserve
         )
     }
 
@@ -271,12 +399,49 @@ struct Snapshot {
         return recognized.isEmpty ? Array(officialQuotaWindows.prefix(1)) : recognized
     }
 
+    /// Resolve the official quota rows shown in the status menu. This keeps
+    /// menu-only visibility preferences out of the snapshot and never changes
+    /// the source windows used by the Dashboard provider page.
+    func officialQuotaMenuPresentation(
+        lunaReserveDisplayMode: LunaReserveDisplayMode,
+        hideExhaustedQuota: Bool
+    ) -> OfficialQuotaMenuPresentation {
+        guard kind == .official else {
+            return OfficialQuotaMenuPresentation(windows: [], lunaReserve: nil)
+        }
+
+        let windows = officialQuotaWindowsForMenu
+        let hasExhaustedQuota = windows.contains {
+            $0.kind != .other && $0.remaining <= 0
+        }
+        let shouldShowLunaReserve: Bool
+        switch lunaReserveDisplayMode {
+        case .disabled:
+            shouldShowLunaReserve = false
+        case .whenQuotaExhausted:
+            shouldShowLunaReserve = hasExhaustedQuota && lunaReserve != nil
+        case .always:
+            shouldShowLunaReserve = lunaReserve != nil
+        }
+
+        let presentedWindows = shouldShowLunaReserve
+            && lunaReserveDisplayMode == .whenQuotaExhausted
+            && hideExhaustedQuota
+            ? windows.filter { $0.remaining > 0 }
+            : windows
+        return OfficialQuotaMenuPresentation(
+            windows: presentedWindows,
+            lunaReserve: shouldShowLunaReserve ? lunaReserve : nil
+        )
+    }
+
     /// Resolve only the compact/menu-bar presentation from the real quota
     /// windows carried by this snapshot. The expanded card continues to use
     /// `officialQuotaWindows` directly, so choosing a window never duplicates,
     /// rewrites, or hides the source data.
     func menuBarSnapshot(
-        preferredQuotaWindow: OfficialQuotaWindowPreference
+        preferredQuotaWindow: OfficialQuotaWindowPreference,
+        automaticallyUseLunaReserve: Bool = false
     ) -> Snapshot {
         guard kind == .official else { return self }
 
@@ -284,28 +449,49 @@ struct Snapshot {
         // Older responses do not identify their window duration. Preserve the
         // established single-row presentation instead of guessing which named
         // preference they represent.
-        guard !recognized.isEmpty else { return self }
-
         let selected: OfficialQuotaWindow?
-        switch preferredQuotaWindow {
-        case .fiveHour:
-            // Five-hour is the requested primary window, with the only safe
-            // fallback required by the Issue being the real seven-day window.
-            selected = recognized.first(where: { $0.kind == .fiveHour })
-                ?? recognized.first(where: { $0.kind == .sevenDay })
-        case .sevenDay:
-            // Never silently show five-hour data when seven-day is selected.
-            selected = recognized.first(where: { $0.kind == .sevenDay })
+        if recognized.isEmpty {
+            selected = nil
+        } else {
+            switch preferredQuotaWindow {
+            case .fiveHour:
+                // Five-hour is the requested primary window, with the only safe
+                // fallback required by the Issue being the real seven-day window.
+                selected = recognized.first(where: { $0.kind == .fiveHour })
+                    ?? recognized.first(where: { $0.kind == .sevenDay })
+            case .sevenDay:
+                // Never silently show five-hour data when seven-day is selected.
+                selected = recognized.first(where: { $0.kind == .sevenDay })
+            }
         }
 
-        guard let selected else {
+        let selectedSnapshot: Snapshot
+        if let selected {
+            selectedSnapshot = replacingOfficialWindow(selected)
+        } else if recognized.isEmpty {
+            selectedSnapshot = self
+        } else {
             return .providerError(
                 provider,
                 reason: tr(.keyProviderModelsQuotaUnavailable),
                 cachedBalance: nil
             )
         }
-        return replacingOfficialWindow(selected)
+        // The setting only permits the automatic takeover. Codex enters
+        // Reserve after an identified original quota is exhausted; it must
+        // not be inferred merely from the setting or Reserve data being
+        // present. Keep this check generic across 5-hour and 7-day windows so
+        // plans that expose only one official window work without binding the
+        // takeover to the currently selected primary window.
+        let originalQuotaIsExhausted = recognized.contains { $0.remaining <= 0 }
+        guard automaticallyUseLunaReserve,
+              originalQuotaIsExhausted,
+              let lunaReserve,
+              lunaReserve.status == .available,
+              lunaReserve.remaining != nil else {
+            return selectedSnapshot
+        }
+        return selectedSnapshot.replacingMenuBarWithLunaReserve()
     }
 
     private func replacingOfficialWindow(_ window: OfficialQuotaWindow) -> Snapshot {
@@ -319,14 +505,39 @@ struct Snapshot {
             websiteURL: websiteURL,
             balanceProgressPercentage: balanceProgressPercentage,
             officialQuotaWindows: officialQuotaWindows,
-            selectedOfficialQuotaWindowKind: window.kind
+            selectedOfficialQuotaWindowKind: window.kind,
+            lunaReserve: lunaReserve,
+            menuBarUsesLunaReserve: false
+        )
+    }
+
+    private func replacingMenuBarWithLunaReserve() -> Snapshot {
+        guard kind == .official,
+              let lunaReserve,
+              lunaReserve.status == .available,
+              let remaining = lunaReserve.remaining else {
+            return self
+        }
+        return Snapshot(
+            kind: kind,
+            provider: provider,
+            amount: remaining,
+            unit: tr(.keyLunaReserveTitle),
+            date: date,
+            message: lunaReserve.reset,
+            websiteURL: websiteURL,
+            balanceProgressPercentage: balanceProgressPercentage,
+            officialQuotaWindows: officialQuotaWindows,
+            selectedOfficialQuotaWindowKind: selectedOfficialQuotaWindowKind,
+            lunaReserve: lunaReserve,
+            menuBarUsesLunaReserve: true
         )
     }
 
     var menuBarTitle: String {
         switch kind {
         case .placeholder: return " …"
-        case .official: return " \(Int(amount ?? 0))%"
+        case .official: return " \(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return " \(format(amount ?? 0, unit ?? "USD"))"
         case .openCodex: return " \(unit ?? "OpenCodex")"
         case .error: return " !"
@@ -336,7 +547,7 @@ struct Snapshot {
     var menuBarPrimary: String {
         switch kind {
         case .placeholder: return "…"
-        case .official: return "\(Int(amount ?? 0))%"
+        case .official: return "\(Int(amount ?? 0))%\(menuBarUsesLunaReserve ? " 🌙" : "")"
         case .balance: return format(amount ?? 0, unit ?? "USD")
         case .openCodex: return unit ?? "OpenCodex"
         case .error: return "!"
@@ -349,20 +560,32 @@ struct Snapshot {
 
     func menuBarSecondary(
         displayMode: OfficialQuotaResetDisplayMode,
+        lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String {
-        kind == .official
-            ? (officialResetDisplayValue(
+        guard kind == .official else { return "" }
+        let reset: String?
+        if menuBarUsesLunaReserve && lunaReserveResetTimeMode == .lunaReserve {
+            reset = lunaReserve?.resetDisplayText(
                 displayMode: displayMode,
                 now: now,
                 calendar: calendar,
                 locale: locale,
                 timeZone: timeZone
-            ) ?? "—")
-            : ""
+            )
+        } else {
+            reset = officialResetDisplayValue(
+                displayMode: displayMode,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        }
+        return reset ?? "—"
     }
 
     var menuBarToolTip: String {
@@ -370,7 +593,17 @@ struct Snapshot {
         if kind == .openCodex {
             return tr(.keySnapshotValueValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationStatusUnknown))])
         }
-        return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))])
+        let reset = String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))
+        guard let lunaReserve else {
+            return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset])
+        }
+        return tr(
+            .keySnapshotValueValue,
+            arguments: [
+                tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset]),
+                lunaReserve.summaryText
+            ]
+        )
     }
 
     var overviewProvider: String {

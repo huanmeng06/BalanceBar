@@ -160,6 +160,101 @@ final class QuotaProgressView: NSView {
     }
 }
 
+final class LunaReserveCardView: NSView {
+    private let titleLabel = NSTextField(labelWithString: tr(.keyLunaReserveTitle))
+    private let statusLabel = NSTextField(labelWithString: "")
+    private let remainingLabel = NSTextField(labelWithString: "")
+    private let resetLabel = NSTextField(labelWithString: "")
+    private let progressHost = NSView()
+    private var progressHostHeightConstraint: NSLayoutConstraint!
+
+    init() {
+        super.init(frame: .zero)
+        identifier = NSUserInterfaceItemIdentifier("lunaReserveCard")
+
+        titleLabel.identifier = NSUserInterfaceItemIdentifier("lunaReserveTitle")
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        statusLabel.identifier = NSUserInterfaceItemIdentifier("lunaReserveStatus")
+        statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        statusLabel.alignment = .right
+        remainingLabel.identifier = NSUserInterfaceItemIdentifier("lunaReserveRemaining")
+        remainingLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        resetLabel.identifier = NSUserInterfaceItemIdentifier("lunaReserveReset")
+        resetLabel.font = .systemFont(ofSize: 12)
+        resetLabel.textColor = .secondaryLabelColor
+
+        let heading = NSStackView(views: [titleLabel, NSView(), statusLabel])
+        heading.orientation = .horizontal
+        heading.alignment = .centerY
+        let details = NSStackView(views: [remainingLabel, resetLabel])
+        details.orientation = .vertical
+        details.alignment = .leading
+        details.spacing = 4
+        progressHost.identifier = NSUserInterfaceItemIdentifier("lunaReserveProgressHost")
+        progressHost.translatesAutoresizingMaskIntoConstraints = false
+        progressHostHeightConstraint = progressHost.heightAnchor.constraint(equalToConstant: 6)
+        progressHostHeightConstraint.isActive = true
+
+        let stack = NSStackView(views: [heading, details, progressHost])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 7
+        stack.detachesHiddenViews = true
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heading.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            details.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            progressHost.widthAnchor.constraint(equalTo: stack.widthAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func update(quota: LunaReserveQuota) {
+        titleLabel.stringValue = tr(.keyLunaReserveTitle)
+        statusLabel.stringValue = quota.status.localizedText
+        statusLabel.textColor = Self.statusColor(for: quota.status)
+        remainingLabel.stringValue = quota.remainingText
+        resetLabel.stringValue = quota.resetText
+        progressHost.subviews.forEach { $0.removeFromSuperview() }
+        if let remaining = quota.remaining {
+            progressHost.isHidden = false
+            progressHostHeightConstraint.constant = 6
+            let progress = QuotaProgressView(percentage: remaining)
+            progress.translatesAutoresizingMaskIntoConstraints = false
+            progressHost.addSubview(progress)
+            NSLayoutConstraint.activate([
+                progress.leadingAnchor.constraint(equalTo: progressHost.leadingAnchor),
+                progress.trailingAnchor.constraint(equalTo: progressHost.trailingAnchor),
+                progress.topAnchor.constraint(equalTo: progressHost.topAnchor),
+                progress.bottomAnchor.constraint(equalTo: progressHost.bottomAnchor)
+            ])
+        } else {
+            // A missing percentage is unknown, not zero. Remove the host from
+            // the stack so unavailable/loading cards do not reserve a blank
+            // progress-bar row.
+            progressHost.isHidden = true
+            progressHostHeightConstraint.constant = 0
+        }
+    }
+
+    private static func statusColor(for status: LunaReserveQuota.Status) -> NSColor {
+        switch status {
+        case .loading:
+            return .secondaryLabelColor
+        case .available:
+            return .systemGreen
+        case .unavailable:
+            return .secondaryLabelColor
+        }
+    }
+}
+
 final class HoverLinkTextField: NSTextField {
     var onActivate: (() -> Void)?
     private(set) var visibleTextHitRect = NSRect.zero

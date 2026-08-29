@@ -7,6 +7,7 @@ struct DashboardCompositionState {
     let devBundleIdentifier: String
     let providerPollInterval: TimeInterval
     let currentProviderName: () -> String
+    let currentProviderIsOfficial: () -> Bool
     let providerChoices: () -> [ProviderChoice]
     let snapshot: () -> Snapshot
     let quickSwitchSummaries: () -> [String: String]
@@ -42,6 +43,8 @@ struct DashboardCompositionActions {
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
+    let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
+    let onLunaReserveDisplayModeChanged: (LunaReserveDisplayMode) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
@@ -91,6 +94,8 @@ final class DashboardCompositionController {
             onMenuBarIconDisplayDelayChanged: actions.onMenuBarIconDisplayDelayChanged,
             onMenuBarQuotaWindowPreferenceChanged: actions.onMenuBarQuotaWindowPreferenceChanged,
             onMenuBarQuotaResetDisplayModeChanged: actions.onMenuBarQuotaResetDisplayModeChanged,
+            onMenuBarLunaReserveResetTimeModeChanged: actions.onMenuBarLunaReserveResetTimeModeChanged,
+            onLunaReserveDisplayModeChanged: actions.onLunaReserveDisplayModeChanged,
             onUpdateChannelChanged: actions.onUpdateChannelChanged,
             onOpenCCSwitch: actions.onOpenCCSwitch,
             onOpenSystemMenuBarSettings: actions.onOpenSystemMenuBarSettings,
@@ -180,6 +185,11 @@ final class DashboardCompositionController {
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage()
         )
+    }
+
+    func refreshMenuPage() {
+        guard window?.isVisible == true, section == .menu else { return }
+        dashboardPreferencePages.refreshMenu()
     }
 
     /// Mirrors an already-rendered menu bar frame into the visible preview.
@@ -308,7 +318,8 @@ final class DashboardCompositionController {
             snapshot: snapshot ?? state.snapshot(),
             quickSwitchSummaries: state.quickSwitchSummaries(),
             refreshDate: useLastSuccessfulRefresh ? state.refreshDate() : refreshDate,
-            revision: revision
+            revision: revision,
+            currentProviderIsOfficial: state.currentProviderIsOfficial()
         )
     }
 

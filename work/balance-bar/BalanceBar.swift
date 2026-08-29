@@ -157,7 +157,7 @@ private enum DevelopmentReleaseFixture {
 }
 
 struct PreferencesMigrationPlan {
-    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -184,6 +184,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             devBundleIdentifier: devBundleIdentifier,
             providerPollInterval: providerPollInterval,
             currentProviderName: { [weak self] in self?.currentProviderName() ?? tr(.keyAppNotFound) },
+            currentProviderIsOfficial: { [weak self] in
+                guard let self, self.activeClient == .codex else { return false }
+                return self.ccSwitchRepository.loadCurrent(appType: self.activeClient.appType)?.isOfficial == true
+            },
             providerChoices: { [weak self] in self?.ccSwitchRepository.loadChoices(appType: self?.activeClient.appType ?? AssistantClient.codex.appType) ?? [] },
             snapshot: { [weak self] in self?.snapshot ?? .placeholder },
             quickSwitchSummaries: { [weak self] in self?.quickSwitchSummariesSnapshot() ?? [:] },
@@ -239,6 +243,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onMenuBarQuotaResetDisplayModeChanged: { [weak self] mode in
                 self?.handleDashboardQuotaResetDisplayModeChanged(mode)
+            },
+            onMenuBarLunaReserveResetTimeModeChanged: { [weak self] mode in
+                self?.handleDashboardLunaReserveResetTimeModeChanged(mode)
+            },
+            onLunaReserveDisplayModeChanged: { [weak self] mode in
+                self?.handleDashboardLunaReserveDisplayModeChanged(mode)
             },
             onUpdateChannelChanged: { [weak self] channel in
                 self?.handleUpdateChannelChanged(channel)
@@ -582,7 +592,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showOpenChatGPTMenu: showOpenChatGPTMenu,
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
             showOpenCodexMenu: showOpenCodexMenu,
-            showStatusMenu: showStatusMenu
+            showStatusMenu: showStatusMenu,
+            lunaReserveDisplayMode: preferences.menuLunaReserveDisplayMode,
+            lunaReserveHideExhaustedQuota: preferences.menuLunaReserveHideExhaustedQuota
         )
     }
 
@@ -623,7 +635,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment),
             fontSize: CGFloat(menuBarFontSize),
             quotaWindowPreference: menuBarQuotaWindowPreference,
-            quotaResetDisplayMode: menuBarQuotaResetDisplayMode
+            quotaResetDisplayMode: menuBarQuotaResetDisplayMode,
+            autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
+            lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode
         )
     }
 
@@ -907,6 +921,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showMenuBarReset = enabled
             updateStatusItem(for: snapshot)
             refreshDashboardMenuBarPage()
+        case AppPreferences.menuLunaReserveHideExhaustedQuotaKey:
+            preferences.menuLunaReserveHideExhaustedQuota = enabled
+            refreshStatusItemMenuInput()
+        case AppPreferences.menuBarAutoSwitchLunaReserveKey:
+            preferences.menuBarAutoSwitchLunaReserve = enabled
+            updateStatusItem(for: snapshot)
+            refreshDashboardMenuBarPage()
         case "showQuickSwitchMenu":
             showQuickSwitchMenu = enabled
             render(snapshot)
@@ -990,6 +1011,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardLunaReserveResetTimeModeChanged(
+        _ mode: LunaReserveResetTimeMode
+    ) {
+        preferences.menuBarLunaReserveResetTimeMode = mode
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarLunaReserveResetTimeModeKey); value=\(mode.rawValue)",
+            category: "configuration"
+        )
+        updateStatusItem(for: snapshot)
+        refreshDashboardMenuBarPage()
+    }
+
+    private func handleDashboardLunaReserveDisplayModeChanged(
+        _ mode: LunaReserveDisplayMode
+    ) {
+        preferences.menuLunaReserveDisplayMode = mode
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuLunaReserveDisplayModeKey); value=\(mode.rawValue)",
+            category: "configuration"
+        )
+        refreshStatusItemMenuInput()
+        dashboardComposition.refreshMenuPage()
     }
 
     private func handleUpdateChannelChanged(_ channel: UpdateChannel) {
@@ -1339,7 +1384,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             cards: openCodexCards
         )
         let resolved = effective.menuBarSnapshot(
-            preferredQuotaWindow: menuBarQuotaWindowPreference
+            preferredQuotaWindow: menuBarQuotaWindowPreference,
+            automaticallyUseLunaReserve: preferences.menuBarAutoSwitchLunaReserve
         )
         guard snapshot.kind == .openCodex else { return resolved }
 

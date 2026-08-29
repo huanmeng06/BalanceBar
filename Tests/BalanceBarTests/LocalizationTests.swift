@@ -285,6 +285,155 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testLunaReserveCopyExistsWithRenderedValuesInEverySupportedLanguage() {
+        for language in allLanguages {
+            let title = tr(.keyLunaReserveTitle, language: language)
+            let loading = tr(.keyLunaReserveStatusLoading, language: language)
+            let status = tr(.keyLunaReserveStatusAvailable, language: language)
+            let remaining = tr(
+                .keyLunaReserveRemainingValue,
+                arguments: ["45"],
+                language: language
+            )
+            let reset = tr(
+                .keyLunaReserveResetValue,
+                arguments: ["1h30m"],
+                language: language
+            )
+            let menuReset = tr(
+                .keyLunaReserveMenuResetValue,
+                arguments: ["1h30m · 9/4 04:55"],
+                language: language
+            )
+            let menuUnavailable = tr(.keyLunaReserveMenuUnavailable, language: language)
+            XCTAssertEqual(title, "Luna Reserve", "title should stay product terminology in (language)")
+            XCTAssertFalse(loading.hasPrefix("⟦"), "missing Reserve loading status in (language)")
+            XCTAssertFalse(status.hasPrefix("⟦"), "missing Reserve status in (language)")
+            XCTAssertTrue(remaining.contains("45"), "missing remaining value in (language)")
+            XCTAssertTrue(reset.contains("1h30m"), "missing reset value in (language)")
+            XCTAssertTrue(menuReset.contains("1h30m · 9/4 04:55"), "missing menu reset value in (language)")
+            XCTAssertFalse(menuUnavailable.hasPrefix("⟦"), "missing menu unavailable copy in (language)")
+            XCTAssertFalse(remaining.contains("%1$@"), "unrendered remaining placeholder in (language)")
+            XCTAssertFalse(reset.contains("%1$@"), "unrendered reset placeholder in (language)")
+            XCTAssertFalse(menuReset.contains("%1$@"), "unrendered menu reset placeholder in (language)")
+        }
+        XCTAssertEqual(
+            tr(.keyLunaReserveMenuUnavailable, language: .simplifiedChinese),
+            "Luna Reserve 暂不可用"
+        )
+    }
+
+    func testLunaReserveMenuDisplaySettingsCopyExistsAcrossAllLanguages() {
+        let expected: [AppLanguage: [String]] = [
+            .simplifiedChinese: [
+                "🌙 Luna Reserve显示方式", "选择 Luna Reserve 在菜单中的显示时机", "不显示", "额度用完后显示", "始终显示",
+                "隐藏已用完额度", "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度。"
+            ],
+            .traditionalChineseTaiwan: [
+                "🌙 Luna Reserve 顯示方式", "選擇 Luna Reserve 在選單中的顯示時機", "不顯示", "額度用完後顯示", "始終顯示",
+                "隱藏已用完額度", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的額度。"
+            ],
+            .traditionalChineseHongKong: [
+                "🌙 Luna Reserve 顯示方式", "選擇 Luna Reserve 在選單中的顯示時機", "不顯示", "配額用完後顯示", "始終顯示",
+                "隱藏已用完配額", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的配額。"
+            ],
+            .japanese: [
+                "🌙 Luna Reserve の表示方法", "メニューで Luna Reserve を表示するタイミングを選択", "表示しない", "クォータ消費後に表示", "常に表示",
+                "使い切ったクォータを隠す", "オンにすると、🌙 Luna Reserve の表示時に残り 0% のクォータをメニューから隠します。"
+            ],
+            .english: [
+                "🌙 Luna Reserve Display", "Choose when Luna Reserve is shown in the menu", "Do not show", "Show after quota is used up", "Always show",
+                "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when 🌙 Luna Reserve is shown."
+            ],
+            .korean: [
+                "🌙 Luna Reserve 표시 방식", "메뉴에서 Luna Reserve를 표시할 시점을 선택", "표시 안 함", "할당량 소진 후 표시", "항상 표시",
+                "소진된 할당량 숨기기", "켜면 🌙 Luna Reserve가 표시될 때 잔여량이 0%인 할당량을 메뉴에서 숨깁니다."
+            ],
+            .spanish: [
+                "🌙 Mostrar Luna Reserve", "Elige cuándo mostrar Luna Reserve en el menú", "No mostrar", "Mostrar al agotar la cuota", "Mostrar siempre",
+                "Ocultar cuotas agotadas", "Al activarlo, las cuotas al 0 % se ocultan del menú cuando se muestra 🌙 Luna Reserve."
+            ],
+            .german: [
+                "🌙 Luna Reserve-Anzeige", "Zeitpunkt für die Anzeige von Luna Reserve im Menü auswählen", "Nicht anzeigen", "Nach Verbrauch des Kontingents anzeigen", "Immer anzeigen",
+                "Verbrauchte Kontingente ausblenden", "Wenn aktiviert, werden Kontingente mit 0 % im Menü ausgeblendet, sobald 🌙 Luna Reserve angezeigt wird."
+            ],
+            .french: [
+                "🌙 Affichage de Luna Reserve", "Choisissez quand afficher Luna Reserve dans le menu", "Ne pas afficher", "Afficher après épuisement du quota", "Toujours afficher",
+                "Masquer les quotas épuisés", "Lorsque cette option est activée, les quotas à 0 % sont masqués du menu quand 🌙 Luna Reserve est affiché."
+            ]
+        ]
+        let keys: [LocalizationKey] = [
+            .keyDashboardMenuPageLunaReserveDisplayMode,
+            .keyDashboardMenuPageLunaReserveDisplayModeDescription,
+            .keyDashboardMenuPageLunaReserveDisplayModeDisabled,
+            .keyDashboardMenuPageLunaReserveDisplayModeWhenQuotaExhausted,
+            .keyDashboardMenuPageLunaReserveDisplayModeAlways,
+            .keyDashboardMenuPageHideExhaustedQuota,
+            .keyDashboardMenuPageHideExhaustedQuotaDescription
+        ]
+
+        for language in allLanguages {
+            let values = keys.map { tr($0, language: language) }
+            XCTAssertEqual(values, expected[language], "Luna Reserve menu settings copy for \(language)")
+            XCTAssertTrue(values.allSatisfy { !$0.hasPrefix("⟦") })
+        }
+    }
+
+    func testLunaReserveAutoSwitchSettingsCopyExistsAcrossAllLanguages() {
+        let expected: [AppLanguage: [String]] = [
+            .simplifiedChinese: [
+                "自动切换 🌙 Luna Reserve", "进入 🌙 Luna Reserve 后，自动切换菜单栏显示的额度", "重置时间",
+                "使用 🌙 Luna Reserve 时，选择菜单栏显示的重置时间", "🌙 Luna Reserve", "原额度"
+            ],
+            .traditionalChineseTaiwan: [
+                "自動切換 🌙 Luna Reserve", "進入 🌙 Luna Reserve 後，自動切換選單列顯示的額度", "重設時間",
+                "使用 🌙 Luna Reserve 時，選擇選單列顯示的重設時間", "🌙 Luna Reserve", "原額度"
+            ],
+            .traditionalChineseHongKong: [
+                "自動切換 🌙 Luna Reserve", "進入 🌙 Luna Reserve 後，自動切換選單列顯示的配額", "重設時間",
+                "使用 🌙 Luna Reserve 時，選擇選單列顯示的重設時間", "🌙 Luna Reserve", "原配額"
+            ],
+            .japanese: [
+                "🌙 Luna Reserve に自動切り替え", "🌙 Luna Reserve に入ると、メニューバーに表示するクォータを自動的に切り替えます", "リセット時刻",
+                "🌙 Luna Reserve 使用時にメニューバーに表示するリセット時刻を選択", "🌙 Luna Reserve", "元のクォータ"
+            ],
+            .english: [
+                "Auto-switch to 🌙 Luna Reserve", "When 🌙 Luna Reserve is entered, automatically switch the menu bar quota", "Reset time",
+                "Choose which reset time the menu bar shows when using 🌙 Luna Reserve", "🌙 Luna Reserve", "Original quota"
+            ],
+            .korean: [
+                "🌙 Luna Reserve로 자동 전환", "🌙 Luna Reserve에 진입하면 메뉴 막대에 표시할 할당량을 자동으로 전환합니다", "재설정 시간",
+                "🌙 Luna Reserve 사용 시 메뉴 막대에 표시할 재설정 시간을 선택합니다", "🌙 Luna Reserve", "원래 할당량"
+            ],
+            .spanish: [
+                "Cambiar automáticamente a 🌙 Luna Reserve", "Al entrar en 🌙 Luna Reserve, cambia automáticamente la cuota mostrada en la barra de menús", "Hora de reinicio",
+                "Elige qué hora de reinicio muestra la barra de menús al usar 🌙 Luna Reserve", "🌙 Luna Reserve", "Cuota original"
+            ],
+            .german: [
+                "Automatisch zu 🌙 Luna Reserve wechseln", "Beim Wechsel zu 🌙 Luna Reserve das in der Menüleiste angezeigte Kontingent automatisch umschalten", "Rücksetzzeit",
+                "Auswählen, welche Rücksetzzeit die Menüleiste bei 🌙 Luna Reserve anzeigt", "🌙 Luna Reserve", "Ursprüngliches Kontingent"
+            ],
+            .french: [
+                "Basculer automatiquement vers 🌙 Luna Reserve", "En entrant dans 🌙 Luna Reserve, bascule automatiquement le quota affiché dans la barre des menus", "Heure de réinitialisation",
+                "Choisissez l’heure de réinitialisation affichée dans la barre des menus avec 🌙 Luna Reserve", "🌙 Luna Reserve", "Quota d’origine"
+            ]
+        ]
+        let keys: [LocalizationKey] = [
+            .keyDashboardMenuBarPageAutoSwitchLunaReserve,
+            .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
+            .keyDashboardMenuBarPageLunaReserveResetTime,
+            .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+            .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve,
+            .keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota
+        ]
+
+        for language in allLanguages {
+            let values = keys.map { tr($0, language: language) }
+            XCTAssertEqual(values, expected[language], "Luna Reserve auto-switch settings copy for \(language)")
+            XCTAssertTrue(values.allSatisfy { !$0.hasPrefix("⟦") })
+        }
+    }
+
     func testIgnoreUpdateCopyExistsInEverySupportedLanguage() {
         let key = LocalizationKey.keyDashboardGeneralAndRefreshPagesIgnoreThisVersion
         let expected: [AppLanguage: String] = [
@@ -308,7 +457,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 406)
+        XCTAssertEqual(expectedKeys.count, 430)
 
         for (directory, language) in resourceDirectories {
             let resourceURL = try XCTUnwrap(

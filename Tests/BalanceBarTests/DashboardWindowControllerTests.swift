@@ -1906,7 +1906,6 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(reset.frame.maxX, expectedRightEdge, accuracy: 0.5)
     }
 
-    @MainActor
     func testOfficialCodexMenuCardRendersIndependentFiveHourAndSevenDayRows() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -1929,21 +1928,29 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         defer { controller.teardown() }
 
-        let input = StatusItemController.MenuInput(
-            openCodexCards: [],
-            openCodexState: nil,
-            openCodexSwitchInFlight: false,
-            choices: [],
-            quickSwitchSummaries: [:],
-            activeClient: .codex,
-            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
-            statusLinks: [],
-            showQuickSwitchMenu: false,
-            showOpenChatGPTMenu: false,
-            showOpenCCSwitchMenu: false,
-            showOpenCodexMenu: false,
-            showStatusMenu: false
-        )
+        func makeInput(
+            lunaReserveDisplayMode: LunaReserveDisplayMode = .always,
+            lunaReserveHideExhaustedQuota: Bool = false
+        ) -> StatusItemController.MenuInput {
+            StatusItemController.MenuInput(
+                openCodexCards: [],
+                openCodexState: nil,
+                openCodexSwitchInFlight: false,
+                choices: [],
+                quickSwitchSummaries: [:],
+                activeClient: .codex,
+                openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+                statusLinks: [],
+                showQuickSwitchMenu: false,
+                showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false,
+                showOpenCodexMenu: false,
+                showStatusMenu: false,
+                lunaReserveDisplayMode: lunaReserveDisplayMode,
+                lunaReserveHideExhaustedQuota: lunaReserveHideExhaustedQuota
+            )
+        }
+        let input = makeInput()
         let settings = StatusItemController.MenuBarSettings(
             showIcon: true,
             showAmount: true,
@@ -2132,6 +2139,171 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(longQuotaViews.count, 4)
         XCTAssertTrue(longQuotaViews.allSatisfy { $0.isScrollable })
         XCTAssertTrue(longQuotaViews.allSatisfy { $0.frame.maxX <= longOverview.bounds.maxX })
+
+        let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
+        XCTAssertEqual(reserve.menuTitleText, "🌙 Luna Reserve")
+        XCTAssertEqual(reserve.menuSubtitleText, "1h30m")
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                lunaReserve: reserve
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let reserveOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let reserveFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesLunaReserve: true
+        )
+        XCTAssertEqual(reserveOverview.bounds.size, reserveFrames.cardSize)
+        XCTAssertEqual(
+            reserveOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [80, 45, 45]
+        )
+        XCTAssertNotNil(
+            reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == reserve.menuTitleText
+            }
+        )
+        XCTAssertNotNil(
+            reserveOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == reserve.menuSubtitleText
+            }
+        )
+
+        let unavailableReserve = LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
+        XCTAssertEqual(unavailableReserve.menuTitleText, "🌙 Luna Reserve")
+        XCTAssertEqual(unavailableReserve.menuSubtitleText, "Luna Reserve temporarily unavailable")
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                lunaReserve: unavailableReserve
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let unavailableOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let unavailableFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesLunaReserve: true,
+            includesLunaReserveProgress: false
+        )
+        XCTAssertEqual(unavailableOverview.bounds.size, unavailableFrames.cardSize)
+        XCTAssertEqual(
+            unavailableOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [80, 45]
+        )
+        XCTAssertNotNil(
+            unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == unavailableReserve.menuTitleText
+            }
+        )
+        XCTAssertNotNil(
+            unavailableOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == unavailableReserve.menuSubtitleText
+            }
+        )
+
+        let exhaustedWindows = [
+            OfficialQuotaWindow(
+                kind: windows[0].kind,
+                remaining: 0,
+                label: windows[0].label,
+                daysText: windows[0].daysText,
+                reset: windows[0].reset,
+                durationSeconds: windows[0].durationSeconds,
+                resetAt: windows[0].resetAt
+            ),
+            windows[1]
+        ]
+        let exhaustedSnapshot = Snapshot.official(
+            "OpenAI Official",
+            45,
+            exhaustedWindows[1].label,
+            exhaustedWindows[1].reset,
+            date,
+            windows: exhaustedWindows,
+            lunaReserve: reserve
+        )
+        controller.update(
+            snapshot: exhaustedSnapshot,
+            refreshDate: date,
+            menuInput: makeInput(lunaReserveDisplayMode: .whenQuotaExhausted),
+            settings: settings
+        )
+        let thresholdOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertEqual(
+            thresholdOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [0, 45, 45]
+        )
+        XCTAssertNotNil(
+            thresholdOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == reserve.menuTitleText
+            }
+        )
+
+        controller.update(
+            snapshot: exhaustedSnapshot,
+            refreshDate: date,
+            menuInput: makeInput(
+                lunaReserveDisplayMode: .whenQuotaExhausted,
+                lunaReserveHideExhaustedQuota: true
+            ),
+            settings: settings
+        )
+        let hiddenExhaustedOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertEqual(
+            hiddenExhaustedOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [45, 45]
+        )
+        XCTAssertFalse(
+            allControls(of: hiddenExhaustedOverview, as: NSTextField.self)
+                .contains { $0.stringValue == "0%" }
+        )
+        XCTAssertNotNil(
+            hiddenExhaustedOverview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.accountLabel.stringValue == reserve.menuTitleText
+            }
+        )
+
+        controller.update(
+            snapshot: exhaustedSnapshot,
+            refreshDate: date,
+            menuInput: makeInput(
+                lunaReserveDisplayMode: .disabled,
+                lunaReserveHideExhaustedQuota: true
+            ),
+            settings: settings
+        )
+        let disabledOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertEqual(
+            disabledOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [0, 45]
+        )
+        XCTAssertFalse(
+            disabledOverview.subviews.compactMap { $0 as? AccountMarqueeView }.contains {
+                $0.accountLabel.stringValue == reserve.menuTitleText
+            }
+        )
     }
 
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
