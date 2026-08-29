@@ -2,7 +2,7 @@
 "app.preferences.openai_status" = "OpenAI 상태";
 "app.not_found" = "찾을 수 없음";
 "app.not_found.2" = "찾을 수 없음";
-"app.the_current_cc_switch_value_provider_was_not_found" = "현재 CC Switch %1$@ 공급자를 찾을 수 없습니다";
+"app.the_current_cc_switch_value_provider_was_not_found" = "현재 CC Switch %1$@ 서비스 제공자를 찾을 수 없습니다";
 "app.about_balancebar" = "BalanceBar 정보";
 "app.hide_balancebar" = "BalanceBar 가리기";
 "app.hide_others" = "다른 앱 가리기";

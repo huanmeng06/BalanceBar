@@ -1017,6 +1017,11 @@ final class LocalizationTests: XCTestCase {
         let store = LocalizationResourceStore(bundle: testBundle)
         let expectations: [(key: LocalizationKey, arguments: [String], expected: String)] = [
             (
+                .keyAppTheCurrentCcSwitchValueProviderWasNotFound,
+                ["Codex"],
+                "현재 CC Switch Codex 서비스 제공자를 찾을 수 없습니다"
+            ),
+            (
                 .keyProviderModelsTheUpstreamProviderIdentityWasNotRead,
                 [],
                 "상위 서비스 제공자 식별자를 읽지 못했습니다"
