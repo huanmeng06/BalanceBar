@@ -1797,7 +1797,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             if language == .simplifiedChinese {
                 XCTAssertEqual(
                     tr(.keyDashboardMenuBarPageQuotaDisplayPriority, language: language),
-                    "优先额度周期"
+                    "优先显示额度"
                 )
                 XCTAssertEqual(
                     tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription, language: language),
