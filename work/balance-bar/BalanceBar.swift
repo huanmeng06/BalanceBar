@@ -975,11 +975,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func applyLaunchAtLogin(enabled: Bool) {
-        let state = launchAtLoginController.setEnabled(enabled)
-        dashboardComposition.refreshLaunchAtLogin(state)
-        guard state.notice == .operationFailed else { return }
+        let outcome = launchAtLoginController.setEnabled(enabled)
+        dashboardComposition.refreshLaunchAtLogin(outcome.state)
+        guard let error = outcome.error else { return }
         SwitchLog.write(
-            "launch at login operation failed; requested_enabled=\(enabled); observed_status=\(String(describing: state.status))",
+            "launch at login operation threw; requested_enabled=\(enabled); observed_status=\(String(describing: outcome.state.status)); error=\(error)",
             level: .error,
             category: "configuration"
         )

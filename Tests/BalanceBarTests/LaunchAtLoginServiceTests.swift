@@ -71,44 +71,46 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         let service = MockLaunchAtLoginService(status: .notRegistered)
         let controller = LaunchAtLoginController(service: service)
 
-        let state = controller.setEnabled(true)
+        let outcome = controller.setEnabled(true)
 
         XCTAssertEqual(service.registerCallCount, 1)
         XCTAssertEqual(service.unregisterCallCount, 0)
         XCTAssertEqual(service.statusReadCount, 1)
-        XCTAssertEqual(state, LaunchAtLoginState(status: .enabled))
+        XCTAssertEqual(outcome.state, LaunchAtLoginState(status: .enabled))
+        XCTAssertNil(outcome.error)
     }
 
     func testControllerUnregistersAndReloadsActualDisabledState() {
         let service = MockLaunchAtLoginService(status: .enabled)
         let controller = LaunchAtLoginController(service: service)
 
-        let state = controller.setEnabled(false)
+        let outcome = controller.setEnabled(false)
 
         XCTAssertEqual(service.registerCallCount, 0)
         XCTAssertEqual(service.unregisterCallCount, 1)
         XCTAssertEqual(service.statusReadCount, 1)
-        XCTAssertEqual(state, LaunchAtLoginState(status: .notRegistered))
+        XCTAssertEqual(outcome.state, LaunchAtLoginState(status: .notRegistered))
+        XCTAssertNil(outcome.error)
     }
 
     func testControllerRegistersFromNotFoundState() {
         let service = MockLaunchAtLoginService(status: .notFound)
         let controller = LaunchAtLoginController(service: service)
 
-        let state = controller.setEnabled(true)
+        let outcome = controller.setEnabled(true)
 
         XCTAssertEqual(service.registerCallCount, 1)
-        XCTAssertEqual(state.status, .enabled)
+        XCTAssertEqual(outcome.state.status, .enabled)
     }
 
     func testControllerUnregistersFromRequiresApprovalState() {
         let service = MockLaunchAtLoginService(status: .requiresApproval)
         let controller = LaunchAtLoginController(service: service)
 
-        let state = controller.setEnabled(false)
+        let outcome = controller.setEnabled(false)
 
         XCTAssertEqual(service.unregisterCallCount, 1)
-        XCTAssertEqual(state.status, .notRegistered)
+        XCTAssertEqual(outcome.state.status, .notRegistered)
     }
 
     func testControllerReloadsActualStateAfterOperationError() {
@@ -117,12 +119,13 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         service.statusAfterRegisterError = .enabled
         let controller = LaunchAtLoginController(service: service)
 
-        let state = controller.setEnabled(true)
+        let outcome = controller.setEnabled(true)
 
         XCTAssertEqual(service.registerCallCount, 1)
         XCTAssertEqual(service.statusReadCount, 1)
-        XCTAssertEqual(state.status, .enabled)
-        XCTAssertEqual(state.notice, .operationFailed)
+        XCTAssertEqual(outcome.state.status, .enabled)
+        XCTAssertEqual(outcome.state.notice, .none)
+        XCTAssertNotNil(outcome.error)
     }
 
     func testOperationErrorKeepsApprovalGuidanceWhenServiceNeedsApproval() {
@@ -131,10 +134,37 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         service.statusAfterRegisterError = .requiresApproval
         let controller = LaunchAtLoginController(service: service)
 
-        let state = controller.setEnabled(true)
+        let outcome = controller.setEnabled(true)
 
-        XCTAssertEqual(state.status, .requiresApproval)
-        XCTAssertEqual(state.notice, .requiresApproval)
+        XCTAssertEqual(outcome.state.status, .requiresApproval)
+        XCTAssertEqual(outcome.state.notice, .requiresApproval)
+        XCTAssertNotNil(outcome.error)
+    }
+
+    func testDisablingRequiresApprovalAfterUnregisterErrorUsesOperationFailure() {
+        let service = MockLaunchAtLoginService(status: .requiresApproval)
+        service.unregisterError = TestError.operationFailed
+        service.statusAfterUnregisterError = .requiresApproval
+        let controller = LaunchAtLoginController(service: service)
+
+        let outcome = controller.setEnabled(false)
+
+        XCTAssertEqual(outcome.state.status, .requiresApproval)
+        XCTAssertEqual(outcome.state.notice, .operationFailed)
+        XCTAssertNotNil(outcome.error)
+    }
+
+    func testDisablingAlreadyUnregisteredAfterUnregisterErrorIsPresentedAsSuccess() {
+        let service = MockLaunchAtLoginService(status: .enabled)
+        service.unregisterError = TestError.operationFailed
+        service.statusAfterUnregisterError = .notRegistered
+        let controller = LaunchAtLoginController(service: service)
+
+        let outcome = controller.setEnabled(false)
+
+        XCTAssertEqual(outcome.state.status, .notRegistered)
+        XCTAssertEqual(outcome.state.notice, .none)
+        XCTAssertNotNil(outcome.error)
     }
 
     func testOperationErrorUsesOperationFailureNoticeWhenStatusCannotBeRead() {
@@ -143,10 +173,11 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         service.statusAfterRegisterError = .notFound
         let controller = LaunchAtLoginController(service: service)
 
-        let state = controller.setEnabled(true)
+        let outcome = controller.setEnabled(true)
 
-        XCTAssertEqual(state.status, .notFound)
-        XCTAssertEqual(state.notice, .operationFailed)
+        XCTAssertEqual(outcome.state.status, .notFound)
+        XCTAssertEqual(outcome.state.notice, .operationFailed)
+        XCTAssertNotNil(outcome.error)
     }
 
     func testRequiresApprovalAndExternalChangesRemainVisibleThroughRealStateReads() {

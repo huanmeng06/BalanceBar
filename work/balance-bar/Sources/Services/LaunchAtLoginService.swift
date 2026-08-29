@@ -90,6 +90,11 @@ struct LaunchAtLoginState: Equatable {
     }
 }
 
+struct LaunchAtLoginOperationOutcome {
+    let state: LaunchAtLoginState
+    let error: Error?
+}
+
 /// Coordinates an operation and immediately reloads ServiceManagement state.
 /// The result never reflects the requested value alone: it always reflects the
 /// service's post-operation status, including when an operation throws.
@@ -107,7 +112,7 @@ final class LaunchAtLoginController {
     }
 
     @discardableResult
-    func setEnabled(_ enabled: Bool) -> LaunchAtLoginState {
+    func setEnabled(_ enabled: Bool) -> LaunchAtLoginOperationOutcome {
         do {
             if enabled {
                 try service.register()
@@ -119,27 +124,38 @@ final class LaunchAtLoginController {
             // fail after changing system state, and the UI must not trust the
             // switch value that initiated the operation.
             let observedStatus = service.status
-            return LaunchAtLoginState(
-                status: observedStatus,
-                notice: noticeAfterOperationError(for: observedStatus)
+            return LaunchAtLoginOperationOutcome(
+                state: stateAfterOperationError(
+                    requestedEnabled: enabled,
+                    observedStatus: observedStatus
+                ),
+                error: error
             )
         }
 
-        return currentState()
+        return LaunchAtLoginOperationOutcome(state: currentState(), error: nil)
     }
 
     func openSystemSettingsLoginItems() {
         service.openSystemSettingsLoginItems()
     }
 
-    private func noticeAfterOperationError(
-        for status: LaunchAtLoginStatus
-    ) -> LaunchAtLoginNotice {
-        switch status {
-        case .requiresApproval:
-            return .requiresApproval
-        case .enabled, .notRegistered, .notFound, .unknown:
-            return .operationFailed
+    private func stateAfterOperationError(
+        requestedEnabled: Bool,
+        observedStatus: LaunchAtLoginStatus
+    ) -> LaunchAtLoginState {
+        switch (requestedEnabled, observedStatus) {
+        case (true, .enabled):
+            return LaunchAtLoginState(status: .enabled)
+        case (true, .requiresApproval):
+            return LaunchAtLoginState(status: .requiresApproval)
+        case (false, .notRegistered):
+            return LaunchAtLoginState(status: .notRegistered)
+        case (true, _), (false, _):
+            return LaunchAtLoginState(
+                status: observedStatus,
+                notice: .operationFailed
+            )
         }
     }
 }
