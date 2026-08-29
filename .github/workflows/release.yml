@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: write
+  issues: read
   pull-requests: read
 
 concurrency:
@@ -172,7 +173,7 @@ jobs:
           echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
           echo "Previous release: $previous_tag"
 
-      - name: Collect commits, files, and merged PR metadata
+      - name: Collect bounded commits, files, PR, and Issue context
         if: steps.release_context.outputs.should_release == 'true' && steps.release_guard.outputs.skip != 'true'
         env:
           PREVIOUS_TAG: ${{ steps.previous_release.outputs.previous_tag }}
@@ -183,6 +184,9 @@ jobs:
           set -Eeuo pipefail
           compare_json="$RUNNER_TEMP/balancebar-release-compare.json"
           prs_json="$RUNNER_TEMP/balancebar-release-prs.json"
+          selection_json="$RUNNER_TEMP/balancebar-release-selection.json"
+          enriched_prs_json="$RUNNER_TEMP/balancebar-release-enriched-prs.json"
+          issue_details_json="$RUNNER_TEMP/balancebar-release-issue-details.json"
           input_json="$RUNNER_TEMP/balancebar-release-input.json"
 
           gh api \
@@ -193,8 +197,8 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --state merged \
             --base main \
-            --limit 100 \
-            --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit \
+            --limit 1000 \
+            --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits \
             > "$prs_json"
 
           event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
@@ -202,6 +206,58 @@ jobs:
             --event "$event_path" \
             --compare "$compare_json" \
             --prs "$prs_json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --previous-tag "$PREVIOUS_TAG" \
+            --current-sha "$MERGE_SHA" \
+            --version "$VERSION" \
+            --tag "$TAG" \
+            --selection-output "$selection_json" >/dev/null
+
+          printf '[]\n' > "$enriched_prs_json"
+          while IFS= read -r pr_number; do
+            [[ "$pr_number" =~ ^[0-9]+$ ]] || continue
+            pr_detail="$RUNNER_TEMP/balancebar-pr-${pr_number}.json"
+            pr_diff="$RUNNER_TEMP/balancebar-pr-${pr_number}.diff"
+            pr_enriched="$RUNNER_TEMP/balancebar-pr-${pr_number}-enriched.json"
+            gh pr view "$pr_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits,files,changedFiles,additions,deletions \
+              > "$pr_detail"
+            if ! gh pr diff "$pr_number" --repo "$GITHUB_REPOSITORY" --patch > "$pr_diff"; then
+              echo "Could not fetch optional diff context for PR #$pr_number; continuing with file metadata." >&2
+              : > "$pr_diff"
+            fi
+            jq --rawfile diffSummary "$pr_diff" '. + {diffSummary: $diffSummary}' \
+              "$pr_detail" > "$pr_enriched"
+            jq --slurpfile detail "$pr_enriched" '. + [$detail[0]]' \
+              "$enriched_prs_json" > "$enriched_prs_json.next"
+            mv "$enriched_prs_json.next" "$enriched_prs_json"
+          done < <(jq -r '.[].number' "$selection_json")
+
+          printf '[]\n' > "$issue_details_json"
+          while IFS= read -r issue_number; do
+            [[ "$issue_number" =~ ^[0-9]+$ ]] || continue
+            issue_detail="$RUNNER_TEMP/balancebar-issue-${issue_number}.json"
+            if ! gh issue view "$issue_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json number,title,body,url,labels,comments \
+              > "$issue_detail"; then
+              echo "Could not fetch optional context for explicitly linked Issue #$issue_number; continuing with its reference." >&2
+              jq -n --arg number "$issue_number" '{number: ($number | tonumber)}' > "$issue_detail"
+            fi
+            jq --slurpfile detail "$issue_detail" '. + [$detail[0]]' \
+              "$issue_details_json" > "$issue_details_json.next"
+            mv "$issue_details_json.next" "$issue_details_json"
+          done < <(
+            jq -r '.[] | (.closingIssuesReferences // [])[] | .number // empty' \
+              "$enriched_prs_json" | sort -n -u
+          )
+
+          node scripts/release/collect-release-input.mjs \
+            --event "$event_path" \
+            --compare "$compare_json" \
+            --prs "$enriched_prs_json" \
+            --issues "$issue_details_json" \
             --repo "$GITHUB_REPOSITORY" \
             --previous-tag "$PREVIOUS_TAG" \
             --current-sha "$MERGE_SHA" \

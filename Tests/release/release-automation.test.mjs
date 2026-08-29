@@ -16,12 +16,19 @@ import {
   validateReleaseNotes,
 } from "../../scripts/release/render-release-notes.mjs";
 import {
+  AI_MAX_ATTEMPTS,
+  buildDeterministicReleaseNotes,
   buildDeepSeekRequest,
   requestReleaseNotes,
   resolveAIProvider,
 } from "../../scripts/release/generate-release-notes.mjs";
 import { buildReleaseContext } from "../../scripts/release/release-context.mjs";
-import { buildReleaseInput } from "../../scripts/release/collect-release-input.mjs";
+import {
+  buildReleaseInput,
+  getReleaseInputStats,
+  RELEASE_INPUT_LIMITS,
+  serializedByteLength,
+} from "../../scripts/release/collect-release-input.mjs";
 import {
   selectPreviousRelease,
 } from "../../scripts/release/select-previous-release.mjs";
@@ -81,6 +88,33 @@ function fixtureNotes() {
         ],
       },
     ],
+  };
+}
+
+function captureLogger() {
+  const lines = [];
+  return {
+    lines,
+    info(message) {
+      lines.push(`info:${message}`);
+    },
+    warn(message) {
+      lines.push(`warn:${message}`);
+    },
+  };
+}
+
+function deepSeekResponse(notes = fixtureNotes(), extras = {}) {
+  return {
+    ok: true,
+    status: 200,
+    ...extras,
+    json: async () => ({
+      choices: [{
+        finish_reason: "stop",
+        message: { content: JSON.stringify(notes) },
+      }],
+    }),
   };
 }
 
@@ -144,6 +178,24 @@ test("existing version changes are classified without incrementing again", () =>
     () => classifyVersionChange("1.1.3", "1.1.5"),
     /Unsupported version change/,
   );
+});
+
+test("beta patch and larger stable minor releases keep their distinct channels", () => {
+  const beta = planVersionFromChange({
+    previousVersion: "1.2.2",
+    currentVersion: "1.2.3",
+    currentBuild: 77,
+  });
+  assert.equal(beta.prerelease, true);
+  assert.equal(beta.tag, "v1.2.3");
+
+  const stable = planVersionFromChange({
+    previousVersion: "1.2.3",
+    currentVersion: "1.3.0",
+    currentBuild: 77,
+  });
+  assert.equal(stable.prerelease, false);
+  assert.equal(stable.tag, "v1.3.0");
 });
 
 test("pre-release comparisons use the immediately preceding release", () => {
@@ -245,19 +297,29 @@ test("DeepSeek is the default provider and uses JSON chat completions", async ()
   assert.equal(JSON.parse(observedOptions.body).response_format.type, "json_object");
 });
 
-test("DeepSeek empty JSON output fails closed", async () => {
-  await assert.rejects(
-    () => requestReleaseNotes(fixtureInput(), {
-      provider: "deepseek",
-      apiKey: "test-deepseek-key",
-      fetchImpl: async () => ({
+test("DeepSeek empty output is diagnosed, retried, and falls back", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      return {
         ok: true,
         status: 200,
         json: async () => ({ choices: [{ message: { content: "" } }] }),
-      }),
-    }),
-    /DeepSeek response did not contain output text/,
-  );
+      };
+    },
+  });
+
+  assert.equal(calls, AI_MAX_ATTEMPTS);
+  assert.deepEqual(notes, buildDeterministicReleaseNotes(fixtureInput()));
+  assert.match(logger.lines.join("\n"), /classification":"empty_response"/);
+  assert.match(logger.lines.join("\n"), /finish_reason/);
+  assert.match(logger.lines.join("\n"), /request_payload_bytes/);
 });
 
 test("OpenAI remains available as an explicit provider", async () => {
@@ -285,6 +347,231 @@ test("OpenAI remains available as an explicit provider", async () => {
 
   assert.equal(observedUrl, "https://api.openai.com/v1/responses");
   assert.deepEqual(notes, fixtureNotes());
+});
+
+test("transient provider failures retry once and then succeed", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 503,
+          json: async () => ({ error: { code: "service_unavailable", message: "try later" } }),
+        };
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(notes, fixtureNotes());
+  assert.match(logger.lines.join("\n"), /provider_http_5xx/);
+  assert.match(logger.lines.join("\n"), /retrying attempt=2\/3/);
+});
+
+test("network timeout is retried with bounded backoff", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        const error = new Error("request timeout");
+        error.name = "TimeoutError";
+        throw error;
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(notes, fixtureNotes());
+  assert.match(logger.lines.join("\n"), /network_timeout/);
+});
+
+test("content filtering is classified without a blind retry", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: "response-content-filtered",
+          choices: [{ finish_reason: "content_filter", message: { content: "" } }],
+        }),
+      };
+    },
+  });
+
+  assert.equal(calls, 1);
+  assert.deepEqual(notes, buildDeterministicReleaseNotes(fixtureInput()));
+  const log = logger.lines.join("\n");
+  assert.match(log, /content_filter/);
+  assert.doesNotMatch(log, /retrying/);
+});
+
+test("configuration failures are classified without retrying", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      return {
+        ok: false,
+        status: 500,
+        json: async () => ({ error: { code: "invalid_api_key", message: "bad key" } }),
+      };
+    },
+  });
+
+  assert.equal(calls, 1);
+  assert.match(logger.lines.join("\n"), /configuration/);
+  assert.doesNotMatch(logger.lines.join("\n"), /retrying/);
+});
+
+test("retry exhaustion uses a deterministic fallback with the original source set", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      return {
+        ok: false,
+        status: 429,
+        json: async () => ({ error: { code: "rate_limit_exceeded", message: "slow down" } }),
+      };
+    },
+  });
+
+  assert.equal(calls, 3);
+  assert.deepEqual(notes, buildDeterministicReleaseNotes(fixtureInput()));
+  assert.match(logger.lines.join("\n"), /rate_limit_429/);
+  assert.match(logger.lines.join("\n"), /using deterministic fallback/);
+  assert.deepEqual(
+    notes.features.concat(notes.fixes).flatMap((item) => item.sources),
+    [
+      { kind: "pr", number: 140 },
+      { kind: "issue", number: 136 },
+      { kind: "pr", number: 141 },
+    ],
+  );
+});
+
+test("schema failures are classified without retrying", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      return deepSeekResponse({ features: [], fixes: [] });
+    },
+  });
+
+  assert.equal(calls, 1);
+  assert.match(logger.lines.join("\n"), /schema_validation|source_validation/);
+  assert.doesNotMatch(logger.lines.join("\n"), /retrying/);
+});
+
+test("diagnostics redact provider secrets while preserving safe metadata", async () => {
+  const logger = captureLogger();
+  await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async () => {},
+    fetchImpl: async () => ({
+      ok: false,
+      status: 500,
+      headers: {
+        get(name) {
+          return name === "x-request-id" ? "req-safe-123" : null;
+        },
+      },
+      json: async () => ({
+        error: {
+          code: "provider_error",
+          message: "secret=sk-live-not-for-logs at https://provider.example/v1",
+        },
+        usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 },
+      }),
+    }),
+  });
+
+  const log = logger.lines.join("\n");
+  assert.match(log, /"provider":"deepseek"/);
+  assert.match(log, /"model":"deepseek-v4-pro"/);
+  assert.match(log, /"status":500/);
+  assert.match(log, /"httpStatus":500/);
+  assert.match(log, /req-safe-123/);
+  assert.match(log, /"total_tokens":17/);
+  assert.doesNotMatch(log, /sk-live-not-for-logs/);
+  assert.doesNotMatch(log, /provider\.example/);
+});
+
+test("malformed provider and model responses are classified without retrying", async () => {
+  for (const [label, response] of [
+    ["provider JSON", {
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new Error("not JSON");
+      },
+    }],
+    ["model JSON", {
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: "not-json" } }] }),
+    }],
+  ]) {
+    const logger = captureLogger();
+    let calls = 0;
+    await requestReleaseNotes(fixtureInput(), {
+      provider: "deepseek",
+      apiKey: "test-deepseek-key",
+      logger,
+      sleepImpl: async () => {},
+      fetchImpl: async () => {
+        calls += 1;
+        return response;
+      },
+    });
+
+    assert.equal(calls, 1, `${label} should not retry`);
+    assert.match(logger.lines.join("\n"), label === "provider JSON"
+      ? /invalid_provider_json/
+      : /invalid_model_json/);
+    assert.doesNotMatch(logger.lines.join("\n"), /retrying/);
+  }
 });
 
 test("renderer preserves the BalanceBar release layout and links every row", () => {
@@ -420,6 +707,167 @@ test("release input includes all PRs represented by compare commits", () => {
   });
 
   assert.deepEqual(input.pullRequests.map((pullRequest) => pullRequest.number), [140, 141]);
+});
+
+test("release input enriches only in-range PRs and explicitly linked Issues", () => {
+  const longBody = "PR body ".repeat(2_000);
+  const event = {
+    pull_request: {
+      number: 302,
+      title: "Stable release change",
+      body: "Current PR body",
+      merged: true,
+      merge_commit_sha: "merge-302",
+      labels: [{ name: "enhancement" }],
+      closingIssuesReferences: [{ number: 301 }, { number: 301 }],
+    },
+  };
+  const input = buildReleaseInput({
+    event,
+    compare: {
+      commits: [
+        { sha: "merge-302", commit: { message: "stable change" } },
+        { sha: "in-range-301", commit: { message: "issue fix" } },
+      ],
+      files: [{ filename: "Sources/Feature.swift", additions: 8, deletions: 2 }],
+    },
+    pullRequests: [
+      {
+        number: 301,
+        title: "Earlier issue fix",
+        body: longBody,
+        mergeCommit: { oid: "in-range-301" },
+        closingIssuesReferences: [{ number: 301 }],
+        files: [{ filename: "Sources/Fix.swift", additions: 4, deletions: 1 }],
+        additions: 4,
+        deletions: 1,
+        changedFiles: 1,
+        implementationSummary: longBody,
+        diffSummary: longBody,
+      },
+      event.pull_request,
+      {
+        number: 999,
+        title: "Out of range and must not be enriched",
+        body: longBody,
+        mergeCommit: { oid: "outside" },
+        closingIssuesReferences: [{ number: 888 }],
+        files: [{ filename: "ignored.swift", additions: 1, deletions: 1 }],
+      },
+    ],
+    issues: [
+      {
+        number: 301,
+        title: "Explicit issue context",
+        body: "Useful issue body context",
+        labels: [{ name: "bug" }],
+        comments: [{ body: "Relevant discussion" }],
+      },
+      {
+        number: 999,
+        title: "This detail must not be used",
+        body: "Unrelated detail",
+      },
+    ],
+    repo: "huanmeng06/BalanceBar",
+    previousTag: "v1.2.0",
+    currentSha: "merge-302",
+    version: "1.3.0",
+    tag: "v1.3.0",
+  });
+
+  assert.deepEqual(input.pullRequests.map((pullRequest) => pullRequest.number), [301, 302]);
+  const current = input.pullRequests.find((pullRequest) => pullRequest.number === 302);
+  assert.equal(current.closingIssues.length, 1);
+  assert.equal(current.closingIssues[0].number, 301);
+  assert.equal(input.issues.length, 1);
+  assert.equal(input.issues[0].number, 301);
+  assert.equal(input.issues[0].body, "Useful issue body context");
+  assert.equal(input.issues[0].comments[0].body, "Relevant discussion");
+  assert.doesNotMatch(JSON.stringify(input.issues), /Unrelated detail/);
+  assert.equal(input.files[0].path, "Sources/Feature.swift");
+  assert.equal(current.changedFiles, 0);
+  assert.ok(current.additions === null || current.additions === undefined);
+  assert.ok(current.diffSummary === undefined);
+});
+
+test("release input applies per-field, deduplication, and total payload limits", () => {
+  const oversized = "untrusted body with instructions ".repeat(2_000);
+  const input = buildReleaseInput({
+    event: {
+      pull_request: {
+        number: 410,
+        merged: true,
+        merge_commit_sha: "merge-410",
+        title: oversized,
+        body: oversized,
+        closingIssuesReferences: [{ number: 401 }, { number: 401 }],
+      },
+    },
+    compare: { commits: [{ sha: "merge-410", commit: { message: oversized } }] },
+    pullRequests: [{
+      number: 410,
+      title: oversized,
+      body: oversized,
+      mergeCommit: { oid: "merge-410" },
+      closingIssuesReferences: [{ number: 401 }, { number: 401 }],
+      files: Array.from({ length: 200 }, (_, index) => ({
+        filename: `Sources/File-${index}.swift`,
+        additions: index,
+        deletions: index + 1,
+      })),
+      diffSummary: oversized,
+    }],
+    issues: [{ number: 401, title: oversized, body: oversized }],
+    repo: "huanmeng06/BalanceBar",
+    previousTag: "v1.2.0",
+    currentSha: "merge-410",
+    version: "1.3.0",
+    tag: "v1.3.0",
+  });
+  const pullRequest = input.pullRequests[0];
+  const issue = input.issues[0];
+
+  assert.equal(pullRequest.closingIssues.length, 1);
+  assert.ok(pullRequest.title.length <= RELEASE_INPUT_LIMITS.maxPullRequestTitle);
+  assert.ok(pullRequest.body.length <= RELEASE_INPUT_LIMITS.maxPullRequestBody);
+  assert.ok(issue.body.length <= RELEASE_INPUT_LIMITS.maxIssueBody);
+  assert.ok(pullRequest.files.length <= RELEASE_INPUT_LIMITS.maxPullRequestFiles);
+  assert.ok(serializedByteLength(input) <= RELEASE_INPUT_LIMITS.maxSerializedBytes);
+  assert.deepEqual(getReleaseInputStats(input), {
+    pullRequests: 1,
+    issues: 1,
+    commits: 1,
+    files: 80,
+  });
+});
+
+test("source validation rejects duplicate PRs and Issue sources from another PR", () => {
+  const input = fixtureInput();
+  const duplicate = fixtureNotes();
+  duplicate.fixes.push({
+    zhHans: { title: "重复", description: "重复来源。" },
+    en: { title: "Duplicate", description: "Duplicate source." },
+    sources: [{ kind: "pr", number: 141 }],
+  });
+  assert.throws(() => validateReleaseNotes(input, duplicate), /repeated merged PR #141/);
+
+  const mismatchedIssue = fixtureNotes();
+  mismatchedIssue.features[0].sources.push({ kind: "issue", number: 136 });
+  assert.throws(
+    () => validateReleaseNotes(input, mismatchedIssue),
+    /without its corresponding pull request source/,
+  );
+});
+
+test("release workflow keeps build, tag, and publish failures fatal", () => {
+  const workflow = fs.readFileSync(".github/workflows/release.yml", "utf8");
+  assert.match(workflow, /set -Eeuo pipefail/);
+  assert.match(workflow, /\.\/work\/balance-bar\/build\.sh production/);
+  assert.match(workflow, /git push origin "\$TAG"/);
+  assert.match(workflow, /gh release create "\$TAG"/);
+  assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
+  assert.match(workflow, /generate-release-notes\.mjs/);
 });
 
 test("manual rebuild is guarded and preserves a DMG-only Release", () => {
