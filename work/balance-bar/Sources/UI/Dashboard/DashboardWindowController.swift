@@ -158,8 +158,6 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     private var isTornDown = false
     private var windowZoomState = DashboardWindowZoomState()
 
-    var isWindowZoomedForTesting: Bool { windowZoomState.isZoomed }
-
     init(actions: DashboardWindowControllerActions) {
         self.actions = actions
         super.init()
