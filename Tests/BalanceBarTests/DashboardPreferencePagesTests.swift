@@ -369,7 +369,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .german,
-                "Anzeige des Menüsymbols",
+                "Anzeige des Menüleistensymbols",
                 "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird",
                 ["Immer sichtbar", "Nur während der Ausführung"]
             ),
@@ -2674,9 +2674,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
             .japanese: ["アイコンの上下位置を微調整", "数値の上下位置を微調整", "BalanceBar と他のメニューバーアイコンとの間隔を調整"],
             .english: ["Fine-tune the icon's vertical position", "Fine-tune the amount's vertical position", "Adjust the gap between BalanceBar and other menu bar icons"],
             .korean: ["아이콘 세로 위치 미세 조정", "수치 세로 위치 미세 조정", "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정"],
-            .spanish: ["Ajusta con precisión la posición vertical del icono", "Ajusta con precisión la posición vertical del importe", "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús"],
-            .german: ["Vertikale Symbolposition fein einstellen", "Vertikale Betragsposition fein einstellen", "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen"],
-            .french: ["Ajuste précisément la position verticale de l’icône", "Ajuste précisément la position verticale du montant", "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus"]
+            .spanish: ["Ajusta con precisión la posición vertical del icono", "Ajusta con precisión la posición vertical del valor", "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús"],
+            .german: ["Vertikale Symbolposition fein einstellen", "Vertikale Position des Werts fein einstellen", "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen"],
+            .french: ["Ajuste précisément la position verticale de l’icône", "Ajuste précisément la position verticale de la valeur", "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus"]
         ]
         let longReplacement = "This newly reported summary is intentionally long so the shared settings row must wrap it beside the slider and remeasure the card when the text changes."
 
@@ -3336,33 +3336,33 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ),
             (
                 .spanish,
-                ["Diseño", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del importe", "Espacio respecto a los demás iconos de la barra de menús"],
+                ["Diseño", "Tamaño de fuente de la barra de menús", "Posición vertical del icono", "Posición vertical del valor", "Espacio respecto a los demás iconos de la barra de menús"],
                 [
                     "Ajusta el tamaño del texto de la barra de menús",
                     "Ajusta con precisión la posición vertical del icono Eje Y + 0.0 pt",
-                    "Ajusta con precisión la posición vertical del importe Eje Y + 0.0 pt",
+                    "Ajusta con precisión la posición vertical del valor Eje Y + 0.0 pt",
                     "Ajusta el espacio entre BalanceBar y los demás iconos de la barra de menús Ancho + 0.0 pt"
                 ],
                 "Ajusta el espacio respecto a los demás iconos: de -10,0 pt (más estrecho) a +10,0 pt (más ancho); valor predeterminado: 0 pt"
             ),
             (
                 .german,
-                ["Layout", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Betragsposition", "Abstand zu anderen Menüleistensymbolen"],
+                ["Layout", "Schriftgröße der Menüleiste", "Vertikale Symbolposition", "Vertikale Position des Werts", "Abstand zu anderen Menüleistensymbolen"],
                 [
                     "Passt die Textgröße der Menüleiste an",
                     "Vertikale Symbolposition fein einstellen Y-Achse + 0.0 pt",
-                    "Vertikale Betragsposition fein einstellen Y-Achse + 0.0 pt",
+                    "Vertikale Position des Werts fein einstellen Y-Achse + 0.0 pt",
                     "Abstand zwischen BalanceBar und anderen Menüleistensymbolen anpassen Breite + 0.0 pt"
                 ],
                 "Abstand zu anderen Menüleistensymbolen anpassen: -10,0 pt schmaler bis +10,0 pt breiter; Standard: 0 pt"
             ),
             (
                 .french,
-                ["Disposition", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale du montant", "Espacement avec les autres icônes de la barre des menus"],
+                ["Disposition", "Taille de la police de la barre des menus", "Position verticale de l’icône", "Position verticale de la valeur", "Espacement avec les autres icônes de la barre des menus"],
                 [
                     "Ajuste la taille du texte de la barre des menus",
                     "Ajuste précisément la position verticale de l’icône Axe Y + 0.0 pt",
-                    "Ajuste précisément la position verticale du montant Axe Y + 0.0 pt",
+                    "Ajuste précisément la position verticale de la valeur Axe Y + 0.0 pt",
                     "Ajuste l’espacement entre BalanceBar et les autres icônes de la barre des menus Largeur + 0.0 pt"
                 ],
                 "Ajuste l’espacement avec les autres icônes : de -10,0 pt (plus étroit) à +10,0 pt (plus large) ; valeur par défaut : 0 pt"

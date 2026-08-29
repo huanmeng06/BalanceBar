@@ -235,7 +235,7 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .english), "Follow System")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .korean), "시스템 언어 사용")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .spanish), "Seguir el sistema")
-        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .german), "System folgen")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .german), "Systemsprache verwenden")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .french), "Suivre le système")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .portuguese), "Usar o idioma do sistema")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .russian), "Использовать язык системы")
@@ -264,7 +264,7 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .english), "Follow System")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .korean), "시스템 언어 사용")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .spanish), "Seguir el sistema")
-        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .german), "System folgen")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .german), "Systemsprache verwenden")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .french), "Suivre le système")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .portuguese), "Usar o idioma do sistema")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .russian), "Использовать язык системы")
@@ -909,6 +909,110 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testIssue254ConfirmedCopyKeepsProviderSwitchSyncBalanceAndValueSemantics() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+
+        func assertTranslation(
+            _ language: AppLanguage,
+            _ key: LocalizationKey,
+            arguments: [String] = [],
+            equals expected: String
+        ) {
+            XCTAssertEqual(
+                store.localized(key: key, language: language, arguments: arguments),
+                expected,
+                "Issue #254 copy for \(language.rawValue) key \(key.rawKey)"
+            )
+        }
+
+        let switchPromptKeys: [LocalizationKey] = [
+            .keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation,
+            .keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2
+        ]
+        let switchPrompts: [(AppLanguage, String)] = [
+            (.english, "Switch to this provider to view detailed quota reset times"),
+            (.japanese, "このプロバイダーに切り替えると、クォータのリセット時刻を詳しく確認できます"),
+            (.korean, "이 서비스 제공자로 전환하면 할당량 재설정 시간을 자세히 볼 수 있습니다"),
+            (.spanish, "Cambia a este proveedor para consultar en detalle los tiempos de restablecimiento de la cuota"),
+            (.french, "Basculez vers ce fournisseur pour consulter les heures de réinitialisation détaillées du quota"),
+            (.german, "Zu diesem Anbieter wechseln, um detaillierte Kontingent-Rücksetzzeiten anzuzeigen")
+        ]
+        for (language, expected) in switchPrompts {
+            for key in switchPromptKeys {
+                assertTranslation(language, key, equals: expected)
+            }
+        }
+
+        let syncCopy: [(AppLanguage, String, String, String)] = [
+            (.english, "Automatically syncing with this provider", "Automatically syncing with the current provider", "Updated: 19:30 · Automatically syncing with CC Switch"),
+            (.japanese, "このサービスプロバイダーと自動同期中", "現在のサービスプロバイダーと自動同期中", "更新：19:30 · CC Switch と自動同期中"),
+            (.korean, "이 서비스 제공자와 자동으로 동기화 중", "현재 서비스 제공자와 자동으로 동기화 중", "업데이트: 19:30 · CC Switch와 자동으로 동기화 중"),
+            (.spanish, "Sincronización automática con este proveedor", "Sincronización automática con el proveedor actual", "Actualizado: 19:30 · Sincronización automática con CC Switch"),
+            (.french, "Synchronisation automatique avec ce fournisseur", "Synchronisation automatique avec le fournisseur actuel", "Mis à jour : 19:30 · Synchronisation automatique avec CC Switch"),
+            (.german, "Automatische Synchronisierung mit diesem Anbieter", "Automatische Synchronisierung mit dem aktuellen Anbieter", "Aktualisiert: 19:30 · Automatische Synchronisierung mit CC Switch")
+        ]
+        for (language, thisProvider, currentProvider, snapshot) in syncCopy {
+            assertTranslation(language, .keyDashboardProviderPagesFollowingThisProvider, equals: thisProvider)
+            assertTranslation(language, .keyDashboardProviderPagesFollowingCurrentProvider, equals: currentProvider)
+            assertTranslation(
+                language,
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                arguments: ["19:30"],
+                equals: snapshot
+            )
+        }
+
+        assertTranslation(.japanese, .keySnapshotRemainingBalance, equals: "残りの残高")
+        assertTranslation(.japanese, .keyStatusItemControllerRemainingBalance, equals: "残りの残高")
+        assertTranslation(
+            .japanese,
+            .keyStatusItemControllerNoLiveDataReceivedYet,
+            equals: "リアルタイムデータはまだ受信されていません"
+        )
+
+        assertTranslation(.korean, .keyDashboardProviderPagesThisProviderIsNoLongerAvailable, equals: "이 서비스 제공자는 더 이상 사용할 수 없습니다")
+        assertTranslation(.korean, .keyDashboardProviderPagesThisProviderDisappearedFromCcSwitch, equals: "이 서비스 제공자는 더 이상 CC Switch에 없습니다")
+        assertTranslation(
+            .korean,
+            .keyDashboardProviderPagesCurrentBalanceSyncStatusAndCodexProvider,
+            equals: "현재 잔액, 동기화 상태 및 Codex 서비스 제공자 표시"
+        )
+        assertTranslation(.korean, .keyLunaReserveStatusLoading, equals: "불러오는 중…")
+
+        let valuePositionCopy: [(AppLanguage, String, String)] = [
+            (.spanish, "Posición vertical del valor", "Ajusta con precisión la posición vertical del valor Eje Y+0.0 pt"),
+            (.french, "Position verticale de la valeur", "Ajuste précisément la position verticale de la valeur Axe Y+0.0 pt"),
+            (.german, "Vertikale Position des Werts", "Vertikale Position des Werts fein einstellen Y-Achse+0.0 pt")
+        ]
+        for (language, title, subtitle) in valuePositionCopy {
+            assertTranslation(language, .keyDashboardMenuBarPageAmountOffset, equals: title)
+            assertTranslation(
+                language,
+                .keyDashboardMenuBarPageFineTuneTheAmountSVerticalPositionYaxisvalue,
+                arguments: ["+0.0 pt"],
+                equals: subtitle
+            )
+        }
+
+        assertTranslation(
+            .spanish,
+            .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+            equals: "Después de una recarga, la barra de progreso permanece roja mientras el saldo sea inferior a este valor."
+        )
+        assertTranslation(
+            .french,
+            .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+            equals: "Après une recharge, la barre de progression reste rouge tant que le solde est inférieur à cette valeur."
+        )
+        assertTranslation(
+            .german,
+            .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+            equals: "Nach einer Aufladung bleibt der Fortschrittsbalken rot, solange das Guthaben unter diesem Wert liegt."
+        )
+        assertTranslation(.german, .keyLocalizationFollowSystem, equals: "Systemsprache verwenden")
+        assertTranslation(.german, .keyDashboardMenuBarPageIconDisplayMode, equals: "Anzeige des Menüleistensymbols")
+    }
+
     func testParameterizedAndSemanticContractsHoldAcrossAllTwelveLanguages() {
         let store = LocalizationResourceStore(bundle: testBundle)
         let languages: [AppLanguage] = [
@@ -1347,7 +1451,7 @@ final class LocalizationTests: XCTestCase {
             .english: ("Quota & Reset", "Icon & Task Status", "Layout", "Menu behavior", "Status Links", "Menu Bar Icon Display"),
             .korean: ("할당량 및 재설정", "아이콘 및 작업 상태", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
             .spanish: ("Cuota y reinicio", "Icono y estado de la tarea", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
-            .german: ("Kontingent und Zurücksetzung", "Symbol und Aufgabenstatus", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüsymbols"),
+            .german: ("Kontingent und Zurücksetzung", "Symbol und Aufgabenstatus", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüleistensymbols"),
             .french: ("Quota et réinitialisation", "Icône et état de la tâche", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus")
         ]
 
@@ -1586,7 +1690,7 @@ final class LocalizationTests: XCTestCase {
                 case .spanish:
                     return ["Acerca de BalanceBar", "Seguir el sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .german:
-                    return ["Über BalanceBar", "System folgen", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                    return ["Über BalanceBar", "Systemsprache verwenden", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .french:
                     return ["À propos de BalanceBar", "Suivre le système", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .portuguese:
