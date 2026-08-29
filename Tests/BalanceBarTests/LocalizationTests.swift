@@ -583,13 +583,26 @@ final class LocalizationTests: XCTestCase {
         let forbiddenFragments = [
             "Tibo's",
             "AbrirAI",
+            "Abrir o status da OpenAI",
             "ApriAI",
+            "Apri lo stato di OpenAI",
             "Вверхdates",
             "Para cimadates",
             "Sudates",
+            "Открыть статус OpenAI",
+            "%1$@ остаток",
+            "Следит за этим провайдером",
+            "Следит за текущим провайдером",
+            "от -10,0 pt уже",
+            "Интервал резервной проверки CC Switch",
             "Reserva Luna",
             "Резерв Luna",
             "Riserva Luna",
+            "Intervalo de verificação de backup",
+            "Redefine em %1$@",
+            "Ora del ripristino non disponibile",
+            "Intervallo di verifica di riserva",
+            "Dopo una ricarica, mantiene rossa",
             "Attuale provider",
             "Disponibile provider",
             "Доступно провайдер",
@@ -650,6 +663,98 @@ final class LocalizationTests: XCTestCase {
                     )
                 }
             }
+        }
+    }
+
+    func testIssue252ReviewedCopyMatchesApprovedNativeWording() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let reviewedCopy: [(AppLanguage, LocalizationKey, [String], String)] = [
+            (
+                .portuguese,
+                .keyAppPreferencesOpenaiStatus,
+                [],
+                "Status da OpenAI"
+            ),
+            (
+                .portuguese,
+                .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
+                [],
+                "Intervalo de verificação alternativa do CC Switch"
+            ),
+            (
+                .portuguese,
+                .keyLunaReserveResetValue,
+                ["1h30m"],
+                "Redefinição em 1h30m"
+            ),
+            (
+                .russian,
+                .keyAppPreferencesOpenaiStatus,
+                [],
+                "Статус OpenAI"
+            ),
+            (
+                .russian,
+                .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
+                [],
+                "Интервал альтернативной проверки CC Switch"
+            ),
+            (
+                .russian,
+                .keySnapshotValueRemainingValueValue,
+                ["OpenAI", "87", "7-Day Quota"],
+                "OpenAI: осталось 87% (7-Day Quota)"
+            ),
+            (
+                .russian,
+                .keyDashboardMenuBarPageAdjustsMenuBarWidthFrom100PtNarrowTo100PtWideDefault0Pt,
+                [],
+                "Настройка расстояния до других значков строки меню: от уменьшения на 10,0 pt до увеличения на 10,0 pt; по умолчанию — 0 pt"
+            ),
+            (
+                .russian,
+                .keyDashboardProviderPagesFollowingThisProvider,
+                [],
+                "Используется этот провайдер"
+            ),
+            (
+                .russian,
+                .keyDashboardProviderPagesFollowingCurrentProvider,
+                [],
+                "Используется текущий провайдер"
+            ),
+            (
+                .italian,
+                .keyAppPreferencesOpenaiStatus,
+                [],
+                "Stato di OpenAI"
+            ),
+            (
+                .italian,
+                .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
+                [],
+                "Intervallo di verifica alternativa di CC Switch"
+            ),
+            (
+                .italian,
+                .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+                [],
+                "Dopo una ricarica, la barra di avanzamento rimane rossa finché il saldo resta inferiore a questo importo"
+            ),
+            (
+                .italian,
+                .keyLunaReserveResetUnavailable,
+                [],
+                "Orario di ripristino non disponibile"
+            )
+        ]
+
+        for (language, key, arguments, expected) in reviewedCopy {
+            XCTAssertEqual(
+                store.localized(key: key, language: language, arguments: arguments),
+                expected,
+                "reviewed copy for \(language.rawValue) key \(key.rawKey)"
+            )
         }
     }
 

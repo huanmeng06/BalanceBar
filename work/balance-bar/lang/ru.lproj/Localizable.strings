@@ -1,5 +1,5 @@
 "app.preferences.tibo_s_updates" = "Обновления Tibo";
-"app.preferences.openai_status" = "Открыть статус OpenAI";
+"app.preferences.openai_status" = "Статус OpenAI";
 "app.not_found" = "Не найдено";
 "app.not_found.2" = "Не найдено";
 "app.the_current_cc_switch_value_provider_was_not_found" = "Провайдер %1$@ текущей конфигурации CC Switch не найден";
@@ -73,11 +73,11 @@
 "snapshot.waiting_to_refresh" = "Ожидание обновления";
 "snapshot.load_failed" = "Ошибка загрузки";
 "snapshot.loading_cc_switch" = "Загрузка CC Switch…";
-"snapshot.value_remaining_value_value" = "%1$@ остаток: %2$@%% (%3$@)";
-"snapshot.value_remaining_value" = "%1$@ остаток: %2$@";
+"snapshot.value_remaining_value_value" = "%1$@: осталось %2$@%% (%3$@)";
+"snapshot.value_remaining_value" = "%1$@: осталось %2$@";
 "snapshot.value_value.2" = "%1$@ · %2$@";
 "snapshot.failed_to_load_balance.2" = "Не удалось загрузить баланс";
-"snapshot.value_remaining_value.2" = "%1$@ остаток: %2$@%%";
+"snapshot.value_remaining_value.2" = "%1$@: осталось %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
 "snapshot.updated_value_follows_cc_switch_automatically" = "Обновлено: %1$@ · Автоматически следует за CC Switch";
 "snapshot.reset_value.3" = "· %1$@";
@@ -241,7 +241,7 @@
 "dashboard.general.and.refresh.pages.check_for_updates.3" = "Проверить обновления";
 "dashboard.general.and.refresh.pages.refresh_settings" = "Настройки обновления";
 "dashboard.general.and.refresh.pages.file_monitoring_is_always_active_polling_prevents_missed_system_events" = "Изменения файлов отслеживаются в реальном времени; периодические проверки обнаруживают пропущенные системные уведомления";
-"dashboard.general.and.refresh.pages.cc_switch_fallback_polling" = "Интервал резервной проверки CC Switch";
+"dashboard.general.and.refresh.pages.cc_switch_fallback_polling" = "Интервал альтернативной проверки CC Switch";
 "dashboard.general.and.refresh.pages.every_1_sec.2" = "Каждые 1 с";
 "dashboard.general.and.refresh.pages.every_3_sec.2" = "Каждые 3 с";
 "dashboard.general.and.refresh.pages.every_5_sec.2" = "Каждые 5 с";
@@ -324,7 +324,7 @@
 "dashboard.menu.bar.page.small" = "Маленький";
 "dashboard.menu.bar.page.narrow" = "Узкий";
 "dashboard.menu.bar.page.wide" = "Широкий";
-"dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "Настраивает расстояние до других значков строки меню: от -10,0 pt уже до +10,0 pt шире; по умолчанию 0 pt";
+"dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "Настройка расстояния до других значков строки меню: от уменьшения на 10,0 pt до увеличения на 10,0 pt; по умолчанию — 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Введите значение не менее 0,01 с точностью до двух знаков после запятой";
 "dashboard.menu.page.balance_display" = "Отображение баланса";
 "dashboard.menu.page.luna_reserve_display_mode" = "Отображение 🌙 Luna Reserve";
@@ -371,7 +371,7 @@
 "dashboard.provider.pages.unavailable" = "Недоступно";
 "dashboard.provider.pages.current_provider" = "Текущий провайдер";
 "dashboard.provider.pages.available_provider" = "Доступный провайдер";
-"dashboard.provider.pages.following_this_provider" = "Следит за этим провайдером";
+"dashboard.provider.pages.following_this_provider" = "Используется этот провайдер";
 "dashboard.provider.pages.this_provider_is_not_currently_active" = "Этот провайдер сейчас не активен";
 "dashboard.provider.pages.refresh_now" = "Обновить сейчас";
 "dashboard.provider.pages.switch_to_this_provider" = "Переключиться на этого провайдера";
@@ -385,7 +385,7 @@
 "dashboard.provider.pages.no_codex_provider_found" = "Провайдер Codex не найден";
 "dashboard.provider.pages.current_provider_unavailable" = "Текущий провайдер недоступен";
 "dashboard.provider.pages.waiting_for_provider" = "Ожидание провайдера";
-"dashboard.provider.pages.following_current_provider" = "Следит за текущим провайдером";
+"dashboard.provider.pages.following_current_provider" = "Используется текущий провайдер";
 "dashboard.provider.pages.no_codex_provider_found.2" = "Провайдер Codex не найден";
 "dashboard.provider.pages.loading.3" = "Загрузка…";
 "dashboard.provider.pages.current" = "Текущий";

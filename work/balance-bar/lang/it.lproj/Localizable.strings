@@ -1,5 +1,5 @@
 "app.preferences.tibo_s_updates" = "Aggiornamenti di Tibo";
-"app.preferences.openai_status" = "Apri lo stato di OpenAI";
+"app.preferences.openai_status" = "Stato di OpenAI";
 "app.not_found" = "Non trovato";
 "app.not_found.2" = "Non trovato";
 "app.the_current_cc_switch_value_provider_was_not_found" = "Il provider %1$@ della configurazione corrente di CC Switch non è stato trovato";
@@ -241,7 +241,7 @@
 "dashboard.general.and.refresh.pages.check_for_updates.3" = "Verifica aggiornamenti";
 "dashboard.general.and.refresh.pages.refresh_settings" = "Impostazioni di aggiornamento";
 "dashboard.general.and.refresh.pages.file_monitoring_is_always_active_polling_prevents_missed_system_events" = "Le modifiche ai file vengono monitorate in tempo reale; i controlli periodici rilevano le notifiche di sistema perse";
-"dashboard.general.and.refresh.pages.cc_switch_fallback_polling" = "Intervallo di verifica di riserva di CC Switch";
+"dashboard.general.and.refresh.pages.cc_switch_fallback_polling" = "Intervallo di verifica alternativa di CC Switch";
 "dashboard.general.and.refresh.pages.every_1_sec.2" = "Ogni 1 s";
 "dashboard.general.and.refresh.pages.every_3_sec.2" = "Ogni 3 s";
 "dashboard.general.and.refresh.pages.every_5_sec.2" = "Ogni 5 s";
@@ -335,7 +335,7 @@
 "dashboard.menu.page.hide_exhausted_quota" = "Nascondi le quote esaurite";
 "dashboard.menu.page.hide_exhausted_quota_description" = "Quando è abilitata, le quote esaurite vengono nascoste dal menu quando viene mostrata 🌙 Luna Reserve.";
 "dashboard.menu.page.low_balance_display_threshold" = "Soglia di avviso per saldo basso";
-"dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Dopo una ricarica, mantiene rossa la barra di avanzamento finché il saldo resta inferiore a questo importo";
+"dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Dopo una ricarica, la barra di avanzamento rimane rossa finché il saldo resta inferiore a questo importo";
 "dashboard.menu.page.dropdown_menu" = "Menu a discesa";
 "dashboard.menu.page.menu_behavior" = "Comportamento del menu";
 "dashboard.menu.page.quick_switch" = "Cambio rapido";
@@ -427,7 +427,7 @@
 "luna.reserve.remaining_value" = "Rimanente: %1$@%%";
 "luna.reserve.remaining_unavailable" = "Rimanente: non disponibile";
 "luna.reserve.reset_value" = "Reimpostazione tra %1$@";
-"luna.reserve.reset_unavailable" = "Ora del ripristino non disponibile";
+"luna.reserve.reset_unavailable" = "Orario di ripristino non disponibile";
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve è temporaneamente non disponibile";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";

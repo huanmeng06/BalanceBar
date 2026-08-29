@@ -1,5 +1,5 @@
 "app.preferences.tibo_s_updates" = "Atualizações do Tibo";
-"app.preferences.openai_status" = "Abrir o status da OpenAI";
+"app.preferences.openai_status" = "Status da OpenAI";
 "app.not_found" = "Não encontrado";
 "app.not_found.2" = "Não encontrado";
 "app.the_current_cc_switch_value_provider_was_not_found" = "O provedor %1$@ da configuração atual do CC Switch não foi encontrado";
@@ -241,7 +241,7 @@
 "dashboard.general.and.refresh.pages.check_for_updates.3" = "Buscar atualizações";
 "dashboard.general.and.refresh.pages.refresh_settings" = "Configurações de atualização";
 "dashboard.general.and.refresh.pages.file_monitoring_is_always_active_polling_prevents_missed_system_events" = "O monitoramento de arquivos está sempre ativo; a verificação periódica evita eventos do sistema perdidos";
-"dashboard.general.and.refresh.pages.cc_switch_fallback_polling" = "Intervalo de verificação de backup do CC Switch";
+"dashboard.general.and.refresh.pages.cc_switch_fallback_polling" = "Intervalo de verificação alternativa do CC Switch";
 "dashboard.general.and.refresh.pages.every_1_sec.2" = "A cada 1 s";
 "dashboard.general.and.refresh.pages.every_3_sec.2" = "A cada 3 s";
 "dashboard.general.and.refresh.pages.every_5_sec.2" = "A cada 5 s";
@@ -426,7 +426,7 @@
 "luna.reserve.status.unavailable" = "Indisponível";
 "luna.reserve.remaining_value" = "Restante: %1$@%%";
 "luna.reserve.remaining_unavailable" = "Restante: indisponível";
-"luna.reserve.reset_value" = "Redefine em %1$@";
+"luna.reserve.reset_value" = "Redefinição em %1$@";
 "luna.reserve.reset_unavailable" = "Hora da redefinição indisponível";
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve está temporariamente indisponível";
