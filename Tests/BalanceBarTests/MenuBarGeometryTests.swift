@@ -69,7 +69,7 @@ final class MenuBarGeometryTests: XCTestCase {
 
     func testLunaReserveMarkerUsesScaledPrimaryPointSizeAndBaselineAcrossPresets() {
         XCTAssertEqual(MenuBarLayout.primaryMoonScale, 0.68, accuracy: 0.001)
-        XCTAssertEqual(MenuBarLayout.primaryMoonBaselineOffsetRatio, 0.06, accuracy: 0.001)
+        XCTAssertEqual(MenuBarLayout.primaryMoonBaselineOffsetRatio, 0.07, accuracy: 0.001)
 
         for preset in MenuBarFontSizePreset.allCases {
             let label = NSTextField(labelWithString: "45% 🌙")
