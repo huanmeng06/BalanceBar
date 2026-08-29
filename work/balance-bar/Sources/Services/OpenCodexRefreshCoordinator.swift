@@ -107,8 +107,7 @@ final class OpenCodexRefreshCoordinator {
                             providerID: providerID,
                             state: next,
                             force: true,
-                            lifecycleGeneration: context.lifecycleGeneration,
-                            stateOperationGeneration: context.stateOperationGeneration
+                            lifecycleGeneration: context.lifecycleGeneration
                         )
                         self.render(
                             providerID: providerID,
@@ -168,8 +167,7 @@ final class OpenCodexRefreshCoordinator {
                             providerID: providerID,
                             state: recognized,
                             force: reason.forcesOpenCodexCardSources || switched,
-                            lifecycleGeneration: context.lifecycleGeneration,
-                            stateOperationGeneration: context.stateOperationGeneration
+                            lifecycleGeneration: context.lifecycleGeneration
                         )
                         self.render(providerID: providerID, providerName: providerName, state: recognized, client: client)
                     }
@@ -238,9 +236,11 @@ final class OpenCodexRefreshCoordinator {
         providerID: String,
         state: OpenCodexRuntimeState,
         force: Bool,
-        lifecycleGeneration: UInt64,
-        stateOperationGeneration: UInt64
+        lifecycleGeneration: UInt64
     ) {
+        // Card requests may outlive a later recognition poll. Their callback
+        // lifetime is governed by the coordinator lifecycle, provider, and
+        // card-entry generation rather than the state-operation generation.
         let sources = repository.loadSummarySources(appType: AssistantClient.codex.appType)
         plans = OpenCodexCardPlanner.plans(state: state, sources: sources)
         let refreshSources = makeRefreshSources(plans: plans, state: state, sources: sources)
@@ -264,23 +264,21 @@ final class OpenCodexRefreshCoordinator {
         publishCards()
         guard state.managementAvailable else { return }
         for source in refreshPlan.dueSources {
-            guard let generation = refreshCoordinator.generation(for: source.source) else { continue }
+            guard let cardGeneration = refreshCoordinator.generation(for: source.source) else { continue }
             requestsInFlight.insert(source.source)
             switch source.source {
             case .official:
                 fetchOfficialCard(
                     providerID: providerID,
                     lifecycleGeneration: lifecycleGeneration,
-                    stateOperationGeneration: stateOperationGeneration,
-                    cardGeneration: generation
+                    cardGeneration: cardGeneration
                 )
             case .balance(let sourceID):
                 guard let summary = sources.first(where: { $0.id == sourceID }), let query = summary.query else {
                     updateCard(
                         providerID: providerID,
                         lifecycleGeneration: lifecycleGeneration,
-                        stateOperationGeneration: stateOperationGeneration,
-                        cardGeneration: generation,
+                        cardGeneration: cardGeneration,
                         source: source.source,
                         data: .unavailable(category: .balance, reason: tr(.keyOpenCodexRefreshCoordinatorTheBalanceSourceConfigurationIsIncomplete))
                     )
@@ -323,8 +321,7 @@ final class OpenCodexRefreshCoordinator {
                         self.updateCard(
                             providerID: providerID,
                             lifecycleGeneration: lifecycleGeneration,
-                            stateOperationGeneration: stateOperationGeneration,
-                            cardGeneration: generation,
+                            cardGeneration: cardGeneration,
                             source: source.source,
                             data: data
                         )
@@ -403,7 +400,6 @@ final class OpenCodexRefreshCoordinator {
     private func fetchOfficialCard(
         providerID: String,
         lifecycleGeneration: UInt64,
-        stateOperationGeneration: UInt64,
         cardGeneration: UUID
     ) {
         officialQuotaClient.fetchQuota(client: .codex, providerID: providerID, storedAccessToken: nil) { [weak self] result in
@@ -430,7 +426,6 @@ final class OpenCodexRefreshCoordinator {
                 self.updateCard(
                     providerID: providerID,
                     lifecycleGeneration: lifecycleGeneration,
-                    stateOperationGeneration: stateOperationGeneration,
                     cardGeneration: cardGeneration,
                     source: .official,
                     data: data
@@ -442,14 +437,15 @@ final class OpenCodexRefreshCoordinator {
     private func updateCard(
         providerID: String,
         lifecycleGeneration: UInt64,
-        stateOperationGeneration: UInt64,
         cardGeneration: UUID,
         source: OpenCodexCardSource,
         data: OpenCodexCardData
     ) {
+        // A newer recognition replaces state, not an unchanged card request.
+        // Keep the in-flight cleanup coupled to the same card generation so a
+        // stale request cannot clear a replacement request after reconfiguration.
         guard !isInvalidated,
               self.generation == lifecycleGeneration,
-              self.stateOperationGeneration == stateOperationGeneration,
               state?.providerID == providerID,
               refreshCoordinator.generation(for: source) == cardGeneration,
               let visible = refreshCoordinator.store(data, for: source, generation: cardGeneration) else { return }

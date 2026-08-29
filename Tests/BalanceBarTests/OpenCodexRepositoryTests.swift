@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import BalanceBar
 
@@ -1824,10 +1825,115 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertNil(coordinator.currentCandidate)
     }
 
+    func testOpenCodexRefreshCoordinatorReleasesCardAfterNewRecognitionGeneration() throws {
+        let fixture = try makeOpenCodexCardFixtureDatabase()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+
+        GatedBalanceURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [GatedBalanceURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            GatedBalanceURLProtocol.releaseAll()
+            session.invalidateAndCancel()
+            GatedBalanceURLProtocol.reset()
+        }
+
+        let transport = MutableOpenCodexTransport(candidate: candidate)
+        let repository = OpenCodexRepository(
+            transport: transport,
+            configReader: StubConfigReader(snapshot: nil),
+            tokenProvider: NoTokenProvider()
+        )
+        let recorder = OpenCodexCoordinatorRecorder()
+        let firstRecognition = expectation(description: "first recognition")
+        let secondRecognition = expectation(description: "second recognition")
+        let thirdRecognition = expectation(description: "third recognition")
+        let firstCardPublished = expectation(description: "first card callback publishes")
+        let recognitionLock = NSLock()
+        var recognitionCount = 0
+        let cardLock = NSLock()
+        var successfulCardPublicationCount = 0
+        let coordinator = makeRefreshCoordinator(
+            repository: repository,
+            recorder: recorder,
+            databaseURL: fixture.databaseURL,
+            balanceAPIClient: BalanceAPIClient(session: session),
+            onRecognized: {
+                recognitionLock.lock()
+                recognitionCount += 1
+                let count = recognitionCount
+                recognitionLock.unlock()
+                switch count {
+                case 1: firstRecognition.fulfill()
+                case 2: secondRecognition.fulfill()
+                case 3: thirdRecognition.fulfill()
+                default: break
+                }
+            },
+            onCards: { cards in
+                guard cards.contains(where: { $0.data.isSuccessful }) else { return }
+                cardLock.lock()
+                successfulCardPublicationCount += 1
+                let shouldFulfill = successfulCardPublicationCount == 1
+                cardLock.unlock()
+                if shouldFulfill { firstCardPublished.fulfill() }
+            }
+        )
+
+        coordinator.refresh(
+            providerID: "fixture-provider",
+            providerName: "Fixture Provider",
+            candidate: candidate,
+            client: .codex,
+            reason: .initial,
+            switched: true
+        )
+        wait(for: [firstRecognition], timeout: 2)
+        XCTAssertEqual(GatedBalanceURLProtocol.waitForRequest(), .success)
+        XCTAssertEqual(GatedBalanceURLProtocol.requestCount, 1)
+
+        // A second successful recognition advances only the state-operation
+        // generation while the original card request remains pending.
+        coordinator.refresh(
+            providerID: "fixture-provider",
+            providerName: "Fixture Provider",
+            candidate: candidate,
+            client: .codex,
+            reason: .scheduled,
+            switched: false
+        )
+        wait(for: [secondRecognition], timeout: 2)
+
+        // The first card belongs to the same provider and card generation, so
+        // a late result must still release that source and publish its data.
+        GatedBalanceURLProtocol.releaseRequest(at: 0)
+        wait(for: [firstCardPublished], timeout: 2)
+        XCTAssertTrue(recorder.cardsSnapshot().contains(where: { $0.data.isSuccessful }))
+
+        // A later forced refresh must be able to start the source again. The
+        // old implementation leaves the source in requestsInFlight here.
+        coordinator.refresh(
+            providerID: "fixture-provider",
+            providerName: "Fixture Provider",
+            candidate: candidate,
+            client: .codex,
+            reason: .manual,
+            switched: false
+        )
+        wait(for: [thirdRecognition], timeout: 2)
+        XCTAssertEqual(GatedBalanceURLProtocol.waitForRequest(), .success)
+        XCTAssertEqual(GatedBalanceURLProtocol.requestCount, 2)
+        GatedBalanceURLProtocol.releaseRequest(at: 0)
+    }
+
     private func makeRefreshCoordinator(
         repository: OpenCodexRepository,
         recorder: OpenCodexCoordinatorRecorder,
-        onRecognized: (() -> Void)? = nil
+        databaseURL: URL? = nil,
+        balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
+        onRecognized: (() -> Void)? = nil,
+        onCards: (([OpenCodexModelCard]) -> Void)? = nil
     ) -> OpenCodexRefreshCoordinator {
         let currentProvider = CCSwitchProvider(
             id: "fixture-provider",
@@ -1839,12 +1945,13 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
         return OpenCodexRefreshCoordinator(
             repository: CCSwitchRepository(
-                databaseURL: URL(fileURLWithPath: "/nonexistent/open-codex-coordinator.db")
+                databaseURL: databaseURL
+                    ?? URL(fileURLWithPath: "/nonexistent/open-codex-coordinator.db")
             ),
             officialQuotaClient: OfficialQuotaClient(
                 credentialReader: NilOfficialQuotaCredentials()
             ),
-            balanceAPIClient: BalanceAPIClient(),
+            balanceAPIClient: balanceAPIClient,
             openCodexRepository: repository,
             queue: DispatchQueue(label: "fixture.open-codex-refresh"),
             actions: OpenCodexRefreshActions(
@@ -1854,7 +1961,10 @@ final class OpenCodexRepositoryTests: XCTestCase {
                     recorder.recordState(providerID: providerID, state: state)
                     if state != nil { onRecognized?() }
                 },
-                setCards: { recorder.recordCards($0) },
+                setCards: { cards in
+                    recorder.recordCards(cards)
+                    onCards?(cards)
+                },
                 refreshMenu: {},
                 render: { _, _, _ in recorder.recordRender() },
                 refreshStandard: { _, _, _, _ in recorder.recordStandardRefresh() }
@@ -1969,6 +2079,70 @@ final class OpenCodexRepositoryTests: XCTestCase {
             additionalHeaders: [:]
         )
     }
+
+    private func makeOpenCodexCardFixtureDatabase() throws -> (directory: URL, databaseURL: URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BalanceBar-OpenCodexCard-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let databaseURL = directory.appendingPathComponent("cc-switch.db")
+
+        var database: OpaquePointer?
+        let openCode = sqlite3_open_v2(
+            databaseURL.path,
+            &database,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+            nil
+        )
+        guard openCode == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            throw fixtureError("failed to create OpenCodex card fixture database; sqlite code=\(openCode)")
+        }
+        defer { sqlite3_close(database) }
+
+        let sql = """
+        CREATE TABLE providers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            settings_config TEXT NOT NULL,
+            meta TEXT NOT NULL,
+            category TEXT,
+            website_url TEXT,
+            app_type TEXT NOT NULL,
+            is_current INTEGER NOT NULL,
+            sort_index INTEGER,
+            created_at INTEGER NOT NULL
+        );
+        INSERT INTO providers VALUES (
+            'fixture-provider',
+            'tokenshop',
+            '{"api_key":"fixture-key","base_url":"https://tokenshop.example.test"}',
+            '{"usage_script":{"enabled":true,"accessToken":"fixture-key","baseUrl":"https://tokenshop.example.test","code":"url: `{{baseUrl}}/usage`"}}',
+            'custom',
+            'https://tokenshop.example.test',
+            'codex',
+            1,
+            1,
+            1
+        );
+        """
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let code = sqlite3_exec(database, sql, nil, nil, &errorMessage)
+        let message = errorMessage.map { String(cString: $0) } ?? "unknown sqlite error"
+        if let errorMessage { sqlite3_free(errorMessage) }
+        guard code == SQLITE_OK else {
+            throw fixtureError("OpenCodex card fixture SQL failed; sqlite code=\(code); error=\(message)")
+        }
+        return (directory, databaseURL)
+    }
+
+    private func fixtureError(_ message: String) -> NSError {
+        NSError(domain: "BalanceBar.OpenCodexRepositoryTests", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: message
+        ])
+    }
 }
 
 private final class NoTokenProvider: OpenCodexAdminTokenProvider {
@@ -2005,6 +2179,7 @@ private final class OpenCodexCoordinatorRecorder {
     private var renderCount = 0
     private var standardRefreshCount = 0
     private var nonEmptyCardCount = 0
+    private var latestCards: [OpenCodexModelCard] = []
 
     func recordState(providerID: String, state: OpenCodexRuntimeState?) {
         lock.lock()
@@ -2019,7 +2194,14 @@ private final class OpenCodexCoordinatorRecorder {
     func recordCards(_ cards: [OpenCodexModelCard]) {
         lock.lock()
         defer { lock.unlock() }
+        latestCards = cards
         if !cards.isEmpty { nonEmptyCardCount += 1 }
+    }
+
+    func cardsSnapshot() -> [OpenCodexModelCard] {
+        lock.lock()
+        defer { lock.unlock() }
+        return latestCards
     }
 
     func recordRender() {
@@ -2105,6 +2287,88 @@ private final class GatedOpenCodexTransport: OpenCodexHTTPTransport {
         let request = pendingHealthRequests.remove(at: index)
         lock.unlock()
         delegate.send(request.0, completion: request.1)
+    }
+}
+
+private final class GatedBalanceURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var pendingLoaders: [GatedBalanceURLProtocol] = []
+    private static var requestSemaphore = DispatchSemaphore(value: 0)
+    private static var recordedRequestCount = 0
+
+    static func reset() {
+        lock.lock()
+        pendingLoaders = []
+        requestSemaphore = DispatchSemaphore(value: 0)
+        recordedRequestCount = 0
+        lock.unlock()
+    }
+
+    static var requestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRequestCount
+    }
+
+    static func waitForRequest() -> DispatchTimeoutResult {
+        lock.lock()
+        let semaphore = requestSemaphore
+        lock.unlock()
+        return semaphore.wait(timeout: .now() + 2)
+    }
+
+    static func releaseRequest(at index: Int) {
+        lock.lock()
+        guard pendingLoaders.indices.contains(index) else {
+            lock.unlock()
+            return
+        }
+        let loader = pendingLoaders.remove(at: index)
+        lock.unlock()
+        loader.finishSuccessfully()
+    }
+
+    static func releaseAll() {
+        while true {
+            lock.lock()
+            guard !pendingLoaders.isEmpty else {
+                lock.unlock()
+                return
+            }
+            let loader = pendingLoaders.removeFirst()
+            lock.unlock()
+            loader.finishSuccessfully()
+        }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.lock.lock()
+        Self.pendingLoaders.append(self)
+        Self.recordedRequestCount += 1
+        let semaphore = Self.requestSemaphore
+        Self.lock.unlock()
+        semaphore.signal()
+    }
+
+    override func stopLoading() {}
+
+    private func finishSuccessfully() {
+        let data = Data(#"{"balance":"12.34","quota":{"unit":"USD"}}"#.utf8)
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
     }
 }
 
