@@ -1013,6 +1013,75 @@ final class LocalizationTests: XCTestCase {
         assertTranslation(.german, .keyDashboardMenuBarPageIconDisplayMode, equals: "Anzeige des Menüleistensymbols")
     }
 
+    func testIssue254KoreanVisibleProviderTerminologyUsesServiceProvider() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let expectations: [(key: LocalizationKey, arguments: [String], expected: String)] = [
+            (
+                .keyProviderModelsTheUpstreamProviderIdentityWasNotRead,
+                [],
+                "상위 서비스 제공자 식별자를 읽지 못했습니다"
+            ),
+            (.keySnapshotLoadingTheCurrentProvider, [], "현재 서비스 제공자를 불러오는 중…"),
+            (.keySnapshotCurrentProviderModel, [], "현재 서비스 제공자/모델"),
+            (.keyCCSwitchRepositoryProviderDoesNotExist, [], "서비스 제공자가 존재하지 않습니다"),
+            (
+                .keyCCSwitchRepositoryTheProviderSClaudeConfigurationIsIncomplete,
+                [],
+                "서비스 제공자의 Claude 구성이 완전하지 않습니다"
+            ),
+            (
+                .keyCCSwitchRepositoryTheProviderSCodexConfigurationIsIncomplete,
+                [],
+                "서비스 제공자의 Codex 구성이 완전하지 않습니다"
+            ),
+            (.keyCCSwitchRepositoryUnableToSelectTheProvider, [], "서비스 제공자를 선택할 수 없습니다"),
+            (.keyCCSwitchRepositoryUnableToSaveTheProviderSwitch, [], "서비스 제공자 전환을 저장할 수 없습니다"),
+            (
+                .keyDashboardGeneralAndRefreshPagesCurrentProviderValue,
+                ["Codex"],
+                "현재 서비스 제공자: Codex"
+            ),
+            (
+                .keyDashboardGeneralAndRefreshPagesRequestsTheCurrentProviderSBalanceWhileAnAgentIsRunning,
+                [],
+                "작업 실행 중 선택한 빈도로 선택한 서비스 제공자의 잔액을 새로 고칩니다"
+            ),
+            (
+                .keyDashboardGeneralAndRefreshPagesReloadTheCurrentProviderNow,
+                [],
+                "현재 서비스 제공자 데이터를 지금 새로 고침"
+            ),
+            (
+                .keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency,
+                [],
+                "서비스 제공자 변경은 보통 즉시 동기화됩니다; 변경 알림을 받지 못하면 이 빈도로 다시 확인합니다."
+            ),
+            (
+                .keyDashboardLogsPageProviderSwitchingSynchronizationAndFailureDetails,
+                [],
+                "서비스 제공자 전환, 동기화 상태 및 실패 원인 기록"
+            ),
+            (
+                .keyDashboardMenuPageShowTheCcSwitchProviderSubmenu,
+                [],
+                "메뉴에 CC Switch 서비스 제공자 빠른 전환 표시"
+            ),
+            (.keyStatusItemControllerNoCodexProviderFound, [], "Codex 서비스 제공자를 찾을 수 없음")
+        ]
+
+        for expectation in expectations {
+            XCTAssertEqual(
+                store.localized(
+                    key: expectation.key,
+                    language: .korean,
+                    arguments: expectation.arguments
+                ),
+                expectation.expected,
+                "Korean visible Provider terminology for \(expectation.key.rawKey)"
+            )
+        }
+    }
+
     func testParameterizedAndSemanticContractsHoldAcrossAllTwelveLanguages() {
         let store = LocalizationResourceStore(bundle: testBundle)
         let languages: [AppLanguage] = [
