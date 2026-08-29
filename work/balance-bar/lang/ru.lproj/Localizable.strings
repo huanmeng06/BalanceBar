@@ -250,7 +250,7 @@
 "dashboard.general.and.refresh.pages.0_25_sec" = "0.25 с";
 "dashboard.general.and.refresh.pages.0_5_sec" = "0.5 с";
 "dashboard.general.and.refresh.pages.1_sec" = "1 с";
-"dashboard.general.and.refresh.pages.provider_changes_are_still_triggered_immediately_by_cc_switch_database_events_this_interval_is_only_the_fallback_check_frequency" = "Изменения провайдера сразу синхронизируются событиями базы данных CC Switch; этот интервал задает только частоту резервной проверки.";
+"dashboard.general.and.refresh.pages.provider_changes_are_still_triggered_immediately_by_cc_switch_database_events_this_interval_is_only_the_fallback_check_frequency" = "Изменения провайдера по-прежнему обнаруживаются сразу благодаря событиям базы данных CC Switch; этот интервал задаёт только частоту альтернативной проверки.";
 "dashboard.logs.page.logs" = "Журналы";
 "dashboard.logs.page.provider_switching_synchronization_and_failure_details" = "Смена провайдера, состояние синхронизации и сведения об ошибках";
 "dashboard.logs.page.refresh" = "Обновить";
@@ -367,7 +367,7 @@
 "dashboard.provider.pages.loading" = "Загрузка…";
 "dashboard.provider.pages.select_this_provider_to_display_detailed_reset_information.2" = "Выберите этого провайдера, чтобы посмотреть подробные сведения о времени сброса квоты";
 "dashboard.provider.pages.provider_unavailable.2" = "Провайдер недоступен";
-"dashboard.provider.pages.this_provider_disappeared_from_cc_switch" = "Этот провайдер больше недоступен в CC Switch";
+"dashboard.provider.pages.this_provider_disappeared_from_cc_switch" = "Этот провайдер больше не отображается в CC Switch";
 "dashboard.provider.pages.unavailable" = "Недоступно";
 "dashboard.provider.pages.current_provider" = "Текущий провайдер";
 "dashboard.provider.pages.available_provider" = "Доступный провайдер";

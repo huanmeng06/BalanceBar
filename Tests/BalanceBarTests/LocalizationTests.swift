@@ -603,6 +603,19 @@ final class LocalizationTests: XCTestCase {
             "Ora del ripristino non disponibile",
             "Intervallo di verifica di riserva",
             "Dopo una ricarica, mantiene rossa",
+            "Escolha se deseja verificar as versões Estável",
+            "evita eventos do sistema perdidos",
+            "As alterações de provedor são sincronizadas imediatamente",
+            "Hora da redefinição",
+            "Após uma recarga, mantém",
+            "резервной проверки",
+            "синхронизируются событиями",
+            "больше недоступен в CC Switch",
+            "versioni Stabile o Beta",
+            "controllo di riserva",
+            "vengono sincronizzate immediatamente dagli eventi",
+            "Visualizzazione dell'ora di ripristino",
+            "Ora del ripristino",
             "Attuale provider",
             "Disponibile provider",
             "Доступно провайдер",
@@ -683,9 +696,45 @@ final class LocalizationTests: XCTestCase {
             ),
             (
                 .portuguese,
+                .keyDashboardGeneralAndRefreshPagesUpdateChannelDescription,
+                [],
+                "Escolha se deseja verificar as versões estáveis ou beta"
+            ),
+            (
+                .portuguese,
+                .keyDashboardGeneralAndRefreshPagesFileMonitoringIsAlwaysActivePollingPreventsMissedSystemEvents,
+                [],
+                "O monitoramento de arquivos está sempre ativo; a verificação periódica evita a perda de eventos do sistema"
+            ),
+            (
+                .portuguese,
+                .keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency,
+                [],
+                "As alterações de provedor continuam sendo detectadas imediatamente graças aos eventos do banco de dados do CC Switch; este intervalo define apenas a frequência da verificação alternativa."
+            ),
+            (
+                .portuguese,
                 .keyLunaReserveResetValue,
                 ["1h30m"],
                 "Redefinição em 1h30m"
+            ),
+            (
+                .portuguese,
+                .keyDashboardMenuBarPageQuotaResetDisplayTarget,
+                [],
+                "Horário de redefinição"
+            ),
+            (
+                .portuguese,
+                .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+                [],
+                "Após uma recarga, a barra de progresso permanece vermelha enquanto o saldo estiver abaixo deste valor"
+            ),
+            (
+                .portuguese,
+                .keyLunaReserveResetUnavailable,
+                [],
+                "Horário de redefinição indisponível"
             ),
             (
                 .russian,
@@ -698,6 +747,12 @@ final class LocalizationTests: XCTestCase {
                 .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
                 [],
                 "Интервал альтернативной проверки CC Switch"
+            ),
+            (
+                .russian,
+                .keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency,
+                [],
+                "Изменения провайдера по-прежнему обнаруживаются сразу благодаря событиям базы данных CC Switch; этот интервал задаёт только частоту альтернативной проверки."
             ),
             (
                 .russian,
@@ -724,6 +779,12 @@ final class LocalizationTests: XCTestCase {
                 "Используется текущий провайдер"
             ),
             (
+                .russian,
+                .keyDashboardProviderPagesThisProviderDisappearedFromCcSwitch,
+                [],
+                "Этот провайдер больше не отображается в CC Switch"
+            ),
+            (
                 .italian,
                 .keyAppPreferencesOpenaiStatus,
                 [],
@@ -734,6 +795,36 @@ final class LocalizationTests: XCTestCase {
                 .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
                 [],
                 "Intervallo di verifica alternativa di CC Switch"
+            ),
+            (
+                .italian,
+                .keyDashboardGeneralAndRefreshPagesUpdateChannelDescription,
+                [],
+                "Scegli se verificare le versioni stabili o beta"
+            ),
+            (
+                .italian,
+                .keyDashboardGeneralAndRefreshPagesProviderChangesAreStillTriggeredImmediatelyByCcSwitchDatabaseEventsThisIntervalIsOnlyTheFallbackCheckFrequency,
+                [],
+                "Le modifiche al provider vengono rilevate immediatamente grazie agli eventi del database di CC Switch; questo intervallo determina solo la frequenza del controllo alternativo."
+            ),
+            (
+                .italian,
+                .keyDashboardMenuBarPageQuotaResetDisplayMode,
+                [],
+                "Visualizzazione dell'orario di ripristino"
+            ),
+            (
+                .italian,
+                .keyDashboardMenuBarPageQuotaResetDisplayTarget,
+                [],
+                "Orario di ripristino"
+            ),
+            (
+                .italian,
+                .keyDashboardMenuBarPageLunaReserveResetTime,
+                [],
+                "Orario di ripristino di 🌙 Luna Reserve"
             ),
             (
                 .italian,

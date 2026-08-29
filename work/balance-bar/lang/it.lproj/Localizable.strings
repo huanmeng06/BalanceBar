@@ -171,7 +171,7 @@
 "dashboard.advanced.page.current_port_value.2" = "Porta corrente: %1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "Inserisci una porta numerica da 1 a 65535; cancella il campo per ripristinare il rilevamento automatico";
 "dashboard.general.and.refresh.pages.update_channel" = "Canale degli aggiornamenti";
-"dashboard.general.and.refresh.pages.update_channel_description" = "Scegli se verificare le versioni Stabile o Beta";
+"dashboard.general.and.refresh.pages.update_channel_description" = "Scegli se verificare le versioni stabili o beta";
 "dashboard.general.and.refresh.pages.stable" = "Stabile";
 "dashboard.general.and.refresh.pages.beta_test" = "Beta";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "Fai clic per verificare la presenza di nuove versioni su GitHub";
@@ -250,7 +250,7 @@
 "dashboard.general.and.refresh.pages.0_25_sec" = "0.25 s";
 "dashboard.general.and.refresh.pages.0_5_sec" = "0.5 s";
 "dashboard.general.and.refresh.pages.1_sec" = "1 s";
-"dashboard.general.and.refresh.pages.provider_changes_are_still_triggered_immediately_by_cc_switch_database_events_this_interval_is_only_the_fallback_check_frequency" = "Le modifiche al provider vengono sincronizzate immediatamente dagli eventi del database di CC Switch; questo intervallo determina solo la frequenza del controllo di riserva.";
+"dashboard.general.and.refresh.pages.provider_changes_are_still_triggered_immediately_by_cc_switch_database_events_this_interval_is_only_the_fallback_check_frequency" = "Le modifiche al provider vengono rilevate immediatamente grazie agli eventi del database di CC Switch; questo intervallo determina solo la frequenza del controllo alternativo.";
 "dashboard.logs.page.logs" = "Registri";
 "dashboard.logs.page.provider_switching_synchronization_and_failure_details" = "Cambio di provider, stato della sincronizzazione e dettagli degli errori";
 "dashboard.logs.page.refresh" = "Aggiorna";
@@ -281,14 +281,14 @@
 "dashboard.menu.bar.page.quota_display_priority_description" = "Scegli se la barra dei menu deve dare priorità alla quota di 5 ore o di 7 giorni";
 "dashboard.menu.bar.page.five_hour_quota" = "Quota di 5 ore";
 "dashboard.menu.bar.page.seven_day_quota" = "Quota di 7 giorni";
-"dashboard.menu.bar.page.quota_reset_display_mode" = "Visualizzazione dell'ora di ripristino";
+"dashboard.menu.bar.page.quota_reset_display_mode" = "Visualizzazione dell'orario di ripristino";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "Scegli se mostrare il tempo rimanente, un orario di ripristino specifico o entrambi";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Tempo rimanente";
-"dashboard.menu.bar.page.quota_reset_display_target" = "Ora del ripristino";
+"dashboard.menu.bar.page.quota_reset_display_target" = "Orario di ripristino";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Mostra entrambi";
 "dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Passaggio automatico a Luna Reserve";
 "dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Dopo aver attivato 🌙 Luna Reserve, cambia automaticamente la quota mostrata nella barra dei menu.";
-"dashboard.menu.bar.page.luna_reserve_reset_time" = "Ora del ripristino di 🌙 Luna Reserve";
+"dashboard.menu.bar.page.luna_reserve_reset_time" = "Orario di ripristino di 🌙 Luna Reserve";
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Dopo aver attivato 🌙 Luna Reserve, scegli se continuare a mostrare l'orario di ripristino della quota originale o quello di 🌙 Luna Reserve.";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Quota originale";

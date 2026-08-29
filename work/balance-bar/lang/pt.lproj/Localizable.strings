@@ -171,7 +171,7 @@
 "dashboard.advanced.page.current_port_value.2" = "Porta atual: %1$@";
 "dashboard.advanced.page.enter_a_decimal_port_from_1_to_65535_clear_the_field_to_restore_automatic_detection" = "Insira uma porta decimal de 1 a 65535; limpe o campo para restaurar a detecção automática";
 "dashboard.general.and.refresh.pages.update_channel" = "Canal de atualização";
-"dashboard.general.and.refresh.pages.update_channel_description" = "Escolha se deseja verificar versões Estável ou Beta";
+"dashboard.general.and.refresh.pages.update_channel_description" = "Escolha se deseja verificar as versões estáveis ou beta";
 "dashboard.general.and.refresh.pages.stable" = "Estável";
 "dashboard.general.and.refresh.pages.beta_test" = "Beta";
 "dashboard.general.and.refresh.pages.click_to_check_github_releases" = "Clique para verificar novas versões no GitHub";
@@ -240,7 +240,7 @@
 "dashboard.general.and.refresh.pages.changes_apply_to_the_entire_interface_immediately" = "As alterações são aplicadas imediatamente a toda a interface";
 "dashboard.general.and.refresh.pages.check_for_updates.3" = "Buscar atualizações";
 "dashboard.general.and.refresh.pages.refresh_settings" = "Configurações de atualização";
-"dashboard.general.and.refresh.pages.file_monitoring_is_always_active_polling_prevents_missed_system_events" = "O monitoramento de arquivos está sempre ativo; a verificação periódica evita eventos do sistema perdidos";
+"dashboard.general.and.refresh.pages.file_monitoring_is_always_active_polling_prevents_missed_system_events" = "O monitoramento de arquivos está sempre ativo; a verificação periódica evita a perda de eventos do sistema";
 "dashboard.general.and.refresh.pages.cc_switch_fallback_polling" = "Intervalo de verificação alternativa do CC Switch";
 "dashboard.general.and.refresh.pages.every_1_sec.2" = "A cada 1 s";
 "dashboard.general.and.refresh.pages.every_3_sec.2" = "A cada 3 s";
@@ -250,7 +250,7 @@
 "dashboard.general.and.refresh.pages.0_25_sec" = "0.25 s";
 "dashboard.general.and.refresh.pages.0_5_sec" = "0.5 s";
 "dashboard.general.and.refresh.pages.1_sec" = "1 s";
-"dashboard.general.and.refresh.pages.provider_changes_are_still_triggered_immediately_by_cc_switch_database_events_this_interval_is_only_the_fallback_check_frequency" = "As alterações de provedor são sincronizadas imediatamente pelos eventos do banco de dados do CC Switch; este intervalo define apenas a frequência da verificação alternativa.";
+"dashboard.general.and.refresh.pages.provider_changes_are_still_triggered_immediately_by_cc_switch_database_events_this_interval_is_only_the_fallback_check_frequency" = "As alterações de provedor continuam sendo detectadas imediatamente graças aos eventos do banco de dados do CC Switch; este intervalo define apenas a frequência da verificação alternativa.";
 "dashboard.logs.page.logs" = "Registros";
 "dashboard.logs.page.provider_switching_synchronization_and_failure_details" = "Trocas de provedor, status de sincronização e detalhes de falha";
 "dashboard.logs.page.refresh" = "Atualizar";
@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Exibição do horário de redefinição";
 "dashboard.menu.bar.page.quota_reset_display_mode_description" = "Escolha se deseja mostrar o tempo restante, um horário específico de redefinição ou ambos";
 "dashboard.menu.bar.page.quota_reset_display_remaining" = "Tempo restante";
-"dashboard.menu.bar.page.quota_reset_display_target" = "Hora da redefinição";
+"dashboard.menu.bar.page.quota_reset_display_target" = "Horário de redefinição";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Mostrar ambos";
 "dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Troca automática para Luna Reserve";
 "dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Após entrar na 🌙 Luna Reserve, troca automaticamente a cota exibida na barra de menus.";
@@ -335,7 +335,7 @@
 "dashboard.menu.page.hide_exhausted_quota" = "Ocultar cotas esgotadas";
 "dashboard.menu.page.hide_exhausted_quota_description" = "Quando ativado, as cotas zeradas ficam ocultas no menu quando a 🌙 Luna Reserve é exibida.";
 "dashboard.menu.page.low_balance_display_threshold" = "Limite de aviso de saldo baixo";
-"dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Após uma recarga, mantém a barra de progresso vermelha enquanto o saldo estiver abaixo deste valor";
+"dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Após uma recarga, a barra de progresso permanece vermelha enquanto o saldo estiver abaixo deste valor";
 "dashboard.menu.page.dropdown_menu" = "Menu suspenso";
 "dashboard.menu.page.menu_behavior" = "Comportamento do menu";
 "dashboard.menu.page.quick_switch" = "Troca rápida";
@@ -427,7 +427,7 @@
 "luna.reserve.remaining_value" = "Restante: %1$@%%";
 "luna.reserve.remaining_unavailable" = "Restante: indisponível";
 "luna.reserve.reset_value" = "Redefinição em %1$@";
-"luna.reserve.reset_unavailable" = "Hora da redefinição indisponível";
+"luna.reserve.reset_unavailable" = "Horário de redefinição indisponível";
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve está temporariamente indisponível";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
