@@ -151,7 +151,7 @@ enum MenuBarLayout {
     // glyph at the same logical point size. Keep its scale and baseline
     // correction as independent optical controls across all font presets.
     static let primaryMoonScale: CGFloat = 0.68
-    static let primaryMoonBaselineOffsetRatio: CGFloat = 0.04
+    static let primaryMoonBaselineOffsetRatio: CGFloat = 0.06
 
     /// Applies the compact primary amount as an attributed string so the
     /// Reserve marker is rendered with an explicit optical scale and baseline
