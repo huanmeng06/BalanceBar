@@ -192,7 +192,7 @@ final class LocalizationTests: XCTestCase {
     func testLanguagePickerOrder() {
         XCTAssertEqual(
             AppLanguage.allCases,
-            [.system, .simplifiedChinese, .traditionalChineseHongKong, .traditionalChineseTaiwan, .english, .japanese, .korean, .spanish, .german, .french, .portuguese, .russian, .italian]
+            [.system, .simplifiedChinese, .traditionalChineseHongKong, .traditionalChineseTaiwan, .english, .japanese, .korean, .spanish, .portuguese, .french, .german, .russian, .italian]
         )
     }
 

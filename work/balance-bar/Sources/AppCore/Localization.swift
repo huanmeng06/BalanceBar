@@ -10,9 +10,9 @@ enum AppLanguage: String, CaseIterable {
     case japanese
     case korean
     case spanish
-    case german
-    case french
     case portuguese
+    case french
+    case german
     case russian
     case italian
 
