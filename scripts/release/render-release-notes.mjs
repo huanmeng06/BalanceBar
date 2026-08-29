@@ -108,12 +108,37 @@ function localizedText(item, language) {
 
 function buildIssueCatalog(input) {
   const issues = new Map();
+  for (const issue of input.issues ?? []) {
+    const number = Number(issue?.number ?? issue);
+    if (Number.isInteger(number) && number > 0) {
+      issues.set(number, issue);
+    }
+  }
   for (const pullRequest of input.pullRequests ?? []) {
     for (const issue of pullRequest.closingIssues ?? []) {
-      issues.set(issue.number, issue);
+      const number = Number(issue?.number ?? issue);
+      if (Number.isInteger(number) && number > 0 && !issues.has(number)) {
+        issues.set(number, issue);
+      }
     }
   }
   return issues;
+}
+
+function buildIssuePullRequestCatalog(input) {
+  const issuePullRequests = new Map();
+  for (const pullRequest of input.pullRequests ?? []) {
+    for (const issue of pullRequest.closingIssues ?? []) {
+      const number = Number(issue?.number ?? issue);
+      if (!Number.isInteger(number) || number <= 0) {
+        continue;
+      }
+      const linkedPullRequests = issuePullRequests.get(number) ?? new Set();
+      linkedPullRequests.add(pullRequest.number);
+      issuePullRequests.set(number, linkedPullRequests);
+    }
+  }
+  return issuePullRequests;
 }
 
 /**
@@ -125,6 +150,7 @@ function buildIssueCatalog(input) {
  */
 export function sanitizeReleaseNotes(input, notes) {
   const issues = buildIssueCatalog(input);
+  const issuePullRequests = buildIssuePullRequestCatalog(input);
   const sanitized = { ...notes };
 
   for (const section of SECTION_DEFINITIONS) {
@@ -132,26 +158,36 @@ export function sanitizeReleaseNotes(input, notes) {
       continue;
     }
 
-    sanitized[section.key] = notes[section.key].map((item, index) => ({
-      ...item,
-      sources: Array.isArray(item?.sources)
-        ? item.sources.filter((source) => {
-          if (source?.kind !== "issue") {
+    sanitized[section.key] = notes[section.key].map((item, index) => {
+      const itemPullRequests = new Set(
+        (item?.sources ?? [])
+          .filter((source) => source?.kind === "pr")
+          .map((source) => source.number),
+      );
+      return {
+        ...item,
+        sources: Array.isArray(item?.sources)
+          ? item.sources.filter((source) => {
+            if (source?.kind !== "issue") {
+              return true;
+            }
+            const linkedPullRequests = issuePullRequests.get(source.number);
+            const linkedToItemPullRequest = linkedPullRequests
+              && [...linkedPullRequests].some((number) => itemPullRequests.has(number));
+            if (issues.has(source.number) && linkedToItemPullRequest) {
+              return true;
+            }
+            if (Number.isInteger(source.number) && source.number > 0) {
+              console.warn(
+                `render-release-notes: ignoring Issue #${source.number} in ${section.key}[${index}]; it is not explicitly linked to a PR source in this item`,
+              );
+              return false;
+            }
             return true;
-          }
-          if (issues.has(source.number)) {
-            return true;
-          }
-          if (Number.isInteger(source.number) && source.number > 0) {
-            console.warn(
-              `render-release-notes: ignoring unlinked Issue #${source.number} in ${section.key}[${index}]; preserving other validated sources`,
-            );
-            return false;
-          }
-          return true;
-        })
-        : item?.sources,
-    }));
+          })
+          : item?.sources,
+      };
+    });
   }
 
   return sanitized;
@@ -165,6 +201,10 @@ function oneLine(value, fieldName) {
   const valueWithoutNewlines = value.replace(/[\r\n]+/g, " ").trim();
   if (valueWithoutNewlines.startsWith("## ")) {
     throw new Error(`${fieldName} must not contain a Markdown heading`);
+  }
+  const maxLength = fieldName.endsWith(".title") ? 120 : 500;
+  if (valueWithoutNewlines.length > maxLength) {
+    throw new Error(`${fieldName} must not exceed ${maxLength} characters`);
   }
 
   return valueWithoutNewlines;
@@ -189,8 +229,10 @@ export function validateReleaseNotes(input, notes) {
     (input.pullRequests ?? []).map((pullRequest) => [pullRequest.number, pullRequest]),
   );
   const issues = buildIssueCatalog(input);
+  const issuePullRequests = buildIssuePullRequestCatalog(input);
 
   const coveredPullRequests = new Set();
+  const seenPullRequestSources = new Set();
   let itemCount = 0;
 
   for (const section of SECTION_DEFINITIONS) {
@@ -230,6 +272,10 @@ export function validateReleaseNotes(input, notes) {
           if (!pullRequests.has(source.number)) {
             throw new Error(`AI cited PR #${source.number}, which is not in this release range`);
           }
+          if (seenPullRequestSources.has(source.number)) {
+            throw new Error(`Release notes repeated merged PR #${source.number}`);
+          }
+          seenPullRequestSources.add(source.number);
           coveredPullRequests.add(source.number);
         } else if (!issues.has(source.number)) {
           throw new Error(`AI cited Issue #${source.number}, which is not linked to this release range`);
@@ -248,6 +294,24 @@ export function validateReleaseNotes(input, notes) {
     throw new Error(
       `Release notes omitted merged PR(s): ${missingPullRequests.map((number) => `#${number}`).join(", ")}`,
     );
+  }
+
+  for (const section of SECTION_DEFINITIONS) {
+    for (const [index, item] of (notes[section.key] ?? []).entries()) {
+      const itemPullRequests = new Set(
+        item.sources
+          .filter((source) => source?.kind === "pr")
+          .map((source) => source.number),
+      );
+      for (const source of item.sources.filter((candidate) => candidate.kind === "issue")) {
+        const linkedPullRequests = issuePullRequests.get(source.number) ?? new Set();
+        if (![...linkedPullRequests].some((number) => itemPullRequests.has(number))) {
+          throw new Error(
+            `AI cited Issue #${source.number} without its corresponding pull request source in ${section.key}[${index}]`,
+          );
+        }
+      }
+    }
   }
 
   return { coveredPullRequests };
