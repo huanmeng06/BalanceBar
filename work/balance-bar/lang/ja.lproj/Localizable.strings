@@ -216,6 +216,12 @@
 "dashboard.general.and.refresh.pages.retry" = "再試行";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "CC Switch を開く";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "ログイン時に起動";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "Macへのログイン後にBalanceBarを自動的に起動します";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "システム設定でBalanceBarの許可が必要です";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "「ログイン時に起動」を更新できませんでした。「システム設定」→「一般」→「ログイン項目」を確認して、もう一度お試しください。";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "ログイン項目の状態を読み取れません";
+"dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "設定を開く";
 "dashboard.general.and.refresh.pages.current_provider_value" = "現在のプロバイダー：%1$@";
 "dashboard.general.and.refresh.pages.system" = "システム";
 "dashboard.general.and.refresh.pages.every_1_sec" = "1秒ごと";

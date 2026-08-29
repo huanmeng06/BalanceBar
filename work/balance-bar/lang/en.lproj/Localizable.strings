@@ -216,6 +216,12 @@
 "dashboard.general.and.refresh.pages.retry" = "Retry";
 "dashboard.general.and.refresh.pages.open_cc_switch" = "Open CC Switch";
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
+"dashboard.general.and.refresh.pages.launch_at_login" = "Launch at Login";
+"dashboard.general.and.refresh.pages.launch_at_login_description" = "Automatically start BalanceBar after you log in to your Mac";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "BalanceBar needs approval in System Settings";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Could not update Launch at Login. Check System Settings → General → Login Items and try again.";
+"dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Unable to read the login item status";
+"dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Open Settings";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Current Provider: %1$@";
 "dashboard.general.and.refresh.pages.system" = "System";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Every 1 sec";
