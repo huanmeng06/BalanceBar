@@ -1073,9 +1073,18 @@ final class DashboardComponentsTests: XCTestCase {
         link.frame = NSRect(x: 20, y: 0, width: 180, height: 20)
         host.addSubview(link)
         link.layout()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 80),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView?.addSubview(host)
         host.track(link)
         host.updateTrackingAreas()
 
+        XCTAssertEqual(link.interactionMode, .menuHosted)
+        XCTAssertEqual(link.trackingAreas.count, 0)
         XCTAssertEqual(host.trackingAreas.count, 1)
         XCTAssertTrue(host.trackingAreas[0].options.contains(.mouseMoved))
         XCTAssertFalse(host.trackingAreas[0].options.contains(.cursorUpdate))
@@ -1097,6 +1106,32 @@ final class DashboardComponentsTests: XCTestCase {
         host.forwardHover(atHostPoint: blankPoint)
         XCTAssertTrue(NSCursor.current.isEqual(NSCursor.arrow))
         XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+    }
+
+    func testMenuHostHoverRemainsStableAcrossRepeatedMovementAndBoundaryCrossings() {
+        let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        let link = HoverLinkTextField(text: "Provider")
+        link.frame = NSRect(x: 20, y: 2, width: 180, height: 20)
+        host.addSubview(link)
+        link.layout()
+        host.track(link)
+        host.updateTrackingAreas()
+
+        let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
+        let blankPoint = host.convert(
+            NSPoint(x: link.visibleTextHitRect.maxX + 12, y: link.visibleTextHitRect.midY),
+            from: link
+        )
+        for _ in 0..<30 {
+            host.mouseMoved(with: makeMouseEvent(type: .mouseMoved, location: glyphPoint))
+            XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+            host.mouseMoved(with: makeMouseEvent(type: .mouseMoved, location: blankPoint))
+            XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+
+            host.mouseMoved(with: makeMouseEvent(type: .mouseMoved, location: glyphPoint))
+            XCTAssertNotNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
+        }
     }
 
     func testMenuHostTrackingRefreshAndTeardownAreStable() {

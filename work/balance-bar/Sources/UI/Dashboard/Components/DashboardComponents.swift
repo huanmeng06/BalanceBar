@@ -256,7 +256,13 @@ final class LunaReserveCardView: NSView {
 }
 
 final class HoverLinkTextField: NSTextField {
+    enum InteractionMode: Equatable {
+        case normal
+        case menuHosted
+    }
+
     var onActivate: (() -> Void)?
+    private(set) var interactionMode: InteractionMode = .normal
     private(set) var visibleTextHitRect = NSRect.zero
     private var trackingAreaReference: NSTrackingArea?
     private var isHovered = false
@@ -299,6 +305,7 @@ final class HoverLinkTextField: NSTextField {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        guard interactionMode == .normal else { return }
         refreshTrackingArea()
         synchronizeHoverStateWithMouseLocation()
     }
@@ -322,36 +329,41 @@ final class HoverLinkTextField: NSTextField {
         removeTrackingAreaReference()
         super.updateTrackingAreas()
         updateVisibleTextHitRect()
+        guard interactionMode == .normal else { return }
         installTrackingArea()
         synchronizeHoverStateWithMouseLocation()
     }
 
     override func resetCursorRects() {
         super.resetCursorRects()
+        guard interactionMode == .normal else { return }
         updateVisibleTextHitRect()
         guard !visibleTextHitRect.isEmpty else { return }
         addCursorRect(visibleTextHitRect, cursor: .pointingHand)
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard interactionMode == .normal else { return }
         setHovering(isPointInsideVisibleText(for: event))
     }
 
     override func mouseExited(with event: NSEvent) {
+        guard interactionMode == .normal else { return }
         setHovering(false)
     }
 
     override func cursorUpdate(with event: NSEvent) {
+        guard interactionMode == .normal else { return }
         setHovering(isPointInsideVisibleText(for: event))
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard interactionMode == .normal else { return }
         setHovering(isPointInsideVisibleText(for: event))
     }
 
     override func mouseDown(with event: NSEvent) {
         guard isPointInsideVisibleText(for: event) else {
-            setHovering(false)
             return
         }
         NSCursor.pointingHand.set()
@@ -375,8 +387,21 @@ final class HoverLinkTextField: NSTextField {
     /// The point is deliberately converted before reusing the same visible
     /// glyph hit test used by the normal Dashboard tracking path.
     func updateHover(atHostPoint point: NSPoint, in host: NSView) {
+        guard interactionMode == .menuHosted else { return }
         let pointInLink = convert(point, from: host)
         setHovering(visibleTextHitRect.contains(pointInLink))
+    }
+
+    func setInteractionMode(_ mode: InteractionMode) {
+        guard interactionMode != mode else { return }
+        removeTrackingAreaReference()
+        interactionMode = mode
+        guard mode == .normal else {
+            clearHoverState()
+            return
+        }
+        refreshTrackingArea()
+        synchronizeHoverStateWithMouseLocation()
     }
 
     func clearHoverState() {
@@ -452,11 +477,13 @@ final class HoverLinkTextField: NSTextField {
         guard previousRect != visibleTextHitRect else { return }
 
         window?.invalidateCursorRects(for: self)
+        guard interactionMode == .normal else { return }
         refreshTrackingArea()
         synchronizeHoverStateWithMouseLocation()
     }
 
     private func refreshTrackingArea() {
+        guard interactionMode == .normal else { return }
         guard trackingAreaReference != nil || window != nil else { return }
         removeTrackingAreaReference()
         installTrackingArea()
@@ -542,8 +569,8 @@ final class HoverLinkTextField: NSTextField {
 }
 
 /// A local event bridge for one Provider link hosted by an `NSMenuItem.view`.
-/// It intentionally tracks the card only to forward movement; the link still
-/// owns the glyph-only hover and activation boundary.
+/// It intentionally tracks the card only to forward movement; the link keeps
+/// the glyph-only hit test and activation boundary but not its own hover owner.
 final class MenuHoverLinkHostView: NSView {
     private weak var link: HoverLinkTextField?
     private var trackingAreaReference: NSTrackingArea?
@@ -561,6 +588,7 @@ final class MenuHoverLinkHostView: NSView {
 
     func track(_ link: HoverLinkTextField) {
         self.link = link
+        link.setInteractionMode(.menuHosted)
         refreshTrackingArea()
         synchronizeHoverState()
     }
