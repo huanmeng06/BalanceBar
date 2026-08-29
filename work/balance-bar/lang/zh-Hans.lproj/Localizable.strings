@@ -410,8 +410,8 @@
 "status.item.controller.official_link" = "官方链接：";
 "status.item.controller.opencodex" = "OpenCodex";
 "status.item.controller.opencodex_management_api_is_unavailable" = "OpenCodex 管理服务不可用";
-"status.item.controller.opencodex_chosen_models_are_not_available_yet" = "暂未读取到 OpenCodex 已选模型";
-"status.item.controller.no_opencodex_chosen_models_are_configured" = "未配置 OpenCodex 已选模型";
+"status.item.controller.opencodex_featured_models_are_not_available_yet" = "暂未读取到 OpenCodex 精选模型";
+"status.item.controller.no_opencodex_featured_models_are_configured" = "未配置 OpenCodex 精选模型";
 "status.item.controller.current" = "· 当前";
 "status.item.controller.reset_value" = "%1$@";
 "status.item.controller.reset_time_unavailable" = "时间不可用";

@@ -3023,9 +3023,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let state = menuInput.openCodexState?.managementAvailable, !state {
             status = tr(.keyStatusItemControllerOpencodexManagementApiIsUnavailable)
         } else if menuInput.openCodexState?.preferenceDataAvailable == false {
-            status = tr(.keyStatusItemControllerOpencodexChosenModelsAreNotAvailableYet)
+            status = tr(.keyStatusItemControllerOpencodexFeaturedModelsAreNotAvailableYet)
         } else {
-            status = tr(.keyStatusItemControllerNoOpencodexChosenModelsAreConfigured)
+            status = tr(.keyStatusItemControllerNoOpencodexFeaturedModelsAreConfigured)
         }
         let detail = makeOverviewLabel(status, font: .systemFont(ofSize: 12))
         detail.textColor = .secondaryLabelColor

@@ -410,8 +410,8 @@
 "status.item.controller.official_link" = "Официальная ссылка:";
 "status.item.controller.opencodex" = "OpenCodex";
 "status.item.controller.opencodex_management_api_is_unavailable" = "API управления OpenCodex недоступен";
-"status.item.controller.opencodex_chosen_models_are_not_available_yet" = "Выбранные модели OpenCodex пока недоступны";
-"status.item.controller.no_opencodex_chosen_models_are_configured" = "Выбранные модели OpenCodex не настроены";
+"status.item.controller.opencodex_featured_models_are_not_available_yet" = "Рекомендуемые модели OpenCodex пока недоступны";
+"status.item.controller.no_opencodex_featured_models_are_configured" = "Рекомендуемые модели OpenCodex не настроены";
 "status.item.controller.current" = "· Текущий";
 "status.item.controller.reset_value" = "%1$@";
 "status.item.controller.reset_time_unavailable" = "Время недоступно";
