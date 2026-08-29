@@ -219,7 +219,7 @@
 "dashboard.general.and.refresh.pages.launch_at_login" = "Lancer à la connexion";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Lancer automatiquement BalanceBar après la connexion au Mac";
 "dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "BalanceBar doit être autorisé dans Réglages Système";
-"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour cette option. Vérifiez Réglages Système → Général → Éléments d’ouverture, puis réessayez.";
+"dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour « Lancer à la connexion ». Vérifiez Réglages Système → Général → Éléments d’ouverture, puis réessayez.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Impossible de lire l’état de l’élément d’ouverture";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Ouvrir les réglages";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Fournisseur actuel : %1$@";

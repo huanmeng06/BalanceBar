@@ -138,9 +138,7 @@ final class LaunchAtLoginController {
         switch status {
         case .requiresApproval:
             return .requiresApproval
-        case .notFound, .unknown:
-            return .unavailable
-        case .enabled, .notRegistered:
+        case .enabled, .notRegistered, .notFound, .unknown:
             return .operationFailed
         }
     }

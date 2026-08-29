@@ -12,6 +12,7 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         var currentStatus: LaunchAtLoginStatus
         var registerError: Error?
         var unregisterError: Error?
+        var statusAfterRegister: LaunchAtLoginStatus?
         var statusAfterRegisterError: LaunchAtLoginStatus?
         var statusAfterUnregisterError: LaunchAtLoginStatus?
         private(set) var statusReadCount = 0
@@ -36,7 +37,7 @@ final class LaunchAtLoginServiceTests: XCTestCase {
                 }
                 throw registerError
             }
-            currentStatus = .enabled
+            currentStatus = statusAfterRegister ?? .enabled
         }
 
         func unregister() throws {
@@ -136,6 +137,18 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         XCTAssertEqual(state.notice, .requiresApproval)
     }
 
+    func testOperationErrorUsesOperationFailureNoticeWhenStatusCannotBeRead() {
+        let service = MockLaunchAtLoginService(status: .notRegistered)
+        service.registerError = TestError.operationFailed
+        service.statusAfterRegisterError = .notFound
+        let controller = LaunchAtLoginController(service: service)
+
+        let state = controller.setEnabled(true)
+
+        XCTAssertEqual(state.status, .notFound)
+        XCTAssertEqual(state.notice, .operationFailed)
+    }
+
     func testRequiresApprovalAndExternalChangesRemainVisibleThroughRealStateReads() {
         let service = MockLaunchAtLoginService(status: .requiresApproval)
         let controller = LaunchAtLoginController(service: service)
@@ -198,8 +211,7 @@ final class LaunchAtLoginServiceTests: XCTestCase {
 
     func testRegisterRequiresApprovalKeepsSwitchOnWithInlineSettingsAction() throws {
         let service = MockLaunchAtLoginService(status: .notRegistered)
-        service.statusAfterRegisterError = .requiresApproval
-        service.registerError = TestError.operationFailed
+        service.statusAfterRegister = .requiresApproval
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(
                 databaseURL: URL(fileURLWithPath: "/nonexistent/issue-262-approval.db")

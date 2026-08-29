@@ -331,7 +331,7 @@ final class DashboardGeneralPage {
         )
         launchAtLoginOpenSettingsButton.bezelStyle = .rounded
         let launchAtLoginControls = DashboardAdaptiveControlsStackView(
-            views: [launchAtLoginSwitch, launchAtLoginOpenSettingsButton]
+            views: [launchAtLoginOpenSettingsButton, launchAtLoginSwitch]
         )
         launchAtLoginControls.orientation = .horizontal
         launchAtLoginControls.alignment = .centerY
@@ -570,7 +570,7 @@ final class DashboardGeneralPage {
             launchAtLoginSwitch.state = .off
             launchAtLoginSwitch.isEnabled = true
         }
-        openSettingsButton.isHidden = state.status != .requiresApproval
+        openSettingsButton.isHidden = state.notice == .none
         subtitle.stringValue = launchAtLoginSubtitle(for: state)
         subtitle.invalidateIntrinsicContentSize()
     }

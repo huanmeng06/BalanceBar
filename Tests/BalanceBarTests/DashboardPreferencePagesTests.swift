@@ -122,6 +122,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertFalse(openSettingsButton.isHidden)
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Could not update Launch at Login. Check System Settings → General → Login Items and try again."
         })
@@ -129,6 +130,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .unknown))
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertFalse(openSettingsButton.isHidden)
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Unable to read the login item status"
         })
@@ -140,8 +142,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
         })
+        launchSwitch.state = .on
         relay.launchAtLogin(launchSwitch)
-        XCTAssertEqual(launchAtLoginRequests, [true, false])
+        XCTAssertEqual(launchAtLoginRequests, [true, true])
     }
 
     func testLaunchAtLoginRowKeepsLongLocalizedTextAndControlSeparatedAcrossWidths() throws {
@@ -234,6 +237,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 let refreshedLabelsFrame = labels.convert(labels.bounds, to: row)
                 let controls = try XCTUnwrap(launchSwitch.superview)
                 let controlsFrame = controls.convert(controls.bounds, to: row)
+                let switchFrame = launchSwitch.convert(launchSwitch.bounds, to: row)
                 let buttonFrame = openSettingsButton.convert(openSettingsButton.bounds, to: row)
                 XCTAssertFalse(openSettingsButton.isHidden)
                 XCTAssertTrue(
@@ -247,6 +251,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 XCTAssertFalse(
                     refreshedLabelsFrame.intersects(controlsFrame),
                     "approval controls do not overlap labels for \(language) at \(width)"
+                )
+                XCTAssertEqual(
+                    switchFrame.maxX,
+                    controlsFrame.maxX,
+                    accuracy: 0.5,
+                    "launch switch remains trailing-aligned for \(language) at \(width)"
                 )
             }
         }

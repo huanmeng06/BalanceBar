@@ -581,8 +581,8 @@ final class LocalizationTests: XCTestCase {
     func testLaunchAtLoginCopyIsLocalizedAcrossAllTwelveLanguages() {
         let expected: [AppLanguage: (String, String)] = [
             .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar"),
-            .traditionalChineseTaiwan: ("登入時啟動", "登入 Mac 後自動啟動 BalanceBar"),
-            .traditionalChineseHongKong: ("登入時啟動", "登入 Mac 後自動啟動 BalanceBar"),
+            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar"),
+            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar"),
             .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します"),
             .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac"),
             .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다"),
