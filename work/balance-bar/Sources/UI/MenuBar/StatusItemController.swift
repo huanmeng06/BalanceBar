@@ -1489,6 +1489,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
+        let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
 
         init(
             showIcon: Bool,
@@ -1507,7 +1508,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue,
             quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
             autoSwitchLunaReserve: Bool = false,
-            lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue
+            lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
+            quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -1525,6 +1527,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.quotaResetDisplayMode = quotaResetDisplayMode
             self.autoSwitchLunaReserve = autoSwitchLunaReserve
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
+            self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -2870,7 +2873,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         if !layout.quotaRows.isEmpty || layout.lunaReserveRow != nil {
             for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
-                let progress = QuotaProgressView(percentage: window.remaining)
+                let progress = QuotaProgressView(percentage: window.remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
                 progress.frame = row.progress
                 view.addSubview(progress)
 
@@ -2913,7 +2916,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let lunaReserve,
                let row = layout.lunaReserveRow {
                 if let remaining = lunaReserve.remaining {
-                    let progress = QuotaProgressView(percentage: remaining)
+                    let progress = QuotaProgressView(percentage: remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
                     progress.frame = row.progress
                     view.addSubview(progress)
                 }
@@ -2954,7 +2957,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(provider)
         } else {
             if let percentage = snapshot.progressPercentage, let progressFrame = layout.progress {
-                let progress = QuotaProgressView(percentage: percentage)
+                let progress = QuotaProgressView(percentage: percentage, colorConfiguration: settings.quotaProgressColorConfiguration)
                 progress.frame = progressFrame
                 view.addSubview(progress)
             }
@@ -3072,7 +3075,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let window = card.data.officialWindow!
             let remaining = window.remaining
             let label = window.label
-            progress = QuotaProgressView(percentage: remaining)
+            progress = QuotaProgressView(percentage: remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
             progress?.frame = layout.progress ?? .zero
             primary = makeOverviewLabel(
                 "\(Int(remaining))%",
@@ -3104,7 +3107,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 frame: overviewMarqueeFrame(layout.reset ?? .zero, avoiding: primary)
             )
         case .balance(let amount, let unit, let progressPercentage, let websiteURL, _):
-            progress = QuotaProgressView(percentage: progressPercentage)
+            progress = QuotaProgressView(percentage: progressPercentage, colorConfiguration: settings.quotaProgressColorConfiguration)
             progress?.frame = layout.progress ?? .zero
             primary = makeOverviewLabel(Self.formatBalanceSummary(amount, unit: unit), font: .monospacedDigitSystemFont(ofSize: 31, weight: .semibold))
             primary.alignment = .right

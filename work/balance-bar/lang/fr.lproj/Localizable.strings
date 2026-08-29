@@ -437,3 +437,11 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve temporairement indisponible";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"dashboard.menu.page.progress_color_ranges" = "Plages de couleur de la barre";
+"dashboard.menu.page.progress_color_ranges_description" = "Faites glisser les seuils pour choisir la couleur de chaque plage de pourcentage restant.";
+"dashboard.menu.page.displayed_colors" = "Couleurs affichées";
+"dashboard.menu.page.displayed_colors_description" = "Gardez au moins deux couleurs activées.";
+"dashboard.menu.page.color_red" = "Rouge";
+"dashboard.menu.page.color_orange" = "Orange";
+"dashboard.menu.page.color_yellow" = "Jaune";
+"dashboard.menu.page.color_green" = "Vert";

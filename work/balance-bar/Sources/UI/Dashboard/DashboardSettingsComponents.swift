@@ -13,6 +13,7 @@ private enum DashboardSettingsControlPlacement: Equatable {
 }
 
 private final class DashboardSettingsRowView: NSView {
+    var forceDedicatedControlRow = false
     let minimumHeight: CGFloat
     let verticalPadding: CGFloat
     weak var labelsView: NSStackView?
@@ -95,7 +96,7 @@ private final class DashboardSettingsRowView: NSView {
             let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < readableContentWidth ||
                 lineBudgetNeedsDedicatedRow
             let placement: DashboardSettingsControlPlacement
-            if contentNeedsDedicatedRow {
+            if forceDedicatedControlRow || contentNeedsDedicatedRow {
                 placement = .dedicatedRow
             } else if adaptiveControl?.usesDedicatedRow == true {
                 placement = .verticalBesideContent
@@ -220,7 +221,8 @@ private final class DashboardSettingsRowView: NSView {
     ) {
         sideBySideControlConstraints = sideBySide
         dedicatedControlConstraints = dedicated
-        NSLayoutConstraint.activate(sideBySide)
+        controlPlacement = forceDedicatedControlRow ? .dedicatedRow : .horizontal
+        NSLayoutConstraint.activate(forceDedicatedControlRow ? dedicated : sideBySide)
     }
 
     private func updateControlPlacementIfNeeded(_ placement: DashboardSettingsControlPlacement) {
@@ -851,12 +853,14 @@ enum DashboardSettingsComponents {
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11,
-        controlWidthConstrainedToRow: Bool = false
+        controlWidthConstrainedToRow: Bool = false,
+        forceDedicatedControlRow: Bool = false
     ) -> NSView {
         let row = DashboardSettingsRowView(
             minimumHeight: minimumHeight,
             verticalPadding: verticalPadding
         )
+        row.forceDedicatedControlRow = forceDedicatedControlRow
         // Keep a required floor for short rows. The low-priority equality
         // preserves the old compact geometry as a fallback while allowing
         // the row's intrinsic content height to win when a subtitle wraps.
@@ -972,6 +976,9 @@ enum DashboardSettingsComponents {
                 let widthConstraint =
                     control.widthAnchor.constraint(lessThanOrEqualTo: row.widthAnchor, constant: -40)
                 widthConstraint.isActive = true
+            }
+            if forceDedicatedControlRow {
+                control.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20).isActive = true
             }
         } else {
             NSLayoutConstraint.activate([

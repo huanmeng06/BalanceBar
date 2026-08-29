@@ -8,6 +8,7 @@ struct DashboardProviderPageInput {
     let refreshDate: Date?
     let revision: UInt64
     let currentProviderIsOfficial: Bool
+    let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
 
     init(
         choices: [ProviderChoice],
@@ -16,7 +17,8 @@ struct DashboardProviderPageInput {
         quickSwitchSummaries: [String: String],
         refreshDate: Date?,
         revision: UInt64,
-        currentProviderIsOfficial: Bool = false
+        currentProviderIsOfficial: Bool = false,
+        quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default
     ) {
         self.choices = choices
         self.selectedProviderID = selectedProviderID
@@ -25,6 +27,7 @@ struct DashboardProviderPageInput {
         self.refreshDate = refreshDate
         self.revision = revision
         self.currentProviderIsOfficial = currentProviderIsOfficial
+        self.quotaProgressColorConfiguration = quotaProgressColorConfiguration
     }
 }
 
@@ -382,6 +385,7 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
     var view: NSView { root }
 
     func refresh(input: DashboardProviderPageInput) -> Bool {
+        lunaReserveCard.colorConfiguration = input.quotaProgressColorConfiguration
         choices = input.choices
         quickSwitchSummaries = input.quickSwitchSummaries
         guard let current = choices.first(where: { $0.isCurrent }) else {

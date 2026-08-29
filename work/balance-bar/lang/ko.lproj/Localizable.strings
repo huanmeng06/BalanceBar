@@ -437,3 +437,11 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve를 일시적으로 사용할 수 없음";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"dashboard.menu.page.progress_color_ranges" = "진행률 막대 색상 범위";
+"dashboard.menu.page.progress_color_ranges_description" = "임계값을 드래그하여 남은 백분율 구간별 색상을 조정합니다.";
+"dashboard.menu.page.displayed_colors" = "표시 색상";
+"dashboard.menu.page.displayed_colors_description" = "색상을 두 개 이상 활성화하세요.";
+"dashboard.menu.page.color_red" = "빨강";
+"dashboard.menu.page.color_orange" = "주황";
+"dashboard.menu.page.color_yellow" = "노랑";
+"dashboard.menu.page.color_green" = "초록";

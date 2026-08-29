@@ -437,3 +437,11 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve 暫時無法使用";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"dashboard.menu.page.progress_color_ranges" = "進度條顏色區間";
+"dashboard.menu.page.progress_color_ranges_description" = "拖曳分界點，調整不同剩餘百分比對應的顏色。";
+"dashboard.menu.page.displayed_colors" = "顯示顏色";
+"dashboard.menu.page.displayed_colors_description" = "至少保留兩種顏色。";
+"dashboard.menu.page.color_red" = "紅";
+"dashboard.menu.page.color_orange" = "橙";
+"dashboard.menu.page.color_yellow" = "黃";
+"dashboard.menu.page.color_green" = "綠";
