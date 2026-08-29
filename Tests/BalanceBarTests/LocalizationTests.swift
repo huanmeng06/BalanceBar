@@ -237,9 +237,9 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .spanish), "Seguir el sistema")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .german), "System folgen")
         XCTAssertEqual(AppLanguage.system.localizedTitle(using: .french), "Suivre le système")
-        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .portuguese), "Seguir o sistema")
-        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .russian), "Следовать системе")
-        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .italian), "Segui il sistema")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .portuguese), "Usar o idioma do sistema")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .russian), "Использовать язык системы")
+        XCTAssertEqual(AppLanguage.system.localizedTitle(using: .italian), "Usa la lingua di sistema")
 
         // Language options always keep their own original names; only
         // "Follow System" is localized into the current UI language.
@@ -266,16 +266,16 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .spanish), "Seguir el sistema")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .german), "System folgen")
         XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .french), "Suivre le système")
-        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .portuguese), "Seguir o sistema")
-        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .russian), "Следовать системе")
-        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .italian), "Segui il sistema")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .portuguese), "Usar o idioma do sistema")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .russian), "Использовать язык системы")
+        XCTAssertEqual(tr(.keyLocalizationFollowSystem, language: .italian), "Usa la lingua di sistema")
     }
 
     func testNewLanguageNamesRemainNativeAndCoreCopyIsLocalized() {
         let cases: [(AppLanguage, String, String)] = [
-            (.portuguese, "Sobre o BalanceBar", "Seguir o sistema"),
-            (.russian, "О BalanceBar", "Следовать системе"),
-            (.italian, "Informazioni su BalanceBar", "Segui il sistema")
+            (.portuguese, "Sobre o BalanceBar", "Usar o idioma do sistema"),
+            (.russian, "О BalanceBar", "Использовать язык системы"),
+            (.italian, "Informazioni su BalanceBar", "Usa la lingua di sistema")
         ]
         for (language, about, followSystem) in cases {
             XCTAssertEqual(tr(.keyAppAboutBalancebar, language: language), about)
@@ -690,6 +690,18 @@ final class LocalizationTests: XCTestCase {
             ),
             (
                 .portuguese,
+                .keyLocalizationFollowSystem,
+                [],
+                "Usar o idioma do sistema"
+            ),
+            (
+                .portuguese,
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                ["19:30"],
+                "Atualizado: 19:30 · Sincronização automática com o CC Switch"
+            ),
+            (
+                .portuguese,
                 .keyDashboardGeneralAndRefreshPagesCcSwitchFallbackPolling,
                 [],
                 "Intervalo de verificação alternativa do CC Switch"
@@ -737,10 +749,34 @@ final class LocalizationTests: XCTestCase {
                 "Horário de redefinição indisponível"
             ),
             (
+                .portuguese,
+                .keyDashboardProviderPagesFollowingThisProvider,
+                [],
+                "Este provedor está em uso"
+            ),
+            (
+                .portuguese,
+                .keyDashboardProviderPagesFollowingCurrentProvider,
+                [],
+                "O provedor atual está em uso"
+            ),
+            (
                 .russian,
                 .keyAppPreferencesOpenaiStatus,
                 [],
                 "Статус OpenAI"
+            ),
+            (
+                .russian,
+                .keyLocalizationFollowSystem,
+                [],
+                "Использовать язык системы"
+            ),
+            (
+                .russian,
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                ["19:30"],
+                "Обновлено: 19:30 · Автоматическая синхронизация с CC Switch"
             ),
             (
                 .russian,
@@ -789,6 +825,30 @@ final class LocalizationTests: XCTestCase {
                 .keyAppPreferencesOpenaiStatus,
                 [],
                 "Stato di OpenAI"
+            ),
+            (
+                .italian,
+                .keyLocalizationFollowSystem,
+                [],
+                "Usa la lingua di sistema"
+            ),
+            (
+                .italian,
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                ["19:30"],
+                "Aggiornato: 19:30 · Sincronizzazione automatica con CC Switch"
+            ),
+            (
+                .italian,
+                .keyDashboardProviderPagesFollowingThisProvider,
+                [],
+                "Questo provider è in uso"
+            ),
+            (
+                .italian,
+                .keyDashboardProviderPagesFollowingCurrentProvider,
+                [],
+                "Il provider corrente è in uso"
             ),
             (
                 .italian,
@@ -1530,11 +1590,11 @@ final class LocalizationTests: XCTestCase {
                 case .french:
                     return ["À propos de BalanceBar", "Suivre le système", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .portuguese:
-                    return ["Sobre o BalanceBar", "Seguir o sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                    return ["Sobre o BalanceBar", "Usar o idioma do sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .russian:
-                    return ["О BalanceBar", "Следовать системе", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                    return ["О BalanceBar", "Использовать язык системы", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .italian:
-                    return ["Informazioni su BalanceBar", "Segui il sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
+                    return ["Informazioni su BalanceBar", "Usa la lingua di sistema", "简体中文", "繁體中文（台灣）", "繁體中文（香港）", "日本語", "한국어", "Español", "Deutsch", "Français"]
                 case .system:
                     return []
                 }

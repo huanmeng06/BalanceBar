@@ -20,7 +20,7 @@
 "app.minimize" = "Riduci a icona";
 "app.zoom" = "Zoom";
 "app.bring_all_to_front" = "Porta tutto in primo piano";
-"localization.follow_system" = "Segui il sistema";
+"localization.follow_system" = "Usa la lingua di sistema";
 "localization.simplified_chinese_name" = "简体中文";
 "localization.traditional_chinese_name" = "繁體中文（台灣）";
 "localization.traditional_chinese_hong_kong_name" = "繁體中文（香港）";
@@ -79,7 +79,7 @@
 "snapshot.failed_to_load_balance.2" = "Impossibile caricare il saldo";
 "snapshot.value_remaining_value.2" = "%1$@ rimanente: %2$@%%";
 "snapshot.reset_value.2" = "%1$@";
-"snapshot.updated_value_follows_cc_switch_automatically" = "Aggiornato: %1$@ · Segue automaticamente CC Switch";
+"snapshot.updated_value_follows_cc_switch_automatically" = "Aggiornato: %1$@ · Sincronizzazione automatica con CC Switch";
 "snapshot.reset_value.3" = "· %1$@";
 "snapshot.official_quota_updates_every_minutevalue" = "Aggiornamento ufficiale della quota ogni minuto%1$@";
 "snapshot.waiting_for_opencodex_status" = "In attesa dello stato di OpenCodex";
@@ -371,7 +371,7 @@
 "dashboard.provider.pages.unavailable" = "Non disponibile";
 "dashboard.provider.pages.current_provider" = "Provider attuale";
 "dashboard.provider.pages.available_provider" = "Provider disponibile";
-"dashboard.provider.pages.following_this_provider" = "Segue questo provider";
+"dashboard.provider.pages.following_this_provider" = "Questo provider è in uso";
 "dashboard.provider.pages.this_provider_is_not_currently_active" = "Questo provider non è attualmente attivo";
 "dashboard.provider.pages.refresh_now" = "Aggiorna ora";
 "dashboard.provider.pages.switch_to_this_provider" = "Cambia a questo provider";
@@ -385,7 +385,7 @@
 "dashboard.provider.pages.no_codex_provider_found" = "Nessun provider Codex trovato";
 "dashboard.provider.pages.current_provider_unavailable" = "Provider attuale non disponibile";
 "dashboard.provider.pages.waiting_for_provider" = "In attesa di un provider";
-"dashboard.provider.pages.following_current_provider" = "Segue il provider corrente";
+"dashboard.provider.pages.following_current_provider" = "Il provider corrente è in uso";
 "dashboard.provider.pages.no_codex_provider_found.2" = "Nessun provider Codex trovato";
 "dashboard.provider.pages.loading.3" = "Caricamento…";
 "dashboard.provider.pages.current" = "Attuale";
