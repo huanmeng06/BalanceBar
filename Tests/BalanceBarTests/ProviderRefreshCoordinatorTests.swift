@@ -157,6 +157,247 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertTrue(recorder.stored.isEmpty)
     }
 
+    func testConcurrentStandardRefreshReadsAreConfinedToCoordinatorQueue() throws {
+        DelayedBalanceURLProtocol.setHandler { _ in
+            DelayedBalanceURLProtocol.success(amount: "12.00")
+        }
+        let dateSource = ConcurrentDateSource(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-confinement"),
+            actions: makeActions(),
+            now: { dateSource.read() }
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+
+        DispatchQueue.concurrentPerform(iterations: 32) { _ in
+            coordinator.refreshStandardProvider(
+                current: current,
+                client: .codex,
+                forceBalance: false,
+                switched: false
+            )
+        }
+
+        waitForEvent(dateSource.firstRead)
+        dateSource.releaseFirstRead()
+        waitForCoordinator(coordinator)
+
+        XCTAssertEqual(
+            dateSource.maximumConcurrentReads,
+            1,
+            "cadence reads must never execute concurrently"
+        )
+    }
+
+    func testStandardProviderCadenceRetainsConfiguredIntervalAndResetBehavior() throws {
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let summaryUpdated = DispatchSemaphore(value: 0)
+        let responseCounter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            let amount = responseCounter.next()
+            return DelayedBalanceURLProtocol.success(amount: "\(amount).00")
+        }
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-standard-cadence"),
+            actions: makeActions { _, _ in summaryUpdated.signal() },
+            now: { clock.now }
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        let interval = TimeInterval(max(current.query?.intervalMinutes ?? 1, 1) * 60)
+
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        clock.advance(by: interval - 1)
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        clock.advance(by: 1)
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+
+        coordinator.resetCadence()
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
+    func testOfficialProviderCadenceRetainsSixtySecondIntervalAndResetBehavior() throws {
+        try setCurrentProvider("codex-replacement")
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let summaryUpdated = DispatchSemaphore(value: 0)
+        let responseCounter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            DelayedBalanceURLProtocol.success(amount: "0.00")
+        }
+        let officialClient = OfficialQuotaClient(
+            session: session,
+            credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+            parser: IncrementingOfficialQuotaParser(counter: responseCounter)
+        )
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: officialClient,
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-official-cadence"),
+            actions: makeActions { _, _ in summaryUpdated.signal() },
+            now: { clock.now }
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        clock.advance(by: 59)
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        clock.advance(by: 1)
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+
+        coordinator.resetCadence()
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
+    func testQuickSwitchCadenceRetainsSixtySecondIntervalAndResetBehavior() throws {
+        let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
+        let summaryUpdated = DispatchSemaphore(value: 0)
+        let responseCounter = IncrementingCounter()
+        DelayedBalanceURLProtocol.setHandler { _ in
+            let amount = responseCounter.next()
+            return DelayedBalanceURLProtocol.success(amount: "\(amount).00")
+        }
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-quick-switch-cadence"),
+            actions: makeActions { _, _ in summaryUpdated.signal() },
+            now: { clock.now }
+        )
+
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        clock.advance(by: 59)
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+
+        clock.advance(by: 1)
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+
+        coordinator.resetCadence()
+        coordinator.refreshQuickSwitchSummaries(force: false, for: .codex)
+        waitForEvent(summaryUpdated)
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
+    private func makeActions(
+        _ updateQuickSwitchSummary: @escaping (String, String) -> Void = { _, _ in }
+    ) -> ProviderRefreshActions {
+        ProviderRefreshActions(
+            currentProvider: { [repository] client in
+                repository?.loadCurrent(appType: client.appType)
+            },
+            isActiveClient: { _ in true },
+            render: { _ in },
+            storeClientSnapshot: { _, _, _ in },
+            updateQuickSwitchSummary: updateQuickSwitchSummary,
+            isOpenCodexConfirmed: { _ in false }
+        )
+    }
+
+    private func waitForCoordinator(_ coordinator: ProviderRefreshCoordinator) {
+        let finished = DispatchSemaphore(value: 0)
+        coordinator.performAsync { finished.signal() }
+        waitForEvent(finished)
+    }
+
+    private func waitForEvent(_ event: DispatchSemaphore) {
+        XCTAssertEqual(event.wait(timeout: .now() + 2), .success)
+    }
+
     private func createFixtureDatabase() throws {
         try withDatabase { database in
             try execute(
@@ -265,6 +506,113 @@ private final class PublicationRecorder {
     }
 }
 
+private struct FixtureCredentialReader: OfficialQuotaCredentialReading {
+    let codexToken: String?
+
+    func codexAccessToken() -> String? { codexToken }
+    func codexAccountProfile() -> CodexAccountProfile? { nil }
+    func claudeAccessToken() -> String? { nil }
+}
+
+private struct IncrementingOfficialQuotaParser: OfficialQuotaParsing {
+    let counter: IncrementingCounter
+
+    func parse(
+        data: Data,
+        client: AssistantClient
+    ) throws -> OfficialQuotaResponseParser.Output {
+        OfficialQuotaResponseParser.Output(
+            windows: [
+                OfficialQuotaWindow(
+                    kind: .sevenDay,
+                    remaining: Double(counter.next()),
+                    label: "fixture",
+                    daysText: "fixture-days",
+                    reset: nil,
+                    durationSeconds: 7 * 86_400
+                )
+            ]
+        )
+    }
+}
+
+private final class TestClock {
+    private let lock = NSLock()
+    private var value: Date
+
+    init(date: Date) {
+        value = date
+    }
+
+    var now: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.lock()
+        value.addTimeInterval(interval)
+        lock.unlock()
+    }
+}
+
+private final class IncrementingCounter {
+    private let lock = NSLock()
+    private var value = 0
+
+    func next() -> Int {
+        lock.lock()
+        value += 1
+        let nextValue = value
+        lock.unlock()
+        return nextValue
+    }
+}
+
+private final class ConcurrentDateSource {
+    private let lock = NSLock()
+    private let date: Date
+    let firstRead = DispatchSemaphore(value: 0)
+    private let releaseGate = DispatchSemaphore(value: 0)
+    private var readCount = 0
+    private var activeReads = 0
+    private var maximumActiveReads = 0
+
+    init(date: Date) {
+        self.date = date
+    }
+
+    var maximumConcurrentReads: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return maximumActiveReads
+    }
+
+    func read() -> Date {
+        lock.lock()
+        readCount += 1
+        let shouldHold = readCount == 1
+        activeReads += 1
+        maximumActiveReads = max(maximumActiveReads, activeReads)
+        lock.unlock()
+
+        if shouldHold {
+            firstRead.signal()
+            releaseGate.wait()
+        }
+
+        lock.lock()
+        activeReads -= 1
+        lock.unlock()
+        return date
+    }
+
+    func releaseFirstRead() {
+        releaseGate.signal()
+    }
+}
+
 private final class DelayedBalanceURLProtocol: URLProtocol {
     struct Reply {
         let data: Data
@@ -273,10 +621,12 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
 
     private static let lock = NSLock()
     private static var handler: ((URLRequest) -> Reply)?
+    private static var recordedRequestCount = 0
 
     static func reset() {
         lock.lock()
         handler = nil
+        recordedRequestCount = 0
         lock.unlock()
     }
 
@@ -284,6 +634,12 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
         lock.lock()
         self.handler = handler
         lock.unlock()
+    }
+
+    static var requestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRequestCount
     }
 
     static func success(amount: String, unit: String = "USD") -> Reply {
@@ -299,8 +655,11 @@ private final class DelayedBalanceURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.lock.lock()
-        let reply = Self.handler?(request) ?? Self.success(amount: "0")
+        Self.recordedRequestCount += 1
+        let handler = Self.handler
         Self.lock.unlock()
+
+        let reply = handler?(request) ?? Self.success(amount: "0")
 
         let response = HTTPURLResponse(
             url: request.url!,

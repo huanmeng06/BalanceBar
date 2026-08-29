@@ -107,7 +107,11 @@ final class ProviderRefreshCoordinator {
     private let balanceAPIClient: BalanceAPIClient
     private let balanceProgressStore: ProviderBalanceProgressStore
     private let queue: DispatchQueue
+    private let queueKey = DispatchSpecificKey<Void>()
+    private let now: () -> Date
     private let actions: ProviderRefreshActions
+    // Cadence timestamps are owned by `queue`; public entry points never read
+    // or write them until their work reaches that serial boundary.
     private var lastBalanceFetch: Date?
     private var lastOfficialFetch: Date?
     private var lastQuickSwitchFetch: Date?
@@ -121,14 +125,17 @@ final class ProviderRefreshCoordinator {
         balanceAPIClient: BalanceAPIClient = BalanceAPIClient(),
         balanceProgressStore: ProviderBalanceProgressStore = ProviderBalanceProgressStore(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-refresh"),
-        actions: ProviderRefreshActions
+        actions: ProviderRefreshActions,
+        now: @escaping () -> Date = { Date() }
     ) {
         self.repository = repository
         self.officialQuotaClient = officialQuotaClient
         self.balanceAPIClient = balanceAPIClient
         self.balanceProgressStore = balanceProgressStore
         self.queue = queue
+        self.now = now
         self.actions = actions
+        queue.setSpecific(key: queueKey, value: ())
     }
 
     func quickSwitchSummariesSnapshot() -> [String: String] {
@@ -138,9 +145,12 @@ final class ProviderRefreshCoordinator {
     }
 
     func resetCadence() {
-        lastBalanceFetch = nil
-        lastOfficialFetch = nil
-        lastQuickSwitchFetch = nil
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            self.lastBalanceFetch = nil
+            self.lastOfficialFetch = nil
+            self.lastQuickSwitchFetch = nil
+        }
     }
 
     func performAsync(_ work: @escaping () -> Void) {
@@ -148,6 +158,22 @@ final class ProviderRefreshCoordinator {
     }
 
     func refreshStandardProvider(
+        current: CCSwitchProvider,
+        client: AssistantClient,
+        forceBalance: Bool,
+        switched: Bool
+    ) {
+        performOnQueue { [weak self] in
+            self?.refreshStandardProviderOnQueue(
+                current: current,
+                client: client,
+                forceBalance: forceBalance,
+                switched: switched
+            )
+        }
+    }
+
+    private func refreshStandardProviderOnQueue(
         current: CCSwitchProvider,
         client: AssistantClient,
         forceBalance: Bool,
@@ -167,17 +193,19 @@ final class ProviderRefreshCoordinator {
                 )
                 return
             }
-            let due = lastOfficialFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
+            let currentDate = now()
+            let due = lastOfficialFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             guard forceBalance || switched || due else { return }
-            lastOfficialFetch = Date()
+            lastOfficialFetch = currentDate
             fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client)
             return
         }
 
         let interval = TimeInterval(max(query.intervalMinutes, 1) * 60)
-        let due = lastBalanceFetch.map { Date().timeIntervalSince($0) >= interval } ?? true
+        let currentDate = now()
+        let due = lastBalanceFetch.map { currentDate.timeIntervalSince($0) >= interval } ?? true
         guard forceBalance || switched || due else { return }
-        lastBalanceFetch = Date()
+        lastBalanceFetch = currentDate
         fetchBalance(
             providerID: current.id,
             providerName: current.name,
@@ -201,9 +229,10 @@ final class ProviderRefreshCoordinator {
         let client = requestedClient ?? .codex
         queue.async { [weak self] in
             guard let self else { return }
-            let due = self.lastQuickSwitchFetch.map { Date().timeIntervalSince($0) >= 60 } ?? true
+            let currentDate = self.now()
+            let due = self.lastQuickSwitchFetch.map { currentDate.timeIntervalSince($0) >= 60 } ?? true
             guard force || due else { return }
-            self.lastQuickSwitchFetch = Date()
+            self.lastQuickSwitchFetch = currentDate
             for source in self.repository.loadSummarySources(appType: client.appType) {
                 if client == .codex,
                    source.openCodexCandidate != nil,
@@ -246,6 +275,17 @@ final class ProviderRefreshCoordinator {
                     )
                 }
             }
+        }
+    }
+
+    private func performOnQueue(_ work: @escaping () -> Void) {
+        // Refresh can be requested from another coordinator's queue. Avoid a
+        // second hop when already on the owner queue so FIFO behavior stays
+        // identical for the existing composition-root refresh path.
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            work()
+        } else {
+            queue.async { work() }
         }
     }
 
