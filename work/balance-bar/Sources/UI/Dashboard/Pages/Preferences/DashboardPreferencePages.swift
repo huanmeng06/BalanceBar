@@ -184,16 +184,8 @@ final class DashboardPreferencePages {
         )
     }
 
-    func refreshLogs() {
-        logsPage.refresh()
-    }
-
     func refreshUpdateState(_ updateState: UpdateCheckState) {
         generalPage.refresh(updateState: updateState)
-    }
-
-    func revealLogs() {
-        logsPage.reveal()
     }
 
     func handleAutomaticDetection(_ enabled: Bool) {

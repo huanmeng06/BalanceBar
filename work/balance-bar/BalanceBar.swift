@@ -1188,10 +1188,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
 
-    var lifecycleStatsForTesting: ApplicationLifecycleStats {
-        lifecycle.stats
-    }
-
     private func showDashboard() {
         dashboardComposition.open()
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
