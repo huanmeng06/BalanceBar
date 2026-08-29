@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_reset_display_target" = "Reset Time";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Show Both";
 "dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Luna Reserve Auto-Switch";
-"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "When you enter 🌙 Luna Reserve, automatically switch the quota shown in the menu bar.";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "After entering 🌙 Luna Reserve, automatically switch the quota shown in the menu bar.";
 "dashboard.menu.bar.page.luna_reserve_reset_time" = "🌙 Luna Reserve Reset Time";
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "After entering 🌙 Luna Reserve, choose whether to keep showing the original quota's reset time or 🌙 Luna Reserve's.";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";

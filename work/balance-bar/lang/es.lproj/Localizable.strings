@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_reset_display_target" = "Hora de reinicio";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Mostrar ambos";
 "dashboard.menu.bar.page.auto_switch_luna_reserve" = "Cambio automático a 🌙 Luna Reserve";
-"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Al entrar en 🌙 Luna Reserve, cambia automáticamente la cuota que se muestra en la barra de menús";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Después de entrar en 🌙 Luna Reserve, cambia automáticamente la cuota que se muestra en la barra de menús";
 "dashboard.menu.bar.page.luna_reserve_reset_time" = "Hora de reinicio de 🌙 Luna Reserve";
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Después de entrar en 🌙 Luna Reserve, elige si mantener la hora de reinicio de la cuota original o mostrar la de 🌙 Luna Reserve";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";

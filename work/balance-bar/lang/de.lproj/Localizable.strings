@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_reset_display_target" = "Rücksetzzeit";
 "dashboard.menu.bar.page.quota_reset_display_both" = "Beides";
 "dashboard.menu.bar.page.auto_switch_luna_reserve" = "Automatisch zu 🌙 Luna Reserve wechseln";
-"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Beim Wechsel zu 🌙 Luna Reserve wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "Nach dem Wechsel zu 🌙 Luna Reserve wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet";
 "dashboard.menu.bar.page.luna_reserve_reset_time" = "Rücksetzzeit für 🌙 Luna Reserve";
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Nach dem Wechsel zu 🌙 Luna Reserve auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von 🌙 Luna Reserve angezeigt wird";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";

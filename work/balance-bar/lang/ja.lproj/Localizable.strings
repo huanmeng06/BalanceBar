@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_reset_display_target" = "リセット時刻";
 "dashboard.menu.bar.page.quota_reset_display_both" = "両方を表示";
 "dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Luna Reserve への自動切り替え";
-"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "🌙 Luna Reserve に入ると、メニューバーに表示するクォータを自動的に切り替えます";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "🌙 Luna Reserve に入った後、メニューバーに表示するクォータを自動的に切り替えます";
 "dashboard.menu.bar.page.luna_reserve_reset_time" = "🌙 Luna Reserve のリセット時刻";
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "🌙 Luna Reserve に入った後、元のクォータのリセット時刻と 🌙 Luna Reserve のリセット時刻のどちらを表示するか選択";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";

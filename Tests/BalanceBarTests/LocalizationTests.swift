@@ -405,42 +405,42 @@ final class LocalizationTests: XCTestCase {
             .japanese: [
                 "優先表示するクォータ", "メニューバーで 5 時間クォータと 7 日間クォータのどちらを優先表示するか選択", "5時間クォータ", "7日間クォータ",
                 "リセット時刻の表示形式", "残り時間、具体的なリセット時刻、または両方を表示するか選択", "残り時間", "リセット時刻", "両方を表示",
-                "🌙 Luna Reserve への自動切り替え", "🌙 Luna Reserve に入ると、メニューバーに表示するクォータを自動的に切り替えます",
+                "🌙 Luna Reserve への自動切り替え", "🌙 Luna Reserve に入った後、メニューバーに表示するクォータを自動的に切り替えます",
                 "🌙 Luna Reserve のリセット時刻", "🌙 Luna Reserve に入った後、元のクォータのリセット時刻と 🌙 Luna Reserve のリセット時刻のどちらを表示するか選択",
                 "🌙 Luna Reserve", "元のクォータ"
             ],
             .english: [
                 "Prioritize Quota", "Choose whether the menu bar prioritizes the 5-hour or 7-day quota", "5-Hour Quota", "7-Day Quota",
                 "Reset Time Display", "Choose whether to show the time remaining, the specific reset time, or both", "Time Remaining", "Reset Time", "Show Both",
-                "🌙 Luna Reserve Auto-Switch", "When you enter 🌙 Luna Reserve, automatically switch the quota shown in the menu bar.",
+                "🌙 Luna Reserve Auto-Switch", "After entering 🌙 Luna Reserve, automatically switch the quota shown in the menu bar.",
                 "🌙 Luna Reserve Reset Time", "After entering 🌙 Luna Reserve, choose whether to keep showing the original quota's reset time or 🌙 Luna Reserve's.",
                 "🌙 Luna Reserve", "Original Quota"
             ],
             .korean: [
                 "우선 표시할 할당량", "메뉴 막대에 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요", "5시간 할당량", "7일 할당량",
                 "재설정 시간 표시 방식", "남은 시간, 정확한 재설정 시간 또는 둘 다 표시할지 선택하세요", "남은 시간", "재설정 시간", "둘 다 표시",
-                "🌙 Luna Reserve 자동 전환", "🌙 Luna Reserve에 진입하면 메뉴 막대에 표시할 할당량을 자동으로 전환합니다",
+                "🌙 Luna Reserve 자동 전환", "🌙 Luna Reserve에 진입한 후 메뉴 막대에 표시할 할당량을 자동으로 전환합니다",
                 "🌙 Luna Reserve 재설정 시간", "🌙 Luna Reserve에 진입한 후 원래 할당량의 재설정 시간과 🌙 Luna Reserve의 재설정 시간 중 어느 것을 표시할지 선택합니다",
                 "🌙 Luna Reserve", "원래 할당량"
             ],
             .spanish: [
                 "Priorizar cuota", "Elige si la barra de menús debe priorizar la cuota de 5 horas o la de 7 días", "Cuota de 5 horas", "Cuota de 7 días",
                 "Formato de la hora de reinicio", "Elige si mostrar el tiempo restante, la hora exacta de reinicio o ambos", "Tiempo restante", "Hora de reinicio", "Mostrar ambos",
-                "Cambio automático a 🌙 Luna Reserve", "Al entrar en 🌙 Luna Reserve, cambia automáticamente la cuota que se muestra en la barra de menús",
+                "Cambio automático a 🌙 Luna Reserve", "Después de entrar en 🌙 Luna Reserve, cambia automáticamente la cuota que se muestra en la barra de menús",
                 "Hora de reinicio de 🌙 Luna Reserve", "Después de entrar en 🌙 Luna Reserve, elige si mantener la hora de reinicio de la cuota original o mostrar la de 🌙 Luna Reserve",
                 "🌙 Luna Reserve", "Cuota original"
             ],
             .german: [
                 "Bevorzugtes Kontingent", "Auswählen, ob in der Menüleiste das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird", "5-Stunden-Kontingent", "7-Tage-Kontingent",
                 "Format der Rücksetzzeit", "Auswählen, ob die verbleibende Zeit, die genaue Rücksetzzeit oder beides angezeigt wird", "Verbleibende Zeit", "Rücksetzzeit", "Beides",
-                "Automatisch zu 🌙 Luna Reserve wechseln", "Beim Wechsel zu 🌙 Luna Reserve wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet",
+                "Automatisch zu 🌙 Luna Reserve wechseln", "Nach dem Wechsel zu 🌙 Luna Reserve wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet",
                 "Rücksetzzeit für 🌙 Luna Reserve", "Nach dem Wechsel zu 🌙 Luna Reserve auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von 🌙 Luna Reserve angezeigt wird",
                 "🌙 Luna Reserve", "Ursprüngliches Kontingent"
             ],
             .french: [
                 "Quota à privilégier", "Choisissez si la barre des menus doit privilégier le quota de 5 heures ou celui de 7 jours", "Quota sur 5 heures", "Quota sur 7 jours",
                 "Format de l’heure de réinitialisation", "Choisissez d’afficher le temps restant, l’heure exacte de réinitialisation ou les deux", "Temps restant", "Heure de réinitialisation", "Afficher les deux",
-                "Basculement automatique vers 🌙 Luna Reserve", "À l’entrée dans 🌙 Luna Reserve, le quota affiché dans la barre des menus bascule automatiquement",
+                "Basculement automatique vers 🌙 Luna Reserve", "Après l’entrée dans 🌙 Luna Reserve, le quota affiché dans la barre des menus bascule automatiquement",
                 "Heure de réinitialisation de 🌙 Luna Reserve", "Après l’entrée dans 🌙 Luna Reserve, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de 🌙 Luna Reserve",
                 "🌙 Luna Reserve", "Quota d’origine"
             ]
