@@ -1087,6 +1087,62 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testIssue254TraditionalChineseCopyKeepsBalanceProviderAndSyncSemantics() {
+        let store = LocalizationResourceStore(bundle: testBundle)
+        let languages: [AppLanguage] = [.traditionalChineseTaiwan, .traditionalChineseHongKong]
+        let expectations: [(key: LocalizationKey, arguments: [String], expected: String)] = [
+            (
+                .keyProviderModelsTheUpstreamProviderIdentityWasNotRead,
+                [],
+                "未讀取到上游服務商身分"
+            ),
+            (.keySnapshotBalanceStatus, [], "餘額狀態"),
+            (.keySnapshotRemainingBalance, [], "剩餘餘額"),
+            (.keySnapshotCurrentProviderModel, [], "目前服務商／模型"),
+            (
+                .keySnapshotUpdatedValueFollowsCcSwitchAutomatically,
+                ["19:30"],
+                "更新：19:30 · 與 CC Switch 自動同步"
+            ),
+            (
+                .keyDashboardProviderPagesFollowingThisProvider,
+                [],
+                "正在與此服務商自動同步"
+            ),
+            (
+                .keyDashboardProviderPagesFollowingCurrentProvider,
+                [],
+                "正在與目前服務商自動同步"
+            ),
+            (
+                .keyStatusItemControllerOpencodexChosenModelsAreNotAvailableYet,
+                [],
+                "尚未讀取到 OpenCodex 已選模型"
+            ),
+            (
+                .keyStatusItemControllerNoOpencodexChosenModelsAreConfigured,
+                [],
+                "未設定 OpenCodex 已選模型"
+            ),
+            (.keyStatusItemControllerRemainingBalance, [], "剩餘餘額"),
+            (.keyStatusItemControllerNoLiveDataReceivedYet, [], "尚未收到即時資料")
+        ]
+
+        for language in languages {
+            for expectation in expectations {
+                XCTAssertEqual(
+                    store.localized(
+                        key: expectation.key,
+                        language: language,
+                        arguments: expectation.arguments
+                    ),
+                    expectation.expected,
+                    "Traditional Chinese semantic copy for \(language.rawValue) key \(expectation.key.rawKey)"
+                )
+            }
+        }
+    }
+
     func testParameterizedAndSemanticContractsHoldAcrossAllTwelveLanguages() {
         let store = LocalizationResourceStore(bundle: testBundle)
         let languages: [AppLanguage] = [
