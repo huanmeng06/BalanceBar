@@ -1120,7 +1120,7 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertNil(link.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil))
     }
 
-    func testMenuHostedLinkSurvivesThreePopupReopens() {
+    func testMenuHostedLinkSurvivesFivePopupReopens() {
         let menu = NSMenu(title: "Issue 265 reopen")
         let item = NSMenuItem()
         let host = MenuHoverLinkHostView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
@@ -1133,7 +1133,7 @@ final class DashboardComponentsTests: XCTestCase {
         menu.addItem(item)
 
         defer { menu.removeAllItems() }
-        for openNumber in 1...3 {
+        for openNumber in 1...5 {
             var attached = false
             var underlined = false
             var trackingAreaCount = 0
@@ -1144,9 +1144,11 @@ final class DashboardComponentsTests: XCTestCase {
                     return
                 }
                 attached = true
-                host.updateTrackingAreas()
                 let glyphPoint = host.convert(link.visibleTextHitRect.center, from: link)
-                host.forwardHover(atHostPoint: glyphPoint)
+                host.mouseMoved(with: self.makeMouseEvent(
+                    type: .mouseMoved,
+                    location: host.convert(glyphPoint, to: nil)
+                ))
                 underlined = link.attributedStringValue.attribute(
                     .underlineStyle,
                     at: 0,

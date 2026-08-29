@@ -1942,19 +1942,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
-        MenuCursorActivationExperiment.log("menu-will-open-before-force-activate")
-        if MenuCursorActivationExperiment.isEnabled {
-            // Diagnostic only. This must never become a production cursor
-            // policy unless manual testing proves it has no focus side effect.
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        MenuCursorActivationExperiment.log("menu-will-open-after-force-activate")
     }
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = false
-        MenuCursorActivationExperiment.log("menu-did-close")
         guard statusMenuNeedsRebuild else { return }
         statusMenuNeedsRebuild = false
         DispatchQueue.main.async { [weak self] in
