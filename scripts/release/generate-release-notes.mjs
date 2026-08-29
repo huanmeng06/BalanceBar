@@ -9,6 +9,7 @@ import {
   limitReleaseInput,
   RELEASE_INPUT_LIMITS,
   serializedByteLength,
+  truncate,
 } from "./collect-release-input.mjs";
 import { validateReleaseNotes } from "./render-release-notes.mjs";
 
@@ -64,8 +65,10 @@ export const DEFAULT_AI_BASE_URLS = Object.freeze({
   openai: "https://api.openai.com",
   deepseek: "https://api.deepseek.com",
 });
-export const AI_MAX_ATTEMPTS = 3;
-export const AI_RETRY_BACKOFF_MS = Object.freeze([250, 500]);
+export const AI_MAX_ATTEMPTS = 4;
+export const AI_RETRY_BACKOFF_MS = Object.freeze([1_000, 3_000, 8_000]);
+export const AI_REQUEST_TIMEOUT_MS = 75_000;
+export const AI_MAX_RETRY_AFTER_MS = 15_000;
 
 const RELEASE_NOTES_INSTRUCTIONS = [
   "You write release notes for the BalanceBar macOS app.",
@@ -223,16 +226,40 @@ function safeDiagnosticText(value, limit = 240) {
     .slice(0, limit);
 }
 
-function responseHeader(response, names) {
+function rawResponseHeader(response, names) {
   for (const name of names) {
-    const value = response?.headers?.get?.(name)
-      ?? response?.headers?.[name]
-      ?? response?.headers?.[name.toLowerCase()];
+    const headers = response?.headers;
+    const value = headers?.get?.(name)
+      ?? headers?.[name]
+      ?? headers?.[name.toLowerCase()]
+      ?? (headers && typeof headers === "object"
+        ? Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]
+        : undefined);
     if (typeof value === "string" && value) {
-      return safeDiagnosticText(value, 120);
+      return value.trim();
     }
   }
   return undefined;
+}
+
+function responseHeader(response, names) {
+  return safeDiagnosticText(rawResponseHeader(response, names), 120);
+}
+
+function retryAfterMilliseconds(response, now = Date.now()) {
+  const rawValue = rawResponseHeader(response, ["retry-after"]);
+  if (!rawValue) {
+    return null;
+  }
+
+  const seconds = Number(rawValue);
+  const delay = Number.isFinite(seconds) && seconds >= 0
+    ? seconds * 1_000
+    : Date.parse(rawValue) - now;
+  if (!Number.isFinite(delay) || delay < 0) {
+    return null;
+  }
+  return Math.min(Math.round(delay), AI_MAX_RETRY_AFTER_MS);
 }
 
 function safeUsage(usage) {
@@ -255,7 +282,15 @@ function safeUsage(usage) {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-function diagnosticFor({ provider, model, response, body, requestPayloadBytes, classification }) {
+function diagnosticFor({
+  provider,
+  model,
+  response,
+  body,
+  requestPayloadBytes,
+  requestTimeoutMs,
+  classification,
+}) {
   const choice = body?.choices?.[0];
   const providerError = body?.error && typeof body.error === "object"
     ? body.error
@@ -276,11 +311,35 @@ function diagnosticFor({ provider, model, response, body, requestPayloadBytes, c
     usage: safeUsage(body?.usage) ?? null,
     choices: Array.isArray(body?.choices) ? body.choices.length : null,
     requestPayloadBytes,
+    requestTimeoutMs: Number.isFinite(Number(requestTimeoutMs)) ? Number(requestTimeoutMs) : null,
+    retryAfterMs: Number(response?.status) === 429 ? retryAfterMilliseconds(response) : null,
     classification,
     providerErrorCode: safeDiagnosticText(providerError.code ?? providerError.type ?? body?.code, 120) ?? null,
     providerErrorMessage: safeDiagnosticText(providerError.message ?? body?.message, 240) ?? null,
   };
   return diagnostic;
+}
+
+function httpFailureClassification(response) {
+  const status = Number(response?.status);
+  if (Number.isFinite(status)) {
+    if (status >= 200 && status < 300) {
+      return null;
+    }
+    if (status === 429) {
+      return { classification: "rate_limit_429", retryable: true };
+    }
+    if (status === 408) {
+      return { classification: "provider_timeout", retryable: true };
+    }
+    if (status >= 500 && status <= 599) {
+      return { classification: "provider_http_5xx", retryable: true };
+    }
+    return { classification: "provider_http_error", retryable: false };
+  }
+  return response?.ok === false
+    ? { classification: "provider_http_error", retryable: false }
+    : null;
 }
 
 function networkClassification(error) {
@@ -306,18 +365,36 @@ function responseFailureClassification(response, body) {
       : {};
   const code = lowerText(error.code ?? error.type ?? choiceReason);
   const message = lowerText(error.message);
-
-  if (containsAny(`${code} ${message}`, ["content_filter", "content filter", "safety filter", "safety_system"])) {
-    return { classification: "content_filter", retryable: false };
-  }
-  if (containsAny(`${code} ${message}`, [
+  const httpFailure = httpFailureClassification(response);
+  const hasContentFilter = containsAny(`${code} ${message}`, [
+    "content_filter",
+    "content filter",
+    "safety filter",
+    "safety_system",
+  ]);
+  const hasConfigurationFailure = containsAny(`${code} ${message}`, [
     "invalid_api_key",
     "authentication",
     "model_not_found",
     "invalid_request",
     "configuration",
     "unsupported",
-  ])) {
+  ]);
+
+  // HTTP status is authoritative for ordinary transient provider failures,
+  // while explicit terminal content/configuration signals remain non-retryable.
+  if (httpFailure
+    && ["rate_limit_429", "provider_timeout", "provider_http_5xx"]
+      .includes(httpFailure.classification)
+    && !hasContentFilter
+    && !hasConfigurationFailure) {
+    return httpFailure;
+  }
+
+  if (hasContentFilter) {
+    return { classification: "content_filter", retryable: false };
+  }
+  if (hasConfigurationFailure) {
     return { classification: "configuration", retryable: false };
   }
   if (containsAny(`${code} ${message}`, [
@@ -329,16 +406,7 @@ function responseFailureClassification(response, body) {
   ])) {
     return { classification: "provider_resource_exhausted", retryable: true };
   }
-  if (Number(response?.status) === 429) {
-    return { classification: "rate_limit_429", retryable: true };
-  }
-  if (Number(response?.status) === 408) {
-    return { classification: "provider_timeout", retryable: true };
-  }
-  if (Number(response?.status) >= 500 && Number(response?.status) <= 599) {
-    return { classification: "provider_http_5xx", retryable: true };
-  }
-  return { classification: "provider_http_error", retryable: false };
+  return httpFailure ?? { classification: "provider_http_error", retryable: false };
 }
 
 export class ReleaseNotesAIError extends Error {
@@ -362,6 +430,7 @@ function createAIError({
   response,
   body,
   requestPayloadBytes,
+  requestTimeoutMs,
   classification,
   retryable,
   message,
@@ -376,6 +445,7 @@ function createAIError({
       response,
       body,
       requestPayloadBytes,
+      requestTimeoutMs,
       classification,
     }),
     cause,
@@ -411,6 +481,30 @@ async function readProviderJson(response, context) {
   }
 }
 
+function createRequestTimeoutSignal(timeoutMs) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return AbortSignal.timeout(timeoutMs);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException("AI provider request timed out", "TimeoutError"));
+  }, timeoutMs);
+  timer.unref?.();
+  return controller.signal;
+}
+
+function createNetworkTimeoutError(context, response, cause) {
+  return createAIError({
+    ...context,
+    response,
+    classification: "network_timeout",
+    retryable: true,
+    message: `${context.provider} response timed out after ${context.requestTimeoutMs}ms`,
+    cause,
+  });
+}
+
 async function requestProviderReleaseNotes(input, context) {
   const {
     provider,
@@ -420,10 +514,12 @@ async function requestProviderReleaseNotes(input, context) {
     fetchImpl,
     requestBody,
     requestPayloadBytes,
+    requestTimeoutMs,
   } = context;
   const endpoint = provider === "deepseek"
     ? `${baseUrl}/chat/completions`
     : `${baseUrl}/v1/responses`;
+  const signal = createRequestTimeoutSignal(requestTimeoutMs);
 
   let response;
   try {
@@ -434,9 +530,10 @@ async function requestProviderReleaseNotes(input, context) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
+      signal,
     });
   } catch (error) {
-    const classification = networkClassification(error);
+    const classification = signal.aborted ? "network_timeout" : networkClassification(error);
     throw createAIError({
       ...context,
       classification,
@@ -446,8 +543,43 @@ async function requestProviderReleaseNotes(input, context) {
     });
   }
 
-  const body = await readProviderJson(response, { ...context, response });
+  const statusFailure = httpFailureClassification(response);
+  if (signal.aborted) {
+    throw createNetworkTimeoutError(context, response);
+  }
+  let body;
+  try {
+    body = await readProviderJson(response, { ...context, response });
+  } catch (error) {
+    if (signal.aborted) {
+      throw createNetworkTimeoutError(context, response, error);
+    }
+    if (statusFailure) {
+      throw createAIError({
+        ...context,
+        response,
+        classification: statusFailure.classification,
+        retryable: statusFailure.retryable,
+        message: `${provider} request failed (${statusFailure.classification}) with an unreadable response body`,
+        cause: error,
+      });
+    }
+    throw error;
+  }
+  if (signal.aborted) {
+    throw createNetworkTimeoutError(context, response);
+  }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
+    if (statusFailure) {
+      throw createAIError({
+        ...context,
+        response,
+        body: undefined,
+        classification: statusFailure.classification,
+        retryable: statusFailure.retryable,
+        message: `${provider} request failed (${statusFailure.classification}) with an invalid response body`,
+      });
+    }
     throw createAIError({
       ...context,
       response,
@@ -463,10 +595,11 @@ async function requestProviderReleaseNotes(input, context) {
     response,
     body,
     requestPayloadBytes,
+    requestTimeoutMs,
     classification: "provider_response",
   });
 
-  if (!response?.ok || body?.error) {
+  if (statusFailure || body?.error) {
     const failure = responseFailureClassification(response, body);
     throw createAIError({
       ...context,
@@ -568,6 +701,7 @@ function logDiagnostic(logger, attempt, error) {
     finish_reason: error.diagnostic.finishReason ?? null,
     request_id: error.diagnostic.requestId ?? null,
     request_payload_bytes: error.diagnostic.requestPayloadBytes ?? null,
+    retry_after_ms: error.diagnostic.retryAfterMs ?? null,
   };
   log(logger, "warn", `release-notes-ai: failure ${JSON.stringify(diagnostic)}`);
 }
@@ -589,12 +723,138 @@ function fallbackNumber(value) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
+const FALLBACK_HEADINGS = new Set([
+  "summary",
+  "description",
+  "details",
+  "changes",
+  "implementation",
+  "what changed",
+  "context",
+  "motivation",
+  "testing",
+  "tests",
+  "test",
+  "test plan",
+  "test results",
+  "verification",
+  "validation",
+  "checklist",
+  "checks",
+  "qa",
+  "acceptance criteria",
+  "release checklist",
+  "n/a",
+  "none",
+]);
+
+const FALLBACK_NON_CONTENT_SECTIONS = new Set([
+  "test",
+  "tests",
+  "testing",
+  "test plan",
+  "test results",
+  "verification",
+  "validation",
+  "checklist",
+  "checks",
+  "qa",
+  "acceptance criteria",
+  "release checklist",
+]);
+
+function stripFallbackMarkdown(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value
+    .replaceAll("\u0000", "")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/gi, "[link omitted]")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/^\s*#{1,6}\s+/gm, "")
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+|>\s?|\[[ xX]\]\s+)/gm, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function firstMeaningfulExcerpt(value, limit = 360) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const lines = value
+    .replaceAll("\u0000", "")
+    .replace(/<!--[\s\S]*?-->/g, "\n")
+    .replace(/```[\s\S]*?```/g, "\n")
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
+  let section = "";
+  let paragraph = [];
+
+  const takeParagraph = () => {
+    if (paragraph.length === 0) {
+      return "";
+    }
+    const excerpt = truncate(paragraph.join(" "), limit);
+    paragraph = [];
+    return excerpt;
+  };
+
+  for (const rawLine of lines) {
+    const headingMatch = /^\s*#{1,6}\s+(.+?)\s*$/.exec(rawLine);
+    if (headingMatch) {
+      const excerpt = takeParagraph();
+      if (excerpt) {
+        return excerpt;
+      }
+      section = stripFallbackMarkdown(headingMatch[1])
+        .replace(/[：:]$/, "")
+        .trim()
+        .toLowerCase();
+      continue;
+    }
+
+    const line = stripFallbackMarkdown(rawLine);
+    if (!line || /^[-_*`]+$/.test(line)) {
+      const excerpt = takeParagraph();
+      if (excerpt) {
+        return excerpt;
+      }
+      continue;
+    }
+
+    const heading = line.replace(/[：:]$/, "").trim().toLowerCase();
+    if (FALLBACK_HEADINGS.has(heading)) {
+      const excerpt = takeParagraph();
+      if (excerpt) {
+        return excerpt;
+      }
+      section = heading;
+      continue;
+    }
+    if (FALLBACK_NON_CONTENT_SECTIONS.has(section)) {
+      continue;
+    }
+
+    const placeholder = line.replace(/[*_~`]/g, "").trim().toLowerCase();
+    if (["n/a", "none", "no response", "no response provided"].includes(placeholder)) {
+      continue;
+    }
+    paragraph.push(line);
+  }
+
+  return takeParagraph();
+}
+
 function fallbackTitle(pullRequest) {
   const number = fallbackNumber(pullRequest);
-  const title = typeof pullRequest?.title === "string"
-    ? pullRequest.title.replace(/[\r\n]+/g, " ").replace(/^#+\s*/, "").trim()
-    : "";
-  return (title || `Pull request #${number}`).slice(0, 120);
+  const title = truncate(stripFallbackMarkdown(pullRequest?.title).replace(/[\r\n]+/g, " "), 120);
+  return title || `Pull request #${number}`;
 }
 
 function fallbackSources(pullRequest) {
@@ -615,6 +875,55 @@ function isFeatureFallback(pullRequest) {
   return containsAny(`${labels} ${title}`, ["feature", "enhancement", "feat"]);
 }
 
+function fallbackIssueCatalog(input) {
+  const issues = new Map();
+  for (const issue of Array.isArray(input?.issues) ? input.issues : []) {
+    const number = fallbackNumber(issue);
+    if (number !== null) {
+      issues.set(number, issue);
+    }
+  }
+  for (const pullRequest of input?.pullRequests ?? []) {
+    for (const issue of pullRequest.closingIssues ?? []) {
+      const number = fallbackNumber(issue);
+      if (number !== null && !issues.has(number)) {
+        issues.set(number, issue);
+      }
+    }
+  }
+  return issues;
+}
+
+function fallbackDescription(input, pullRequest) {
+  const number = fallbackNumber(pullRequest);
+  const prExcerpt = firstMeaningfulExcerpt(pullRequest?.body);
+  if (prExcerpt) {
+    return {
+      zhHans: truncate(`PR #${number} 记录摘要（原文）：${prExcerpt}`, 500),
+      en: truncate(`PR #${number} recorded summary (source text): ${prExcerpt}`, 500),
+    };
+  }
+
+  const issues = fallbackIssueCatalog(input);
+  for (const issueReference of pullRequest?.closingIssues ?? []) {
+    const issueNumber = fallbackNumber(issueReference);
+    const issue = issues.get(issueNumber) ?? issueReference;
+    const issueExcerpt = firstMeaningfulExcerpt(issue?.body)
+      || firstMeaningfulExcerpt(issue?.title, 240);
+    if (issueNumber !== null && issueExcerpt) {
+      return {
+        zhHans: truncate(`关联 Issue #${issueNumber} 记录摘要（原文）：${issueExcerpt}`, 500),
+        en: truncate(`Linked Issue #${issueNumber} recorded summary (source text): ${issueExcerpt}`, 500),
+      };
+    }
+  }
+
+  return {
+    zhHans: `PR #${number} 没有提供可安全摘要的额外记录；本条仅保留 PR 标题和明确来源。`,
+    en: `PR #${number} has no additional evidence that can be safely summarized; this entry preserves only its title and explicit sources.`,
+  };
+}
+
 export function buildDeterministicReleaseNotes(input) {
   const pullRequests = (Array.isArray(input?.pullRequests) ? input.pullRequests : [])
     .slice()
@@ -631,14 +940,15 @@ export function buildDeterministicReleaseNotes(input) {
     }
     const title = fallbackTitle(pullRequest);
     const sources = fallbackSources(pullRequest);
+    const description = fallbackDescription(input, pullRequest);
     const item = {
       zhHans: {
         title,
-        description: "AI 生成不可用；保留此 PR 及其明确关联 Issue 作为本次发布的来源。",
+        description: description.zhHans,
       },
       en: {
         title,
-        description: "AI generation was unavailable; this entry preserves the PR and its explicitly linked Issue sources.",
+        description: description.en,
       },
       sources,
     };
@@ -660,6 +970,21 @@ function resolvedAttempts(value) {
     : AI_MAX_ATTEMPTS;
 }
 
+function resolvedRequestTimeout(value) {
+  const timeout = Number(value ?? AI_REQUEST_TIMEOUT_MS);
+  return Number.isFinite(timeout) && timeout > 0
+    ? Math.min(timeout, 90_000)
+    : AI_REQUEST_TIMEOUT_MS;
+}
+
+function retryDelayMilliseconds(error, attempt) {
+  if (error?.classification === "rate_limit_429"
+    && Number.isFinite(Number(error?.diagnostic?.retryAfterMs))) {
+    return Math.min(Math.max(Number(error.diagnostic.retryAfterMs), 0), AI_MAX_RETRY_AFTER_MS);
+  }
+  return AI_RETRY_BACKOFF_MS[Math.min(attempt - 1, AI_RETRY_BACKOFF_MS.length - 1)];
+}
+
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -674,8 +999,10 @@ export async function requestReleaseNotes(input, {
   maxAttempts = AI_MAX_ATTEMPTS,
   sleepImpl = sleep,
   fallbackOnFailure = true,
+  requestTimeoutMs = AI_REQUEST_TIMEOUT_MS,
 } = {}) {
   const bounded = boundedInput(input);
+  const resolvedTimeoutMs = resolvedRequestTimeout(requestTimeoutMs);
   let context;
   try {
     const resolvedProvider = resolveAIProvider(provider);
@@ -709,6 +1036,7 @@ export async function requestReleaseNotes(input, {
       fetchImpl,
       requestBody,
       requestPayloadBytes,
+      requestTimeoutMs: resolvedTimeoutMs,
     };
   } catch (error) {
     const wrapped = error instanceof ReleaseNotesAIError
@@ -757,9 +1085,9 @@ export async function requestReleaseNotes(input, {
       if (!lastError.retryable || attempt >= attempts) {
         break;
       }
-      const backoff = AI_RETRY_BACKOFF_MS[Math.min(attempt - 1, AI_RETRY_BACKOFF_MS.length - 1)];
+      const backoff = retryDelayMilliseconds(lastError, attempt);
       log(logger, "warn",
-        `release-notes-ai: retrying attempt=${attempt + 1}/${attempts} classification=${lastError.classification} backoffMs=${backoff}`,
+        `release-notes-ai: retrying attempt=${attempt + 1}/${attempts} classification=${lastError.classification} delayMs=${backoff}`,
       );
       await sleepImpl(backoff);
     }

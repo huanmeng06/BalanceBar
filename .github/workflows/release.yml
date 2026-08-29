@@ -187,7 +187,10 @@ jobs:
           selection_json="$RUNNER_TEMP/balancebar-release-selection.json"
           enriched_prs_json="$RUNNER_TEMP/balancebar-release-enriched-prs.json"
           issue_details_json="$RUNNER_TEMP/balancebar-release-issue-details.json"
+          issue_numbers_file="$RUNNER_TEMP/balancebar-release-issue-numbers.txt"
           input_json="$RUNNER_TEMP/balancebar-release-input.json"
+          enrichment_parallelism=4
+          diff_context_bytes=12000
 
           gh api \
             "repos/$GITHUB_REPOSITORY/compare/${PREVIOUS_TAG}...${MERGE_SHA}" \
@@ -198,7 +201,7 @@ jobs:
             --state merged \
             --base main \
             --limit 1000 \
-            --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits \
+            --json number,mergeCommit,commits \
             > "$prs_json"
 
           event_path="${RELEASE_EVENT_PATH:-$GITHUB_EVENT_PATH}"
@@ -213,31 +216,72 @@ jobs:
             --tag "$TAG" \
             --selection-output "$selection_json" >/dev/null
 
-          printf '[]\n' > "$enriched_prs_json"
-          while IFS= read -r pr_number; do
-            [[ "$pr_number" =~ ^[0-9]+$ ]] || continue
-            pr_detail="$RUNNER_TEMP/balancebar-pr-${pr_number}.json"
-            pr_diff="$RUNNER_TEMP/balancebar-pr-${pr_number}.diff"
-            pr_enriched="$RUNNER_TEMP/balancebar-pr-${pr_number}-enriched.json"
+          enrich_pr() {
+            local pr_number="$1"
+            local pr_detail="$RUNNER_TEMP/balancebar-pr-${pr_number}.json"
+            local pr_diff="$RUNNER_TEMP/balancebar-pr-${pr_number}.diff"
+            local pr_enriched="$RUNNER_TEMP/balancebar-pr-${pr_number}-enriched.json"
             gh pr view "$pr_number" \
               --repo "$GITHUB_REPOSITORY" \
               --json number,title,body,url,mergedAt,labels,closingIssuesReferences,mergeCommit,commits,files,changedFiles,additions,deletions \
               > "$pr_detail"
-            if ! gh pr diff "$pr_number" --repo "$GITHUB_REPOSITORY" --patch > "$pr_diff"; then
-              echo "Could not fetch optional diff context for PR #$pr_number; continuing with file metadata." >&2
+            local need_diff=false
+            if jq -e \
+              '(((.body // "") | gsub("[[:space:]]"; "") | length) < 240) and (((.files // []) | length) > 0) and (((.files // []) | length) <= 12)' \
+              "$pr_detail" >/dev/null; then
+              need_diff=true
+            fi
+
+            if [[ "$need_diff" == "true" ]]; then
+              local diff_status=0
+              if gh pr diff "$pr_number" --repo "$GITHUB_REPOSITORY" --patch --color never \
+                | head -c "$diff_context_bytes" > "$pr_diff"; then
+                diff_status=0
+              else
+                diff_status=${PIPESTATUS[0]}
+              fi
+              if [[ "$diff_status" != 0 && "$diff_status" != 141 ]]; then
+                echo "Could not fetch optional diff context for PR #$pr_number; continuing with file metadata." >&2
+                : > "$pr_diff"
+              fi
+            else
               : > "$pr_diff"
             fi
+
             jq --rawfile diffSummary "$pr_diff" '. + {diffSummary: $diffSummary}' \
               "$pr_detail" > "$pr_enriched"
+          }
+
+          echo "Enriching selected PRs with max concurrency $enrichment_parallelism; bounded diff fetch limit ${diff_context_bytes} bytes." >&2
+          printf '[]\n' > "$enriched_prs_json"
+          pr_pids=()
+          while IFS= read -r pr_number; do
+            [[ "$pr_number" =~ ^[0-9]+$ ]] || continue
+            enrich_pr "$pr_number" &
+            pr_pids+=("$!")
+            if (( ${#pr_pids[@]} >= enrichment_parallelism )); then
+              wait "${pr_pids[0]}"
+              pr_pids=("${pr_pids[@]:1}")
+            fi
+          done < <(jq -r '.[].number' "$selection_json")
+          for pid in "${pr_pids[@]}"; do
+            wait "$pid"
+          done
+
+          while IFS= read -r pr_number; do
+            [[ "$pr_number" =~ ^[0-9]+$ ]] || continue
+            pr_enriched="$RUNNER_TEMP/balancebar-pr-${pr_number}-enriched.json"
             jq --slurpfile detail "$pr_enriched" '. + [$detail[0]]' \
               "$enriched_prs_json" > "$enriched_prs_json.next"
             mv "$enriched_prs_json.next" "$enriched_prs_json"
           done < <(jq -r '.[].number' "$selection_json")
 
-          printf '[]\n' > "$issue_details_json"
-          while IFS= read -r issue_number; do
-            [[ "$issue_number" =~ ^[0-9]+$ ]] || continue
-            issue_detail="$RUNNER_TEMP/balancebar-issue-${issue_number}.json"
+          jq -r '.[] | (.closingIssuesReferences // [])[] | .number // empty' \
+            "$enriched_prs_json" | sort -n -u > "$issue_numbers_file"
+
+          fetch_issue() {
+            local issue_number="$1"
+            local issue_detail="$RUNNER_TEMP/balancebar-issue-${issue_number}.json"
             if ! gh issue view "$issue_number" \
               --repo "$GITHUB_REPOSITORY" \
               --json number,title,body,url,labels,comments \
@@ -245,13 +289,30 @@ jobs:
               echo "Could not fetch optional context for explicitly linked Issue #$issue_number; continuing with its reference." >&2
               jq -n --arg number "$issue_number" '{number: ($number | tonumber)}' > "$issue_detail"
             fi
+          }
+
+          issue_pids=()
+          while IFS= read -r issue_number; do
+            [[ "$issue_number" =~ ^[0-9]+$ ]] || continue
+            fetch_issue "$issue_number" &
+            issue_pids+=("$!")
+            if (( ${#issue_pids[@]} >= enrichment_parallelism )); then
+              wait "${issue_pids[0]}"
+              issue_pids=("${issue_pids[@]:1}")
+            fi
+          done < "$issue_numbers_file"
+          for pid in "${issue_pids[@]}"; do
+            wait "$pid"
+          done
+
+          printf '[]\n' > "$issue_details_json"
+          while IFS= read -r issue_number; do
+            [[ "$issue_number" =~ ^[0-9]+$ ]] || continue
+            issue_detail="$RUNNER_TEMP/balancebar-issue-${issue_number}.json"
             jq --slurpfile detail "$issue_detail" '. + [$detail[0]]' \
               "$issue_details_json" > "$issue_details_json.next"
             mv "$issue_details_json.next" "$issue_details_json"
-          done < <(
-            jq -r '.[] | (.closingIssuesReferences // [])[] | .number // empty' \
-              "$enriched_prs_json" | sort -n -u
-          )
+          done < "$issue_numbers_file"
 
           node scripts/release/collect-release-input.mjs \
             --event "$event_path" \

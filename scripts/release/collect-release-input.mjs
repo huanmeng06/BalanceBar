@@ -164,6 +164,18 @@ function normaliseCommit(commit) {
   };
 }
 
+function deduplicateRecords(records, key) {
+  const seen = new Set();
+  return records.filter((record) => {
+    const value = key(record);
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    return true;
+  });
+}
+
 export function normalisePullRequest(repo, pullRequest, issueDetails = new Map()) {
   const number = Number(pullRequest?.number);
   if (!Number.isInteger(number) || number <= 0) {
@@ -178,9 +190,9 @@ export function normalisePullRequest(repo, pullRequest, issueDetails = new Map()
     .filter(Boolean);
   const uniqueIssues = [...new Map(issues.map((issue) => [issue.number, issue])).values()]
     .slice(0, RELEASE_INPUT_LIMITS.maxIssuesPerPullRequest);
-  const commits = (Array.isArray(pullRequest.commits) ? pullRequest.commits : [])
+  const commits = deduplicateRecords((Array.isArray(pullRequest.commits) ? pullRequest.commits : [])
     .map(normaliseCommit)
-    .filter(Boolean)
+    .filter(Boolean), (commit) => commit.sha)
     .slice(0, RELEASE_INPUT_LIMITS.maxCommits);
   const commitShas = commits.length > 0
     ? [...new Set(commits.map((commit) => commit.sha))]
@@ -188,9 +200,9 @@ export function normalisePullRequest(repo, pullRequest, issueDetails = new Map()
       .filter((sha) => typeof sha === "string")
       .map((sha) => truncate(sha, 100)))]
       .slice(0, RELEASE_INPUT_LIMITS.maxCommits);
-  const files = (Array.isArray(pullRequest.files) ? pullRequest.files : [])
+  const files = deduplicateRecords((Array.isArray(pullRequest.files) ? pullRequest.files : [])
     .map(normaliseFile)
-    .filter(Boolean)
+    .filter(Boolean), (file) => file.path)
     .slice(0, RELEASE_INPUT_LIMITS.maxPullRequestFiles);
   const rawMergeCommit = pullRequest.mergeCommit?.oid
     ?? pullRequest.merge_commit_sha
@@ -415,13 +427,13 @@ export function buildReleaseInput({
     })),
   }));
 
-  const commits = (compare.commits ?? [])
+  const commits = deduplicateRecords((compare.commits ?? [])
     .map(normaliseCommit)
-    .filter(Boolean)
+    .filter(Boolean), (commit) => commit.sha)
     .slice(0, RELEASE_INPUT_LIMITS.maxCommits);
-  const files = (compare.files ?? [])
+  const files = deduplicateRecords((compare.files ?? [])
     .map(normaliseFile)
-    .filter(Boolean)
+    .filter(Boolean), (file) => file.path)
     .slice(0, RELEASE_INPUT_LIMITS.maxCompareFiles);
   const compareUrl = `https://github.com/${repo}/compare/${previousTag}...${tag}`;
 

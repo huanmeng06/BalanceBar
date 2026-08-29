@@ -17,6 +17,9 @@ import {
 } from "../../scripts/release/render-release-notes.mjs";
 import {
   AI_MAX_ATTEMPTS,
+  AI_MAX_RETRY_AFTER_MS,
+  AI_REQUEST_TIMEOUT_MS,
+  AI_RETRY_BACKOFF_MS,
   buildDeterministicReleaseNotes,
   buildDeepSeekRequest,
   requestReleaseNotes,
@@ -297,6 +300,12 @@ test("DeepSeek is the default provider and uses JSON chat completions", async ()
   assert.equal(JSON.parse(observedOptions.body).response_format.type, "json_object");
 });
 
+test("AI retries use bounded exponential backoff and request timeout defaults", () => {
+  assert.deepEqual(AI_RETRY_BACKOFF_MS, [1_000, 3_000, 8_000]);
+  assert.equal(AI_REQUEST_TIMEOUT_MS, 75_000);
+  assert.equal(AI_MAX_RETRY_AFTER_MS, 15_000);
+});
+
 test("DeepSeek empty output is diagnosed, retried, and falls back", async () => {
   const logger = captureLogger();
   let calls = 0;
@@ -352,11 +361,12 @@ test("OpenAI remains available as an explicit provider", async () => {
 test("transient provider failures retry once and then succeed", async () => {
   const logger = captureLogger();
   let calls = 0;
+  const delays = [];
   const notes = await requestReleaseNotes(fixtureInput(), {
     provider: "deepseek",
     apiKey: "test-deepseek-key",
     logger,
-    sleepImpl: async () => {},
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
     fetchImpl: async () => {
       calls += 1;
       if (calls === 1) {
@@ -373,7 +383,126 @@ test("transient provider failures retry once and then succeed", async () => {
   assert.equal(calls, 2);
   assert.deepEqual(notes, fixtureNotes());
   assert.match(logger.lines.join("\n"), /provider_http_5xx/);
-  assert.match(logger.lines.join("\n"), /retrying attempt=2\/3/);
+  assert.deepEqual(delays, [1_000]);
+  assert.match(logger.lines.join("\n"), /retrying attempt=2\/4[\s\S]*delayMs=1000/);
+});
+
+test("429 honors Retry-After while capping excessive waits", async () => {
+  const delays = [];
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 429,
+          headers: {
+            get(name) {
+              return name.toLowerCase() === "retry-after" ? "2" : null;
+            },
+          },
+          json: async () => ({ error: { code: "rate_limit_exceeded" } }),
+        };
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(delays, [2_000]);
+  assert.deepEqual(notes, fixtureNotes());
+
+  calls = 0;
+  delays.length = 0;
+  await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 429,
+          headers: {
+            get(name) {
+              return name.toLowerCase() === "retry-after" ? "120" : null;
+            },
+          },
+          json: async () => ({ error: { code: "rate_limit_exceeded" } }),
+        };
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.deepEqual(delays, [AI_MAX_RETRY_AFTER_MS]);
+});
+
+test("non-JSON 502 responses keep HTTP retry classification", async () => {
+  const logger = captureLogger();
+  const delays = [];
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 502,
+          json: async () => {
+            throw new Error("Bad Gateway");
+          },
+        };
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(delays, [1_000]);
+  assert.deepEqual(notes, fixtureNotes());
+  assert.match(logger.lines.join("\n"), /provider_http_5xx/);
+  assert.doesNotMatch(logger.lines.join("\n"), /invalid_provider_json/);
+});
+
+test("non-JSON 408 responses are retryable provider timeouts", async () => {
+  const logger = captureLogger();
+  const delays = [];
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    sleepImpl: async (milliseconds) => delays.push(milliseconds),
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 408,
+          json: async () => {
+            throw new Error("Request Timeout");
+          },
+        };
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(delays, [1_000]);
+  assert.deepEqual(notes, fixtureNotes());
+  assert.match(logger.lines.join("\n"), /provider_timeout/);
+  assert.doesNotMatch(logger.lines.join("\n"), /invalid_provider_json/);
 });
 
 test("network timeout is retried with bounded backoff", async () => {
@@ -398,6 +527,95 @@ test("network timeout is retried with bounded backoff", async () => {
   assert.equal(calls, 2);
   assert.deepEqual(notes, fixtureNotes());
   assert.match(logger.lines.join("\n"), /network_timeout/);
+});
+
+test("request timeout aborts the provider call and retries successfully", async () => {
+  const logger = captureLogger();
+  const signals = [];
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    requestTimeoutMs: 5,
+    sleepImpl: async () => {},
+    fetchImpl: async (_url, options) => {
+      calls += 1;
+      signals.push(options.signal);
+      if (calls === 1) {
+        await new Promise((resolve, reject) => {
+          if (options.signal.aborted) {
+            reject(options.signal.reason);
+            return;
+          }
+          options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+        });
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(signals.length, 2);
+  assert.equal(signals[0].aborted, true);
+  assert.deepEqual(notes, fixtureNotes());
+  assert.match(logger.lines.join("\n"), /network_timeout/);
+});
+
+test("request timeout while reading a response body is retryable", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    requestTimeoutMs: 5,
+    sleepImpl: async () => {},
+    fetchImpl: async (_url, options) => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => new Promise((resolve, reject) => {
+            options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+          }),
+        };
+      }
+      return deepSeekResponse();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(notes, fixtureNotes());
+  assert.match(logger.lines.join("\n"), /network_timeout/);
+});
+
+test("request timeout exhaustion uses the deterministic fallback", async () => {
+  const logger = captureLogger();
+  let calls = 0;
+  const notes = await requestReleaseNotes(fixtureInput(), {
+    provider: "deepseek",
+    apiKey: "test-deepseek-key",
+    logger,
+    requestTimeoutMs: 1,
+    sleepImpl: async () => {},
+    fetchImpl: async (_url, options) => {
+      calls += 1;
+      await new Promise((resolve, reject) => {
+        if (options.signal.aborted) {
+          reject(options.signal.reason);
+          return;
+        }
+        options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+      });
+    },
+  });
+
+  assert.equal(calls, AI_MAX_ATTEMPTS);
+  assert.deepEqual(notes, buildDeterministicReleaseNotes(fixtureInput()));
+  assert.match(logger.lines.join("\n"), /network_timeout/);
+  assert.match(logger.lines.join("\n"), /using deterministic fallback/);
 });
 
 test("content filtering is classified without a blind retry", async () => {
@@ -469,7 +687,7 @@ test("retry exhaustion uses a deterministic fallback with the original source se
     },
   });
 
-  assert.equal(calls, 3);
+  assert.equal(calls, AI_MAX_ATTEMPTS);
   assert.deepEqual(notes, buildDeterministicReleaseNotes(fixtureInput()));
   assert.match(logger.lines.join("\n"), /rate_limit_429/);
   assert.match(logger.lines.join("\n"), /using deterministic fallback/);
@@ -520,7 +738,7 @@ test("diagnostics redact provider secrets while preserving safe metadata", async
       json: async () => ({
         error: {
           code: "provider_error",
-          message: "secret=sk-live-not-for-logs at https://provider.example/v1",
+          message: "secret=sk-live-not-for-logs key=plain-test-key at https://provider.example/v1",
         },
         usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 },
       }),
@@ -532,9 +750,11 @@ test("diagnostics redact provider secrets while preserving safe metadata", async
   assert.match(log, /"model":"deepseek-v4-pro"/);
   assert.match(log, /"status":500/);
   assert.match(log, /"httpStatus":500/);
+  assert.match(log, /"requestTimeoutMs":75000/);
   assert.match(log, /req-safe-123/);
   assert.match(log, /"total_tokens":17/);
   assert.doesNotMatch(log, /sk-live-not-for-logs/);
+  assert.doesNotMatch(log, /plain-test-key/);
   assert.doesNotMatch(log, /provider\.example/);
 });
 
@@ -572,6 +792,58 @@ test("malformed provider and model responses are classified without retrying", a
       : /invalid_model_json/);
     assert.doesNotMatch(logger.lines.join("\n"), /retrying/);
   }
+});
+
+test("deterministic fallback uses cleaned PR and linked Issue evidence", () => {
+  const input = fixtureInput();
+  input.pullRequests[0].title = "Fix balance query output";
+  input.pullRequests[0].body = [
+    "## Summary",
+    "",
+    "Show the provider balance after a successful refresh.",
+    "",
+    "## Testing",
+    "",
+    "Tests pass locally.",
+  ].join("\n");
+  input.pullRequests[1].title = "Add dashboard refresh control";
+  input.pullRequests[1].body = [
+    "## Summary",
+    "",
+    "<!-- template placeholder -->",
+    "",
+    "## Test plan",
+    "",
+    "- [x] Tests pass locally.",
+  ].join("\n");
+  input.pullRequests[1].labels = [{ name: "enhancement" }];
+  input.pullRequests[1].closingIssues = [{ number: 137 }];
+  input.issues = [{
+    number: 136,
+    title: "Balance refresh issue",
+    body: "Keep the refresh state visible after the provider responds.",
+  }, {
+    number: 137,
+    title: "Dashboard refresh issue",
+    body: "Keep the refresh control visible after the provider responds.",
+  }];
+
+  const notes = buildDeterministicReleaseNotes(input);
+  const pr140 = notes.fixes.find((item) => item.sources.some(
+    (source) => source.kind === "pr" && source.number === 140,
+  ));
+  const pr141 = notes.features.find((item) => item.sources.some(
+    (source) => source.kind === "pr" && source.number === 141,
+  ));
+
+  assert.match(pr140.zhHans.description, /记录摘要（原文）：Show the provider balance/);
+  assert.match(pr140.en.description, /recorded summary \(source text\): Show the provider balance/);
+  assert.match(pr141.zhHans.description, /关联 Issue #137 记录摘要（原文）：Keep the refresh control/);
+  assert.match(pr141.en.description, /Linked Issue #137 recorded summary \(source text\): Keep the refresh control/);
+  assert.doesNotMatch(pr141.zhHans.description, /Tests pass locally/);
+  assert.doesNotMatch(JSON.stringify(notes), /AI 生成不可用|AI generation was unavailable/);
+  assert.deepEqual(pr140.sources, [{ kind: "pr", number: 140 }, { kind: "issue", number: 136 }]);
+  assert.deepEqual(pr141.sources, [{ kind: "pr", number: 141 }, { kind: "issue", number: 137 }]);
 });
 
 test("renderer preserves the BalanceBar release layout and links every row", () => {
@@ -804,7 +1076,12 @@ test("release input applies per-field, deduplication, and total payload limits",
         closingIssuesReferences: [{ number: 401 }, { number: 401 }],
       },
     },
-    compare: { commits: [{ sha: "merge-410", commit: { message: oversized } }] },
+    compare: {
+      commits: [
+        { sha: "merge-410", commit: { message: oversized } },
+        { sha: "merge-410", commit: { message: "duplicate commit record" } },
+      ],
+    },
     pullRequests: [{
       number: 410,
       title: oversized,
@@ -812,7 +1089,7 @@ test("release input applies per-field, deduplication, and total payload limits",
       mergeCommit: { oid: "merge-410" },
       closingIssuesReferences: [{ number: 401 }, { number: 401 }],
       files: Array.from({ length: 200 }, (_, index) => ({
-        filename: `Sources/File-${index}.swift`,
+        filename: `Sources/File-${index === 1 ? 0 : index}.swift`,
         additions: index,
         deletions: index + 1,
       })),
@@ -833,6 +1110,7 @@ test("release input applies per-field, deduplication, and total payload limits",
   assert.ok(pullRequest.body.length <= RELEASE_INPUT_LIMITS.maxPullRequestBody);
   assert.ok(issue.body.length <= RELEASE_INPUT_LIMITS.maxIssueBody);
   assert.ok(pullRequest.files.length <= RELEASE_INPUT_LIMITS.maxPullRequestFiles);
+  assert.equal(new Set(pullRequest.files.map((file) => file.path)).size, pullRequest.files.length);
   assert.ok(serializedByteLength(input) <= RELEASE_INPUT_LIMITS.maxSerializedBytes);
   assert.deepEqual(getReleaseInputStats(input), {
     pullRequests: 1,
@@ -868,6 +1146,12 @@ test("release workflow keeps build, tag, and publish failures fatal", () => {
   assert.match(workflow, /gh release create "\$TAG"/);
   assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
   assert.match(workflow, /generate-release-notes\.mjs/);
+  assert.match(workflow, /enrichment_parallelism=4/);
+  assert.match(workflow, /if jq -e[\s\S]+gh pr diff/);
+  assert.match(workflow, /head -c "\$diff_context_bytes"/);
+  assert.match(workflow, /sort -n -u > "\$issue_numbers_file"/);
+  assert.match(workflow, /pr_pids=\(\)/);
+  assert.match(workflow, /issue_pids=\(\)/);
 });
 
 test("manual rebuild is guarded and preserves a DMG-only Release", () => {
