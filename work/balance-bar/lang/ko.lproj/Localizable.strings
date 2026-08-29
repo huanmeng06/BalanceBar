@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.quota_reset_display_target" = "재설정 시간";
 "dashboard.menu.bar.page.quota_reset_display_both" = "둘 다 표시";
 "dashboard.menu.bar.page.auto_switch_luna_reserve" = "🌙 Luna Reserve 자동 전환";
-"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "🌙 Luna Reserve에 진입하면 메뉴 막대에 표시할 할당량을 자동으로 전환합니다";
+"dashboard.menu.bar.page.auto_switch_luna_reserve_description" = "🌙 Luna Reserve에 진입한 후 메뉴 막대에 표시할 할당량을 자동으로 전환합니다";
 "dashboard.menu.bar.page.luna_reserve_reset_time" = "🌙 Luna Reserve 재설정 시간";
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "🌙 Luna Reserve에 진입한 후 원래 할당량의 재설정 시간과 🌙 Luna Reserve의 재설정 시간 중 어느 것을 표시할지 선택합니다";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 Luna Reserve";
