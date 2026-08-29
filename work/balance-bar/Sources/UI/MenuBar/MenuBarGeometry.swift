@@ -448,7 +448,8 @@ enum MenuBarLayout {
     /// metrics.
     static func appKitRenderedTextBounds(
         for label: NSTextField,
-        frameSize: NSSize
+        frameSize: NSSize,
+        range: NSRange? = nil
     ) -> NSRect? {
         guard frameSize.width > 0, frameSize.height > 0,
               let cell = label.cell else {
@@ -476,11 +477,38 @@ enum MenuBarLayout {
         }
 
         let previousFrame = label.frame
+        let previousAttributedString = label.attributedStringValue
         label.frame = NSRect(origin: .zero, size: frameSize)
+        if let range {
+            let masked = NSMutableAttributedString(
+                attributedString: previousAttributedString
+            )
+            if range.location > 0 {
+                masked.mutableString.replaceCharacters(
+                    in: NSRange(location: 0, length: range.location),
+                    with: String(repeating: "\u{200B}", count: range.location)
+                )
+            }
+            let suffixLocation = range.location + range.length
+            if suffixLocation < masked.length {
+                masked.mutableString.replaceCharacters(
+                    in: NSRange(
+                        location: suffixLocation,
+                        length: masked.length - suffixLocation
+                    ),
+                    with: String(
+                        repeating: "\u{200B}",
+                        count: masked.length - suffixLocation
+                    )
+                )
+            }
+            label.attributedStringValue = masked
+        }
         NSGraphicsContext.saveGraphicsState()
         defer {
             NSGraphicsContext.restoreGraphicsState()
             label.frame = previousFrame
+            label.attributedStringValue = previousAttributedString
         }
         NSGraphicsContext.current = context
         context.cgContext.clear(CGRect(

@@ -114,33 +114,36 @@ final class MenuBarGeometryTests: XCTestCase {
     func testLunaReserveMarkerInkCentersStayOpticallyAlignedAcrossPresets() throws {
         for preset in MenuBarFontSizePreset.allCases {
             let primaryFont = MenuBarLayout.primaryFont(size: CGFloat(preset.primarySize))
-            let amount = NSTextField(labelWithString: "45%")
-            amount.font = primaryFont
-            MenuBarLayout.applyPrimaryText("45%", to: amount)
-
-            let moon = NSTextField(labelWithString: "🌙")
-            moon.font = primaryFont
-            MenuBarLayout.applyPrimaryText("🌙", to: moon)
-
-            let frameSize = NSSize(
-                width: max(amount.intrinsicContentSize.width, moon.intrinsicContentSize.width),
-                height: max(amount.intrinsicContentSize.height, moon.intrinsicContentSize.height)
-            )
+            let label = NSTextField(labelWithString: "45% 🌙")
+            label.font = primaryFont
+            MenuBarLayout.applyPrimaryText("45% 🌙", to: label)
+            let frameSize = label.intrinsicContentSize
+            let amountRange = (label.stringValue as NSString).range(of: "45%")
+            let moonRange = (label.stringValue as NSString).range(of: "🌙")
             let amountBounds = try XCTUnwrap(
-                MenuBarLayout.appKitRenderedTextBounds(for: amount, frameSize: frameSize)
+                MenuBarLayout.appKitRenderedTextBounds(
+                    for: label,
+                    frameSize: frameSize,
+                    range: amountRange
+                )
             )
             let moonBounds = try XCTUnwrap(
-                MenuBarLayout.appKitRenderedTextBounds(for: moon, frameSize: frameSize)
+                MenuBarLayout.appKitRenderedTextBounds(
+                    for: label,
+                    frameSize: frameSize,
+                    range: moonRange
+                )
             )
 
+            let centerDelta = amountBounds.midY - moonBounds.midY
             XCTAssertGreaterThan(
-                moonBounds.midY,
-                amountBounds.midY,
+                centerDelta,
+                0,
                 "scaled moon should be optically lifted for \(preset)"
             )
             XCTAssertLessThan(
-                moonBounds.midY - amountBounds.midY,
-                1.5,
+                centerDelta,
+                1.0,
                 "moon/amount ink centers should remain close for \(preset)"
             )
         }
