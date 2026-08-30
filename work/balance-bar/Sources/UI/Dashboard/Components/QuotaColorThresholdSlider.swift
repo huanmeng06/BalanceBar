@@ -132,7 +132,6 @@ final class QuotaColorThresholdSlider: NSControl {
     private var activeBoundaryColor: QuotaProgressColor?
     private var activePopoverColor: QuotaProgressColor?
     private var trackingColor: QuotaProgressColor?
-    private var previousTrackingHoleRect: NSRect?
     private var focusedColor: QuotaProgressColor?
     private var lastSnappedValues: [QuotaProgressColor: Int] = [:]
     private let popover = DashboardTextTooltip.makePopover()
@@ -223,7 +222,6 @@ final class QuotaColorThresholdSlider: NSControl {
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
         trackingColor = nil
-        previousTrackingHoleRect = nil
         dismissPopover()
         if let trackingAreaReference {
             removeTrackingArea(trackingAreaReference)
@@ -351,7 +349,6 @@ final class QuotaColorThresholdSlider: NSControl {
     private func beginTracking() {
         guard let activeBoundaryColor else { return }
         trackingColor = activeBoundaryColor
-        previousTrackingHoleRect = trackingColor.flatMap { knobRect(for: $0) }
         hoverWorkItem?.cancel()
         invalidateVisuals()
         commitTrackingVisuals()
@@ -374,18 +371,9 @@ final class QuotaColorThresholdSlider: NSControl {
         configurationStorage = updated
         updateInteractionAccessibility(for: color, value: actual)
         if trackingColor == color { updatePopoverAnchor(for: color, value: actual) }
-        let currentTrackingHoleRect = trackingColor.flatMap { knobRect(for: $0) }
-        guard actual != old else {
-            previousTrackingHoleRect = currentTrackingHoleRect
-            return
-        }
-        let coverDirtyRect = trackingCoverDirtyRect(
-            from: previousTrackingHoleRect,
-            to: currentTrackingHoleRect
-        )
-        invalidateVisuals(trackCoverDirtyRect: coverDirtyRect)
+        guard actual != old else { return }
+        invalidateVisuals()
         commitTrackingVisuals()
-        previousTrackingHoleRect = currentTrackingHoleRect
         if QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: lastSnappedValues[color], newValue: actual) {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
@@ -405,10 +393,8 @@ final class QuotaColorThresholdSlider: NSControl {
     private func finishTracking() {
         guard let color = trackingColor else { return }
         defer {
-            let coverDirtyRect = trackingCoverDirtyRect(from: previousTrackingHoleRect, to: nil)
             trackingColor = nil
-            previousTrackingHoleRect = nil
-            invalidateVisuals(trackCoverDirtyRect: coverDirtyRect)
+            invalidateVisuals()
             commitTrackingVisuals()
         }
         guard activePopoverColor == color else { dismissPopover(); return }
@@ -522,31 +508,21 @@ final class QuotaColorThresholdSlider: NSControl {
         return convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
     }
 
-    private func invalidateVisuals(trackCoverDirtyRect: NSRect? = nil) {
+    private func invalidateVisuals() {
         trackView.needsDisplay = true
-        if let trackCoverDirtyRect {
-            trackCover.setNeedsDisplay(trackCoverDirtyRect)
-        } else {
-            trackCover.needsDisplay = true
-        }
+        trackCover.needsDisplay = true
         passiveKnobOverlay.needsDisplay = true
         interactionSlider.needsDisplay = true
-    }
-
-    private func trackingCoverDirtyRect(from oldHole: NSRect?, to newHole: NSRect?) -> NSRect? {
-        let holes = [oldHole, newHole].compactMap { $0 }.map { trackCover.convert($0, from: self) }
-        guard var dirty = holes.first else { return nil }
-        for hole in holes.dropFirst() { dirty = dirty.union(hole) }
-        return dirty.insetBy(dx: -1, dy: -1)
     }
 
     /// The ownership switch from passive to live native knob must be committed
     /// before AppKit enters the slider tracking loop, otherwise its first
     /// pressed frame can retain the idle backing-store contents.
     private func commitTrackingVisuals() {
+        trackView.displayIfNeeded()
+        interactionSlider.displayIfNeeded()
         trackCover.displayIfNeeded()
         passiveKnobOverlay.displayIfNeeded()
-        interactionSlider.displayIfNeeded()
     }
 
     fileprivate func drawTrack(in trackView: QuotaThresholdTrackView) {
