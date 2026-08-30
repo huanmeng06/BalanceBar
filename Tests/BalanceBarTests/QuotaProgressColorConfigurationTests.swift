@@ -67,9 +67,11 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
     func testThumbCountMatchesEnabledColorCount() {
         let all = QuotaColorThresholdSlider(configuration: .default)
         XCTAssertEqual(all.thumbCount, 3)
-        XCTAssertEqual(all.nativeThumbSliders.count, 3)
-        XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, 3)
+        XCTAssertEqual(all.nativeThumbSliders.count, 1)
+        XCTAssertEqual(all.passiveKnobCount, 3)
+        XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, 1)
         XCTAssertTrue(all.usesNSSliderThumbs)
+        XCTAssertFalse(all.usesCustomSliderCell)
         XCTAssertTrue(all.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
         let identities = all.thumbIdentitySet
         all.configuration = .default.settingBoundary(after: .orange, to: 35)
@@ -77,11 +79,13 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         let three = QuotaProgressColorConfiguration.default.settingEnabled(.orange, to: false)
         let threeSlider = QuotaColorThresholdSlider(configuration: three)
         XCTAssertEqual(threeSlider.thumbCount, 2)
-        XCTAssertEqual(threeSlider.nativeThumbSliders.count, 2)
+        XCTAssertEqual(threeSlider.nativeThumbSliders.count, 1)
+        XCTAssertEqual(threeSlider.passiveKnobCount, 2)
         let two = three.settingEnabled(.red, to: false)
         let twoSlider = QuotaColorThresholdSlider(configuration: two)
         XCTAssertEqual(twoSlider.thumbCount, 1)
         XCTAssertEqual(twoSlider.nativeThumbSliders.count, 1)
+        XCTAssertEqual(twoSlider.passiveKnobCount, 1)
     }
 
     func testThumbRangesValuesAndGeometrySurviveUpdates() {
@@ -103,7 +107,9 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(initial.map(\.value), [10, 25, 50])
         XCTAssertEqual(initial.map(\.knobMidX), initial.map(\.knobMidX).sorted())
         XCTAssertTrue(slider.usesNSSliderThumbs)
-        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 1)
+        XCTAssertEqual(slider.passiveKnobCount, 3)
+        XCTAssertFalse(slider.usesCustomSliderCell)
         XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
         for state in initial {
             XCTAssertTrue(slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY)) is NSSlider)
@@ -144,7 +150,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         }
     }
 
-    func testNativeThumbHitRoutingKeepsTrackJumpsOnParent() {
+    func testSingleNativeInteractionSliderReceivesAllTrackHits() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
             styleMask: [.borderless],
@@ -157,7 +163,8 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         window.contentView?.layoutSubtreeIfNeeded()
 
         XCTAssertTrue(slider.acceptsFirstMouse(for: nil))
-        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 1)
+        XCTAssertEqual(slider.passiveKnobCount, 3)
         XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.acceptsFirstMouse(for: nil) })
 
         for state in slider.debugThumbStates {
@@ -167,6 +174,6 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         }
 
         let emptyTrackPoint = NSPoint(x: slider.bounds.maxX - 2, y: slider.bounds.midY)
-        XCTAssertTrue(slider.hitTest(emptyTrackPoint) === slider)
+        XCTAssertTrue(slider.hitTest(emptyTrackPoint) is NSSlider)
     }
 }
