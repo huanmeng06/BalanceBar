@@ -68,9 +68,22 @@ final class QuotaColorThresholdSlider: NSControl {
     init(configuration: QuotaProgressColorConfiguration) {
         configurationStorage = configuration.normalized(); super.init(frame: .zero)
         identifier = NSUserInterfaceItemIdentifier("quotaProgressThresholdSlider"); setAccessibilityRole(.group)
-        let controller = NSViewController(); controller.view = NSView(frame: NSRect(x: 0, y: 0, width: 60, height: 30))
-        popoverLabel.font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize); popoverLabel.alignment = .center; popoverLabel.frame = controller.view.bounds.insetBy(dx: 7, dy: 5)
-        controller.view.addSubview(popoverLabel); popover.contentViewController = controller; popover.behavior = .transient; popover.animates = false; reconcileThumbSliders()
+        let contentView = NSView(frame: .zero)
+        popoverLabel.font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize)
+        popoverLabel.textColor = .labelColor
+        popoverLabel.alignment = .center
+        popoverLabel.isEditable = false
+        popoverLabel.isSelectable = false
+        popoverLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(popoverLabel)
+        NSLayoutConstraint.activate([
+            popoverLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 7),
+            popoverLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -7),
+            popoverLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 5),
+            popoverLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -5)
+        ])
+        let controller = NSViewController(); controller.view = contentView
+        popover.contentViewController = controller; popover.behavior = .transient; popover.animates = false; reconcileThumbSliders()
     }
     required init?(coder: NSCoder) { nil }
     deinit { hoverWorkItem?.cancel(); popover.close() }
@@ -166,6 +179,12 @@ final class QuotaColorThresholdSlider: NSControl {
     }
     private func knobRect(for color: QuotaProgressColor) -> NSRect? { guard let thumb = thumbSliders[color], let cell = thumb.cell as? NSSliderCell else { return nil }; return convert(cell.knobRect(flipped: thumb.isFlipped), from: thumb) }
     private func presentPopover(for color: QuotaProgressColor) { activePopoverColor = color; updatePopoverAnchor(for: color); if !popover.isShown, let rect = knobRect(for: color) { popover.show(relativeTo: rect, of: self, preferredEdge: .maxY) } }
-    private func updatePopoverAnchor(for color: QuotaProgressColor) { guard let rect = knobRect(for: color) else { dismissPopover(); return }; popoverLabel.stringValue = "\(configurationStorage.boundary(after: color) ?? 0)%"; if popover.isShown { popover.positioningRect = rect } }
+    private func updatePopoverAnchor(for color: QuotaProgressColor) {
+        guard let rect = knobRect(for: color) else { dismissPopover(); return }
+        popoverLabel.stringValue = "\(configurationStorage.boundary(after: color) ?? 0)%"
+        let labelSize = popoverLabel.fittingSize
+        popover.contentSize = NSSize(width: ceil(labelSize.width) + 14, height: ceil(labelSize.height) + 10)
+        if popover.isShown { popover.positioningRect = rect }
+    }
     private func dismissPopover() { activePopoverColor = nil; popover.close() }
 }
