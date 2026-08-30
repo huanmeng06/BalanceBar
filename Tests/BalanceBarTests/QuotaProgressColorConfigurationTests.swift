@@ -64,6 +64,40 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.quotaProgressEnabledColorsKey))
     }
 
+    func testTrackCoverSlicesLeaveOnlyTheCurrentNativeKnobGap() {
+        let bounds = NSRect(x: 0, y: 0, width: 420, height: 34)
+        let oldHole = NSRect(x: 190, y: 3, width: 24, height: 28)
+        let newHole = NSRect(x: 211, y: 3, width: 24, height: 28)
+        let geometry = QuotaTrackCoverGeometry.make(bounds: bounds, hole: newHole)
+
+        XCTAssertEqual(geometry.hole, newHole)
+        XCTAssertFalse(geometry.hidesRightSlice)
+        XCTAssertFalse(geometry.leftFrame.contains(NSPoint(x: newHole.midX, y: bounds.midY)))
+        XCTAssertFalse(geometry.rightFrame.contains(NSPoint(x: newHole.midX, y: bounds.midY)))
+        XCTAssertTrue(
+            geometry.leftFrame.contains(NSPoint(x: oldHole.midX, y: bounds.midY)) ||
+                geometry.rightFrame.contains(NSPoint(x: oldHole.midX, y: bounds.midY))
+        )
+
+        let movedLeft = QuotaTrackCoverGeometry.make(bounds: bounds, hole: oldHole)
+        XCTAssertTrue(
+            movedLeft.leftFrame.contains(NSPoint(x: newHole.midX, y: bounds.midY)) ||
+                movedLeft.rightFrame.contains(NSPoint(x: newHole.midX, y: bounds.midY))
+        )
+
+        let idle = QuotaTrackCoverGeometry.make(bounds: bounds, hole: nil)
+        XCTAssertEqual(idle.leftFrame, bounds)
+        XCTAssertTrue(idle.hidesRightSlice)
+        XCTAssertNil(idle.hole)
+
+        let resizedBounds = NSRect(x: 0, y: 0, width: 260, height: 34)
+        let resized = QuotaTrackCoverGeometry.make(bounds: resizedBounds, hole: newHole)
+        XCTAssertEqual(resized.leftFrame.maxX, resized.hole?.minX)
+        XCTAssertEqual(resized.rightFrame.minX, resized.hole?.maxX)
+        XCTAssertGreaterThanOrEqual(resized.leftFrame.minX, resizedBounds.minX)
+        XCTAssertLessThanOrEqual(resized.rightFrame.maxX, resizedBounds.maxX)
+    }
+
     func testThumbCountMatchesEnabledColorCount() {
         let all = QuotaColorThresholdSlider(configuration: .default)
         XCTAssertEqual(all.thumbCount, 3)
