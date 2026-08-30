@@ -89,6 +89,18 @@ private final class QuotaThresholdTrackView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// Covers the stock slider's remaining bar material without drawing over the
+/// active native knob or its pressed-state presentation.
+private final class QuotaThresholdTrackCoverView: NSView {
+    weak var owner: QuotaColorThresholdSlider?
+
+    override func draw(_ dirtyRect: NSRect) {
+        owner?.drawTrackCover(in: self)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// Inactive stock knobs remain above the active slider control. They are
 /// display-only; all pointer events route to the one native interaction slider.
 private final class QuotaThresholdPassiveKnobOverlayView: NSView {
@@ -114,6 +126,7 @@ final class QuotaColorThresholdSlider: NSControl {
     private var configurationStorage: QuotaProgressColorConfiguration
     private let interactionSlider = ThresholdInteractionSlider()
     private let trackView = QuotaThresholdTrackView()
+    private let trackCover = QuotaThresholdTrackCoverView()
     private let passiveKnobOverlay = QuotaThresholdPassiveKnobOverlayView()
     private var passiveKnobCells: [QuotaProgressColor: NSSliderCell] = [:]
     private var activeBoundaryColor: QuotaProgressColor?
@@ -173,6 +186,9 @@ final class QuotaColorThresholdSlider: NSControl {
         trackView.wantsLayer = false
         addSubview(trackView)
         addSubview(interactionSlider)
+        trackCover.owner = self
+        trackCover.wantsLayer = false
+        addSubview(trackCover)
         passiveKnobOverlay.owner = self
         passiveKnobOverlay.wantsLayer = false
         addSubview(passiveKnobOverlay)
@@ -255,6 +271,7 @@ final class QuotaColorThresholdSlider: NSControl {
         super.layout()
         trackView.frame = bounds
         interactionSlider.frame = sliderFrame
+        trackCover.frame = bounds
         passiveKnobOverlay.frame = bounds
         synchronizeKnobCells()
         if let activePopoverColor { updatePopoverAnchor(for: activePopoverColor) }
@@ -487,17 +504,29 @@ final class QuotaColorThresholdSlider: NSControl {
 
     private func invalidateVisuals() {
         trackView.needsDisplay = true
+        trackCover.needsDisplay = true
         passiveKnobOverlay.needsDisplay = true
         interactionSlider.needsDisplay = true
     }
 
     fileprivate func drawTrack(in trackView: QuotaThresholdTrackView) {
-        let track = trackView.convert(nativeTrackRect, from: self)
+        drawColorTrack(in: trackView, excludingActiveKnob: false)
+    }
+
+    fileprivate func drawTrackCover(in trackCover: QuotaThresholdTrackCoverView) {
+        drawColorTrack(in: trackCover, excludingActiveKnob: true)
+    }
+
+    private func drawColorTrack(in drawingView: NSView, excludingActiveKnob: Bool) {
+        let track = drawingView.convert(nativeTrackRect, from: self)
         let colorTrack = NSRect(x: track.minX, y: track.midY - 3, width: track.width, height: 6)
         let boundaryXs = activeBoundaries.map { color, _ in
-            knobRect(for: color)?.midX ?? track.minX
+            knobRect(for: color).map { drawingView.convert($0, from: self).midX } ?? track.minX
         }
         let segmentXs = [colorTrack.minX] + boundaryXs + [colorTrack.maxX]
+        let activeKnob = excludingActiveKnob
+            ? activeBoundaryColor.flatMap { knobRect(for: $0) }.map { drawingView.convert($0, from: self) }
+            : nil
 
         let trackPath = NSBezierPath(
             roundedRect: colorTrack,
@@ -510,19 +539,36 @@ final class QuotaColorThresholdSlider: NSControl {
             let x0 = segmentXs[index]
             let x1 = segmentXs[index + 1]
             color.nsColor.setFill()
-            NSBezierPath(rect: NSRect(x: x0, y: colorTrack.minY, width: max(0, x1 - x0), height: colorTrack.height)).fill()
+            fillTrackRect(
+                NSRect(x: x0, y: colorTrack.minY, width: max(0, x1 - x0), height: colorTrack.height),
+                excluding: activeKnob
+            )
         }
         NSGraphicsContext.restoreGraphicsState()
 
         NSColor.tertiaryLabelColor.setStroke()
         for tick in QuotaThresholdSliderMath.visibleTicks(width: bounds.width, thumbValues: activeBoundaries.map(\.1)) {
-            let x = activeBoundaries.first(where: { $0.1 == tick }).flatMap { knobRect(for: $0.0)?.midX }
+            let x = activeBoundaries.first(where: { $0.1 == tick })
+                .flatMap { knobRect(for: $0.0).map { drawingView.convert($0, from: self).midX } }
                 ?? track.minX + track.width * CGFloat(tick) / 100
+            guard activeKnob?.contains(NSPoint(x: x, y: track.midY)) != true else { continue }
             let path = NSBezierPath()
             path.move(to: NSPoint(x: x, y: track.minY - 3))
             path.line(to: NSPoint(x: x, y: track.minY))
             path.stroke()
         }
+    }
+
+    private func fillTrackRect(_ rect: NSRect, excluding hole: NSRect?) {
+        guard rect.width > 0 else { return }
+        guard let hole, hole.intersects(rect) else {
+            NSBezierPath(rect: rect).fill()
+            return
+        }
+        let left = NSRect(x: rect.minX, y: rect.minY, width: max(0, hole.minX - rect.minX), height: rect.height)
+        let right = NSRect(x: max(rect.minX, hole.maxX), y: rect.minY, width: max(0, rect.maxX - hole.maxX), height: rect.height)
+        if left.width > 0 { NSBezierPath(rect: left).fill() }
+        if right.width > 0 { NSBezierPath(rect: right).fill() }
     }
 
     fileprivate func drawPassiveKnobs(in overlay: QuotaThresholdPassiveKnobOverlayView) {
