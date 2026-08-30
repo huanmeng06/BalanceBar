@@ -344,7 +344,6 @@ final class QuotaColorThresholdSlider: NSControl {
         focusedColor = color
         interactionSlider.doubleValue = Double(value)
         updateInteractionAccessibility(for: color, value: value)
-        invalidateVisuals()
     }
 
     private func beginTracking() {
@@ -352,6 +351,7 @@ final class QuotaColorThresholdSlider: NSControl {
         trackingColor = activeBoundaryColor
         hoverWorkItem?.cancel()
         invalidateVisuals()
+        commitTrackingVisuals()
         guard popoverEnabledForTrackingDiagnosis else { return }
         activePopoverColor = activeBoundaryColor
         presentPopover(for: activeBoundaryColor)
@@ -511,6 +511,15 @@ final class QuotaColorThresholdSlider: NSControl {
         trackCover.needsDisplay = true
         passiveKnobOverlay.needsDisplay = true
         interactionSlider.needsDisplay = true
+    }
+
+    /// The ownership switch from passive to live native knob must be committed
+    /// before AppKit enters the slider tracking loop, otherwise its first
+    /// pressed frame can retain the idle backing-store contents.
+    private func commitTrackingVisuals() {
+        trackCover.displayIfNeeded()
+        passiveKnobOverlay.displayIfNeeded()
+        interactionSlider.displayIfNeeded()
     }
 
     fileprivate func drawTrack(in trackView: QuotaThresholdTrackView) {
