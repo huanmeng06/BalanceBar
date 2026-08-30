@@ -826,7 +826,7 @@ private final class AccountEmailTooltipViewController: NSViewController {
     }
 
     override func loadView() {
-        let font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize)
+        let font = DashboardTextTooltip.font
         let layout = AccountEmailTooltipLayout.make(for: email, font: font)
         let view = NSView(
             frame: NSRect(
@@ -837,9 +837,8 @@ private final class AccountEmailTooltipViewController: NSViewController {
             )
         )
         let label = NSTextField(wrappingLabelWithString: email)
+        DashboardTextTooltip.configure(label)
         label.font = font
-        label.textColor = .labelColor
-        label.alignment = .left
         label.lineBreakMode = .byCharWrapping
         label.usesSingleLineMode = false
         label.maximumNumberOfLines = 0
@@ -994,9 +993,7 @@ final class AccountEmailTextField: NSTextField {
             return
         }
 
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = false
+        let popover = DashboardTextTooltip.makePopover()
         let tooltipViewController = AccountEmailTooltipViewController(email: tooltipText)
         tooltipViewController.loadViewIfNeeded()
         popover.contentViewController = tooltipViewController

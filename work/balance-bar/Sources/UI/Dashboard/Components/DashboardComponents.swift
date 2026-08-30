@@ -1,5 +1,29 @@
 import AppKit
 
+/// Shared visual language for transient text tooltips used by compact
+/// controls and wider account labels. Callers own their content sizing and
+/// layout-specific padding.
+enum DashboardTextTooltip {
+    static var font: NSFont { NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize) }
+
+    static func makePopover() -> NSPopover {
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = false
+        return popover
+    }
+
+    static func configure(_ label: NSTextField, alignment: NSTextAlignment = .left) {
+        label.font = font
+        label.textColor = .labelColor
+        label.alignment = alignment
+        label.isEditable = false
+        label.isSelectable = false
+        label.drawsBackground = false
+        label.isBordered = false
+    }
+}
+
 var dashboardUsesDarkAppearance: Bool {
     NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
 }

@@ -68,7 +68,7 @@ final class QuotaColorThresholdSlider: NSControl {
     private var thumbSliders: [QuotaProgressColor: ThresholdThumbSlider] = [:]
     private var activePopoverColor: QuotaProgressColor?
     private var trackingColor: QuotaProgressColor?
-    private let popover = NSPopover()
+    private let popover = DashboardTextTooltip.makePopover()
     private let popoverLabel = NSTextField(labelWithString: "")
     private var hoverWorkItem: DispatchWorkItem?
     private var trackingAreaReference: NSTrackingArea?
@@ -81,11 +81,7 @@ final class QuotaColorThresholdSlider: NSControl {
         configurationStorage = configuration.normalized(); super.init(frame: .zero)
         identifier = NSUserInterfaceItemIdentifier("quotaProgressThresholdSlider"); setAccessibilityRole(.group)
         let contentView = NSView(frame: .zero)
-        popoverLabel.font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize)
-        popoverLabel.textColor = .labelColor
-        popoverLabel.alignment = .center
-        popoverLabel.isEditable = false
-        popoverLabel.isSelectable = false
+        DashboardTextTooltip.configure(popoverLabel, alignment: .center)
         popoverLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(popoverLabel)
         NSLayoutConstraint.activate([
