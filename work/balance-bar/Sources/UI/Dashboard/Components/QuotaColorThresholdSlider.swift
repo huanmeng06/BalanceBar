@@ -187,10 +187,14 @@ final class QuotaColorThresholdSlider: NSControl {
         addSubview(trackView)
         addSubview(interactionSlider)
         trackCover.owner = self
-        trackCover.wantsLayer = false
+        trackCover.wantsLayer = true
+        trackCover.layer?.backgroundColor = NSColor.clear.cgColor
+        trackCover.layerContentsRedrawPolicy = .onSetNeedsDisplay
         addSubview(trackCover)
         passiveKnobOverlay.owner = self
-        passiveKnobOverlay.wantsLayer = false
+        passiveKnobOverlay.wantsLayer = true
+        passiveKnobOverlay.layer?.backgroundColor = NSColor.clear.cgColor
+        passiveKnobOverlay.layerContentsRedrawPolicy = .onSetNeedsDisplay
         addSubview(passiveKnobOverlay)
 
         let contentView = NSView(frame: .zero)
@@ -520,7 +524,6 @@ final class QuotaColorThresholdSlider: NSControl {
     /// pressed frame can retain the idle backing-store contents.
     private func commitTrackingVisuals() {
         trackView.displayIfNeeded()
-        interactionSlider.displayIfNeeded()
         trackCover.displayIfNeeded()
         passiveKnobOverlay.displayIfNeeded()
     }
