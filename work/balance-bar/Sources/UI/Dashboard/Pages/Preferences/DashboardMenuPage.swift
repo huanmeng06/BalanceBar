@@ -120,12 +120,16 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayThresholdField = balanceDisplayThreshold
 
         let slider = QuotaColorThresholdSlider(configuration: quotaColorConfiguration)
-        slider.onChange = { [weak self] configuration in self?.applyQuotaColorConfiguration(configuration) }
+        slider.onChange = { [weak self] configuration in
+            guard let self else { return }
+            let normalized = configuration.normalized()
+            self.quotaColorConfiguration = normalized
+            self.updateQuotaColorButtons()
+            self.onQuotaProgressColorConfigurationChanged?(normalized)
+        }
         quotaColorSlider = slider
         let resetButton = NSButton(title: tr(.keyCommonRestoreDefaults), target: self, action: #selector(resetQuotaProgressColors(_:)))
-        resetButton.bezelStyle = .inline
-        resetButton.controlSize = .small
-        resetButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        Self.configureQuotaColorResetButton(resetButton)
         quotaColorResetButton = resetButton
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal; colorControls.spacing = 12
@@ -396,6 +400,15 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             button.isEnabled = button.state == .off || quotaColorConfiguration.enabledColors.count > 2
         }
         quotaColorResetButton?.isEnabled = quotaColorConfiguration != .default
+    }
+
+    static func configureQuotaColorResetButton(_ button: NSButton) {
+        button.controlSize = .small
+        if #available(macOS 26.0, *) {
+            button.bezelStyle = .glass
+        } else {
+            button.bezelStyle = .rounded
+        }
     }
 
     private static func colorLabel(_ color: QuotaProgressColor) -> String {

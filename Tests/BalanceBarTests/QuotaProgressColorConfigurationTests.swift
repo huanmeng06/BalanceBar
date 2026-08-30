@@ -75,4 +75,58 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         let two = three.settingEnabled(.red, to: false)
         XCTAssertEqual(QuotaColorThresholdSlider(configuration: two).thumbCount, 1)
     }
+
+    func testNativeThumbRangesValuesAndGeometrySurviveUpdates() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 34)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        let initial = slider.debugThumbStates
+        XCTAssertEqual(initial.map(\.color), [.red, .orange, .yellow])
+        XCTAssertEqual(initial.map(\.minimumValue), [0, 0, 0])
+        XCTAssertEqual(initial.map(\.maximumValue), [100, 100, 100])
+        XCTAssertEqual(initial.map(\.value), [10, 25, 50])
+        XCTAssertEqual(initial.map(\.knobMidX), initial.map(\.knobMidX).sorted())
+
+        slider.configuration = .default.settingBoundary(after: .red, to: 15)
+        let moved = slider.debugThumbStates
+        XCTAssertNotEqual(moved[0].knobMidX, initial[0].knobMidX)
+        XCTAssertEqual(moved[1].knobMidX, initial[1].knobMidX, accuracy: 0.01)
+        XCTAssertEqual(moved[2].knobMidX, initial[2].knobMidX, accuracy: 0.01)
+        XCTAssertEqual(moved.map(\.minimumValue), [0, 0, 0])
+        XCTAssertEqual(moved.map(\.maximumValue), [100, 100, 100])
+
+        slider.applyRawThumbValueForTesting(12.6, after: .red)
+        XCTAssertEqual(slider.configuration.redUpperBound, 15)
+        XCTAssertEqual(slider.debugThumbStates.first?.value, 15)
+
+        let identities = slider.thumbIdentitySet
+        slider.configuration = slider.configuration
+        XCTAssertEqual(slider.thumbIdentitySet, identities)
+        XCTAssertEqual(slider.debugThumbStates.map(\.minimumValue), [0, 0, 0])
+        XCTAssertEqual(slider.debugThumbStates.map(\.maximumValue), [100, 100, 100])
+
+        slider.configuration = slider.configuration.settingEnabled(.orange, to: false)
+        slider.configuration = slider.configuration.settingEnabled(.orange, to: true)
+        XCTAssertEqual(slider.debugThumbStates.map(\.minimumValue), [0, 0, 0])
+        XCTAssertEqual(slider.debugThumbStates.map(\.maximumValue), [100, 100, 100])
+    }
+
+    func testResetButtonUsesNativeSmallBezelStyle() {
+        let button = NSButton()
+        DashboardMenuPage.configureQuotaColorResetButton(button)
+        XCTAssertEqual(button.controlSize, .small)
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(button.bezelStyle, .glass)
+        } else {
+            XCTAssertEqual(button.bezelStyle, .rounded)
+        }
+    }
 }

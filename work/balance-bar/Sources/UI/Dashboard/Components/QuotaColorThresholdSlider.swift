@@ -32,8 +32,9 @@ private final class ThresholdThumbSlider: NSSlider {
     var lastSnappedValue: Int?
     init(color: QuotaProgressColor) {
         boundaryColor = color; super.init(frame: .zero)
+        cell = ThumbOnlySliderCell()
         minValue = 0; maxValue = 100; isContinuous = true; numberOfTickMarks = 0; sliderType = .linear; controlSize = .regular
-        cell = ThumbOnlySliderCell(); target = self; action = #selector(valueChanged(_:)); setAccessibilityRole(.slider)
+        doubleValue = 0; target = self; action = #selector(valueChanged(_:)); setAccessibilityRole(.slider)
     }
     required init?(coder: NSCoder) { nil }
     func updateAccessibilityValue(_ value: Int) {
@@ -51,8 +52,8 @@ private final class ThresholdThumbSlider: NSSlider {
     override func mouseDown(with event: NSEvent) {
         onTrackingBegan?()
         super.mouseDown(with: event)
+        onTrackingEnded?()
     }
-    override func mouseUp(with event: NSEvent) { super.mouseUp(with: event); onTrackingEnded?() }
     override func keyDown(with event: NSEvent) {
         guard let chars = event.charactersIgnoringModifiers, ["\u{F702}", "\u{F703}", "\u{F700}", "\u{F701}"].contains(chars) else { super.keyDown(with: event); return }
         doubleValue += (chars == "\u{F702}" || chars == "\u{F700}") ? -5 : 5; sendAction(action, to: target)
@@ -64,6 +65,13 @@ private final class ThresholdThumbSlider: NSSlider {
 }
 
 final class QuotaColorThresholdSlider: NSControl {
+    struct DebugThumbState: Equatable {
+        let color: QuotaProgressColor
+        let minimumValue: Double
+        let maximumValue: Double
+        let value: Double
+        let knobMidX: CGFloat
+    }
     private var configurationStorage: QuotaProgressColorConfiguration
     private var thumbSliders: [QuotaProgressColor: ThresholdThumbSlider] = [:]
     private var activePopoverColor: QuotaProgressColor?
@@ -76,6 +84,13 @@ final class QuotaColorThresholdSlider: NSControl {
     var configuration: QuotaProgressColorConfiguration { get { configurationStorage } set { applyExternalConfiguration(newValue.normalized()) } }
     var thumbCount: Int { thumbSliders.count }
     var thumbIdentitySet: Set<ObjectIdentifier> { Set(thumbSliders.values.map { ObjectIdentifier($0) }) }
+    var debugThumbStates: [DebugThumbState] {
+        layoutSubtreeIfNeeded()
+        return QuotaProgressColor.allCases.compactMap { color in
+            guard let thumb = thumbSliders[color], let knob = knobRect(for: color) else { return nil }
+            return DebugThumbState(color: color, minimumValue: thumb.minValue, maximumValue: thumb.maxValue, value: thumb.doubleValue, knobMidX: knob.midX)
+        }
+    }
 
     init(configuration: QuotaProgressColorConfiguration) {
         configurationStorage = configuration.normalized(); super.init(frame: .zero)
@@ -146,6 +161,7 @@ final class QuotaColorThresholdSlider: NSControl {
         needsLayout = true; needsDisplay = true
     }
     private func applyExternalConfiguration(_ value: QuotaProgressColorConfiguration) {
+        guard value != configurationStorage else { return }
         let oldColors = configurationStorage.enabledColors; configurationStorage = value
         if oldColors != value.enabledColors {
             trackingColor = nil
@@ -166,9 +182,10 @@ final class QuotaColorThresholdSlider: NSControl {
         guard let actual = updated.boundary(after: color) else { return }
         thumb?.doubleValue = Double(actual)
         thumb?.updateAccessibilityValue(actual)
+        if trackingColor == color { updatePopoverAnchor(for: color, value: actual) }
         guard actual != old else { return }
         if QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: thumb?.lastSnappedValue, newValue: actual) { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now); thumb?.lastSnappedValue = actual }
-        configurationStorage = updated; onChange?(updated); sendAction(action, to: target); if activePopoverColor == color { updatePopoverAnchor(for: color) }; needsDisplay = true
+        configurationStorage = updated; onChange?(updated); sendAction(action, to: target); needsDisplay = true
     }
     private func beginTracking(color: QuotaProgressColor) {
         trackingColor = color
@@ -207,16 +224,19 @@ final class QuotaColorThresholdSlider: NSControl {
         let point = convert(event.locationInWindow, from: nil)
         guard let color = activeBoundaries.min(by: { abs((knobRect(for: $0.0)?.midX ?? 0) - point.x) < abs((knobRect(for: $1.0)?.midX ?? 0) - point.x) }),
               let thumb = thumbSliders[color.0] else { return }
-        // Let AppKit own the tracking loop even for a blank-track click. The
-        // child receives the original window event and therefore gets the
-        // native pressed/Liquid Glass state and mouse-up lifecycle.
-        thumb.mouseDown(with: event)
+        let track = trackRect
+        guard track.width > 0 else { return }
+        let rawValue = Double((point.x - track.minX) / track.width * 100)
+        applyTrackedBoundaryChange(color: color.0, value: rawValue, thumb: thumb)
+    }
+    func applyRawThumbValueForTesting(_ value: Double, after color: QuotaProgressColor) {
+        applyTrackedBoundaryChange(color: color, value: value, thumb: thumbSliders[color])
     }
     private func knobRect(for color: QuotaProgressColor) -> NSRect? { guard let thumb = thumbSliders[color], let cell = thumb.cell as? NSSliderCell else { return nil }; return convert(cell.knobRect(flipped: thumb.isFlipped), from: thumb) }
     private func presentPopover(for color: QuotaProgressColor) { activePopoverColor = color; updatePopoverAnchor(for: color); if !popover.isShown, let rect = knobRect(for: color) { popover.show(relativeTo: rect, of: self, preferredEdge: .maxY) } }
-    private func updatePopoverAnchor(for color: QuotaProgressColor) {
+    private func updatePopoverAnchor(for color: QuotaProgressColor, value: Int? = nil) {
         guard let rect = knobRect(for: color) else { dismissPopover(); return }
-        popoverLabel.stringValue = "\(configurationStorage.boundary(after: color) ?? 0)%"
+        popoverLabel.stringValue = "\(value ?? configurationStorage.boundary(after: color) ?? 0)%"
         let labelSize = popoverLabel.fittingSize
         popover.contentSize = NSSize(width: ceil(labelSize.width) + 14, height: ceil(labelSize.height) + 10)
         if popover.isShown { popover.positioningRect = rect }
