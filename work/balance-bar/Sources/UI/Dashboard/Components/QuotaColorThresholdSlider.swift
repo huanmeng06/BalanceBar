@@ -493,18 +493,31 @@ final class QuotaColorThresholdSlider: NSControl {
 
     fileprivate func drawTrack(in trackView: QuotaThresholdTrackView) {
         let track = trackView.convert(nativeTrackRect, from: self)
-        let points = [0] + activeBoundaries.map(\.1) + [100]
-
-        for (index, color) in configurationStorage.enabledColorsInOrder.enumerated() {
-            let x0 = track.minX + track.width * CGFloat(points[index]) / 100
-            let x1 = track.minX + track.width * CGFloat(points[index + 1]) / 100
-            color.nsColor.setFill()
-            fillTrackSegment(from: x0, to: x1, track: track)
+        let colorTrack = NSRect(x: track.minX, y: track.midY - 3, width: track.width, height: 6)
+        let boundaryXs = activeBoundaries.map { color, _ in
+            knobRect(for: color)?.midX ?? track.minX
         }
+        let segmentXs = [colorTrack.minX] + boundaryXs + [colorTrack.maxX]
+
+        let trackPath = NSBezierPath(
+            roundedRect: colorTrack,
+            xRadius: colorTrack.height / 2,
+            yRadius: colorTrack.height / 2
+        )
+        NSGraphicsContext.saveGraphicsState()
+        trackPath.addClip()
+        for (index, color) in configurationStorage.enabledColorsInOrder.enumerated() {
+            let x0 = segmentXs[index]
+            let x1 = segmentXs[index + 1]
+            color.nsColor.setFill()
+            NSBezierPath(rect: NSRect(x: x0, y: colorTrack.minY, width: max(0, x1 - x0), height: colorTrack.height)).fill()
+        }
+        NSGraphicsContext.restoreGraphicsState()
 
         NSColor.tertiaryLabelColor.setStroke()
         for tick in QuotaThresholdSliderMath.visibleTicks(width: bounds.width, thumbValues: activeBoundaries.map(\.1)) {
-            let x = track.minX + track.width * CGFloat(tick) / 100
+            let x = activeBoundaries.first(where: { $0.1 == tick }).flatMap { knobRect(for: $0.0)?.midX }
+                ?? track.minX + track.width * CGFloat(tick) / 100
             let path = NSBezierPath()
             path.move(to: NSPoint(x: x, y: track.minY - 3))
             path.line(to: NSPoint(x: x, y: track.minY))
@@ -520,18 +533,4 @@ final class QuotaColorThresholdSlider: NSControl {
         }
     }
 
-    private func fillTrackSegment(from x0: CGFloat, to x1: CGFloat, track: NSRect) {
-        guard x1 > x0 else { return }
-        let height: CGFloat = 6
-        let y = track.midY - height / 2
-        let fill: (CGFloat, CGFloat) -> Void = { start, end in
-            guard end > start else { return }
-            NSBezierPath(
-                roundedRect: NSRect(x: start, y: y, width: max(1, end - start), height: height),
-                xRadius: height / 2,
-                yRadius: height / 2
-            ).fill()
-        }
-        fill(x0, x1)
-    }
 }
