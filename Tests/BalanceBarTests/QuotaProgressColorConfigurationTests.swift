@@ -98,6 +98,44 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertLessThanOrEqual(resized.rightFrame.maxX, resizedBounds.maxX)
     }
 
+    func testTrackingKnobGapHasNoCustomTrackSourceBeneathIt() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 34)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        for color in [.red, .orange, .yellow] as [QuotaProgressColor] {
+            slider.setTrackingColorForTesting(color)
+            guard let gap = slider.debugCurrentNativeKnobGap else {
+                return XCTFail("Expected a native knob gap while tracking \(color)")
+            }
+            XCTAssertFalse(slider.debugHasContinuousColorTrackUnderNativeKnob)
+            XCTAssertTrue(slider.debugColorTrackSourceFrames.allSatisfy { !$0.intersects(gap) })
+        }
+
+        slider.setTrackingColorForTesting(nil)
+        XCTAssertNil(slider.debugCurrentNativeKnobGap)
+        XCTAssertEqual(slider.debugColorTrackSourceFrames, [slider.bounds])
+
+        slider.configuration = slider.configuration.settingEnabled(.orange, to: false)
+        slider.frame.size.width = 260
+        window.contentView?.layoutSubtreeIfNeeded()
+        for color in [.red, .yellow] as [QuotaProgressColor] {
+            slider.setTrackingColorForTesting(color)
+            guard let gap = slider.debugCurrentNativeKnobGap else {
+                return XCTFail("Expected a native knob gap while tracking \(color)")
+            }
+            XCTAssertFalse(slider.debugHasContinuousColorTrackUnderNativeKnob)
+            XCTAssertTrue(slider.debugColorTrackSourceFrames.allSatisfy { !$0.intersects(gap) })
+        }
+    }
+
     func testThumbCountMatchesEnabledColorCount() {
         let all = QuotaColorThresholdSlider(configuration: .default)
         XCTAssertEqual(all.thumbCount, 3)
