@@ -80,6 +80,19 @@ private final class ThresholdInteractionSlider: NSSlider {
     private static let logger = Logger(subsystem: "com.huanmeng06.BalanceBar", category: "QuotaThresholdSlider")
 }
 
+/// The semantic colour track. It is deliberately a single continuous source
+/// beneath all persistent native sliders. Cover slices may mask stock bar
+/// material around the knobs, but they must not remove these colour pixels.
+private final class QuotaThresholdTrackView: NSView {
+    weak var owner: QuotaColorThresholdSlider?
+
+    override func draw(_ dirtyRect: NSRect) {
+        owner?.drawTrack(in: self)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// A physical slice of the visual cover. During native tracking, the sibling
 /// slices leave a real view gap around the active stock knob instead of
 /// relying on a transparent hole that must be erased from a full-size backing
@@ -159,6 +172,7 @@ final class QuotaColorThresholdSlider: NSControl {
 
     private var configurationStorage: QuotaProgressColorConfiguration
     private var boundarySliders: [QuotaProgressColor: ThresholdInteractionSlider] = [:]
+    private let trackView = QuotaThresholdTrackView()
     private let leftTrackCover = QuotaThresholdTrackCoverSliceView()
     private let rightTrackCover = QuotaThresholdTrackCoverSliceView()
     private var activeBoundaryColor: QuotaProgressColor?
@@ -197,10 +211,10 @@ final class QuotaColorThresholdSlider: NSControl {
     var passiveKnobCount: Int { 0 }
     var usesNSSliderThumbs: Bool { nativeThumbSliders.allSatisfy { $0.superview === self } }
     var usesCustomSliderCell: Bool { nativeThumbSliders.contains { !($0.cell is NSSliderCell) } }
-    /// The slices are the only custom-colour drawing sources. In particular,
-    /// there is no custom full-width track beneath a native knob.
+    /// All custom colour sources, including the continuous semantic track and
+    /// the cover slices used to mask native bar material.
     var debugColorTrackSourceFrames: [NSRect] {
-        [leftTrackCover.frame] + (rightTrackCover.isHidden ? [] : [rightTrackCover.frame])
+        [trackView.frame, leftTrackCover.frame] + (rightTrackCover.isHidden ? [] : [rightTrackCover.frame])
     }
     var debugNativeBarsAreCovered: Bool { leftTrackCover.frame == bounds && rightTrackCover.isHidden }
     var debugCurrentNativeKnobGap: NSRect? { trackCoverGeometry.hole }
@@ -241,6 +255,9 @@ final class QuotaColorThresholdSlider: NSControl {
         identifier = NSUserInterfaceItemIdentifier("quotaProgressThresholdSlider")
         setAccessibilityRole(.group)
 
+        trackView.owner = self
+        trackView.wantsLayer = false
+        addSubview(trackView)
         configureTrackCoverSlice(leftTrackCover)
         configureTrackCoverSlice(rightTrackCover)
         reconcileBoundarySliders()
@@ -310,10 +327,6 @@ final class QuotaColorThresholdSlider: NSControl {
         boundarySliders[color]
     }
 
-    private var nativeKnobHoleRects: [NSRect] {
-        activeBoundaries.compactMap { knobRect(for: $0.0)?.insetBy(dx: -8, dy: -8) }
-    }
-
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
@@ -332,6 +345,7 @@ final class QuotaColorThresholdSlider: NSControl {
 
     override func layout() {
         super.layout()
+        trackView.frame = bounds
         for slider in boundarySliders.values { slider.frame = sliderFrame }
         synchronizeBoundarySliders()
         updateTrackCoverGeometry()
@@ -511,15 +525,13 @@ final class QuotaColorThresholdSlider: NSControl {
     override var acceptsFirstResponder: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard bounds.contains(point), nearestBoundary(to: point.x) != nil else { return nil }
-        return self
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        guard let color = hitThumb(at: point) ?? nearestBoundary(to: point.x),
-              let slider = slider(for: color) else { return }
-        slider.mouseDown(with: event)
+        guard bounds.contains(point),
+              let color = hitThumb(at: point) ?? nearestBoundary(to: point.x),
+              let slider = slider(for: color) else { return nil }
+        // Return the exact persistent child so AppKit dispatches the original
+        // NSEvent through that stock NSSlider's native tracking path. The
+        // parent intentionally does not forward mouseDown itself.
+        return slider
     }
 
     func applyRawThumbValueForTesting(_ value: Double, after color: QuotaProgressColor) {
@@ -602,6 +614,11 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     private func invalidateVisuals() {
+        // The semantic track is the single source of truth for colour
+        // boundaries.  Mark it dirty whenever a snapped value, layout, or
+        // configuration changes so the next commit reflects the new native
+        // knob centres immediately.
+        trackView.needsDisplay = true
         leftTrackCover.needsDisplay = true
         rightTrackCover.needsDisplay = true
         for slider in boundarySliders.values { slider.needsDisplay = true }
@@ -610,15 +627,20 @@ final class QuotaColorThresholdSlider: NSControl {
     /// Commit the custom cover slices after a snapped value changes.  Native
     /// slider tracking remains entirely under AppKit's stock control path.
     private func commitTrackingVisuals() {
+        trackView.displayIfNeeded()
         leftTrackCover.displayIfNeeded()
         rightTrackCover.displayIfNeeded()
     }
 
-    fileprivate func drawTrackCoverSlice(in trackCover: QuotaThresholdTrackCoverSliceView) {
-        drawColorTrack(in: trackCover)
+    fileprivate func drawTrack(in trackView: QuotaThresholdTrackView) {
+        drawColorTrack(in: trackView, excludingNativeKnobs: false)
     }
 
-    private func drawColorTrack(in drawingView: NSView) {
+    fileprivate func drawTrackCoverSlice(in trackCover: QuotaThresholdTrackCoverSliceView) {
+        drawColorTrack(in: trackCover, excludingNativeKnobs: true)
+    }
+
+    private func drawColorTrack(in drawingView: NSView, excludingNativeKnobs: Bool) {
         let track = drawingView.convert(nativeTrackRect, from: self)
         let colorTrack = QuotaThresholdTrackGeometry.customColorTrackRect(from: track)
         let trackPath = NSBezierPath(
@@ -628,7 +650,7 @@ final class QuotaColorThresholdSlider: NSControl {
         )
         NSGraphicsContext.saveGraphicsState()
         trackPath.addClip()
-        for segment in renderedColorTrackSegments(in: drawingView) {
+        for segment in renderedColorTrackSegments(in: drawingView, excludingNativeKnobs: excludingNativeKnobs) {
             segment.color.nsColor.setFill()
             NSBezierPath(rect: segment.frame).fill()
         }
@@ -646,16 +668,21 @@ final class QuotaColorThresholdSlider: NSControl {
         }
     }
 
-    private func renderedColorTrackSegments(in drawingView: NSView) -> [DebugColorTrackSegment] {
+    private func renderedColorTrackSegments(
+        in drawingView: NSView,
+        excludingNativeKnobs: Bool = false
+    ) -> [DebugColorTrackSegment] {
         let track = drawingView.convert(nativeTrackRect, from: self)
         let colorTrack = QuotaThresholdTrackGeometry.customColorTrackRect(from: track)
         let boundaryXs = activeBoundaries.map { color, _ in
             knobRect(for: color).map { drawingView.convert($0, from: self).midX } ?? track.minX
         }
         let segmentXs = [colorTrack.minX] + boundaryXs + [colorTrack.maxX]
-        let holes = activeBoundaries.compactMap { color, _ in
-            knobRect(for: color).map { drawingView.convert($0, from: self).insetBy(dx: -8, dy: -8) }
-        }.sorted { $0.minX < $1.minX }
+        let holes = excludingNativeKnobs
+            ? activeBoundaries.compactMap { color, _ in
+                knobRect(for: color).map { drawingView.convert($0, from: self).insetBy(dx: -8, dy: -8) }
+            }.sorted { $0.minX < $1.minX }
+            : []
         var segments: [DebugColorTrackSegment] = []
         for (index, color) in configurationStorage.enabledColorsInOrder.enumerated() {
             let x0 = segmentXs[index]

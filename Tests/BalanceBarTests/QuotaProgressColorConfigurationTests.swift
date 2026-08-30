@@ -98,41 +98,59 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertLessThanOrEqual(resized.rightFrame.maxX, resizedBounds.maxX)
     }
 
-    func testTrackingKnobGapHasNoCustomTrackSourceBeneathIt() {
+    func testContinuousColorTrackRemainsUnderEveryNativeKnob() throws {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        let slider = QuotaColorThresholdSlider(configuration: .default)
-        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 34)
-        window.contentView?.addSubview(slider)
-        window.contentView?.layoutSubtreeIfNeeded()
+        let cases: [(CGFloat, QuotaProgressColorConfiguration)] = [
+            (620, .default),
+            (420, .default.settingEnabled(.orange, to: false)),
+            (
+                260,
+                .default
+                    .settingEnabled(.red, to: false)
+                    .settingEnabled(.orange, to: false)
+            )
+        ]
 
-        for color in [.red, .orange, .yellow] as [QuotaProgressColor] {
-            slider.setTrackingColorForTesting(color)
-            guard let gap = slider.debugCurrentNativeKnobGap else {
-                return XCTFail("Expected a native knob gap while tracking \(color)")
+        for (width, configuration) in cases {
+            let slider = QuotaColorThresholdSlider(configuration: configuration)
+            slider.frame = NSRect(x: 20, y: 30, width: width, height: 34)
+            window.contentView?.addSubview(slider)
+            window.contentView?.layoutSubtreeIfNeeded()
+
+            let colors = configuration.enabledColorsInOrder
+            let segments = slider.debugRenderedColorTrackSegments
+            XCTAssertEqual(segments.count, colors.count)
+            let firstSegment = try XCTUnwrap(segments.first)
+            let lastSegment = try XCTUnwrap(segments.last)
+            XCTAssertEqual(firstSegment.frame.minX, slider.debugNativeTrackRect.minX, accuracy: 0.01)
+            XCTAssertEqual(lastSegment.frame.maxX, slider.debugNativeTrackRect.maxX, accuracy: 0.01)
+            XCTAssertTrue(slider.debugColorTrackSourceFrames.contains { $0 == slider.bounds })
+
+            for (index, color) in colors.enumerated() {
+                let segment = try XCTUnwrap(segments[safe: index])
+                XCTAssertEqual(segment.color, color)
+                XCTAssertEqual(segment.frame.minY, slider.debugNativeTrackRect.minY, accuracy: 0.01)
+                XCTAssertEqual(segment.frame.height, slider.debugNativeTrackRect.height, accuracy: 0.01)
+                if let boundary = slider.debugRenderedColorBoundaryCenters[color] {
+                    XCTAssertEqual(segment.frame.maxX, boundary, accuracy: 0.01)
+                    if index + 1 < segments.count {
+                        XCTAssertEqual(segments[index + 1].frame.minX, boundary, accuracy: 0.01)
+                    }
+                }
             }
-            XCTAssertFalse(slider.debugHasContinuousColorTrackUnderNativeKnob)
-            XCTAssertTrue(slider.debugColorTrackSourceFrames.allSatisfy { !$0.intersects(gap) })
-        }
 
-        slider.setTrackingColorForTesting(nil)
-        XCTAssertNil(slider.debugCurrentNativeKnobGap)
-        XCTAssertEqual(slider.debugColorTrackSourceFrames, [slider.bounds])
-
-        slider.configuration = slider.configuration.settingEnabled(.orange, to: false)
-        slider.frame.size.width = 260
-        window.contentView?.layoutSubtreeIfNeeded()
-        for color in [.red, .yellow] as [QuotaProgressColor] {
-            slider.setTrackingColorForTesting(color)
-            guard let gap = slider.debugCurrentNativeKnobGap else {
-                return XCTFail("Expected a native knob gap while tracking \(color)")
+            for color in colors.dropLast() {
+                slider.setTrackingColorForTesting(color)
+                XCTAssertNotNil(slider.debugCurrentNativeKnobGap)
+                XCTAssertTrue(slider.debugHasContinuousColorTrackUnderNativeKnob)
             }
-            XCTAssertFalse(slider.debugHasContinuousColorTrackUnderNativeKnob)
-            XCTAssertTrue(slider.debugColorTrackSourceFrames.allSatisfy { !$0.intersects(gap) })
+            slider.setTrackingColorForTesting(nil)
+            slider.removeFromSuperview()
         }
     }
 
@@ -146,7 +164,12 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         for (width, configuration) in [
             (260, QuotaProgressColorConfiguration.default),
             (420, QuotaProgressColorConfiguration.default.settingEnabled(.orange, to: false)),
-            (620, QuotaProgressColorConfiguration.default.settingEnabled(.red, to: false))
+            (
+                620,
+                QuotaProgressColorConfiguration.default
+                    .settingEnabled(.red, to: false)
+                    .settingEnabled(.orange, to: false)
+            )
         ] {
             let slider = QuotaColorThresholdSlider(configuration: configuration)
             slider.frame = NSRect(x: 20, y: 40, width: CGFloat(width), height: 34)
@@ -220,7 +243,10 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertFalse(slider.usesCustomSliderCell)
         XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
         for state in initial {
-            XCTAssertTrue(slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY)) === slider)
+            guard let index = slider.nativeSliderBoundaryColors.firstIndex(of: state.color) else {
+                return XCTFail("Missing native slider for \(state.color)")
+            }
+            XCTAssertTrue(slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY)) === slider.nativeThumbSliders[index])
         }
 
         slider.configuration = .default.settingBoundary(after: .red, to: 15)
@@ -376,7 +402,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         }
     }
 
-    func testPersistentNativeSlidersRouteBoundaryHitsThroughParent() {
+    func testPersistentNativeSlidersRouteBoundaryHitsToExactChild() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
             styleMask: [.borderless],
@@ -394,11 +420,21 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.acceptsFirstMouse(for: nil) })
 
         for state in slider.debugThumbStates {
+            guard let index = slider.nativeSliderBoundaryColors.firstIndex(of: state.color) else {
+                return XCTFail("Missing native slider for \(state.color)")
+            }
             let hit = slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY))
-            XCTAssertTrue(hit === slider)
+            XCTAssertTrue(hit === slider.nativeThumbSliders[index])
         }
 
         let emptyTrackPoint = NSPoint(x: slider.bounds.maxX - 2, y: slider.bounds.midY)
-        XCTAssertTrue(slider.hitTest(emptyTrackPoint) === slider)
+        XCTAssertTrue(emptyTrackPoint.x > slider.debugThumbStates.last!.knobMidX)
+        XCTAssertTrue(slider.hitTest(emptyTrackPoint) === slider.nativeThumbSliders.last)
+    }
+}
+
+private extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
