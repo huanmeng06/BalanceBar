@@ -136,6 +136,34 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         }
     }
 
+    func testCustomColorTrackMatchesConvertedNativeBarRect() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 120),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        for (width, configuration) in [
+            (260, QuotaProgressColorConfiguration.default),
+            (420, QuotaProgressColorConfiguration.default.settingEnabled(.orange, to: false)),
+            (620, QuotaProgressColorConfiguration.default.settingEnabled(.red, to: false))
+        ] {
+            let slider = QuotaColorThresholdSlider(configuration: configuration)
+            slider.frame = NSRect(x: 20, y: 40, width: CGFloat(width), height: 34)
+            window.contentView?.addSubview(slider)
+            window.contentView?.layoutSubtreeIfNeeded()
+            XCTAssertEqual(slider.debugCustomColorTrackRect, slider.debugNativeTrackRect)
+            XCTAssertEqual(slider.debugCustomColorTrackRect.height, slider.debugNativeTrackRect.height)
+            slider.removeFromSuperview()
+        }
+
+        let nonSixPointBar = NSRect(x: 9, y: 4, width: 280, height: 4)
+        XCTAssertEqual(
+            QuotaThresholdTrackGeometry.customColorTrackRect(from: nonSixPointBar),
+            nonSixPointBar
+        )
+    }
+
     func testThumbCountMatchesEnabledColorCount() {
         let all = QuotaColorThresholdSlider(configuration: .default)
         XCTAssertEqual(all.thumbCount, 3)

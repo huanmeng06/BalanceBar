@@ -130,6 +130,12 @@ struct QuotaTrackCoverGeometry: Equatable {
     }
 }
 
+enum QuotaThresholdTrackGeometry {
+    static func customColorTrackRect(from nativeBarRect: NSRect) -> NSRect {
+        nativeBarRect
+    }
+}
+
 /// Inactive stock knobs remain above the active slider control. They are
 /// display-only; all pointer events route to the one native interaction slider.
 private final class QuotaThresholdPassiveKnobOverlayView: NSView {
@@ -190,6 +196,10 @@ final class QuotaColorThresholdSlider: NSControl {
         [leftTrackCover.frame] + (rightTrackCover.isHidden ? [] : [rightTrackCover.frame])
     }
     var debugCurrentNativeKnobGap: NSRect? { trackCoverGeometry.hole }
+    var debugNativeTrackRect: NSRect { nativeTrackRect }
+    var debugCustomColorTrackRect: NSRect {
+        QuotaThresholdTrackGeometry.customColorTrackRect(from: nativeTrackRect)
+    }
     var debugHasContinuousColorTrackUnderNativeKnob: Bool {
         guard let gap = debugCurrentNativeKnobGap else { return false }
         return debugColorTrackSourceFrames.contains { $0.intersects(gap) }
@@ -592,7 +602,7 @@ final class QuotaColorThresholdSlider: NSControl {
 
     private func drawColorTrack(in drawingView: NSView) {
         let track = drawingView.convert(nativeTrackRect, from: self)
-        let colorTrack = NSRect(x: track.minX, y: track.midY - 3, width: track.width, height: 6)
+        let colorTrack = QuotaThresholdTrackGeometry.customColorTrackRect(from: track)
         let boundaryXs = activeBoundaries.map { color, _ in
             knobRect(for: color).map { drawingView.convert($0, from: self).midX } ?? track.minX
         }
