@@ -850,6 +850,7 @@ enum DashboardSettingsComponents {
         subtitleContent: LocalizedSubtitle? = nil,
         subtitleLabel: NSTextField? = nil,
         titleAccessory: NSView? = nil,
+        headerTrailingAccessory: NSView? = nil,
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
         verticalPadding: CGFloat = 11,
@@ -897,10 +898,26 @@ enum DashboardSettingsComponents {
         } else {
             titleView = label
         }
-        let labels = NSStackView(views: [titleView])
+        let headerView: NSView
+        if let headerTrailingAccessory {
+            let header = NSStackView(views: [titleView, NSView(), headerTrailingAccessory])
+            header.orientation = .horizontal
+            header.alignment = .centerY
+            header.spacing = 6
+            headerView = header
+        } else {
+            headerView = titleView
+        }
+        let labels = NSStackView(views: [headerView])
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 2
+        if let headerStack = headerView as? NSStackView {
+            // `labels` keeps leading alignment for the existing rows, while
+            // a header trailing accessory must span the full readable width
+            // so its spacer can push the action to the far edge.
+            headerStack.widthAnchor.constraint(equalTo: labels.widthAnchor).isActive = true
+        }
         let subtitleText = subtitleContent?.text ?? subtitle
         if let subtitleText, !subtitleText.isEmpty {
             let detail: NSTextField

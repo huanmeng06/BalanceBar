@@ -445,3 +445,4 @@
 "dashboard.menu.page.color_orange" = "オレンジ";
 "dashboard.menu.page.color_yellow" = "黄";
 "dashboard.menu.page.color_green" = "緑";
+"common.restore_defaults" = "デフォルトに戻す";

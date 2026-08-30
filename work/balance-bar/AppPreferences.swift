@@ -373,7 +373,6 @@ final class AppPreferences {
                 orangeUpperBound: integer(Self.quotaProgressOrangeUpperBoundKey, fallback.orangeUpperBound),
                 yellowUpperBound: integer(Self.quotaProgressYellowUpperBoundKey, fallback.yellowUpperBound)
             ).normalized()
-            persistQuotaProgressColorConfiguration(normalized)
             return normalized
         }
         set { persistQuotaProgressColorConfiguration(newValue.normalized()) }

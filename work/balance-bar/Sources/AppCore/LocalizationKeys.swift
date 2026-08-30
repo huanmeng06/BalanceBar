@@ -343,6 +343,7 @@
     case keyDashboardMenuPageColorOrange = "dashboard.menu.page.color_orange"
     case keyDashboardMenuPageColorYellow = "dashboard.menu.page.color_yellow"
     case keyDashboardMenuPageColorGreen = "dashboard.menu.page.color_green"
+    case keyCommonRestoreDefaults = "common.restore_defaults"
     case keyDashboardMenuPageLunaReserveDisplayMode = "dashboard.menu.page.luna_reserve_display_mode"
     case keyDashboardMenuPageLunaReserveDisplayModeDescription = "dashboard.menu.page.luna_reserve_display_mode_description"
     case keyDashboardMenuPageLunaReserveDisplayModeDisabled = "dashboard.menu.page.luna_reserve_display_mode_disabled"

@@ -56,6 +56,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
     private weak var quotaColorSlider: QuotaColorThresholdSlider?
     private var quotaColorButtons: [QuotaProgressColor: NSButton] = [:]
+    private weak var quotaColorResetButton: NSButton?
     private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
 
     func make(_ input: Input) -> NSView {
@@ -121,13 +122,28 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let slider = QuotaColorThresholdSlider(configuration: quotaColorConfiguration)
         slider.onChange = { [weak self] configuration in self?.applyQuotaColorConfiguration(configuration) }
         quotaColorSlider = slider
+        let resetButton = NSButton(title: tr(.keyCommonRestoreDefaults), target: self, action: #selector(resetQuotaProgressColors(_:)))
+        resetButton.bezelStyle = .inline
+        resetButton.controlSize = .small
+        resetButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        quotaColorResetButton = resetButton
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal; colorControls.spacing = 12
         for color in QuotaProgressColor.allCases {
-            let button = NSButton(checkboxWithTitle: Self.colorLabel(color), target: self, action: #selector(toggleQuotaColor(_:)))
+            let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleQuotaColor(_:)))
             button.identifier = NSUserInterfaceItemIdentifier("quotaProgressColor.\(color.rawValue)")
+            button.setAccessibilityLabel(Self.colorLabel(color))
             button.state = quotaColorConfiguration.enabledColors.contains(color) ? .on : .off
-            colorControls.addArrangedSubview(button); quotaColorButtons[color] = button
+            let swatch = NSImageView(image: NSImage(systemSymbolName: "square.fill", accessibilityDescription: nil) ?? NSImage())
+            swatch.contentTintColor = color.nsColor
+            swatch.setAccessibilityElement(false)
+            let item = NSStackView(views: [button, swatch]); item.orientation = .horizontal; item.alignment = .centerY; item.spacing = 4
+            let checkboxBounds = NSRect(origin: .zero, size: button.fittingSize)
+            let indicatorRect = button.cell?.imageRect(forBounds: checkboxBounds) ?? checkboxBounds
+            let side = max(1, min(indicatorRect.width, indicatorRect.height))
+            swatch.widthAnchor.constraint(equalToConstant: side).isActive = true
+            swatch.heightAnchor.constraint(equalToConstant: side).isActive = true
+            colorControls.addArrangedSubview(item); quotaColorButtons[color] = button
         }
         updateQuotaColorButtons()
         let balanceDisplay = DashboardSettingsComponents.makeSettingsSection(
@@ -143,6 +159,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuPageProgressColorRanges),
                     subtitle: tr(.keyDashboardMenuPageProgressColorRangesDescription),
+                    headerTrailingAccessory: resetButton,
                     control: slider,
                     minimumHeight: 90,
                     controlWidthConstrainedToRow: true,
@@ -345,6 +362,9 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         onBalanceDisplayThresholdChanged = nil
         onQuotaProgressColorConfigurationChanged = nil
         quotaColorButtons = [:]
+        quotaColorSlider?.teardown()
+        quotaColorSlider = nil
+        quotaColorResetButton = nil
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusSubtitleLabel = nil
@@ -359,6 +379,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         applyQuotaColorConfiguration(quotaColorConfiguration.settingEnabled(color, to: sender.state == .on))
     }
 
+    @objc private func resetQuotaProgressColors(_ sender: NSButton) {
+        applyQuotaColorConfiguration(.default)
+    }
+
     private func applyQuotaColorConfiguration(_ configuration: QuotaProgressColorConfiguration) {
         quotaColorConfiguration = configuration.normalized()
         quotaColorSlider?.configuration = quotaColorConfiguration
@@ -371,6 +395,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             button.state = quotaColorConfiguration.enabledColors.contains(color) ? .on : .off
             button.isEnabled = button.state == .off || quotaColorConfiguration.enabledColors.count > 2
         }
+        quotaColorResetButton?.isEnabled = quotaColorConfiguration != .default
     }
 
     private static func colorLabel(_ color: QuotaProgressColor) -> String {

@@ -445,3 +445,4 @@
 "dashboard.menu.page.color_orange" = "Naranja";
 "dashboard.menu.page.color_yellow" = "Amarillo";
 "dashboard.menu.page.color_green" = "Verde";
+"common.restore_defaults" = "Restaurar valores predeterminados";

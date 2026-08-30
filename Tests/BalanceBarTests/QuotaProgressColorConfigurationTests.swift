@@ -25,6 +25,18 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(AppPreferences(defaults: defaults).quotaProgressColorConfiguration, configuration)
     }
 
+    func testGetterDoesNotWriteNormalizedValues() {
+        let suite = "QuotaProgressColorConfigurationTests.getter.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["red"], forKey: AppPreferences.quotaProgressEnabledColorsKey)
+        defaults.set(27, forKey: AppPreferences.quotaProgressOrangeUpperBoundKey)
+        let before = defaults.persistentDomain(forName: suite) ?? [:]
+        _ = AppPreferences(defaults: defaults).quotaProgressColorConfiguration
+        let after = defaults.persistentDomain(forName: suite) ?? [:]
+        XCTAssertTrue((before as NSDictionary).isEqual(to: after))
+    }
+
     func testColorCountsDisableTakeoverAndHistoricalRestore() {
         let original = QuotaProgressColorConfiguration(enabledColors: Set(QuotaProgressColor.allCases), redUpperBound: 25, orangeUpperBound: 50, yellowUpperBound: 75).normalized()
         let three = original.settingEnabled(.orange, to: false)
@@ -47,5 +59,17 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertTrue(QuotaThresholdSliderMath.visibleTicks(width: 180, thumbValues: [15]).contains(15))
         XCTAssertLessThan(QuotaThresholdSliderMath.visibleTicks(width: 180, thumbValues: [15]).count, 21)
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.quotaProgressEnabledColorsKey))
+    }
+
+    func testNativeThumbCountMatchesEnabledColorCount() {
+        let all = QuotaColorThresholdSlider(configuration: .default)
+        XCTAssertEqual(all.thumbCount, 3)
+        let identities = all.thumbIdentitySet
+        all.configuration = .default.settingBoundary(after: .orange, to: 35)
+        XCTAssertEqual(all.thumbIdentitySet, identities)
+        let three = QuotaProgressColorConfiguration.default.settingEnabled(.orange, to: false)
+        XCTAssertEqual(QuotaColorThresholdSlider(configuration: three).thumbCount, 2)
+        let two = three.settingEnabled(.red, to: false)
+        XCTAssertEqual(QuotaColorThresholdSlider(configuration: two).thumbCount, 1)
     }
 }

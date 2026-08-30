@@ -10,100 +10,162 @@ enum QuotaThresholdSliderMath {
     }
     static func visibleTicks(width: CGFloat, thumbValues: [Int]) -> [Int] {
         let interval = width >= 420 ? 5 : (width >= 260 ? 10 : 20)
-        return Array(Set(stride(from: 0, through: 100, by: interval))
-            .union([0, 50, 100]).union(thumbValues)).sorted()
+        return Array(Set(stride(from: 0, through: 100, by: interval)).union([0, 50, 100]).union(thumbValues)).sorted()
+    }
+}
+
+private final class ThumbOnlySliderCell: NSSliderCell {
+    override func drawBar(inside rect: NSRect, flipped: Bool) {}
+}
+
+private final class ThresholdThumbSlider: NSSlider {
+    let boundaryColor: QuotaProgressColor
+    var onTrackingChanged: ((Double) -> Void)?
+    var onTrackingEnded: (() -> Void)?
+    var lastSnappedValue: Int?
+    init(color: QuotaProgressColor) {
+        boundaryColor = color; super.init(frame: .zero)
+        minValue = 0; maxValue = 100; isContinuous = true; numberOfTickMarks = 0; sliderType = .linear; controlSize = .regular
+        cell = ThumbOnlySliderCell(); target = self; action = #selector(valueChanged(_:)); setAccessibilityRole(.slider)
+    }
+    required init?(coder: NSCoder) { nil }
+    func updateAccessibilityValue(_ value: Int) {
+        let label: String
+        switch boundaryColor {
+        case .red: label = tr(.keyDashboardMenuPageColorRed)
+        case .orange: label = tr(.keyDashboardMenuPageColorOrange)
+        case .yellow: label = tr(.keyDashboardMenuPageColorYellow)
+        case .green: label = tr(.keyDashboardMenuPageColorGreen)
+        }
+        setAccessibilityLabel(label)
+        setAccessibilityValue("\(value)%")
+    }
+    @objc private func valueChanged(_ sender: NSSlider) { onTrackingChanged?(sender.doubleValue) }
+    override func mouseUp(with event: NSEvent) { super.mouseUp(with: event); onTrackingEnded?() }
+    override func keyDown(with event: NSEvent) {
+        guard let chars = event.charactersIgnoringModifiers, ["\u{F702}", "\u{F703}", "\u{F700}", "\u{F701}"].contains(chars) else { super.keyDown(with: event); return }
+        doubleValue += (chars == "\u{F702}" || chars == "\u{F700}") ? -5 : 5; sendAction(action, to: target)
+    }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let knob = (cell as? NSSliderCell)?.knobRect(flipped: isFlipped) ?? .zero
+        return knob.insetBy(dx: -5, dy: -5).contains(point) ? super.hitTest(point) : nil
     }
 }
 
 final class QuotaColorThresholdSlider: NSControl {
-    var configuration: QuotaProgressColorConfiguration { didSet { if configuration != configuration.normalized() { configuration = configuration.normalized() }; needsDisplay = true } }
-    var onChange: ((QuotaProgressColorConfiguration) -> Void)?
-    private var draggedColor: QuotaProgressColor?
-    private var hoveredColor: QuotaProgressColor?
-    private var trackingAreaReference: NSTrackingArea?
+    private var configurationStorage: QuotaProgressColorConfiguration
+    private var thumbSliders: [QuotaProgressColor: ThresholdThumbSlider] = [:]
+    private var activePopoverColor: QuotaProgressColor?
     private let popover = NSPopover()
     private let popoverLabel = NSTextField(labelWithString: "")
     private var hoverWorkItem: DispatchWorkItem?
-    private lazy var nativeCell: NSSliderCell = { let cell = NSSliderCell(); cell.controlSize = .regular; return cell }()
+    private var trackingAreaReference: NSTrackingArea?
+    var onChange: ((QuotaProgressColorConfiguration) -> Void)?
+    var configuration: QuotaProgressColorConfiguration { get { configurationStorage } set { applyExternalConfiguration(newValue.normalized()) } }
+    var thumbCount: Int { thumbSliders.count }
+    var thumbIdentitySet: Set<ObjectIdentifier> { Set(thumbSliders.values.map { ObjectIdentifier($0) }) }
 
     init(configuration: QuotaProgressColorConfiguration) {
-        self.configuration = configuration.normalized()
-        super.init(frame: .zero)
-        identifier = NSUserInterfaceItemIdentifier("quotaProgressThresholdSlider")
-        setAccessibilityRole(.slider)
-        let controller = NSViewController(); controller.view = NSView(frame: NSRect(x: 0, y: 0, width: 54, height: 28))
-        popoverLabel.frame = NSRect(x: 8, y: 5, width: 38, height: 18); popoverLabel.alignment = .center
-        controller.view.addSubview(popoverLabel); popover.contentViewController = controller; popover.behavior = .transient; popover.animates = false
+        configurationStorage = configuration.normalized(); super.init(frame: .zero)
+        identifier = NSUserInterfaceItemIdentifier("quotaProgressThresholdSlider"); setAccessibilityRole(.group)
+        let controller = NSViewController(); controller.view = NSView(frame: NSRect(x: 0, y: 0, width: 60, height: 30))
+        popoverLabel.font = NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize); popoverLabel.alignment = .center; popoverLabel.frame = controller.view.bounds.insetBy(dx: 7, dy: 5)
+        controller.view.addSubview(popoverLabel); popover.contentViewController = controller; popover.behavior = .transient; popover.animates = false; reconcileThumbSliders()
     }
     required init?(coder: NSCoder) { nil }
+    deinit { hoverWorkItem?.cancel(); popover.close() }
+    func teardown() {
+        hoverWorkItem?.cancel()
+        hoverWorkItem = nil
+        dismissPopover()
+        if let trackingAreaReference {
+            removeTrackingArea(trackingAreaReference)
+            self.trackingAreaReference = nil
+        }
+        thumbSliders.values.forEach {
+            $0.onTrackingChanged = nil
+            $0.onTrackingEnded = nil
+        }
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { teardown() }
+    }
     override var intrinsicContentSize: NSSize { NSSize(width: 300, height: 34) }
     private var trackRect: NSRect { bounds.insetBy(dx: 9, dy: 12) }
-    private var activeBoundaries: [(QuotaProgressColor, Int)] {
-        configuration.enabledColorsInOrder.dropLast().compactMap { color in configuration.boundary(after: color).map { (color, $0) } }
-    }
+    private var activeBoundaries: [(QuotaProgressColor, Int)] { configurationStorage.enabledColorsInOrder.dropLast().compactMap { color in configurationStorage.boundary(after: color).map { (color, $0) } } }
     override func updateTrackingAreas() {
         super.updateTrackingAreas(); if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
-        addTrackingArea(area); trackingAreaReference = area
+        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self); addTrackingArea(area); trackingAreaReference = area
+    }
+    override func layout() {
+        super.layout(); let track = trackRect
+        for (color, thumb) in thumbSliders {
+            let value = configurationStorage.boundary(after: color) ?? 0
+            thumb.frame = NSRect(x: track.minX - 8, y: track.midY - 14, width: track.width + 16, height: 28)
+            if abs(thumb.doubleValue - Double(value)) > 0.01 { thumb.doubleValue = Double(value) }
+            thumb.updateAccessibilityValue(value)
+        }
+        if let activePopoverColor { updatePopoverAnchor(for: activePopoverColor) }
     }
     override func draw(_ dirtyRect: NSRect) {
-        let track = trackRect, colors = configuration.enabledColorsInOrder, boundaries = activeBoundaries.map(\.1)
-        let points = [0] + boundaries + [100]
-        for (index, color) in colors.enumerated() {
-            let x0 = track.minX + track.width * CGFloat(points[index]) / 100
-            let x1 = track.minX + track.width * CGFloat(points[index + 1]) / 100
-            color.nsColor.setFill(); NSBezierPath(roundedRect: NSRect(x: x0, y: track.midY - 3, width: max(1, x1 - x0), height: 6), xRadius: 3, yRadius: 3).fill()
-        }
+        let track = trackRect, colors = configurationStorage.enabledColorsInOrder, points = [0] + activeBoundaries.map(\.1) + [100]
+        for (index, color) in colors.enumerated() { let x0 = track.minX + track.width * CGFloat(points[index]) / 100; let x1 = track.minX + track.width * CGFloat(points[index + 1]) / 100; color.nsColor.setFill(); NSBezierPath(roundedRect: NSRect(x: x0, y: track.midY - 3, width: max(1, x1 - x0), height: 6), xRadius: 3, yRadius: 3).fill() }
         NSColor.tertiaryLabelColor.setStroke()
-        for tick in QuotaThresholdSliderMath.visibleTicks(width: bounds.width, thumbValues: boundaries) {
-            let x = track.minX + track.width * CGFloat(tick) / 100
-            let path = NSBezierPath(); path.move(to: NSPoint(x: x, y: track.minY - 3)); path.line(to: NSPoint(x: x, y: track.minY)); path.stroke()
-        }
-        for (_, value) in activeBoundaries { nativeCell.drawKnob(NSRect(x: x(for: value) - 7, y: track.midY - 10, width: 14, height: 20)) }
+        for tick in QuotaThresholdSliderMath.visibleTicks(width: bounds.width, thumbValues: activeBoundaries.map(\.1)) { let x = track.minX + track.width * CGFloat(tick) / 100; let path = NSBezierPath(); path.move(to: NSPoint(x: x, y: track.minY - 3)); path.line(to: NSPoint(x: x, y: track.minY)); path.stroke() }
     }
-    override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        draggedColor = nearestBoundary(to: point.x)?.0
-        guard let draggedColor else { return }
-        update(color: draggedColor, event: event, showPopover: true)
-        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            if next.type == .leftMouseUp { break }
-            update(color: draggedColor, event: next, showPopover: true)
+    private func reconcileThumbSliders() {
+        let wanted = Set(configurationStorage.enabledColorsInOrder.dropLast())
+        for color in Array(thumbSliders.keys) where !wanted.contains(color) { thumbSliders[color]?.removeFromSuperview(); thumbSliders.removeValue(forKey: color) }
+        for color in wanted where thumbSliders[color] == nil { let thumb = ThresholdThumbSlider(color: color); thumb.onTrackingChanged = { [weak self, weak thumb] value in self?.applyTrackedBoundaryChange(color: color, value: value, thumb: thumb) }; thumb.onTrackingEnded = { [weak self] in self?.finishTracking(color: color) }; thumbSliders[color] = thumb; addSubview(thumb) }
+        needsLayout = true; needsDisplay = true
+    }
+    private func applyExternalConfiguration(_ value: QuotaProgressColorConfiguration) {
+        let oldColors = configurationStorage.enabledColors; configurationStorage = value
+        if oldColors != value.enabledColors { dismissPopover(); reconcileThumbSliders() }
+        for (color, thumb) in thumbSliders {
+            let boundary = value.boundary(after: color) ?? 0
+            if abs(thumb.doubleValue - Double(boundary)) > 0.01 { thumb.doubleValue = Double(boundary) }
+            thumb.lastSnappedValue = boundary
+            thumb.updateAccessibilityValue(boundary)
         }
-        self.draggedColor = nil
-        if hoveredColor == nil { popover.close() }
-        sendAction(action, to: target)
+        needsDisplay = true; needsLayout = true
+    }
+    private func applyTrackedBoundaryChange(color: QuotaProgressColor, value: Double, thumb: ThresholdThumbSlider?) {
+        let old = configurationStorage.boundary(after: color) ?? 0; let updated = configurationStorage.settingBoundary(after: color, to: QuotaThresholdSliderMath.snapped(value)); guard let actual = updated.boundary(after: color), actual != old else { return }
+        thumb?.doubleValue = Double(actual)
+        thumb?.updateAccessibilityValue(actual)
+        if thumb?.lastSnappedValue != actual { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now); thumb?.lastSnappedValue = actual }
+        configurationStorage = updated; onChange?(updated); sendAction(action, to: target); if activePopoverColor == color { updatePopoverAnchor(for: color) }; needsDisplay = true
+    }
+    private func finishTracking(color: QuotaProgressColor) {
+        guard activePopoverColor == color else { return }
+        let pointInWindow = window?.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let point = pointInWindow.map { convert($0, from: nil) }
+        if let knob = knobRect(for: color), let point, knob.insetBy(dx: -5, dy: -5).contains(point) {
+            updatePopoverAnchor(for: color)
+        } else {
+            dismissPopover()
+        }
     }
     override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil); hoveredColor = nearestBoundary(to: point.x, maximumDistance: 9)?.0
-        hoverWorkItem?.cancel()
-        if let hoveredColor {
-            let item = DispatchWorkItem { [weak self] in guard self?.hoveredColor == hoveredColor else { return }; self?.showPopover(for: hoveredColor) }
-            hoverWorkItem = item; DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
-        } else { popover.close() }
+        hoverWorkItem?.cancel(); let point = convert(event.locationInWindow, from: nil); let color = activeBoundaries.first(where: { knobRect(for: $0.0)?.insetBy(dx: -5, dy: -5).contains(point) == true })?.0; activePopoverColor = color
+        if let color { let item = DispatchWorkItem { [weak self] in self?.presentPopover(for: color) }; hoverWorkItem = item; DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item) } else { dismissPopover() }
     }
-    override func mouseExited(with event: NSEvent) { hoverWorkItem?.cancel(); hoveredColor = nil; if draggedColor == nil { popover.close() } }
-    private func update(color: QuotaProgressColor, event: NSEvent, showPopover: Bool) {
+    override func mouseExited(with event: NSEvent) { hoverWorkItem?.cancel(); dismissPopover() }
+    override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        let proposed = QuotaThresholdSliderMath.snapped(Double((point.x - trackRect.minX) / max(1, trackRect.width) * 100))
-        let old = configuration.boundary(after: color) ?? proposed
-        let updated = configuration.settingBoundary(after: color, to: proposed)
-        let actual = updated.boundary(after: color) ?? old
-        if actual != old {
-            configuration = updated
-            for _ in QuotaThresholdSliderMath.crossedTicks(from: old, to: actual) { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
-            onChange?(configuration); sendAction(action, to: target)
-        }
-        if showPopover { self.showPopover(for: color) }
+        guard let color = activeBoundaries.min(by: { abs((knobRect(for: $0.0)?.midX ?? 0) - point.x) < abs((knobRect(for: $1.0)?.midX ?? 0) - point.x) }),
+              let thumb = thumbSliders[color.0] else { return }
+        activePopoverColor = color.0
+        presentPopover(for: color.0)
+        // Let AppKit own the tracking loop even for a blank-track click. The
+        // child receives the original window event and therefore gets the
+        // native pressed/Liquid Glass state and mouse-up lifecycle.
+        thumb.mouseDown(with: event)
     }
-    private func x(for value: Int) -> CGFloat { trackRect.minX + trackRect.width * CGFloat(value) / 100 }
-    private func nearestBoundary(to x: CGFloat, maximumDistance: CGFloat = .greatestFiniteMagnitude) -> (QuotaProgressColor, Int)? {
-        activeBoundaries.min { abs(self.x(for: $0.1) - x) < abs(self.x(for: $1.1) - x) }.flatMap { abs(self.x(for: $0.1) - x) <= maximumDistance ? $0 : nil }
-    }
-    private func showPopover(for color: QuotaProgressColor) {
-        guard let value = configuration.boundary(after: color) else { return }
-        popoverLabel.stringValue = "\(value)%"
-        let rect = NSRect(x: x(for: value) - 1, y: trackRect.midY, width: 2, height: 2)
-        if !popover.isShown { popover.show(relativeTo: rect, of: self, preferredEdge: .maxY) }
-    }
+    private func knobRect(for color: QuotaProgressColor) -> NSRect? { guard let thumb = thumbSliders[color], let cell = thumb.cell as? NSSliderCell else { return nil }; return convert(cell.knobRect(flipped: thumb.isFlipped), from: thumb) }
+    private func presentPopover(for color: QuotaProgressColor) { activePopoverColor = color; updatePopoverAnchor(for: color); if !popover.isShown, let rect = knobRect(for: color) { popover.show(relativeTo: rect, of: self, preferredEdge: .maxY) } }
+    private func updatePopoverAnchor(for color: QuotaProgressColor) { guard let rect = knobRect(for: color) else { dismissPopover(); return }; popoverLabel.stringValue = "\(configurationStorage.boundary(after: color) ?? 0)%"; if popover.isShown { popover.positioningRect = rect } }
+    private func dismissPopover() { activePopoverColor = nil; popover.close() }
 }

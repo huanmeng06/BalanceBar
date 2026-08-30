@@ -445,3 +445,4 @@
 "dashboard.menu.page.color_orange" = "주황";
 "dashboard.menu.page.color_yellow" = "노랑";
 "dashboard.menu.page.color_green" = "초록";
+"common.restore_defaults" = "기본값 복원";
