@@ -39,6 +39,7 @@ private final class ThresholdInteractionSlider: NSSlider {
         controlSize = .regular
         isContinuous = true
         numberOfTickMarks = 0
+        trackFillColor = .clear
         target = self
         action = #selector(valueChanged(_:))
         setAccessibilityElement(true)
