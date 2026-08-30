@@ -21,14 +21,8 @@ enum QuotaThresholdSliderMath {
     }
 }
 
-/// Suppresses only the native bar. The superclass retains AppKit's normal
-/// control/cell drawing and the pressed-state presentation of the knob.
-private final class ThumbOnlySliderCell: NSSliderCell {
-    override func drawBar(inside rect: NSRect, flipped: Bool) {}
-}
-
 /// The only view that AppKit tracks, preserving normal Force Click and
-/// trackpad gesture handling.
+/// trackpad gesture handling with its untouched AppKit-provided cell.
 private final class ThresholdInteractionSlider: NSSlider {
     var prepareForNativeTracking: ((NSEvent) -> Void)?
     var onTrackingBegan: (() -> Void)?
@@ -38,7 +32,6 @@ private final class ThresholdInteractionSlider: NSSlider {
 
     init() {
         super.init(frame: .zero)
-        cell = ThumbOnlySliderCell()
         minValue = 0
         maxValue = 100
         doubleValue = 0
