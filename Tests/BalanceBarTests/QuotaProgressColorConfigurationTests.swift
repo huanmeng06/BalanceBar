@@ -67,13 +67,21 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
     func testThumbCountMatchesEnabledColorCount() {
         let all = QuotaColorThresholdSlider(configuration: .default)
         XCTAssertEqual(all.thumbCount, 3)
+        XCTAssertEqual(all.nativeThumbSliders.count, 3)
+        XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, 3)
+        XCTAssertTrue(all.usesNSSliderThumbs)
+        XCTAssertTrue(all.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
         let identities = all.thumbIdentitySet
         all.configuration = .default.settingBoundary(after: .orange, to: 35)
         XCTAssertEqual(all.thumbIdentitySet, identities)
         let three = QuotaProgressColorConfiguration.default.settingEnabled(.orange, to: false)
-        XCTAssertEqual(QuotaColorThresholdSlider(configuration: three).thumbCount, 2)
+        let threeSlider = QuotaColorThresholdSlider(configuration: three)
+        XCTAssertEqual(threeSlider.thumbCount, 2)
+        XCTAssertEqual(threeSlider.nativeThumbSliders.count, 2)
         let two = three.settingEnabled(.red, to: false)
-        XCTAssertEqual(QuotaColorThresholdSlider(configuration: two).thumbCount, 1)
+        let twoSlider = QuotaColorThresholdSlider(configuration: two)
+        XCTAssertEqual(twoSlider.thumbCount, 1)
+        XCTAssertEqual(twoSlider.nativeThumbSliders.count, 1)
     }
 
     func testThumbRangesValuesAndGeometrySurviveUpdates() {
@@ -94,11 +102,11 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(initial.map(\.maximumValue), [100, 100, 100])
         XCTAssertEqual(initial.map(\.value), [10, 25, 50])
         XCTAssertEqual(initial.map(\.knobMidX), initial.map(\.knobMidX).sorted())
-        XCTAssertFalse(slider.usesNSSliderThumbs)
-        if #available(macOS 26.0, *) {
-            XCTAssertTrue(initial.allSatisfy(\.isGlassEffectBacked))
-        } else {
-            XCTAssertFalse(initial.contains(where: \.isGlassEffectBacked))
+        XCTAssertTrue(slider.usesNSSliderThumbs)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
+        for state in initial {
+            XCTAssertTrue(slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY)) is NSSlider)
         }
 
         slider.configuration = .default.settingBoundary(after: .red, to: 15)
@@ -136,7 +144,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         }
     }
 
-    func testSingleControlDragStateMachineOwnsAllThumbInteraction() throws {
+    func testNativeThumbHitRoutingKeepsTrackJumpsOnParent() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
             styleMask: [.borderless],
@@ -149,21 +157,16 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         window.contentView?.layoutSubtreeIfNeeded()
 
         XCTAssertTrue(slider.acceptsFirstMouse(for: nil))
-        XCTAssertTrue(slider.hitTest(NSPoint(x: slider.debugThumbStates[0].knobMidX, y: slider.bounds.midY)) === slider)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.acceptsFirstMouse(for: nil) })
 
-        let start = NSPoint(x: slider.frame.minX + slider.debugThumbStates[0].knobMidX, y: slider.frame.minY + slider.bounds.midY)
-        let destination = NSPoint(x: slider.frame.minX + 0.2 * (slider.bounds.width - 18) + 9, y: start.y)
-        let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: start, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
-        let dragged = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDragged, location: destination, modifierFlags: [], timestamp: 0.1, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0))
-        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: destination, modifierFlags: [], timestamp: 0.2, windowNumber: window.windowNumber, context: nil, eventNumber: 3, clickCount: 1, pressure: 0))
+        for state in slider.debugThumbStates {
+            let hit = slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY))
+            XCTAssertTrue(hit is NSSlider)
+            XCTAssertFalse(hit === slider)
+        }
 
-        slider.mouseDown(with: down)
-        XCTAssertTrue(slider.debugThumbStates[0].isPressed)
-        slider.mouseDragged(with: dragged)
-        XCTAssertEqual(slider.configuration.redUpperBound, 20)
-        XCTAssertEqual(slider.configuration.orangeUpperBound, 25)
-        XCTAssertEqual(slider.configuration.yellowUpperBound, 50)
-        slider.mouseUp(with: up)
-        XCTAssertFalse(slider.debugThumbStates.contains(where: \.isPressed))
+        let emptyTrackPoint = NSPoint(x: slider.bounds.maxX - 2, y: slider.bounds.midY)
+        XCTAssertTrue(slider.hitTest(emptyTrackPoint) === slider)
     }
 }
