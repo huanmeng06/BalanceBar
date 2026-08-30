@@ -351,6 +351,7 @@ final class QuotaColorThresholdSlider: NSControl {
         guard let activeBoundaryColor else { return }
         trackingColor = activeBoundaryColor
         hoverWorkItem?.cancel()
+        invalidateVisuals()
         guard popoverEnabledForTrackingDiagnosis else { return }
         activePopoverColor = activeBoundaryColor
         presentPopover(for: activeBoundaryColor)
@@ -390,7 +391,10 @@ final class QuotaColorThresholdSlider: NSControl {
 
     private func finishTracking() {
         guard let color = trackingColor else { return }
-        defer { trackingColor = nil }
+        defer {
+            trackingColor = nil
+            invalidateVisuals()
+        }
         guard activePopoverColor == color else { dismissPopover(); return }
         if let point = currentMousePoint(), let knob = knobRect(for: color), knob.insetBy(dx: -5, dy: -5).contains(point) {
             updatePopoverAnchor(for: color)
@@ -525,7 +529,7 @@ final class QuotaColorThresholdSlider: NSControl {
         }
         let segmentXs = [colorTrack.minX] + boundaryXs + [colorTrack.maxX]
         let activeKnob = excludingActiveKnob
-            ? activeBoundaryColor.flatMap { knobRect(for: $0) }.map { drawingView.convert($0, from: self) }
+            ? trackingColor.flatMap { knobRect(for: $0) }.map { drawingView.convert($0, from: self) }
             : nil
 
         let trackPath = NSBezierPath(
@@ -572,7 +576,7 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     fileprivate func drawPassiveKnobs(in overlay: QuotaThresholdPassiveKnobOverlayView) {
-        for color in activeBoundaries.map(\.0) where color != activeBoundaryColor {
+        for color in activeBoundaries.map(\.0) where color != trackingColor {
             guard let cell = passiveKnobCells[color] else { continue }
             let knob = interactionSlider.convert(cell.knobRect(flipped: interactionSlider.isFlipped), to: self)
             cell.drawKnob(overlay.convert(knob, from: self))
