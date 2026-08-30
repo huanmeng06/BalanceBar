@@ -132,6 +132,7 @@ final class QuotaColorThresholdSlider: NSControl {
     private var activeBoundaryColor: QuotaProgressColor?
     private var activePopoverColor: QuotaProgressColor?
     private var trackingColor: QuotaProgressColor?
+    private var previousTrackingHoleRect: NSRect?
     private var focusedColor: QuotaProgressColor?
     private var lastSnappedValues: [QuotaProgressColor: Int] = [:]
     private let popover = DashboardTextTooltip.makePopover()
@@ -222,6 +223,7 @@ final class QuotaColorThresholdSlider: NSControl {
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
         trackingColor = nil
+        previousTrackingHoleRect = nil
         dismissPopover()
         if let trackingAreaReference {
             removeTrackingArea(trackingAreaReference)
@@ -349,6 +351,7 @@ final class QuotaColorThresholdSlider: NSControl {
     private func beginTracking() {
         guard let activeBoundaryColor else { return }
         trackingColor = activeBoundaryColor
+        previousTrackingHoleRect = trackingColor.flatMap { knobRect(for: $0) }
         hoverWorkItem?.cancel()
         invalidateVisuals()
         commitTrackingVisuals()
@@ -368,18 +371,28 @@ final class QuotaColorThresholdSlider: NSControl {
         guard let actual = updated.boundary(after: color) else { return }
         interactionSlider.doubleValue = Double(actual)
         passiveKnobCells[color]?.doubleValue = Double(actual)
+        configurationStorage = updated
         updateInteractionAccessibility(for: color, value: actual)
         if trackingColor == color { updatePopoverAnchor(for: color, value: actual) }
-        guard actual != old else { return }
+        let currentTrackingHoleRect = trackingColor.flatMap { knobRect(for: $0) }
+        guard actual != old else {
+            previousTrackingHoleRect = currentTrackingHoleRect
+            return
+        }
+        let coverDirtyRect = trackingCoverDirtyRect(
+            from: previousTrackingHoleRect,
+            to: currentTrackingHoleRect
+        )
+        invalidateVisuals(trackCoverDirtyRect: coverDirtyRect)
+        commitTrackingVisuals()
+        previousTrackingHoleRect = currentTrackingHoleRect
         if QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: lastSnappedValues[color], newValue: actual) {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
         lastSnappedValues[color] = actual
-        configurationStorage = updated
         onChange?(updated)
         sendAction(action, to: target)
         needsDisplay = true
-        invalidateVisuals()
     }
 
     private func stepFocusedBoundary(by delta: Int) {
@@ -392,8 +405,11 @@ final class QuotaColorThresholdSlider: NSControl {
     private func finishTracking() {
         guard let color = trackingColor else { return }
         defer {
+            let coverDirtyRect = trackingCoverDirtyRect(from: previousTrackingHoleRect, to: nil)
             trackingColor = nil
-            invalidateVisuals()
+            previousTrackingHoleRect = nil
+            invalidateVisuals(trackCoverDirtyRect: coverDirtyRect)
+            commitTrackingVisuals()
         }
         guard activePopoverColor == color else { dismissPopover(); return }
         if let point = currentMousePoint(), let knob = knobRect(for: color), knob.insetBy(dx: -5, dy: -5).contains(point) {
@@ -506,11 +522,22 @@ final class QuotaColorThresholdSlider: NSControl {
         return convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
     }
 
-    private func invalidateVisuals() {
+    private func invalidateVisuals(trackCoverDirtyRect: NSRect? = nil) {
         trackView.needsDisplay = true
-        trackCover.needsDisplay = true
+        if let trackCoverDirtyRect {
+            trackCover.setNeedsDisplay(trackCoverDirtyRect)
+        } else {
+            trackCover.needsDisplay = true
+        }
         passiveKnobOverlay.needsDisplay = true
         interactionSlider.needsDisplay = true
+    }
+
+    private func trackingCoverDirtyRect(from oldHole: NSRect?, to newHole: NSRect?) -> NSRect? {
+        let holes = [oldHole, newHole].compactMap { $0 }.map { trackCover.convert($0, from: self) }
+        guard var dirty = holes.first else { return nil }
+        for hole in holes.dropFirst() { dirty = dirty.union(hole) }
+        return dirty.insetBy(dx: -1, dy: -1)
     }
 
     /// The ownership switch from passive to live native knob must be committed
