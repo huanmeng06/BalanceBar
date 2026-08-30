@@ -116,6 +116,9 @@ final class QuotaColorThresholdSlider: NSControl {
     private let popoverLabel = NSTextField(labelWithString: "")
     private var hoverWorkItem: DispatchWorkItem?
     private var trackingAreaReference: NSTrackingArea?
+    // Temporary A/B switch for the focus-sensitive native tracking failure.
+    // Popovers are deliberately absent until the stock slider path is proven.
+    private let popoverEnabledForTrackingDiagnosis = false
 
     var onChange: ((QuotaProgressColorConfiguration) -> Void)?
     var configuration: QuotaProgressColorConfiguration {
@@ -206,9 +209,14 @@ final class QuotaColorThresholdSlider: NSControl {
 
     override var intrinsicContentSize: NSSize { NSSize(width: 300, height: 34) }
 
-    private var trackRect: NSRect { bounds.insetBy(dx: 9, dy: 12) }
     private var sliderFrame: NSRect {
-        NSRect(x: trackRect.minX - 8, y: trackRect.midY - 14, width: trackRect.width + 16, height: 28)
+        NSRect(x: bounds.minX, y: bounds.midY - 14, width: bounds.width, height: 28)
+    }
+    private var nativeTrackRect: NSRect {
+        guard let cell = interactionSlider.cell as? NSSliderCell else {
+            return sliderFrame.insetBy(dx: 9, dy: 12)
+        }
+        return interactionSlider.convert(cell.barRect(flipped: interactionSlider.isFlipped), to: self)
     }
     private var activeBoundaries: [(QuotaProgressColor, Int)] {
         configurationStorage.enabledColorsInOrder.dropLast().compactMap { color in
@@ -219,6 +227,10 @@ final class QuotaColorThresholdSlider: NSControl {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingAreaReference { removeTrackingArea(trackingAreaReference) }
+        guard popoverEnabledForTrackingDiagnosis else {
+            trackingAreaReference = nil
+            return
+        }
         let area = NSTrackingArea(
             rect: bounds,
             options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
@@ -310,8 +322,8 @@ final class QuotaColorThresholdSlider: NSControl {
         guard let activeBoundaryColor else { return }
         trackingColor = activeBoundaryColor
         hoverWorkItem?.cancel()
+        guard popoverEnabledForTrackingDiagnosis else { return }
         activePopoverColor = activeBoundaryColor
-        window?.makeFirstResponder(interactionSlider)
         presentPopover(for: activeBoundaryColor)
     }
 
@@ -359,6 +371,7 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard popoverEnabledForTrackingDiagnosis else { return }
         if let trackingColor {
             updatePopoverAnchor(for: trackingColor)
             return
@@ -377,6 +390,7 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     override func mouseExited(with event: NSEvent) {
+        guard popoverEnabledForTrackingDiagnosis else { return }
         guard trackingColor == nil else { return }
         hoverWorkItem?.cancel()
         dismissPopover()
@@ -460,10 +474,10 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     fileprivate func drawTrackOverlay(in overlay: QuotaThresholdTrackOverlayView) {
-        let track = overlay.convert(trackRect, from: self)
+        let track = overlay.convert(nativeTrackRect, from: self)
         let points = [0] + activeBoundaries.map(\.1) + [100]
         let hole = activeBoundaryColor.flatMap { knobRect(for: $0) }
-            .map { overlay.convert($0.insetBy(dx: -10, dy: -8), from: self) }
+            .map { overlay.convert($0, from: self) }
 
         for (index, color) in configurationStorage.enabledColorsInOrder.enumerated() {
             let x0 = track.minX + track.width * CGFloat(points[index]) / 100
