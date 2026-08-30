@@ -167,25 +167,33 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
     func testThumbCountMatchesEnabledColorCount() {
         let all = QuotaColorThresholdSlider(configuration: .default)
         XCTAssertEqual(all.thumbCount, 3)
-        XCTAssertEqual(all.nativeThumbSliders.count, 1)
-        XCTAssertEqual(all.passiveKnobCount, 3)
-        XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, 1)
+        XCTAssertEqual(all.nativeThumbSliders.count, 3)
+        XCTAssertEqual(all.passiveKnobCount, 0)
+        XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, 3)
         XCTAssertTrue(all.usesNSSliderThumbs)
         XCTAssertFalse(all.usesCustomSliderCell)
         XCTAssertTrue(all.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
+        XCTAssertEqual(all.nativeSliderBoundaryColors, [.red, .orange, .yellow])
+        XCTAssertEqual(all.thumbIdentitySet.count, 3)
+        XCTAssertEqual(all.nativeSliderCellIdentityByColor.count, 3)
+        XCTAssertEqual(Set(all.nativeSliderCellIdentityByColor.values).count, 3)
         let identities = all.thumbIdentitySet
+        let cellIdentities = all.nativeSliderCellIdentityByColor
         all.configuration = .default.settingBoundary(after: .orange, to: 35)
         XCTAssertEqual(all.thumbIdentitySet, identities)
+        XCTAssertEqual(all.nativeSliderCellIdentityByColor, cellIdentities)
         let three = QuotaProgressColorConfiguration.default.settingEnabled(.orange, to: false)
         let threeSlider = QuotaColorThresholdSlider(configuration: three)
         XCTAssertEqual(threeSlider.thumbCount, 2)
-        XCTAssertEqual(threeSlider.nativeThumbSliders.count, 1)
-        XCTAssertEqual(threeSlider.passiveKnobCount, 2)
+        XCTAssertEqual(threeSlider.nativeThumbSliders.count, 2)
+        XCTAssertEqual(threeSlider.passiveKnobCount, 0)
+        XCTAssertEqual(threeSlider.nativeSliderBoundaryColors, [.red, .yellow])
         let two = three.settingEnabled(.red, to: false)
         let twoSlider = QuotaColorThresholdSlider(configuration: two)
         XCTAssertEqual(twoSlider.thumbCount, 1)
         XCTAssertEqual(twoSlider.nativeThumbSliders.count, 1)
-        XCTAssertEqual(twoSlider.passiveKnobCount, 1)
+        XCTAssertEqual(twoSlider.passiveKnobCount, 0)
+        XCTAssertEqual(twoSlider.nativeSliderBoundaryColors, [.yellow])
     }
 
     func testThumbRangesValuesAndGeometrySurviveUpdates() {
@@ -207,12 +215,12 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(initial.map(\.value), [10, 25, 50])
         XCTAssertEqual(initial.map(\.knobMidX), initial.map(\.knobMidX).sorted())
         XCTAssertTrue(slider.usesNSSliderThumbs)
-        XCTAssertEqual(slider.nativeThumbSliders.count, 1)
-        XCTAssertEqual(slider.passiveKnobCount, 3)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertEqual(slider.passiveKnobCount, 0)
         XCTAssertFalse(slider.usesCustomSliderCell)
         XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
         for state in initial {
-            XCTAssertTrue(slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY)) is NSSlider)
+            XCTAssertTrue(slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY)) === slider)
         }
 
         slider.configuration = .default.settingBoundary(after: .red, to: 15)
@@ -239,6 +247,124 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(slider.debugThumbStates.map(\.maximumValue), [100, 100, 100])
     }
 
+    func testFirstSnapKeepsPersistentSliderIdentityAndRenderedBoundaryInSync() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 34)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        let identities = slider.nativeSliderIdentityByColor
+        let cellIdentities = slider.nativeSliderCellIdentityByColor
+        let beforeCenters = slider.debugRenderedColorBoundaryCenters
+        let beforeSegments = slider.debugRenderedColorTrackSegments
+
+        slider.setTrackingColorForTesting(.red)
+        slider.applyRawThumbValueForTesting(12.6, after: .red)
+
+        XCTAssertEqual(slider.configuration.redUpperBound, 15)
+        XCTAssertEqual(slider.nativeSliderIdentityByColor, identities)
+        XCTAssertEqual(slider.nativeSliderCellIdentityByColor, cellIdentities)
+        XCTAssertEqual(slider.thumbIdentitySet.count, 3)
+
+        let afterState = try XCTUnwrap(slider.debugThumbStates.first(where: { $0.color == .red }))
+        let afterCenter = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[.red])
+        XCTAssertEqual(afterCenter, afterState.knobMidX, accuracy: 0.01)
+        let beforeRedCenter = try XCTUnwrap(beforeCenters[.red])
+        let beforeOrangeCenter = try XCTUnwrap(beforeCenters[.orange])
+        let beforeYellowCenter = try XCTUnwrap(beforeCenters[.yellow])
+        let afterOrangeCenter = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[.orange])
+        let afterYellowCenter = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[.yellow])
+        XCTAssertNotEqual(afterCenter, beforeRedCenter)
+        XCTAssertEqual(afterOrangeCenter, beforeOrangeCenter, accuracy: 0.01)
+        XCTAssertEqual(afterYellowCenter, beforeYellowCenter, accuracy: 0.01)
+
+        let afterSegments = slider.debugRenderedColorTrackSegments
+        XCTAssertNotEqual(afterSegments, beforeSegments)
+        XCTAssertTrue(afterSegments.contains { $0.color == .red && $0.frame.maxX <= afterCenter + 0.01 })
+        XCTAssertFalse(afterSegments.contains { $0.color == .red && $0.frame.minX < afterCenter - 0.01 && $0.frame.maxX > afterCenter + 0.01 })
+    }
+
+    func testFirstSnapRenderStateStaysSynchronizedForEveryBoundary() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 34)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+        let identities = slider.nativeSliderIdentityByColor
+        let cellIdentities = slider.nativeSliderCellIdentityByColor
+
+        for (color, rawValue) in [
+            (QuotaProgressColor.red, 12.6),
+            (.orange, 32.6),
+            (.yellow, 57.6)
+        ] {
+            let oldCenter = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[color])
+            slider.setTrackingColorForTesting(color)
+            slider.applyRawThumbValueForTesting(rawValue, after: color)
+
+            let state = try XCTUnwrap(slider.debugThumbStates.first(where: { $0.color == color }))
+            let renderedCenter = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[color])
+            XCTAssertEqual(renderedCenter, state.knobMidX, accuracy: 0.01)
+            XCTAssertNotEqual(renderedCenter, oldCenter)
+            XCTAssertEqual(slider.nativeSliderIdentityByColor, identities)
+            XCTAssertEqual(slider.nativeSliderCellIdentityByColor, cellIdentities)
+            XCTAssertTrue(slider.debugRenderedColorTrackSegments.contains {
+                $0.color == color && $0.frame.minY == slider.debugNativeTrackRect.minY &&
+                    $0.frame.height == slider.debugNativeTrackRect.height
+            })
+        }
+    }
+
+    func testPersistentSliderIdentitySurvivesResizeAndEnabledColorReconciliation() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 120),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        slider.frame = NSRect(x: 20, y: 40, width: 620, height: 34)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+        let initialIDs = slider.nativeSliderIdentityByColor
+        let initialCellIDs = slider.nativeSliderCellIdentityByColor
+
+        slider.frame.size.width = 260
+        window.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(slider.nativeSliderIdentityByColor, initialIDs)
+        XCTAssertEqual(slider.nativeSliderCellIdentityByColor, initialCellIDs)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertEqual(slider.debugCustomColorTrackRect, slider.debugNativeTrackRect)
+
+        slider.configuration = slider.configuration.settingEnabled(.orange, to: false)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 2)
+        XCTAssertEqual(slider.nativeSliderBoundaryColors, [.red, .yellow])
+        XCTAssertEqual(slider.nativeSliderIdentityByColor[.red], initialIDs[.red])
+        XCTAssertEqual(slider.nativeSliderIdentityByColor[.yellow], initialIDs[.yellow])
+        XCTAssertEqual(slider.nativeSliderCellIdentityByColor[.red], initialCellIDs[.red])
+        XCTAssertEqual(slider.nativeSliderCellIdentityByColor[.yellow], initialCellIDs[.yellow])
+
+        slider.configuration = slider.configuration.settingEnabled(.orange, to: true)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertEqual(slider.nativeSliderIdentityByColor[.red], initialIDs[.red])
+        XCTAssertEqual(slider.nativeSliderIdentityByColor[.yellow], initialIDs[.yellow])
+        XCTAssertNotEqual(slider.nativeSliderIdentityByColor[.orange], initialIDs[.orange])
+        XCTAssertEqual(slider.nativeSliderCellIdentityByColor[.red], initialCellIDs[.red])
+        XCTAssertEqual(slider.nativeSliderCellIdentityByColor[.yellow], initialCellIDs[.yellow])
+        XCTAssertNotEqual(slider.nativeSliderCellIdentityByColor[.orange], initialCellIDs[.orange])
+    }
+
     func testResetButtonUsesNativeSmallBezelStyle() {
         let button = NSButton()
         DashboardMenuPage.configureQuotaColorResetButton(button)
@@ -250,7 +376,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         }
     }
 
-    func testSingleNativeInteractionSliderReceivesAllTrackHits() {
+    func testPersistentNativeSlidersRouteBoundaryHitsThroughParent() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
             styleMask: [.borderless],
@@ -263,17 +389,16 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         window.contentView?.layoutSubtreeIfNeeded()
 
         XCTAssertTrue(slider.acceptsFirstMouse(for: nil))
-        XCTAssertEqual(slider.nativeThumbSliders.count, 1)
-        XCTAssertEqual(slider.passiveKnobCount, 3)
+        XCTAssertEqual(slider.nativeThumbSliders.count, 3)
+        XCTAssertEqual(slider.passiveKnobCount, 0)
         XCTAssertTrue(slider.nativeThumbSliders.allSatisfy { $0.acceptsFirstMouse(for: nil) })
 
         for state in slider.debugThumbStates {
             let hit = slider.hitTest(NSPoint(x: state.knobMidX, y: state.knobMidY))
-            XCTAssertTrue(hit is NSSlider)
-            XCTAssertFalse(hit === slider)
+            XCTAssertTrue(hit === slider)
         }
 
         let emptyTrackPoint = NSPoint(x: slider.bounds.maxX - 2, y: slider.bounds.midY)
-        XCTAssertTrue(slider.hitTest(emptyTrackPoint) is NSSlider)
+        XCTAssertTrue(slider.hitTest(emptyTrackPoint) === slider)
     }
 }
