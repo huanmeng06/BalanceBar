@@ -21,8 +21,14 @@ enum QuotaThresholdSliderMath {
     }
 }
 
-/// The only view that AppKit tracks. It retains the untouched stock cell so
-/// Force Click and trackpad gestures follow the same path as a normal slider.
+/// Suppresses only the native bar. The superclass retains AppKit's normal
+/// control/cell drawing and the pressed-state presentation of the knob.
+private final class ThumbOnlySliderCell: NSSliderCell {
+    override func drawBar(inside rect: NSRect, flipped: Bool) {}
+}
+
+/// The only view that AppKit tracks, preserving normal Force Click and
+/// trackpad gesture handling.
 private final class ThresholdInteractionSlider: NSSlider {
     var prepareForNativeTracking: ((NSEvent) -> Void)?
     var onTrackingBegan: (() -> Void)?
@@ -32,6 +38,7 @@ private final class ThresholdInteractionSlider: NSSlider {
 
     init() {
         super.init(frame: .zero)
+        cell = ThumbOnlySliderCell()
         minValue = 0
         maxValue = 100
         doubleValue = 0
@@ -51,17 +58,6 @@ private final class ThresholdInteractionSlider: NSSlider {
 
     @objc private func valueChanged(_ sender: NSSlider) {
         onTrackingChanged?(sender.doubleValue)
-    }
-
-    /// Keep AppKit's original slider cell and draw its native Liquid Glass
-    /// knob only. The coloured track lives in the view below this control, so
-    /// a pressed translucent knob still reveals its actual colour segment.
-    override func draw(_ dirtyRect: NSRect) {
-        guard let sliderCell = cell as? NSSliderCell else {
-            super.draw(dirtyRect)
-            return
-        }
-        sliderCell.drawKnob(sliderCell.knobRect(flipped: isFlipped))
     }
 
     override func mouseDown(with event: NSEvent) {
