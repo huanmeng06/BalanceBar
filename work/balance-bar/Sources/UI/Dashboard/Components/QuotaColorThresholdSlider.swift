@@ -188,7 +188,7 @@ final class QuotaColorThresholdSlider: NSControl {
     // Percentage hover/drag labels are part of the Issue contract.  They use
     // the existing Dashboard tooltip presentation and do not alter native
     // slider tracking.
-    private let popoverEnabled = true
+    private let popoverEnabled = false
 
     var onChange: ((QuotaProgressColorConfiguration) -> Void)?
     var configuration: QuotaProgressColorConfiguration {
