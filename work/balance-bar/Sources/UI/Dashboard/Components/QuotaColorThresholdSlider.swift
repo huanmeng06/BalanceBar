@@ -110,11 +110,19 @@ private final class QuotaThresholdTrackCoverSliceView: NSView {
 
 /// A full-width display-only native slider used while the corresponding
 /// interaction slider is idle. AppKit owns the complete knob presentation;
-/// the clear fill suppresses this slider's bar while the semantic cover stays
+/// its dedicated cell suppresses the bar while the semantic cover stays
 /// continuous underneath it.
+private final class QuotaPassiveKnobCell: NSSliderCell {
+    override func drawBar(inside rect: NSRect, flipped: Bool) {
+        // The parent draws the semantic colour track. The passive slider only
+        // contributes AppKit's native idle knob.
+    }
+}
+
 private final class QuotaPassiveKnobSlider: NSSlider {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        cell = QuotaPassiveKnobCell()
         minValue = 0
         maxValue = 100
         doubleValue = 0
@@ -122,9 +130,9 @@ private final class QuotaPassiveKnobSlider: NSSlider {
         controlSize = .regular
         isContinuous = true
         numberOfTickMarks = 0
-        trackFillColor = .clear
         target = nil
         action = nil
+        focusRingType = .none
         setAccessibilityElement(false)
     }
 
@@ -258,6 +266,9 @@ final class QuotaColorThresholdSlider: NSControl {
     var passiveKnobCount: Int { passiveKnobViews.count }
     var passiveKnobIdentityByColor: [QuotaProgressColor: ObjectIdentifier] {
         Dictionary(uniqueKeysWithValues: passiveKnobViews.map { ($0.key, ObjectIdentifier($0.value)) })
+    }
+    var usesBarSuppressedPassiveKnobCells: Bool {
+        passiveKnobViews.values.allSatisfy { $0.cell is QuotaPassiveKnobCell }
     }
     var debugNativeSliderAlphaByColor: [QuotaProgressColor: CGFloat] {
         Dictionary(uniqueKeysWithValues: boundarySliders.map { ($0.key, $0.value.alphaValue) })

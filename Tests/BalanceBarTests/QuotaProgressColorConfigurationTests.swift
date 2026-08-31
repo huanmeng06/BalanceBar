@@ -193,6 +193,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(all.nativeThumbSliders.count, 3)
         XCTAssertEqual(all.passiveKnobCount, 3)
         XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, all.nativeThumbSliders.count + all.passiveKnobCount)
+        XCTAssertTrue(all.usesBarSuppressedPassiveKnobCells)
         XCTAssertTrue(all.usesNSSliderThumbs)
         XCTAssertFalse(all.usesCustomSliderCell)
         XCTAssertTrue(all.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
@@ -393,6 +394,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
 
         let initialStates = slider.debugPassiveKnobStates
         XCTAssertEqual(initialStates.map(\.color), [.red, .orange, .yellow])
+        XCTAssertTrue(slider.usesBarSuppressedPassiveKnobCells)
         XCTAssertTrue(initialStates.allSatisfy { !$0.isHidden })
         let interactionFrame = try XCTUnwrap(slider.nativeThumbSliders.first?.frame)
         XCTAssertTrue(initialStates.allSatisfy { $0.frame == interactionFrame })
