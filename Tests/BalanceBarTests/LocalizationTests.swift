@@ -372,7 +372,7 @@ final class LocalizationTests: XCTestCase {
         let expected: [AppLanguage: [String]] = [
             .simplifiedChinese: [
                 "🌙 Luna Reserve显示方式", "选择 Luna Reserve 在菜单中的显示时机", "不显示", "额度用完后显示", "始终显示",
-                "隐藏已用完额度", "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度。"
+                "隐藏已用完额度", "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度"
             ],
             .traditionalChineseTaiwan: [
                 "🌙 Luna Reserve 顯示方式", "選擇 Luna Reserve 在選單中的顯示時機", "不顯示", "額度用完後顯示", "始終顯示",
@@ -422,6 +422,22 @@ final class LocalizationTests: XCTestCase {
             XCTAssertEqual(values, expected[language], "Luna Reserve menu settings copy for \(language)")
             XCTAssertTrue(values.allSatisfy { !$0.hasPrefix("⟦") })
         }
+    }
+
+    func testSimplifiedChineseBalanceDisplayDescriptionsOmitTrailingFullStops() {
+        let keys: [LocalizationKey] = [
+            .keyDashboardMenuPageHideExhaustedQuotaDescription,
+            .keyDashboardMenuPageProgressColorRangesDescription,
+            .keyDashboardMenuPageDisplayedColorsDescription
+        ]
+
+        let values = keys.map { tr($0, language: .simplifiedChinese) }
+        XCTAssertEqual(values, [
+            "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度",
+            "拖动分界点，调整不同剩余百分比对应的颜色",
+            "至少保留两种颜色"
+        ])
+        XCTAssertTrue(values.allSatisfy { !$0.hasSuffix("。") })
     }
 
     func testQuotaAndLunaReserveSettingsCopyMatchesIssueAcrossAllLanguages() {

@@ -339,7 +339,7 @@
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "额度用完后显示";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "始终显示";
 "dashboard.menu.page.hide_exhausted_quota" = "隐藏已用完额度";
-"dashboard.menu.page.hide_exhausted_quota_description" = "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度。";
+"dashboard.menu.page.hide_exhausted_quota_description" = "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度";
 "dashboard.menu.page.low_balance_display_threshold" = "低余额警示阈值";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "充值后若余额仍低于此金额，进度条继续显示为红色";
 "dashboard.menu.page.dropdown_menu" = "下拉菜单";
@@ -438,9 +438,9 @@
 "luna.reserve.menu_unavailable" = "Luna Reserve 暂不可用";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "dashboard.menu.page.progress_color_ranges" = "进度条颜色区间";
-"dashboard.menu.page.progress_color_ranges_description" = "拖动分界点，调整不同剩余百分比对应的颜色。";
+"dashboard.menu.page.progress_color_ranges_description" = "拖动分界点，调整不同剩余百分比对应的颜色";
 "dashboard.menu.page.displayed_colors" = "显示颜色";
-"dashboard.menu.page.displayed_colors_description" = "至少保留两种颜色。";
+"dashboard.menu.page.displayed_colors_description" = "至少保留两种颜色";
 "dashboard.menu.page.color_red" = "红";
 "dashboard.menu.page.color_orange" = "橙";
 "dashboard.menu.page.color_yellow" = "黄";
