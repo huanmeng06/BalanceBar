@@ -456,8 +456,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 storeClientSnapshot: { [weak self] client, providerID, snapshot in
                     self?.clientSnapshots[client] = (providerID, snapshot)
                 },
-                updateQuickSwitchSummary: { [weak self] providerID, text in
-                    self?.publishQuickSwitchSummary(providerID: providerID, text: text)
+                quickSwitchSummaryChanged: { [weak self] providerID in
+                    self?.publishQuickSwitchSummary(providerID: providerID)
                 },
                 isOpenCodexConfirmed: { [weak self] providerID in
                     guard let self,
@@ -617,10 +617,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func quickSwitchSummariesSnapshot() -> [String: String] {
-        providerRefreshCoordinator?.quickSwitchSummariesSnapshot() ?? [:]
+        providerRefreshCoordinator?.quickSwitchSummariesSnapshot(
+            preferredQuotaWindow: menuBarQuotaWindowPreference
+        ) ?? [:]
     }
 
-    private func publishQuickSwitchSummary(providerID: String, text: String) {
+    private func publishQuickSwitchSummary(providerID: String) {
+        let text = providerRefreshCoordinator?.quickSwitchSummariesSnapshot(
+            preferredQuotaWindow: menuBarQuotaWindowPreference
+        )[providerID] ?? "…"
         SwitchLog.write(
             "quick-switch balance changed; provider_id=\(providerID); value=\(text)",
             category: "balance"

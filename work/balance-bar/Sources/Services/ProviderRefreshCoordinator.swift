@@ -105,7 +105,7 @@ struct ProviderRefreshActions {
     let isActiveClient: (AssistantClient) -> Bool
     let render: (Snapshot) -> Void
     let storeClientSnapshot: (AssistantClient, String, Snapshot) -> Void
-    let updateQuickSwitchSummary: (String, String) -> Void
+    let quickSwitchSummaryChanged: (String) -> Void
     let isOpenCodexConfirmed: (String) -> Bool
 }
 
@@ -113,6 +113,11 @@ struct ProviderRefreshActions {
 /// switch summaries, and Provider-balance fallback snapshots. It has no AppKit
 /// page/window ownership; results leave through explicit value callbacks.
 final class ProviderRefreshCoordinator {
+    private enum QuickSwitchSummaryPayload: Equatable {
+        case formatted(String)
+        case officialWindows([OfficialQuotaWindow])
+    }
+
     private let repository: CCSwitchRepository
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient: BalanceAPIClient
@@ -127,7 +132,7 @@ final class ProviderRefreshCoordinator {
     private var lastOfficialFetch: Date?
     private var lastQuickSwitchFetch: Date?
     private var quickSwitchSummaryLock = NSLock()
-    private var quickSwitchSummaries: [String: String] = [:]
+    private var quickSwitchSummaryPayloads: [String: QuickSwitchSummaryPayload] = [:]
     private var providerBalanceSnapshots = ProviderBalanceSnapshotCache()
 
     init(
@@ -149,10 +154,31 @@ final class ProviderRefreshCoordinator {
         queue.setSpecific(key: queueKey, value: ())
     }
 
-    func quickSwitchSummariesSnapshot() -> [String: String] {
+    func quickSwitchSummariesSnapshot(
+        preferredQuotaWindow: OfficialQuotaWindowPreference
+    ) -> [String: String] {
         quickSwitchSummaryLock.lock()
-        defer { quickSwitchSummaryLock.unlock() }
-        return quickSwitchSummaries
+        let payloads = quickSwitchSummaryPayloads
+        quickSwitchSummaryLock.unlock()
+
+        var summaries: [String: String] = [:]
+        for (providerID, payload) in payloads {
+            switch payload {
+            case .formatted(let text):
+                summaries[providerID] = text
+            case .officialWindows(let windows):
+                switch OfficialQuotaWindowResolver.resolve(
+                    windows,
+                    preference: preferredQuotaWindow
+                ) {
+                case .selected(let window), .legacy(let window?):
+                    summaries[providerID] = Self.formatOfficialQuotaSummary(window)
+                case .legacy(nil), .unavailable:
+                    break
+                }
+            }
+        }
+        return summaries
     }
 
     func resetCadence() {
@@ -258,7 +284,7 @@ final class ProviderRefreshCoordinator {
                         guard let self, case .success(let response) = result else { return }
                         self.updateQuickSwitchSummary(
                             providerID: source.id,
-                            text: "\(Int(response.output.remaining))% / \(response.output.daysText)"
+                            payload: .officialWindows(response.output.windows)
                         )
                     }
                     continue
@@ -282,7 +308,7 @@ final class ProviderRefreshCoordinator {
                     ) else { return }
                     self.updateQuickSwitchSummary(
                         providerID: source.id,
-                        text: Self.formatBalanceSummary(response.output.amount, unit: response.output.unit)
+                        payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
                     )
                 }
             }
@@ -300,16 +326,19 @@ final class ProviderRefreshCoordinator {
         }
     }
 
-    private func updateQuickSwitchSummary(providerID: String, text: String) {
+    private func updateQuickSwitchSummary(
+        providerID: String,
+        payload: QuickSwitchSummaryPayload
+    ) {
         quickSwitchSummaryLock.lock()
-        let previous = quickSwitchSummaries[providerID]
-        guard previous != text else {
+        let previous = quickSwitchSummaryPayloads[providerID]
+        guard previous != payload else {
             quickSwitchSummaryLock.unlock()
             return
         }
-        quickSwitchSummaries[providerID] = text
+        quickSwitchSummaryPayloads[providerID] = payload
         quickSwitchSummaryLock.unlock()
-        actions.updateQuickSwitchSummary(providerID, text)
+        actions.quickSwitchSummaryChanged(providerID)
     }
 
     private func fetchBalance(
@@ -349,7 +378,7 @@ final class ProviderRefreshCoordinator {
                 }
                 self.updateQuickSwitchSummary(
                     providerID: providerID,
-                    text: Self.formatBalanceSummary(response.output.amount, unit: response.output.unit)
+                    payload: .formatted(Self.formatBalanceSummary(response.output.amount, unit: response.output.unit))
                 )
                 self.renderForCurrentProvider(
                     .balance(
@@ -393,7 +422,10 @@ final class ProviderRefreshCoordinator {
             guard let self else { return }
             switch result {
             case .success(let response):
-                self.updateQuickSwitchSummary(providerID: providerID, text: "\(Int(response.output.remaining))% / \(response.output.daysText)")
+                self.updateQuickSwitchSummary(
+                    providerID: providerID,
+                    payload: .officialWindows(response.output.windows)
+                )
                 self.renderForCurrentProvider(
                     .official(
                         providerName,
@@ -486,6 +518,10 @@ final class ProviderRefreshCoordinator {
         case "CNY", "CNH", "RMB": return "¥\(number)"
         default: return "\(number) \(unit)"
         }
+    }
+
+    private static func formatOfficialQuotaSummary(_ window: OfficialQuotaWindow) -> String {
+        "\(Int(window.remaining))% / \(window.daysText)"
     }
 
     private static func localizedNetworkErrorReason(_ error: Error) -> String {

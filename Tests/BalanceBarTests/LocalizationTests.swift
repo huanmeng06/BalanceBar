@@ -500,84 +500,84 @@ final class LocalizationTests: XCTestCase {
     func testQuotaAndLunaReserveSettingsCopyMatchesIssueAcrossAllLanguages() {
         let expected: [AppLanguage: [String]] = [
             .simplifiedChinese: [
-                "优先显示额度", "选择菜单栏优先显示 5 小时额度还是 7 日额度", "5 小时额度", "7 日额度",
+                "优先显示额度", "选择菜单栏和“快速切换”菜单中优先显示 5 小时额度还是 7 日额度", "5 小时额度", "7 日额度",
                 "重置时间样式", "选择显示剩余时长、具体时间，或同时显示两者", "剩余时长", "重置时间", "同时显示",
                 "🌙 %1$@ 自动切换", "进入 🌙 %1$@ 后，自动切换菜单栏显示的额度",
                 "🌙 %1$@ 时间", "进入 🌙 %1$@ 后，选择继续显示原额度或 🌙 %1$@ 的重置时间",
                 "🌙 %1$@", "原额度"
             ],
             .traditionalChineseTaiwan: [
-                "優先顯示額度", "選擇選單列優先顯示 5 小時額度還是 7 日額度", "5 小時額度", "7 日額度",
+                "優先顯示額度", "選擇選單列和「快速切換」選單中優先顯示 5 小時額度還是 7 日額度", "5 小時額度", "7 日額度",
                 "重設時間樣式", "選擇顯示剩餘時間、具體時間，或同時顯示兩者", "剩餘時間", "重設時間", "同時顯示",
                 "🌙 %1$@ 自動切換", "進入 🌙 %1$@ 後，自動切換選單列顯示的額度",
                 "🌙 %1$@ 時間", "進入 🌙 %1$@ 後，選擇繼續顯示原額度或 🌙 %1$@ 的重設時間",
                 "🌙 %1$@", "原額度"
             ],
             .traditionalChineseHongKong: [
-                "優先顯示配額", "選擇選單列優先顯示 5 小時配額還是 7 日配額", "5 小時配額", "7 日配額",
+                "優先顯示配額", "選擇選單列和「快速切換」選單中優先顯示 5 小時配額還是 7 日配額", "5 小時配額", "7 日配額",
                 "重設時間樣式", "選擇顯示剩餘時間、具體時間，或同時顯示兩者", "剩餘時間", "重設時間", "同時顯示",
                 "🌙 %1$@ 自動切換", "進入 🌙 %1$@ 後，自動切換選單列顯示的配額",
                 "🌙 %1$@ 時間", "進入 🌙 %1$@ 後，選擇繼續顯示原配額或 🌙 %1$@ 的重設時間",
                 "🌙 %1$@", "原配額"
             ],
             .japanese: [
-                "優先表示するクォータ", "メニューバーで 5 時間クォータと 7 日間クォータのどちらを優先表示するか選択", "5時間クォータ", "7日間クォータ",
+                "優先表示するクォータ", "メニューバーと「クイック切り替え」メニューで、5時間クォータと7日間クォータのどちらを優先表示するか選択", "5時間クォータ", "7日間クォータ",
                 "リセット時刻の表示形式", "残り時間、具体的なリセット時刻、または両方を表示するか選択", "残り時間", "リセット時刻", "両方を表示",
                 "🌙 %1$@ への自動切り替え", "🌙 %1$@ に入った後、メニューバーに表示するクォータを自動的に切り替えます",
                 "🌙 %1$@ のリセット時刻", "🌙 %1$@ に入った後、元のクォータのリセット時刻と 🌙 %1$@ のリセット時刻のどちらを表示するか選択",
                 "🌙 %1$@", "元のクォータ"
             ],
             .english: [
-                "Prioritize Quota", "Choose whether the menu bar prioritizes the 5-hour or 7-day quota", "5-Hour Quota", "7-Day Quota",
+                "Prioritize Quota", "Choose whether the 5-hour or 7-day quota is prioritized in the menu bar and the Quick Switch menu", "5-Hour Quota", "7-Day Quota",
                 "Reset Time Display", "Choose whether to show the time remaining, the specific reset time, or both", "Time Remaining", "Reset Time", "Show Both",
                 "🌙 %1$@ Auto-Switch", "After entering 🌙 %1$@, automatically switch the quota shown in the menu bar.",
                 "🌙 %1$@ Reset Time", "After entering 🌙 %1$@, choose whether to keep showing the original quota's reset time or 🌙 %1$@'s.",
                 "🌙 %1$@", "Original Quota"
             ],
             .korean: [
-                "우선 표시할 할당량", "메뉴 막대에 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요", "5시간 할당량", "7일 할당량",
+                "우선 표시할 할당량", "메뉴 막대와 ‘빠른 전환’ 메뉴에서 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요", "5시간 할당량", "7일 할당량",
                 "재설정 시간 표시 방식", "남은 시간, 정확한 재설정 시간 또는 둘 다 표시할지 선택하세요", "남은 시간", "재설정 시간", "둘 다 표시",
                 "🌙 %1$@ 자동 전환", "🌙 %1$@에 진입한 후 메뉴 막대에 표시할 할당량을 자동으로 전환합니다",
                 "🌙 %1$@ 재설정 시간", "🌙 %1$@에 진입한 후 원래 할당량의 재설정 시간과 🌙 %1$@의 재설정 시간 중 어느 것을 표시할지 선택합니다",
                 "🌙 %1$@", "원래 할당량"
             ],
             .spanish: [
-                "Priorizar cuota", "Elige si la barra de menús debe priorizar la cuota de 5 horas o la de 7 días", "Cuota de 5 horas", "Cuota de 7 días",
+                "Priorizar cuota", "Elige si la barra de menús y el menú «Cambio rápido» deben priorizar la cuota de 5 horas o la de 7 días", "Cuota de 5 horas", "Cuota de 7 días",
                 "Formato de la hora de reinicio", "Elige si mostrar el tiempo restante, la hora exacta de reinicio o ambos", "Tiempo restante", "Hora de reinicio", "Mostrar ambos",
                 "Cambio automático a 🌙 %1$@", "Después de entrar en 🌙 %1$@, cambia automáticamente la cuota que se muestra en la barra de menús",
                 "Hora de reinicio de 🌙 %1$@", "Después de entrar en 🌙 %1$@, elige si mantener la hora de reinicio de la cuota original o mostrar la de 🌙 %1$@",
                 "🌙 %1$@", "Cuota original"
             ],
             .german: [
-                "Bevorzugtes Kontingent", "Auswählen, ob in der Menüleiste das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird", "5-Stunden-Kontingent", "7-Tage-Kontingent",
+                "Bevorzugtes Kontingent", "Auswählen, ob in der Menüleiste und im Menü „Schnellwechsel“ das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird", "5-Stunden-Kontingent", "7-Tage-Kontingent",
                 "Format der Rücksetzzeit", "Auswählen, ob die verbleibende Zeit, die genaue Rücksetzzeit oder beides angezeigt wird", "Verbleibende Zeit", "Rücksetzzeit", "Beides",
                 "Automatisch zu 🌙 %1$@ wechseln", "Nach dem Wechsel zu 🌙 %1$@ wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet",
                 "Rücksetzzeit für 🌙 %1$@", "Nach dem Wechsel zu 🌙 %1$@ auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von 🌙 %1$@ angezeigt wird",
                 "🌙 %1$@", "Ursprüngliches Kontingent"
             ],
             .french: [
-                "Quota à privilégier", "Choisissez si la barre des menus doit privilégier le quota de 5 heures ou celui de 7 jours", "Quota sur 5 heures", "Quota sur 7 jours",
+                "Quota à privilégier", "Choisissez si la barre des menus et le menu « Changement rapide » doivent privilégier le quota de 5 heures ou celui de 7 jours", "Quota sur 5 heures", "Quota sur 7 jours",
                 "Format de l’heure de réinitialisation", "Choisissez d’afficher le temps restant, l’heure exacte de réinitialisation ou les deux", "Temps restant", "Heure de réinitialisation", "Afficher les deux",
                 "Basculement automatique vers 🌙 %1$@", "Après l’entrée dans 🌙 %1$@, le quota affiché dans la barre des menus bascule automatiquement",
                 "Heure de réinitialisation de 🌙 %1$@", "Après l’entrée dans 🌙 %1$@, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de 🌙 %1$@",
                 "🌙 %1$@", "Quota d’origine"
             ],
             .portuguese: [
-                "Priorizar cota", "Escolha se a barra de menus deve priorizar a cota de 5 horas ou de 7 dias", "Cota de 5 horas", "Cota de 7 dias",
+                "Priorizar cota", "Escolha se a barra de menus e o menu “Troca rápida” devem priorizar a cota de 5 horas ou de 7 dias", "Cota de 5 horas", "Cota de 7 dias",
                 "Exibição do horário de redefinição", "Escolha se deseja mostrar o tempo restante, um horário específico de redefinição ou ambos", "Tempo restante", "Horário de redefinição", "Mostrar ambos",
                 "🌙 Troca automática para %1$@", "Após entrar na 🌙 %1$@, troca automaticamente a cota exibida na barra de menus.",
                 "Horário de redefinição da 🌙 %1$@", "Após entrar na 🌙 %1$@, escolha se deseja continuar mostrando o horário de redefinição da cota original ou o da 🌙 %1$@.",
                 "🌙 %1$@", "Cota original"
             ],
             .russian: [
-                "Приоритет квоты", "Выберите, какой квоте отдавать приоритет в строке меню: 5-часовой или 7-дневной", "Квота на 5 часов", "Квота на 7 дней",
+                "Приоритет квоты", "Выберите, какой квоте отдавать приоритет в строке меню и в меню «Быстрое переключение»: 5-часовой или 7-дневной", "Квота на 5 часов", "Квота на 7 дней",
                 "Отображение времени сброса", "Выберите, показывать ли оставшееся время, конкретное время сброса или оба значения", "Оставшееся время", "Время сброса", "Показывать оба",
                 "🌙 Автопереключение на %1$@", "После входа в 🌙 %1$@ автоматически переключает квоту, отображаемую в строке меню.",
                 "Время сброса 🌙 %1$@", "После входа в 🌙 %1$@ выберите, продолжать ли показывать время сброса исходной квоты или квоты 🌙 %1$@.",
                 "🌙 %1$@", "Исходная квота"
             ],
             .italian: [
-                "Dai priorità alla quota", "Scegli se la barra dei menu deve dare priorità alla quota di 5 ore o di 7 giorni", "Quota di 5 ore", "Quota di 7 giorni",
+                "Dai priorità alla quota", "Scegli se la barra dei menu e il menu “Cambio rapido” devono dare priorità alla quota di 5 ore o di 7 giorni", "Quota di 5 ore", "Quota di 7 giorni",
                 "Visualizzazione dell'orario di ripristino", "Scegli se mostrare il tempo rimanente, un orario di ripristino specifico o entrambi", "Tempo rimanente", "Orario di ripristino", "Mostra entrambi",
                 "🌙 Passaggio automatico a %1$@", "Dopo aver attivato 🌙 %1$@, cambia automaticamente la quota mostrata nella barra dei menu.",
                 "Orario di ripristino di 🌙 %1$@", "Dopo aver attivato 🌙 %1$@, scegli se continuare a mostrare l'orario di ripristino della quota originale o quello di 🌙 %1$@.",

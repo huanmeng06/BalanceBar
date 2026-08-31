@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2 Minuten";
 "dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3 Minuten";
 "dashboard.menu.bar.page.quota_display_priority" = "Bevorzugtes Kontingent";
-"dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, ob in der Menüleiste das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird";
+"dashboard.menu.bar.page.quota_display_priority_description" = "Auswählen, ob in der Menüleiste und im Menü „Schnellwechsel“ das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Stunden-Kontingent";
 "dashboard.menu.bar.page.seven_day_quota" = "7-Tage-Kontingent";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Format der Rücksetzzeit";

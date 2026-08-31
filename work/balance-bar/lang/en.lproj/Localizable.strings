@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2 minutes";
 "dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3 minutes";
 "dashboard.menu.bar.page.quota_display_priority" = "Prioritize Quota";
-"dashboard.menu.bar.page.quota_display_priority_description" = "Choose whether the menu bar prioritizes the 5-hour or 7-day quota";
+"dashboard.menu.bar.page.quota_display_priority_description" = "Choose whether the 5-hour or 7-day quota is prioritized in the menu bar and the Quick Switch menu";
 "dashboard.menu.bar.page.five_hour_quota" = "5-Hour Quota";
 "dashboard.menu.bar.page.seven_day_quota" = "7-Day Quota";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Reset Time Display";

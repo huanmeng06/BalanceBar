@@ -2023,7 +2023,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 )
                 XCTAssertEqual(
                     tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription, language: language),
-                    "选择菜单栏优先显示 5 小时额度还是 7 日额度"
+                    "选择菜单栏和“快速切换”菜单中优先显示 5 小时额度还是 7 日额度"
                 )
             }
             XCTAssertFalse(popup.itemTitles.contains { $0.hasPrefix("⟦") })

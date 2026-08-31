@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2 minutos";
 "dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3 minutos";
 "dashboard.menu.bar.page.quota_display_priority" = "Priorizar cuota";
-"dashboard.menu.bar.page.quota_display_priority_description" = "Elige si la barra de menús debe priorizar la cuota de 5 horas o la de 7 días";
+"dashboard.menu.bar.page.quota_display_priority_description" = "Elige si la barra de menús y el menú «Cambio rápido» deben priorizar la cuota de 5 horas o la de 7 días";
 "dashboard.menu.bar.page.five_hour_quota" = "Cuota de 5 horas";
 "dashboard.menu.bar.page.seven_day_quota" = "Cuota de 7 días";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "Formato de la hora de reinicio";

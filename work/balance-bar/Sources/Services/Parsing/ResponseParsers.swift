@@ -243,10 +243,11 @@ enum OfficialQuotaResponseParser {
 
         var representativeWindow: OfficialQuotaWindow? { representative }
 
-        // Keep the existing single-window accessors for quick-switch summaries
-        // and callers that still need one representative quota. The weekly
-        // window remains preferred, preserving the compact status text and
-        // Dashboard behavior while the menu card consumes `windows`.
+        // Keep the existing single-window accessors for callers that still need
+        // one representative quota. The weekly window remains preferred,
+        // preserving the legacy compact status text and Dashboard behavior
+        // while presentation consumers that support window selection use
+        // `windows`.
         var remaining: Double { representative?.remaining ?? 0 }
         var label: String { representative?.label ?? tr(.keyResponseParsersQuota) }
         var daysText: String { representative?.daysText ?? tr(.keyResponseParsersQuota2) }
