@@ -1,5 +1,29 @@
 import AppKit
 
+/// Shared visual language for transient text tooltips used by compact
+/// controls and wider account labels. Callers own their content sizing and
+/// layout-specific padding.
+enum DashboardTextTooltip {
+    static var font: NSFont { NSFont.toolTipsFont(ofSize: NSFont.smallSystemFontSize) }
+
+    static func makePopover() -> NSPopover {
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = false
+        return popover
+    }
+
+    static func configure(_ label: NSTextField, alignment: NSTextAlignment = .left) {
+        label.font = font
+        label.textColor = .labelColor
+        label.alignment = alignment
+        label.isEditable = false
+        label.isSelectable = false
+        label.drawsBackground = false
+        label.isBordered = false
+    }
+}
+
 var dashboardUsesDarkAppearance: Bool {
     NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
 }
@@ -129,9 +153,11 @@ final class DashboardNavigationRowView: NSView {
 
 final class QuotaProgressView: NSView {
     let percentage: Double
+    let colorConfiguration: QuotaProgressColorConfiguration
 
-    init(percentage: Double) {
+    init(percentage: Double, colorConfiguration: QuotaProgressColorConfiguration = .default) {
         self.percentage = min(100, max(0, percentage))
+        self.colorConfiguration = colorConfiguration.normalized()
         super.init(frame: .zero)
     }
 
@@ -146,21 +172,30 @@ final class QuotaProgressView: NSView {
         let width = track.width * CGFloat(percentage / 100)
         guard width > 0 else { return }
         let fill = NSRect(x: track.minX, y: track.minY, width: max(track.height, width), height: track.height)
-        Self.progressColor(for: percentage).setFill()
+        Self.progressColor(for: percentage, configuration: colorConfiguration).setFill()
         NSBezierPath(roundedRect: fill, xRadius: radius, yRadius: radius).fill()
     }
 
-    static func progressColor(for percentage: Double) -> NSColor {
-        switch percentage {
-        case let value where value > 50: return .systemGreen
-        case 25...50: return .systemYellow
-        case 10..<25: return .systemOrange
-        default: return .systemRed
+    static func progressColor(for percentage: Double, configuration: QuotaProgressColorConfiguration = .default) -> NSColor {
+        let normalized = configuration.normalized()
+        let active = normalized.enabledColorsInOrder
+        for (index, color) in active.dropLast().enumerated() {
+            guard let boundary = normalized.boundary(after: color) else { continue }
+            let belongsToCurrent = index == active.count - 2 ? percentage <= Double(boundary) : percentage < Double(boundary)
+            if belongsToCurrent { return color.nsColor }
         }
+        return (active.last ?? .green).nsColor
+    }
+}
+
+extension QuotaProgressColor {
+    var nsColor: NSColor {
+        switch self { case .red: .systemRed; case .orange: .systemOrange; case .yellow: .systemYellow; case .green: .systemGreen }
     }
 }
 
 final class LunaReserveCardView: NSView {
+    var colorConfiguration: QuotaProgressColorConfiguration = .default
     private let titleLabel = NSTextField(labelWithString: tr(.keyLunaReserveTitle))
     private let statusLabel = NSTextField(labelWithString: "")
     private let remainingLabel = NSTextField(labelWithString: "")
@@ -225,7 +260,7 @@ final class LunaReserveCardView: NSView {
         if let remaining = quota.remaining {
             progressHost.isHidden = false
             progressHostHeightConstraint.constant = 6
-            let progress = QuotaProgressView(percentage: remaining)
+            let progress = QuotaProgressView(percentage: remaining, colorConfiguration: colorConfiguration)
             progress.translatesAutoresizingMaskIntoConstraints = false
             progressHost.addSubview(progress)
             NSLayoutConstraint.activate([

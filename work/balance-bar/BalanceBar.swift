@@ -157,13 +157,16 @@ private enum DevelopmentReleaseFixture {
 }
 
 struct PreferencesMigrationPlan {
+    static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
     static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
-        for key in keys where target[key] == nil { selected[key] = production[key] ?? local[key] }
+        for key in allKeys where target[key] == nil { selected[key] = production[key] ?? local[key] }
         return selected
     }
+
+    static var allKeys: [String] { quotaProgressKeys + keys }
 }
 
 private func migrateLegacyPreferencesIfNeeded() {
@@ -218,6 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
             onBalanceDisplayThresholdChanged: { [weak self] value in
                 self?.handleDashboardBalanceDisplayThresholdChanged(value)
+            },
+            onQuotaProgressColorConfigurationChanged: { [weak self] configuration in
+                self?.handleQuotaProgressColorConfigurationChanged(configuration)
             },
             onOffsetAdjust: { [weak self] identifier, delta in
                 self?.handleDashboardOffsetAdjust(identifier: identifier, delta: delta)
@@ -644,7 +650,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             quotaWindowPreference: menuBarQuotaWindowPreference,
             quotaResetDisplayMode: menuBarQuotaResetDisplayMode,
             autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
-            lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode
+            lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
+            quotaProgressColorConfiguration: preferences.quotaProgressColorConfiguration
         )
     }
 
@@ -998,6 +1005,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         refresh(reason: .configurationChanged)
+    }
+
+    private func handleQuotaProgressColorConfigurationChanged(_ configuration: QuotaProgressColorConfiguration) {
+        preferences.quotaProgressColorConfiguration = configuration
+        updateStatusItem(for: snapshot)
+        updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
     private func handleDashboardQuotaWindowPreferenceChanged(

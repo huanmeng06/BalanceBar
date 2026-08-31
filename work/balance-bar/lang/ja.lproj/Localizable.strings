@@ -339,7 +339,7 @@
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "クォータ消費後に表示";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "常に表示";
 "dashboard.menu.page.hide_exhausted_quota" = "使い切ったクォータを隠す";
-"dashboard.menu.page.hide_exhausted_quota_description" = "オンにすると、🌙 Luna Reserve の表示時に残り 0%% のクォータをメニューから隠します。";
+"dashboard.menu.page.hide_exhausted_quota_description" = "オンにすると、🌙 Luna Reserve の表示時に残り 0%% のクォータをメニューから隠します";
 "dashboard.menu.page.low_balance_display_threshold" = "低残高の警告しきい値";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "チャージ後も残高がこの金額を下回っている間は、進捗バーを赤色で表示";
 "dashboard.menu.page.dropdown_menu" = "ドロップダウンメニュー";
@@ -437,3 +437,12 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve は一時的に利用できません";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"dashboard.menu.page.progress_color_ranges" = "進行状況バーの色範囲";
+"dashboard.menu.page.progress_color_ranges_description" = "しきい値をドラッグして、残りの割合ごとの色を調整します";
+"dashboard.menu.page.displayed_colors" = "表示する色";
+"dashboard.menu.page.displayed_colors_description" = "2 色以上を有効にしてください";
+"dashboard.menu.page.color_red" = "赤";
+"dashboard.menu.page.color_orange" = "オレンジ";
+"dashboard.menu.page.color_yellow" = "黄";
+"dashboard.menu.page.color_green" = "緑";
+"common.restore_defaults" = "デフォルトに戻す";

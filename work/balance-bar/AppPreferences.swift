@@ -1,5 +1,63 @@
 import Foundation
 
+enum QuotaProgressColor: String, CaseIterable, Codable, Hashable {
+    case red, orange, yellow, green
+}
+
+struct QuotaProgressColorConfiguration: Equatable {
+    static let step = 5
+    static let `default` = Self(enabledColors: Set(QuotaProgressColor.allCases), redUpperBound: 10, orangeUpperBound: 25, yellowUpperBound: 50)
+    var enabledColors: Set<QuotaProgressColor>
+    var redUpperBound: Int
+    var orangeUpperBound: Int
+    var yellowUpperBound: Int
+
+    init(enabledColors: Set<QuotaProgressColor>, redUpperBound: Int, orangeUpperBound: Int, yellowUpperBound: Int) {
+        self.enabledColors = enabledColors
+        self.redUpperBound = redUpperBound
+        self.orangeUpperBound = orangeUpperBound
+        self.yellowUpperBound = yellowUpperBound
+    }
+
+    var enabledColorsInOrder: [QuotaProgressColor] { QuotaProgressColor.allCases.filter(enabledColors.contains) }
+    var thumbCount: Int { max(0, enabledColors.count - 1) }
+    func boundary(after color: QuotaProgressColor) -> Int? {
+        switch color { case .red: redUpperBound; case .orange: orangeUpperBound; case .yellow: yellowUpperBound; case .green: nil }
+    }
+    func normalized() -> Self {
+        var copy = self
+        copy.enabledColors = enabledColors.intersection(Set(QuotaProgressColor.allCases))
+        if copy.enabledColors.count < 2 { copy.enabledColors = Set(QuotaProgressColor.allCases) }
+        let snap: (Int) -> Int = { min(100, max(0, Int((Double($0) / 5).rounded()) * 5)) }
+        copy.redUpperBound = snap(redUpperBound); copy.orangeUpperBound = snap(orangeUpperBound); copy.yellowUpperBound = snap(yellowUpperBound)
+        let active = copy.enabledColorsInOrder
+        var previous = 0
+        for (index, color) in active.dropLast().enumerated() {
+            let maximum = 100 - (active.count - index - 1) * Self.step
+            let legal = min(maximum, max(previous + Self.step, copy.boundary(after: color) ?? maximum))
+            switch color { case .red: copy.redUpperBound = legal; case .orange: copy.orangeUpperBound = legal; case .yellow: copy.yellowUpperBound = legal; case .green: break }
+            previous = legal
+        }
+        return copy
+    }
+    func settingEnabled(_ color: QuotaProgressColor, to enabled: Bool) -> Self {
+        var copy = self
+        if enabled { copy.enabledColors.insert(color) } else if copy.enabledColors.count > 2 { copy.enabledColors.remove(color) }
+        return copy.normalized()
+    }
+    func settingBoundary(after color: QuotaProgressColor, to value: Int) -> Self {
+        var copy = normalized()
+        guard let index = copy.enabledColorsInOrder.firstIndex(of: color),
+              index < copy.enabledColorsInOrder.count - 1 else { return copy }
+        let active = copy.enabledColorsInOrder
+        let lower = index == 0 ? Self.step : (copy.boundary(after: active[index - 1]) ?? 0) + Self.step
+        let upper = index == active.count - 2 ? 100 - Self.step : (copy.boundary(after: active[index + 1]) ?? 100) - Self.step
+        let snapped = min(upper, max(lower, Int((Double(value) / 5).rounded()) * 5))
+        switch color { case .red: copy.redUpperBound = snapped; case .orange: copy.orangeUpperBound = snapped; case .yellow: copy.yellowUpperBound = snapped; case .green: break }
+        return copy.normalized()
+    }
+}
+
 enum OfficialQuotaResetDisplayMode: String, CaseIterable, Equatable {
     case remaining
     case resetAt
@@ -113,6 +171,10 @@ enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
 }
 
 final class AppPreferences {
+    static let quotaProgressEnabledColorsKey = "quotaProgressEnabledColors"
+    static let quotaProgressRedUpperBoundKey = "quotaProgressRedUpperBound"
+    static let quotaProgressOrangeUpperBoundKey = "quotaProgressOrangeUpperBound"
+    static let quotaProgressYellowUpperBoundKey = "quotaProgressYellowUpperBound"
     static let updateChannelKey = "updateChannel"
     static let defaultUpdateChannel: UpdateChannel = .stable
     static let showOpenCodexMenuKey = "showOpenCodexMenu"
@@ -298,6 +360,28 @@ final class AppPreferences {
                 forKey: Self.balanceDisplayThresholdKey
             )
         }
+    }
+    var quotaProgressColorConfiguration: QuotaProgressColorConfiguration {
+        get {
+            let fallback = QuotaProgressColorConfiguration.default
+            let stored = defaults.stringArray(forKey: Self.quotaProgressEnabledColorsKey)
+            let colors = stored.map { Set($0.compactMap(QuotaProgressColor.init(rawValue:))) } ?? fallback.enabledColors
+            let integer: (String, Int) -> Int = { key, fallback in (self.defaults.object(forKey: key) as? NSNumber)?.intValue ?? fallback }
+            let normalized = QuotaProgressColorConfiguration(
+                enabledColors: colors,
+                redUpperBound: integer(Self.quotaProgressRedUpperBoundKey, fallback.redUpperBound),
+                orangeUpperBound: integer(Self.quotaProgressOrangeUpperBoundKey, fallback.orangeUpperBound),
+                yellowUpperBound: integer(Self.quotaProgressYellowUpperBoundKey, fallback.yellowUpperBound)
+            ).normalized()
+            return normalized
+        }
+        set { persistQuotaProgressColorConfiguration(newValue.normalized()) }
+    }
+    private func persistQuotaProgressColorConfiguration(_ configuration: QuotaProgressColorConfiguration) {
+        defaults.set(configuration.enabledColorsInOrder.map(\.rawValue), forKey: Self.quotaProgressEnabledColorsKey)
+        defaults.set(configuration.redUpperBound, forKey: Self.quotaProgressRedUpperBoundKey)
+        defaults.set(configuration.orangeUpperBound, forKey: Self.quotaProgressOrangeUpperBoundKey)
+        defaults.set(configuration.yellowUpperBound, forKey: Self.quotaProgressYellowUpperBoundKey)
     }
     var sortProvidersAlphabetically: Bool { get { defaults.bool(forKey: "sortProvidersAlphabetically") } set { defaults.set(newValue, forKey: "sortProvidersAlphabetically") } }
     var menuBarHorizontalPadding: CGFloat { get { CGFloat(positiveDouble("menuBarHorizontalPadding", default: 10)) } set { defaults.set(Double(newValue), forKey: "menuBarHorizontalPadding") } }

@@ -1075,7 +1075,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let thresholdRow = try XCTUnwrap(thresholdField.superview)
         let rowsStack = try XCTUnwrap(displayModeRow.superview as? NSStackView)
         XCTAssertEqual(
-            rowsStack.arrangedSubviews.filter { !($0 is NSBox) }.map(ObjectIdentifier.init),
+            Array(rowsStack.arrangedSubviews.filter { !($0 is NSBox) }.prefix(3)).map(ObjectIdentifier.init),
             [displayModeRow, hideRow, thresholdRow].map(ObjectIdentifier.init)
         )
         XCTAssertTrue(hideRow.isHidden)

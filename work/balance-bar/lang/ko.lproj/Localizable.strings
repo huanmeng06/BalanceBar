@@ -339,7 +339,7 @@
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "할당량 소진 후 표시";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "항상 표시";
 "dashboard.menu.page.hide_exhausted_quota" = "소진된 할당량 숨기기";
-"dashboard.menu.page.hide_exhausted_quota_description" = "켜면 🌙 Luna Reserve가 표시될 때 잔여량이 0%%인 할당량을 메뉴에서 숨깁니다.";
+"dashboard.menu.page.hide_exhausted_quota_description" = "켜면 🌙 Luna Reserve가 표시될 때 잔여량이 0%%인 할당량을 메뉴에서 숨깁니다";
 "dashboard.menu.page.low_balance_display_threshold" = "잔액 부족 경고 기준";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "충전 후 잔액이 이 금액보다 적으면 진행 막대를 계속 빨간색으로 표시";
 "dashboard.menu.page.dropdown_menu" = "드롭다운 메뉴";
@@ -437,3 +437,12 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "Luna Reserve를 일시적으로 사용할 수 없음";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"dashboard.menu.page.progress_color_ranges" = "진행률 막대 색상 범위";
+"dashboard.menu.page.progress_color_ranges_description" = "임계값을 드래그하여 남은 백분율 구간별 색상을 조정합니다";
+"dashboard.menu.page.displayed_colors" = "표시 색상";
+"dashboard.menu.page.displayed_colors_description" = "색상을 두 개 이상 활성화하세요";
+"dashboard.menu.page.color_red" = "빨강";
+"dashboard.menu.page.color_orange" = "주황";
+"dashboard.menu.page.color_yellow" = "노랑";
+"dashboard.menu.page.color_green" = "초록";
+"common.restore_defaults" = "기본값 복원";

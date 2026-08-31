@@ -35,6 +35,7 @@ struct DashboardCompositionActions {
     let onOpenLaunchAtLoginSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
+    let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
     let onOffsetAdjust: (String, Int) -> Void
     let onOffsetValue: (String, Double) -> Void
     let onOffsetValueEnded: (String, Double) -> Void
@@ -89,6 +90,7 @@ final class DashboardCompositionController {
             onOpenLaunchAtLoginSettings: actions.onOpenLaunchAtLoginSettings,
             onInterval: actions.onInterval,
             onBalanceDisplayThresholdChanged: actions.onBalanceDisplayThresholdChanged,
+            onQuotaProgressColorConfigurationChanged: actions.onQuotaProgressColorConfigurationChanged,
             onOffsetAdjust: actions.onOffsetAdjust,
             onOffsetValue: actions.onOffsetValue,
             onOffsetValueEnded: actions.onOffsetValueEnded,
@@ -343,7 +345,8 @@ final class DashboardCompositionController {
             quickSwitchSummaries: state.quickSwitchSummaries(),
             refreshDate: useLastSuccessfulRefresh ? state.refreshDate() : refreshDate,
             revision: revision,
-            currentProviderIsOfficial: state.currentProviderIsOfficial()
+            currentProviderIsOfficial: state.currentProviderIsOfficial(),
+            quotaProgressColorConfiguration: state.preferences.quotaProgressColorConfiguration
         )
     }
 

@@ -372,39 +372,39 @@ final class LocalizationTests: XCTestCase {
         let expected: [AppLanguage: [String]] = [
             .simplifiedChinese: [
                 "🌙 Luna Reserve显示方式", "选择 Luna Reserve 在菜单中的显示时机", "不显示", "额度用完后显示", "始终显示",
-                "隐藏已用完额度", "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度。"
+                "隐藏已用完额度", "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度"
             ],
             .traditionalChineseTaiwan: [
                 "🌙 Luna Reserve 顯示方式", "選擇 Luna Reserve 在選單中的顯示時機", "不顯示", "額度用完後顯示", "始終顯示",
-                "隱藏已用完額度", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的額度。"
+                "隱藏已用完額度", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的額度"
             ],
             .traditionalChineseHongKong: [
                 "🌙 Luna Reserve 顯示方式", "選擇 Luna Reserve 在選單中的顯示時機", "不顯示", "配額用完後顯示", "始終顯示",
-                "隱藏已用完配額", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的配額。"
+                "隱藏已用完配額", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的配額"
             ],
             .japanese: [
                 "🌙 Luna Reserve の表示方法", "メニューで Luna Reserve を表示するタイミングを選択", "表示しない", "クォータ消費後に表示", "常に表示",
-                "使い切ったクォータを隠す", "オンにすると、🌙 Luna Reserve の表示時に残り 0% のクォータをメニューから隠します。"
+                "使い切ったクォータを隠す", "オンにすると、🌙 Luna Reserve の表示時に残り 0% のクォータをメニューから隠します"
             ],
             .english: [
                 "🌙 Luna Reserve Display", "Choose when Luna Reserve is shown in the menu", "Do not show", "Show after quota is used up", "Always show",
-                "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when 🌙 Luna Reserve is shown."
+                "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when 🌙 Luna Reserve is shown"
             ],
             .korean: [
                 "🌙 Luna Reserve 표시 방식", "메뉴에서 Luna Reserve를 표시할 시점을 선택", "표시 안 함", "할당량 소진 후 표시", "항상 표시",
-                "소진된 할당량 숨기기", "켜면 🌙 Luna Reserve가 표시될 때 잔여량이 0%인 할당량을 메뉴에서 숨깁니다."
+                "소진된 할당량 숨기기", "켜면 🌙 Luna Reserve가 표시될 때 잔여량이 0%인 할당량을 메뉴에서 숨깁니다"
             ],
             .spanish: [
                 "🌙 Mostrar Luna Reserve", "Elige cuándo mostrar Luna Reserve en el menú", "No mostrar", "Mostrar al agotar la cuota", "Mostrar siempre",
-                "Ocultar cuotas agotadas", "Al activarlo, las cuotas al 0 % se ocultan del menú cuando se muestra 🌙 Luna Reserve."
+                "Ocultar cuotas agotadas", "Al activarlo, las cuotas al 0 % se ocultan del menú cuando se muestra 🌙 Luna Reserve"
             ],
             .german: [
                 "🌙 Luna Reserve-Anzeige", "Zeitpunkt für die Anzeige von Luna Reserve im Menü auswählen", "Nicht anzeigen", "Nach Verbrauch des Kontingents anzeigen", "Immer anzeigen",
-                "Verbrauchte Kontingente ausblenden", "Wenn aktiviert, werden Kontingente mit 0 % im Menü ausgeblendet, sobald 🌙 Luna Reserve angezeigt wird."
+                "Verbrauchte Kontingente ausblenden", "Wenn aktiviert, werden Kontingente mit 0 % im Menü ausgeblendet, sobald 🌙 Luna Reserve angezeigt wird"
             ],
             .french: [
                 "🌙 Affichage de Luna Reserve", "Choisissez quand afficher Luna Reserve dans le menu", "Ne pas afficher", "Afficher après épuisement du quota", "Toujours afficher",
-                "Masquer les quotas épuisés", "Lorsque cette option est activée, les quotas à 0 % sont masqués du menu quand 🌙 Luna Reserve est affiché."
+                "Masquer les quotas épuisés", "Lorsque cette option est activée, les quotas à 0 % sont masqués du menu quand 🌙 Luna Reserve est affiché"
             ]
         ]
         let keys: [LocalizationKey] = [
@@ -421,6 +421,22 @@ final class LocalizationTests: XCTestCase {
             let values = keys.map { tr($0, language: language) }
             XCTAssertEqual(values, expected[language], "Luna Reserve menu settings copy for \(language)")
             XCTAssertTrue(values.allSatisfy { !$0.hasPrefix("⟦") })
+        }
+    }
+
+    func testBalanceDisplayDescriptionsOmitTrailingPunctuationAcrossAllLanguages() {
+        let keys: [LocalizationKey] = [
+            .keyDashboardMenuPageHideExhaustedQuotaDescription,
+            .keyDashboardMenuPageProgressColorRangesDescription,
+            .keyDashboardMenuPageDisplayedColorsDescription
+        ]
+
+        for language in AppLanguage.allCases where language != .system {
+            let values = keys.map { tr($0, language: language) }
+            XCTAssertTrue(
+                values.allSatisfy { !$0.hasSuffix("。") && !$0.hasSuffix(".") },
+                "Balance display descriptions should omit trailing punctuation in \(language)"
+            )
         }
     }
 
@@ -538,7 +554,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 439)
+        XCTAssertEqual(expectedKeys.count, 448)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

@@ -6,6 +6,7 @@ struct DashboardPreferencePageActions {
     let onOpenLaunchAtLoginSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
+    let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
     let onOffsetAdjust: (String, Int) -> Void
     let onOffsetValue: (String, Double) -> Void
     let onOffsetValueEnded: (String, Double) -> Void
@@ -116,7 +117,8 @@ final class DashboardPreferencePages {
                 preferences: preferences,
                 relay: relay,
                 makeStatusLinksEditor: actions.makeStatusLinksEditor,
-                onBalanceDisplayThresholdChanged: actions.onBalanceDisplayThresholdChanged
+                onBalanceDisplayThresholdChanged: actions.onBalanceDisplayThresholdChanged,
+                onQuotaProgressColorConfigurationChanged: actions.onQuotaProgressColorConfigurationChanged
             ))
         case .advanced:
             return advancedPage.make(.init(

@@ -1,5 +1,18 @@
 import AppKit
 
+private final class QuotaColorSelectionStack: NSStackView, DashboardSettingsRowControlLayout {
+    private(set) var usesDedicatedRow = false
+    let allowsTextDrivenDedicatedRow = true
+    func updateAvailableRowWidth(_ width: CGFloat) {
+        let shouldStack = width < 300
+        guard usesDedicatedRow != shouldStack else { return }
+        usesDedicatedRow = shouldStack
+        orientation = shouldStack ? .vertical : .horizontal
+        alignment = shouldStack ? .leading : .centerY
+        needsLayout = true
+    }
+}
+
 final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     static let lunaReserveDisplayModeIdentifier = AppPreferences.menuLunaReserveDisplayModeKey
     static let lunaReserveHideExhaustedQuotaIdentifier = AppPreferences.menuLunaReserveHideExhaustedQuotaKey
@@ -9,6 +22,21 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let relay: DashboardPreferencePageRelay
         let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
         let onBalanceDisplayThresholdChanged: (Double) -> Void
+        let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
+
+        init(
+            preferences: AppPreferences,
+            relay: DashboardPreferencePageRelay,
+            makeStatusLinksEditor: @escaping () -> StatusLinksEditorHostingView,
+            onBalanceDisplayThresholdChanged: @escaping (Double) -> Void,
+            onQuotaProgressColorConfigurationChanged: @escaping (QuotaProgressColorConfiguration) -> Void = { _ in }
+        ) {
+            self.preferences = preferences
+            self.relay = relay
+            self.makeStatusLinksEditor = makeStatusLinksEditor
+            self.onBalanceDisplayThresholdChanged = onBalanceDisplayThresholdChanged
+            self.onQuotaProgressColorConfigurationChanged = onQuotaProgressColorConfigurationChanged
+        }
     }
 
     private weak var balanceDisplayThresholdField: NSTextField?
@@ -25,10 +53,16 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var statusLinksSeparators: [NSView] = []
     private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
     private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
+    private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
+    private weak var quotaColorSlider: QuotaColorThresholdSlider?
+    private var quotaColorButtons: [QuotaProgressColor: NSButton] = [:]
+    private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
 
     func make(_ input: Input) -> NSView {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
         onBalanceDisplayThresholdChanged = input.onBalanceDisplayThresholdChanged
+        onQuotaProgressColorConfigurationChanged = input.onQuotaProgressColorConfigurationChanged
+        quotaColorConfiguration = input.preferences.quotaProgressColorConfiguration
         balanceDisplayRowsStack = nil
         balanceDisplayCardHeightConstraint = nil
         balanceDisplaySeparators = []
@@ -84,6 +118,36 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayThreshold.setContentCompressionResistancePriority(.required, for: .horizontal)
         balanceDisplayThresholdField = balanceDisplayThreshold
 
+        let slider = QuotaColorThresholdSlider(configuration: quotaColorConfiguration)
+        slider.onChange = { [weak self] configuration in
+            guard let self else { return }
+            let normalized = configuration.normalized()
+            self.quotaColorConfiguration = normalized
+            self.updateQuotaColorButtons()
+            self.onQuotaProgressColorConfigurationChanged?(normalized)
+        }
+        quotaColorSlider = slider
+        let resetButton = NSButton(title: tr(.keyCommonRestoreDefaults), target: self, action: #selector(resetQuotaProgressColors(_:)))
+        Self.configureQuotaColorResetButton(resetButton)
+        let colorControls = QuotaColorSelectionStack()
+        colorControls.orientation = .horizontal; colorControls.spacing = 12
+        for color in QuotaProgressColor.allCases {
+            let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleQuotaColor(_:)))
+            button.identifier = NSUserInterfaceItemIdentifier("quotaProgressColor.\(color.rawValue)")
+            button.setAccessibilityLabel(Self.colorLabel(color))
+            button.state = quotaColorConfiguration.enabledColors.contains(color) ? .on : .off
+            let swatch = NSImageView(image: NSImage(systemSymbolName: "square.fill", accessibilityDescription: nil) ?? NSImage())
+            swatch.contentTintColor = color.nsColor
+            swatch.setAccessibilityElement(false)
+            let item = NSStackView(views: [button, swatch]); item.orientation = .horizontal; item.alignment = .centerY; item.spacing = 4
+            let checkboxBounds = NSRect(origin: .zero, size: button.fittingSize)
+            let indicatorRect = button.cell?.imageRect(forBounds: checkboxBounds) ?? checkboxBounds
+            let side = max(1, min(indicatorRect.width, indicatorRect.height))
+            swatch.widthAnchor.constraint(equalToConstant: side).isActive = true
+            swatch.heightAnchor.constraint(equalToConstant: side).isActive = true
+            colorControls.addArrangedSubview(item); quotaColorButtons[color] = button
+        }
+        updateQuotaColorButtons()
         let balanceDisplay = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuPageBalanceDisplay),
             rows: [
@@ -93,6 +157,21 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                     tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
                     subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
                     control: balanceDisplayThreshold
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(.keyDashboardMenuPageProgressColorRanges),
+                    subtitle: tr(.keyDashboardMenuPageProgressColorRangesDescription),
+                    headerTrailingAccessory: resetButton,
+                    control: slider,
+                    minimumHeight: 90,
+                    controlWidthConstrainedToRow: true,
+                    forceDedicatedControlRow: true
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(.keyDashboardMenuPageDisplayedColors),
+                    subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
+                    control: colorControls,
+                    controlWidthConstrainedToRow: true
                 )
             ],
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
@@ -242,6 +321,9 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     func refresh(preferences: AppPreferences) {
+        quotaColorConfiguration = preferences.quotaProgressColorConfiguration
+        quotaColorSlider?.configuration = quotaColorConfiguration
+        updateQuotaColorButtons()
         balanceDisplayThresholdValue = preferences.balanceDisplayThreshold
         balanceDisplayThresholdField?.stringValue = Self.formattedBalanceDisplayThreshold(
             balanceDisplayThresholdValue
@@ -280,12 +362,52 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayCardHeightConstraint = nil
         balanceDisplaySeparators = []
         onBalanceDisplayThresholdChanged = nil
+        onQuotaProgressColorConfigurationChanged = nil
+        quotaColorButtons = [:]
+        quotaColorSlider?.teardown()
+        quotaColorSlider = nil
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusSubtitleLabel = nil
         statusLinksRowsStack = nil
         statusLinksCardHeightConstraint = nil
         statusLinksSeparators = []
+    }
+
+    @objc private func toggleQuotaColor(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue.split(separator: ".").last,
+              let color = QuotaProgressColor(rawValue: String(raw)) else { return }
+        applyQuotaColorConfiguration(quotaColorConfiguration.settingEnabled(color, to: sender.state == .on))
+    }
+
+    @objc private func resetQuotaProgressColors(_ sender: NSButton) {
+        applyQuotaColorConfiguration(.default)
+    }
+
+    private func applyQuotaColorConfiguration(_ configuration: QuotaProgressColorConfiguration) {
+        quotaColorConfiguration = configuration.normalized()
+        quotaColorSlider?.configuration = quotaColorConfiguration
+        updateQuotaColorButtons()
+        onQuotaProgressColorConfigurationChanged?(quotaColorConfiguration)
+    }
+
+    private func updateQuotaColorButtons() {
+        for (color, button) in quotaColorButtons {
+            button.state = quotaColorConfiguration.enabledColors.contains(color) ? .on : .off
+            button.isEnabled = button.state == .off || quotaColorConfiguration.enabledColors.count > 2
+        }
+    }
+
+    static func configureQuotaColorResetButton(_ button: NSButton) {
+        button.controlSize = .small
+        button.bezelStyle = .rounded
+        // Resetting an already-default configuration is a harmless no-op; keep
+        // the action visually consistent with the other settings buttons.
+        button.isEnabled = true
+    }
+
+    private static func colorLabel(_ color: QuotaProgressColor) -> String {
+        switch color { case .red: tr(.keyDashboardMenuPageColorRed); case .orange: tr(.keyDashboardMenuPageColorOrange); case .yellow: tr(.keyDashboardMenuPageColorYellow); case .green: tr(.keyDashboardMenuPageColorGreen) }
     }
 
     private func updateLunaReserveDisplayModeVisibility(_ mode: LunaReserveDisplayMode) {
