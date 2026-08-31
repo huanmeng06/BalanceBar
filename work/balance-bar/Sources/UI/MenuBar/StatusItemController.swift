@@ -2842,7 +2842,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             subscriptionTextWidth: snapshot.kind == .official ? subscriptionTextWidth : nil,
             officialQuotaWindows: officialQuotaWindows,
             includesLunaReserve: snapshot.kind == .official && lunaReserve != nil,
-            includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil
+            includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil,
+            lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))

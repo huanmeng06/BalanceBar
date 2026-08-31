@@ -219,30 +219,43 @@ final class DomainModelsTests: XCTestCase {
 
     func testOfficialQuotaMenuPresentationSupportsLunaReserveDisplayModesAndExhaustedHiding() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let fiveHourZero = OfficialQuotaWindow(
-            kind: .fiveHour,
-            remaining: 0,
-            label: "5-hour",
-            daysText: "5 hours",
-            reset: "1h",
-            durationSeconds: 18_000
-        )
-        let sevenDayRemaining = OfficialQuotaWindow(
-            kind: .sevenDay,
-            remaining: 60,
-            label: "7-day",
-            daysText: "7 days",
-            reset: "6d",
-            durationSeconds: 604_800
-        )
         let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
-        let plusSnapshot = Snapshot.official(
-            "OpenAI",
-            60,
-            sevenDayRemaining.label,
-            sevenDayRemaining.reset,
-            date,
-            windows: [fiveHourZero, sevenDayRemaining],
+
+        func snapshot(
+            fiveHourRemaining: Double,
+            sevenDayRemaining: Double,
+            lunaReserve: LunaReserveQuota?
+        ) -> Snapshot {
+            let fiveHour = OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: fiveHourRemaining,
+                label: "5-hour",
+                daysText: "5 hours",
+                reset: "1h",
+                durationSeconds: 18_000
+            )
+            let sevenDay = OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: sevenDayRemaining,
+                label: "7-day",
+                daysText: "7 days",
+                reset: "6d",
+                durationSeconds: 604_800
+            )
+            return Snapshot.official(
+                "OpenAI",
+                sevenDayRemaining,
+                sevenDay.label,
+                sevenDay.reset,
+                date,
+                windows: [fiveHour, sevenDay],
+                lunaReserve: lunaReserve
+            )
+        }
+
+        let plusSnapshot = snapshot(
+            fiveHourRemaining: 0,
+            sevenDayRemaining: 60,
             lunaReserve: reserve
         )
 
@@ -252,6 +265,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(disabled.windows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertNil(disabled.lunaReserve)
+        XCTAssertNil(disabled.lunaReserveInsertionIndex)
 
         let threshold = plusSnapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: .whenQuotaExhausted,
@@ -259,6 +273,7 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(threshold.windows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(threshold.lunaReserve, reserve)
+        XCTAssertEqual(threshold.lunaReserveInsertionIndex, 1)
 
         let thresholdHiding = plusSnapshot.officialQuotaMenuPresentation(
             lunaReserveDisplayMode: .whenQuotaExhausted,
@@ -266,8 +281,43 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertEqual(thresholdHiding.windows.map(\.kind), [.sevenDay])
         XCTAssertEqual(thresholdHiding.lunaReserve, reserve)
+        XCTAssertEqual(thresholdHiding.lunaReserveInsertionIndex, 0)
 
-        let sevenDayZero = OfficialQuotaWindow(
+        let alwaysFiveHourExhausted = plusSnapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(alwaysFiveHourExhausted.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(alwaysFiveHourExhausted.lunaReserveInsertionIndex, 1)
+
+        let alwaysFiveHourHidden = plusSnapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(alwaysFiveHourHidden.windows.map(\.kind), [.sevenDay])
+        XCTAssertEqual(alwaysFiveHourHidden.lunaReserve, reserve)
+        XCTAssertEqual(alwaysFiveHourHidden.lunaReserveInsertionIndex, 0)
+
+        let sevenDayExhausted = snapshot(
+            fiveHourRemaining: 60,
+            sevenDayRemaining: 0,
+            lunaReserve: reserve
+        )
+        let alwaysSevenDayExhausted = sevenDayExhausted.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(alwaysSevenDayExhausted.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(alwaysSevenDayExhausted.lunaReserveInsertionIndex, 2)
+
+        let alwaysSevenDayHidden = sevenDayExhausted.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(alwaysSevenDayHidden.windows.map(\.kind), [.fiveHour])
+        XCTAssertEqual(alwaysSevenDayHidden.lunaReserveInsertionIndex, 1)
+
+        let proSevenDay = OfficialQuotaWindow(
             kind: .sevenDay,
             remaining: 0,
             label: "7-day",
@@ -275,13 +325,26 @@ final class DomainModelsTests: XCTestCase {
             reset: "6d",
             durationSeconds: 604_800
         )
-        let bothExhausted = Snapshot.official(
+        let proSnapshot = Snapshot.official(
             "OpenAI",
             0,
-            sevenDayZero.label,
-            sevenDayZero.reset,
+            proSevenDay.label,
+            proSevenDay.reset,
             date,
-            windows: [fiveHourZero, sevenDayZero],
+            windows: [proSevenDay],
+            lunaReserve: reserve
+        )
+        let pro = proSnapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .whenQuotaExhausted,
+            hideExhaustedQuota: true
+        )
+        XCTAssertTrue(pro.windows.isEmpty)
+        XCTAssertEqual(pro.lunaReserve, reserve)
+        XCTAssertEqual(pro.lunaReserveInsertionIndex, 0)
+
+        let bothExhausted = snapshot(
+            fiveHourRemaining: 0,
+            sevenDayRemaining: 0,
             lunaReserve: reserve
         ).officialQuotaMenuPresentation(
             lunaReserveDisplayMode: .whenQuotaExhausted,
@@ -289,36 +352,65 @@ final class DomainModelsTests: XCTestCase {
         )
         XCTAssertTrue(bothExhausted.windows.isEmpty)
         XCTAssertEqual(bothExhausted.lunaReserve, reserve)
+        XCTAssertEqual(bothExhausted.lunaReserveInsertionIndex, 0)
 
-        let proSevenDayZero = OfficialQuotaWindow(
-            kind: .sevenDay,
-            remaining: 0,
-            label: "7-day",
-            daysText: "7 days",
-            reset: "6d",
-            durationSeconds: 604_800
-        )
-        let pro = Snapshot.official(
-            "OpenAI",
-            0,
-            proSevenDayZero.label,
-            proSevenDayZero.reset,
-            date,
-            windows: [proSevenDayZero],
+        let bothAlways = snapshot(
+            fiveHourRemaining: 0,
+            sevenDayRemaining: 0,
             lunaReserve: reserve
         ).officialQuotaMenuPresentation(
-            lunaReserveDisplayMode: .whenQuotaExhausted,
-            hideExhaustedQuota: true
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
         )
-        XCTAssertTrue(pro.windows.isEmpty)
-        XCTAssertEqual(pro.lunaReserve, reserve)
+        XCTAssertEqual(bothAlways.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(bothAlways.lunaReserveInsertionIndex, 1)
 
-        let always = plusSnapshot.officialQuotaMenuPresentation(
+        let bothAlwaysHidden = snapshot(
+            fiveHourRemaining: 0,
+            sevenDayRemaining: 0,
+            lunaReserve: reserve
+        ).officialQuotaMenuPresentation(
             lunaReserveDisplayMode: .always,
             hideExhaustedQuota: true
         )
-        XCTAssertEqual(always.windows.map(\.kind), [.fiveHour, .sevenDay])
-        XCTAssertEqual(always.lunaReserve, reserve)
+        XCTAssertTrue(bothAlwaysHidden.windows.isEmpty)
+        XCTAssertEqual(bothAlwaysHidden.lunaReserveInsertionIndex, 0)
+
+        let neitherExhausted = snapshot(
+            fiveHourRemaining: 60,
+            sevenDayRemaining: 60,
+            lunaReserve: reserve
+        ).officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(neitherExhausted.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(neitherExhausted.lunaReserveInsertionIndex, 1)
+
+        let unavailableReserve = LunaReserveQuota(status: .unavailable, remaining: nil, reset: nil)
+        let unavailable = snapshot(
+            fiveHourRemaining: 0,
+            sevenDayRemaining: 60,
+            lunaReserve: unavailableReserve
+        ).officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(unavailable.windows.map(\.kind), [.sevenDay])
+        XCTAssertEqual(unavailable.lunaReserve, unavailableReserve)
+        XCTAssertEqual(unavailable.lunaReserveInsertionIndex, 0)
+
+        let withoutReserve = snapshot(
+            fiveHourRemaining: 0,
+            sevenDayRemaining: 60,
+            lunaReserve: nil
+        ).officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(withoutReserve.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(withoutReserve.lunaReserve)
+        XCTAssertNil(withoutReserve.lunaReserveInsertionIndex)
     }
 
     func testLunaReserveDemoModesKeepZeroAvailableAndUnavailableDistinct() {
@@ -346,6 +438,28 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(fiveHourExhausted.officialQuotaWindows.last?.remaining, 60)
         XCTAssertEqual(fiveHourExhausted.lunaReserve?.status, .available)
         XCTAssertEqual(fiveHourExhausted.lunaReserve?.remaining, 45)
+
+        let sevenDayExhausted = DevelopmentLunaReserveDemo.snapshot(
+            mode: .sevenDayExhausted,
+            providerName: "OpenAI",
+            date: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        XCTAssertEqual(sevenDayExhausted.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(sevenDayExhausted.officialQuotaWindows.first?.remaining, 75)
+        XCTAssertEqual(sevenDayExhausted.officialQuotaWindows.last?.remaining, 0)
+        XCTAssertEqual(sevenDayExhausted.lunaReserve?.status, .available)
+        XCTAssertEqual(sevenDayExhausted.lunaReserve?.remaining, 45)
+
+        let bothExhausted = DevelopmentLunaReserveDemo.snapshot(
+            mode: .bothExhausted,
+            providerName: "OpenAI",
+            date: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        XCTAssertEqual(bothExhausted.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(bothExhausted.officialQuotaWindows.first?.remaining, 0)
+        XCTAssertEqual(bothExhausted.officialQuotaWindows.last?.remaining, 0)
+        XCTAssertEqual(bothExhausted.lunaReserve?.status, .available)
+        XCTAssertEqual(bothExhausted.lunaReserve?.remaining, 45)
 
         let unavailable = DevelopmentLunaReserveDemo.snapshot(
             mode: .unavailable,

@@ -69,7 +69,10 @@ struct LunaReserveQuota: Equatable {
             }
             return tr(.keyLunaReserveMenuResetValue, arguments: [reset])
         case .unavailable:
-            return tr(.keyLunaReserveMenuUnavailable)
+            return tr(
+                .keyLunaReserveMenuUnavailable,
+                arguments: [tr(.keyLunaReserveTitle)]
+            )
         }
     }
 
@@ -189,6 +192,10 @@ struct OfficialQuotaWindow: Equatable {
 struct OfficialQuotaMenuPresentation: Equatable {
     let windows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
+    /// Number of presented standard rows above Luna Reserve in the
+    /// top-to-bottom menu order. The source index is resolved before any
+    /// exhausted rows are hidden so a hidden quota can still anchor Reserve.
+    let lunaReserveInsertionIndex: Int?
 }
 
 enum OfficialQuotaResetFormatter {
@@ -407,7 +414,11 @@ struct Snapshot {
         hideExhaustedQuota: Bool
     ) -> OfficialQuotaMenuPresentation {
         guard kind == .official else {
-            return OfficialQuotaMenuPresentation(windows: [], lunaReserve: nil)
+            return OfficialQuotaMenuPresentation(
+                windows: [],
+                lunaReserve: nil,
+                lunaReserveInsertionIndex: nil
+            )
         }
 
         let windows = officialQuotaWindowsForMenu
@@ -424,14 +435,47 @@ struct Snapshot {
             shouldShowLunaReserve = lunaReserve != nil
         }
 
-        let presentedWindows = shouldShowLunaReserve
-            && lunaReserveDisplayMode == .whenQuotaExhausted
+        let sourceInsertionIndex: Int? = {
+            guard shouldShowLunaReserve else { return nil }
+
+            let defaultInsertionIndex = windows.firstIndex(where: { $0.kind == .fiveHour })
+                .map { $0 + 1 }
+                ?? 0
+            switch lunaReserveDisplayMode {
+            case .disabled:
+                return nil
+            case .whenQuotaExhausted:
+                // Preserve the existing threshold-mode placement: after the
+                // 5-hour row when present, otherwise above the first row.
+                return defaultInsertionIndex
+            case .always:
+                // `windows` already follows the existing five-hour, seven-day
+                // priority order. The first exhausted recognized row is the
+                // deterministic tie-break when both windows are exhausted.
+                return windows.firstIndex(where: {
+                    $0.kind != .other && $0.remaining <= 0
+                }).map { $0 + 1 } ?? defaultInsertionIndex
+            }
+        }()
+        let shouldHideExhaustedQuota = shouldShowLunaReserve
             && hideExhaustedQuota
-            ? windows.filter { $0.remaining > 0 }
-            : windows
+            && lunaReserveDisplayMode != .disabled
+        let indexedWindows = Array(windows.enumerated())
+        let presentedWindows = indexedWindows.compactMap { indexedWindow in
+            shouldHideExhaustedQuota && indexedWindow.element.remaining <= 0
+                ? nil
+                : indexedWindow.element
+        }
+        let presentedInsertionIndex = sourceInsertionIndex.map { sourceIndex in
+            indexedWindows.filter {
+                $0.offset < sourceIndex
+                    && (!shouldHideExhaustedQuota || $0.element.remaining > 0)
+            }.count
+        }
         return OfficialQuotaMenuPresentation(
             windows: presentedWindows,
-            lunaReserve: shouldShowLunaReserve ? lunaReserve : nil
+            lunaReserve: shouldShowLunaReserve ? lunaReserve : nil,
+            lunaReserveInsertionIndex: presentedInsertionIndex
         )
     }
 

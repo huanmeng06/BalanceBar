@@ -8,6 +8,8 @@ enum DevelopmentLunaReserveDemo {
         case zero
         case unavailable
         case fiveHourExhausted = "five-hour-exhausted"
+        case sevenDayExhausted = "seven-day-exhausted"
+        case bothExhausted = "both-exhausted"
     }
 
     private static let infoPlistKey = "BalanceBarLunaReserveDemo"
@@ -32,11 +34,20 @@ enum DevelopmentLunaReserveDemo {
         date: Date = Date()
     ) -> Snapshot {
         let fiveHourRemaining: Double
+        let sevenDayRemaining: Double
         switch mode {
         case .fiveHourExhausted:
             fiveHourRemaining = 0
+            sevenDayRemaining = 60
+        case .sevenDayExhausted:
+            fiveHourRemaining = 75
+            sevenDayRemaining = 0
+        case .bothExhausted:
+            fiveHourRemaining = 0
+            sevenDayRemaining = 0
         case .zero, .unavailable:
             fiveHourRemaining = 75
+            sevenDayRemaining = 60
         }
         let windows = [
             OfficialQuotaWindow(
@@ -49,7 +60,7 @@ enum DevelopmentLunaReserveDemo {
             ),
             OfficialQuotaWindow(
                 kind: .sevenDay,
-                remaining: 60,
+                remaining: sevenDayRemaining,
                 label: tr(.keyResponseParsers7DayQuota),
                 daysText: tr(.keyResponseParsers7Days),
                 reset: "5d3h",
@@ -70,7 +81,7 @@ enum DevelopmentLunaReserveDemo {
                 remaining: nil,
                 reset: nil
             )
-        case .fiveHourExhausted:
+        case .fiveHourExhausted, .sevenDayExhausted, .bothExhausted:
             reserve = LunaReserveQuota(
                 status: .available,
                 remaining: 45,

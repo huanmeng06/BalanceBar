@@ -755,14 +755,26 @@ final class DashboardMenuBarPage {
         )
         self.quotaWindowPreferenceRow = quotaWindowPreferenceRow
         let autoSwitchLunaReserveRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageAutoSwitchLunaReserve),
-            subtitle: tr(.keyDashboardMenuBarPageAutoSwitchLunaReserveDescription),
+            tr(
+                .keyDashboardMenuBarPageAutoSwitchLunaReserve,
+                arguments: [tr(.keyLunaReserveTitle)]
+            ),
+            subtitle: tr(
+                .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
+                arguments: [tr(.keyLunaReserveTitle)]
+            ),
             control: autoSwitchLunaReserve
         )
         self.autoSwitchLunaReserveRow = autoSwitchLunaReserveRow
         let lunaReserveResetTimeRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuBarPageLunaReserveResetTime),
-            subtitle: tr(.keyDashboardMenuBarPageLunaReserveResetTimeDescription),
+            tr(
+                .keyDashboardMenuBarPageLunaReserveResetTime,
+                arguments: [tr(.keyLunaReserveTitle)]
+            ),
+            subtitle: tr(
+                .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+                arguments: [tr(.keyLunaReserveTitle)]
+            ),
             control: lunaReserveResetTimeModeControl
         )
         self.lunaReserveResetTimeRow = lunaReserveResetTimeRow
@@ -1692,7 +1704,10 @@ final class DashboardMenuBarPage {
         control.widthAnchor.constraint(
             greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
         ).isActive = true
-        control.toolTip = tr(.keyDashboardMenuBarPageLunaReserveResetTimeDescription)
+        control.toolTip = tr(
+            .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
         return control
     }
 
@@ -1755,7 +1770,10 @@ final class DashboardMenuBarPage {
     ) -> String {
         switch mode {
         case .lunaReserve:
-            return tr(.keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve)
+            return tr(
+                .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve,
+                arguments: [tr(.keyLunaReserveTitle)]
+            )
         case .originalQuota:
             return tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota)
         }

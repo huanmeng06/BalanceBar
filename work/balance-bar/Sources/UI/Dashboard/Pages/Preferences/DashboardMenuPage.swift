@@ -82,13 +82,22 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         self.lunaReserveHideExhaustedQuotaSwitch = lunaReserveHideExhaustedQuotaSwitch
 
         let lunaReserveDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuPageLunaReserveDisplayMode),
-            subtitle: tr(.keyDashboardMenuPageLunaReserveDisplayModeDescription),
+            tr(
+                .keyDashboardMenuPageLunaReserveDisplayMode,
+                arguments: [tr(.keyLunaReserveTitle)]
+            ),
+            subtitle: tr(
+                .keyDashboardMenuPageLunaReserveDisplayModeDescription,
+                arguments: [tr(.keyLunaReserveTitle)]
+            ),
             control: lunaReserveDisplayModeControl
         )
         let lunaReserveHideExhaustedQuotaRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuPageHideExhaustedQuota),
-            subtitle: tr(.keyDashboardMenuPageHideExhaustedQuotaDescription),
+            subtitle: tr(
+                .keyDashboardMenuPageHideExhaustedQuotaDescription,
+                arguments: [tr(.keyLunaReserveTitle)]
+            ),
             control: lunaReserveHideExhaustedQuotaSwitch
         )
         self.lunaReserveHideExhaustedQuotaRow = lunaReserveHideExhaustedQuotaRow
@@ -411,7 +420,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     }
 
     private func updateLunaReserveDisplayModeVisibility(_ mode: LunaReserveDisplayMode) {
-        let shouldShowHideOption = mode == .whenQuotaExhausted
+        let shouldShowHideOption = mode != .disabled
         lunaReserveHideExhaustedQuotaRow?.isHidden = !shouldShowHideOption
         lunaReserveHideExhaustedQuotaSwitch?.isEnabled = shouldShowHideOption
         if balanceDisplaySeparators.count > 1 {
@@ -461,7 +470,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         control.widthAnchor.constraint(
             greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
         ).isActive = true
-        control.toolTip = tr(.keyDashboardMenuPageLunaReserveDisplayMode)
+        control.toolTip = tr(
+            .keyDashboardMenuPageLunaReserveDisplayMode,
+            arguments: [tr(.keyLunaReserveTitle)]
+        )
         return control
     }
 

@@ -623,7 +623,8 @@ enum OpenCodexCardLayout {
         subscriptionTextWidth: CGFloat? = nil,
         officialQuotaWindows: [OfficialQuotaWindow] = [],
         includesLunaReserve: Bool = false,
-        includesLunaReserveProgress: Bool = true
+        includesLunaReserveProgress: Bool = true,
+        lunaReserveInsertionIndex: Int? = nil
     ) -> OpenCodexCardFrames {
         let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
         if category == .quota,
@@ -634,7 +635,8 @@ enum OpenCodexCardLayout {
                 includesSubscription: includesSubscription,
                 subscriptionTextWidth: subscriptionTextWidth,
                 includesLunaReserve: includesLunaReserve,
-                includesLunaReserveProgress: includesLunaReserveProgress
+                includesLunaReserveProgress: includesLunaReserveProgress,
+                lunaReserveInsertionIndex: lunaReserveInsertionIndex
             )
         }
 
@@ -716,7 +718,8 @@ enum OpenCodexCardLayout {
         includesSubscription: Bool,
         subscriptionTextWidth: CGFloat?,
         includesLunaReserve: Bool,
-        includesLunaReserveProgress: Bool
+        includesLunaReserveProgress: Bool,
+        lunaReserveInsertionIndex: Int?
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
         let rowHeight = quotaRowHeight
@@ -741,22 +744,25 @@ enum OpenCodexCardLayout {
             : contentWidth
         let reserveInsertionIndex: Int? = {
             guard includesLunaReserve else { return nil }
+            if let lunaReserveInsertionIndex {
+                return min(max(0, lunaReserveInsertionIndex), windowCount)
+            }
             guard let fiveHourIndex = windows.firstIndex(where: { $0.kind == .fiveHour }) else {
                 // Pro accounts currently expose only the 7-day window, so the
                 // Reserve belongs immediately above that first standard row.
-                return nil
+                return 0
             }
-            return fiveHourIndex
+            return fiveHourIndex + 1
         }()
         let reserveRowsBelow: Int = {
             guard includesLunaReserve else { return 0 }
             guard let reserveInsertionIndex else { return windowCount }
-            return windowCount - reserveInsertionIndex - 1
+            return windowCount - reserveInsertionIndex
         }()
         let rows = windows.enumerated().map { index, _ in
             let yWithoutReserve = bottomInset
                 + CGFloat(windowCount - 1 - index) * (rowHeight + rowGap)
-            let isAboveReserve = reserveInsertionIndex.map { index <= $0 } ?? false
+            let isAboveReserve = reserveInsertionIndex.map { index < $0 } ?? false
             let y = yWithoutReserve
                 + (isAboveReserve ? reserveRowHeight + reserveGap : 0)
             return OpenCodexQuotaRowFrames(
