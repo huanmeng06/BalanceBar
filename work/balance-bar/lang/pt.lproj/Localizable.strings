@@ -339,7 +339,7 @@
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "Mostrar após esgotar a cota";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "Sempre mostrar";
 "dashboard.menu.page.hide_exhausted_quota" = "Ocultar cotas esgotadas";
-"dashboard.menu.page.hide_exhausted_quota_description" = "Quando ativado, as cotas zeradas ficam ocultas no menu quando a 🌙 Luna Reserve é exibida.";
+"dashboard.menu.page.hide_exhausted_quota_description" = "Quando ativado, as cotas zeradas ficam ocultas no menu quando a 🌙 Luna Reserve é exibida";
 "dashboard.menu.page.low_balance_display_threshold" = "Limite de aviso de saldo baixo";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Após uma recarga, a barra de progresso permanece vermelha enquanto o saldo estiver abaixo deste valor";
 "dashboard.menu.page.dropdown_menu" = "Menu suspenso";
@@ -438,9 +438,9 @@
 "luna.reserve.menu_unavailable" = "Luna Reserve está temporariamente indisponível";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "dashboard.menu.page.progress_color_ranges" = "Faixas de cor da barra";
-"dashboard.menu.page.progress_color_ranges_description" = "Arraste os limites para escolher a cor de cada faixa de percentagem restante.";
+"dashboard.menu.page.progress_color_ranges_description" = "Arraste os limites para escolher a cor de cada faixa de percentagem restante";
 "dashboard.menu.page.displayed_colors" = "Cores exibidas";
-"dashboard.menu.page.displayed_colors_description" = "Mantenha pelo menos duas cores ativadas.";
+"dashboard.menu.page.displayed_colors_description" = "Mantenha pelo menos duas cores ativadas";
 "dashboard.menu.page.color_red" = "Vermelho";
 "dashboard.menu.page.color_orange" = "Laranja";
 "dashboard.menu.page.color_yellow" = "Amarelo";

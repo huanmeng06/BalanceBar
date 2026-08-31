@@ -339,7 +339,7 @@
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "Показывать после исчерпания квоты";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "Всегда показывать";
 "dashboard.menu.page.hide_exhausted_quota" = "Скрывать исчерпанные квоты";
-"dashboard.menu.page.hide_exhausted_quota_description" = "Если включено, исчерпанные квоты скрываются в меню при отображении 🌙 Luna Reserve.";
+"dashboard.menu.page.hide_exhausted_quota_description" = "Если включено, исчерпанные квоты скрываются в меню при отображении 🌙 Luna Reserve";
 "dashboard.menu.page.low_balance_display_threshold" = "Порог предупреждения о низком балансе";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "После пополнения оставлять индикатор выполнения красным, пока баланс ниже этого значения";
 "dashboard.menu.page.dropdown_menu" = "Выпадающее меню";
@@ -438,9 +438,9 @@
 "luna.reserve.menu_unavailable" = "Luna Reserve временно недоступна";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "dashboard.menu.page.progress_color_ranges" = "Цветовые диапазоны индикатора";
-"dashboard.menu.page.progress_color_ranges_description" = "Перетаскивайте пороги, чтобы выбрать цвет для каждого диапазона оставшегося процента.";
+"dashboard.menu.page.progress_color_ranges_description" = "Перетаскивайте пороги, чтобы выбрать цвет для каждого диапазона оставшегося процента";
 "dashboard.menu.page.displayed_colors" = "Отображаемые цвета";
-"dashboard.menu.page.displayed_colors_description" = "Оставьте включёнными не менее двух цветов.";
+"dashboard.menu.page.displayed_colors_description" = "Оставьте включёнными не менее двух цветов";
 "dashboard.menu.page.color_red" = "Красный";
 "dashboard.menu.page.color_orange" = "Оранжевый";
 "dashboard.menu.page.color_yellow" = "Жёлтый";

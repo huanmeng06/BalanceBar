@@ -339,7 +339,7 @@
 "dashboard.menu.page.luna_reserve_display_mode_when_quota_exhausted" = "Show after quota is used up";
 "dashboard.menu.page.luna_reserve_display_mode_always" = "Always show";
 "dashboard.menu.page.hide_exhausted_quota" = "Hide used-up quotas";
-"dashboard.menu.page.hide_exhausted_quota_description" = "When enabled, zeroed quotas are hidden from the menu when 🌙 Luna Reserve is shown.";
+"dashboard.menu.page.hide_exhausted_quota_description" = "When enabled, zeroed quotas are hidden from the menu when 🌙 Luna Reserve is shown";
 "dashboard.menu.page.low_balance_display_threshold" = "Low balance warning threshold";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "After a top-up, keep the progress bar red while the balance is below this amount";
 "dashboard.menu.page.dropdown_menu" = "Dropdown Menu";
@@ -438,9 +438,9 @@
 "luna.reserve.menu_unavailable" = "Luna Reserve temporarily unavailable";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "dashboard.menu.page.progress_color_ranges" = "Progress bar color ranges";
-"dashboard.menu.page.progress_color_ranges_description" = "Drag the thresholds to choose the color for each remaining-percentage range.";
+"dashboard.menu.page.progress_color_ranges_description" = "Drag the thresholds to choose the color for each remaining-percentage range";
 "dashboard.menu.page.displayed_colors" = "Displayed colors";
-"dashboard.menu.page.displayed_colors_description" = "Keep at least two colors enabled.";
+"dashboard.menu.page.displayed_colors_description" = "Keep at least two colors enabled";
 "dashboard.menu.page.color_red" = "Red";
 "dashboard.menu.page.color_orange" = "Orange";
 "dashboard.menu.page.color_yellow" = "Yellow";
