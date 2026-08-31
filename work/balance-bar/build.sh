@@ -5,7 +5,7 @@ set -Eeuo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
     cat <<'EOF'
-Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted]
+Usage: build.sh [production|dev|demo-zero|demo-unavailable|demo-five-hour-exhausted|demo-seven-day-exhausted]
 
 Build the macOS app without changing the checked-in Info.plist.
 
@@ -16,6 +16,8 @@ Build the macOS app without changing the checked-in Info.plist.
               Build a demo app that shows Luna Reserve as temporarily unavailable.
   demo-five-hour-exhausted
               Build a demo app that shows the 5-hour quota at 0% with Luna Reserve available at 45%.
+  demo-seven-day-exhausted
+              Build a demo app that shows the 7-day quota at 0% with Luna Reserve available at 45%.
 EOF
 }
 
@@ -76,6 +78,15 @@ case "$variant" in
         bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-five-hour-exhausted"
         bundle_name="BalanceBar Demo · 5H Exhausted"
         demo_mode="five-hour-exhausted"
+        module_cache_dir="$build_dir/swift-module-cache"
+        clean_paths=("$build_dir")
+        ;;
+    demo-seven-day-exhausted)
+        build_dir="$source_dir/build/demo/seven-day-exhausted"
+        app_bundle="$build_dir/BalanceBar-LunaReserve-7D-Exhausted.app"
+        bundle_identifier="com.huanmeng06.BalanceBar.demo.luna-reserve-seven-day-exhausted"
+        bundle_name="BalanceBar Demo · 7D Exhausted"
+        demo_mode="seven-day-exhausted"
         module_cache_dir="$build_dir/swift-module-cache"
         clean_paths=("$build_dir")
         ;;
