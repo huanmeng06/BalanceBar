@@ -19,18 +19,6 @@ enum QuotaThresholdSliderMath {
         return logicalTicks.filter { $0 > low && $0 <= high }
     }
 
-    static func visibleMinorTicks(width: CGFloat, thumbValues: [Int]) -> [Int] {
-        let interval = width >= 420 ? 5 : (width >= 260 ? 10 : 20)
-        let adaptiveTicks = Set(stride(from: 0, through: 100, by: interval))
-        return adaptiveTicks
-            .union(thumbValues)
-            .subtracting(majorTicks)
-            .sorted()
-    }
-
-    static func visibleTicks(width: CGFloat, thumbValues: [Int]) -> [Int] {
-        Array(Set(majorTicks).union(visibleMinorTicks(width: width, thumbValues: thumbValues))).sorted()
-    }
 }
 
 /// Each boundary owns one native slider, preserving normal Force Click and
@@ -120,11 +108,45 @@ private final class QuotaThresholdTrackCoverSliceView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// The scale slider delegates tick rendering to AppKit. Its cell suppresses
+/// only the scale slider's own bar and knob; NSSliderCell remains responsible
+/// for drawing the native tick marks.
+private final class QuotaNativeScaleSliderCell: NSSliderCell {
+    override func drawBar(inside rect: NSRect, flipped: Bool) {}
+    override func drawKnob(_ knobRect: NSRect) {}
+}
+
+private final class QuotaNativeScaleSlider: NSSlider {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        cell = QuotaNativeScaleSliderCell()
+        minValue = 0
+        maxValue = 100
+        doubleValue = 0
+        sliderType = .linear
+        controlSize = .regular
+        isContinuous = true
+        numberOfTickMarks = QuotaThresholdSliderMath.logicalTicks.count
+        tickMarkPosition = .below
+        allowsTickMarkValuesOnly = false
+        target = nil
+        action = nil
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// Owns only the scale underneath the quota slider. Keeping this separate from
 /// the semantic track prevents tick styling and labels from changing the
 /// colour-track drawing or native slider event path.
 final class DashboardSliderScaleView: NSView {
-    var minorTicks: [Int] = []
+    private let nativeSlider = QuotaNativeScaleSlider(frame: .zero)
+    private let labels: [NSTextField] = QuotaThresholdSliderMath.majorTickLabels.map {
+        NSTextField(labelWithString: $0)
+    }
     var positionForValue: ((Int) -> CGFloat?)?
 
     var majorTicks: [Int] { QuotaThresholdSliderMath.majorTicks }
@@ -134,66 +156,73 @@ final class DashboardSliderScaleView: NSView {
             positionForValue?(value).map { (value, $0) }
         })
     }
-    var majorTickForeground: NSColor {
-        dashboardAdaptiveColor(
-            light: NSColor.labelColor.withAlphaComponent(0.72),
-            dark: NSColor.white.withAlphaComponent(0.88)
-        )
+    var nativeTickMarkCount: Int { nativeSlider.numberOfTickMarks }
+    var nativeTickMarkPosition: NSSlider.TickMarkPosition { nativeSlider.tickMarkPosition }
+    var allowsNativeTickMarkValuesOnly: Bool { nativeSlider.allowsTickMarkValuesOnly }
+    var usesNativeTickMarks: Bool {
+        nativeSlider.cell is QuotaNativeScaleSliderCell && nativeSlider.numberOfTickMarks > 0
+    }
+    var labelsAreNativeTextFields: Bool {
+        labels.count == majorLabels.count && zip(labels, majorLabels).allSatisfy { label, value in
+            type(of: label) == NSTextField.self && label.stringValue == value
+        }
+    }
+    var nativeMajorTickCenters: [Int: CGFloat] {
+        Dictionary(uniqueKeysWithValues: majorTicks.compactMap { value in
+            guard let index = QuotaThresholdSliderMath.logicalTicks.firstIndex(of: value) else { return nil }
+            let tickRect = nativeSlider.rectOfTickMark(at: index)
+            let center = nativeSlider.convert(NSPoint(x: tickRect.midX, y: tickRect.midY), to: self)
+            return (value, center.x)
+        })
     }
     var labelForeground: NSColor {
-        dashboardAdaptiveColor(
-            light: NSColor.secondaryLabelColor,
-            dark: NSColor.white.withAlphaComponent(0.84)
-        )
+        labels.first?.textColor ?? .secondaryLabelColor
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        labels.forEach { label in
+            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            label.textColor = .secondaryLabelColor
+            label.alignment = .center
+            label.isSelectable = false
+            label.isEditable = false
+            label.drawsBackground = false
+            label.setAccessibilityElement(false)
+            addSubview(label)
+        }
+        addSubview(nativeSlider)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
         guard !bounds.isEmpty else { return }
 
-        let minorColor = dashboardAdaptiveColor(
-            light: NSColor.labelColor.withAlphaComponent(0.34),
-            dark: NSColor.white.withAlphaComponent(0.62)
+        let labelHeight = min(12, bounds.height)
+        // Keep the native slider's regular horizontal geometry while placing
+        // its below-side tick marks immediately above the native text labels.
+        // Its bar and knob are suppressed by QuotaNativeScaleSliderCell.
+        let lowerEndpoint = positionForValue?(0) ?? bounds.minX
+        let upperEndpoint = positionForValue?(100) ?? bounds.maxX
+        nativeSlider.frame = NSRect(
+            x: min(lowerEndpoint, upperEndpoint),
+            y: bounds.minY + labelHeight,
+            width: abs(upperEndpoint - lowerEndpoint),
+            height: 28
         )
-        minorColor.setFill()
-        let minorDiameter: CGFloat = 2
-        let tickY = bounds.maxY - 2
-        for value in minorTicks {
-            guard let x = positionForValue?(value) else { continue }
-            NSBezierPath(
-                ovalIn: NSRect(
-                    x: x - minorDiameter / 2,
-                    y: tickY - minorDiameter / 2,
-                    width: minorDiameter,
-                    height: minorDiameter
-                )
-            ).fill()
-        }
-
-        majorTickForeground.setFill()
-        let majorDiameter: CGFloat = 4
-        for value in majorTicks {
-            guard let x = positionForValue?(value) else { continue }
-            NSBezierPath(
-                ovalIn: NSRect(
-                    x: x - majorDiameter / 2,
-                    y: tickY - majorDiameter / 2,
-                    width: majorDiameter,
-                    height: majorDiameter
-                )
-            ).fill()
-        }
-
-        let font = NSFont.systemFont(ofSize: 10, weight: .medium)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: labelForeground
-        ]
-        for (value, label) in zip(majorTicks, majorLabels) {
-            guard let x = positionForValue?(value) else { continue }
-            let text = NSAttributedString(string: label, attributes: attributes)
-            let size = text.size()
-            text.draw(at: NSPoint(x: x - size.width / 2, y: bounds.minY))
+        for (index, label) in labels.enumerated() {
+            let value = majorTicks[index]
+            let width = ceil(label.fittingSize.width)
+            let centerX = positionForValue?(value) ??
+                bounds.minX + bounds.width * CGFloat(value) / 100
+            label.frame = NSRect(
+                x: centerX - width / 2,
+                y: bounds.minY,
+                width: width,
+                height: labelHeight
+            )
         }
     }
 
@@ -365,15 +394,19 @@ final class QuotaColorThresholdSlider: NSControl {
     }
     var debugScaleMajorTicks: [Int] { scaleView.majorTicks }
     var debugScaleMajorLabels: [String] { scaleView.majorLabels }
-    var debugScaleMinorTicks: [Int] { scaleView.minorTicks }
     var debugScaleMajorTickCenters: [Int: CGFloat] { scaleView.resolvedMajorTickCenters }
     var debugScaleGeometryMajorTickCenters: [Int: CGFloat] {
         Dictionary(uniqueKeysWithValues: scaleView.majorTicks.compactMap { value in
             stableKnobCenter(for: value).map { (value, $0) }
         })
     }
-    var debugScaleMajorTickForegroundAlpha: CGFloat { scaleView.majorTickForeground.alphaComponent }
-    var debugScaleLabelForegroundAlpha: CGFloat { scaleView.labelForeground.alphaComponent }
+    var debugScaleNativeTickMarkCount: Int { scaleView.nativeTickMarkCount }
+    var debugScaleNativeTickMarkPosition: NSSlider.TickMarkPosition { scaleView.nativeTickMarkPosition }
+    var debugScaleAllowsNativeTickMarkValuesOnly: Bool { scaleView.allowsNativeTickMarkValuesOnly }
+    var debugScaleUsesNativeTickMarks: Bool { scaleView.usesNativeTickMarks }
+    var debugScaleLabelsAreNativeTextFields: Bool { scaleView.labelsAreNativeTextFields }
+    var debugScaleNativeMajorTickCenters: [Int: CGFloat] { scaleView.nativeMajorTickCenters }
+    var debugScaleLabelForeground: NSColor { scaleView.labelForeground }
     var debugScaleFrame: NSRect { scaleView.frame }
     var debugSliderFrame: NSRect { sliderFrame }
     var debugScaleDoesNotHitTest: Bool {
@@ -564,11 +597,6 @@ final class QuotaColorThresholdSlider: NSControl {
         super.layout()
         trackView.frame = bounds
         scaleView.frame = scaleFrame
-        scaleView.minorTicks = QuotaThresholdSliderMath.visibleMinorTicks(
-            width: scaleView.bounds.width,
-            thumbValues: activeBoundaries.map(\.1)
-        )
-        scaleView.needsDisplay = true
         for slider in boundarySliders.values { slider.frame = sliderFrame }
         synchronizeBoundarySliders()
         layoutPassiveKnobViews()
