@@ -56,7 +56,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
     private weak var quotaColorSlider: QuotaColorThresholdSlider?
     private var quotaColorButtons: [QuotaProgressColor: NSButton] = [:]
-    private weak var quotaColorResetButton: NSButton?
     private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
 
     func make(_ input: Input) -> NSView {
@@ -130,7 +129,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorSlider = slider
         let resetButton = NSButton(title: tr(.keyCommonRestoreDefaults), target: self, action: #selector(resetQuotaProgressColors(_:)))
         Self.configureQuotaColorResetButton(resetButton)
-        quotaColorResetButton = resetButton
         let colorControls = QuotaColorSelectionStack()
         colorControls.orientation = .horizontal; colorControls.spacing = 12
         for color in QuotaProgressColor.allCases {
@@ -368,7 +366,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorButtons = [:]
         quotaColorSlider?.teardown()
         quotaColorSlider = nil
-        quotaColorResetButton = nil
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusSubtitleLabel = nil
@@ -399,16 +396,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             button.state = quotaColorConfiguration.enabledColors.contains(color) ? .on : .off
             button.isEnabled = button.state == .off || quotaColorConfiguration.enabledColors.count > 2
         }
-        quotaColorResetButton?.isEnabled = quotaColorConfiguration != .default
     }
 
     static func configureQuotaColorResetButton(_ button: NSButton) {
         button.controlSize = .small
-        if #available(macOS 26.0, *) {
-            button.bezelStyle = .glass
-        } else {
-            button.bezelStyle = .rounded
-        }
+        button.bezelStyle = .rounded
+        // Resetting an already-default configuration is a harmless no-op; keep
+        // the action visually consistent with the other settings buttons.
+        button.isEnabled = true
     }
 
     private static func colorLabel(_ color: QuotaProgressColor) -> String {

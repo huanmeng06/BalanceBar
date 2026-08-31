@@ -601,15 +601,12 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertNotEqual(slider.passiveKnobIdentityByColor[.orange], initialPassiveIDs[.orange])
     }
 
-    func testResetButtonUsesNativeSmallBezelStyle() {
+    func testResetButtonUsesStandardRoundedStyle() {
         let button = NSButton()
         DashboardMenuPage.configureQuotaColorResetButton(button)
         XCTAssertEqual(button.controlSize, .small)
-        if #available(macOS 26.0, *) {
-            XCTAssertEqual(button.bezelStyle, .glass)
-        } else {
-            XCTAssertEqual(button.bezelStyle, .rounded)
-        }
+        XCTAssertEqual(button.bezelStyle, .rounded)
+        XCTAssertTrue(button.isEnabled)
     }
 
     func testPersistentNativeSlidersRouteBoundaryHitsToExactChild() {
