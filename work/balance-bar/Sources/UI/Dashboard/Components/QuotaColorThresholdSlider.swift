@@ -680,7 +680,7 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     fileprivate func drawTrackCoverSlice(in trackCover: QuotaThresholdTrackCoverSliceView) {
-        drawColorTrack(in: trackCover, excludingNativeKnobs: true)
+        drawColorTrack(in: trackCover, excludingNativeKnobs: false)
     }
 
     private func drawColorTrack(in drawingView: NSView, excludingNativeKnobs: Bool) {
