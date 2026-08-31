@@ -222,6 +222,14 @@
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "「ログイン時に起動」を更新できませんでした。「システム設定」→「一般」→「ログイン項目」を確認して、もう一度お試しください。";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "ログイン項目の状態を読み取れません";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "設定を開く";
+"dashboard.general.and.refresh.pages.startup" = "起動";
+"dashboard.general.and.refresh.pages.silent_launch" = "サイレント起動";
+"dashboard.general.and.refresh.pages.silent_launch_description" = "BalanceBarの起動時にメインウインドウを開きません";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt" = "ChatGPTと一緒に起動";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "ChatGPTの起動時、BalanceBarが実行中でなければ自動的に起動します";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "システム設定でBalanceBarの許可が必要です";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "ChatGPTと一緒に起動する設定を更新できませんでした。システム設定 → 一般 → ログイン項目を確認して、もう一度お試しください。";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "ChatGPT起動サービスの状態を読み取れません";
 "dashboard.general.and.refresh.pages.current_provider_value" = "現在のプロバイダー：%1$@";
 "dashboard.general.and.refresh.pages.system" = "システム";
 "dashboard.general.and.refresh.pages.every_1_sec" = "1秒ごと";

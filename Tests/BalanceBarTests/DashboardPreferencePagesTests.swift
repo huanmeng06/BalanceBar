@@ -147,6 +147,110 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(launchAtLoginRequests, [true, true])
     }
 
+    func testStartupSectionKeepsLaunchRowsIndependentAndRoutesSilentLaunchPreference() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.StartupRows.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        for mask in 0..<8 {
+            let loginEnabled = mask & 1 != 0
+            let silentEnabled = mask & 2 != 0
+            let chatGPTEnabled = mask & 4 != 0
+            preferences.silentLaunch = silentEnabled
+
+            let page = DashboardGeneralPage().make(.init(
+                preferences: preferences,
+                currentProviderName: "OpenAI",
+                relay: DashboardPreferencePageRelay(),
+                updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+                launchAtLoginState: LaunchAtLoginState(
+                    status: loginEnabled ? .enabled : .notRegistered
+                ),
+                launchWithChatGPTState: LaunchWithChatGPTState(
+                    status: chatGPTEnabled ? .enabled : .notRegistered
+                )
+            ))
+            let switches = descendants(of: page).compactMap { $0 as? NSSwitch }
+            for identifier in [
+                LaunchAtLoginController.toggleIdentifier,
+                AppPreferences.silentLaunchKey,
+                LaunchWithChatGPTController.toggleIdentifier
+            ] {
+                let matchingSwitches = switches.filter {
+                    $0.identifier?.rawValue == identifier
+                }
+                XCTAssertEqual(matchingSwitches.count, 1)
+                guard let matchingSwitch = matchingSwitches.first else { continue }
+                XCTAssertFalse(matchingSwitch.isHidden)
+                XCTAssertTrue(matchingSwitch.isEnabled)
+            }
+        }
+        preferences.silentLaunch = false
+        let relay = DashboardPreferencePageRelay()
+        var genericToggleRequests: [(String, Bool)] = []
+        var chatGPTRequests: [Bool] = []
+        relay.onToggle = { genericToggleRequests.append(($0, $1)) }
+        relay.onLaunchWithChatGPT = { chatGPTRequests.append($0) }
+        let page = DashboardGeneralPage().make(.init(
+            preferences: preferences,
+            currentProviderName: "OpenAI",
+            relay: relay,
+            updateState: .idle(current: try XCTUnwrap(AppSemanticVersion("1.0.6"))),
+            launchAtLoginState: LaunchAtLoginState(status: .enabled),
+            launchWithChatGPTState: LaunchWithChatGPTState(status: .requiresApproval)
+        ))
+
+        let switches = descendants(of: page).compactMap { $0 as? NSSwitch }
+        let launchAtLoginSwitch = try XCTUnwrap(
+            switches.first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
+        )
+        let silentLaunchSwitch = try XCTUnwrap(
+            switches.first { $0.identifier?.rawValue == AppPreferences.silentLaunchKey }
+        )
+        let launchWithChatGPTSwitch = try XCTUnwrap(
+            switches.first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
+        )
+        XCTAssertEqual(launchAtLoginSwitch.state, .on)
+        XCTAssertEqual(silentLaunchSwitch.state, .off)
+        XCTAssertEqual(launchWithChatGPTSwitch.state, .on)
+        XCTAssertTrue(launchAtLoginSwitch.isEnabled)
+        XCTAssertTrue(silentLaunchSwitch.isEnabled)
+        XCTAssertTrue(launchWithChatGPTSwitch.isEnabled)
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue)
+        let sectionTitles = [
+            tr(.keyDashboardGeneralAndRefreshPagesSystem),
+            tr(.keyDashboardGeneralAndRefreshPagesRefresh),
+            tr(.keyDashboardGeneralAndRefreshPagesStartup),
+            tr(.keyDashboardGeneralAndRefreshPagesApplication)
+        ]
+        let sectionIndexes = try sectionTitles.map { title in
+            try XCTUnwrap(labels.firstIndex(of: title), "Missing settings section title: \(title)")
+        }
+        XCTAssertEqual(sectionIndexes, sectionIndexes.sorted())
+        XCTAssertTrue(labels.contains(tr(.keyDashboardGeneralAndRefreshPagesSilentLaunch)))
+        XCTAssertTrue(labels.contains(tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT)))
+        XCTAssertTrue(labels.contains(tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTRequiresApproval)))
+
+        silentLaunchSwitch.state = .on
+        relay.toggle(silentLaunchSwitch)
+        XCTAssertEqual(genericToggleRequests.count, 1)
+        XCTAssertEqual(genericToggleRequests.first?.0, AppPreferences.silentLaunchKey)
+        XCTAssertEqual(genericToggleRequests.first?.1, true)
+        preferences.silentLaunch = genericToggleRequests[0].1
+        XCTAssertTrue(preferences.silentLaunch)
+
+        launchWithChatGPTSwitch.state = .off
+        relay.launchWithChatGPT(launchWithChatGPTSwitch)
+        XCTAssertEqual(chatGPTRequests, [false])
+    }
+
     func testLaunchAtLoginRowKeepsLongLocalizedTextAndControlSeparatedAcrossWidths() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

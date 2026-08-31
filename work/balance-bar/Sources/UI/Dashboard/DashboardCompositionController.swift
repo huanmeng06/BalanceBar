@@ -33,6 +33,8 @@ struct DashboardCompositionActions {
     let onToggle: (String, Bool) -> Void
     let onLaunchAtLogin: (Bool) -> Void
     let onOpenLaunchAtLoginSettings: () -> Void
+    let onLaunchWithChatGPT: (Bool) -> Void
+    let onOpenLaunchWithChatGPTSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
     let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
@@ -70,6 +72,7 @@ final class DashboardCompositionController {
     private let state: DashboardCompositionState
     private let actions: DashboardCompositionActions
     private let launchAtLoginController: LaunchAtLoginController
+    private let launchWithChatGPTController: LaunchWithChatGPTController
     private var statusLinksScrollAnchorController: StatusLinksScrollAnchorController!
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
@@ -88,6 +91,8 @@ final class DashboardCompositionController {
             onToggle: actions.onToggle,
             onLaunchAtLogin: actions.onLaunchAtLogin,
             onOpenLaunchAtLoginSettings: actions.onOpenLaunchAtLoginSettings,
+            onLaunchWithChatGPT: actions.onLaunchWithChatGPT,
+            onOpenLaunchWithChatGPTSettings: actions.onOpenLaunchWithChatGPTSettings,
             onInterval: actions.onInterval,
             onBalanceDisplayThresholdChanged: actions.onBalanceDisplayThresholdChanged,
             onQuotaProgressColorConfigurationChanged: actions.onQuotaProgressColorConfigurationChanged,
@@ -118,7 +123,8 @@ final class DashboardCompositionController {
             onOpenCodexModeChanged: actions.onOpenCodexModeChanged,
             onClamp: actions.onClamp
         ),
-        launchAtLoginController: launchAtLoginController
+        launchAtLoginController: launchAtLoginController,
+        launchWithChatGPTController: launchWithChatGPTController
     )
     private lazy var windowController = DashboardWindowController(
         actions: DashboardWindowControllerActions(
@@ -146,11 +152,13 @@ final class DashboardCompositionController {
     init(
         state: DashboardCompositionState,
         actions: DashboardCompositionActions,
-        launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController()
+        launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController(),
+        launchWithChatGPTController: LaunchWithChatGPTController = LaunchWithChatGPTController()
     ) {
         self.state = state
         self.actions = actions
         self.launchAtLoginController = launchAtLoginController
+        self.launchWithChatGPTController = launchWithChatGPTController
         statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
             dashboardProvider: { [weak self] in self?.windowController.window },
             contentHostProvider: { [weak self] in self?.windowController.contentHost },
@@ -169,6 +177,7 @@ final class DashboardCompositionController {
     func open() {
         windowController.open()
         refreshLaunchAtLogin()
+        refreshLaunchWithChatGPT()
     }
     func rebuild() { windowController.rebuild() }
     func showSection(_ section: DashboardSection) { windowController.showSection(section) }
@@ -261,6 +270,16 @@ final class DashboardCompositionController {
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
         guard window?.isVisible == true, section == .general else { return }
         dashboardPreferencePages.refreshLaunchAtLogin(state)
+    }
+
+    func refreshLaunchWithChatGPT() {
+        guard window?.isVisible == true, section == .general else { return }
+        dashboardPreferencePages.refreshLaunchWithChatGPT()
+    }
+
+    func refreshLaunchWithChatGPT(_ state: LaunchWithChatGPTState) {
+        guard window?.isVisible == true, section == .general else { return }
+        dashboardPreferencePages.refreshLaunchWithChatGPT(state)
     }
 
     func updateMenuStatusVisibility(_ visible: Bool, animated: Bool) {

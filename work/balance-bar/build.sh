@@ -113,6 +113,11 @@ contents_dir="$app_bundle/Contents"
 executable_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
 executable="$executable_dir/BalanceBar"
+launch_agents_dir="$contents_dir/Library/LaunchAgents"
+launch_agent_executable="$launch_agents_dir/BalanceBarChatGPTLaunchAgent"
+launch_agent_plist="$launch_agents_dir/balancebar-chatgpt-launch-agent.plist"
+launch_agent_source_dir="$source_dir/../balancebar-chatgpt-launch-agent"
+launch_agent_module_cache_dir="$build_dir/chatgpt-launch-agent-swift-module-cache"
 
 balancebar_deployment_target="${BALANCEBAR_DEPLOYMENT_TARGET:-14.0}"
 balancebar_build_arch="${BALANCEBAR_BUILD_ARCH:-$(uname -m)}"
@@ -145,7 +150,9 @@ for required_file in \
     "$source_dir/GitHub.svg" \
     "$source_dir/CodexIcon.svg" \
     "$source_dir/Claude.svg" \
-    "$source_dir/ClaudeThinking.svg"
+    "$source_dir/ClaudeThinking.svg" \
+    "$launch_agent_source_dir/ChatGPTLaunchAgentMain.swift" \
+    "$launch_agent_source_dir/balancebar-chatgpt-launch-agent.plist"
 do
     [[ -f "$required_file" ]] || die "required input is missing: $required_file"
 done
@@ -162,7 +169,7 @@ do
     printf 'build-balancebar: cleaning %s\n' "$clean_path"
     rm -rf "$clean_path"
 done
-mkdir -p "$executable_dir" "$resources_dir" "$module_cache_dir"
+mkdir -p "$executable_dir" "$resources_dir" "$launch_agents_dir" "$module_cache_dir" "$launch_agent_module_cache_dir"
 
 swift_sources=()
 while IFS= read -r source_file
@@ -201,6 +208,26 @@ fi
 printf 'build-balancebar: verified binary minimum OS %s; SDK %s; macOS 26 glass remains runtime-linked\n' \
     "$balancebar_binary_minos" "$balancebar_binary_sdk"
 
+printf 'build-balancebar: compiling ChatGPT launch agent\n'
+swiftc \
+    -parse-as-library \
+    -sdk "$balancebar_sdk_path" \
+    -target "$balancebar_swift_target" \
+    "$source_dir/Sources/AppCore/ChatGPTApplicationIdentity.swift" \
+    "$source_dir/Sources/AppCore/ChatGPTLaunchDecision.swift" \
+    "$source_dir/Sources/AppCore/ChatGPTLaunchAgentRuntime.swift" \
+    "$launch_agent_source_dir/ChatGPTLaunchAgentMain.swift" \
+    -o "$launch_agent_executable" \
+    -framework AppKit \
+    -framework Foundation \
+    -module-cache-path "$launch_agent_module_cache_dir"
+launch_agent_build_metadata="$(xcrun vtool -show-build "$launch_agent_executable")"
+launch_agent_binary_minos="$(awk '$1 == "minos" { print $2; exit }' <<< "$launch_agent_build_metadata")"
+[[ "$launch_agent_binary_minos" == "$balancebar_deployment_target" ]] \
+    || die "ChatGPT launch agent minimum OS is $launch_agent_binary_minos; expected $balancebar_deployment_target"
+[[ -x "$launch_agent_executable" ]] \
+    || die "ChatGPT launch agent is not executable: $launch_agent_executable"
+
 printf 'build-balancebar: copying bundle metadata and resources\n'
 bundle_plist="$contents_dir/Info.plist"
 cp "$source_dir/Info.plist" "$bundle_plist"
@@ -217,6 +244,12 @@ if [[ -n "$demo_mode" ]]; then
     plutil -replace CFBundleDisplayName -string "$bundle_name" "$bundle_plist"
     plutil -replace BalanceBarLunaReserveDemo -string "$demo_mode" "$bundle_plist"
 fi
+cp "$launch_agent_source_dir/balancebar-chatgpt-launch-agent.plist" "$launch_agent_plist"
+plutil -replace Label -string "${bundle_identifier}.chatgpt-launch-agent" "$launch_agent_plist"
+plutil -lint "$launch_agent_plist" >/dev/null
+bundle_program="$(plutil -extract BundleProgram raw -o - "$launch_agent_plist")"
+[[ "$bundle_program" == "Contents/Library/LaunchAgents/BalanceBarChatGPTLaunchAgent" ]] \
+    || die "ChatGPT launch agent plist has an invalid BundleProgram: $bundle_program"
 for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg
 do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"

@@ -222,6 +222,14 @@
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Не удалось обновить настройку запуска при входе. Проверьте раздел «Системные настройки» → «Основные» → «Объекты входа» и повторите попытку.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Не удалось прочитать состояние объекта входа";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Открыть настройки";
+"dashboard.general.and.refresh.pages.startup" = "Запуск";
+"dashboard.general.and.refresh.pages.silent_launch" = "Тихий запуск";
+"dashboard.general.and.refresh.pages.silent_launch_description" = "Запускать BalanceBar без открытия главного окна";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt" = "Запускать вместе с ChatGPT";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "Запускать BalanceBar при запуске ChatGPT, если BalanceBar ещё не запущен";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "Для BalanceBar требуется разрешение в системных настройках";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Не удалось обновить настройку запуска вместе с ChatGPT. Проверьте Системные настройки → Основные → Объекты входа и повторите попытку.";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Не удалось прочитать состояние службы запуска ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Текущий провайдер: %1$@";
 "dashboard.general.and.refresh.pages.system" = "Система";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Каждые 1 с";

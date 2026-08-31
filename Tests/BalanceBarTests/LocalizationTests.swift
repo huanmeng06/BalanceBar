@@ -650,7 +650,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 448)
+        XCTAssertEqual(expectedKeys.count, 456)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -720,6 +720,39 @@ final class LocalizationTests: XCTestCase {
             XCTAssertEqual(description, expectedCopy.1, "Launch at Login description for \(language)")
             XCTAssertFalse(title.hasPrefix("⟦"))
             XCTAssertFalse(description.hasPrefix("⟦"))
+        }
+    }
+
+    func testStartupCopyMatchesTheProductCopyAcrossAllTwelveLanguages() {
+        let expected: [AppLanguage: (String, String, String, String, String)] = [
+            .simplifiedChinese: ("启动", "静默启动", "启动 BalanceBar 时不打开主窗口", "随 ChatGPT 启动", "ChatGPT 启动时自动启动 BalanceBar（若尚未运行）"),
+            .traditionalChineseTaiwan: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "ChatGPT 啟動時自動啟動 BalanceBar（若尚未執行）"),
+            .traditionalChineseHongKong: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "ChatGPT 啟動時自動啟動 BalanceBar（若尚未執行）"),
+            .japanese: ("起動", "サイレント起動", "BalanceBarの起動時にメインウインドウを開きません", "ChatGPTと一緒に起動", "ChatGPTの起動時、BalanceBarが実行中でなければ自動的に起動します"),
+            .english: ("Startup", "Launch Silently", "Start BalanceBar without opening the main window", "Launch with ChatGPT", "Start BalanceBar when ChatGPT launches, if BalanceBar is not already running"),
+            .korean: ("시작", "조용히 실행", "BalanceBar를 실행할 때 메인 창을 열지 않습니다", "ChatGPT와 함께 실행", "ChatGPT가 실행될 때 BalanceBar가 실행 중이 아니면 자동으로 실행합니다"),
+            .spanish: ("Inicio", "Inicio silencioso", "Inicia BalanceBar sin abrir la ventana principal", "Iniciar con ChatGPT", "Inicia BalanceBar cuando se abra ChatGPT si aún no está en ejecución"),
+            .german: ("Start", "Im Hintergrund starten", "BalanceBar starten, ohne das Hauptfenster zu öffnen", "Mit ChatGPT starten", "BalanceBar starten, wenn ChatGPT gestartet wird und BalanceBar noch nicht läuft"),
+            .french: ("Démarrage", "Lancement silencieux", "Lancer BalanceBar sans ouvrir la fenêtre principale", "Lancer avec ChatGPT", "Lancer BalanceBar au démarrage de ChatGPT si BalanceBar n’est pas déjà en cours d’exécution"),
+            .portuguese: ("Arranque", "Início silencioso", "Inicia o BalanceBar sem abrir a janela principal", "Iniciar com o ChatGPT", "Inicia o BalanceBar quando o ChatGPT for iniciado, se o BalanceBar ainda não estiver em execução"),
+            .russian: ("Запуск", "Тихий запуск", "Запускать BalanceBar без открытия главного окна", "Запускать вместе с ChatGPT", "Запускать BalanceBar при запуске ChatGPT, если BalanceBar ещё не запущен"),
+            .italian: ("Avvio", "Avvio silenzioso", "Avvia BalanceBar senza aprire la finestra principale", "Avvia con ChatGPT", "Avvia BalanceBar all’avvio di ChatGPT se BalanceBar non è già in esecuzione")
+        ]
+
+        for language in resourceDirectories.values {
+            guard let expectedCopy = expected[language] else {
+                XCTFail("Missing Startup copy for \(language)")
+                continue
+            }
+            let actual = [
+                tr(.keyDashboardGeneralAndRefreshPagesStartup, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesSilentLaunch, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesSilentLaunchDescription, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTDescription, language: language)
+            ]
+            XCTAssertEqual(actual, [expectedCopy.0, expectedCopy.1, expectedCopy.2, expectedCopy.3, expectedCopy.4], "Startup copy for \(language)")
+            XCTAssertTrue(actual.allSatisfy { !$0.hasPrefix("⟦") })
         }
     }
 

@@ -1,4 +1,5 @@
 import ServiceManagement
+import AppKit
 import XCTest
 @testable import BalanceBar
 
@@ -53,6 +54,87 @@ final class LaunchAtLoginServiceTests: XCTestCase {
 
         func openSystemSettingsLoginItems() {
             openSystemSettingsLoginItemsCallCount += 1
+        }
+    }
+
+    private final class MockLaunchWithChatGPTService: LaunchWithChatGPTService {
+        var currentStatus: LaunchWithChatGPTStatus
+        var registerError: Error?
+        var unregisterError: Error?
+        var statusAfterRegister: LaunchWithChatGPTStatus?
+        var statusAfterRegisterError: LaunchWithChatGPTStatus?
+        var statusAfterUnregisterError: LaunchWithChatGPTStatus?
+        private(set) var statusReadCount = 0
+        private(set) var registerCallCount = 0
+        private(set) var unregisterCallCount = 0
+        private(set) var openSystemSettingsLoginItemsCallCount = 0
+
+        init(status: LaunchWithChatGPTStatus) {
+            currentStatus = status
+        }
+
+        var status: LaunchWithChatGPTStatus {
+            statusReadCount += 1
+            return currentStatus
+        }
+
+        func register() throws {
+            registerCallCount += 1
+            if let registerError {
+                if let statusAfterRegisterError {
+                    currentStatus = statusAfterRegisterError
+                }
+                throw registerError
+            }
+            currentStatus = statusAfterRegister ?? .enabled
+        }
+
+        func unregister() throws {
+            unregisterCallCount += 1
+            if let unregisterError {
+                if let statusAfterUnregisterError {
+                    currentStatus = statusAfterUnregisterError
+                }
+                throw unregisterError
+            }
+            currentStatus = .notRegistered
+        }
+
+        func openSystemSettingsLoginItems() {
+            openSystemSettingsLoginItemsCallCount += 1
+        }
+    }
+
+    private final class MockChatGPTLaunchAgentWorkspace: ChatGPTLaunchAgentWorkspace {
+        let notificationCenter = NotificationCenter()
+        var balanceBarIsRunning = false
+        var openCallCount = 0
+        var openedURL: URL?
+        var openedActivates: Bool?
+        var openedAddsToRecentItems: Bool?
+        private var completion: ((Error?) -> Void)?
+
+        func isApplicationRunning(bundleIdentifier: String) -> Bool {
+            balanceBarIsRunning
+        }
+
+        func openApplication(
+            at url: URL,
+            activates: Bool,
+            addsToRecentItems: Bool,
+            completion: @escaping (Error?) -> Void
+        ) {
+            openCallCount += 1
+            openedURL = url
+            openedActivates = activates
+            openedAddsToRecentItems = addsToRecentItems
+            self.completion = completion
+        }
+
+        func finishOpen(with error: Error? = nil) {
+            let completion = completion
+            self.completion = nil
+            completion?(error)
         }
     }
 
@@ -288,5 +370,122 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         XCTAssertFalse(
             PreferencesMigrationPlan.keys.contains(LaunchAtLoginController.toggleIdentifier)
         )
+    }
+
+    func testChatGPTServiceStatusesHaveTruthfulDefaultPresentation() {
+        XCTAssertEqual(
+            LaunchWithChatGPTState(status: .enabled),
+            LaunchWithChatGPTState(status: .enabled, notice: LaunchWithChatGPTNotice.none)
+        )
+        XCTAssertEqual(
+            LaunchWithChatGPTState(status: .requiresApproval).notice,
+            .requiresApproval
+        )
+        XCTAssertEqual(
+            LaunchWithChatGPTState(status: .notFound).notice,
+            .unavailable
+        )
+        XCTAssertEqual(
+            LaunchWithChatGPTState(status: .unknown).notice,
+            .unavailable
+        )
+    }
+
+    func testChatGPTControllerRegistersUnregistersAndReadsObservedStatus() {
+        let service = MockLaunchWithChatGPTService(status: .notRegistered)
+        let controller = LaunchWithChatGPTController(service: service)
+
+        let enabled = controller.setEnabled(true)
+        XCTAssertEqual(service.registerCallCount, 1)
+        XCTAssertEqual(enabled.state, LaunchWithChatGPTState(status: .enabled))
+        XCTAssertNil(enabled.error)
+
+        let disabled = controller.setEnabled(false)
+        XCTAssertEqual(service.unregisterCallCount, 1)
+        XCTAssertEqual(disabled.state, LaunchWithChatGPTState(status: .notRegistered))
+        XCTAssertNil(disabled.error)
+    }
+
+    func testChatGPTControllerKeepsApprovalAndFailureGuidance() {
+        let approvalService = MockLaunchWithChatGPTService(status: .notRegistered)
+        approvalService.statusAfterRegister = .requiresApproval
+        let approvalController = LaunchWithChatGPTController(service: approvalService)
+        let approval = approvalController.setEnabled(true)
+        XCTAssertEqual(approval.state.notice, .requiresApproval)
+        XCTAssertNil(approval.error)
+
+        let failureService = MockLaunchWithChatGPTService(status: .notRegistered)
+        failureService.registerError = TestError.operationFailed
+        failureService.statusAfterRegisterError = .notFound
+        let failureController = LaunchWithChatGPTController(service: failureService)
+        let failure = failureController.setEnabled(true)
+        XCTAssertEqual(failure.state.status, .notFound)
+        XCTAssertEqual(failure.state.notice, .operationFailed)
+        XCTAssertNotNil(failure.error)
+    }
+
+    func testChatGPTLaunchIdentityAndDecisionOnlyMatchSupportedLaunchEdges() {
+        XCTAssertEqual(
+            ChatGPTApplicationIdentity.bundleIdentifiers,
+            ["com.openai.codex", "com.openai.chat"]
+        )
+        XCTAssertTrue(ChatGPTApplicationIdentity.matches(bundleIdentifier: "com.openai.codex"))
+        XCTAssertTrue(ChatGPTApplicationIdentity.matches(bundleIdentifier: "com.openai.chat"))
+        XCTAssertFalse(ChatGPTApplicationIdentity.matches(bundleIdentifier: "com.apple.TextEdit"))
+        XCTAssertFalse(ChatGPTApplicationIdentity.matches(bundleIdentifier: nil))
+        XCTAssertTrue(
+            ChatGPTLaunchDecision.shouldLaunchBalanceBar(
+                launchedBundleIdentifier: "com.openai.chat",
+                balanceBarIsRunning: false
+            )
+        )
+        XCTAssertFalse(
+            ChatGPTLaunchDecision.shouldLaunchBalanceBar(
+                launchedBundleIdentifier: "com.openai.chat",
+                balanceBarIsRunning: true
+            )
+        )
+        XCTAssertFalse(
+            ChatGPTLaunchDecision.shouldLaunchBalanceBar(
+                launchedBundleIdentifier: "com.apple.TextEdit",
+                balanceBarIsRunning: false
+            )
+        )
+    }
+
+    func testChatGPTLaunchAgentUsesLaunchEdgesAndGuardsDuplicateRequests() {
+        let workspace = MockChatGPTLaunchAgentWorkspace()
+        let runtime = ChatGPTLaunchAgentRuntime(
+            workspace: workspace,
+            balanceBarBundleURL: URL(fileURLWithPath: "/Applications/BalanceBar.app"),
+            balanceBarBundleIdentifier: "com.huanmeng06.BalanceBar.app"
+        )
+
+        runtime.start()
+        XCTAssertTrue(runtime.isListening)
+        XCTAssertEqual(workspace.openCallCount, 0, "starting the agent does not reconcile existing ChatGPT presence")
+
+        runtime.handleLaunch(bundleIdentifier: "com.openai.codex")
+        runtime.handleLaunch(bundleIdentifier: "com.openai.chat")
+        XCTAssertEqual(workspace.openCallCount, 1, "a second launch edge cannot duplicate an in-flight open")
+        XCTAssertEqual(workspace.openedActivates, false)
+        XCTAssertEqual(workspace.openedAddsToRecentItems, false)
+        XCTAssertEqual(workspace.openedURL?.path, "/Applications/BalanceBar.app")
+
+        workspace.finishOpen()
+        workspace.balanceBarIsRunning = true
+        runtime.handleLaunch(bundleIdentifier: "com.openai.chat")
+        XCTAssertEqual(workspace.openCallCount, 1, "an already-running BalanceBar is not relaunched")
+
+        runtime.stop()
+        XCTAssertFalse(runtime.isListening)
+        workspace.balanceBarIsRunning = false
+        runtime.handleLaunch(bundleIdentifier: "com.openai.chat")
+        XCTAssertEqual(workspace.openCallCount, 1, "stopping the agent removes its response path")
+    }
+
+    func testInitialLaunchPresentationMapsSilentPreferenceToBackgroundOnly() {
+        XCTAssertEqual(InitialLaunchPresentation.resolve(silentLaunch: false), .dashboard)
+        XCTAssertEqual(InitialLaunchPresentation.resolve(silentLaunch: true), .background)
     }
 }

@@ -222,6 +222,14 @@
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "No se pudo actualizar «Abrir al iniciar sesión». Comprueba Configuración del Sistema → General → Ítems de inicio y vuelve a intentarlo.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "No se puede leer el estado del ítem de inicio";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Abrir ajustes";
+"dashboard.general.and.refresh.pages.startup" = "Inicio";
+"dashboard.general.and.refresh.pages.silent_launch" = "Inicio silencioso";
+"dashboard.general.and.refresh.pages.silent_launch_description" = "Inicia BalanceBar sin abrir la ventana principal";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt" = "Iniciar con ChatGPT";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "Inicia BalanceBar cuando se abra ChatGPT si aún no está en ejecución";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "BalanceBar necesita permiso en Ajustes del Sistema";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "No se pudo actualizar «Iniciar con ChatGPT». Comprueba Ajustes del Sistema → General → Ítems de inicio e inténtalo de nuevo.";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "No se puede leer el estado del servicio de inicio con ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Proveedor actual: %1$@";
 "dashboard.general.and.refresh.pages.system" = "Sistema";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Cada 1 s";

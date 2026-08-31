@@ -222,6 +222,14 @@
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour « Lancer à la connexion ». Vérifiez Réglages Système → Général → Éléments d’ouverture, puis réessayez.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Impossible de lire l’état de l’élément d’ouverture";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Ouvrir les réglages";
+"dashboard.general.and.refresh.pages.startup" = "Démarrage";
+"dashboard.general.and.refresh.pages.silent_launch" = "Lancement silencieux";
+"dashboard.general.and.refresh.pages.silent_launch_description" = "Lancer BalanceBar sans ouvrir la fenêtre principale";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt" = "Lancer avec ChatGPT";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "Lancer BalanceBar au démarrage de ChatGPT si BalanceBar n’est pas déjà en cours d’exécution";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "BalanceBar doit être autorisé dans Réglages Système";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Impossible de mettre à jour « Lancer avec ChatGPT ». Vérifiez Réglages Système → Général → Éléments d’ouverture et réessayez.";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Impossible de lire l’état du service de lancement avec ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Fournisseur actuel : %1$@";
 "dashboard.general.and.refresh.pages.system" = "Système";
 "dashboard.general.and.refresh.pages.every_1_sec" = "Toutes les 1 s";
