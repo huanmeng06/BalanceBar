@@ -3,7 +3,13 @@ import OSLog
 
 enum QuotaThresholdSliderMath {
     static let logicalTicks = Array(stride(from: 0, through: 100, by: 5))
-    static let majorTicks = [0, 25, 50, 75, 100]
+    /// The scale mirrors the same 5% grid used by snapping and haptics so the
+    /// dots are dense enough to be useful across a wide settings window.
+    static let displayTicks = logicalTicks
+    /// AppKit supplies the small set of native scale ticks underneath the
+    /// denser contrast overlay. Keeping these independent avoids a continuous
+    /// stock slider bar under the coloured quota track.
+    static let nativeScaleTicks = [0, 25, 50, 75, 100]
 
     static func snapped(_ value: Double) -> Int {
         guard value.isFinite else { return 0 }
@@ -117,7 +123,7 @@ private final class QuotaNativeScaleSlider: NSSlider {
         controlSize = .regular
         isContinuous = true
         autoresizingMask = []
-        numberOfTickMarks = QuotaThresholdSliderMath.majorTicks.count
+        numberOfTickMarks = QuotaThresholdSliderMath.nativeScaleTicks.count
         tickMarkPosition = .below
         allowsTickMarkValuesOnly = false
         target = nil
@@ -146,21 +152,59 @@ private final class QuotaNativeTickClipView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+/// Adds the higher-contrast point presentation requested for the scale while
+/// the stock AppKit sliders continue to provide the underlying tick positions.
+private final class QuotaScaleTickOverlay: NSView {
+    static let dotDiameter: CGFloat = 2
+    private(set) var tickCenters: [CGFloat] = [] {
+        didSet { needsDisplay = true }
+    }
+
+    var usesSecondaryLabelColor: Bool { tickColor.isEqual(NSColor.secondaryLabelColor) }
+
+    private let tickColor = NSColor.secondaryLabelColor
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func setTickCenters(_ centers: [CGFloat]) {
+        tickCenters = centers
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let diameter = Self.dotDiameter
+        let y = bounds.midY - diameter / 2
+        tickColor.setFill()
+        for center in tickCenters {
+            let dot = NSRect(x: center - diameter / 2, y: y, width: diameter, height: diameter)
+            guard dot.intersects(dirtyRect) else { continue }
+            NSBezierPath(roundedRect: dot, xRadius: 0.5, yRadius: 0.5).fill()
+        }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// Owns only the scale underneath the quota slider. Keeping this separate from
 /// the semantic track prevents native tick rendering from changing the
 /// colour-track drawing or native slider event path.
 final class DashboardSliderScaleView: NSView {
-    private let nativeSliders = QuotaThresholdSliderMath.majorTicks.map { _ in
+    private let nativeSliders = QuotaThresholdSliderMath.nativeScaleTicks.map { _ in
         QuotaNativeScaleSlider(frame: .zero)
     }
-    private let nativeTickClipViews = QuotaThresholdSliderMath.majorTicks.map { _ in
+    private let nativeTickClipViews = QuotaThresholdSliderMath.nativeScaleTicks.map { _ in
         QuotaNativeTickClipView(frame: .zero)
     }
+    private let tickOverlay = QuotaScaleTickOverlay(frame: .zero)
     var positionForValue: ((Int) -> CGFloat?)?
 
-    var majorTicks: [Int] { QuotaThresholdSliderMath.majorTicks }
-    var resolvedMajorTickCenters: [Int: CGFloat] {
-        Dictionary(uniqueKeysWithValues: majorTicks.compactMap { value in
+    var displayTicks: [Int] { QuotaThresholdSliderMath.displayTicks }
+    var resolvedTickCenters: [Int: CGFloat] {
+        Dictionary(uniqueKeysWithValues: displayTicks.compactMap { value in
             positionForValue?(value).map { (value, $0) }
         })
     }
@@ -173,18 +217,18 @@ final class DashboardSliderScaleView: NSView {
         nativeSliders.first?.allowsTickMarkValuesOnly ?? false
     }
     var usesNativeTickMarks: Bool {
-        nativeSliders.count == majorTicks.count && nativeSliders.allSatisfy { slider in
-            slider.numberOfTickMarks == majorTicks.count &&
+        nativeSliders.count == QuotaThresholdSliderMath.nativeScaleTicks.count && nativeSliders.allSatisfy { slider in
+            slider.numberOfTickMarks == QuotaThresholdSliderMath.nativeScaleTicks.count &&
                 slider.cell.map { type(of: $0) == NSSliderCell.self } ?? false
         }
     }
     var allRenderersUseStockCells: Bool { usesNativeTickMarks }
     var textLabelCount: Int { subviews.compactMap { $0 as? NSTextField }.count }
-    var nativeMajorTickCenters: [Int: CGFloat] {
+    var nativeTickCenters: [Int: CGFloat] {
         Dictionary(uniqueKeysWithValues: nativeSliders.enumerated().map { index, slider in
             let tickRect = slider.rectOfTickMark(at: index)
             let center = slider.convert(NSPoint(x: tickRect.midX, y: tickRect.midY), to: self)
-            let value = majorTicks[index]
+            let value = QuotaThresholdSliderMath.nativeScaleTicks[index]
             return (value, center.x)
         })
     }
@@ -195,8 +239,12 @@ final class DashboardSliderScaleView: NSView {
         }
     }
     var nativeTickClipFrames: [NSRect] { nativeTickClipViews.map(\.frame) }
+    var highContrastTickCount: Int { tickOverlay.tickCenters.count }
+    var highContrastTickCenters: [CGFloat] { tickOverlay.tickCenters }
+    var usesSecondaryLabelColorForHighContrastTicks: Bool { tickOverlay.usesSecondaryLabelColor }
+    var highContrastTickDiameter: CGFloat { QuotaScaleTickOverlay.dotDiameter }
     var nativeTickMarksAreFullyVisible: Bool {
-        guard nativeSliders.count == majorTicks.count else { return false }
+        guard nativeSliders.count == QuotaThresholdSliderMath.nativeScaleTicks.count else { return false }
         return zip(nativeSliders, nativeTickClipViews).enumerated().allSatisfy { index, pair in
             let (slider, clipView) = pair
             let tickRect = slider.rectOfTickMark(at: index)
@@ -207,12 +255,12 @@ final class DashboardSliderScaleView: NSView {
     }
     var nativeTickClipsAreDiscrete: Bool {
         let frames = nativeTickClipFrames
-        return frames.count == majorTicks.count && zip(frames, frames.dropFirst()).allSatisfy {
+        return frames.count == QuotaThresholdSliderMath.nativeScaleTicks.count && zip(frames, frames.dropFirst()).allSatisfy {
             !$0.intersects($1)
         }
     }
     var requiredHeight: CGFloat {
-        nativeSliders.first?.rectOfTickMark(at: 0).height ?? 0
+        max(nativeSliders.first?.rectOfTickMark(at: 0).height ?? 0, QuotaScaleTickOverlay.dotDiameter)
     }
 
     override init(frame frameRect: NSRect) {
@@ -223,6 +271,7 @@ final class DashboardSliderScaleView: NSView {
             clipView.addSubview(slider)
             addSubview(clipView)
         }
+        addSubview(tickOverlay)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -236,6 +285,7 @@ final class DashboardSliderScaleView: NSView {
         let sliderWidth = max(1, abs(upperEndpoint - lowerEndpoint))
         let sliderOriginX = min(lowerEndpoint, upperEndpoint)
         let sliderHeight = max(28, nativeSliders.first?.intrinsicContentSize.height ?? 28)
+        tickOverlay.frame = bounds
 
         for (index, pair) in zip(nativeSliders, nativeTickClipViews).enumerated() {
             let (slider, clipView) = pair
@@ -257,6 +307,7 @@ final class DashboardSliderScaleView: NSView {
                 height: sliderHeight
             )
         }
+        tickOverlay.setTickCenters(displayTicks.compactMap { positionForValue?($0) })
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -425,10 +476,10 @@ final class QuotaColorThresholdSlider: NSControl {
     var usesBarSuppressedPassiveKnobCells: Bool {
         passiveKnobViews.values.allSatisfy { $0.cell is QuotaPassiveKnobCell }
     }
-    var debugScaleMajorTicks: [Int] { scaleView.majorTicks }
-    var debugScaleMajorTickCenters: [Int: CGFloat] { scaleView.resolvedMajorTickCenters }
-    var debugScaleGeometryMajorTickCenters: [Int: CGFloat] {
-        Dictionary(uniqueKeysWithValues: scaleView.majorTicks.compactMap { value in
+    var debugScaleTicks: [Int] { scaleView.displayTicks }
+    var debugScaleTickCenters: [Int: CGFloat] { scaleView.resolvedTickCenters }
+    var debugScaleGeometryTickCenters: [Int: CGFloat] {
+        Dictionary(uniqueKeysWithValues: scaleView.displayTicks.compactMap { value in
             stableKnobCenter(for: value).map { (value, $0) }
         })
     }
@@ -439,11 +490,17 @@ final class QuotaColorThresholdSlider: NSControl {
     var debugScaleUsesNativeTickMarks: Bool { scaleView.usesNativeTickMarks }
     var debugScaleAllRenderersUseStockCells: Bool { scaleView.allRenderersUseStockCells }
     var debugScaleTextLabelCount: Int { scaleView.textLabelCount }
-    var debugScaleNativeMajorTickCenters: [Int: CGFloat] { scaleView.nativeMajorTickCenters }
+    var debugScaleNativeTickCenters: [Int: CGFloat] { scaleView.nativeTickCenters }
     var debugScaleNativeTickBands: [NSRect] { scaleView.nativeTickBandsInScaleView }
     var debugScaleNativeTickClipFrames: [NSRect] { scaleView.nativeTickClipFrames }
     var debugScaleNativeTickMarksAreFullyVisible: Bool { scaleView.nativeTickMarksAreFullyVisible }
     var debugScaleNativeTickClipsAreDiscrete: Bool { scaleView.nativeTickClipsAreDiscrete }
+    var debugScaleHighContrastTickCount: Int { scaleView.highContrastTickCount }
+    var debugScaleHighContrastTickCenters: [CGFloat] { scaleView.highContrastTickCenters }
+    var debugScaleUsesSecondaryLabelColorForHighContrastTicks: Bool {
+        scaleView.usesSecondaryLabelColorForHighContrastTicks
+    }
+    var debugScaleHighContrastTickDiameter: CGFloat { scaleView.highContrastTickDiameter }
     var debugScaleRequiredHeight: CGFloat { scaleView.requiredHeight }
     var debugScaleFrame: NSRect { scaleView.frame }
     var debugSliderFrame: NSRect { sliderFrame }

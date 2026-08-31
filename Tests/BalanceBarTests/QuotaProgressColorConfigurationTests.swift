@@ -49,7 +49,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(three.settingEnabled(.orange, to: true), original)
     }
 
-    func testMinimumGapSnapHapticAndNativeTicks() {
+    func testMinimumGapSnapHapticAndDenseScaleTicks() {
         let configuration = QuotaProgressColorConfiguration.default.settingBoundary(after: .orange, to: 11)
         XCTAssertEqual(configuration.orangeUpperBound, 15)
         XCTAssertGreaterThanOrEqual(configuration.orangeUpperBound - configuration.redUpperBound, 5)
@@ -58,12 +58,13 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertFalse(QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: 10, newValue: 10))
         XCTAssertTrue(QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: 10, newValue: 15))
         XCTAssertEqual(QuotaThresholdSliderMath.crossedTicks(from: 10, to: 25), [15, 20, 25])
-        XCTAssertEqual(QuotaThresholdSliderMath.majorTicks, [0, 25, 50, 75, 100])
         XCTAssertEqual(QuotaThresholdSliderMath.logicalTicks.count, 21)
+        XCTAssertEqual(QuotaThresholdSliderMath.displayTicks, QuotaThresholdSliderMath.logicalTicks)
+        XCTAssertEqual(QuotaThresholdSliderMath.nativeScaleTicks, [0, 25, 50, 75, 100])
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.quotaProgressEnabledColorsKey))
     }
 
-    func testScaleUsesFiveNativeTicksWithoutTextLabels() throws {
+    func testScaleUsesDenseHighContrastTicksWithoutTextLabels() throws {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 120),
             styleMask: [.borderless],
@@ -80,7 +81,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         window.contentView?.layoutSubtreeIfNeeded()
 
         XCTAssertEqual(slider.intrinsicContentSize.height, 34 + slider.debugScaleRequiredHeight, accuracy: 0.01)
-        XCTAssertEqual(slider.debugScaleMajorTicks, [0, 25, 50, 75, 100])
+        XCTAssertEqual(slider.debugScaleTicks, QuotaThresholdSliderMath.logicalTicks)
         XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 5)
         XCTAssertEqual(slider.debugScaleNativeTickRendererCount, 5)
         XCTAssertEqual(slider.debugScaleNativeTickMarkPosition, .below)
@@ -90,6 +91,9 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(slider.debugScaleTextLabelCount, 0)
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
         XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
+        XCTAssertEqual(slider.debugScaleHighContrastTickCount, 21)
+        XCTAssertTrue(slider.debugScaleUsesSecondaryLabelColorForHighContrastTicks)
+        XCTAssertEqual(slider.debugScaleHighContrastTickDiameter, 2, accuracy: 0.01)
         XCTAssertEqual(slider.debugScaleFrame.minY, slider.bounds.minY, accuracy: 0.01)
         XCTAssertEqual(slider.debugScaleFrame.height, slider.debugScaleRequiredHeight, accuracy: 0.01)
         XCTAssertEqual(slider.debugSliderFrame.maxY, slider.bounds.maxY - 3, accuracy: 0.01)
@@ -109,10 +113,19 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
             XCTAssertLessThanOrEqual(nativeTickClipFrame.maxY, slider.debugScaleFrame.maxY + 0.01)
         }
 
-        let centers = slider.debugScaleMajorTickCenters
-        XCTAssertEqual(centers, slider.debugScaleGeometryMajorTickCenters)
-        XCTAssertEqual(slider.debugScaleNativeMajorTickCenters, slider.debugScaleGeometryMajorTickCenters)
-        XCTAssertEqual(centers.keys.sorted(), [0, 25, 50, 75, 100])
+        let centers = slider.debugScaleTickCenters
+        assertTickCenters(centers, match: slider.debugScaleGeometryTickCenters)
+        assertTickCenters(
+            slider.debugScaleNativeTickCenters,
+            match: Dictionary(uniqueKeysWithValues: QuotaThresholdSliderMath.nativeScaleTicks.compactMap { value in
+                slider.debugScaleGeometryTickCenters[value].map { (value, $0) }
+            })
+        )
+        assertTickCenterSequence(
+            slider.debugScaleHighContrastTickCenters,
+            match: centers.keys.sorted().compactMap { centers[$0] }
+        )
+        XCTAssertEqual(centers.keys.sorted(), QuotaThresholdSliderMath.logicalTicks)
         let orderedCenters = centers.sorted { $0.key < $1.key }.map(\.value)
         XCTAssertTrue(zip(orderedCenters, orderedCenters.dropFirst()).allSatisfy { current, next in
             current < next
@@ -120,12 +133,21 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
 
         slider.frame.size.width = 260
         window.contentView?.layoutSubtreeIfNeeded()
-        let resizedCenters = slider.debugScaleMajorTickCenters
-        XCTAssertEqual(resizedCenters, slider.debugScaleGeometryMajorTickCenters)
-        XCTAssertEqual(slider.debugScaleNativeMajorTickCenters, slider.debugScaleGeometryMajorTickCenters)
+        let resizedCenters = slider.debugScaleTickCenters
+        assertTickCenters(resizedCenters, match: slider.debugScaleGeometryTickCenters)
+        assertTickCenters(
+            slider.debugScaleNativeTickCenters,
+            match: Dictionary(uniqueKeysWithValues: QuotaThresholdSliderMath.nativeScaleTicks.compactMap { value in
+                slider.debugScaleGeometryTickCenters[value].map { (value, $0) }
+            })
+        )
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
         XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
-        XCTAssertEqual(resizedCenters.keys.sorted(), [0, 25, 50, 75, 100])
+        assertTickCenterSequence(
+            slider.debugScaleHighContrastTickCenters,
+            match: resizedCenters.keys.sorted().compactMap { resizedCenters[$0] }
+        )
+        XCTAssertEqual(resizedCenters.keys.sorted(), QuotaThresholdSliderMath.logicalTicks)
         let orderedResizedCenters = resizedCenters.sorted { $0.key < $1.key }.map(\.value)
         XCTAssertTrue(zip(orderedResizedCenters, orderedResizedCenters.dropFirst()).allSatisfy { current, next in
             current < next
@@ -133,12 +155,13 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
 
         slider.configuration = configuration.settingEnabled(.orange, to: false)
         window.contentView?.layoutSubtreeIfNeeded()
-        XCTAssertEqual(slider.debugScaleMajorTicks, [0, 25, 50, 75, 100])
+        XCTAssertEqual(slider.debugScaleTicks, QuotaThresholdSliderMath.logicalTicks)
         XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 5)
         XCTAssertEqual(slider.debugScaleTextLabelCount, 0)
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
         XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
-        XCTAssertEqual(slider.debugScaleMajorTickCenters.keys.sorted(), [0, 25, 50, 75, 100])
+        XCTAssertEqual(slider.debugScaleHighContrastTickCount, 21)
+        XCTAssertEqual(slider.debugScaleTickCenters.keys.sorted(), QuotaThresholdSliderMath.logicalTicks)
     }
 
     func testTrackCoverSlicesLeaveOnlyTheCurrentNativeKnobGap() {
@@ -582,6 +605,31 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         let emptyTrackPoint = NSPoint(x: slider.bounds.maxX - 2, y: slider.bounds.midY)
         XCTAssertTrue(emptyTrackPoint.x > slider.debugThumbStates.last!.knobMidX)
         XCTAssertTrue(slider.hitTest(emptyTrackPoint) === slider.nativeThumbSliders.last)
+    }
+
+    private func assertTickCenters(
+        _ actual: [Int: CGFloat],
+        match expected: [Int: CGFloat],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.keys.sorted(), expected.keys.sorted(), file: file, line: line)
+        for value in actual.keys.sorted() {
+            guard let actualCenter = actual[value], let expectedCenter = expected[value] else { continue }
+            XCTAssertEqual(actualCenter, expectedCenter, accuracy: 0.01, file: file, line: line)
+        }
+    }
+
+    private func assertTickCenterSequence(
+        _ actual: [CGFloat],
+        match expected: [CGFloat],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.count, expected.count, file: file, line: line)
+        for (actualCenter, expectedCenter) in zip(actual, expected) {
+            XCTAssertEqual(actualCenter, expectedCenter, accuracy: 0.01, file: file, line: line)
+        }
     }
 }
 
