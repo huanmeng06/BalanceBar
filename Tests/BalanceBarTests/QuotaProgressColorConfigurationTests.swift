@@ -58,10 +58,66 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertFalse(QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: 10, newValue: 10))
         XCTAssertTrue(QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: 10, newValue: 15))
         XCTAssertEqual(QuotaThresholdSliderMath.crossedTicks(from: 10, to: 25), [15, 20, 25])
+        XCTAssertEqual(QuotaThresholdSliderMath.majorTicks, [0, 25, 50, 75, 100])
+        XCTAssertEqual(QuotaThresholdSliderMath.majorTickLabels, ["0%", "25%", "50%", "75%", "100%"])
         XCTAssertEqual(QuotaThresholdSliderMath.visibleTicks(width: 500, thumbValues: [15]).count, 21)
         XCTAssertTrue(QuotaThresholdSliderMath.visibleTicks(width: 180, thumbValues: [15]).contains(15))
+        XCTAssertTrue(Set(QuotaThresholdSliderMath.visibleTicks(width: 180, thumbValues: [15])).isSuperset(of: [0, 25, 50, 75, 100]))
+        XCTAssertTrue(Set(QuotaThresholdSliderMath.visibleMinorTicks(width: 180, thumbValues: [15])).isDisjoint(with: [0, 25, 50, 75, 100]))
         XCTAssertLessThan(QuotaThresholdSliderMath.visibleTicks(width: 180, thumbValues: [15]).count, 21)
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.quotaProgressEnabledColorsKey))
+    }
+
+    func testScaleKeepsFixedMajorTicksLabelsAndNativeGeometry() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 120),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let configuration = QuotaProgressColorConfiguration.default
+            .settingBoundary(after: .red, to: 15)
+            .settingBoundary(after: .orange, to: 35)
+            .settingBoundary(after: .yellow, to: 60)
+        let slider = QuotaColorThresholdSlider(configuration: configuration)
+        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 50)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(slider.intrinsicContentSize.height, 50)
+        XCTAssertEqual(slider.debugScaleMajorTicks, [0, 25, 50, 75, 100])
+        XCTAssertEqual(slider.debugScaleMajorLabels, ["0%", "25%", "50%", "75%", "100%"])
+        XCTAssertEqual(slider.debugScaleFrame.minY, slider.bounds.minY, accuracy: 0.01)
+        XCTAssertEqual(slider.debugScaleFrame.height, 16, accuracy: 0.01)
+        XCTAssertEqual(slider.debugSliderFrame.maxY, slider.bounds.maxY - 3, accuracy: 0.01)
+        XCTAssertTrue(slider.debugScaleDoesNotHitTest)
+        XCTAssertFalse(slider.debugScaleMinorTicks.contains { [0, 25, 50, 75, 100].contains($0) })
+        XCTAssertGreaterThan(slider.debugScaleMajorTickForegroundAlpha, 0)
+        XCTAssertGreaterThan(slider.debugScaleLabelForegroundAlpha, 0)
+
+        let centers = slider.debugScaleMajorTickCenters
+        XCTAssertEqual(centers, slider.debugScaleGeometryMajorTickCenters)
+        XCTAssertEqual(centers.keys.sorted(), [0, 25, 50, 75, 100])
+        let orderedCenters = centers.sorted { $0.key < $1.key }.map(\.value)
+        XCTAssertTrue(zip(orderedCenters, orderedCenters.dropFirst()).allSatisfy { current, next in
+            current < next
+        })
+
+        slider.frame.size.width = 260
+        window.contentView?.layoutSubtreeIfNeeded()
+        let resizedCenters = slider.debugScaleMajorTickCenters
+        XCTAssertEqual(resizedCenters, slider.debugScaleGeometryMajorTickCenters)
+        XCTAssertEqual(resizedCenters.keys.sorted(), [0, 25, 50, 75, 100])
+        let orderedResizedCenters = resizedCenters.sorted { $0.key < $1.key }.map(\.value)
+        XCTAssertTrue(zip(orderedResizedCenters, orderedResizedCenters.dropFirst()).allSatisfy { current, next in
+            current < next
+        })
+
+        slider.configuration = configuration.settingEnabled(.orange, to: false)
+        window.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(slider.debugScaleMajorTicks, [0, 25, 50, 75, 100])
+        XCTAssertEqual(slider.debugScaleMajorLabels, ["0%", "25%", "50%", "75%", "100%"])
+        XCTAssertEqual(slider.debugScaleMajorTickCenters.keys.sorted(), [0, 25, 50, 75, 100])
     }
 
     func testTrackCoverSlicesLeaveOnlyTheCurrentNativeKnobGap() {
