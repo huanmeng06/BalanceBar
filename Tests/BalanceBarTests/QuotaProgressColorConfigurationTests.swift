@@ -59,12 +59,11 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertTrue(QuotaThresholdSliderMath.shouldEmitAlignmentHaptic(lastSnappedValue: 10, newValue: 15))
         XCTAssertEqual(QuotaThresholdSliderMath.crossedTicks(from: 10, to: 25), [15, 20, 25])
         XCTAssertEqual(QuotaThresholdSliderMath.majorTicks, [0, 25, 50, 75, 100])
-        XCTAssertEqual(QuotaThresholdSliderMath.majorTickLabels, ["0%", "25%", "50%", "75%", "100%"])
         XCTAssertEqual(QuotaThresholdSliderMath.logicalTicks.count, 21)
         XCTAssertTrue(PreferencesMigrationPlan.allKeys.contains(AppPreferences.quotaProgressEnabledColorsKey))
     }
 
-    func testScaleKeepsFixedLabelsAndUsesNativeTickGeometry() throws {
+    func testScaleUsesFiveNativeTicksWithoutTextLabels() throws {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 120),
             styleMask: [.borderless],
@@ -80,16 +79,15 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         window.contentView?.addSubview(slider)
         window.contentView?.layoutSubtreeIfNeeded()
 
-        XCTAssertEqual(slider.intrinsicContentSize.height, 50)
+        XCTAssertEqual(slider.intrinsicContentSize.height, 34 + slider.debugScaleRequiredHeight, accuracy: 0.01)
         XCTAssertEqual(slider.debugScaleMajorTicks, [0, 25, 50, 75, 100])
-        XCTAssertEqual(slider.debugScaleMajorLabels, ["0%", "25%", "50%", "75%", "100%"])
-        XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 21)
+        XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 5)
         XCTAssertEqual(slider.debugScaleNativeTickMarkPosition, .below)
         XCTAssertFalse(slider.debugScaleAllowsNativeTickMarkValuesOnly)
         XCTAssertTrue(slider.debugScaleUsesNativeTickMarks)
+        XCTAssertTrue(slider.debugScaleUsesBarSuppressedNativeCell)
+        XCTAssertEqual(slider.debugScaleTextLabelCount, 0)
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
-        XCTAssertTrue(slider.debugScaleLabelsAreNativeTextFields)
-        XCTAssertTrue(slider.debugScaleLabelForeground.isEqual(NSColor.secondaryLabelColor))
         XCTAssertEqual(slider.debugScaleFrame.minY, slider.bounds.minY, accuracy: 0.01)
         XCTAssertEqual(slider.debugScaleFrame.height, slider.debugScaleRequiredHeight, accuracy: 0.01)
         XCTAssertEqual(slider.debugSliderFrame.maxY, slider.bounds.maxY - 3, accuracy: 0.01)
@@ -127,8 +125,8 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         slider.configuration = configuration.settingEnabled(.orange, to: false)
         window.contentView?.layoutSubtreeIfNeeded()
         XCTAssertEqual(slider.debugScaleMajorTicks, [0, 25, 50, 75, 100])
-        XCTAssertEqual(slider.debugScaleMajorLabels, ["0%", "25%", "50%", "75%", "100%"])
-        XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 21)
+        XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 5)
+        XCTAssertEqual(slider.debugScaleTextLabelCount, 0)
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
         XCTAssertEqual(slider.debugScaleMajorTickCenters.keys.sorted(), [0, 25, 50, 75, 100])
     }
