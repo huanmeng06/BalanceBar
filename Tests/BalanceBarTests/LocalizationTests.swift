@@ -2,10 +2,7 @@ import XCTest
 @testable import BalanceBar
 
 final class LocalizationTests: XCTestCase {
-    private let allLanguages: [AppLanguage] = [
-        .simplifiedChinese, .traditionalChineseTaiwan, .traditionalChineseHongKong, .japanese, .english,
-        .korean, .spanish, .german, .french
-    ]
+    private let allLanguages: [AppLanguage] = AppLanguage.allCases.filter { $0 != .system }
 
     private let resourceDirectories: [String: AppLanguage] = [
         "en": .english,
@@ -305,7 +302,10 @@ final class LocalizationTests: XCTestCase {
             .korean: "0초",
             .spanish: "0 segundos",
             .german: "0 Sekunden",
-            .french: "0 secondes"
+            .french: "0 secondes",
+            .portuguese: "0 segundos",
+            .russian: "0 секунд",
+            .italian: "0 secondi"
         ]
 
         for language in allLanguages {
@@ -331,6 +331,21 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testLunaReserveCopyExistsWithRenderedValuesInEverySupportedLanguage() {
+        let expectedTitles: [AppLanguage: String] = [
+            .simplifiedChinese: "Luna 储备额度",
+            .traditionalChineseTaiwan: "Luna 儲備額度",
+            .traditionalChineseHongKong: "Luna 儲備額度",
+            .english: "Luna Reserve",
+            .japanese: "Luna リザーブ",
+            .korean: "Luna 리저브",
+            .spanish: "Reserva Luna",
+            .portuguese: "Reserva Luna",
+            .french: "Réserve Luna",
+            .german: "Luna-Reserve",
+            .russian: "Резерв Luna",
+            .italian: "Riserva Luna"
+        ]
+
         for language in allLanguages {
             let title = tr(.keyLunaReserveTitle, language: language)
             let loading = tr(.keyLunaReserveStatusLoading, language: language)
@@ -350,61 +365,82 @@ final class LocalizationTests: XCTestCase {
                 arguments: ["1h30m · 9/4 04:55"],
                 language: language
             )
-            let menuUnavailable = tr(.keyLunaReserveMenuUnavailable, language: language)
-            XCTAssertEqual(title, "Luna Reserve", "title should stay product terminology in (language)")
+            let menuUnavailable = tr(
+                .keyLunaReserveMenuUnavailable,
+                arguments: [title],
+                language: language
+            )
+            XCTAssertEqual(title, expectedTitles[language], "unexpected Reserve title in \(language)")
             XCTAssertFalse(loading.hasPrefix("⟦"), "missing Reserve loading status in (language)")
             XCTAssertFalse(status.hasPrefix("⟦"), "missing Reserve status in (language)")
             XCTAssertTrue(remaining.contains("45"), "missing remaining value in (language)")
             XCTAssertTrue(reset.contains("1h30m"), "missing reset value in (language)")
             XCTAssertTrue(menuReset.contains("1h30m · 9/4 04:55"), "missing menu reset value in (language)")
+            XCTAssertTrue(menuUnavailable.contains(title), "menu unavailable copy should use the localized title in \(language)")
             XCTAssertFalse(menuUnavailable.hasPrefix("⟦"), "missing menu unavailable copy in (language)")
             XCTAssertFalse(remaining.contains("%1$@"), "unrendered remaining placeholder in (language)")
             XCTAssertFalse(reset.contains("%1$@"), "unrendered reset placeholder in (language)")
             XCTAssertFalse(menuReset.contains("%1$@"), "unrendered menu reset placeholder in (language)")
         }
         XCTAssertEqual(
-            tr(.keyLunaReserveMenuUnavailable, language: .simplifiedChinese),
-            "Luna Reserve 暂不可用"
+            tr(
+                .keyLunaReserveMenuUnavailable,
+                arguments: [tr(.keyLunaReserveTitle, language: .simplifiedChinese)],
+                language: .simplifiedChinese
+            ),
+            "Luna 储备额度 暂不可用"
         )
     }
 
     func testLunaReserveMenuDisplaySettingsCopyExistsAcrossAllLanguages() {
         let expected: [AppLanguage: [String]] = [
             .simplifiedChinese: [
-                "🌙 Luna Reserve显示方式", "选择 Luna Reserve 在菜单中的显示时机", "不显示", "额度用完后显示", "始终显示",
-                "隐藏已用完额度", "打开后，🌙 Luna Reserve 显示时会隐藏菜单中已归零的额度"
+                "🌙 %1$@显示方式", "选择 %1$@ 在菜单中的显示时机", "不显示", "额度用完后显示", "始终显示",
+                "隐藏已用完额度", "打开后，🌙 %1$@ 显示时会隐藏菜单中已归零的额度"
             ],
             .traditionalChineseTaiwan: [
-                "🌙 Luna Reserve 顯示方式", "選擇 Luna Reserve 在選單中的顯示時機", "不顯示", "額度用完後顯示", "始終顯示",
-                "隱藏已用完額度", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的額度"
+                "🌙 %1$@ 顯示方式", "選擇 %1$@ 在選單中的顯示時機", "不顯示", "額度用完後顯示", "始終顯示",
+                "隱藏已用完額度", "開啟後，顯示 🌙 %1$@ 時會隱藏選單中已歸零的額度"
             ],
             .traditionalChineseHongKong: [
-                "🌙 Luna Reserve 顯示方式", "選擇 Luna Reserve 在選單中的顯示時機", "不顯示", "配額用完後顯示", "始終顯示",
-                "隱藏已用完配額", "開啟後，顯示 🌙 Luna Reserve 時會隱藏選單中已歸零的配額"
+                "🌙 %1$@ 顯示方式", "選擇 %1$@ 在選單中的顯示時機", "不顯示", "配額用完後顯示", "始終顯示",
+                "隱藏已用完配額", "開啟後，顯示 🌙 %1$@ 時會隱藏選單中已歸零的配額"
             ],
             .japanese: [
-                "🌙 Luna Reserve の表示方法", "メニューで Luna Reserve を表示するタイミングを選択", "表示しない", "クォータ消費後に表示", "常に表示",
-                "使い切ったクォータを隠す", "オンにすると、🌙 Luna Reserve の表示時に残り 0% のクォータをメニューから隠します"
+                "🌙 %1$@ の表示方法", "メニューで %1$@ を表示するタイミングを選択", "表示しない", "クォータ消費後に表示", "常に表示",
+                "使い切ったクォータを隠す", "オンにすると、🌙 %1$@ の表示時に残り 0% のクォータをメニューから隠します"
             ],
             .english: [
-                "🌙 Luna Reserve Display", "Choose when Luna Reserve is shown in the menu", "Do not show", "Show after quota is used up", "Always show",
-                "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when 🌙 Luna Reserve is shown"
+                "🌙 %1$@ Display", "Choose when %1$@ is shown in the menu", "Do not show", "Show after quota is used up", "Always show",
+                "Hide used-up quotas", "When enabled, zeroed quotas are hidden from the menu when 🌙 %1$@ is shown"
             ],
             .korean: [
-                "🌙 Luna Reserve 표시 방식", "메뉴에서 Luna Reserve를 표시할 시점을 선택", "표시 안 함", "할당량 소진 후 표시", "항상 표시",
-                "소진된 할당량 숨기기", "켜면 🌙 Luna Reserve가 표시될 때 잔여량이 0%인 할당량을 메뉴에서 숨깁니다"
+                "🌙 %1$@ 표시 방식", "메뉴에서 %1$@를 표시할 시점을 선택", "표시 안 함", "할당량 소진 후 표시", "항상 표시",
+                "소진된 할당량 숨기기", "켜면 🌙 %1$@가 표시될 때 잔여량이 0%인 할당량을 메뉴에서 숨깁니다"
             ],
             .spanish: [
-                "🌙 Mostrar Luna Reserve", "Elige cuándo mostrar Luna Reserve en el menú", "No mostrar", "Mostrar al agotar la cuota", "Mostrar siempre",
-                "Ocultar cuotas agotadas", "Al activarlo, las cuotas al 0 % se ocultan del menú cuando se muestra 🌙 Luna Reserve"
+                "🌙 Mostrar %1$@", "Elige cuándo mostrar %1$@ en el menú", "No mostrar", "Mostrar al agotar la cuota", "Mostrar siempre",
+                "Ocultar cuotas agotadas", "Al activarlo, las cuotas al 0 % se ocultan del menú cuando se muestra 🌙 %1$@"
             ],
             .german: [
-                "🌙 Luna Reserve-Anzeige", "Zeitpunkt für die Anzeige von Luna Reserve im Menü auswählen", "Nicht anzeigen", "Nach Verbrauch des Kontingents anzeigen", "Immer anzeigen",
-                "Verbrauchte Kontingente ausblenden", "Wenn aktiviert, werden Kontingente mit 0 % im Menü ausgeblendet, sobald 🌙 Luna Reserve angezeigt wird"
+                "🌙 %1$@-Anzeige", "Zeitpunkt für die Anzeige von %1$@ im Menü auswählen", "Nicht anzeigen", "Nach Verbrauch des Kontingents anzeigen", "Immer anzeigen",
+                "Verbrauchte Kontingente ausblenden", "Wenn aktiviert, werden Kontingente mit 0 % im Menü ausgeblendet, sobald 🌙 %1$@ angezeigt wird"
             ],
             .french: [
-                "🌙 Affichage de Luna Reserve", "Choisissez quand afficher Luna Reserve dans le menu", "Ne pas afficher", "Afficher après épuisement du quota", "Toujours afficher",
-                "Masquer les quotas épuisés", "Lorsque cette option est activée, les quotas à 0 % sont masqués du menu quand 🌙 Luna Reserve est affiché"
+                "🌙 Affichage de %1$@", "Choisissez quand afficher %1$@ dans le menu", "Ne pas afficher", "Afficher après épuisement du quota", "Toujours afficher",
+                "Masquer les quotas épuisés", "Lorsque cette option est activée, les quotas à 0 % sont masqués du menu quand 🌙 %1$@ est affiché"
+            ],
+            .portuguese: [
+                "Exibição da 🌙 %1$@", "Escolha quando a 🌙 %1$@ será exibida no menu", "Não mostrar", "Mostrar após esgotar a cota", "Sempre mostrar",
+                "Ocultar cotas esgotadas", "Quando ativado, as cotas zeradas ficam ocultas no menu quando a 🌙 %1$@ é exibida"
+            ],
+            .russian: [
+                "Отображение 🌙 %1$@", "Выберите, когда показывать 🌙 %1$@ в меню", "Не показывать", "Показывать после исчерпания квоты", "Всегда показывать",
+                "Скрывать исчерпанные квоты", "Если включено, исчерпанные квоты скрываются в меню при отображении 🌙 %1$@"
+            ],
+            .italian: [
+                "Visualizzazione di 🌙 %1$@", "Scegli quando mostrare 🌙 %1$@ nel menu", "Non mostrare", "Mostra dopo l'esaurimento della quota", "Mostra sempre",
+                "Nascondi le quote esaurite", "Quando è abilitata, le quote esaurite vengono nascoste dal menu quando viene mostrata 🌙 %1$@"
             ]
         ]
         let keys: [LocalizationKey] = [
@@ -418,8 +454,21 @@ final class LocalizationTests: XCTestCase {
         ]
 
         for language in allLanguages {
-            let values = keys.map { tr($0, language: language) }
-            XCTAssertEqual(values, expected[language], "Luna Reserve menu settings copy for \(language)")
+            let title = tr(.keyLunaReserveTitle, language: language)
+            let values = keys.map { key in
+                switch key {
+                case .keyDashboardMenuPageLunaReserveDisplayMode,
+                     .keyDashboardMenuPageLunaReserveDisplayModeDescription,
+                     .keyDashboardMenuPageHideExhaustedQuotaDescription:
+                    return tr(key, arguments: [title], language: language)
+                default:
+                    return tr(key, language: language)
+                }
+            }
+            let expectedValues = expected[language]?.map {
+                $0.replacingOccurrences(of: "%1$@", with: title)
+            }
+            XCTAssertEqual(values, expectedValues, "Luna Reserve menu settings copy for \(language)")
             XCTAssertTrue(values.allSatisfy { !$0.hasPrefix("⟦") })
         }
     }
@@ -432,7 +481,15 @@ final class LocalizationTests: XCTestCase {
         ]
 
         for language in AppLanguage.allCases where language != .system {
-            let values = keys.map { tr($0, language: language) }
+            let title = tr(.keyLunaReserveTitle, language: language)
+            let values = keys.map { key in
+                switch key {
+                case .keyDashboardMenuPageHideExhaustedQuotaDescription:
+                    return tr(key, arguments: [title], language: language)
+                default:
+                    return tr(key, language: language)
+                }
+            }
             XCTAssertTrue(
                 values.allSatisfy { !$0.hasSuffix("。") && !$0.hasSuffix(".") },
                 "Balance display descriptions should omit trailing punctuation in \(language)"
@@ -445,65 +502,86 @@ final class LocalizationTests: XCTestCase {
             .simplifiedChinese: [
                 "优先显示额度", "选择菜单栏优先显示 5 小时额度还是 7 日额度", "5 小时额度", "7 日额度",
                 "重置时间样式", "选择显示剩余时长、具体时间，或同时显示两者", "剩余时长", "重置时间", "同时显示",
-                "🌙 Luna Reserve 自动切换", "进入 🌙 Luna Reserve 后，自动切换菜单栏显示的额度",
-                "🌙 Luna Reserve 时间", "进入 🌙 Luna Reserve 后，选择继续显示原额度或 🌙 Luna Reserve 的重置时间",
-                "🌙 Luna Reserve", "原额度"
+                "🌙 %1$@ 自动切换", "进入 🌙 %1$@ 后，自动切换菜单栏显示的额度",
+                "🌙 %1$@ 时间", "进入 🌙 %1$@ 后，选择继续显示原额度或 🌙 %1$@ 的重置时间",
+                "🌙 %1$@", "原额度"
             ],
             .traditionalChineseTaiwan: [
                 "優先顯示額度", "選擇選單列優先顯示 5 小時額度還是 7 日額度", "5 小時額度", "7 日額度",
                 "重設時間樣式", "選擇顯示剩餘時間、具體時間，或同時顯示兩者", "剩餘時間", "重設時間", "同時顯示",
-                "🌙 Luna Reserve 自動切換", "進入 🌙 Luna Reserve 後，自動切換選單列顯示的額度",
-                "🌙 Luna Reserve 時間", "進入 🌙 Luna Reserve 後，選擇繼續顯示原額度或 🌙 Luna Reserve 的重設時間",
-                "🌙 Luna Reserve", "原額度"
+                "🌙 %1$@ 自動切換", "進入 🌙 %1$@ 後，自動切換選單列顯示的額度",
+                "🌙 %1$@ 時間", "進入 🌙 %1$@ 後，選擇繼續顯示原額度或 🌙 %1$@ 的重設時間",
+                "🌙 %1$@", "原額度"
             ],
             .traditionalChineseHongKong: [
                 "優先顯示配額", "選擇選單列優先顯示 5 小時配額還是 7 日配額", "5 小時配額", "7 日配額",
                 "重設時間樣式", "選擇顯示剩餘時間、具體時間，或同時顯示兩者", "剩餘時間", "重設時間", "同時顯示",
-                "🌙 Luna Reserve 自動切換", "進入 🌙 Luna Reserve 後，自動切換選單列顯示的配額",
-                "🌙 Luna Reserve 時間", "進入 🌙 Luna Reserve 後，選擇繼續顯示原配額或 🌙 Luna Reserve 的重設時間",
-                "🌙 Luna Reserve", "原配額"
+                "🌙 %1$@ 自動切換", "進入 🌙 %1$@ 後，自動切換選單列顯示的配額",
+                "🌙 %1$@ 時間", "進入 🌙 %1$@ 後，選擇繼續顯示原配額或 🌙 %1$@ 的重設時間",
+                "🌙 %1$@", "原配額"
             ],
             .japanese: [
                 "優先表示するクォータ", "メニューバーで 5 時間クォータと 7 日間クォータのどちらを優先表示するか選択", "5時間クォータ", "7日間クォータ",
                 "リセット時刻の表示形式", "残り時間、具体的なリセット時刻、または両方を表示するか選択", "残り時間", "リセット時刻", "両方を表示",
-                "🌙 Luna Reserve への自動切り替え", "🌙 Luna Reserve に入った後、メニューバーに表示するクォータを自動的に切り替えます",
-                "🌙 Luna Reserve のリセット時刻", "🌙 Luna Reserve に入った後、元のクォータのリセット時刻と 🌙 Luna Reserve のリセット時刻のどちらを表示するか選択",
-                "🌙 Luna Reserve", "元のクォータ"
+                "🌙 %1$@ への自動切り替え", "🌙 %1$@ に入った後、メニューバーに表示するクォータを自動的に切り替えます",
+                "🌙 %1$@ のリセット時刻", "🌙 %1$@ に入った後、元のクォータのリセット時刻と 🌙 %1$@ のリセット時刻のどちらを表示するか選択",
+                "🌙 %1$@", "元のクォータ"
             ],
             .english: [
                 "Prioritize Quota", "Choose whether the menu bar prioritizes the 5-hour or 7-day quota", "5-Hour Quota", "7-Day Quota",
                 "Reset Time Display", "Choose whether to show the time remaining, the specific reset time, or both", "Time Remaining", "Reset Time", "Show Both",
-                "🌙 Luna Reserve Auto-Switch", "After entering 🌙 Luna Reserve, automatically switch the quota shown in the menu bar.",
-                "🌙 Luna Reserve Reset Time", "After entering 🌙 Luna Reserve, choose whether to keep showing the original quota's reset time or 🌙 Luna Reserve's.",
-                "🌙 Luna Reserve", "Original Quota"
+                "🌙 %1$@ Auto-Switch", "After entering 🌙 %1$@, automatically switch the quota shown in the menu bar.",
+                "🌙 %1$@ Reset Time", "After entering 🌙 %1$@, choose whether to keep showing the original quota's reset time or 🌙 %1$@'s.",
+                "🌙 %1$@", "Original Quota"
             ],
             .korean: [
                 "우선 표시할 할당량", "메뉴 막대에 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요", "5시간 할당량", "7일 할당량",
                 "재설정 시간 표시 방식", "남은 시간, 정확한 재설정 시간 또는 둘 다 표시할지 선택하세요", "남은 시간", "재설정 시간", "둘 다 표시",
-                "🌙 Luna Reserve 자동 전환", "🌙 Luna Reserve에 진입한 후 메뉴 막대에 표시할 할당량을 자동으로 전환합니다",
-                "🌙 Luna Reserve 재설정 시간", "🌙 Luna Reserve에 진입한 후 원래 할당량의 재설정 시간과 🌙 Luna Reserve의 재설정 시간 중 어느 것을 표시할지 선택합니다",
-                "🌙 Luna Reserve", "원래 할당량"
+                "🌙 %1$@ 자동 전환", "🌙 %1$@에 진입한 후 메뉴 막대에 표시할 할당량을 자동으로 전환합니다",
+                "🌙 %1$@ 재설정 시간", "🌙 %1$@에 진입한 후 원래 할당량의 재설정 시간과 🌙 %1$@의 재설정 시간 중 어느 것을 표시할지 선택합니다",
+                "🌙 %1$@", "원래 할당량"
             ],
             .spanish: [
                 "Priorizar cuota", "Elige si la barra de menús debe priorizar la cuota de 5 horas o la de 7 días", "Cuota de 5 horas", "Cuota de 7 días",
                 "Formato de la hora de reinicio", "Elige si mostrar el tiempo restante, la hora exacta de reinicio o ambos", "Tiempo restante", "Hora de reinicio", "Mostrar ambos",
-                "Cambio automático a 🌙 Luna Reserve", "Después de entrar en 🌙 Luna Reserve, cambia automáticamente la cuota que se muestra en la barra de menús",
-                "Hora de reinicio de 🌙 Luna Reserve", "Después de entrar en 🌙 Luna Reserve, elige si mantener la hora de reinicio de la cuota original o mostrar la de 🌙 Luna Reserve",
-                "🌙 Luna Reserve", "Cuota original"
+                "Cambio automático a 🌙 %1$@", "Después de entrar en 🌙 %1$@, cambia automáticamente la cuota que se muestra en la barra de menús",
+                "Hora de reinicio de 🌙 %1$@", "Después de entrar en 🌙 %1$@, elige si mantener la hora de reinicio de la cuota original o mostrar la de 🌙 %1$@",
+                "🌙 %1$@", "Cuota original"
             ],
             .german: [
                 "Bevorzugtes Kontingent", "Auswählen, ob in der Menüleiste das 5-Stunden- oder das 7-Tage-Kontingent bevorzugt angezeigt wird", "5-Stunden-Kontingent", "7-Tage-Kontingent",
                 "Format der Rücksetzzeit", "Auswählen, ob die verbleibende Zeit, die genaue Rücksetzzeit oder beides angezeigt wird", "Verbleibende Zeit", "Rücksetzzeit", "Beides",
-                "Automatisch zu 🌙 Luna Reserve wechseln", "Nach dem Wechsel zu 🌙 Luna Reserve wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet",
-                "Rücksetzzeit für 🌙 Luna Reserve", "Nach dem Wechsel zu 🌙 Luna Reserve auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von 🌙 Luna Reserve angezeigt wird",
-                "🌙 Luna Reserve", "Ursprüngliches Kontingent"
+                "Automatisch zu 🌙 %1$@ wechseln", "Nach dem Wechsel zu 🌙 %1$@ wird das in der Menüleiste angezeigte Kontingent automatisch umgeschaltet",
+                "Rücksetzzeit für 🌙 %1$@", "Nach dem Wechsel zu 🌙 %1$@ auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von 🌙 %1$@ angezeigt wird",
+                "🌙 %1$@", "Ursprüngliches Kontingent"
             ],
             .french: [
                 "Quota à privilégier", "Choisissez si la barre des menus doit privilégier le quota de 5 heures ou celui de 7 jours", "Quota sur 5 heures", "Quota sur 7 jours",
                 "Format de l’heure de réinitialisation", "Choisissez d’afficher le temps restant, l’heure exacte de réinitialisation ou les deux", "Temps restant", "Heure de réinitialisation", "Afficher les deux",
-                "Basculement automatique vers 🌙 Luna Reserve", "Après l’entrée dans 🌙 Luna Reserve, le quota affiché dans la barre des menus bascule automatiquement",
-                "Heure de réinitialisation de 🌙 Luna Reserve", "Après l’entrée dans 🌙 Luna Reserve, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de 🌙 Luna Reserve",
-                "🌙 Luna Reserve", "Quota d’origine"
+                "Basculement automatique vers 🌙 %1$@", "Après l’entrée dans 🌙 %1$@, le quota affiché dans la barre des menus bascule automatiquement",
+                "Heure de réinitialisation de 🌙 %1$@", "Après l’entrée dans 🌙 %1$@, choisissez d’afficher l’heure de réinitialisation du quota d’origine ou celle de 🌙 %1$@",
+                "🌙 %1$@", "Quota d’origine"
+            ],
+            .portuguese: [
+                "Priorizar cota", "Escolha se a barra de menus deve priorizar a cota de 5 horas ou de 7 dias", "Cota de 5 horas", "Cota de 7 dias",
+                "Exibição do horário de redefinição", "Escolha se deseja mostrar o tempo restante, um horário específico de redefinição ou ambos", "Tempo restante", "Horário de redefinição", "Mostrar ambos",
+                "🌙 Troca automática para %1$@", "Após entrar na 🌙 %1$@, troca automaticamente a cota exibida na barra de menus.",
+                "Horário de redefinição da 🌙 %1$@", "Após entrar na 🌙 %1$@, escolha se deseja continuar mostrando o horário de redefinição da cota original ou o da 🌙 %1$@.",
+                "🌙 %1$@", "Cota original"
+            ],
+            .russian: [
+                "Приоритет квоты", "Выберите, какой квоте отдавать приоритет в строке меню: 5-часовой или 7-дневной", "Квота на 5 часов", "Квота на 7 дней",
+                "Отображение времени сброса", "Выберите, показывать ли оставшееся время, конкретное время сброса или оба значения", "Оставшееся время", "Время сброса", "Показывать оба",
+                "🌙 Автопереключение на %1$@", "После входа в 🌙 %1$@ автоматически переключает квоту, отображаемую в строке меню.",
+                "Время сброса 🌙 %1$@", "После входа в 🌙 %1$@ выберите, продолжать ли показывать время сброса исходной квоты или квоты 🌙 %1$@.",
+                "🌙 %1$@", "Исходная квота"
+            ],
+            .italian: [
+                "Dai priorità alla quota", "Scegli se la barra dei menu deve dare priorità alla quota di 5 ore o di 7 giorni", "Quota di 5 ore", "Quota di 7 giorni",
+                "Visualizzazione dell'orario di ripristino", "Scegli se mostrare il tempo rimanente, un orario di ripristino specifico o entrambi", "Tempo rimanente", "Orario di ripristino", "Mostra entrambi",
+                "🌙 Passaggio automatico a %1$@", "Dopo aver attivato 🌙 %1$@, cambia automaticamente la quota mostrata nella barra dei menu.",
+                "Orario di ripristino di 🌙 %1$@", "Dopo aver attivato 🌙 %1$@, scegli se continuare a mostrare l'orario di ripristino della quota originale o quello di 🌙 %1$@.",
+                "🌙 %1$@", "Quota originale"
             ]
         ]
         let keys: [LocalizationKey] = [
@@ -525,8 +603,23 @@ final class LocalizationTests: XCTestCase {
         ]
 
         for language in allLanguages {
-            let values = keys.map { tr($0, language: language) }
-            XCTAssertEqual(values, expected[language], "Quota and Luna Reserve settings copy for \(language)")
+            let title = tr(.keyLunaReserveTitle, language: language)
+            let values = keys.map { key in
+                switch key {
+                case .keyDashboardMenuBarPageAutoSwitchLunaReserve,
+                     .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
+                     .keyDashboardMenuBarPageLunaReserveResetTime,
+                     .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+                     .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve:
+                    return tr(key, arguments: [title], language: language)
+                default:
+                    return tr(key, language: language)
+                }
+            }
+            let expectedValues = expected[language]?.map {
+                $0.replacingOccurrences(of: "%1$@", with: title)
+            }
+            XCTAssertEqual(values, expectedValues, "Quota and Luna Reserve settings copy for \(language)")
             XCTAssertTrue(values.allSatisfy { !$0.hasPrefix("⟦") })
         }
     }
@@ -542,7 +635,10 @@ final class LocalizationTests: XCTestCase {
             .korean: "이 버전 무시",
             .spanish: "Ignorar esta versión",
             .german: "Diese Version ignorieren",
-            .french: "Ignorer cette version"
+            .french: "Ignorer cette version",
+            .portuguese: "Ignorar esta versão",
+            .russian: "Игнорировать эту версию",
+            .italian: "Ignora questa versione"
         ]
 
         for language in allLanguages {
@@ -644,9 +740,6 @@ final class LocalizationTests: XCTestCase {
             "Следит за текущим провайдером",
             "от -10,0 pt уже",
             "Интервал резервной проверки CC Switch",
-            "Reserva Luna",
-            "Резерв Luna",
-            "Riserva Luna",
             "Intervalo de verificação de backup",
             "Redefine em %1$@",
             "Ora del ripristino non disponibile",
@@ -932,8 +1025,8 @@ final class LocalizationTests: XCTestCase {
             (
                 .italian,
                 .keyDashboardMenuBarPageLunaReserveResetTime,
-                [],
-                "Orario di ripristino di 🌙 Luna Reserve"
+                ["Riserva Luna"],
+                "Orario di ripristino di 🌙 Riserva Luna"
             ),
             (
                 .italian,
@@ -1664,7 +1757,10 @@ final class LocalizationTests: XCTestCase {
             .korean: ("상태 보기", "‘상태 보기’ 링크 사용자 지정"),
             .spanish: ("Ver estado", "Personalizar los enlaces de «Ver estado»"),
             .german: ("Status anzeigen", "Links für „Status anzeigen“ anpassen"),
-            .french: ("Voir l’état", "Personnaliser les liens « Voir l’état »")
+            .french: ("Voir l’état", "Personnaliser les liens « Voir l’état »"),
+            .portuguese: ("Ver status", "Personalizar links de “Ver status”"),
+            .russian: ("Просмотреть статус", "Настроить ссылки «Посмотреть состояние»"),
+            .italian: ("Visualizza stato", "Personalizza i link “Visualizza stato”")
         ]
 
         for language in allLanguages {
@@ -1696,7 +1792,10 @@ final class LocalizationTests: XCTestCase {
             .korean: ("할당량 및 재설정", "아이콘 및 작업 상태", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
             .spanish: ("Cuota y reinicio", "Icono y estado de la tarea", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
             .german: ("Kontingent und Zurücksetzung", "Symbol und Aufgabenstatus", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüleistensymbols"),
-            .french: ("Quota et réinitialisation", "Icône et état de la tâche", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus")
+            .french: ("Quota et réinitialisation", "Icône et état de la tâche", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus"),
+            .portuguese: ("Cota e redefinição", "Ícone e status da tarefa", "Layout", "Comportamento do menu", "Links de status", "Exibição do ícone na barra de menus"),
+            .russian: ("Квота и сброс", "Значок и состояние задачи", "Макет", "Поведение меню", "Ссылки статуса", "Отображение значка в строке меню"),
+            .italian: ("Quota e ripristino", "Icona e stato dell'attività", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione dell'icona nella barra dei menu")
         ]
 
         for language in allLanguages {

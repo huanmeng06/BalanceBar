@@ -1059,12 +1059,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let hideRow = try XCTUnwrap(hideSwitch.superview)
         XCTAssertTrue(
             descendants(of: displayModeRow).compactMap { $0 as? NSTextField }.contains {
-                $0.stringValue == "🌙 Luna Reserve显示方式"
+                $0.stringValue == "🌙 Luna 储备额度显示方式"
             }
         )
         XCTAssertTrue(
             descendants(of: displayModeRow).compactMap { $0 as? NSTextField }.contains {
-                $0.stringValue == "选择 Luna Reserve 在菜单中的显示时机"
+                $0.stringValue == "选择 Luna 储备额度 在菜单中的显示时机"
             }
         )
         let thresholdField = try XCTUnwrap(
@@ -1078,28 +1078,49 @@ final class DashboardPreferencePagesTests: XCTestCase {
             Array(rowsStack.arrangedSubviews.filter { !($0 is NSBox) }.prefix(3)).map(ObjectIdentifier.init),
             [displayModeRow, hideRow, thresholdRow].map(ObjectIdentifier.init)
         )
-        XCTAssertTrue(hideRow.isHidden)
+        XCTAssertFalse(hideRow.isHidden)
+        XCTAssertTrue(hideSwitch.isEnabled)
 
         displayModeControl.selectItem(at: 1)
         relay.lunaReserveDisplayMode(displayModeControl)
         XCTAssertEqual(changedModes, [.whenQuotaExhausted])
         XCTAssertEqual(preferences.menuLunaReserveDisplayMode, .whenQuotaExhausted)
         XCTAssertFalse(hideRow.isHidden)
+        XCTAssertTrue(hideSwitch.isEnabled)
         XCTAssertEqual(hideSwitch.state, .off)
 
         hideSwitch.state = .on
         relay.toggle(hideSwitch)
         XCTAssertTrue(preferences.menuLunaReserveHideExhaustedQuota)
 
+        displayModeControl.selectItem(at: 2)
+        relay.lunaReserveDisplayMode(displayModeControl)
+        XCTAssertEqual(changedModes, [.whenQuotaExhausted, .always])
+        XCTAssertEqual(preferences.menuLunaReserveDisplayMode, .always)
+        XCTAssertFalse(hideRow.isHidden)
+        XCTAssertTrue(hideSwitch.isEnabled)
+        XCTAssertEqual(hideSwitch.state, .on)
+
         displayModeControl.selectItem(at: 0)
         relay.lunaReserveDisplayMode(displayModeControl)
-        XCTAssertEqual(changedModes, [.whenQuotaExhausted, .disabled])
+        XCTAssertEqual(changedModes, [.whenQuotaExhausted, .always, .disabled])
         XCTAssertTrue(hideRow.isHidden)
+        XCTAssertFalse(hideSwitch.isEnabled)
         XCTAssertEqual(
             AppPreferences(defaults: defaults).menuLunaReserveDisplayMode,
             .disabled
         )
         XCTAssertTrue(AppPreferences(defaults: defaults).menuLunaReserveHideExhaustedQuota)
+
+        displayModeControl.selectItem(at: 2)
+        relay.lunaReserveDisplayMode(displayModeControl)
+        XCTAssertFalse(hideRow.isHidden)
+        XCTAssertTrue(hideSwitch.isEnabled)
+        XCTAssertEqual(hideSwitch.state, .on)
+
+        hideSwitch.state = .off
+        relay.toggle(hideSwitch)
+        XCTAssertFalse(preferences.menuLunaReserveHideExhaustedQuota)
     }
 
     func testMenuEntryRowsLocalizeSubtitlesAndPreserveControlsAcrossLanguages() {
@@ -1847,7 +1868,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             lunaReserveResetTimePopup.itemTitles,
             [
                 tr(.keyDashboardMenuBarPageLunaReserveResetTimeOriginalQuota),
-                tr(.keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve)
+                tr(
+                    .keyDashboardMenuBarPageLunaReserveResetTimeLunaReserve,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                )
             ]
         )
         lunaReserveResetTimePopup.selectItem(at: 0)

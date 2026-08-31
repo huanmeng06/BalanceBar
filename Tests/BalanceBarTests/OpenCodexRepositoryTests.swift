@@ -1352,6 +1352,78 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertLessThan(unavailableFrames.cardSize.height, frames.cardSize.height)
     }
 
+    func testOfficialQuotaLayoutHonorsReserveInsertionIndexWithOneStableRow() {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 0,
+                label: "5-Hour Quota",
+                daysText: "5 Hours",
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 0,
+                label: "7-Day Quota",
+                daysText: "7 Days",
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+
+        func frames(insertionIndex: Int, includesProgress: Bool = true) -> OpenCodexCardFrames {
+            OpenCodexCardLayout.frames(
+                for: .quota,
+                officialQuotaWindows: windows,
+                includesLunaReserve: true,
+                includesLunaReserveProgress: includesProgress,
+                lunaReserveInsertionIndex: insertionIndex
+            )
+        }
+
+        let beforeFiveHour = frames(insertionIndex: 0)
+        let afterFiveHour = frames(insertionIndex: 1)
+        let afterSevenDay = frames(insertionIndex: 2)
+
+        for layout in [beforeFiveHour, afterFiveHour, afterSevenDay] {
+            XCTAssertEqual(layout.quotaRows.count, 2)
+            XCTAssertNotNil(layout.lunaReserveRow)
+        }
+        XCTAssertGreaterThan(
+            beforeFiveHour.lunaReserveRow!.progress.minY,
+            beforeFiveHour.quotaRows[0].progress.minY
+        )
+        XCTAssertGreaterThan(
+            beforeFiveHour.quotaRows[0].progress.minY,
+            beforeFiveHour.quotaRows[1].progress.minY
+        )
+        XCTAssertGreaterThan(
+            afterFiveHour.quotaRows[0].progress.minY,
+            afterFiveHour.lunaReserveRow!.progress.minY
+        )
+        XCTAssertGreaterThan(
+            afterFiveHour.lunaReserveRow!.progress.minY,
+            afterFiveHour.quotaRows[1].progress.minY
+        )
+        XCTAssertGreaterThan(
+            afterSevenDay.quotaRows[0].progress.minY,
+            afterSevenDay.quotaRows[1].progress.minY
+        )
+        XCTAssertGreaterThan(
+            afterSevenDay.quotaRows[1].progress.minY,
+            afterSevenDay.lunaReserveRow!.progress.minY
+        )
+
+        let unavailableAfterSevenDay = frames(insertionIndex: 2, includesProgress: false)
+        XCTAssertEqual(unavailableAfterSevenDay.quotaRows.count, 2)
+        XCTAssertNotNil(unavailableAfterSevenDay.lunaReserveRow)
+        XCTAssertGreaterThan(
+            unavailableAfterSevenDay.quotaRows[1].progress.minY,
+            unavailableAfterSevenDay.lunaReserveRow!.amount.minY
+        )
+    }
+
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {
         let card = OpenCodexModelCard(
             selector: "openai/gpt-5.6-sol",
