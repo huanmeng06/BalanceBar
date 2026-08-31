@@ -108,32 +108,27 @@ private final class QuotaThresholdTrackCoverSliceView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// A small display-only native knob used while the corresponding full-width
-/// slider is idle.  The real NSSlider remains the input owner; this view only
-/// keeps the stock idle knob visible above the semantic cover.
-private final class QuotaPassiveKnobView: NSView {
-    private let knobCell: NSSliderCell
-
+/// A full-width display-only native slider used while the corresponding
+/// interaction slider is idle. AppKit owns the complete knob presentation;
+/// the clear fill suppresses this slider's bar while the semantic cover stays
+/// continuous underneath it.
+private final class QuotaPassiveKnobSlider: NSSlider {
     override init(frame frameRect: NSRect) {
-        knobCell = NSSliderCell()
         super.init(frame: frameRect)
-        wantsLayer = false
+        minValue = 0
+        maxValue = 100
+        doubleValue = 0
+        sliderType = .linear
+        controlSize = .regular
+        isContinuous = true
+        numberOfTickMarks = 0
+        trackFillColor = .clear
+        target = nil
+        action = nil
         setAccessibilityElement(false)
-        knobCell.sliderType = .linear
-        knobCell.controlSize = .regular
-        knobCell.minValue = 0
-        knobCell.maxValue = 100
-        knobCell.isEnabled = true
-        knobCell.isHighlighted = false
-        knobCell.controlView = self
     }
 
     required init?(coder: NSCoder) { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        knobCell.isHighlighted = false
-        knobCell.drawKnob(bounds)
-    }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
@@ -197,6 +192,7 @@ final class QuotaColorThresholdSlider: NSControl {
         let color: QuotaProgressColor
         let frame: NSRect
         let isHidden: Bool
+        let knobMidX: CGFloat
     }
 
     /// A render-observable portion of the coloured track.  Keeping this
@@ -209,7 +205,7 @@ final class QuotaColorThresholdSlider: NSControl {
 
     private var configurationStorage: QuotaProgressColorConfiguration
     private var boundarySliders: [QuotaProgressColor: ThresholdInteractionSlider] = [:]
-    private var passiveKnobViews: [QuotaProgressColor: QuotaPassiveKnobView] = [:]
+    private var passiveKnobViews: [QuotaProgressColor: QuotaPassiveKnobSlider] = [:]
     private let trackView = QuotaThresholdTrackView()
     private let leftTrackCover = QuotaThresholdTrackCoverSliceView()
     private let rightTrackCover = QuotaThresholdTrackCoverSliceView()
@@ -263,6 +259,9 @@ final class QuotaColorThresholdSlider: NSControl {
     var passiveKnobIdentityByColor: [QuotaProgressColor: ObjectIdentifier] {
         Dictionary(uniqueKeysWithValues: passiveKnobViews.map { ($0.key, ObjectIdentifier($0.value)) })
     }
+    var debugNativeSliderAlphaByColor: [QuotaProgressColor: CGFloat] {
+        Dictionary(uniqueKeysWithValues: boundarySliders.map { ($0.key, $0.value.alphaValue) })
+    }
     var usesNSSliderThumbs: Bool { nativeThumbSliders.allSatisfy { $0.superview === self } }
     var usesCustomSliderCell: Bool { nativeThumbSliders.contains { !($0.cell is NSSliderCell) } }
     /// All custom colour sources, including the continuous semantic track and
@@ -305,7 +304,15 @@ final class QuotaColorThresholdSlider: NSControl {
     var debugPassiveKnobStates: [DebugPassiveKnobState] {
         layoutSubtreeIfNeeded()
         return activeBoundaries.compactMap { color, _ in
-            passiveKnobViews[color].map { DebugPassiveKnobState(color: color, frame: $0.frame, isHidden: $0.isHidden) }
+            guard let passiveKnob = passiveKnobViews[color],
+                  let cell = passiveKnob.cell as? NSSliderCell else { return nil }
+            let knob = passiveKnob.convert(cell.knobRect(flipped: passiveKnob.isFlipped), to: self)
+            return DebugPassiveKnobState(
+                color: color,
+                frame: passiveKnob.frame,
+                isHidden: passiveKnob.isHidden,
+                knobMidX: knob.midX
+            )
         }
     }
 
@@ -460,11 +467,12 @@ final class QuotaColorThresholdSlider: NSControl {
             passiveKnobViews.removeValue(forKey: color)
         }
         for color in orderedColors where passiveKnobViews[color] == nil {
-            let passiveKnob = QuotaPassiveKnobView(frame: .zero)
+            let passiveKnob = QuotaPassiveKnobSlider(frame: .zero)
             passiveKnobViews[color] = passiveKnob
             addSubview(passiveKnob, positioned: .above, relativeTo: rightTrackCover)
         }
         synchronizePassiveKnobVisibility()
+        synchronizeInteractionSliderVisibility()
         needsLayout = true
         needsDisplay = true
     }
@@ -485,6 +493,7 @@ final class QuotaColorThresholdSlider: NSControl {
             lastSnappedValues[color] = value
             updateInteractionAccessibility(for: color, value: value)
         }
+        synchronizeInteractionSliderVisibility()
         guard let activeBoundaryColor,
               let value = configurationStorage.boundary(after: activeBoundaryColor) else { return }
         if let slider = slider(for: activeBoundaryColor), abs(slider.doubleValue - Double(value)) > 0.01 {
@@ -528,6 +537,7 @@ final class QuotaColorThresholdSlider: NSControl {
         trackingColor = color
         trackingChangeIndex = 0
         hoverWorkItem?.cancel()
+        synchronizeInteractionSliderVisibility()
         passiveKnobViews[color]?.isHidden = true
         updateTrackCoverGeometry()
         invalidateVisuals()
@@ -575,6 +585,7 @@ final class QuotaColorThresholdSlider: NSControl {
         guard trackingColor == color else { return }
         defer {
             trackingColor = nil
+            synchronizeInteractionSliderVisibility()
             layoutPassiveKnobViews()
             updateTrackCoverGeometry()
             passiveKnobViews[color]?.isHidden = false
@@ -646,6 +657,7 @@ final class QuotaColorThresholdSlider: NSControl {
             trackingColor = nil
         }
         synchronizePassiveKnobVisibility()
+        synchronizeInteractionSliderVisibility()
         layoutPassiveKnobViews()
         updateTrackCoverGeometry()
     }
@@ -684,20 +696,23 @@ final class QuotaColorThresholdSlider: NSControl {
         }
     }
 
+    private func synchronizeInteractionSliderVisibility() {
+        for (color, slider) in boundarySliders {
+            slider.alphaValue = trackingColor == color ? 1 : 0
+        }
+    }
+
     private func layoutPassiveKnobViews() {
         for (color, value) in activeBoundaries {
-            guard let passiveKnob = passiveKnobViews[color],
-                  let nativeKnob = knobRect(for: color),
-                  let center = stableKnobCenter(for: value) else { continue }
-            passiveKnob.frame = NSRect(
-                x: center - nativeKnob.width / 2,
-                y: nativeKnob.midY - nativeKnob.height / 2,
-                width: nativeKnob.width,
-                height: nativeKnob.height
-            )
+            guard let passiveKnob = passiveKnobViews[color] else { continue }
+            passiveKnob.frame = sliderFrame
+            passiveKnob.minValue = 0
+            passiveKnob.maxValue = 100
+            passiveKnob.doubleValue = Double(value)
             passiveKnob.needsDisplay = true
         }
         synchronizePassiveKnobVisibility()
+        synchronizeInteractionSliderVisibility()
     }
 
     private func hitThumb(at point: NSPoint) -> QuotaProgressColor? {

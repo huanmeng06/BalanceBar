@@ -192,7 +192,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(all.thumbCount, 3)
         XCTAssertEqual(all.nativeThumbSliders.count, 3)
         XCTAssertEqual(all.passiveKnobCount, 3)
-        XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, 3)
+        XCTAssertEqual(all.subviews.compactMap { $0 as? NSSlider }.count, all.nativeThumbSliders.count + all.passiveKnobCount)
         XCTAssertTrue(all.usesNSSliderThumbs)
         XCTAssertFalse(all.usesCustomSliderCell)
         XCTAssertTrue(all.nativeThumbSliders.allSatisfy { $0.cell is NSSliderCell })
@@ -393,10 +393,13 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
 
         let initialStates = slider.debugPassiveKnobStates
         XCTAssertEqual(initialStates.map(\.color), [.red, .orange, .yellow])
-        XCTAssertTrue(initialStates.allSatisfy { !$0.isHidden && $0.frame.width < slider.bounds.width })
+        XCTAssertTrue(initialStates.allSatisfy { !$0.isHidden })
+        let interactionFrame = try XCTUnwrap(slider.nativeThumbSliders.first?.frame)
+        XCTAssertTrue(initialStates.allSatisfy { $0.frame == interactionFrame })
+        XCTAssertTrue(slider.debugNativeSliderAlphaByColor.values.allSatisfy { $0 == 0 })
         for state in initialStates {
             let center = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[state.color])
-            XCTAssertEqual(state.frame.midX, center, accuracy: 0.01)
+            XCTAssertEqual(state.knobMidX, center, accuracy: 0.01)
         }
 
         slider.setTrackingColorForTesting(.orange)
@@ -404,9 +407,13 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(trackingStates.first(where: { $0.color == .red })).isHidden)
         XCTAssertTrue(try XCTUnwrap(trackingStates.first(where: { $0.color == .orange })).isHidden)
         XCTAssertFalse(try XCTUnwrap(trackingStates.first(where: { $0.color == .yellow })).isHidden)
+        XCTAssertEqual(slider.debugNativeSliderAlphaByColor[.red], 0)
+        XCTAssertEqual(slider.debugNativeSliderAlphaByColor[.orange], 1)
+        XCTAssertEqual(slider.debugNativeSliderAlphaByColor[.yellow], 0)
 
         slider.setTrackingColorForTesting(nil)
         XCTAssertTrue(slider.debugPassiveKnobStates.allSatisfy { !$0.isHidden })
+        XCTAssertTrue(slider.debugNativeSliderAlphaByColor.values.allSatisfy { $0 == 0 })
     }
 
     func testPersistentSliderIdentitySurvivesResizeAndEnabledColorReconciliation() {
