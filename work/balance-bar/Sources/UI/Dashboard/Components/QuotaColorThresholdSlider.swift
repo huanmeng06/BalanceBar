@@ -504,6 +504,7 @@ final class QuotaColorThresholdSlider: NSControl {
     var debugScaleRequiredHeight: CGFloat { scaleView.requiredHeight }
     var debugScaleFrame: NSRect { scaleView.frame }
     var debugSliderFrame: NSRect { sliderFrame }
+    var debugScaleGapBelowNativeTrack: CGFloat { nativeTrackRect.minY - scaleView.frame.maxY }
     var debugScaleDoesNotHitTest: Bool {
         scaleView.hitTest(NSPoint(x: scaleView.bounds.midX, y: scaleView.bounds.midY)) == nil
     }
@@ -634,6 +635,7 @@ final class QuotaColorThresholdSlider: NSControl {
     }
 
     private static let sliderRegionHeight: CGFloat = 34
+    private static let scaleGapBelowNativeTrack: CGFloat = 3
 
     private var sliderRegionFrame: NSRect {
         let height = min(Self.sliderRegionHeight, max(0, bounds.height))
@@ -650,9 +652,10 @@ final class QuotaColorThresholdSlider: NSControl {
     }
     private var scaleFrame: NSRect {
         let scaleHeight = scaleView.requiredHeight
+        let desiredMinY = stableNativeTrackRect.minY - scaleHeight - Self.scaleGapBelowNativeTrack
         return NSRect(
             x: bounds.minX,
-            y: bounds.minY,
+            y: max(bounds.minY, desiredMinY),
             width: bounds.width,
             height: min(scaleHeight, max(0, bounds.height))
         )
@@ -663,6 +666,20 @@ final class QuotaColorThresholdSlider: NSControl {
             return sliderFrame
         }
         return slider.convert(cell.barRect(flipped: slider.isFlipped), to: self)
+    }
+    private var stableNativeTrackRect: NSRect {
+        geometryProbe.frame = sliderFrame
+        geometryProbe.doubleValue = 100
+        geometryProbe.doubleValue = 0
+        geometryProbe.layoutSubtreeIfNeeded()
+        guard let cell = geometryProbe.cell as? NSSliderCell else { return sliderFrame }
+        let bar = cell.barRect(flipped: geometryProbe.isFlipped)
+        return NSRect(
+            x: geometryProbe.frame.minX + bar.minX,
+            y: geometryProbe.frame.minY + bar.minY,
+            width: bar.width,
+            height: bar.height
+        )
     }
     private var activeBoundaries: [(QuotaProgressColor, Int)] {
         configurationStorage.enabledColorsInOrder.dropLast().compactMap { color in
@@ -693,9 +710,9 @@ final class QuotaColorThresholdSlider: NSControl {
     override func layout() {
         super.layout()
         trackView.frame = bounds
-        scaleView.frame = scaleFrame
         for slider in boundarySliders.values { slider.frame = sliderFrame }
         synchronizeBoundarySliders()
+        scaleView.frame = scaleFrame
         layoutPassiveKnobViews()
         updateTrackCoverGeometry()
         if let activePopoverColor { updatePopoverAnchor(for: activePopoverColor) }

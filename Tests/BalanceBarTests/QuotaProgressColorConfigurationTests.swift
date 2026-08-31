@@ -94,8 +94,13 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(slider.debugScaleHighContrastTickCount, 21)
         XCTAssertTrue(slider.debugScaleUsesSecondaryLabelColorForHighContrastTicks)
         XCTAssertEqual(slider.debugScaleHighContrastTickDiameter, 2, accuracy: 0.01)
-        XCTAssertEqual(slider.debugScaleFrame.minY, slider.bounds.minY, accuracy: 0.01)
         XCTAssertEqual(slider.debugScaleFrame.height, slider.debugScaleRequiredHeight, accuracy: 0.01)
+        XCTAssertEqual(slider.debugScaleGapBelowNativeTrack, 3, accuracy: 0.01)
+        XCTAssertEqual(
+            slider.debugScaleFrame.maxY,
+            slider.debugNativeTrackRect.minY - slider.debugScaleGapBelowNativeTrack,
+            accuracy: 0.01
+        )
         XCTAssertEqual(slider.debugSliderFrame.maxY, slider.bounds.maxY - 3, accuracy: 0.01)
         XCTAssertTrue(slider.debugScaleDoesNotHitTest)
 
@@ -143,6 +148,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         )
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
         XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
+        XCTAssertEqual(slider.debugScaleGapBelowNativeTrack, 3, accuracy: 0.01)
         assertTickCenterSequence(
             slider.debugScaleHighContrastTickCenters,
             match: resizedCenters.keys.sorted().compactMap { resizedCenters[$0] }
