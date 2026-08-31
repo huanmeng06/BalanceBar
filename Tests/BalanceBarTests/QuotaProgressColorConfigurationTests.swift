@@ -104,6 +104,8 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(slider.debugSliderFrame.maxY, slider.bounds.maxY - 3, accuracy: 0.01)
         XCTAssertTrue(slider.debugScaleDrawsBelowKnobs)
         XCTAssertTrue(slider.debugScaleDoesNotHitTest)
+        XCTAssertTrue(slider.debugTooltipsAreEnabled)
+        XCTAssertEqual(slider.debugTooltipHoverDelay, 1, accuracy: 0.001)
 
         let nativeTickBands = slider.debugScaleNativeTickBands
         let nativeTickClipFrames = slider.debugScaleNativeTickClipFrames
@@ -171,6 +173,29 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(slider.debugScaleHighContrastTickCount, 21)
         XCTAssertEqual(slider.debugScaleTickCenters.keys.sorted(), QuotaThresholdSliderMath.logicalTicks)
         XCTAssertTrue(slider.debugScaleDrawsBelowKnobs)
+    }
+
+    func testPercentageTooltipAppearsImmediatelyForTrackingAndUpdatesWithSnappedValue() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 120),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 50)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+        defer { slider.teardown() }
+
+        slider.beginTrackingForTesting(.orange)
+        XCTAssertEqual(slider.debugTooltipColor, .orange)
+        XCTAssertEqual(slider.debugTooltipText, "25%")
+
+        slider.applyRawThumbValueForTesting(32.6, after: .orange)
+        XCTAssertEqual(slider.configuration.orangeUpperBound, 35)
+        XCTAssertEqual(slider.debugTooltipColor, .orange)
+        XCTAssertEqual(slider.debugTooltipText, "35%")
     }
 
     func testTrackCoverSlicesLeaveOnlyTheCurrentNativeKnobGap() {

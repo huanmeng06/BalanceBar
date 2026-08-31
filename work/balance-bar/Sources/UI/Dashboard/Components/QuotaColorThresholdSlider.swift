@@ -444,12 +444,13 @@ final class QuotaColorThresholdSlider: NSControl {
     private let popover = DashboardTextTooltip.makePopover()
     private let popoverLabel = NSTextField(labelWithString: "")
     private var hoverWorkItem: DispatchWorkItem?
+    private var hoveredColor: QuotaProgressColor?
     private var trackingAreaReference: NSTrackingArea?
     private var trackCoverGeometry = QuotaTrackCoverGeometry.make(bounds: .zero, hole: nil)
-    // Percentage hover/drag labels are part of the Issue contract.  They use
-    // the existing Dashboard tooltip presentation and do not alter native
-    // slider tracking.
-    private let popoverEnabled = false
+    // Percentage hover/drag labels use the existing Dashboard tooltip
+    // presentation and do not alter native slider tracking.
+    private static let hoverTooltipDelay: TimeInterval = 1
+    private let popoverEnabled = true
 
     var onChange: ((QuotaProgressColorConfiguration) -> Void)?
     var configuration: QuotaProgressColorConfiguration {
@@ -517,6 +518,10 @@ final class QuotaColorThresholdSlider: NSControl {
     var debugScaleDoesNotHitTest: Bool {
         scaleView.hitTest(NSPoint(x: scaleView.bounds.midX, y: scaleView.bounds.midY)) == nil
     }
+    var debugTooltipHoverDelay: TimeInterval { Self.hoverTooltipDelay }
+    var debugTooltipsAreEnabled: Bool { popoverEnabled }
+    var debugTooltipText: String { popoverLabel.stringValue }
+    var debugTooltipColor: QuotaProgressColor? { activePopoverColor }
     var debugNativeSliderAlphaByColor: [QuotaProgressColor: CGFloat] {
         Dictionary(uniqueKeysWithValues: boundarySliders.map { ($0.key, $0.value.alphaValue) })
     }
@@ -628,6 +633,7 @@ final class QuotaColorThresholdSlider: NSControl {
     func teardown() {
         hoverWorkItem?.cancel()
         hoverWorkItem = nil
+        hoveredColor = nil
         trackingColor = nil
         synchronizePassiveKnobVisibility()
         dismissPopover()
@@ -817,6 +823,7 @@ final class QuotaColorThresholdSlider: NSControl {
         if oldColors != value.enabledColors {
             trackingColor = nil
             if let focusedColor, !value.enabledColors.contains(focusedColor) { self.focusedColor = nil }
+            hoveredColor = nil
             dismissPopover()
             reconcileBoundarySliders()
             reconcilePassiveKnobViews()
@@ -845,6 +852,8 @@ final class QuotaColorThresholdSlider: NSControl {
         trackingColor = color
         trackingChangeIndex = 0
         hoverWorkItem?.cancel()
+        hoverWorkItem = nil
+        hoveredColor = nil
         synchronizeInteractionSliderVisibility()
         passiveKnobViews[color]?.isHidden = true
         updateTrackCoverGeometry()
@@ -902,8 +911,10 @@ final class QuotaColorThresholdSlider: NSControl {
         }
         guard activePopoverColor == color else { dismissPopover(); return }
         if let point = currentMousePoint(), let knob = knobRect(for: color), knob.insetBy(dx: -5, dy: -5).contains(point) {
+            hoveredColor = color
             updatePopoverAnchor(for: color)
         } else {
+            hoveredColor = nil
             dismissPopover()
         }
     }
@@ -914,23 +925,36 @@ final class QuotaColorThresholdSlider: NSControl {
             updatePopoverAnchor(for: trackingColor)
             return
         }
-        hoverWorkItem?.cancel()
         let point = convert(event.locationInWindow, from: nil)
         let color = hitThumb(at: point)
-        activePopoverColor = color
-        if let color {
-            let item = DispatchWorkItem { [weak self] in self?.presentPopover(for: color) }
-            hoverWorkItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
-        } else {
-            dismissPopover()
+        guard color != hoveredColor else {
+            if let color, activePopoverColor == color { updatePopoverAnchor(for: color) }
+            return
         }
+
+        hoverWorkItem?.cancel()
+        hoverWorkItem = nil
+        hoveredColor = color
+        dismissPopover()
+        guard let color else { return }
+
+        let item = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.trackingColor == nil,
+                  self.hoveredColor == color else { return }
+            self.hoverWorkItem = nil
+            self.presentPopover(for: color)
+        }
+        hoverWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.hoverTooltipDelay, execute: item)
     }
 
     override func mouseExited(with event: NSEvent) {
         guard popoverEnabled else { return }
         guard trackingColor == nil else { return }
         hoverWorkItem?.cancel()
+        hoverWorkItem = nil
+        hoveredColor = nil
         dismissPopover()
     }
 
@@ -968,6 +992,10 @@ final class QuotaColorThresholdSlider: NSControl {
         synchronizeInteractionSliderVisibility()
         layoutPassiveKnobViews()
         updateTrackCoverGeometry()
+    }
+
+    func beginTrackingForTesting(_ color: QuotaProgressColor) {
+        beginTracking(color: color)
     }
 
     private func cell(for color: QuotaProgressColor) -> NSSliderCell? {
