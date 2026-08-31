@@ -505,6 +505,15 @@ final class QuotaColorThresholdSlider: NSControl {
     var debugScaleFrame: NSRect { scaleView.frame }
     var debugSliderFrame: NSRect { sliderFrame }
     var debugScaleGapBelowNativeTrack: CGFloat { nativeTrackRect.minY - scaleView.frame.maxY }
+    var debugScaleDrawsBelowKnobs: Bool {
+        guard let scaleIndex = subviews.firstIndex(where: { $0 === scaleView }) else { return false }
+        let knobViews: [NSView] = nativeThumbSliders.map { $0 as NSView } +
+            passiveKnobViews.values.map { $0 as NSView }
+        return knobViews.allSatisfy { knob in
+            guard let knobIndex = subviews.firstIndex(where: { $0 === knob }) else { return false }
+            return scaleIndex < knobIndex
+        }
+    }
     var debugScaleDoesNotHitTest: Bool {
         scaleView.hitTest(NSPoint(x: scaleView.bounds.midX, y: scaleView.bounds.midY)) == nil
     }
@@ -586,7 +595,10 @@ final class QuotaColorThresholdSlider: NSControl {
             return center - self.scaleView.frame.minX + self.scaleView.bounds.minX
         }
         scaleView.setAccessibilityElement(false)
-        addSubview(scaleView)
+        // Keep the scale in the same vertical position, but below every knob.
+        // A dot aligned with a boundary must disappear behind its knob rather
+        // than being painted on top of it.
+        addSubview(scaleView, positioned: .above, relativeTo: trackView)
 
         let contentView = NSView(frame: .zero)
         DashboardTextTooltip.configure(popoverLabel, alignment: .center)

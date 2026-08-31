@@ -102,6 +102,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
             accuracy: 0.01
         )
         XCTAssertEqual(slider.debugSliderFrame.maxY, slider.bounds.maxY - 3, accuracy: 0.01)
+        XCTAssertTrue(slider.debugScaleDrawsBelowKnobs)
         XCTAssertTrue(slider.debugScaleDoesNotHitTest)
 
         let nativeTickBands = slider.debugScaleNativeTickBands
@@ -149,6 +150,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
         XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
         XCTAssertEqual(slider.debugScaleGapBelowNativeTrack, 3, accuracy: 0.01)
+        XCTAssertTrue(slider.debugScaleDrawsBelowKnobs)
         assertTickCenterSequence(
             slider.debugScaleHighContrastTickCenters,
             match: resizedCenters.keys.sorted().compactMap { resizedCenters[$0] }
@@ -168,6 +170,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
         XCTAssertEqual(slider.debugScaleHighContrastTickCount, 21)
         XCTAssertEqual(slider.debugScaleTickCenters.keys.sorted(), QuotaThresholdSliderMath.logicalTicks)
+        XCTAssertTrue(slider.debugScaleDrawsBelowKnobs)
     }
 
     func testTrackCoverSlicesLeaveOnlyTheCurrentNativeKnobGap() {
