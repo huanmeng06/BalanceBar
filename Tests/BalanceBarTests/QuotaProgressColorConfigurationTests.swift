@@ -352,6 +352,33 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         }
     }
 
+    func testSemanticBoundaryUsesModelGeometryWhenNativePresentationIsAhead() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let slider = QuotaColorThresholdSlider(configuration: .default)
+        slider.frame = NSRect(x: 20, y: 30, width: 420, height: 34)
+        window.contentView?.addSubview(slider)
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        let initialNativeCenter = try XCTUnwrap(slider.debugThumbStates.first(where: { $0.color == .red })?.knobMidX)
+        let initialSemanticCenter = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[.red])
+        XCTAssertEqual(initialSemanticCenter, initialNativeCenter, accuracy: 0.01)
+
+        slider.setNativeSliderPresentationValueForTesting(12.6, after: .red)
+
+        let aheadNativeCenter = try XCTUnwrap(slider.debugThumbStates.first(where: { $0.color == .red })?.knobMidX)
+        let semanticCenter = try XCTUnwrap(slider.debugRenderedColorBoundaryCenters[.red])
+        XCTAssertNotEqual(aheadNativeCenter, initialNativeCenter)
+        XCTAssertEqual(semanticCenter, initialNativeCenter, accuracy: 0.01)
+        XCTAssertTrue(slider.debugRenderedColorTrackSegments.contains {
+            $0.color == .red && abs($0.frame.maxX - semanticCenter) <= 0.01
+        })
+    }
+
     func testPersistentSliderIdentitySurvivesResizeAndEnabledColorReconciliation() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 700, height: 120),

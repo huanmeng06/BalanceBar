@@ -53,6 +53,7 @@ private final class ThresholdInteractionSlider: NSSlider {
     required init?(coder: NSCoder) { nil }
 
     @objc private func valueChanged(_ sender: NSSlider) {
+        Self.logger.debug("quota native slider valueChanged color=\(self.boundaryColor.rawValue, privacy: .public) raw=\(sender.doubleValue, privacy: .public)")
         onTrackingChanged?(sender.doubleValue)
     }
 
@@ -180,6 +181,19 @@ final class QuotaColorThresholdSlider: NSControl {
     private var trackingColor: QuotaProgressColor?
     private var focusedColor: QuotaProgressColor?
     private var lastSnappedValues: [QuotaProgressColor: Int] = [:]
+    private var trackingChangeIndex = 0
+    private let geometryProbe: NSSlider = {
+        let slider = NSSlider()
+        slider.minValue = 0
+        slider.maxValue = 100
+        slider.doubleValue = 0
+        slider.sliderType = .linear
+        slider.controlSize = .regular
+        slider.isContinuous = true
+        slider.numberOfTickMarks = 0
+        slider.trackFillColor = .clear
+        return slider
+    }()
     private let popover = DashboardTextTooltip.makePopover()
     private let popoverLabel = NSTextField(labelWithString: "")
     private var hoverWorkItem: DispatchWorkItem?
@@ -224,7 +238,7 @@ final class QuotaColorThresholdSlider: NSControl {
     }
     var debugRenderedColorBoundaryCenters: [QuotaProgressColor: CGFloat] {
         Dictionary(uniqueKeysWithValues: activeBoundaries.compactMap { color, _ in
-            knobRect(for: color).map { (color, $0.midX) }
+            stableKnobCenter(for: color).map { (color, $0) }
         })
     }
     var debugRenderedColorTrackSegments: [DebugColorTrackSegment] {
@@ -443,6 +457,7 @@ final class QuotaColorThresholdSlider: NSControl {
         activeBoundaryColor = color
         focusedColor = color
         trackingColor = color
+        trackingChangeIndex = 0
         hoverWorkItem?.cancel()
         updateTrackCoverGeometry()
         invalidateVisuals()
@@ -454,11 +469,18 @@ final class QuotaColorThresholdSlider: NSControl {
 
     private func applyTrackedBoundaryChange(color: QuotaProgressColor, value: Double) {
         let old = configurationStorage.boundary(after: color) ?? 0
-        let updated = configurationStorage.settingBoundary(after: color, to: QuotaThresholdSliderMath.snapped(value))
+        let snappedValue = QuotaThresholdSliderMath.snapped(value)
+        let updated = configurationStorage.settingBoundary(after: color, to: snappedValue)
         guard let actual = updated.boundary(after: color) else { return }
+        if trackingColor == color { trackingChangeIndex += 1 }
         slider(for: color)?.doubleValue = Double(actual)
         configurationStorage = updated
         updateInteractionAccessibility(for: color, value: actual)
+        let nativeKnobMidX = knobRect(for: color)?.midX ?? -1
+        let semanticBoundaryMidX = stableKnobCenter(for: actual) ?? -1
+        Self.logger.debug(
+            "quota tracking change #\(self.trackingChangeIndex, privacy: .public) color=\(color.rawValue, privacy: .public) old=\(old, privacy: .public) raw=\(value, privacy: .public) snapped=\(snappedValue, privacy: .public) actual=\(actual, privacy: .public) nativeX=\(nativeKnobMidX, privacy: .public) semanticX=\(semanticBoundaryMidX, privacy: .public)"
+        )
         if trackingColor == color { updatePopoverAnchor(for: color, value: actual) }
         guard actual != old else { return }
         updateTrackCoverGeometry()
@@ -539,6 +561,10 @@ final class QuotaColorThresholdSlider: NSControl {
         applyTrackedBoundaryChange(color: color, value: value)
     }
 
+    func setNativeSliderPresentationValueForTesting(_ value: Double, after color: QuotaProgressColor) {
+        slider(for: color)?.doubleValue = value
+    }
+
     func setTrackingColorForTesting(_ color: QuotaProgressColor?) {
         if let color, let value = configurationStorage.boundary(after: color) {
             activeBoundaryColor = color
@@ -559,6 +585,23 @@ final class QuotaColorThresholdSlider: NSControl {
         guard let slider = slider(for: color) else { return nil }
         let knob = cell.knobRect(flipped: slider.isFlipped)
         return slider.convert(knob, to: self)
+    }
+
+    private func stableKnobCenter(for color: QuotaProgressColor) -> CGFloat? {
+        guard let value = configurationStorage.boundary(after: color) else { return nil }
+        return stableKnobCenter(for: value)
+    }
+
+    private func stableKnobCenter(for value: Int) -> CGFloat? {
+        geometryProbe.frame = sliderFrame
+        geometryProbe.doubleValue = Double(value)
+        guard let cell = geometryProbe.cell as? NSSliderCell else { return nil }
+        return geometryProbe.frame.minX + cell.knobRect(flipped: geometryProbe.isFlipped).midX
+    }
+
+    private func stableKnobCenter(for value: Int, in view: NSView) -> CGFloat? {
+        guard let center = stableKnobCenter(for: value) else { return nil }
+        return view.convert(NSPoint(x: center, y: bounds.midY), from: self).x
     }
 
     private func hitThumb(at point: NSPoint) -> QuotaProgressColor? {
@@ -659,7 +702,7 @@ final class QuotaColorThresholdSlider: NSControl {
         NSColor.tertiaryLabelColor.setStroke()
         for tick in QuotaThresholdSliderMath.visibleTicks(width: bounds.width, thumbValues: activeBoundaries.map(\.1)) {
             let x = activeBoundaries.first(where: { $0.1 == tick })
-                .flatMap { knobRect(for: $0.0).map { drawingView.convert($0, from: self).midX } }
+                .flatMap { stableKnobCenter(for: $0.1, in: drawingView) }
                 ?? track.minX + track.width * CGFloat(tick) / 100
             let path = NSBezierPath()
             path.move(to: NSPoint(x: x, y: track.minY - 3))
@@ -674,8 +717,8 @@ final class QuotaColorThresholdSlider: NSControl {
     ) -> [DebugColorTrackSegment] {
         let track = drawingView.convert(nativeTrackRect, from: self)
         let colorTrack = QuotaThresholdTrackGeometry.customColorTrackRect(from: track)
-        let boundaryXs = activeBoundaries.map { color, _ in
-            knobRect(for: color).map { drawingView.convert($0, from: self).midX } ?? track.minX
+        let boundaryXs = activeBoundaries.map { _, value in
+            stableKnobCenter(for: value, in: drawingView) ?? track.minX
         }
         let segmentXs = [colorTrack.minX] + boundaryXs + [colorTrack.maxX]
         let holes = excludingNativeKnobs
@@ -731,5 +774,7 @@ final class QuotaColorThresholdSlider: NSControl {
         leftTrackCover.needsDisplay = true
         rightTrackCover.needsDisplay = true
     }
+
+    private static let logger = Logger(subsystem: "com.huanmeng06.BalanceBar", category: "QuotaThresholdSlider")
 
 }
