@@ -82,24 +82,32 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(slider.intrinsicContentSize.height, 34 + slider.debugScaleRequiredHeight, accuracy: 0.01)
         XCTAssertEqual(slider.debugScaleMajorTicks, [0, 25, 50, 75, 100])
         XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 5)
+        XCTAssertEqual(slider.debugScaleNativeTickRendererCount, 5)
         XCTAssertEqual(slider.debugScaleNativeTickMarkPosition, .below)
         XCTAssertFalse(slider.debugScaleAllowsNativeTickMarkValuesOnly)
         XCTAssertTrue(slider.debugScaleUsesNativeTickMarks)
-        XCTAssertTrue(slider.debugScaleUsesBarSuppressedNativeCell)
+        XCTAssertTrue(slider.debugScaleAllRenderersUseStockCells)
         XCTAssertEqual(slider.debugScaleTextLabelCount, 0)
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
+        XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
         XCTAssertEqual(slider.debugScaleFrame.minY, slider.bounds.minY, accuracy: 0.01)
         XCTAssertEqual(slider.debugScaleFrame.height, slider.debugScaleRequiredHeight, accuracy: 0.01)
         XCTAssertEqual(slider.debugSliderFrame.maxY, slider.bounds.maxY - 3, accuracy: 0.01)
         XCTAssertTrue(slider.debugScaleDoesNotHitTest)
 
-        let nativeTickBand = slider.debugScaleNativeTickBand
-        let nativeTickClipFrame = slider.debugScaleNativeTickClipFrame
-        XCTAssertFalse(nativeTickBand.isNull)
-        XCTAssertEqual(nativeTickBand.minY, nativeTickClipFrame.minY, accuracy: 0.01)
-        XCTAssertEqual(nativeTickBand.maxY, nativeTickClipFrame.maxY, accuracy: 0.01)
-        XCTAssertGreaterThan(nativeTickClipFrame.height, 0)
-        XCTAssertLessThanOrEqual(nativeTickClipFrame.maxY, slider.debugScaleFrame.maxY + 0.01)
+        let nativeTickBands = slider.debugScaleNativeTickBands
+        let nativeTickClipFrames = slider.debugScaleNativeTickClipFrames
+        XCTAssertEqual(nativeTickBands.count, 5)
+        XCTAssertEqual(nativeTickClipFrames.count, 5)
+        for (nativeTickBand, nativeTickClipFrame) in zip(nativeTickBands, nativeTickClipFrames) {
+            XCTAssertFalse(nativeTickBand.isNull)
+            XCTAssertGreaterThan(nativeTickClipFrame.width, 0)
+            XCTAssertGreaterThan(nativeTickClipFrame.height, 0)
+            XCTAssertTrue(nativeTickBand.intersects(nativeTickClipFrame))
+            XCTAssertEqual(nativeTickBand.minY, nativeTickClipFrame.minY, accuracy: 0.01)
+            XCTAssertEqual(nativeTickBand.maxY, nativeTickClipFrame.maxY, accuracy: 0.01)
+            XCTAssertLessThanOrEqual(nativeTickClipFrame.maxY, slider.debugScaleFrame.maxY + 0.01)
+        }
 
         let centers = slider.debugScaleMajorTickCenters
         XCTAssertEqual(centers, slider.debugScaleGeometryMajorTickCenters)
@@ -116,6 +124,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(resizedCenters, slider.debugScaleGeometryMajorTickCenters)
         XCTAssertEqual(slider.debugScaleNativeMajorTickCenters, slider.debugScaleGeometryMajorTickCenters)
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
+        XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
         XCTAssertEqual(resizedCenters.keys.sorted(), [0, 25, 50, 75, 100])
         let orderedResizedCenters = resizedCenters.sorted { $0.key < $1.key }.map(\.value)
         XCTAssertTrue(zip(orderedResizedCenters, orderedResizedCenters.dropFirst()).allSatisfy { current, next in
@@ -128,6 +137,7 @@ final class QuotaProgressColorConfigurationTests: XCTestCase {
         XCTAssertEqual(slider.debugScaleNativeTickMarkCount, 5)
         XCTAssertEqual(slider.debugScaleTextLabelCount, 0)
         XCTAssertTrue(slider.debugScaleNativeTickMarksAreFullyVisible)
+        XCTAssertTrue(slider.debugScaleNativeTickClipsAreDiscrete)
         XCTAssertEqual(slider.debugScaleMajorTickCenters.keys.sorted(), [0, 25, 50, 75, 100])
     }
 

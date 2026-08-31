@@ -107,18 +107,9 @@ private final class QuotaThresholdTrackCoverSliceView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// The scale remains a real AppKit slider, but only its native ticks are
-/// visible. Its bar and knob belong to the hidden display-only scale and must
-/// not introduce a second grey track or knob under the semantic quota track.
-private final class QuotaNativeScaleSliderCell: NSSliderCell {
-    override func drawBar(inside rect: NSRect, flipped: Bool) {}
-    override func drawKnob(_ knobRect: NSRect) {}
-}
-
 private final class QuotaNativeScaleSlider: NSSlider {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        cell = QuotaNativeScaleSliderCell()
         minValue = 0
         maxValue = 100
         doubleValue = 0
@@ -139,9 +130,9 @@ private final class QuotaNativeScaleSlider: NSSlider {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// Clips the scale down to the exact band returned by AppKit for its native
-/// tick marks. QuotaNativeScaleSliderCell suppresses the bar and knob while
-/// NSSliderCell still performs the native tick rendering.
+/// Clips one stock scale slider down to the exact rect returned by AppKit for
+/// its single native tick. Each clip is independent so the other stock
+/// slider content cannot form one continuous scale bar.
 private final class QuotaNativeTickClipView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -156,11 +147,15 @@ private final class QuotaNativeTickClipView: NSView {
 }
 
 /// Owns only the scale underneath the quota slider. Keeping this separate from
-/// the semantic track prevents tick styling and labels from changing the
+/// the semantic track prevents native tick rendering from changing the
 /// colour-track drawing or native slider event path.
 final class DashboardSliderScaleView: NSView {
-    private let nativeSlider = QuotaNativeScaleSlider(frame: .zero)
-    private let nativeTickClipView = QuotaNativeTickClipView(frame: .zero)
+    private let nativeSliders = QuotaThresholdSliderMath.majorTicks.map { _ in
+        QuotaNativeScaleSlider(frame: .zero)
+    }
+    private let nativeTickClipViews = QuotaThresholdSliderMath.majorTicks.map { _ in
+        QuotaNativeTickClipView(frame: .zero)
+    }
     var positionForValue: ((Int) -> CGFloat?)?
 
     var majorTicks: [Int] { QuotaThresholdSliderMath.majorTicks }
@@ -169,47 +164,65 @@ final class DashboardSliderScaleView: NSView {
             positionForValue?(value).map { (value, $0) }
         })
     }
-    var nativeTickMarkCount: Int { nativeSlider.numberOfTickMarks }
-    var nativeTickMarkPosition: NSSlider.TickMarkPosition { nativeSlider.tickMarkPosition }
-    var allowsNativeTickMarkValuesOnly: Bool { nativeSlider.allowsTickMarkValuesOnly }
-    var usesNativeTickMarks: Bool {
-        nativeSlider.cell is NSSliderCell && nativeSlider.numberOfTickMarks > 0
+    var nativeTickMarkCount: Int { nativeSliders.first?.numberOfTickMarks ?? 0 }
+    var nativeTickRendererCount: Int { nativeSliders.count }
+    var nativeTickMarkPosition: NSSlider.TickMarkPosition {
+        nativeSliders.first?.tickMarkPosition ?? .below
     }
-    var usesBarSuppressedNativeCell: Bool { nativeSlider.cell is QuotaNativeScaleSliderCell }
+    var allowsNativeTickMarkValuesOnly: Bool {
+        nativeSliders.first?.allowsTickMarkValuesOnly ?? false
+    }
+    var usesNativeTickMarks: Bool {
+        nativeSliders.count == majorTicks.count && nativeSliders.allSatisfy { slider in
+            slider.numberOfTickMarks == majorTicks.count &&
+                slider.cell.map { type(of: $0) == NSSliderCell.self } ?? false
+        }
+    }
+    var allRenderersUseStockCells: Bool { usesNativeTickMarks }
     var textLabelCount: Int { subviews.compactMap { $0 as? NSTextField }.count }
     var nativeMajorTickCenters: [Int: CGFloat] {
-        Dictionary(uniqueKeysWithValues: majorTicks.enumerated().map { index, value in
-            let tickRect = nativeSlider.rectOfTickMark(at: index)
-            let center = nativeSlider.convert(NSPoint(x: tickRect.midX, y: tickRect.midY), to: self)
+        Dictionary(uniqueKeysWithValues: nativeSliders.enumerated().map { index, slider in
+            let tickRect = slider.rectOfTickMark(at: index)
+            let center = slider.convert(NSPoint(x: tickRect.midX, y: tickRect.midY), to: self)
+            let value = majorTicks[index]
             return (value, center.x)
         })
     }
-    var nativeTickBandInScaleView: NSRect {
-        nativeSlider.convert(nativeTickBandInSlider, to: self)
+    var nativeTickBandsInScaleView: [NSRect] {
+        nativeSliders.enumerated().map { index, slider in
+            let tickRect = slider.rectOfTickMark(at: index)
+            return slider.convert(tickRect, to: self)
+        }
     }
-    var nativeTickClipFrame: NSRect { nativeTickClipView.frame }
+    var nativeTickClipFrames: [NSRect] { nativeTickClipViews.map(\.frame) }
     var nativeTickMarksAreFullyVisible: Bool {
-        guard nativeSlider.numberOfTickMarks > 0 else { return false }
-        return (0..<nativeSlider.numberOfTickMarks).allSatisfy { index in
-            let tickRect = nativeSlider.rectOfTickMark(at: index)
-            let rectInClip = nativeSlider.convert(tickRect, to: nativeTickClipView)
-            let intersection = rectInClip.intersection(nativeTickClipView.bounds)
+        guard nativeSliders.count == majorTicks.count else { return false }
+        return zip(nativeSliders, nativeTickClipViews).enumerated().allSatisfy { index, pair in
+            let (slider, clipView) = pair
+            let tickRect = slider.rectOfTickMark(at: index)
+            let rectInClip = slider.convert(tickRect, to: clipView)
+            let intersection = rectInClip.intersection(clipView.bounds)
             return intersection.width > 0 && intersection.height > 0
         }
     }
-    var requiredHeight: CGFloat { nativeTickBandInSlider.height }
+    var nativeTickClipsAreDiscrete: Bool {
+        let frames = nativeTickClipFrames
+        return frames.count == majorTicks.count && zip(frames, frames.dropFirst()).allSatisfy {
+            !$0.intersects($1)
+        }
+    }
+    var requiredHeight: CGFloat {
+        nativeSliders.first?.rectOfTickMark(at: 0).height ?? 0
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         clipsToBounds = true
-        nativeSlider.frame = NSRect(
-            x: 0,
-            y: 0,
-            width: 300,
-            height: max(28, nativeSlider.intrinsicContentSize.height)
-        )
-        nativeTickClipView.addSubview(nativeSlider)
-        addSubview(nativeTickClipView)
+        autoresizesSubviews = false
+        for (slider, clipView) in zip(nativeSliders, nativeTickClipViews) {
+            clipView.addSubview(slider)
+            addSubview(clipView)
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -221,29 +234,32 @@ final class DashboardSliderScaleView: NSView {
         let lowerEndpoint = positionForValue?(0) ?? bounds.minX
         let upperEndpoint = positionForValue?(100) ?? bounds.maxX
         let sliderWidth = max(1, abs(upperEndpoint - lowerEndpoint))
-        let sliderHeight = max(28, nativeSlider.intrinsicContentSize.height)
-        nativeTickClipView.frame = bounds
-        nativeSlider.frame = NSRect(
-            x: min(lowerEndpoint, upperEndpoint) - bounds.minX,
-            y: 0,
-            width: sliderWidth,
-            height: sliderHeight
-        )
-        nativeTickClipView.layoutSubtreeIfNeeded()
+        let sliderOriginX = min(lowerEndpoint, upperEndpoint)
+        let sliderHeight = max(28, nativeSliders.first?.intrinsicContentSize.height ?? 28)
 
-        let tickBand = nativeTickBandInSlider
-        nativeTickClipView.frame.size.height = min(tickBand.height, bounds.height)
-        nativeSlider.setFrameOrigin(NSPoint(x: nativeSlider.frame.minX, y: -tickBand.minY))
+        for (index, pair) in zip(nativeSliders, nativeTickClipViews).enumerated() {
+            let (slider, clipView) = pair
+            clipView.frame = bounds
+            slider.frame = NSRect(x: 0, y: 0, width: sliderWidth, height: sliderHeight)
+            clipView.layoutSubtreeIfNeeded()
+            let tickRect = slider.rectOfTickMark(at: index)
+            let tickCenterX = sliderOriginX + tickRect.midX
+            clipView.frame = NSRect(
+                x: tickCenterX - tickRect.width / 2,
+                y: bounds.minY,
+                width: tickRect.width,
+                height: min(tickRect.height, bounds.height)
+            )
+            slider.frame = NSRect(
+                x: sliderOriginX - clipView.frame.minX,
+                y: -tickRect.minY,
+                width: sliderWidth,
+                height: sliderHeight
+            )
+        }
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    private var nativeTickBandInSlider: NSRect {
-        guard nativeSlider.numberOfTickMarks > 0 else { return .zero }
-        return (0..<nativeSlider.numberOfTickMarks)
-            .map { nativeSlider.rectOfTickMark(at: $0) }
-            .reduce(NSRect.null) { $0.union($1) }
-    }
 }
 
 /// A full-width display-only native slider used while the corresponding
@@ -417,15 +433,17 @@ final class QuotaColorThresholdSlider: NSControl {
         })
     }
     var debugScaleNativeTickMarkCount: Int { scaleView.nativeTickMarkCount }
+    var debugScaleNativeTickRendererCount: Int { scaleView.nativeTickRendererCount }
     var debugScaleNativeTickMarkPosition: NSSlider.TickMarkPosition { scaleView.nativeTickMarkPosition }
     var debugScaleAllowsNativeTickMarkValuesOnly: Bool { scaleView.allowsNativeTickMarkValuesOnly }
     var debugScaleUsesNativeTickMarks: Bool { scaleView.usesNativeTickMarks }
-    var debugScaleUsesBarSuppressedNativeCell: Bool { scaleView.usesBarSuppressedNativeCell }
+    var debugScaleAllRenderersUseStockCells: Bool { scaleView.allRenderersUseStockCells }
     var debugScaleTextLabelCount: Int { scaleView.textLabelCount }
     var debugScaleNativeMajorTickCenters: [Int: CGFloat] { scaleView.nativeMajorTickCenters }
-    var debugScaleNativeTickBand: NSRect { scaleView.nativeTickBandInScaleView }
-    var debugScaleNativeTickClipFrame: NSRect { scaleView.nativeTickClipFrame }
+    var debugScaleNativeTickBands: [NSRect] { scaleView.nativeTickBandsInScaleView }
+    var debugScaleNativeTickClipFrames: [NSRect] { scaleView.nativeTickClipFrames }
     var debugScaleNativeTickMarksAreFullyVisible: Bool { scaleView.nativeTickMarksAreFullyVisible }
+    var debugScaleNativeTickClipsAreDiscrete: Bool { scaleView.nativeTickClipsAreDiscrete }
     var debugScaleRequiredHeight: CGFloat { scaleView.requiredHeight }
     var debugScaleFrame: NSRect { scaleView.frame }
     var debugSliderFrame: NSRect { sliderFrame }
