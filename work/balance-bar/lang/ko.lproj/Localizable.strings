@@ -218,7 +218,7 @@
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
 "dashboard.general.and.refresh.pages.launch_at_login" = "로그인 시 실행";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "로그인 항목이 등록되었습니다. macOS에서 추가 승인이 필요할 수 있습니다";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "로그인 시 실행을 업데이트할 수 없습니다. 시스템 설정 → 일반 → 로그인 항목을 확인한 후 다시 시도하세요.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "로그인 항목 상태를 읽을 수 없습니다";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "설정 열기";

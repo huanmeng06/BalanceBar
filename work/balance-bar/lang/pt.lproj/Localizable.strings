@@ -218,7 +218,7 @@
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
 "dashboard.general.and.refresh.pages.launch_at_login" = "Iniciar ao iniciar sessão";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "O elemento de início de sessão está registado; o macOS pode exigir uma aprovação adicional";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Não foi possível atualizar «Iniciar ao iniciar sessão». Verifique Definições do Sistema → Geral → Elementos de início de sessão e tente novamente.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Não foi possível ler o estado do elemento de início de sessão";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Abrir definições";

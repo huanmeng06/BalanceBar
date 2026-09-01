@@ -218,7 +218,7 @@
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
 "dashboard.general.and.refresh.pages.launch_at_login" = "登录时自动启动";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "登录 Mac 后自动启动 BalanceBar";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "登录项已注册，系统可能需要进一步确认";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "登录 Mac 后自动启动 BalanceBar";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "无法更新“登录时自动启动”。请检查“系统设置”→“通用”→“登录项”后重试。";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "暂时无法读取登录项状态";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "打开设置";

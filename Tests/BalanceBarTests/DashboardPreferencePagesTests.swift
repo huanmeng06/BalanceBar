@@ -113,7 +113,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Login item registered; macOS may require additional approval"
+            $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
         })
 
         controller.refreshLaunchAtLogin(

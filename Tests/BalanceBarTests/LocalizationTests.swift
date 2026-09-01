@@ -692,18 +692,18 @@ final class LocalizationTests: XCTestCase {
 
     func testLaunchAtLoginCopyIsLocalizedAcrossAllTwelveLanguages() {
         let expected: [AppLanguage: (String, String, String)] = [
-            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar", "登录项已注册，系统可能需要进一步确认"),
-            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入項目已註冊，系統可能需要進一步確認"),
-            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入項目已註冊，系統可能需要進一步確認"),
-            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します", "ログイン項目は登録済みです。macOSで追加の確認が必要な場合があります"),
-            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac", "Login item registered; macOS may require additional approval"),
-            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다", "로그인 항목이 등록되었습니다. macOS에서 추가 승인이 필요할 수 있습니다"),
-            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac", "El ítem de inicio está registrado; macOS puede requerir una aprobación adicional"),
-            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten", "Das Anmeldeobjekt ist registriert; macOS benötigt möglicherweise eine zusätzliche Bestätigung"),
-            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac", "L’élément d’ouverture est enregistré ; macOS peut nécessiter une confirmation supplémentaire"),
-            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac", "O elemento de início de sessão está registado; o macOS pode exigir uma aprovação adicional"),
-            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac", "Объект входа зарегистрирован; macOS может потребовать дополнительного подтверждения"),
-            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac", "L’elemento login è registrato; macOS potrebbe richiedere un’ulteriore autorizzazione")
+            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar", "登录 Mac 后自动启动 BalanceBar"),
+            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入 Mac 後自動啟動 BalanceBar"),
+            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入 Mac 後自動啟動 BalanceBar"),
+            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します", "Macへのログイン後にBalanceBarを自動的に起動します"),
+            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac", "Automatically start BalanceBar after you log in to your Mac"),
+            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다"),
+            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac"),
+            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten", "BalanceBar nach der Anmeldung am Mac automatisch starten"),
+            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac", "Lancer automatiquement BalanceBar après la connexion au Mac"),
+            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac"),
+            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac", "Автоматически запускать BalanceBar после входа на Mac"),
+            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac", "Avvia automaticamente BalanceBar dopo l’accesso al Mac")
         ]
 
         for language in resourceDirectories.values {
