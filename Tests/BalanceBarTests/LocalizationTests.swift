@@ -1864,6 +1864,38 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testQuotaWindowPeriodCopyUsesCompactLocalizedUnitsAcrossAllSupportedLanguages() {
+        let keys: [LocalizationKey] = [
+            .keyResponseParsers5Hours,
+            .keyResponseParsers7Days,
+            .keyResponseParsers7Days2,
+            .keyResponseParsers7Days3,
+            .keyResponseParsers7Days4
+        ]
+        let expected: [AppLanguage: [String]] = [
+            .simplifiedChinese: ["5时", "7日", "7日", "7日", "7日"],
+            .traditionalChineseTaiwan: ["5時", "7日", "7日", "7日", "7日"],
+            .traditionalChineseHongKong: ["5時", "7日", "7日", "7日", "7日"],
+            .english: ["5h", "7d", "7d", "7d", "7d"],
+            .japanese: ["5時", "7日", "7日", "7日", "7日"],
+            .korean: ["5시", "7일", "7일", "7일", "7일"],
+            .spanish: ["5h", "7d", "7d", "7d", "7d"],
+            .german: ["5h", "7d", "7d", "7d", "7d"],
+            .french: ["5h", "7d", "7d", "7d", "7d"],
+            .portuguese: ["5h", "7d", "7d", "7d", "7d"],
+            .russian: ["5ч", "7д", "7д", "7д", "7д"],
+            .italian: ["5h", "7d", "7d", "7d", "7d"]
+        ]
+
+        for language in allLanguages {
+            XCTAssertEqual(
+                keys.map { tr($0, language: language) },
+                expected[language],
+                "compact quota window units for \(language)"
+            )
+        }
+    }
+
     func testParameterizedResourcesRenderAndValidatePlaceholderContracts() {
         let store = LocalizationResourceStore(bundle: testBundle)
         XCTAssertEqual(

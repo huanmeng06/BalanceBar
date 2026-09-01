@@ -115,7 +115,7 @@
 "response.parsers.7_day_quota" = "7일 할당량";
 "response.parsers.7_days" = "7일";
 "response.parsers.5_hour_quota" = "5시간 할당량";
-"response.parsers.5_hours" = "5시간";
+"response.parsers.5_hours" = "5시";
 "response.parsers.sonnet_7_day_quota" = "Sonnet 7일 할당량";
 "response.parsers.7_days.2" = "7일";
 "response.parsers.quota" = "할당량";
