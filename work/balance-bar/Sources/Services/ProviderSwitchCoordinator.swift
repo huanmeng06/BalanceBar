@@ -8,6 +8,7 @@ struct ProviderSwitchActions {
 enum CCSwitchProviderSwitchBridgeError: LocalizedError, Equatable {
     case unavailable
     case databaseVerificationFailed
+    case databaseVerificationTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -15,39 +16,39 @@ enum CCSwitchProviderSwitchBridgeError: LocalizedError, Equatable {
             return "CC Switch does not expose a supported provider-switch bridge."
         case .databaseVerificationFailed:
             return "CC Switch did not verify the requested provider switch."
+        case .databaseVerificationTimedOut:
+            return "CC Switch did not verify the requested provider switch before the timeout."
         }
     }
 }
 
-/// An implementation must call a supported CC Switch control surface which
-/// executes the running process's own ProviderService::switch transaction and
-/// returns only after that transaction has completed. It must not mutate CC
-/// Switch files or activate/reopen its window itself.
 protocol CCSwitchProviderSwitching {
-    var isAvailable: Bool { get }
-    func switchProvider(providerID: String, appType: String) throws
+    var availability: CCSwitchBridgeAvailability { get }
+    func switchProvider(target: CCSwitchProviderSwitchTarget) throws
 }
 
-/// CC Switch currently has no documented cross-process provider-switch
-/// contract. Keep the legacy stop/write/reopen path available until one is
-/// supplied, but make the hot-switch seam explicit and injectable.
 final class CCSwitchUnavailableProviderSwitchBridge: CCSwitchProviderSwitching {
-    let isAvailable = false
+    let availability: CCSwitchBridgeAvailability = .unavailable
 
-    func switchProvider(providerID: String, appType: String) throws {
-        _ = providerID
-        _ = appType
+    func switchProvider(target: CCSwitchProviderSwitchTarget) throws {
+        _ = target
         throw CCSwitchProviderSwitchBridgeError.unavailable
     }
 }
 
-/// Owns the CC Switch hot-switch path and the bounded legacy
-/// stop/write/reopen fallback. The composition root supplies the selected
-/// Provider and routes success/failure into refresh.
+/// Owns the opt-in CC Switch hot-switch path and the legacy stop/write/reopen
+/// path. A seamless request is fail-closed: it never falls back to a restart
+/// after the running-process bridge has been selected.
 final class ProviderSwitchCoordinator {
+    static let databaseVerificationTimeout: TimeInterval = 15
+
     private let repository: CCSwitchRepository
     private let runtime: CCSwitchRuntimeControlling
     private let providerSwitchBridge: CCSwitchProviderSwitching
+    private let isSeamlessSwitchEnabled: () -> Bool
+    private let verificationTimeout: TimeInterval
+    private let verificationPollingInterval: TimeInterval
+    private let sleep: (TimeInterval) -> Void
     private let queue: DispatchQueue
     private let actions: ProviderSwitchActions
 
@@ -55,12 +56,20 @@ final class ProviderSwitchCoordinator {
         repository: CCSwitchRepository,
         runtime: CCSwitchRuntimeControlling = CCSwitchRuntimeController(),
         providerSwitchBridge: CCSwitchProviderSwitching = CCSwitchUnavailableProviderSwitchBridge(),
+        isSeamlessSwitchEnabled: @escaping () -> Bool = { false },
+        verificationTimeout: TimeInterval = ProviderSwitchCoordinator.databaseVerificationTimeout,
+        verificationPollingInterval: TimeInterval = 0.05,
+        sleep: @escaping (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) },
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-switch"),
         actions: ProviderSwitchActions
     ) {
         self.repository = repository
         self.runtime = runtime
         self.providerSwitchBridge = providerSwitchBridge
+        self.isSeamlessSwitchEnabled = isSeamlessSwitchEnabled
+        self.verificationTimeout = max(0, verificationTimeout)
+        self.verificationPollingInterval = max(0.001, verificationPollingInterval)
+        self.sleep = sleep
         self.queue = queue
         self.actions = actions
     }
@@ -70,15 +79,19 @@ final class ProviderSwitchCoordinator {
             guard let self else { return }
             let current = self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })
             guard current?.id != providerID else { return }
+
             let runtimeSnapshot = self.runtime.snapshot()
-            if runtimeSnapshot.wasRunning,
-               self.providerSwitchBridge.isAvailable {
+            if runtimeSnapshot.wasRunning, self.isSeamlessSwitchEnabled() {
                 self.switchThroughRunningCCSwitch(
-                    providerID: providerID,
-                    appType: appType
+                    target: CCSwitchProviderSwitchTarget(
+                        providerID: providerID,
+                        providerName: providerName,
+                        appType: appType
+                    )
                 )
                 return
             }
+
             if let restorationPreconditionError = runtimeSnapshot.restorationPreconditionError {
                 self.report(.failure(restorationPreconditionError))
                 return
@@ -91,7 +104,7 @@ final class ProviderSwitchCoordinator {
             do {
                 try self.repository.switchCurrent(to: providerID, appType: appType)
                 guard self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })?.id == providerID else {
-                    throw NSError(domain: "BalanceBar.SwitchValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: tr(.keyProviderSwitchCoordinatorDatabaseVerificationFailed)])
+                    throw CCSwitchProviderSwitchBridgeError.databaseVerificationFailed
                 }
                 self.finish(.success(()), restoring: runtimeSnapshot)
             } catch {
@@ -100,19 +113,38 @@ final class ProviderSwitchCoordinator {
         }
     }
 
-    private func switchThroughRunningCCSwitch(providerID: String, appType: String) {
+    private func switchThroughRunningCCSwitch(target: CCSwitchProviderSwitchTarget) {
+        guard providerSwitchBridge.availability != .unavailable else {
+            report(.failure(CCSwitchProviderSwitchBridgeError.unavailable))
+            return
+        }
+
         do {
             // The bridge owns the complete in-process transaction, including
             // settings cache, DB/live projection, MCP, and proxy semantics.
             // Do not call CCSwitchRepository.switchCurrent on this path.
-            try providerSwitchBridge.switchProvider(providerID: providerID, appType: appType)
-            guard repository.loadChoices(appType: appType).first(where: { $0.isCurrent })?.id == providerID else {
-                throw CCSwitchProviderSwitchBridgeError.databaseVerificationFailed
+            try providerSwitchBridge.switchProvider(target: target)
+            guard waitForDatabaseVerification(target: target) else {
+                throw CCSwitchProviderSwitchBridgeError.databaseVerificationTimedOut
             }
             actions.changed()
         } catch {
             report(.failure(error))
         }
+    }
+
+    private func waitForDatabaseVerification(
+        target: CCSwitchProviderSwitchTarget
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(verificationTimeout)
+        repeat {
+            if repository.loadChoices(appType: target.appType)
+                .first(where: { $0.isCurrent })?.id == target.providerID {
+                return true
+            }
+            guard Date() < deadline else { return false }
+            sleep(min(verificationPollingInterval, max(0, deadline.timeIntervalSinceNow)))
+        } while true
     }
 
     private func finish(

@@ -18,6 +18,7 @@ struct DashboardCompositionState {
     let currentOpenCodexResolution: () -> OpenCodexDashboardResolution?
     let runtimeCandidate: () -> OpenCodexEndpointCandidate?
     let updateState: () -> UpdateCheckState
+    let ccSwitchSeamlessSwitchState: () -> CCSwitchSeamlessSwitchState
     let statusLinks: () -> [StatusLink]
     let defaultStatusLinks: () -> [StatusLink]
     let setStatusLinks: ([StatusLink]) -> Void
@@ -122,7 +123,8 @@ final class DashboardCompositionController {
             onClamp: actions.onClamp
         ),
         launchAtLoginController: launchAtLoginController,
-        launchWithChatGPTController: launchWithChatGPTController
+        launchWithChatGPTController: launchWithChatGPTController,
+        ccSwitchSeamlessSwitchState: state.ccSwitchSeamlessSwitchState
     )
     private lazy var windowController = DashboardWindowController(
         actions: DashboardWindowControllerActions(
@@ -176,6 +178,7 @@ final class DashboardCompositionController {
         windowController.open()
         refreshLaunchAtLogin()
         refreshLaunchWithChatGPT()
+        refreshMenuPage()
     }
     func rebuild() { windowController.rebuild() }
     func showSection(_ section: DashboardSection) { windowController.showSection(section) }

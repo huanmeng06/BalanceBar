@@ -37,6 +37,7 @@ final class DashboardPreferencePages {
     private let preferences: AppPreferences
     private let devBundleIdentifier: String
     private let actions: DashboardPreferencePageActions
+    private let ccSwitchSeamlessSwitchState: () -> CCSwitchSeamlessSwitchState
     private let launchAtLoginController: LaunchAtLoginController
     private let launchWithChatGPTController: LaunchWithChatGPTController
     private let relay = DashboardPreferencePageRelay()
@@ -51,11 +52,13 @@ final class DashboardPreferencePages {
         devBundleIdentifier: String,
         actions: DashboardPreferencePageActions,
         launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController(),
-        launchWithChatGPTController: LaunchWithChatGPTController = LaunchWithChatGPTController()
+        launchWithChatGPTController: LaunchWithChatGPTController = LaunchWithChatGPTController(),
+        ccSwitchSeamlessSwitchState: @escaping () -> CCSwitchSeamlessSwitchState = { .disabled }
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.actions = actions
+        self.ccSwitchSeamlessSwitchState = ccSwitchSeamlessSwitchState
         self.launchAtLoginController = launchAtLoginController
         self.launchWithChatGPTController = launchWithChatGPTController
         relay.onToggle = actions.onToggle
@@ -124,7 +127,8 @@ final class DashboardPreferencePages {
                 relay: relay,
                 makeStatusLinksEditor: actions.makeStatusLinksEditor,
                 onBalanceDisplayThresholdChanged: actions.onBalanceDisplayThresholdChanged,
-                onQuotaProgressColorConfigurationChanged: actions.onQuotaProgressColorConfigurationChanged
+                onQuotaProgressColorConfigurationChanged: actions.onQuotaProgressColorConfigurationChanged,
+                ccSwitchSeamlessSwitchState: ccSwitchSeamlessSwitchState
             ))
         case .advanced:
             return advancedPage.make(.init(

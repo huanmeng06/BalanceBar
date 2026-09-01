@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.ccSwitchSeamlessSwitchEnabledKey, AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -204,6 +204,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             currentOpenCodexResolution: { [weak self] in self?.currentOpenCodexDashboardResolution() },
             runtimeCandidate: { [weak self] in self?.openCodexState?.state.candidate },
             updateState: { [weak self] in self?.updateService.state ?? .failed(.invalidCurrentVersion) },
+            ccSwitchSeamlessSwitchState: { [weak self] in
+                self?.ccSwitchSeamlessSwitchState ?? .disabled
+            },
             statusLinks: { [weak self] in self?.statusLinks ?? [] },
             defaultStatusLinks: { [weak self] in self?.defaultStatusLinks ?? [] },
             setStatusLinks: { [weak self] links in self?.statusLinks = links }
@@ -329,6 +332,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var postCodexRefreshDeadline: Date?
     private let providerPollInterval: TimeInterval = 3
     private let ccSwitchRepository: CCSwitchRepository
+    private let ccSwitchAccessibilityPermissionController = AccessibilityPermissionController()
+    private lazy var ccSwitchProviderSwitchBridge: CCSwitchProviderSwitching =
+        CCSwitchAccessibilityProviderSwitchBridge(
+            repository: ccSwitchRepository,
+            permissionController: ccSwitchAccessibilityPermissionController
+        )
     private let officialQuotaClient: OfficialQuotaClient
     private let balanceAPIClient = BalanceAPIClient()
     private let balanceProgressStore = ProviderBalanceProgressStore()
@@ -358,6 +367,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var statusLinks: [StatusLink] { get { preferences.statusLinks } set { preferences.statusLinks = newValue } }
     private var defaultStatusLinks: [StatusLink] { preferences.defaultStatusLinks }
     private var keepMenuOpenAfterRefresh: Bool { get { preferences.keepMenuOpenAfterRefresh } set { preferences.keepMenuOpenAfterRefresh = newValue } }
+    private var ccSwitchSeamlessSwitchState: CCSwitchSeamlessSwitchState {
+        CCSwitchSeamlessSwitchState.make(
+            enabled: preferences.ccSwitchSeamlessSwitchEnabled,
+            availability: ccSwitchProviderSwitchBridge.availability
+        )
+    }
     private var sortProvidersAlphabetically: Bool { get { preferences.sortProvidersAlphabetically } set { preferences.sortProvidersAlphabetically = newValue } }
     private var menuBarHorizontalPadding: CGFloat { get { preferences.menuBarHorizontalPadding } set { preferences.menuBarHorizontalPadding = newValue } }
     private var menuBarIconOffsetX: Double { get { preferences.menuBarIconOffsetX } set { preferences.menuBarIconOffsetX = newValue } }
@@ -505,6 +520,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         providerSwitchCoordinator = ProviderSwitchCoordinator(
             repository: repository,
+            providerSwitchBridge: ccSwitchProviderSwitchBridge,
+            isSeamlessSwitchEnabled: { [weak self] in
+                self?.preferences.ccSwitchSeamlessSwitchEnabled ?? false
+            },
             actions: ProviderSwitchActions(
                 changed: { [weak self] in
                     guard let self else { return }
@@ -772,6 +791,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         dashboardComposition.refreshLaunchAtLogin()
         dashboardComposition.refreshLaunchWithChatGPT()
+        dashboardComposition.refreshMenuPage()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -1001,6 +1021,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         case "keepMenuOpenAfterRefresh":
             keepMenuOpenAfterRefresh = enabled
+        case AppPreferences.ccSwitchSeamlessSwitchEnabledKey:
+            handleCCSwitchSeamlessSwitchToggle(enabled: enabled)
         case AppPreferences.silentLaunchKey:
             preferences.silentLaunch = enabled
         case "animateCodexActivity":
@@ -1011,6 +1033,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         default:
             break
         }
+    }
+
+    private func handleCCSwitchSeamlessSwitchToggle(enabled: Bool) {
+        guard enabled else {
+            preferences.ccSwitchSeamlessSwitchEnabled = false
+            dashboardComposition.refreshMenuPage()
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = tr(.keyDashboardMenuPageSeamlessCcSwitchEnableTitle)
+        alert.informativeText = tr(.keyDashboardMenuPageSeamlessCcSwitchEnableMessage)
+        alert.addButton(withTitle: tr(.keyCommonContinue))
+        alert.addButton(withTitle: tr(.keyCommonCancel))
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            preferences.ccSwitchSeamlessSwitchEnabled = false
+            dashboardComposition.refreshMenuPage()
+            return
+        }
+
+        preferences.ccSwitchSeamlessSwitchEnabled = true
+        ccSwitchAccessibilityPermissionController.requestIfNeeded()
+        dashboardComposition.refreshMenuPage()
     }
 
     private func handleLaunchAtLoginAction(enabled: Bool) {

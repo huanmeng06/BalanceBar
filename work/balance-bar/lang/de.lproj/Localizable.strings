@@ -353,6 +353,13 @@
 "dashboard.menu.page.dropdown_menu" = "Dropdown-Menü";
 "dashboard.menu.page.menu_behavior" = "Menüverhalten";
 "dashboard.menu.page.quick_switch" = "Schnellwechsel";
+"dashboard.menu.page.seamless_cc_switch" = "Nahtloser CC-Switch-Wechsel";
+"dashboard.menu.page.seamless_cc_switch_disabled_description" = "Wenn deaktiviert, wird der Kompatibilitätsmodus verwendet; CC Switch kann kurz neu starten.";
+"dashboard.menu.page.seamless_cc_switch_permission_missing_description" = "Erlaube BalanceBar in den Systemeinstellungen die Bedienung deines Mac über Bedienungshilfen.";
+"dashboard.menu.page.seamless_cc_switch_ready_description" = "Aktiviert. Der Anbieterwechsel startet CC Switch nicht neu.";
+"dashboard.menu.page.seamless_cc_switch_unavailable_description" = "Aktiviert, aber der Bedienungshilfe-Transport von CC Switch ist nicht verfügbar.";
+"dashboard.menu.page.seamless_cc_switch_enable_title" = "Nahtlosen CC-Switch-Wechsel aktivieren";
+"dashboard.menu.page.seamless_cc_switch_enable_message" = "BalanceBar verwendet macOS-Bedienungshilfen, um das native Anbieter-Menü von CC Switch in der Menüleiste zu bedienen. CC Switch muss laufen und die Bedienungshilfe-Berechtigung benötigen. Wenn Berechtigung oder Menü nicht verfügbar sind, schlägt der Wechsel fehl, ohne CC Switch neu zu starten.";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "CC-Switch-Anbieterschnellwahl im Menü anzeigen";
 "dashboard.menu.page.keep_open_after_refresh" = "Menü nach der Aktualisierung geöffnet lassen";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "Menü nach dem Klick auf „Jetzt aktualisieren“ automatisch erneut öffnen";
@@ -455,3 +462,5 @@
 "dashboard.menu.page.color_yellow" = "Gelb";
 "dashboard.menu.page.color_green" = "Grün";
 "common.restore_defaults" = "Standards wiederherstellen";
+"common.cancel" = "Abbrechen";
+"common.continue" = "Fortfahren";

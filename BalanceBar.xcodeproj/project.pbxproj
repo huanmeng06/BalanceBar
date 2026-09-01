@@ -110,6 +110,10 @@
 		A10000000000000200000044 /* ChatGPTLaunchAgentRuntime.swift in Launch Agent Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */; };
 		A10000000000000200000045 /* AppKit.framework in Launch Agent Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* AppKit.framework */; };
 		A10000000000000200000046 /* Foundation.framework in Launch Agent Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
+		A10000000000000140 /* CCSwitchAccessibilityProviderSwitchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000141 /* CCSwitchAccessibilityProviderSwitchBridge.swift */; };
+		A10000000000000143 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000142 /* ApplicationServices.framework */; };
+		A10000000000000144 /* ApplicationServices.framework in Test Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000142 /* ApplicationServices.framework */; };
+		A10000000000000150 /* CCSwitchAccessibilityProviderSwitchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000151 /* CCSwitchAccessibilityProviderSwitchBridgeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -223,6 +227,9 @@
 		A10000000000000200000015 /* ChatGPTLaunchAgentMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchAgentMain.swift; sourceTree = "<group>"; };
 		A10000000000000200000016 /* balancebar-chatgpt-launch-agent.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = balancebar-chatgpt-launch-agent.plist; sourceTree = "<group>"; };
 		A10000000000000200000017 /* BalanceBarChatGPTLaunchAgent */ = {isa = PBXFileReference; explicitFileType = compiled.mach-o.executable; includeInIndex = 0; path = BalanceBarChatGPTLaunchAgent; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000141 /* CCSwitchAccessibilityProviderSwitchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchAccessibilityProviderSwitchBridge.swift; sourceTree = "<group>"; };
+		A10000000000000142 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
+		A10000000000000151 /* CCSwitchAccessibilityProviderSwitchBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchAccessibilityProviderSwitchBridgeTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -234,6 +241,7 @@
 				A10000000000000000000026 /* Foundation.framework in Frameworks */,
 				A10000000000000000000027 /* SwiftUI.framework in Frameworks */,
 				A10000000000000000000122 /* ServiceManagement.framework in Frameworks */,
+				A10000000000000143 /* ApplicationServices.framework in Frameworks */,
 				A10000000000000000000028 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -244,6 +252,7 @@
 			files = (
 				A10000000000000000000031 /* XCTest.framework in Frameworks */,
 				A10000000000000000000126 /* ServiceManagement.framework in Test Frameworks */,
+				A10000000000000144 /* ApplicationServices.framework in Test Frameworks */,
 				A1000000000000000000005D /* libsqlite3.tbd in Test Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -308,6 +317,7 @@
 				A1000000000000000000001A /* libsqlite3.tbd */,
 				A1000000000000000000002F /* XCTest.framework */,
 				A10000000000000000000123 /* ServiceManagement.framework */,
+				A10000000000000142 /* ApplicationServices.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -357,6 +367,7 @@
 				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
 				A10000000000000000000133 /* ProviderSwitchCoordinatorTests.swift */,
+				A10000000000000151 /* CCSwitchAccessibilityProviderSwitchBridgeTests.swift */,
 				A100000000000000000000EA /* UpdateTests.swift */,
 				A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */,
 			);
@@ -385,6 +396,7 @@
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
 				A100000000000000000000EC /* ProviderBalanceProgressStore.swift */,
 				A100000000000000000000DB /* ProviderSwitchCoordinator.swift */,
+				A10000000000000141 /* CCSwitchAccessibilityProviderSwitchBridge.swift */,
 				A10000000000000000000131 /* CCSwitchRuntimeController.swift */,
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
 				A10000000000000000000061 /* CredentialReader.swift */,
@@ -746,6 +758,7 @@
 				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
 				A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */,
 				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
+				A10000000000000140 /* CCSwitchAccessibilityProviderSwitchBridge.swift in Sources */,
 				A10000000000000000000130 /* CCSwitchRuntimeController.swift in Sources */,
 				A100000000000000000000DC /* DashboardCompositionController.swift in Sources */,
 				A100000000000000000000E7 /* UpdateService.swift in Sources */,
@@ -799,6 +812,7 @@
 				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 				A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */,
 				A10000000000000000000132 /* ProviderSwitchCoordinatorTests.swift in Sources */,
+				A10000000000000150 /* CCSwitchAccessibilityProviderSwitchBridgeTests.swift in Sources */,
 				A100000000000000000000E9 /* UpdateTests.swift in Sources */,
 				A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */,
 			);

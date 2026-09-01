@@ -353,6 +353,13 @@
 "dashboard.menu.page.dropdown_menu" = "下拉菜单";
 "dashboard.menu.page.menu_behavior" = "菜单行为";
 "dashboard.menu.page.quick_switch" = "快速切换";
+"dashboard.menu.page.seamless_cc_switch" = "无缝切换 CC Switch";
+"dashboard.menu.page.seamless_cc_switch_disabled_description" = "关闭时将使用兼容模式，CC Switch 可能短暂重启。";
+"dashboard.menu.page.seamless_cc_switch_permission_missing_description" = "需要在系统设置中允许 BalanceBar 使用辅助功能。";
+"dashboard.menu.page.seamless_cc_switch_ready_description" = "已启用。切换供应商时不会重新启动 CC Switch。";
+"dashboard.menu.page.seamless_cc_switch_unavailable_description" = "已启用，但 CC Switch 辅助功能通道不可用。";
+"dashboard.menu.page.seamless_cc_switch_enable_title" = "启用无缝切换 CC Switch";
+"dashboard.menu.page.seamless_cc_switch_enable_message" = "BalanceBar 将使用 macOS 辅助功能操作 CC Switch 原生菜单栏图标中的供应商菜单。需要 CC Switch 正在运行并授予辅助功能权限；如果权限或菜单不可用，切换将直接失败，不会重新启动 CC Switch。";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "在菜单中显示 CC Switch 服务商快捷切换";
 "dashboard.menu.page.keep_open_after_refresh" = "刷新后保持菜单打开";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "点击“立即刷新”后自动重新打开菜单";
@@ -455,3 +462,5 @@
 "dashboard.menu.page.color_yellow" = "黄";
 "dashboard.menu.page.color_green" = "绿";
 "common.restore_defaults" = "恢复默认";
+"common.cancel" = "取消";
+"common.continue" = "继续";

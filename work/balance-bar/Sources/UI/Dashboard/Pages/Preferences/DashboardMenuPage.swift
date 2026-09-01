@@ -16,6 +16,7 @@ private final class QuotaColorSelectionStack: NSStackView, DashboardSettingsRowC
 final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     static let lunaReserveDisplayModeIdentifier = AppPreferences.menuLunaReserveDisplayModeKey
     static let lunaReserveHideExhaustedQuotaIdentifier = AppPreferences.menuLunaReserveHideExhaustedQuotaKey
+    static let ccSwitchSeamlessSwitchIdentifier = AppPreferences.ccSwitchSeamlessSwitchEnabledKey
 
     struct Input {
         let preferences: AppPreferences
@@ -23,19 +24,22 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
         let onBalanceDisplayThresholdChanged: (Double) -> Void
         let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
+        let ccSwitchSeamlessSwitchState: () -> CCSwitchSeamlessSwitchState
 
         init(
             preferences: AppPreferences,
             relay: DashboardPreferencePageRelay,
             makeStatusLinksEditor: @escaping () -> StatusLinksEditorHostingView,
             onBalanceDisplayThresholdChanged: @escaping (Double) -> Void,
-            onQuotaProgressColorConfigurationChanged: @escaping (QuotaProgressColorConfiguration) -> Void = { _ in }
+            onQuotaProgressColorConfigurationChanged: @escaping (QuotaProgressColorConfiguration) -> Void = { _ in },
+            ccSwitchSeamlessSwitchState: @escaping () -> CCSwitchSeamlessSwitchState = { .disabled }
         ) {
             self.preferences = preferences
             self.relay = relay
             self.makeStatusLinksEditor = makeStatusLinksEditor
             self.onBalanceDisplayThresholdChanged = onBalanceDisplayThresholdChanged
             self.onQuotaProgressColorConfigurationChanged = onQuotaProgressColorConfigurationChanged
+            self.ccSwitchSeamlessSwitchState = ccSwitchSeamlessSwitchState
         }
     }
 
@@ -43,6 +47,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private weak var lunaReserveDisplayModeControl: NSPopUpButton?
     private weak var lunaReserveHideExhaustedQuotaRow: NSView?
     private weak var lunaReserveHideExhaustedQuotaSwitch: NSSwitch?
+    private weak var ccSwitchSeamlessSwitch: NSSwitch?
+    private weak var ccSwitchSeamlessSwitchSubtitleLabel: NSTextField?
     private weak var balanceDisplayRowsStack: NSStackView?
     private weak var balanceDisplayCardHeightConstraint: NSLayoutConstraint?
     private var balanceDisplaySeparators: [NSView] = []
@@ -54,6 +60,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
     private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
     private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
+    private var ccSwitchSeamlessSwitchState: (() -> CCSwitchSeamlessSwitchState)?
     private weak var quotaColorSlider: QuotaColorThresholdSlider?
     private var quotaColorButtons: [QuotaProgressColor: NSButton] = [:]
     private var quotaColorConfiguration: QuotaProgressColorConfiguration = .default
@@ -62,6 +69,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayThresholdValue = input.preferences.balanceDisplayThreshold
         onBalanceDisplayThresholdChanged = input.onBalanceDisplayThresholdChanged
         onQuotaProgressColorConfigurationChanged = input.onQuotaProgressColorConfigurationChanged
+        ccSwitchSeamlessSwitchState = input.ccSwitchSeamlessSwitchState
         quotaColorConfiguration = input.preferences.quotaProgressColorConfiguration
         balanceDisplayRowsStack = nil
         balanceDisplayCardHeightConstraint = nil
@@ -199,6 +207,16 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
+        let seamlessState = input.ccSwitchSeamlessSwitchState()
+        let seamlessSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: Self.ccSwitchSeamlessSwitchIdentifier,
+            isOn: input.preferences.ccSwitchSeamlessSwitchEnabled,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        let seamlessSubtitle = NSTextField(wrappingLabelWithString: Self.seamlessSwitchDescription(seamlessState))
+        ccSwitchSeamlessSwitchSubtitleLabel = seamlessSubtitle
+        ccSwitchSeamlessSwitch = seamlessSwitch
         let openCC = DashboardSettingsComponents.makeSwitch(
             identifier: "showOpenCCSwitchMenu",
             isOn: input.preferences.showOpenCCSwitchMenu,
@@ -223,6 +241,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 tr(.keyDashboardMenuPageQuickSwitch),
                 subtitle: tr(.keyDashboardMenuPageShowTheCcSwitchProviderSubmenu),
                 control: quickSwitch
+            ),
+            DashboardSettingsComponents.makeSettingsRow(
+                tr(.keyDashboardMenuPageSeamlessCcSwitch),
+                subtitle: Self.seamlessSwitchDescription(seamlessState),
+                subtitleLabel: seamlessSubtitle,
+                control: seamlessSwitch
             ),
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardMenuPageKeepOpenAfterRefresh),
@@ -349,6 +373,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveHideExhaustedQuotaSwitch?.state = preferences.menuLunaReserveHideExhaustedQuota
             ? .on
             : .off
+        ccSwitchSeamlessSwitch?.state = preferences.ccSwitchSeamlessSwitchEnabled ? .on : .off
+        ccSwitchSeamlessSwitchSubtitleLabel?.stringValue = Self.seamlessSwitchDescription(
+            ccSwitchSeamlessSwitchState?() ?? .disabled
+        )
         updateLunaReserveDisplayModeVisibility(preferences.menuLunaReserveDisplayMode)
     }
 
@@ -367,11 +395,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveDisplayModeControl = nil
         lunaReserveHideExhaustedQuotaRow = nil
         lunaReserveHideExhaustedQuotaSwitch = nil
+        ccSwitchSeamlessSwitch = nil
+        ccSwitchSeamlessSwitchSubtitleLabel = nil
         balanceDisplayRowsStack = nil
         balanceDisplayCardHeightConstraint = nil
         balanceDisplaySeparators = []
         onBalanceDisplayThresholdChanged = nil
         onQuotaProgressColorConfigurationChanged = nil
+        ccSwitchSeamlessSwitchState = nil
         quotaColorButtons = [:]
         quotaColorSlider?.teardown()
         quotaColorSlider = nil
@@ -417,6 +448,21 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
 
     private static func colorLabel(_ color: QuotaProgressColor) -> String {
         switch color { case .red: tr(.keyDashboardMenuPageColorRed); case .orange: tr(.keyDashboardMenuPageColorOrange); case .yellow: tr(.keyDashboardMenuPageColorYellow); case .green: tr(.keyDashboardMenuPageColorGreen) }
+    }
+
+    private static func seamlessSwitchDescription(
+        _ state: CCSwitchSeamlessSwitchState
+    ) -> String {
+        switch state {
+        case .disabled:
+            return tr(.keyDashboardMenuPageSeamlessCcSwitchDisabledDescription)
+        case .enabledPermissionMissing:
+            return tr(.keyDashboardMenuPageSeamlessCcSwitchPermissionMissingDescription)
+        case .enabledReady:
+            return tr(.keyDashboardMenuPageSeamlessCcSwitchReadyDescription)
+        case .enabledUnavailable:
+            return tr(.keyDashboardMenuPageSeamlessCcSwitchUnavailableDescription)
+        }
     }
 
     private func updateLunaReserveDisplayModeVisibility(_ mode: LunaReserveDisplayMode) {

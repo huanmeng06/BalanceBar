@@ -353,6 +353,13 @@
 "dashboard.menu.page.dropdown_menu" = "ドロップダウンメニュー";
 "dashboard.menu.page.menu_behavior" = "メニューの動作";
 "dashboard.menu.page.quick_switch" = "クイック切り替え";
+"dashboard.menu.page.seamless_cc_switch" = "シームレスな CC Switch 切り替え";
+"dashboard.menu.page.seamless_cc_switch_disabled_description" = "オフの場合は互換モードを使用します。CC Switch が一時的に再起動することがあります。";
+"dashboard.menu.page.seamless_cc_switch_permission_missing_description" = "システム設定で BalanceBar にアクセシビリティの使用を許可してください。";
+"dashboard.menu.page.seamless_cc_switch_ready_description" = "有効です。プロバイダーの切り替え時に CC Switch は再起動しません。";
+"dashboard.menu.page.seamless_cc_switch_unavailable_description" = "有効ですが、CC Switch のアクセシビリティ接続を利用できません。";
+"dashboard.menu.page.seamless_cc_switch_enable_title" = "シームレスな CC Switch 切り替えを有効にする";
+"dashboard.menu.page.seamless_cc_switch_enable_message" = "BalanceBar は macOS のアクセシビリティを使って CC Switch のネイティブなメニューバーのプロバイダーメニューを操作します。CC Switch の起動とアクセシビリティ権限が必要です。権限またはメニューを利用できない場合、CC Switch を再起動せず切り替えに失敗します。";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "メニューに CC Switch のプロバイダー切り替えを表示";
 "dashboard.menu.page.keep_open_after_refresh" = "更新後もメニューを開いたままにする";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "「今すぐ更新」をクリックした後、メニューを自動的に再度開く";
@@ -455,3 +462,5 @@
 "dashboard.menu.page.color_yellow" = "黄";
 "dashboard.menu.page.color_green" = "緑";
 "common.restore_defaults" = "デフォルトに戻す";
+"common.cancel" = "キャンセル";
+"common.continue" = "続ける";

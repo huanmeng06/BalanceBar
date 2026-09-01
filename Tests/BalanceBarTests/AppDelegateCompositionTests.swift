@@ -89,6 +89,16 @@ final class AppDelegateCompositionTests: XCTestCase {
         let switching = try XCTUnwrap(sources["ProviderSwitchCoordinator.swift"])
         XCTAssertTrue(switching.contains("switchCurrent"))
 
+        let accessibilityBridge = try XCTUnwrap(
+            sources["CCSwitchAccessibilityProviderSwitchBridge.swift"]
+        )
+        XCTAssertTrue(accessibilityBridge.contains("import ApplicationServices"))
+        XCTAssertTrue(accessibilityBridge.contains("kAXExtrasMenuBarAttribute"))
+        XCTAssertTrue(accessibilityBridge.contains("com.ccswitch.desktop"))
+        XCTAssertFalse(accessibilityBridge.contains("switchCurrent"))
+        XCTAssertFalse(accessibilityBridge.contains("terminateAndWait"))
+        XCTAssertFalse(accessibilityBridge.contains("openApplication"))
+
         let ccSwitchRuntime = try XCTUnwrap(sources["CCSwitchRuntimeController.swift"])
         XCTAssertTrue(ccSwitchRuntime.contains("com.ccswitch.desktop"))
         XCTAssertTrue(ccSwitchRuntime.contains("CGWindowListCopyWindowInfo"))
@@ -1733,6 +1743,7 @@ final class AppDelegateCompositionTests: XCTestCase {
             "ActivityCoordinator.swift": "work/balance-bar/Sources/Monitoring/ActivityCoordinator.swift",
             "CCSwitchDatabaseWatcher.swift": "work/balance-bar/Sources/Services/CCSwitchDatabaseWatcher.swift",
             "ProviderSwitchCoordinator.swift": "work/balance-bar/Sources/Services/ProviderSwitchCoordinator.swift",
+            "CCSwitchAccessibilityProviderSwitchBridge.swift": "work/balance-bar/Sources/Services/CCSwitchAccessibilityProviderSwitchBridge.swift",
             "CCSwitchRuntimeController.swift": "work/balance-bar/Sources/Services/CCSwitchRuntimeController.swift"
         ]
         return try Dictionary(uniqueKeysWithValues: files.map { name, path in

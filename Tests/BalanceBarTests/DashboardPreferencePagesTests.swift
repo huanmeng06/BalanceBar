@@ -1332,6 +1332,64 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testSeamlessCCSwitchRowReflectsPreferenceAndAccessibilityState() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.SeamlessCCSwitch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        var toggleEvents: [(String, Bool)] = []
+        let relay = DashboardPreferencePageRelay()
+        relay.onToggle = { identifier, enabled in
+            toggleEvents.append((identifier, enabled))
+            if identifier == DashboardMenuPage.ccSwitchSeamlessSwitchIdentifier {
+                preferences.ccSwitchSeamlessSwitchEnabled = enabled
+            }
+        }
+        var state: CCSwitchSeamlessSwitchState = .disabled
+        let controller = DashboardMenuPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            relay: relay,
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+            },
+            onBalanceDisplayThresholdChanged: { _ in },
+            ccSwitchSeamlessSwitchState: { state }
+        ))
+
+        let seamlessSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.ccSwitchSeamlessSwitchIdentifier }
+        )
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertEqual(seamlessSwitch.state, .off)
+        XCTAssertTrue(labels.contains { $0.stringValue == "When off, switching uses compatibility mode; CC Switch may restart briefly." })
+
+        state = .enabledPermissionMissing
+        preferences.ccSwitchSeamlessSwitchEnabled = true
+        controller.refresh(preferences: preferences)
+        XCTAssertEqual(seamlessSwitch.state, .on)
+        XCTAssertTrue(labels.contains { $0.stringValue == "Allow BalanceBar to control your Mac using Accessibility in System Settings." })
+
+        seamlessSwitch.state = .off
+        relay.toggle(seamlessSwitch)
+        XCTAssertEqual(toggleEvents.last?.0, DashboardMenuPage.ccSwitchSeamlessSwitchIdentifier)
+        XCTAssertEqual(toggleEvents.last?.1, false)
+        XCTAssertFalse(preferences.ccSwitchSeamlessSwitchEnabled)
+
+        state = .enabledReady
+        preferences.ccSwitchSeamlessSwitchEnabled = true
+        controller.refresh(preferences: preferences)
+        XCTAssertTrue(labels.contains { $0.stringValue == "Enabled. Switching providers will not restart CC Switch." })
+    }
+
     func testMenuPageStatusLinksCardRemeasuresItsRowAndEditorAcrossVisibilityChanges() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

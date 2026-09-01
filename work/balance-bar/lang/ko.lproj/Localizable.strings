@@ -353,6 +353,13 @@
 "dashboard.menu.page.dropdown_menu" = "드롭다운 메뉴";
 "dashboard.menu.page.menu_behavior" = "메뉴 동작";
 "dashboard.menu.page.quick_switch" = "빠른 전환";
+"dashboard.menu.page.seamless_cc_switch" = "원활한 CC Switch 전환";
+"dashboard.menu.page.seamless_cc_switch_disabled_description" = "끄면 호환 모드를 사용하며 CC Switch가 잠시 재시작될 수 있습니다.";
+"dashboard.menu.page.seamless_cc_switch_permission_missing_description" = "시스템 설정에서 BalanceBar의 손쉬운 사용 권한을 허용해야 합니다.";
+"dashboard.menu.page.seamless_cc_switch_ready_description" = "활성화됨. 공급자를 전환해도 CC Switch가 재시작되지 않습니다.";
+"dashboard.menu.page.seamless_cc_switch_unavailable_description" = "활성화되었지만 CC Switch 손쉬운 사용 연결을 사용할 수 없습니다.";
+"dashboard.menu.page.seamless_cc_switch_enable_title" = "원활한 CC Switch 전환 활성화";
+"dashboard.menu.page.seamless_cc_switch_enable_message" = "BalanceBar는 macOS 손쉬운 사용을 사용해 CC Switch의 기본 메뉴 막대 공급자 메뉴를 누릅니다. CC Switch가 실행 중이고 손쉬운 사용 권한이 필요합니다. 권한이나 메뉴를 사용할 수 없으면 CC Switch를 재시작하지 않고 전환에 실패합니다.";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "메뉴에 CC Switch 서비스 제공자 빠른 전환 표시";
 "dashboard.menu.page.keep_open_after_refresh" = "새로 고친 후 메뉴를 열어 두기";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "지금 새로 고침을 클릭한 후 메뉴 자동으로 다시 열기";
@@ -455,3 +462,5 @@
 "dashboard.menu.page.color_yellow" = "노랑";
 "dashboard.menu.page.color_green" = "초록";
 "common.restore_defaults" = "기본값 복원";
+"common.cancel" = "취소";
+"common.continue" = "계속";

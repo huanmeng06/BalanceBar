@@ -353,6 +353,13 @@
 "dashboard.menu.page.dropdown_menu" = "Выпадающее меню";
 "dashboard.menu.page.menu_behavior" = "Поведение меню";
 "dashboard.menu.page.quick_switch" = "Быстрое переключение";
+"dashboard.menu.page.seamless_cc_switch" = "Бесшовное переключение CC Switch";
+"dashboard.menu.page.seamless_cc_switch_disabled_description" = "Если выключено, используется режим совместимости; CC Switch может ненадолго перезапуститься.";
+"dashboard.menu.page.seamless_cc_switch_permission_missing_description" = "Разрешите BalanceBar управлять Mac через Универсальный доступ в настройках системы.";
+"dashboard.menu.page.seamless_cc_switch_ready_description" = "Включено. Переключение провайдера не перезапустит CC Switch.";
+"dashboard.menu.page.seamless_cc_switch_unavailable_description" = "Включено, но канал Универсального доступа CC Switch недоступен.";
+"dashboard.menu.page.seamless_cc_switch_enable_title" = "Включить бесшовное переключение CC Switch";
+"dashboard.menu.page.seamless_cc_switch_enable_message" = "BalanceBar будет использовать Универсальный доступ macOS для нажатия встроенного меню провайдеров CC Switch в строке меню. CC Switch должен быть запущен, а также требуется разрешение Универсального доступа. Если разрешение или меню недоступны, переключение завершится без перезапуска CC Switch.";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Показывать переключатель провайдера CC Switch в меню";
 "dashboard.menu.page.keep_open_after_refresh" = "Оставлять меню открытым после обновления";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "Снова открыть меню после нажатия «Обновить сейчас»";
@@ -455,3 +462,5 @@
 "dashboard.menu.page.color_yellow" = "Жёлтый";
 "dashboard.menu.page.color_green" = "Зелёный";
 "common.restore_defaults" = "Восстановить значения по умолчанию";
+"common.cancel" = "Отмена";
+"common.continue" = "Продолжить";

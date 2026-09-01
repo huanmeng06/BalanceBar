@@ -199,6 +199,8 @@ final class AppPreferences {
     static let menuBarIconDisplayModeDefault: MenuBarIconDisplayMode = .defaultValue
     static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"
     static let menuBarIconDisplayDelayDefault: MenuBarIconDisplayDelay = .defaultValue
+    static let ccSwitchSeamlessSwitchEnabledKey = "ccSwitchSeamlessSwitchEnabled"
+    static let ccSwitchSeamlessSwitchEnabledDefault = false
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -238,6 +240,17 @@ final class AppPreferences {
     }
     var showQuickSwitchMenu: Bool { get { bool("showQuickSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showQuickSwitchMenu") } }
     var showOpenCCSwitchMenu: Bool { get { bool("showOpenCCSwitchMenu", default: true) } set { defaults.set(newValue, forKey: "showOpenCCSwitchMenu") } }
+    var ccSwitchSeamlessSwitchEnabled: Bool {
+        get {
+            bool(
+                Self.ccSwitchSeamlessSwitchEnabledKey,
+                default: Self.ccSwitchSeamlessSwitchEnabledDefault
+            )
+        }
+        set {
+            defaults.set(newValue, forKey: Self.ccSwitchSeamlessSwitchEnabledKey)
+        }
+    }
     var showOpenCodexMenu: Bool {
         get { bool(Self.showOpenCodexMenuKey, default: true) }
         set { defaults.set(newValue, forKey: Self.showOpenCodexMenuKey) }

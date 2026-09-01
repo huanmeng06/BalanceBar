@@ -33,6 +33,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.showOpenChatGPTMenu)
         XCTAssertTrue(preferences.showStatusMenu)
         XCTAssertTrue(preferences.keepMenuOpenAfterRefresh)
+        XCTAssertFalse(preferences.ccSwitchSeamlessSwitchEnabled)
         XCTAssertFalse(preferences.sortProvidersAlphabetically)
         preferences.showMenuBarReset = false
         preferences.showMenuBarAmount = false
@@ -43,6 +44,7 @@ final class AppPreferencesTests: XCTestCase {
         preferences.showOpenChatGPTMenu = false
         preferences.showStatusMenu = false
         preferences.keepMenuOpenAfterRefresh = false
+        preferences.ccSwitchSeamlessSwitchEnabled = true
         preferences.sortProvidersAlphabetically = true
         XCTAssertFalse(preferences.showMenuBarReset)
         XCTAssertFalse(preferences.showMenuBarAmount)
@@ -53,6 +55,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.showOpenChatGPTMenu)
         XCTAssertFalse(preferences.showStatusMenu)
         XCTAssertFalse(preferences.keepMenuOpenAfterRefresh)
+        XCTAssertTrue(preferences.ccSwitchSeamlessSwitchEnabled)
         XCTAssertTrue(preferences.sortProvidersAlphabetically)
     }
 

@@ -353,6 +353,13 @@
 "dashboard.menu.page.dropdown_menu" = "Menu suspenso";
 "dashboard.menu.page.menu_behavior" = "Comportamento do menu";
 "dashboard.menu.page.quick_switch" = "Troca rápida";
+"dashboard.menu.page.seamless_cc_switch" = "Troca contínua do CC Switch";
+"dashboard.menu.page.seamless_cc_switch_disabled_description" = "Desativado, a troca usa o modo de compatibilidade; o CC Switch pode reiniciar brevemente.";
+"dashboard.menu.page.seamless_cc_switch_permission_missing_description" = "Permita que o BalanceBar controle o Mac usando Acessibilidade nos Ajustes do Sistema.";
+"dashboard.menu.page.seamless_cc_switch_ready_description" = "Ativado. Trocar de provedor não reiniciará o CC Switch.";
+"dashboard.menu.page.seamless_cc_switch_unavailable_description" = "Ativado, mas o transporte de Acessibilidade do CC Switch está indisponível.";
+"dashboard.menu.page.seamless_cc_switch_enable_title" = "Ativar troca contínua do CC Switch";
+"dashboard.menu.page.seamless_cc_switch_enable_message" = "O BalanceBar usará a Acessibilidade do macOS para pressionar o menu nativo de provedores do CC Switch na barra de menus. O CC Switch precisa estar em execução e a permissão de Acessibilidade é necessária. Se a permissão ou o menu não puderem ser usados, a troca falhará sem reiniciar o CC Switch.";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Mostrar o seletor de provedor do CC Switch no menu";
 "dashboard.menu.page.keep_open_after_refresh" = "Manter o menu aberto após a atualização";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "Reabrir o menu após clicar em “Atualizar agora”";
@@ -455,3 +462,5 @@
 "dashboard.menu.page.color_yellow" = "Amarelo";
 "dashboard.menu.page.color_green" = "Verde";
 "common.restore_defaults" = "Restaurar padrões";
+"common.cancel" = "Cancelar";
+"common.continue" = "Continuar";

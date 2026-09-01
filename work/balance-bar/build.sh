@@ -189,6 +189,7 @@ swiftc \
     "${swift_sources[@]}" \
     -o "$executable" \
     -framework AppKit \
+    -framework ApplicationServices \
     -framework Foundation \
     -framework QuartzCore \
     -framework ServiceManagement \

@@ -353,6 +353,13 @@
 "dashboard.menu.page.dropdown_menu" = "Dropdown Menu";
 "dashboard.menu.page.menu_behavior" = "Menu behavior";
 "dashboard.menu.page.quick_switch" = "Quick Switch";
+"dashboard.menu.page.seamless_cc_switch" = "Seamless CC Switch";
+"dashboard.menu.page.seamless_cc_switch_disabled_description" = "When off, switching uses compatibility mode; CC Switch may restart briefly.";
+"dashboard.menu.page.seamless_cc_switch_permission_missing_description" = "Allow BalanceBar to control your Mac using Accessibility in System Settings.";
+"dashboard.menu.page.seamless_cc_switch_ready_description" = "Enabled. Switching providers will not restart CC Switch.";
+"dashboard.menu.page.seamless_cc_switch_unavailable_description" = "Enabled, but the CC Switch Accessibility transport is unavailable.";
+"dashboard.menu.page.seamless_cc_switch_enable_title" = "Enable seamless CC Switch";
+"dashboard.menu.page.seamless_cc_switch_enable_message" = "BalanceBar will use macOS Accessibility to press CC Switch’s native tray provider menu. CC Switch must be running and Accessibility permission is required. If permission or the menu cannot be used, switching will fail without restarting CC Switch.";
 "dashboard.menu.page.show_the_cc_switch_provider_submenu" = "Show a CC Switch provider switcher in the menu";
 "dashboard.menu.page.keep_open_after_refresh" = "Keep the menu open after refresh";
 "dashboard.menu.page.reopen_the_menu_after_refresh_now" = "Reopen the menu after clicking “Refresh Now”";
@@ -455,3 +462,5 @@
 "dashboard.menu.page.color_yellow" = "Yellow";
 "dashboard.menu.page.color_green" = "Green";
 "common.restore_defaults" = "Restore Defaults";
+"common.cancel" = "Cancel";
+"common.continue" = "Continue";

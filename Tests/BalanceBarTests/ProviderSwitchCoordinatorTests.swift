@@ -208,11 +208,16 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleActive))
         let bridge = ProviderSwitchBridgeSpy()
         let repository = try XCTUnwrap(self.repository)
-        bridge.onSwitch = { providerID, appType in
-            try repository.switchCurrent(to: providerID, appType: appType)
+        bridge.onSwitch = { target in
+            try repository.switchCurrent(to: target.providerID, appType: target.appType)
         }
         let actions = SwitchActionRecorder(testCase: self)
-        let coordinator = makeCoordinator(runtime: runtime, actions: actions, bridge: bridge)
+        let coordinator = makeCoordinator(
+            runtime: runtime,
+            actions: actions,
+            bridge: bridge,
+            seamlessSwitchEnabled: true
+        )
 
         coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
         wait(for: [actions.completion], timeout: 2)
@@ -220,6 +225,7 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         XCTAssertEqual(actions.changedCount, 1)
         XCTAssertEqual(actions.failureCount, 0)
         XCTAssertEqual(bridge.requests, [.init(providerID: "target", appType: "codex")])
+        XCTAssertEqual(bridge.requests.first?.target.providerName, "Target")
         XCTAssertEqual(runtime.terminationTimeouts, [])
         XCTAssertEqual(runtime.restoredSnapshots, [])
         XCTAssertEqual(try currentValue(for: "target"), 1)
@@ -229,11 +235,16 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleInactive))
         let bridge = ProviderSwitchBridgeSpy()
         let repository = try XCTUnwrap(self.repository)
-        bridge.onSwitch = { providerID, appType in
-            try repository.switchCurrent(to: providerID, appType: appType)
+        bridge.onSwitch = { target in
+            try repository.switchCurrent(to: target.providerID, appType: target.appType)
         }
         let actions = SwitchActionRecorder(testCase: self)
-        let coordinator = makeCoordinator(runtime: runtime, actions: actions, bridge: bridge)
+        let coordinator = makeCoordinator(
+            runtime: runtime,
+            actions: actions,
+            bridge: bridge,
+            seamlessSwitchEnabled: true
+        )
 
         coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
         wait(for: [actions.completion], timeout: 2)
@@ -250,7 +261,12 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         let bridge = ProviderSwitchBridgeSpy()
         bridge.switchError = CCSwitchProviderSwitchBridgeError.unavailable
         let actions = SwitchActionRecorder(testCase: self)
-        let coordinator = makeCoordinator(runtime: runtime, actions: actions, bridge: bridge)
+        let coordinator = makeCoordinator(
+            runtime: runtime,
+            actions: actions,
+            bridge: bridge,
+            seamlessSwitchEnabled: true
+        )
 
         coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
         wait(for: [actions.completion], timeout: 2)
@@ -268,7 +284,12 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleActive))
         let bridge = ProviderSwitchBridgeSpy()
         let actions = SwitchActionRecorder(testCase: self)
-        let coordinator = makeCoordinator(runtime: runtime, actions: actions, bridge: bridge)
+        let coordinator = makeCoordinator(
+            runtime: runtime,
+            actions: actions,
+            bridge: bridge,
+            seamlessSwitchEnabled: true
+        )
 
         coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
         wait(for: [actions.completion], timeout: 2)
@@ -278,6 +299,87 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         XCTAssertEqual(runtime.terminationTimeouts, [])
         XCTAssertEqual(runtime.restoredSnapshots, [])
         XCTAssertEqual(try currentValue(for: "target"), 0)
+    }
+
+    func testSeamlessSwitchUnavailableFailsClosedWithoutTermination() throws {
+        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleActive))
+        let bridge = ProviderSwitchBridgeSpy()
+        bridge.availability = .unavailable
+        let actions = SwitchActionRecorder(testCase: self)
+        let coordinator = makeCoordinator(
+            runtime: runtime,
+            actions: actions,
+            bridge: bridge,
+            seamlessSwitchEnabled: true
+        )
+
+        coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
+        wait(for: [actions.completion], timeout: 2)
+
+        XCTAssertEqual(actions.changedCount, 0)
+        XCTAssertEqual(actions.failureCount, 1)
+        XCTAssertEqual(bridge.requests, [])
+        XCTAssertEqual(runtime.terminationTimeouts, [])
+        XCTAssertEqual(runtime.restoredSnapshots, [])
+        XCTAssertEqual(try currentValue(for: "target"), 0)
+    }
+
+    func testSeamlessSwitchPermissionMissingFailsClosedWithoutTermination() throws {
+        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleActive))
+        let bridge = ProviderSwitchBridgeSpy()
+        bridge.availability = .accessibilityPermissionRequired
+        bridge.switchError = CCSwitchAccessibilityError.permissionRequired
+        let actions = SwitchActionRecorder(testCase: self)
+        let coordinator = makeCoordinator(
+            runtime: runtime,
+            actions: actions,
+            bridge: bridge,
+            seamlessSwitchEnabled: true
+        )
+
+        coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
+        wait(for: [actions.completion], timeout: 2)
+
+        XCTAssertEqual(actions.changedCount, 0)
+        XCTAssertEqual(actions.failureCount, 1)
+        XCTAssertEqual(bridge.requests.count, 1)
+        XCTAssertEqual(runtime.terminationTimeouts, [])
+        XCTAssertEqual(runtime.restoredSnapshots, [])
+        XCTAssertEqual(try currentValue(for: "target"), 0)
+    }
+
+    func testHotSwitchWaitsForAsynchronousDatabaseVerification() throws {
+        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleActive))
+        let bridge = ProviderSwitchBridgeSpy()
+        let repository = try XCTUnwrap(self.repository)
+        let databaseUpdate = expectation(description: "CC Switch updates the database")
+        bridge.onSwitch = { target in
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+                do {
+                    try repository.switchCurrent(to: target.providerID, appType: target.appType)
+                } catch {
+                    XCTFail("unexpected asynchronous database update failure: \(error)")
+                }
+                databaseUpdate.fulfill()
+            }
+        }
+        let actions = SwitchActionRecorder(testCase: self)
+        let coordinator = makeCoordinator(
+            runtime: runtime,
+            actions: actions,
+            bridge: bridge,
+            seamlessSwitchEnabled: true,
+            verificationTimeout: 0.5
+        )
+
+        coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
+        wait(for: [actions.completion, databaseUpdate], timeout: 2)
+
+        XCTAssertEqual(actions.changedCount, 1)
+        XCTAssertEqual(actions.failureCount, 0)
+        XCTAssertEqual(runtime.terminationTimeouts, [])
+        XCTAssertEqual(runtime.restoredSnapshots, [])
+        XCTAssertEqual(try currentValue(for: "target"), 1)
     }
 
     func testVisibleInactiveWithoutForegroundPreconditionSkipsTerminationAndWrite() throws {
@@ -531,12 +633,17 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         runtime: RuntimeSpy,
         actions: SwitchActionRecorder,
         bridge: CCSwitchProviderSwitching = CCSwitchUnavailableProviderSwitchBridge(),
+        seamlessSwitchEnabled: Bool = false,
+        verificationTimeout: TimeInterval = 0.25,
         queue: DispatchQueue? = nil
     ) -> ProviderSwitchCoordinator {
         ProviderSwitchCoordinator(
             repository: repository,
             runtime: runtime,
             providerSwitchBridge: bridge,
+            isSeamlessSwitchEnabled: { seamlessSwitchEnabled },
+            verificationTimeout: verificationTimeout,
+            verificationPollingInterval: 0.01,
             queue: queue ?? DispatchQueue(label: "test.provider-switch"),
             actions: ProviderSwitchActions(
                 changed: { actions.changed() },
@@ -747,21 +854,35 @@ private final class RuntimeSpy: CCSwitchRuntimeControlling {
 
 private final class ProviderSwitchBridgeSpy: CCSwitchProviderSwitching {
     struct Request: Equatable {
-        let providerID: String
-        let appType: String
+        let target: CCSwitchProviderSwitchTarget
+
+        init(target: CCSwitchProviderSwitchTarget) {
+            self.target = target
+        }
+
+        init(providerID: String, appType: String, providerName: String = "Target") {
+            target = CCSwitchProviderSwitchTarget(
+                providerID: providerID,
+                providerName: providerName,
+                appType: appType
+            )
+        }
+
+        var providerID: String { target.providerID }
+        var appType: String { target.appType }
     }
 
-    let isAvailable = true
+    var availability: CCSwitchBridgeAvailability = .ready
     private(set) var requests: [Request] = []
     var switchError: Error?
-    var onSwitch: ((String, String) throws -> Void)?
+    var onSwitch: ((CCSwitchProviderSwitchTarget) throws -> Void)?
 
-    func switchProvider(providerID: String, appType: String) throws {
-        requests.append(Request(providerID: providerID, appType: appType))
+    func switchProvider(target: CCSwitchProviderSwitchTarget) throws {
+        requests.append(Request(target: target))
         if let switchError {
             throw switchError
         }
-        try onSwitch?(providerID, appType)
+        try onSwitch?(target)
     }
 }
 
