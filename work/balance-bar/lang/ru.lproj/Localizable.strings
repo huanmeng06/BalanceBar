@@ -411,6 +411,7 @@
 "status.links.editor.display_name" = "Отображаемое имя";
 "status.item.controller.refresh_now" = "Обновить сейчас";
 "status.item.controller.open_main_window" = "Открыть главное окно";
+"status.item.controller.update_available_badge" = "1 обновление";
 "status.item.controller.open_chatgpt" = "Открыть ChatGPT";
 "status.item.controller.open_cc_switch" = "Открыть CC Switch";
 "status.item.controller.open_opencodex" = "Открыть OpenCodex";

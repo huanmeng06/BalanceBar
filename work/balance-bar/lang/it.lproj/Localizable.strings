@@ -411,6 +411,7 @@
 "status.links.editor.display_name" = "Nome visualizzato";
 "status.item.controller.refresh_now" = "Aggiorna ora";
 "status.item.controller.open_main_window" = "Apri finestra principale";
+"status.item.controller.update_available_badge" = "1 aggiornamento";
 "status.item.controller.open_chatgpt" = "Apri ChatGPT";
 "status.item.controller.open_cc_switch" = "Apri CC Switch";
 "status.item.controller.open_opencodex" = "Apri OpenCodex";

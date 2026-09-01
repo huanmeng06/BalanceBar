@@ -411,6 +411,7 @@
 "status.links.editor.display_name" = "显示名称";
 "status.item.controller.refresh_now" = "立即刷新";
 "status.item.controller.open_main_window" = "打开主窗口";
+"status.item.controller.update_available_badge" = "1 项更新";
 "status.item.controller.open_chatgpt" = "打开 ChatGPT";
 "status.item.controller.open_cc_switch" = "打开 CC Switch";
 "status.item.controller.open_opencodex" = "打开 OpenCodex";

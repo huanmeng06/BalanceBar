@@ -411,6 +411,7 @@
 "status.links.editor.display_name" = "표시 이름";
 "status.item.controller.refresh_now" = "지금 업데이트";
 "status.item.controller.open_main_window" = "주 윈도우 열기";
+"status.item.controller.update_available_badge" = "업데이트 1개";
 "status.item.controller.open_chatgpt" = "ChatGPT 열기";
 "status.item.controller.open_cc_switch" = "CC Switch 열기";
 "status.item.controller.open_opencodex" = "OpenCodex 열기";

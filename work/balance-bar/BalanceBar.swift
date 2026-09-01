@@ -305,6 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var dashboardIsVisible: Bool { dashboardComposition.isVisible }
     private var dashboardSection: DashboardSection { dashboardComposition.section }
     private var timer: Timer?
+    private var updateCheckTimer: Timer?
     private var activityCoordinator: ActivityCoordinator!
     private var databaseWatcher: CCSwitchDatabaseWatcher!
     private var lastSuccessfulRefresh: Date?
@@ -426,12 +427,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         super.init()
         self.updateService.onStateChange = { [weak self] _ in
             guard let self else { return }
-            let updateDashboard = { [weak self] in
+            let applyUpdateState = { [weak self] in
                 guard let self else { return }
                 self.dashboardComposition.refreshUpdateState()
+                self.refreshStatusItemMenuInput()
             }
-            if Thread.isMainThread { updateDashboard() }
-            else { DispatchQueue.main.async(execute: updateDashboard) }
+            if Thread.isMainThread { applyUpdateState() }
+            else { DispatchQueue.main.async(execute: applyUpdateState) }
         }
         databaseWatcher = CCSwitchDatabaseWatcher(
             databaseURL: repository.databaseURL,
@@ -611,8 +613,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showOpenCodexMenu: showOpenCodexMenu,
             showStatusMenu: showStatusMenu,
             lunaReserveDisplayMode: preferences.menuLunaReserveDisplayMode,
-            lunaReserveHideExhaustedQuota: preferences.menuLunaReserveHideExhaustedQuota
+            lunaReserveHideExhaustedQuota: preferences.menuLunaReserveHideExhaustedQuota,
+            showsAvailableUpdateBadge: showsAvailableUpdateBadge
         )
+    }
+
+    private var showsAvailableUpdateBadge: Bool {
+        if case .available = updateService.state {
+            return true
+        }
+        return false
     }
 
     private func currentProviderName() -> String {
@@ -709,6 +719,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             menuInput: makeStatusItemMenuInput(),
             settings: makeStatusItemSettings()
         )
+        checkForBackgroundUpdate()
+        configureUpdateCheckTimer()
         updateStatusItemActivity()
         databaseWatcher.start()
         let version = Bundle.main.object(
@@ -747,6 +759,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         SwitchLog.write("session terminating", category: "lifecycle")
         openCodexRefreshCoordinator.teardown()
         timer?.invalidate()
+        updateCheckTimer?.invalidate()
+        updateCheckTimer = nil
         activityCoordinator.stop()
         menuBarWidthAdjustmentCoalescer.cancel()
         menuBarStatusItemWidthAdjustmentSession.cancel()
@@ -784,6 +798,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func refreshStatusItemMenuInput() {
+        guard let statusItemController else { return }
         statusItemController.updateMenu(input: makeStatusItemMenuInput())
     }
 
@@ -1268,6 +1283,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     var dashboardCompositionForTesting: DashboardCompositionController { dashboardComposition }
 
+    var backgroundUpdateTimerForTesting: Timer? { updateCheckTimer }
+
     func handleLaunchAtLoginActionForTesting(enabled: Bool) {
         handleLaunchAtLoginAction(enabled: enabled)
     }
@@ -1351,6 +1368,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         timer = providerTimer
         RunLoop.main.add(providerTimer, forMode: .common)
         activityCoordinator.updateInterval(activityPollInterval)
+    }
+
+    static let backgroundUpdateCheckInterval: TimeInterval = 6 * 60 * 60
+
+    private func checkForBackgroundUpdate() {
+        if case .available = updateService.state {
+            return
+        }
+        updateService.checkForUpdatesIfNeeded()
+    }
+
+    private func configureUpdateCheckTimer() {
+        updateCheckTimer?.invalidate()
+        let timer = Timer(
+            timeInterval: Self.backgroundUpdateCheckInterval,
+            repeats: true
+        ) { [weak self] _ in
+            self?.checkForBackgroundUpdate()
+        }
+        updateCheckTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func setCodexTaskRunning(_ running: Bool, force: Bool = false) {
