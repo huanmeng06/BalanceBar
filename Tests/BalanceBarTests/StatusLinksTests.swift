@@ -76,6 +76,78 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(urlField.isEditable)
     }
 
+    func testFooterActionsStayCompactAndSemanticLeadingAtNormalAndMinimumWidths() throws {
+        let probeEditor = StatusLinksEditorView(
+            links: [StatusLink(title: "Status", url: "https://status.example")],
+            onLinksChanged: { _ in },
+            onReset: { [] }
+        )
+        let minimumEditorWidth = probeEditor.tableViewForTesting.tableColumns.reduce(CGFloat(0)) {
+            $0 + $1.minWidth
+        } + DashboardSettingsComponents.settingsRowHorizontalInset * 2
+
+        for width in [minimumEditorWidth, minimumEditorWidth + 220] {
+            let editor = StatusLinksEditorView(
+                links: [StatusLink(title: "Status", url: "https://status.example")],
+                onLinksChanged: { _ in },
+                onReset: { [] }
+            )
+            editor.frame = NSRect(x: 0, y: 0, width: width, height: StatusLinksEditorView.fixedHeight)
+            editor.needsLayout = true
+            editor.layoutSubtreeIfNeeded()
+            let footer = editor.footerViewForTesting
+            let add = editor.addButtonForTesting
+            let separator = editor.verticalSeparatorForTesting
+            let remove = editor.removeButtonForTesting
+            let footerFrame = footer.convert(footer.bounds, to: editor)
+            let addFrame = add.convert(add.bounds, to: editor)
+            let separatorFrame = separator.convert(separator.bounds, to: editor)
+            let removeFrame = remove.convert(remove.bounds, to: editor)
+            let sortedButtonFrames = [addFrame, removeFrame].sorted { $0.minX < $1.minX }
+
+            XCTAssertGreaterThan(addFrame.width, 0)
+            XCTAssertGreaterThan(removeFrame.width, 0)
+            XCTAssertLessThanOrEqual(
+                addFrame.width,
+                max(add.fittingSize.width * 2, add.fittingSize.width + 12),
+                "Add must keep an intrinsic-sized hit area at width \(width)"
+            )
+            XCTAssertLessThanOrEqual(
+                removeFrame.width,
+                max(remove.fittingSize.width * 2, remove.fittingSize.width + 12),
+                "Remove must keep an intrinsic-sized hit area at width \(width)"
+            )
+            XCTAssertLessThan(sortedButtonFrames[0].maxX, separatorFrame.minX)
+            XCTAssertLessThan(separatorFrame.maxX, sortedButtonFrames[1].minX)
+
+            let isRightToLeft = editor.userInterfaceLayoutDirection == .rightToLeft
+            if isRightToLeft {
+                XCTAssertGreaterThanOrEqual(footerFrame.minX, editor.bounds.midX)
+                XCTAssertGreaterThan(footerFrame.minX - editor.bounds.minX, footerFrame.width)
+            } else {
+                XCTAssertLessThanOrEqual(
+                    footerFrame.maxX,
+                    editor.bounds.midX,
+                    "Footer actions must remain semantic-leading at width \(width)"
+                )
+                XCTAssertGreaterThan(
+                    editor.bounds.maxX - footerFrame.maxX,
+                    footerFrame.width,
+                    "Footer must retain empty trailing space at width \(width)"
+                )
+            }
+
+            let trailingPoint = NSPoint(
+                x: isRightToLeft ? editor.bounds.minX + 1 : editor.bounds.maxX - 1,
+                y: addFrame.midY
+            )
+            XCTAssertFalse(
+                addFrame.contains(trailingPoint),
+                "Empty footer space must not be part of Add's hit area at width \(width)"
+            )
+        }
+    }
+
     func testTextEditingPersistsOnlyWhenEditingEnds() throws {
         var changes: [[StatusLink]] = []
         let editor = StatusLinksEditorView(
@@ -219,11 +291,13 @@ final class StatusLinksTests: XCTestCase {
         window.contentView?.layoutSubtreeIfNeeded()
         XCTAssertFalse(editor.isVisible)
         XCTAssertEqual(editor.currentHeight, 0, accuracy: 0.001)
+        XCTAssertEqual(editor.frame.height, 0, accuracy: 0.001)
 
         editor.setVisible(true, animated: false)
         window.contentView?.layoutSubtreeIfNeeded()
         XCTAssertTrue(editor.isVisible)
         XCTAssertEqual(editor.currentHeight, StatusLinksEditorView.fixedHeight, accuracy: 0.001)
+        XCTAssertEqual(editor.frame.height, StatusLinksEditorView.fixedHeight, accuracy: 1)
         XCTAssertTrue(editor.superview != nil)
     }
 

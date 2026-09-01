@@ -466,6 +466,8 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         footerView.spacing = 8
         footerView.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
         footerView.translatesAutoresizingMaskIntoConstraints = false
+        footerView.setContentHuggingPriority(.required, for: .horizontal)
+        footerView.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         verticalSeparator.boxType = .separator
         verticalSeparator.translatesAutoresizingMaskIntoConstraints = false
@@ -492,13 +494,25 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         let horizontalInset = DashboardSettingsComponents.settingsRowHorizontalInset
         let verticalInset = DashboardSettingsComponents.settingsRowVerticalInset
         let resetSpacing = DashboardSettingsComponents.settingsRowContentControlSpacing
+        let listTopConstraint = listContainer.topAnchor.constraint(equalTo: topAnchor, constant: verticalInset)
+        listTopConstraint.priority = .required - 1
+        let listBottomConstraint = listContainer.bottomAnchor.constraint(
+            equalTo: resetButton.topAnchor,
+            constant: -resetSpacing
+        )
+        listBottomConstraint.priority = .required - 1
+        let resetBottomConstraint = resetButton.bottomAnchor.constraint(
+            equalTo: bottomAnchor,
+            constant: -verticalInset
+        )
+        resetBottomConstraint.priority = .required - 1
         NSLayoutConstraint.activate([
             listContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalInset),
             listContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
-            listContainer.topAnchor.constraint(equalTo: topAnchor, constant: verticalInset),
-            listContainer.bottomAnchor.constraint(equalTo: resetButton.topAnchor, constant: -resetSpacing),
+            listTopConstraint,
+            listBottomConstraint,
             resetButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
-            resetButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -verticalInset),
+            resetBottomConstraint,
 
             scrollView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
@@ -510,7 +524,6 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             horizontalSeparator.heightAnchor.constraint(equalToConstant: 1),
 
             footerView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
-            footerView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
             footerView.topAnchor.constraint(equalTo: horizontalSeparator.bottomAnchor),
             footerView.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor)
         ])
