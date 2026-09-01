@@ -217,7 +217,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             setSortAlphabetically: { [weak self] enabled in self?.sortProvidersAlphabetically = enabled },
             onToggle: { [weak self] identifier, enabled in self?.handleDashboardToggle(identifier: identifier, enabled: enabled) },
             onLaunchAtLogin: { [weak self] enabled in self?.handleLaunchAtLoginAction(enabled: enabled) },
-            onOpenLaunchAtLoginSettings: { [weak self] in self?.openLaunchAtLoginSettings() },
             onLaunchWithChatGPT: { [weak self] enabled in self?.handleLaunchWithChatGPTAction(enabled: enabled) },
             onOpenLaunchWithChatGPTSettings: { [weak self] in self?.openLaunchWithChatGPTSettings() },
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
@@ -1007,10 +1006,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             level: .error,
             category: "configuration"
         )
-    }
-
-    private func openLaunchAtLoginSettings() {
-        launchAtLoginController.openSystemSettingsLoginItems()
     }
 
     private func handleLaunchWithChatGPTAction(enabled: Bool) {

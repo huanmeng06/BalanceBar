@@ -3,7 +3,6 @@ import AppKit
 struct DashboardPreferencePageActions {
     let onToggle: (String, Bool) -> Void
     let onLaunchAtLogin: (Bool) -> Void
-    let onOpenLaunchAtLoginSettings: () -> Void
     let onLaunchWithChatGPT: (Bool) -> Void
     let onOpenLaunchWithChatGPTSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
@@ -61,7 +60,6 @@ final class DashboardPreferencePages {
         self.launchWithChatGPTController = launchWithChatGPTController
         relay.onToggle = actions.onToggle
         relay.onLaunchAtLogin = actions.onLaunchAtLogin
-        relay.onOpenLaunchAtLoginSettings = actions.onOpenLaunchAtLoginSettings
         relay.onLaunchWithChatGPT = actions.onLaunchWithChatGPT
         relay.onOpenLaunchWithChatGPTSettings = actions.onOpenLaunchWithChatGPTSettings
         relay.onInterval = actions.onInterval

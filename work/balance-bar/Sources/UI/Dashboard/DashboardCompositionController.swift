@@ -32,7 +32,6 @@ struct DashboardCompositionActions {
     let setSortAlphabetically: (Bool) -> Void
     let onToggle: (String, Bool) -> Void
     let onLaunchAtLogin: (Bool) -> Void
-    let onOpenLaunchAtLoginSettings: () -> Void
     let onLaunchWithChatGPT: (Bool) -> Void
     let onOpenLaunchWithChatGPTSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
@@ -90,7 +89,6 @@ final class DashboardCompositionController {
         actions: DashboardPreferencePageActions(
             onToggle: actions.onToggle,
             onLaunchAtLogin: actions.onLaunchAtLogin,
-            onOpenLaunchAtLoginSettings: actions.onOpenLaunchAtLoginSettings,
             onLaunchWithChatGPT: actions.onLaunchWithChatGPT,
             onOpenLaunchWithChatGPTSettings: actions.onOpenLaunchWithChatGPTSettings,
             onInterval: actions.onInterval,

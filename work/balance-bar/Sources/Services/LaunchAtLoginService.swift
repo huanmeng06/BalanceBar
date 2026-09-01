@@ -33,7 +33,6 @@ protocol LaunchAtLoginService {
 
     func register() throws
     func unregister() throws
-    func openSystemSettingsLoginItems()
 }
 
 /// Production adapter for the app's native login-item service. BalanceBar
@@ -55,10 +54,6 @@ final class SystemLaunchAtLoginService: LaunchAtLoginService {
 
     func unregister() throws {
         try service.unregister()
-    }
-
-    func openSystemSettingsLoginItems() {
-        SMAppService.openSystemSettingsLoginItems()
     }
 }
 
@@ -134,10 +129,6 @@ final class LaunchAtLoginController {
         }
 
         return LaunchAtLoginOperationOutcome(state: currentState(), error: nil)
-    }
-
-    func openSystemSettingsLoginItems() {
-        service.openSystemSettingsLoginItems()
     }
 
     private func stateAfterOperationError(

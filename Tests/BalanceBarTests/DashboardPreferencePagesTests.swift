@@ -91,15 +91,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 .compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
+        let launchAtLoginRow = try XCTUnwrap(launchSwitch.superview)
+        let launchAtLoginButtons = {
+            self.descendants(of: launchAtLoginRow).compactMap { $0 as? NSButton }
+        }
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-        let openSettingsButton = try XCTUnwrap(
-            descendants(of: page)
-                .compactMap { $0 as? NSButton }
-                .first { $0.title == "Open Settings" }
-        )
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
-        XCTAssertTrue(openSettingsButton.isHidden)
+        XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains { $0.stringValue == "Launch at Login" })
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
@@ -112,9 +111,9 @@ final class DashboardPreferencePagesTests: XCTestCase {
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .requiresApproval))
         XCTAssertEqual(launchSwitch.state, .on)
         XCTAssertTrue(launchSwitch.isEnabled)
-        XCTAssertFalse(openSettingsButton.isHidden)
+        XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "Enable BalanceBar under System Settings → General → Login Items → Open at Login"
+            $0.stringValue == "Login item registered; macOS may require additional approval"
         })
 
         controller.refreshLaunchAtLogin(
@@ -122,7 +121,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
-        XCTAssertFalse(openSettingsButton.isHidden)
+        XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Could not update Launch at Login. Check System Settings → General → Login Items and try again."
         })
@@ -130,7 +129,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .unknown))
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
-        XCTAssertFalse(openSettingsButton.isHidden)
+        XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Unable to read the login item status"
         })
@@ -138,7 +137,14 @@ final class DashboardPreferencePagesTests: XCTestCase {
         controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .notFound))
         XCTAssertEqual(launchSwitch.state, .off)
         XCTAssertTrue(launchSwitch.isEnabled)
-        XCTAssertTrue(openSettingsButton.isHidden)
+        XCTAssertTrue(launchAtLoginButtons().isEmpty)
+        XCTAssertTrue(labels.contains {
+            $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
+        })
+        controller.refreshLaunchAtLogin(LaunchAtLoginState(status: .enabled))
+        XCTAssertEqual(launchSwitch.state, .on)
+        XCTAssertTrue(launchSwitch.isEnabled)
+        XCTAssertTrue(launchAtLoginButtons().isEmpty)
         XCTAssertTrue(labels.contains {
             $0.stringValue == "Automatically start BalanceBar after you log in to your Mac"
         })
@@ -216,12 +222,24 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let launchWithChatGPTSwitch = try XCTUnwrap(
             switches.first { $0.identifier?.rawValue == LaunchWithChatGPTController.toggleIdentifier }
         )
+        let launchAtLoginRow = try XCTUnwrap(launchAtLoginSwitch.superview)
+        XCTAssertTrue(
+            descendants(of: launchAtLoginRow).compactMap { $0 as? NSButton }.isEmpty
+        )
+        let launchWithChatGPTControls = try XCTUnwrap(launchWithChatGPTSwitch.superview)
+        let launchWithChatGPTRow = try XCTUnwrap(launchWithChatGPTControls.superview)
+        let launchWithChatGPTOpenSettingsButton = try XCTUnwrap(
+            descendants(of: launchWithChatGPTRow)
+                .compactMap { $0 as? NSButton }
+                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings) }
+        )
         XCTAssertEqual(launchAtLoginSwitch.state, .on)
         XCTAssertEqual(silentLaunchSwitch.state, .off)
         XCTAssertEqual(launchWithChatGPTSwitch.state, .on)
         XCTAssertTrue(launchAtLoginSwitch.isEnabled)
         XCTAssertTrue(silentLaunchSwitch.isEnabled)
         XCTAssertTrue(launchWithChatGPTSwitch.isEnabled)
+        XCTAssertFalse(launchWithChatGPTOpenSettingsButton.isHidden)
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }.map(\.stringValue)
         let sectionTitles = [
@@ -281,13 +299,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .compactMap { $0 as? NSSwitch }
                     .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
             )
-            let openSettingsButton = try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? NSButton }
-                    .first {
-                        $0.title == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings)
-                    }
-            )
             let subtitle = try XCTUnwrap(
                 descendants(of: page)
                     .compactMap { $0 as? NSTextField }
@@ -339,26 +350,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 window.layoutIfNeeded()
                 page.layoutSubtreeIfNeeded()
                 let refreshedLabelsFrame = labels.convert(labels.bounds, to: row)
-                let controls = try XCTUnwrap(launchSwitch.superview)
-                let controlsFrame = controls.convert(controls.bounds, to: row)
                 let switchFrame = launchSwitch.convert(launchSwitch.bounds, to: row)
-                let buttonFrame = openSettingsButton.convert(openSettingsButton.bounds, to: row)
-                XCTAssertFalse(openSettingsButton.isHidden)
                 XCTAssertTrue(
-                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(controlsFrame),
-                    "approval controls stay inside the row for \(language) at \(width)"
-                )
-                XCTAssertTrue(
-                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(buttonFrame),
-                    "approval button stays inside the row for \(language) at \(width)"
+                    row.bounds.insetBy(dx: 0, dy: -0.5).contains(switchFrame),
+                    "approval switch stays inside the row for \(language) at \(width)"
                 )
                 XCTAssertFalse(
-                    refreshedLabelsFrame.intersects(controlsFrame),
-                    "approval controls do not overlap labels for \(language) at \(width)"
+                    refreshedLabelsFrame.intersects(switchFrame),
+                    "approval switch does not overlap labels for \(language) at \(width)"
                 )
                 XCTAssertEqual(
                     switchFrame.maxX,
-                    controlsFrame.maxX,
+                    row.bounds.maxX - 20,
                     accuracy: 0.5,
                     "launch switch remains trailing-aligned for \(language) at \(width)"
                 )

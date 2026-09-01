@@ -19,7 +19,6 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         private(set) var statusReadCount = 0
         private(set) var registerCallCount = 0
         private(set) var unregisterCallCount = 0
-        private(set) var openSystemSettingsLoginItemsCallCount = 0
 
         init(status: LaunchAtLoginStatus) {
             currentStatus = status
@@ -52,9 +51,6 @@ final class LaunchAtLoginServiceTests: XCTestCase {
             currentStatus = .notRegistered
         }
 
-        func openSystemSettingsLoginItems() {
-            openSystemSettingsLoginItemsCallCount += 1
-        }
     }
 
     private final class MockLaunchWithChatGPTService: LaunchWithChatGPTService {
@@ -278,15 +274,6 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         XCTAssertEqual(controller.currentState(), LaunchAtLoginState(status: .notRegistered))
     }
 
-    func testControllerRoutesOpeningSystemSettingsThroughInjectedService() {
-        let service = MockLaunchAtLoginService(status: .requiresApproval)
-        let controller = LaunchAtLoginController(service: service)
-
-        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
-        controller.openSystemSettingsLoginItems()
-        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 1)
-    }
-
     func testDedicatedActionUsesRequestedStateWithoutGuidanceAndApplicationActivationReloadsExternalChanges() throws {
         let service = MockLaunchAtLoginService(status: .notRegistered)
         let appDelegate = AppDelegate(
@@ -308,7 +295,6 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         appDelegate.handleLaunchAtLoginActionForTesting(enabled: true)
         XCTAssertEqual(service.registerCallCount, 1)
         XCTAssertEqual(service.unregisterCallCount, 0)
-        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
         XCTAssertEqual(launchSwitch.state, .on)
 
         service.currentStatus = .notRegistered
@@ -319,10 +305,9 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         appDelegate.handleLaunchAtLoginActionForTesting(enabled: false)
         XCTAssertEqual(service.unregisterCallCount, 1)
         XCTAssertEqual(launchSwitch.state, .off)
-        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
     }
 
-    func testRegisterRequiresApprovalKeepsSwitchOnWithInlineSettingsAction() throws {
+    func testRegisterRequiresApprovalKeepsSwitchOnWithoutSettingsAction() throws {
         let service = MockLaunchAtLoginService(status: .notRegistered)
         service.statusAfterRegister = .requiresApproval
         let appDelegate = AppDelegate(
@@ -340,19 +325,15 @@ final class LaunchAtLoginServiceTests: XCTestCase {
             controls.compactMap { $0 as? NSSwitch }
                 .first { $0.identifier?.rawValue == LaunchAtLoginController.toggleIdentifier }
         )
-        let openSettings = try XCTUnwrap(
-            controls.compactMap { $0 as? NSButton }
-                .first { $0.title == tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings) }
-        )
+        let launchAtLoginRow = try XCTUnwrap(launchSwitch.superview)
 
         appDelegate.handleLaunchAtLoginActionForTesting(enabled: true)
 
         XCTAssertEqual(service.registerCallCount, 1)
         XCTAssertEqual(launchSwitch.state, .on)
-        XCTAssertTrue(openSettings.isHidden == false)
-        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 0)
-        openSettings.performClick(nil)
-        XCTAssertEqual(service.openSystemSettingsLoginItemsCallCount, 1)
+        XCTAssertTrue(
+            descendants(of: launchAtLoginRow).compactMap { $0 as? NSButton }.isEmpty
+        )
     }
 
     func testLoginItemStateDoesNotUseAppPreferencesOrMigrationKeys() {

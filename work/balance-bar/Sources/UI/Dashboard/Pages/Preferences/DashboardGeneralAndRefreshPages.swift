@@ -300,8 +300,6 @@ final class DashboardGeneralPage {
     private var updateBadge: NSView?
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
-    private var launchAtLoginOpenSettingsButton: NSButton?
-    private var launchAtLoginControls: DashboardAdaptiveControlsStackView?
     private var launchWithChatGPTSwitch: NSSwitch?
     private var launchWithChatGPTSubtitleLabel: NSTextField?
     private var launchWithChatGPTOpenSettingsButton: NSButton?
@@ -331,29 +329,16 @@ final class DashboardGeneralPage {
         let launchAtLoginSubtitleLabel = NSTextField(
             wrappingLabelWithString: launchAtLoginSubtitle(for: input.launchAtLoginState)
         )
-        let launchAtLoginOpenSettingsButton = NSButton(
-            title: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings),
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.openLaunchAtLoginSettings(_:))
-        )
-        launchAtLoginOpenSettingsButton.bezelStyle = .rounded
-        let launchAtLoginControls = DashboardAdaptiveControlsStackView(
-            views: [launchAtLoginOpenSettingsButton, launchAtLoginSwitch]
-        )
-        launchAtLoginControls.orientation = .horizontal
-        launchAtLoginControls.alignment = .centerY
-        launchAtLoginControls.spacing = 8
         apply(
             input.launchAtLoginState,
             to: launchAtLoginSwitch,
-            subtitle: launchAtLoginSubtitleLabel,
-            openSettingsButton: launchAtLoginOpenSettingsButton
+            subtitle: launchAtLoginSubtitleLabel
         )
         let launchAtLoginRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
             subtitle: launchAtLoginSubtitle(for: input.launchAtLoginState),
             subtitleLabel: launchAtLoginSubtitleLabel,
-            control: launchAtLoginControls
+            control: launchAtLoginSwitch
         )
 
         let silentLaunchSwitch = DashboardSettingsComponents.makeSwitch(
@@ -547,8 +532,6 @@ final class DashboardGeneralPage {
         self.updateBadge = updateBadge
         self.launchAtLoginSwitch = launchAtLoginSwitch
         self.launchAtLoginSubtitleLabel = launchAtLoginSubtitleLabel
-        self.launchAtLoginOpenSettingsButton = launchAtLoginOpenSettingsButton
-        self.launchAtLoginControls = launchAtLoginControls
         self.launchWithChatGPTSwitch = launchWithChatGPTSwitch
         self.launchWithChatGPTSubtitleLabel = launchWithChatGPTSubtitleLabel
         self.launchWithChatGPTOpenSettingsButton = launchWithChatGPTOpenSettingsButton
@@ -575,16 +558,13 @@ final class DashboardGeneralPage {
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
         guard let launchAtLoginSwitch,
-              let launchAtLoginSubtitleLabel,
-              let launchAtLoginOpenSettingsButton
+              let launchAtLoginSubtitleLabel
         else { return }
         apply(
             state,
             to: launchAtLoginSwitch,
-            subtitle: launchAtLoginSubtitleLabel,
-            openSettingsButton: launchAtLoginOpenSettingsButton
+            subtitle: launchAtLoginSubtitleLabel
         )
-        launchAtLoginControls?.invalidateLayoutAfterContentChange()
         launchAtLoginSwitch.superview?.needsLayout = true
         launchAtLoginSubtitleLabel.superview?.needsLayout = true
         launchAtLoginSubtitleLabel.superview?.superview?.needsLayout = true
@@ -645,8 +625,7 @@ final class DashboardGeneralPage {
     private func apply(
         _ state: LaunchAtLoginState,
         to launchAtLoginSwitch: NSSwitch,
-        subtitle: NSTextField,
-        openSettingsButton: NSButton
+        subtitle: NSTextField
     ) {
         switch state.status {
         case .enabled:
@@ -662,7 +641,6 @@ final class DashboardGeneralPage {
             launchAtLoginSwitch.state = .off
             launchAtLoginSwitch.isEnabled = true
         }
-        openSettingsButton.isHidden = state.notice == .none
         subtitle.stringValue = launchAtLoginSubtitle(for: state)
         subtitle.invalidateIntrinsicContentSize()
     }

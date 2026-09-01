@@ -218,7 +218,7 @@
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
 "dashboard.general.and.refresh.pages.launch_at_login" = "Avvia all'accesso";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Avvia automaticamente BalanceBar dopo l’accesso al Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Attiva BalanceBar in Impostazioni di Sistema → Generali → Elementi login → Apri all’accesso";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "L’elemento login è registrato; macOS potrebbe richiedere un’ulteriore autorizzazione";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossibile aggiornare «Avvia all'accesso». Controlla Impostazioni di Sistema → Generali → Elementi login e riprova.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Impossibile leggere lo stato dell’elemento login";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Apri impostazioni";

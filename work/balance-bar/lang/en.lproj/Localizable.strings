@@ -218,7 +218,7 @@
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
 "dashboard.general.and.refresh.pages.launch_at_login" = "Launch at Login";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Automatically start BalanceBar after you log in to your Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Enable BalanceBar under System Settings → General → Login Items → Open at Login";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Login item registered; macOS may require additional approval";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Could not update Launch at Login. Check System Settings → General → Login Items and try again.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Unable to read the login item status";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Open Settings";

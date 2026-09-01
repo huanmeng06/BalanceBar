@@ -218,7 +218,7 @@
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
 "dashboard.general.and.refresh.pages.launch_at_login" = "Abrir al iniciar sesión";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Abre BalanceBar automáticamente después de iniciar sesión en el Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Activa BalanceBar en Configuración del Sistema → General → Ítems de inicio → Abrir al iniciar sesión";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "El ítem de inicio está registrado; macOS puede requerir una aprobación adicional";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "No se pudo actualizar «Abrir al iniciar sesión». Comprueba Configuración del Sistema → General → Ítems de inicio y vuelve a intentarlo.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "No se puede leer el estado del ítem de inicio";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Abrir ajustes";

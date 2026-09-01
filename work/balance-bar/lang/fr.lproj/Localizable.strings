@@ -218,7 +218,7 @@
 "dashboard.general.and.refresh.pages.cc_switch" = "CC Switch";
 "dashboard.general.and.refresh.pages.launch_at_login" = "Lancer à la connexion";
 "dashboard.general.and.refresh.pages.launch_at_login_description" = "Lancer automatiquement BalanceBar après la connexion au Mac";
-"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "Activez BalanceBar dans Réglages Système → Général → Éléments d’ouverture → Ouvrir à l’ouverture de session";
+"dashboard.general.and.refresh.pages.launch_at_login_requires_approval" = "L’élément d’ouverture est enregistré ; macOS peut nécessiter une confirmation supplémentaire";
 "dashboard.general.and.refresh.pages.launch_at_login_operation_failed" = "Impossible de mettre à jour « Lancer à la connexion ». Vérifiez Réglages Système → Général → Éléments d’ouverture, puis réessayez.";
 "dashboard.general.and.refresh.pages.launch_at_login_unavailable" = "Impossible de lire l’état de l’élément d’ouverture";
 "dashboard.general.and.refresh.pages.launch_at_login_open_settings" = "Ouvrir les réglages";
