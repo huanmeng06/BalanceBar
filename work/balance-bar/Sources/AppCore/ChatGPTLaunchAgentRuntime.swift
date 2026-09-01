@@ -74,6 +74,8 @@ final class ChatGPTLaunchAgentRuntime {
                 as? NSRunningApplication
             self?.handleLaunch(bundleIdentifier: application?.bundleIdentifier)
         }
+
+        reconcileInitialChatGPTPresenceOnce()
     }
 
     func stop() {
@@ -105,6 +107,19 @@ final class ChatGPTLaunchAgentRuntime {
                 NSLog("BalanceBar ChatGPT launch agent failed to open BalanceBar: %@", error.localizedDescription)
             }
             self?.launchInFlight = false
+        }
+    }
+
+    private func reconcileInitialChatGPTPresenceOnce() {
+        guard isListening else { return }
+
+        for bundleIdentifier in ChatGPTApplicationIdentity.bundleIdentifiers {
+            guard workspace.isApplicationRunning(bundleIdentifier: bundleIdentifier) else {
+                continue
+            }
+
+            handleLaunch(bundleIdentifier: bundleIdentifier)
+            break
         }
     }
 

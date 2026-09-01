@@ -16,6 +16,8 @@ enum ChatGPTLaunchAgentMain {
             balanceBarBundleIdentifier: balanceBarBundleIdentifier
         )
         runtime.start()
-        RunLoop.main.run()
+        withExtendedLifetime(runtime) {
+            RunLoop.main.run()
+        }
     }
 }

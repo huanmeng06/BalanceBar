@@ -103,15 +103,31 @@ final class LaunchAtLoginServiceTests: XCTestCase {
 
     private final class MockChatGPTLaunchAgentWorkspace: ChatGPTLaunchAgentWorkspace {
         let notificationCenter = NotificationCenter()
-        var balanceBarIsRunning = false
+        let balanceBarBundleIdentifier = "com.huanmeng06.BalanceBar.app"
+        var runningBundleIdentifiers = Set<String>()
+        var runningApplicationCheckBundleIdentifiers = [String]()
+        var onIsApplicationRunning: ((String) -> Void)?
         var openCallCount = 0
         var openedURL: URL?
         var openedActivates: Bool?
         var openedAddsToRecentItems: Bool?
         private var completion: ((Error?) -> Void)?
 
+        var balanceBarIsRunning: Bool {
+            get { runningBundleIdentifiers.contains(balanceBarBundleIdentifier) }
+            set {
+                if newValue {
+                    runningBundleIdentifiers.insert(balanceBarBundleIdentifier)
+                } else {
+                    runningBundleIdentifiers.remove(balanceBarBundleIdentifier)
+                }
+            }
+        }
+
         func isApplicationRunning(bundleIdentifier: String) -> Bool {
-            balanceBarIsRunning
+            runningApplicationCheckBundleIdentifiers.append(bundleIdentifier)
+            onIsApplicationRunning?(bundleIdentifier)
+            return runningBundleIdentifiers.contains(bundleIdentifier)
         }
 
         func openApplication(
@@ -136,6 +152,16 @@ final class LaunchAtLoginServiceTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+
+    private func makeChatGPTLaunchAgentRuntime(
+        workspace: MockChatGPTLaunchAgentWorkspace
+    ) -> ChatGPTLaunchAgentRuntime {
+        ChatGPTLaunchAgentRuntime(
+            workspace: workspace,
+            balanceBarBundleURL: URL(fileURLWithPath: "/Applications/BalanceBar.app"),
+            balanceBarBundleIdentifier: workspace.balanceBarBundleIdentifier
+        )
     }
 
     func testServiceManagementStatusesMapToSafePresentationStates() {
@@ -434,17 +460,90 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         )
     }
 
-    func testChatGPTLaunchAgentUsesLaunchEdgesAndGuardsDuplicateRequests() {
+    func testChatGPTLaunchAgentRegistersObserverBeforeInitialReconciliation() {
         let workspace = MockChatGPTLaunchAgentWorkspace()
-        let runtime = ChatGPTLaunchAgentRuntime(
-            workspace: workspace,
-            balanceBarBundleURL: URL(fileURLWithPath: "/Applications/BalanceBar.app"),
-            balanceBarBundleIdentifier: "com.huanmeng06.BalanceBar.app"
-        )
+        let runtime = makeChatGPTLaunchAgentRuntime(workspace: workspace)
+        var wasListeningDuringReconciliation = false
+        workspace.onIsApplicationRunning = { _ in
+            wasListeningDuringReconciliation = runtime.isListening
+        }
 
         runtime.start()
         XCTAssertTrue(runtime.isListening)
-        XCTAssertEqual(workspace.openCallCount, 0, "starting the agent does not reconcile existing ChatGPT presence")
+        XCTAssertTrue(wasListeningDuringReconciliation)
+        XCTAssertEqual(
+            workspace.runningApplicationCheckBundleIdentifiers,
+            ChatGPTApplicationIdentity.bundleIdentifiers
+        )
+    }
+
+    func testChatGPTLaunchAgentReconcilesExistingChatGPTPresenceOnceAtStartup() {
+        let workspace = MockChatGPTLaunchAgentWorkspace()
+        workspace.runningBundleIdentifiers.insert("com.openai.codex")
+        let runtime = makeChatGPTLaunchAgentRuntime(workspace: workspace)
+
+        runtime.start()
+        runtime.start()
+
+        XCTAssertEqual(workspace.openCallCount, 1)
+        XCTAssertEqual(
+            workspace.runningApplicationCheckBundleIdentifiers,
+            ["com.openai.codex", workspace.balanceBarBundleIdentifier]
+        )
+        XCTAssertTrue(runtime.launchInFlight)
+    }
+
+    func testChatGPTLaunchAgentDoesNotOpenWhenBalanceBarAlreadyRunsAtStartup() {
+        let workspace = MockChatGPTLaunchAgentWorkspace()
+        workspace.runningBundleIdentifiers = [
+            "com.openai.chat",
+            workspace.balanceBarBundleIdentifier
+        ]
+        let runtime = makeChatGPTLaunchAgentRuntime(workspace: workspace)
+
+        runtime.start()
+
+        XCTAssertEqual(workspace.openCallCount, 0)
+        XCTAssertFalse(runtime.launchInFlight)
+    }
+
+    func testChatGPTLaunchAgentDoesNotOpenWhenChatGPTIsNotRunningAtStartup() {
+        let workspace = MockChatGPTLaunchAgentWorkspace()
+        let runtime = makeChatGPTLaunchAgentRuntime(workspace: workspace)
+
+        runtime.start()
+
+        XCTAssertEqual(workspace.openCallCount, 0)
+        XCTAssertEqual(
+            workspace.runningApplicationCheckBundleIdentifiers,
+            ChatGPTApplicationIdentity.bundleIdentifiers
+        )
+    }
+
+    func testChatGPTLaunchAgentDoesNotDuplicateAnEdgeDuringInitialReconciliation() {
+        let workspace = MockChatGPTLaunchAgentWorkspace()
+        workspace.runningBundleIdentifiers.insert("com.openai.codex")
+        let runtime = makeChatGPTLaunchAgentRuntime(workspace: workspace)
+        var deliveredLaunchEdge = false
+        workspace.onIsApplicationRunning = { bundleIdentifier in
+            guard bundleIdentifier == "com.openai.codex", !deliveredLaunchEdge else {
+                return
+            }
+            deliveredLaunchEdge = true
+            runtime.handleLaunch(bundleIdentifier: "com.openai.chat")
+        }
+
+        runtime.start()
+
+        XCTAssertEqual(workspace.openCallCount, 1)
+        XCTAssertTrue(runtime.launchInFlight)
+    }
+
+    func testChatGPTLaunchAgentUsesLaunchEdgesAndGuardsDuplicateRequests() {
+        let workspace = MockChatGPTLaunchAgentWorkspace()
+        let runtime = makeChatGPTLaunchAgentRuntime(workspace: workspace)
+
+        runtime.start()
 
         runtime.handleLaunch(bundleIdentifier: "com.openai.codex")
         runtime.handleLaunch(bundleIdentifier: "com.openai.chat")
@@ -457,6 +556,13 @@ final class LaunchAtLoginServiceTests: XCTestCase {
         workspace.balanceBarIsRunning = true
         runtime.handleLaunch(bundleIdentifier: "com.openai.chat")
         XCTAssertEqual(workspace.openCallCount, 1, "an already-running BalanceBar is not relaunched")
+
+        workspace.balanceBarIsRunning = false
+        XCTAssertEqual(
+            workspace.openCallCount,
+            1,
+            "BalanceBar is not relaunched while ChatGPT remains running without a new launch edge"
+        )
 
         runtime.stop()
         XCTAssertFalse(runtime.isListening)
