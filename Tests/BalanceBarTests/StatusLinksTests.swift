@@ -45,7 +45,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(table.allowsColumnSelection)
         XCTAssertFalse(table.allowsColumnReordering)
         XCTAssertTrue(table.gridStyleMask.isEmpty)
-        XCTAssertNotNil(table.headerView)
+        XCTAssertNil(table.headerView)
         XCTAssertEqual(table.tableColumns.map(\.title), [
             tr(.keyStatusLinksEditorName),
             tr(.keyStatusLinksEditorUrl)
@@ -58,10 +58,19 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertLessThan(table.backgroundColor.alphaComponent, 1)
         XCTAssertFalse(editor.addButtonForTesting.isBordered)
         XCTAssertFalse(editor.removeButtonForTesting.isBordered)
+        XCTAssertGreaterThan(
+            editor.addButtonForTesting.frame.height,
+            editor.addButtonForTesting.fittingSize.height
+        )
+        XCTAssertGreaterThan(
+            editor.removeButtonForTesting.frame.height,
+            editor.removeButtonForTesting.fittingSize.height
+        )
         XCTAssertEqual(editor.horizontalSeparatorForTesting.boxType, .separator)
         XCTAssertEqual(editor.verticalSeparatorForTesting.boxType, .separator)
         let listContentView = try XCTUnwrap(editor.listContainerForTesting.contentView)
         XCTAssertTrue(scrollView.isDescendant(of: listContentView))
+        XCTAssertTrue(editor.footerHostViewForTesting.isDescendant(of: listContentView))
         XCTAssertTrue(editor.footerViewForTesting.isDescendant(of: listContentView))
         XCTAssertTrue(editor.horizontalSeparatorForTesting.isDescendant(of: listContentView))
         XCTAssertTrue(editor.footerViewForTesting.arrangedSubviews.contains { $0 === editor.addButtonForTesting })
@@ -136,7 +145,8 @@ final class StatusLinksTests: XCTestCase {
         )
         let minimumEditorWidth = probeEditor.tableViewForTesting.tableColumns.reduce(CGFloat(0)) {
             $0 + $1.minWidth
-        } + DashboardSettingsComponents.settingsRowHorizontalInset * 2
+        } + DashboardSettingsComponents.settingsRowHorizontalInset * 2 +
+            probeEditor.listContainerForTesting.contentViewMargins.width * 2 + 10
 
         for width in [minimumEditorWidth, minimumEditorWidth + 220] {
             let editor = StatusLinksEditorView(
@@ -150,6 +160,7 @@ final class StatusLinksTests: XCTestCase {
             let listContentView = try XCTUnwrap(editor.listContainerForTesting.contentView)
             for hostedView in [
                 editor.scrollViewForTesting,
+                editor.footerHostViewForTesting,
                 editor.footerViewForTesting,
                 editor.horizontalSeparatorForTesting
             ] {
@@ -160,10 +171,16 @@ final class StatusLinksTests: XCTestCase {
                 )
             }
             let footer = editor.footerViewForTesting
+            let footerHost = editor.footerHostViewForTesting
             let add = editor.addButtonForTesting
             let separator = editor.verticalSeparatorForTesting
             let remove = editor.removeButtonForTesting
             let footerFrame = footer.convert(footer.bounds, to: editor)
+            let footerHostFrame = footerHost.convert(footerHost.bounds, to: editor)
+            let horizontalFrame = editor.horizontalSeparatorForTesting.convert(
+                editor.horizontalSeparatorForTesting.bounds,
+                to: editor
+            )
             let addFrame = add.convert(add.bounds, to: editor)
             let separatorFrame = separator.convert(separator.bounds, to: editor)
             let removeFrame = remove.convert(remove.bounds, to: editor)
@@ -171,18 +188,28 @@ final class StatusLinksTests: XCTestCase {
 
             XCTAssertGreaterThan(addFrame.width, 0)
             XCTAssertGreaterThan(removeFrame.width, 0)
-            XCTAssertLessThanOrEqual(
-                addFrame.width,
-                max(add.fittingSize.width * 2, add.fittingSize.width + 12),
-                "Add must keep an intrinsic-sized hit area at width \(width)"
+            XCTAssertEqual(addFrame.height, footerHostFrame.height, accuracy: 1)
+            XCTAssertEqual(removeFrame.height, footerHostFrame.height, accuracy: 1)
+            XCTAssertGreaterThan(
+                addFrame.height,
+                add.fittingSize.height,
+                "Add must fill the footer's native vertical hit area at width \(width)"
             )
-            XCTAssertLessThanOrEqual(
-                removeFrame.width,
-                max(remove.fittingSize.width * 2, remove.fittingSize.width + 12),
-                "Remove must keep an intrinsic-sized hit area at width \(width)"
+            XCTAssertGreaterThan(
+                removeFrame.height,
+                remove.fittingSize.height,
+                "Remove must fill the footer's native vertical hit area at width \(width)"
             )
             XCTAssertLessThan(sortedButtonFrames[0].maxX, separatorFrame.minX)
             XCTAssertLessThan(separatorFrame.maxX, sortedButtonFrames[1].minX)
+            XCTAssertEqual(horizontalFrame.maxY, footerHostFrame.minY, accuracy: 1)
+            XCTAssertGreaterThan(footerHostFrame.height, add.fittingSize.height)
+            XCTAssertEqual(
+                editor.tableViewForTesting.tableColumns[1].width,
+                editor.tableViewForTesting.tableColumns[0].width * 2,
+                accuracy: 1,
+                "Name and URL columns must remain 1:2 at width \(width)"
+            )
 
             let isRightToLeft = editor.userInterfaceLayoutDirection == .rightToLeft
             if isRightToLeft {
@@ -359,7 +386,12 @@ final class StatusLinksTests: XCTestCase {
             editor.tableViewForTesting.frame.height,
             editor.scrollViewForTesting.contentView.bounds.height
         )
-        XCTAssertNotNil(editor.tableViewForTesting.headerView)
+        XCTAssertNil(editor.tableViewForTesting.headerView)
+        XCTAssertEqual(
+            editor.tableViewForTesting.tableColumns[1].width,
+            editor.tableViewForTesting.tableColumns[0].width * 2,
+            accuracy: 1
+        )
         XCTAssertEqual(editor.frame.height, StatusLinksEditorView.fixedHeight, accuracy: 1)
     }
 

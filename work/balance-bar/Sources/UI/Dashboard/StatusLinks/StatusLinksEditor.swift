@@ -76,6 +76,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let horizontalSeparator = NSBox()
+    private let footerHostView = NSView()
     private let footerView = NSStackView()
     private let verticalSeparator = NSBox()
     private let addButton = NSButton()
@@ -101,6 +102,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     var removeButtonForTesting: NSButton { removeButton }
     var resetButtonForTesting: NSButton { resetButton }
     var listContainerForTesting: NSBox { listContainer }
+    var footerHostViewForTesting: NSView { footerHostView }
     var footerViewForTesting: NSStackView { footerView }
     var horizontalSeparatorForTesting: NSBox { horizontalSeparator }
     var verticalSeparatorForTesting: NSBox { verticalSeparator }
@@ -167,7 +169,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     override func layout() {
         super.layout()
         updateTableFrame()
-        tableView.sizeLastColumnToFit()
+        updateColumnWidths()
     }
 
     func setVisible(_ visible: Bool, animated: Bool) {
@@ -461,7 +463,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         tableView.dataSource = self
         tableView.style = .fullWidth
         tableView.rowSizeStyle = .medium
-        tableView.headerView = NSTableHeaderView()
+        tableView.headerView = nil
         tableView.selectionHighlightStyle = .regular
         tableView.allowsMultipleSelection = false
         tableView.allowsEmptySelection = true
@@ -469,7 +471,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         tableView.allowsColumnReordering = false
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.backgroundColor = .clear
-        tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
         tableView.gridStyleMask = []
         tableView.registerForDraggedTypes([Self.statusLinkPasteboardType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
@@ -478,13 +480,13 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         nameColumn.title = tr(.keyStatusLinksEditorName)
         nameColumn.minWidth = 100
         nameColumn.width = 160
-        nameColumn.resizingMask = [.userResizingMask, .autoresizingMask]
+        nameColumn.resizingMask = [.autoresizingMask]
 
         let urlColumn = NSTableColumn(identifier: Self.urlColumnIdentifier)
         urlColumn.title = tr(.keyStatusLinksEditorUrl)
-        urlColumn.minWidth = 160
-        urlColumn.width = 260
-        urlColumn.resizingMask = [.userResizingMask, .autoresizingMask]
+        urlColumn.minWidth = 200
+        urlColumn.width = 320
+        urlColumn.resizingMask = [.autoresizingMask]
 
         tableView.addTableColumn(nameColumn)
         tableView.addTableColumn(urlColumn)
@@ -534,11 +536,15 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         horizontalSeparator.boxType = .separator
         horizontalSeparator.translatesAutoresizingMaskIntoConstraints = false
 
+        footerHostView.translatesAutoresizingMaskIntoConstraints = false
+        footerHostView.setContentHuggingPriority(.required, for: .vertical)
+        footerHostView.setContentCompressionResistancePriority(.required, for: .vertical)
+
         footerView.orientation = .horizontal
         footerView.alignment = .centerY
         footerView.distribution = .fill
-        footerView.spacing = 8
-        footerView.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
+        footerView.spacing = 0
+        footerView.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         footerView.translatesAutoresizingMaskIntoConstraints = false
         footerView.setContentHuggingPriority(.required, for: .horizontal)
         footerView.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -550,14 +556,15 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         footerView.addArrangedSubview(addButton)
         footerView.addArrangedSubview(verticalSeparator)
         footerView.addArrangedSubview(removeButton)
-        verticalSeparator.heightAnchor.constraint(equalTo: footerView.heightAnchor, multiplier: 0.55).isActive = true
+        verticalSeparator.heightAnchor.constraint(equalTo: footerHostView.heightAnchor, multiplier: 0.55).isActive = true
 
         guard let listContentView = listContainer.contentView else {
             preconditionFailure("A primary NSBox must provide a native content view")
         }
         listContentView.addSubview(scrollView)
         listContentView.addSubview(horizontalSeparator)
-        listContentView.addSubview(footerView)
+        listContentView.addSubview(footerHostView)
+        footerHostView.addSubview(footerView)
         addSubview(listContainer)
         addSubview(resetButton)
     }
@@ -571,6 +578,10 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         let horizontalInset = DashboardSettingsComponents.settingsRowHorizontalInset
         let verticalInset = DashboardSettingsComponents.settingsRowVerticalInset
         let resetSpacing = DashboardSettingsComponents.settingsRowContentControlSpacing
+        let systemControlHeight = max(addButton.fittingSize.height, removeButton.fittingSize.height)
+        let footerHeight = ceil(systemControlHeight + resetSpacing)
+        let footerHeightConstraint = footerHostView.heightAnchor.constraint(equalToConstant: footerHeight)
+        footerHeightConstraint.priority = .defaultHigh
         guard let listContentView = listContainer.contentView else {
             preconditionFailure("A primary NSBox must provide a native content view")
         }
@@ -608,11 +619,21 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
             horizontalSeparator.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
             horizontalSeparator.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
-            horizontalSeparator.heightAnchor.constraint(equalToConstant: 1),
+            horizontalSeparator.heightAnchor.constraint(equalToConstant: horizontalSeparator.fittingSize.height),
 
-            footerView.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
-            footerView.topAnchor.constraint(equalTo: horizontalSeparator.bottomAnchor),
-            footerView.bottomAnchor.constraint(equalTo: listContentView.bottomAnchor)
+            footerHostView.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
+            footerHostView.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
+            footerHostView.topAnchor.constraint(equalTo: horizontalSeparator.bottomAnchor),
+            footerHostView.bottomAnchor.constraint(equalTo: listContentView.bottomAnchor),
+            footerHeightConstraint,
+
+            footerView.leadingAnchor.constraint(equalTo: footerHostView.leadingAnchor),
+            footerView.topAnchor.constraint(equalTo: footerHostView.topAnchor),
+            footerView.bottomAnchor.constraint(equalTo: footerHostView.bottomAnchor),
+            addButton.widthAnchor.constraint(equalTo: footerHostView.heightAnchor),
+            addButton.heightAnchor.constraint(equalTo: footerHostView.heightAnchor),
+            removeButton.widthAnchor.constraint(equalTo: footerHostView.heightAnchor),
+            removeButton.heightAnchor.constraint(equalTo: footerHostView.heightAnchor)
         ])
     }
 
@@ -776,6 +797,16 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             height: max(viewport.height, ceil(rowsHeight))
         )
         tableView.autoresizingMask = [.width]
+    }
+
+    private func updateColumnWidths() {
+        guard tableView.tableColumns.count == 2 else { return }
+        let availableWidth = tableView.bounds.width
+        guard availableWidth > 0 else { return }
+
+        let nameWidth = floor(availableWidth / 3)
+        tableView.tableColumns[0].width = nameWidth
+        tableView.tableColumns[1].width = availableWidth - nameWidth
     }
 
     private func invalidateEditorLayout() {
