@@ -189,6 +189,38 @@ struct OfficialQuotaWindow: Equatable {
     }
 }
 
+enum OfficialQuotaWindowResolution: Equatable {
+    case selected(OfficialQuotaWindow)
+    case legacy(OfficialQuotaWindow?)
+    case unavailable
+}
+
+enum OfficialQuotaWindowResolver {
+    static func resolve(
+        _ windows: [OfficialQuotaWindow],
+        preference: OfficialQuotaWindowPreference
+    ) -> OfficialQuotaWindowResolution {
+        let recognized = windows.filter { $0.kind != .other }
+        guard !recognized.isEmpty else {
+            return .legacy(windows.first)
+        }
+
+        switch preference {
+        case .fiveHour:
+            guard let window = recognized.first(where: { $0.kind == .fiveHour })
+                    ?? recognized.first(where: { $0.kind == .sevenDay }) else {
+                return .unavailable
+            }
+            return .selected(window)
+        case .sevenDay:
+            guard let window = recognized.first(where: { $0.kind == .sevenDay }) else {
+                return .unavailable
+            }
+            return .selected(window)
+        }
+    }
+}
+
 struct OfficialQuotaMenuPresentation: Equatable {
     let windows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
@@ -490,31 +522,16 @@ struct Snapshot {
         guard kind == .official else { return self }
 
         let recognized = officialQuotaWindows.filter { $0.kind != .other }
-        // Older responses do not identify their window duration. Preserve the
-        // established single-row presentation instead of guessing which named
-        // preference they represent.
-        let selected: OfficialQuotaWindow?
-        if recognized.isEmpty {
-            selected = nil
-        } else {
-            switch preferredQuotaWindow {
-            case .fiveHour:
-                // Five-hour is the requested primary window, with the only safe
-                // fallback required by the Issue being the real seven-day window.
-                selected = recognized.first(where: { $0.kind == .fiveHour })
-                    ?? recognized.first(where: { $0.kind == .sevenDay })
-            case .sevenDay:
-                // Never silently show five-hour data when seven-day is selected.
-                selected = recognized.first(where: { $0.kind == .sevenDay })
-            }
-        }
-
         let selectedSnapshot: Snapshot
-        if let selected {
+        switch OfficialQuotaWindowResolver.resolve(
+            officialQuotaWindows,
+            preference: preferredQuotaWindow
+        ) {
+        case .selected(let selected):
             selectedSnapshot = replacingOfficialWindow(selected)
-        } else if recognized.isEmpty {
+        case .legacy:
             selectedSnapshot = self
-        } else {
+        case .unavailable:
             return .providerError(
                 provider,
                 reason: tr(.keyProviderModelsQuotaUnavailable),

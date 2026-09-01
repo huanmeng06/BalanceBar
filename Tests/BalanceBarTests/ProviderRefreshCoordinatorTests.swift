@@ -76,7 +76,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
                     claudeStored.fulfill()
                 }
             },
-            updateQuickSwitchSummary: { _, _ in },
+            quickSwitchSummaryChanged: { _ in },
             isOpenCodexConfirmed: { _ in false }
         )
         let coordinator = ProviderRefreshCoordinator(
@@ -130,7 +130,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             storeClientSnapshot: { client, providerID, snapshot in
                 recorder.store(snapshot, client: client, providerID: providerID)
             },
-            updateQuickSwitchSummary: { _, _ in callbackCompleted.fulfill() },
+            quickSwitchSummaryChanged: { _ in callbackCompleted.fulfill() },
             isOpenCodexConfirmed: { _ in false }
         )
         let coordinator = ProviderRefreshCoordinator(
@@ -205,7 +205,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
             queue: DispatchQueue(label: "test.provider-refresh-standard-cadence"),
-            actions: makeActions { _, _ in summaryUpdated.signal() },
+            actions: makeActions { _ in summaryUpdated.signal() },
             now: { clock.now }
         )
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -278,7 +278,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             officialQuotaClient: officialClient,
             balanceAPIClient: BalanceAPIClient(session: session),
             queue: DispatchQueue(label: "test.provider-refresh-official-cadence"),
-            actions: makeActions { _, _ in summaryUpdated.signal() },
+            actions: makeActions { _ in summaryUpdated.signal() },
             now: { clock.now }
         )
         let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
@@ -345,7 +345,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             officialQuotaClient: OfficialQuotaClient(),
             balanceAPIClient: BalanceAPIClient(session: session),
             queue: DispatchQueue(label: "test.provider-refresh-quick-switch-cadence"),
-            actions: makeActions { _, _ in summaryUpdated.signal() },
+            actions: makeActions { _ in summaryUpdated.signal() },
             now: { clock.now }
         )
 
@@ -373,8 +373,211 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+    func testOfficialQuickSwitchSummaryReformatsCachedWindowsForPreferenceWithoutRefetching() throws {
+        try setCurrentProvider("codex-replacement")
+        DelayedBalanceURLProtocol.setHandler { _ in
+            DelayedBalanceURLProtocol.success(amount: "0.00")
+        }
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour quota",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day quota",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 7 * 86_400
+        )
+        let summaryUpdated = DispatchSemaphore(value: 0)
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: FixedOfficialQuotaParser(windows: [fiveHour, sevenDay])
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-official-quick-switch-presentation"),
+            actions: makeActions { providerID in
+                if providerID == "codex-replacement" {
+                    summaryUpdated.signal()
+                }
+            }
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: true,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        waitForCoordinator(coordinator)
+
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+        XCTAssertEqual(
+            coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour)["codex-replacement"],
+            "80% / 5 hours"
+        )
+        XCTAssertEqual(
+            coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .sevenDay)["codex-replacement"],
+            "45% / 7 days"
+        )
+        // Reformatting the same cached payload for the other preference is
+        // presentation-only and must not start another quota request.
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 1)
+    }
+
+    func testQuickSwitchOfficialCallbackUsesStructuredWindowsAndPreservesBalanceSummary() throws {
+        DelayedBalanceURLProtocol.setHandler { _ in
+            DelayedBalanceURLProtocol.success(amount: "28.00", unit: "USD")
+        }
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour quota",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day quota",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 7 * 86_400
+        )
+        let officialUpdated = DispatchSemaphore(value: 0)
+        let balanceUpdated = DispatchSemaphore(value: 0)
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: FixedOfficialQuotaParser(windows: [fiveHour, sevenDay])
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-quick-switch-official-payload"),
+            actions: makeActions { providerID in
+                switch providerID {
+                case "codex-replacement": officialUpdated.signal()
+                case "codex-custom": balanceUpdated.signal()
+                default: break
+                }
+            }
+        )
+
+        coordinator.refreshQuickSwitchSummaries(force: true, for: .codex)
+        waitForEvent(officialUpdated)
+        waitForEvent(balanceUpdated)
+        waitForCoordinator(coordinator)
+
+        let fiveHourSummaries = coordinator.quickSwitchSummariesSnapshot(
+            preferredQuotaWindow: .fiveHour
+        )
+        let sevenDaySummaries = coordinator.quickSwitchSummariesSnapshot(
+            preferredQuotaWindow: .sevenDay
+        )
+        XCTAssertEqual(fiveHourSummaries["codex-replacement"], "80% / 5 hours")
+        XCTAssertEqual(sevenDaySummaries["codex-replacement"], "45% / 7 days")
+        XCTAssertEqual(sevenDaySummaries["codex-custom"], fiveHourSummaries["codex-custom"])
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 2)
+    }
+
+    func testOfficialQuickSwitchSummaryUsesSafeFallbacksAndDoesNotKeepStaleMissingWindow() throws {
+        try setCurrentProvider("codex-replacement")
+        DelayedBalanceURLProtocol.setHandler { _ in
+            DelayedBalanceURLProtocol.success(amount: "0.00")
+        }
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour quota",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day quota",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 7 * 86_400
+        )
+        let windows = MutableOfficialQuotaWindows([fiveHour, sevenDay])
+        let summaryUpdated = DispatchSemaphore(value: 0)
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: MutableOfficialQuotaParser(windows: windows)
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-official-quick-switch-fallback"),
+            actions: makeActions { providerID in
+                if providerID == "codex-replacement" {
+                    summaryUpdated.signal()
+                }
+            }
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: true,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        waitForCoordinator(coordinator)
+
+        windows.set([sevenDay])
+        coordinator.resetCadence()
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(
+            coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour)["codex-replacement"],
+            "45% / 7 days"
+        )
+
+        windows.set([fiveHour])
+        coordinator.resetCadence()
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: false,
+            switched: false
+        )
+        waitForEvent(summaryUpdated)
+        waitForCoordinator(coordinator)
+        XCTAssertEqual(
+            coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .fiveHour)["codex-replacement"],
+            "80% / 5 hours"
+        )
+        XCTAssertNil(
+            coordinator.quickSwitchSummariesSnapshot(preferredQuotaWindow: .sevenDay)["codex-replacement"]
+        )
+        XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
+    }
+
     private func makeActions(
-        _ updateQuickSwitchSummary: @escaping (String, String) -> Void = { _, _ in }
+        _ quickSwitchSummaryChanged: @escaping (String) -> Void = { _ in }
     ) -> ProviderRefreshActions {
         ProviderRefreshActions(
             currentProvider: { [repository] client in
@@ -383,7 +586,7 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             isActiveClient: { _ in true },
             render: { _ in },
             storeClientSnapshot: { _, _, _ in },
-            updateQuickSwitchSummary: updateQuickSwitchSummary,
+            quickSwitchSummaryChanged: quickSwitchSummaryChanged,
             isOpenCodexConfirmed: { _ in false }
         )
     }
@@ -533,6 +736,49 @@ private struct IncrementingOfficialQuotaParser: OfficialQuotaParsing {
                 )
             ]
         )
+    }
+}
+
+private struct FixedOfficialQuotaParser: OfficialQuotaParsing {
+    let windows: [OfficialQuotaWindow]
+
+    func parse(
+        data: Data,
+        client: AssistantClient
+    ) throws -> OfficialQuotaResponseParser.Output {
+        OfficialQuotaResponseParser.Output(windows: windows)
+    }
+}
+
+private final class MutableOfficialQuotaWindows {
+    private let lock = NSLock()
+    private var value: [OfficialQuotaWindow]
+
+    init(_ value: [OfficialQuotaWindow]) {
+        self.value = value
+    }
+
+    func set(_ value: [OfficialQuotaWindow]) {
+        lock.lock()
+        self.value = value
+        lock.unlock()
+    }
+
+    func get() -> [OfficialQuotaWindow] {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
+private struct MutableOfficialQuotaParser: OfficialQuotaParsing {
+    let windows: MutableOfficialQuotaWindows
+
+    func parse(
+        data: Data,
+        client: AssistantClient
+    ) throws -> OfficialQuotaResponseParser.Output {
+        OfficialQuotaResponseParser.Output(windows: windows.get())
     }
 }
 

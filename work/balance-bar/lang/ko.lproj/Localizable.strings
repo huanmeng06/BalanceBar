@@ -115,7 +115,7 @@
 "response.parsers.7_day_quota" = "7일 할당량";
 "response.parsers.7_days" = "7일";
 "response.parsers.5_hour_quota" = "5시간 할당량";
-"response.parsers.5_hours" = "5시간";
+"response.parsers.5_hours" = "5시";
 "response.parsers.sonnet_7_day_quota" = "Sonnet 7일 할당량";
 "response.parsers.7_days.2" = "7일";
 "response.parsers.quota" = "할당량";
@@ -284,7 +284,7 @@
 "dashboard.menu.bar.page.icon_display_delay_two_minutes" = "2분";
 "dashboard.menu.bar.page.icon_display_delay_three_minutes" = "3분";
 "dashboard.menu.bar.page.quota_display_priority" = "우선 표시할 할당량";
-"dashboard.menu.bar.page.quota_display_priority_description" = "메뉴 막대에 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요";
+"dashboard.menu.bar.page.quota_display_priority_description" = "메뉴 막대와 ‘빠른 전환’ 메뉴에서 5시간 할당량과 7일 할당량 중 어느 것을 우선 표시할지 선택하세요";
 "dashboard.menu.bar.page.five_hour_quota" = "5시간 할당량";
 "dashboard.menu.bar.page.seven_day_quota" = "7일 할당량";
 "dashboard.menu.bar.page.quota_reset_display_mode" = "재설정 시간 표시 방식";

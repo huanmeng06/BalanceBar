@@ -594,6 +594,58 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(legacyPresentation.officialQuotaWindows, legacy.officialQuotaWindows)
     }
 
+    func testOfficialQuotaWindowResolverUsesOneSafePolicyForAllWindowOrders() {
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 7 * 86_400
+        )
+        let legacy = OfficialQuotaWindow(
+            kind: .other,
+            remaining: 63,
+            label: "Quota",
+            daysText: "Quota",
+            reset: "later",
+            durationSeconds: nil
+        )
+
+        XCTAssertEqual(
+            OfficialQuotaWindowResolver.resolve([fiveHour, sevenDay], preference: .fiveHour),
+            .selected(fiveHour)
+        )
+        XCTAssertEqual(
+            OfficialQuotaWindowResolver.resolve([sevenDay, fiveHour], preference: .sevenDay),
+            .selected(sevenDay)
+        )
+        XCTAssertEqual(
+            OfficialQuotaWindowResolver.resolve([sevenDay], preference: .fiveHour),
+            .selected(sevenDay)
+        )
+        XCTAssertEqual(
+            OfficialQuotaWindowResolver.resolve([fiveHour], preference: .sevenDay),
+            .unavailable
+        )
+        XCTAssertEqual(
+            OfficialQuotaWindowResolver.resolve([legacy], preference: .fiveHour),
+            .legacy(legacy)
+        )
+        XCTAssertEqual(
+            OfficialQuotaWindowResolver.resolve([], preference: .sevenDay),
+            .legacy(nil)
+        )
+    }
+
     func testMenuBarAutoSwitchUsesReserveAsWholePrimaryAndKeepsOriginalResetSource() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let fiveHour = OfficialQuotaWindow(
