@@ -83,8 +83,10 @@
 		A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */; };
 		A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EC /* ProviderBalanceProgressStore.swift */; };
 		A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DB /* ProviderSwitchCoordinator.swift */; };
+		A10000000000000000000130 /* CCSwitchRuntimeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000131 /* CCSwitchRuntimeController.swift */; };
 		A100000000000000000000DC /* DashboardCompositionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000DD /* DashboardCompositionController.swift */; };
 		A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */; };
+		A10000000000000000000132 /* ProviderSwitchCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000133 /* ProviderSwitchCoordinatorTests.swift */; };
 		A100000000000000000000E5 /* UpdateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E6 /* UpdateModels.swift */; };
 		A100000000000000000000E7 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E8 /* UpdateService.swift */; };
 		A100000000000000000000E9 /* UpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EA /* UpdateTests.swift */; };
@@ -201,8 +203,10 @@
 		A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinator.swift; sourceTree = "<group>"; };
 		A100000000000000000000EC /* ProviderBalanceProgressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderBalanceProgressStore.swift; sourceTree = "<group>"; };
 		A100000000000000000000DB /* ProviderSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSwitchCoordinator.swift; sourceTree = "<group>"; };
+		A10000000000000000000131 /* CCSwitchRuntimeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCSwitchRuntimeController.swift; sourceTree = "<group>"; };
 		A100000000000000000000DD /* DashboardCompositionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCompositionController.swift; sourceTree = "<group>"; };
 		A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderRefreshCoordinatorTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000133 /* ProviderSwitchCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSwitchCoordinatorTests.swift; sourceTree = "<group>"; };
 		A100000000000000000000E6 /* UpdateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateModels.swift; sourceTree = "<group>"; };
 		A100000000000000000000E8 /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
 		A100000000000000000000EA /* UpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateTests.swift; sourceTree = "<group>"; };
@@ -352,6 +356,7 @@
 				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
 				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
+				A10000000000000000000133 /* ProviderSwitchCoordinatorTests.swift */,
 				A100000000000000000000EA /* UpdateTests.swift */,
 				A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */,
 			);
@@ -380,6 +385,7 @@
 				A100000000000000000000D9 /* ProviderRefreshCoordinator.swift */,
 				A100000000000000000000EC /* ProviderBalanceProgressStore.swift */,
 				A100000000000000000000DB /* ProviderSwitchCoordinator.swift */,
+				A10000000000000000000131 /* CCSwitchRuntimeController.swift */,
 				A1000000000000000000005E /* CCSwitchRepository.swift */,
 				A10000000000000000000061 /* CredentialReader.swift */,
 				A10000000000000000000065 /* BalanceAPIClient.swift */,
@@ -740,6 +746,7 @@
 				A100000000000000000000D8 /* ProviderRefreshCoordinator.swift in Sources */,
 				A100000000000000000000EB /* ProviderBalanceProgressStore.swift in Sources */,
 				A100000000000000000000DA /* ProviderSwitchCoordinator.swift in Sources */,
+				A10000000000000000000130 /* CCSwitchRuntimeController.swift in Sources */,
 				A100000000000000000000DC /* DashboardCompositionController.swift in Sources */,
 				A100000000000000000000E7 /* UpdateService.swift in Sources */,
 				A10000000000000000000101 /* ReleaseNotes.swift in Sources */,
@@ -791,6 +798,7 @@
 				A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */,
 				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 				A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */,
+				A10000000000000000000132 /* ProviderSwitchCoordinatorTests.swift in Sources */,
 				A100000000000000000000E9 /* UpdateTests.swift in Sources */,
 				A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */,
 			);

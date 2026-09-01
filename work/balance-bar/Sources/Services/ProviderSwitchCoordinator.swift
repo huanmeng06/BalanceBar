@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 
 struct ProviderSwitchActions {
     let changed: () -> Void
@@ -9,15 +9,18 @@ struct ProviderSwitchActions {
 /// supplies the selected Provider and routes success/failure into refresh.
 final class ProviderSwitchCoordinator {
     private let repository: CCSwitchRepository
+    private let runtime: CCSwitchRuntimeControlling
     private let queue: DispatchQueue
     private let actions: ProviderSwitchActions
 
     init(
         repository: CCSwitchRepository,
+        runtime: CCSwitchRuntimeControlling = CCSwitchRuntimeController(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-switch"),
         actions: ProviderSwitchActions
     ) {
         self.repository = repository
+        self.runtime = runtime
         self.queue = queue
         self.actions = actions
     }
@@ -27,42 +30,37 @@ final class ProviderSwitchCoordinator {
             guard let self else { return }
             let current = self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })
             guard current?.id != providerID else { return }
-            let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.ccswitch.desktop").first
-            let applicationURL = running?.bundleURL ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ccswitch.desktop")
-            if let running {
-                running.terminate()
-                let deadline = Date().addingTimeInterval(4)
-                while !running.isTerminated && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-                guard running.isTerminated else {
-                    self.actions.failed(tr(.keyProviderSwitchCoordinatorSwitchFailedCcSwitchCouldNotReloadNormally))
-                    return
-                }
+            let runtimeSnapshot = self.runtime.snapshot()
+            if runtimeSnapshot.wasRunning,
+               !self.runtime.terminateAndWait(for: runtimeSnapshot, timeout: 4) {
+                self.actions.failed(tr(.keyProviderSwitchCoordinatorSwitchFailedCcSwitchCouldNotReloadNormally))
+                return
             }
             do {
                 try self.repository.switchCurrent(to: providerID, appType: appType)
                 guard self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })?.id == providerID else {
                     throw NSError(domain: "BalanceBar.SwitchValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: tr(.keyProviderSwitchCoordinatorDatabaseVerificationFailed)])
                 }
-                if running != nil, let applicationURL {
-                    DispatchQueue.main.async {
-                        let configuration = NSWorkspace.OpenConfiguration()
-                        configuration.activates = false
-                        configuration.hides = true
-                        NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, _ in }
-                    }
-                }
-                self.actions.changed()
+                self.finish(.success(()), restoring: runtimeSnapshot)
             } catch {
-                if running != nil, let applicationURL {
-                    DispatchQueue.main.async {
-                        let configuration = NSWorkspace.OpenConfiguration()
-                        configuration.activates = false
-                        configuration.hides = true
-                        NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, _ in }
-                    }
-                }
-                self.actions.failed(tr(.keyProviderSwitchCoordinatorSwitchFailedValue, arguments: [String(describing: error.localizedDescription)]))
+                self.finish(.failure(error), restoring: runtimeSnapshot)
             }
+        }
+    }
+
+    private func finish(
+        _ result: Result<Void, Error>,
+        restoring snapshot: CCSwitchRuntimeSnapshot
+    ) {
+        if snapshot.wasRunning {
+            runtime.restore(from: snapshot)
+        }
+
+        switch result {
+        case .success:
+            actions.changed()
+        case .failure(let error):
+            actions.failed(tr(.keyProviderSwitchCoordinatorSwitchFailedValue, arguments: [String(describing: error.localizedDescription)]))
         }
     }
 }

@@ -88,7 +88,10 @@ final class AppDelegateCompositionTests: XCTestCase {
 
         let switching = try XCTUnwrap(sources["ProviderSwitchCoordinator.swift"])
         XCTAssertTrue(switching.contains("switchCurrent"))
-        XCTAssertTrue(switching.contains("com.ccswitch.desktop"))
+
+        let ccSwitchRuntime = try XCTUnwrap(sources["CCSwitchRuntimeController.swift"])
+        XCTAssertTrue(ccSwitchRuntime.contains("com.ccswitch.desktop"))
+        XCTAssertTrue(ccSwitchRuntime.contains("CGWindowListCopyWindowInfo"))
     }
 
     @MainActor
@@ -1729,7 +1732,8 @@ final class AppDelegateCompositionTests: XCTestCase {
             "OpenCodexRefreshCoordinator.swift": "work/balance-bar/Sources/Services/OpenCodexRefreshCoordinator.swift",
             "ActivityCoordinator.swift": "work/balance-bar/Sources/Monitoring/ActivityCoordinator.swift",
             "CCSwitchDatabaseWatcher.swift": "work/balance-bar/Sources/Services/CCSwitchDatabaseWatcher.swift",
-            "ProviderSwitchCoordinator.swift": "work/balance-bar/Sources/Services/ProviderSwitchCoordinator.swift"
+            "ProviderSwitchCoordinator.swift": "work/balance-bar/Sources/Services/ProviderSwitchCoordinator.swift",
+            "CCSwitchRuntimeController.swift": "work/balance-bar/Sources/Services/CCSwitchRuntimeController.swift"
         ]
         return try Dictionary(uniqueKeysWithValues: files.map { name, path in
             (name, try String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8))
