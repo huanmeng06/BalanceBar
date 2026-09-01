@@ -143,7 +143,8 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             object: window,
             queue: .main
         ) { [weak self] _ in
-            self?.endEditing()
+            guard let self, let field = self.editingCell else { return }
+            self.commit(field)
         }
     }
 
@@ -565,7 +566,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
     private func commit(_ field: StatusLinkTableCellView) {
         guard !isTornDown, links.indices.contains(field.row) else { return }
-        let value = field.editor.stringValue
+        let value = field.editor.currentEditor()?.string ?? field.editor.stringValue
         var updatedLinks = links
         switch field.field {
         case .title:
