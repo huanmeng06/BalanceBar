@@ -963,7 +963,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         let fetcher = StartupUpdateReleaseFetcher()
         let service = UpdateService(
             releaseFetcher: fetcher,
-            currentVersionString: "1.0.0",
+            currentVersionString: "1.2.0",
             callbackQueue: .main,
             workQueue: .main,
             minimumCheckingDuration: 0,
@@ -1000,13 +1000,13 @@ final class AppDelegateCompositionTests: XCTestCase {
 
         fetcher.resolve(.success([
             GitHubRelease(
-                tagName: "v2.0.0",
+                tagName: "v1.3.0",
                 draft: false,
                 prerelease: false,
                 assets: [
                     GitHubReleaseAsset(
-                        name: "BalanceBar-2.0.0.dmg",
-                        browserDownloadURL: URL(string: "https://example.com/BalanceBar-2.0.0.dmg"),
+                        name: "BalanceBar-1.3.0.dmg",
+                        browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/v1.3.0/BalanceBar-1.3.0.dmg"),
                         size: nil,
                         digest: nil
                     )
