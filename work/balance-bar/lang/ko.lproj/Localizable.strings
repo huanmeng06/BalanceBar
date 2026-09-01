@@ -227,7 +227,7 @@
 "dashboard.general.and.refresh.pages.silent_launch_description" = "BalanceBar를 실행할 때 메인 창을 열지 않습니다";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "ChatGPT와 함께 실행";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "BalanceBar가 실행 중이 아니면 ChatGPT가 시작될 때 자동으로 실행됩니다";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "시스템 설정에서 BalanceBar의 허용이 필요합니다";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "시스템 설정 → 일반 → 로그인 항목 → 앱 백그라운드 활동에서 BalanceBar를 켜세요";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "ChatGPT와 함께 실행 설정을 업데이트할 수 없습니다. 시스템 설정 → 일반 → 로그인 항목을 확인한 후 다시 시도하세요.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "ChatGPT 실행 서비스 상태를 읽을 수 없습니다";
 "dashboard.general.and.refresh.pages.current_provider_value" = "현재 서비스 제공자: %1$@";

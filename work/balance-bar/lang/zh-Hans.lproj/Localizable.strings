@@ -227,7 +227,7 @@
 "dashboard.general.and.refresh.pages.silent_launch_description" = "启动 BalanceBar 时不打开主窗口";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "随 ChatGPT 启动";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "若 BalanceBar 尚未运行，会随着 ChatGPT 启动时自动启动";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "需要在系统设置中允许 BalanceBar";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "请在“系统设置 → 通用 → 登录项 → App 后台活动”中打开 BalanceBar";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "无法更新“随 ChatGPT 启动”。请检查“系统设置”→“通用”→“登录项”后重试。";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "暂时无法读取随 ChatGPT 启动服务状态";
 "dashboard.general.and.refresh.pages.current_provider_value" = "当前服务商：%1$@";

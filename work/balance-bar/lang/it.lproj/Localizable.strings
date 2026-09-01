@@ -227,7 +227,7 @@
 "dashboard.general.and.refresh.pages.silent_launch_description" = "Avvia BalanceBar senza aprire la finestra principale";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "Avvia con ChatGPT";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "Se BalanceBar non è già in esecuzione, verrà avviato automaticamente all’avvio di ChatGPT";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "BalanceBar richiede l’approvazione nelle Impostazioni di Sistema";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "Attiva BalanceBar in Impostazioni di Sistema → Generali → Elementi login → Attività in background delle app";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "Impossibile aggiornare “Avvia con ChatGPT”. Controlla Impostazioni di Sistema → Generali → Elementi login e riprova.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Impossibile leggere lo stato del servizio di avvio con ChatGPT";
 "dashboard.general.and.refresh.pages.current_provider_value" = "Provider attuale: %1$@";
