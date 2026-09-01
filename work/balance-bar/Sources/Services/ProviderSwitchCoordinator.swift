@@ -5,22 +5,62 @@ struct ProviderSwitchActions {
     let failed: (String) -> Void
 }
 
-/// Owns the CC Switch stop/write/reopen transaction. The composition root only
-/// supplies the selected Provider and routes success/failure into refresh.
+enum CCSwitchProviderSwitchBridgeError: LocalizedError, Equatable {
+    case unavailable
+    case databaseVerificationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            return "CC Switch does not expose a supported provider-switch bridge."
+        case .databaseVerificationFailed:
+            return "CC Switch did not verify the requested provider switch."
+        }
+    }
+}
+
+/// An implementation must call a supported CC Switch control surface which
+/// executes the running process's own ProviderService::switch transaction and
+/// returns only after that transaction has completed. It must not mutate CC
+/// Switch files or activate/reopen its window itself.
+protocol CCSwitchProviderSwitching {
+    var isAvailable: Bool { get }
+    func switchProvider(providerID: String, appType: String) throws
+}
+
+/// CC Switch currently has no documented cross-process provider-switch
+/// contract. Keep the legacy stop/write/reopen path available until one is
+/// supplied, but make the hot-switch seam explicit and injectable.
+final class CCSwitchUnavailableProviderSwitchBridge: CCSwitchProviderSwitching {
+    let isAvailable = false
+
+    func switchProvider(providerID: String, appType: String) throws {
+        _ = providerID
+        _ = appType
+        throw CCSwitchProviderSwitchBridgeError.unavailable
+    }
+}
+
+/// Owns the CC Switch hot-switch path and the bounded legacy
+/// stop/write/reopen fallback. The composition root supplies the selected
+/// Provider and routes success/failure into refresh.
 final class ProviderSwitchCoordinator {
     private let repository: CCSwitchRepository
     private let runtime: CCSwitchRuntimeControlling
+    private let providerSwitchBridge: CCSwitchProviderSwitching
     private let queue: DispatchQueue
     private let actions: ProviderSwitchActions
 
     init(
         repository: CCSwitchRepository,
         runtime: CCSwitchRuntimeControlling = CCSwitchRuntimeController(),
+        providerSwitchBridge: CCSwitchProviderSwitching = CCSwitchUnavailableProviderSwitchBridge(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.provider-switch"),
         actions: ProviderSwitchActions
     ) {
         self.repository = repository
         self.runtime = runtime
+        self.providerSwitchBridge = providerSwitchBridge
         self.queue = queue
         self.actions = actions
     }
@@ -31,6 +71,14 @@ final class ProviderSwitchCoordinator {
             let current = self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })
             guard current?.id != providerID else { return }
             let runtimeSnapshot = self.runtime.snapshot()
+            if runtimeSnapshot.wasRunning,
+               self.providerSwitchBridge.isAvailable {
+                self.switchThroughRunningCCSwitch(
+                    providerID: providerID,
+                    appType: appType
+                )
+                return
+            }
             if let restorationPreconditionError = runtimeSnapshot.restorationPreconditionError {
                 self.report(.failure(restorationPreconditionError))
                 return
@@ -49,6 +97,21 @@ final class ProviderSwitchCoordinator {
             } catch {
                 self.finish(.failure(error), restoring: runtimeSnapshot)
             }
+        }
+    }
+
+    private func switchThroughRunningCCSwitch(providerID: String, appType: String) {
+        do {
+            // The bridge owns the complete in-process transaction, including
+            // settings cache, DB/live projection, MCP, and proxy semantics.
+            // Do not call CCSwitchRepository.switchCurrent on this path.
+            try providerSwitchBridge.switchProvider(providerID: providerID, appType: appType)
+            guard repository.loadChoices(appType: appType).first(where: { $0.isCurrent })?.id == providerID else {
+                throw CCSwitchProviderSwitchBridgeError.databaseVerificationFailed
+            }
+            actions.changed()
+        } catch {
+            report(.failure(error))
         }
     }
 
