@@ -37,6 +37,8 @@ final class DashboardWindowControllerTests: XCTestCase {
         XCTAssertFalse(window.standardWindowButton(.zoomButton)?.isEnabled ?? true)
         XCTAssertTrue(window.styleMask.contains(.resizable))
         XCTAssertFalse(window.styleMask.contains(.fullScreen))
+        XCTAssertGreaterThanOrEqual(window.contentMinSize.width, 800)
+        XCTAssertGreaterThanOrEqual(window.contentMinSize.height, 540)
     }
 
     func testGeneralNavigationShowsAndHidesUpdateBadgeWithUpdateState() throws {
@@ -327,8 +329,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             ancestors(of: editor).first { $0.layer?.cornerRadius == 18 }
         )
 
+        XCTAssertGreaterThanOrEqual(
+            window.contentView?.bounds.width ?? 0,
+            800,
+            "Dashboard content must honor its minimum width on initial page creation"
+        )
         XCTAssertFalse(editor.isHidden)
         XCTAssertGreaterThan(editor.frame.width, 0)
+        let minimumTableWidth = editor.tableViewForTesting.tableColumns.reduce(CGFloat(0)) {
+            $0 + $1.minWidth
+        }
+        XCTAssertGreaterThanOrEqual(
+            editor.frame.width,
+            minimumTableWidth + DashboardSettingsComponents.settingsRowHorizontalInset * 2,
+            "Status Links editor must retain enough width for both native table columns"
+        )
         XCTAssertEqual(editor.frame.height, editor.layoutHeight, accuracy: 1)
         XCTAssertEqual(editor.tableColumnCount, 2)
         XCTAssertTrue(editor.scrollViewForTesting.documentView === editor.tableViewForTesting)
@@ -389,6 +404,20 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         layoutDescendants(of: page)
         let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
         let initialHeight = editor.frame.height
+
+        XCTAssertGreaterThanOrEqual(
+            window.contentView?.bounds.width ?? 0,
+            800,
+            "Dashboard content must honor its minimum width"
+        )
+        let minimumTableWidth = editor.tableViewForTesting.tableColumns.reduce(CGFloat(0)) {
+            $0 + $1.minWidth
+        }
+        XCTAssertGreaterThanOrEqual(
+            editor.frame.width,
+            minimumTableWidth + DashboardSettingsComponents.settingsRowHorizontalInset * 2,
+            "Status Links editor must retain enough width for both native table columns"
+        )
 
         editor.addButtonForTesting.performClick(nil)
         window.layoutIfNeeded()

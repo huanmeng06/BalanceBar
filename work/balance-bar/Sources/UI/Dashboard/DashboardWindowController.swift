@@ -141,6 +141,10 @@ enum DashboardWindowDragPolicy {
 }
 
 final class DashboardWindowController: NSObject, NSWindowDelegate {
+    private static let initialWindowContentSize = NSSize(width: 880, height: 620)
+    private static let minimumWindowContentSize = NSSize(width: 800, height: 540)
+    private static let sidebarWidth: CGFloat = 216
+
     private let actions: DashboardWindowControllerActions
     private(set) var window: NSWindow?
     private(set) var contentHost = NSView()
@@ -191,19 +195,24 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
 
         if let window {
+            enforceMinimumContentSize(of: window)
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
+            contentRect: NSRect(
+                origin: .zero,
+                size: Self.initialWindowContentSize
+            ),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = DashboardSection.general.title
-        window.minSize = NSSize(width: 800, height: 540)
+        window.minSize = Self.minimumWindowContentSize
+        window.contentMinSize = Self.minimumWindowContentSize
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
@@ -231,6 +240,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         installLayout(in: window)
         installMouseMonitor()
         showSection(.general)
+        enforceMinimumContentSize(of: window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -246,6 +256,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         } else {
             showSection(selectedSection)
         }
+        enforceMinimumContentSize(of: window)
         window.displayIfNeeded()
     }
 
@@ -323,6 +334,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         // the page (notably on Xcode 16.4 CI).
         contentHost.layoutSubtreeIfNeeded()
         window?.displayIfNeeded()
+        if let window {
+            enforceMinimumContentSize(of: window)
+        }
         actions.didShowPage()
     }
 
@@ -367,6 +381,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func installLayout(in window: NSWindow) {
+        enforceMinimumContentSize(of: window)
         let root = DashboardContentRootView(frame: window.contentView?.bounds ?? .zero)
         root.material = .underWindowBackground
         root.blendingMode = .behindWindow
@@ -403,17 +418,37 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
             sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             sidebar.topAnchor.constraint(equalTo: root.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 216),
+            sidebar.widthAnchor.constraint(equalToConstant: Self.sidebarWidth),
             contentHost.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             contentHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            // Keep the root's fitting width large enough for the normal
+            // Dashboard content. Replacing a page must not let AppKit derive
+            // a portrait-sized window from the sidebar plus a narrow page's
+            // intrinsic width.
+            contentHost.widthAnchor.constraint(
+                greaterThanOrEqualToConstant: Self.minimumWindowContentSize.width - Self.sidebarWidth
+            ),
             contentHost.topAnchor.constraint(equalTo: root.topAnchor),
             contentHost.bottomAnchor.constraint(equalTo: root.bottomAnchor)
         ])
 
         window.contentView = root
+        enforceMinimumContentSize(of: window)
         DashboardWindowDragPolicy.install(in: window, contentRoot: root) { [weak self] in
             self?.toggleWindowZoom()
         }
+    }
+
+    private func enforceMinimumContentSize(of window: NSWindow) {
+        window.contentMinSize = Self.minimumWindowContentSize
+
+        let currentSize = window.contentView?.bounds.size ?? .zero
+        let correctedSize = NSSize(
+            width: max(currentSize.width, Self.minimumWindowContentSize.width),
+            height: max(currentSize.height, Self.minimumWindowContentSize.height)
+        )
+        guard correctedSize != currentSize else { return }
+        window.setContentSize(correctedSize)
     }
 
     func toggleWindowZoom() {
