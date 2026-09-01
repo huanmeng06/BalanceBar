@@ -26,10 +26,21 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         case url
     }
 
+    private struct PendingEdit {
+        let row: Int
+        let field: Field
+        var value: String
+    }
+
     private final class StatusLinkTableCellView: NSTableCellView {
         let editor = NSTextField()
         var row = 0
         var field: Field = .title
+
+        func setEditingAppearance(_ isEditing: Bool) {
+            editor.drawsBackground = isEditing
+            editor.backgroundColor = isEditing ? .textBackgroundColor : .clear
+        }
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -38,7 +49,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             editor.isEditable = true
             editor.isSelectable = true
             editor.isBordered = false
-            editor.drawsBackground = false
+            setEditingAppearance(false)
             editor.focusRingType = .default
             editor.usesSingleLineMode = true
             editor.lineBreakMode = .byTruncatingTail
@@ -72,6 +83,8 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     private let resetButton = NSButton()
     private var heightConstraint: NSLayoutConstraint!
     private var windowCloseObserver: NSObjectProtocol?
+    private weak var activeEditingCell: StatusLinkTableCellView?
+    private var pendingEdit: PendingEdit?
     private var isEndingEditing = false
     private var isVisibleState = true
     private(set) var isTornDown = false
@@ -92,7 +105,11 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     var horizontalSeparatorForTesting: NSBox { horizontalSeparator }
     var verticalSeparatorForTesting: NSBox { verticalSeparator }
     var isEditingNameForTesting: Bool {
-        editingCell?.field == .title
+        pendingEdit?.field == .title
+    }
+    @discardableResult
+    func editForTesting(column: Int, row: Int) -> Bool {
+        beginEditing(column: column, row: row)
     }
 
     var rowCount: Int { links.count }
@@ -143,8 +160,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             object: window,
             queue: .main
         ) { [weak self] _ in
-            guard let self, let field = self.editingCell else { return }
-            self.commit(field)
+            self?.commitPendingEdit()
         }
     }
 
@@ -209,14 +225,22 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     @discardableResult
     func endEditing() -> Bool {
         guard !isEndingEditing else { return true }
-        guard let field = editingCell else { return true }
+        guard let field = activeEditingCell else {
+            commitPendingEdit()
+            return true
+        }
         isEndingEditing = true
         defer { isEndingEditing = false }
         guard let window else {
-            commit(field)
+            commitPendingEdit()
+            finishEditingAppearance(for: field)
             return true
         }
         window.endEditing(for: field.editor)
+        if activeEditingCell === field {
+            commitPendingEdit()
+            finishEditingAppearance(for: field)
+        }
         return true
     }
 
@@ -260,6 +284,11 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         cell.editor.font = .systemFont(ofSize: NSFont.systemFontSize)
         cell.editor.placeholderString = placeholder(for: field)
         cell.editor.stringValue = value(for: field, row: row)
+        cell.setEditingAppearance(
+            activeEditingCell === cell
+                && pendingEdit?.row == row
+                && pendingEdit?.field == field
+        )
         cell.editor.setAccessibilityIdentifier("\(identifier.rawValue).\(row)")
         return cell
     }
@@ -271,8 +300,20 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     }
 
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
-        guard let tableColumn else { return false }
-        return !isTornDown && links.indices.contains(row) && field(for: tableColumn.identifier) != nil
+        guard !isTornDown,
+              links.indices.contains(row),
+              let tableColumn,
+              field(for: tableColumn.identifier) != nil,
+              let column = tableView.tableColumns.firstIndex(of: tableColumn),
+              let cell = tableView.view(
+                atColumn: column,
+                row: row,
+                makeIfNecessary: true
+              ) as? StatusLinkTableCellView else {
+            return false
+        }
+        prepareEditing(cell, value: cell.editor.stringValue)
+        return true
     }
 
     func tableView(
@@ -330,10 +371,37 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
     // MARK: - NSTextFieldDelegate
 
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        guard !isTornDown,
+              let editor = notification.object as? NSTextField,
+              let cell = cell(containing: editor),
+              links.indices.contains(cell.row) else { return }
+
+        prepareEditing(cell, value: editor.currentEditor()?.string ?? editor.stringValue)
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard !isTornDown,
+              let editor = notification.object as? NSTextField,
+              activeEditingCell?.editor === editor,
+              var edit = pendingEdit else { return }
+        edit.value = editor.currentEditor()?.string ?? editor.stringValue
+        pendingEdit = edit
+    }
+
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard let editor = notification.object as? NSTextField,
-              let cell = cell(containing: editor) else { return }
-        commit(cell)
+        guard let editor = notification.object as? NSTextField else { return }
+        let cell = activeEditingCell?.editor === editor
+            ? activeEditingCell
+            : cell(containing: editor)
+        guard let cell else { return }
+        if pendingEdit?.row == cell.row, pendingEdit?.field == cell.field {
+            pendingEdit?.value = editor.stringValue
+            commitPendingEdit()
+        } else {
+            commit(row: cell.row, field: cell.field, value: editor.stringValue)
+        }
+        finishEditingAppearance(for: cell)
     }
 
     // MARK: - Actions
@@ -343,16 +411,16 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         endEditing()
         let row = links.count
         links.append(StatusLink(title: "", url: ""))
-        tableView.insertRows(at: IndexSet(integer: row), withAnimation: .effectFade)
+        tableView.insertRows(at: IndexSet(integer: row), withAnimation: [])
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         updateRemoveButtonState()
         onLinksChanged(links)
-        tableView.editColumn(
-            tableView.tableColumns.firstIndex { $0.identifier == Self.nameColumnIdentifier } ?? 0,
-            row: row,
-            with: nil,
-            select: true
+        beginEditing(
+            column: tableView.tableColumns.firstIndex {
+                $0.identifier == Self.nameColumnIdentifier
+            } ?? 0,
+            row: row
         )
     }
 
@@ -392,10 +460,15 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         tableView.delegate = self
         tableView.dataSource = self
         tableView.style = .fullWidth
-        tableView.rowSizeStyle = .small
+        tableView.rowSizeStyle = .medium
         tableView.headerView = NSTableHeaderView()
+        tableView.selectionHighlightStyle = .regular
         tableView.allowsMultipleSelection = false
         tableView.allowsEmptySelection = true
+        tableView.allowsColumnSelection = false
+        tableView.allowsColumnReordering = false
+        tableView.usesAlternatingRowBackgroundColors = false
+        tableView.backgroundColor = .clear
         tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         tableView.gridStyleMask = []
         tableView.registerForDraggedTypes([Self.statusLinkPasteboardType])
@@ -424,6 +497,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         scrollView.verticalScrollElasticity = .none
         scrollView.horizontalScrollElasticity = .none
         scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
     }
 
     private func configureControls() {
@@ -455,7 +529,6 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
         listContainer.boxType = .primary
         listContainer.titlePosition = .noTitle
-        listContainer.contentViewMargins = .zero
         listContainer.translatesAutoresizingMaskIntoConstraints = false
 
         horizontalSeparator.boxType = .separator
@@ -479,9 +552,12 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         footerView.addArrangedSubview(removeButton)
         verticalSeparator.heightAnchor.constraint(equalTo: footerView.heightAnchor, multiplier: 0.55).isActive = true
 
-        listContainer.addSubview(scrollView)
-        listContainer.addSubview(horizontalSeparator)
-        listContainer.addSubview(footerView)
+        guard let listContentView = listContainer.contentView else {
+            preconditionFailure("A primary NSBox must provide a native content view")
+        }
+        listContentView.addSubview(scrollView)
+        listContentView.addSubview(horizontalSeparator)
+        listContentView.addSubview(footerView)
         addSubview(listContainer)
         addSubview(resetButton)
     }
@@ -495,6 +571,15 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         let horizontalInset = DashboardSettingsComponents.settingsRowHorizontalInset
         let verticalInset = DashboardSettingsComponents.settingsRowVerticalInset
         let resetSpacing = DashboardSettingsComponents.settingsRowContentControlSpacing
+        guard let listContentView = listContainer.contentView else {
+            preconditionFailure("A primary NSBox must provide a native content view")
+        }
+        let preferredListWidthConstraint = listContentView.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: tableView.tableColumns.reduce(CGFloat(0)) {
+                $0 + $1.width
+            }
+        )
+        preferredListWidthConstraint.priority = .defaultLow
         let listTopConstraint = listContainer.topAnchor.constraint(equalTo: topAnchor, constant: verticalInset)
         listTopConstraint.priority = .required - 1
         let listBottomConstraint = listContainer.bottomAnchor.constraint(
@@ -510,23 +595,24 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         NSLayoutConstraint.activate([
             listContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalInset),
             listContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
+            preferredListWidthConstraint,
             listTopConstraint,
             listBottomConstraint,
             resetButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
             resetBottomConstraint,
 
-            scrollView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: listContainer.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: listContentView.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: horizontalSeparator.topAnchor),
 
-            horizontalSeparator.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
-            horizontalSeparator.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            horizontalSeparator.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
+            horizontalSeparator.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
             horizontalSeparator.heightAnchor.constraint(equalToConstant: 1),
 
-            footerView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            footerView.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
             footerView.topAnchor.constraint(equalTo: horizontalSeparator.bottomAnchor),
-            footerView.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor)
+            footerView.bottomAnchor.constraint(equalTo: listContentView.bottomAnchor)
         ])
     }
 
@@ -550,33 +636,58 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
     // MARK: - Model and editing helpers
 
-    private var editingCell: StatusLinkTableCellView? {
-        for row in 0..<tableView.numberOfRows {
-            for column in 0..<tableView.numberOfColumns {
-                guard let cell = tableView.view(
-                    atColumn: column,
-                    row: row,
-                    makeIfNecessary: false
-                ) as? StatusLinkTableCellView else { continue }
-                if cell.editor.currentEditor() != nil { return cell }
-            }
-        }
-        return nil
+    private func commitPendingEdit() {
+        guard let edit = pendingEdit else { return }
+        commit(row: edit.row, field: edit.field, value: edit.value)
     }
 
-    private func commit(_ field: StatusLinkTableCellView) {
-        guard !isTornDown, links.indices.contains(field.row) else { return }
-        let value = field.editor.currentEditor()?.string ?? field.editor.stringValue
+    private func prepareEditing(_ cell: StatusLinkTableCellView, value: String) {
+        if let previousCell = activeEditingCell, previousCell !== cell {
+            previousCell.setEditingAppearance(false)
+        }
+        activeEditingCell = cell
+        pendingEdit = PendingEdit(row: cell.row, field: cell.field, value: value)
+        tableView.selectRowIndexes(IndexSet(integer: cell.row), byExtendingSelection: false)
+        cell.setEditingAppearance(true)
+    }
+
+    @discardableResult
+    private func beginEditing(column: Int, row: Int) -> Bool {
+        guard !isTornDown,
+              links.indices.contains(row),
+              tableView.tableColumns.indices.contains(column),
+              let cell = tableView.view(
+                atColumn: column,
+                row: row,
+                makeIfNecessary: true
+              ) as? StatusLinkTableCellView else {
+            return false
+        }
+        prepareEditing(cell, value: cell.editor.stringValue)
+        tableView.editColumn(column, row: row, with: nil, select: true)
+        return true
+    }
+
+    private func commit(row: Int, field: Field, value: String) {
+        guard !isTornDown, links.indices.contains(row) else { return }
         var updatedLinks = links
-        switch field.field {
+        switch field {
         case .title:
-            updatedLinks[field.row].title = value
+            updatedLinks[row].title = value
         case .url:
-            updatedLinks[field.row].url = value
+            updatedLinks[row].url = value
         }
         guard updatedLinks != links else { return }
         links = updatedLinks
         onLinksChanged(links)
+    }
+
+    private func finishEditingAppearance(for cell: StatusLinkTableCellView) {
+        cell.setEditingAppearance(false)
+        if activeEditingCell === cell {
+            activeEditingCell = nil
+            pendingEdit = nil
+        }
     }
 
     private func moveLink(from sourceRow: Int, to destinationRow: Int) -> Bool {
@@ -627,15 +738,10 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     }
 
     private func cell(containing editor: NSTextField) -> StatusLinkTableCellView? {
-        for row in 0..<tableView.numberOfRows {
-            for column in 0..<tableView.numberOfColumns {
-                guard let cell = tableView.view(
-                    atColumn: column,
-                    row: row,
-                    makeIfNecessary: false
-                ) as? StatusLinkTableCellView else { continue }
-                if cell.editor === editor { return cell }
-            }
+        var ancestor = editor.superview
+        while let view = ancestor {
+            if let cell = view as? StatusLinkTableCellView { return cell }
+            ancestor = view.superview
         }
         return nil
     }

@@ -39,18 +39,31 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(scrollView.hasVerticalScroller)
         XCTAssertFalse(scrollView.hasHorizontalScroller)
         XCTAssertEqual(table.style, .fullWidth)
-        XCTAssertEqual(table.rowSizeStyle, .small)
+        XCTAssertEqual(table.rowSizeStyle, .medium)
+        XCTAssertEqual(table.selectionHighlightStyle, .regular)
+        XCTAssertFalse(table.usesAlternatingRowBackgroundColors)
+        XCTAssertFalse(table.allowsColumnSelection)
+        XCTAssertFalse(table.allowsColumnReordering)
         XCTAssertTrue(table.gridStyleMask.isEmpty)
+        XCTAssertNotNil(table.headerView)
+        XCTAssertEqual(table.tableColumns.map(\.title), [
+            tr(.keyStatusLinksEditorName),
+            tr(.keyStatusLinksEditorUrl)
+        ])
         XCTAssertEqual(editor.listContainerForTesting.boxType, .primary)
+        XCTAssertGreaterThan(editor.listContainerForTesting.contentViewMargins.width, 0)
+        XCTAssertGreaterThan(editor.listContainerForTesting.contentViewMargins.height, 0)
         XCTAssertEqual(scrollView.borderType, .noBorder)
+        XCTAssertFalse(scrollView.drawsBackground)
+        XCTAssertLessThan(table.backgroundColor.alphaComponent, 1)
         XCTAssertFalse(editor.addButtonForTesting.isBordered)
         XCTAssertFalse(editor.removeButtonForTesting.isBordered)
         XCTAssertEqual(editor.horizontalSeparatorForTesting.boxType, .separator)
         XCTAssertEqual(editor.verticalSeparatorForTesting.boxType, .separator)
         let listContentView = try XCTUnwrap(editor.listContainerForTesting.contentView)
-        XCTAssertTrue(listContentView.subviews.contains { $0 === scrollView })
-        XCTAssertTrue(listContentView.subviews.contains { $0 === editor.footerViewForTesting })
-        XCTAssertTrue(listContentView.subviews.contains { $0 === editor.horizontalSeparatorForTesting })
+        XCTAssertTrue(scrollView.isDescendant(of: listContentView))
+        XCTAssertTrue(editor.footerViewForTesting.isDescendant(of: listContentView))
+        XCTAssertTrue(editor.horizontalSeparatorForTesting.isDescendant(of: listContentView))
         XCTAssertTrue(editor.footerViewForTesting.arrangedSubviews.contains { $0 === editor.addButtonForTesting })
         XCTAssertTrue(editor.footerViewForTesting.arrangedSubviews.contains { $0 === editor.verticalSeparatorForTesting })
         XCTAssertTrue(editor.footerViewForTesting.arrangedSubviews.contains { $0 === editor.removeButtonForTesting })
@@ -76,6 +89,45 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(urlField.isEditable)
     }
 
+    func testNativeSelectionStaysActiveAndOnlyEditingFieldGetsSystemSurface() throws {
+        let editor = StatusLinksEditorView(
+            links: [StatusLink(title: "Status", url: "https://status.example")],
+            onLinksChanged: { _ in },
+            onReset: { [] }
+        )
+        let window = attach(editor)
+        defer {
+            editor.endEditing()
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+
+        let table = editor.tableViewForTesting
+        let nameCell = try XCTUnwrap(
+            table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView
+        )
+        let urlCell = try XCTUnwrap(
+            table.view(atColumn: 1, row: 0, makeIfNecessary: true) as? NSTableCellView
+        )
+        let nameField = try XCTUnwrap(nameCell.textField)
+        let urlField = try XCTUnwrap(urlCell.textField)
+        XCTAssertFalse(nameField.drawsBackground)
+        XCTAssertFalse(urlField.drawsBackground)
+
+        XCTAssertTrue(editor.editForTesting(column: 0, row: 0))
+
+        XCTAssertEqual(table.selectedRow, 0)
+        XCTAssertTrue(table.rowView(atRow: 0, makeIfNecessary: false)?.isSelected == true)
+        XCTAssertTrue(nameField.drawsBackground)
+        XCTAssertFalse(urlField.drawsBackground)
+
+        editor.endEditing()
+
+        XCTAssertEqual(table.selectedRow, 0)
+        XCTAssertFalse(nameField.drawsBackground)
+        XCTAssertFalse(urlField.drawsBackground)
+    }
+
     func testFooterActionsStayCompactAndSemanticLeadingAtNormalAndMinimumWidths() throws {
         let probeEditor = StatusLinksEditorView(
             links: [StatusLink(title: "Status", url: "https://status.example")],
@@ -95,6 +147,18 @@ final class StatusLinksTests: XCTestCase {
             editor.frame = NSRect(x: 0, y: 0, width: width, height: StatusLinksEditorView.fixedHeight)
             editor.needsLayout = true
             editor.layoutSubtreeIfNeeded()
+            let listContentView = try XCTUnwrap(editor.listContainerForTesting.contentView)
+            for hostedView in [
+                editor.scrollViewForTesting,
+                editor.footerViewForTesting,
+                editor.horizontalSeparatorForTesting
+            ] {
+                let hostedFrame = hostedView.convert(hostedView.bounds, to: listContentView)
+                XCTAssertTrue(
+                    listContentView.bounds.insetBy(dx: -1, dy: -1).contains(hostedFrame),
+                    "Native list content must remain inside the NSBox content view"
+                )
+            }
             let footer = editor.footerViewForTesting
             let add = editor.addButtonForTesting
             let separator = editor.verticalSeparatorForTesting
@@ -162,7 +226,7 @@ final class StatusLinksTests: XCTestCase {
         }
 
         let table = editor.tableViewForTesting
-        table.editColumn(0, row: 0, with: nil, select: true)
+        XCTAssertTrue(editor.editForTesting(column: 0, row: 0))
         let cell = try XCTUnwrap(table.view(
             atColumn: 0,
             row: 0,
@@ -193,10 +257,14 @@ final class StatusLinksTests: XCTestCase {
             row: 0,
             makeIfNecessary: true
         ))
-        editor.tableViewForTesting.editColumn(1, row: 0, with: nil, select: true)
+        XCTAssertTrue(editor.editForTesting(column: 1, row: 0))
         let field = try XCTUnwrap((cell as? NSTableCellView)?.textField)
-        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: field))
+        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: field) as? NSTextView)
         fieldEditor.string = "https://after.example"
+        editor.controlTextDidChange(Notification(
+            name: NSControl.textDidChangeNotification,
+            object: field
+        ))
 
         window.close()
 
@@ -226,6 +294,7 @@ final class StatusLinksTests: XCTestCase {
             window.contentView = nil
         }
 
+        XCTAssertFalse(editor.removeButtonForTesting.isEnabled)
         editor.tableViewForTesting.selectRowIndexes(
             IndexSet(integer: 0),
             byExtendingSelection: false
@@ -237,6 +306,16 @@ final class StatusLinksTests: XCTestCase {
         editor.addButtonForTesting.performClick(nil)
         XCTAssertEqual(editor.links.count, 2)
         XCTAssertEqual(editor.links.last, StatusLink(title: "", url: ""))
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertTrue(editor.isEditingNameForTesting)
+        let addedNameCell = try XCTUnwrap(
+            editor.tableViewForTesting.view(
+                atColumn: 0,
+                row: 1,
+                makeIfNecessary: false
+            ) as? NSTableCellView
+        )
+        XCTAssertNotNil(addedNameCell.textField?.currentEditor())
 
         XCTAssertTrue(editor.reorderForTesting(from: 1, to: 0))
         XCTAssertEqual(editor.links.map(\.title), ["", "Two"])
@@ -272,6 +351,7 @@ final class StatusLinksTests: XCTestCase {
             editor.tableViewForTesting.frame.height,
             editor.scrollViewForTesting.contentView.bounds.height
         )
+        XCTAssertNotNil(editor.tableViewForTesting.headerView)
         XCTAssertEqual(editor.frame.height, StatusLinksEditorView.fixedHeight, accuracy: 1)
     }
 
