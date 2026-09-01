@@ -226,7 +226,7 @@
 "dashboard.general.and.refresh.pages.silent_launch" = "Im Hintergrund starten";
 "dashboard.general.and.refresh.pages.silent_launch_description" = "BalanceBar starten, ohne das Hauptfenster zu öffnen";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "Mit ChatGPT starten";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "BalanceBar starten, wenn ChatGPT gestartet wird und BalanceBar noch nicht läuft";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "Wenn BalanceBar noch nicht läuft, wird es beim Start von ChatGPT automatisch gestartet";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "BalanceBar benötigt die Genehmigung in den Systemeinstellungen";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "„Mit ChatGPT starten“ konnte nicht aktualisiert werden. Überprüfe Systemeinstellungen → Allgemein → Anmeldeobjekte und versuche es erneut.";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "Der Status des ChatGPT-Startdienstes kann nicht gelesen werden";

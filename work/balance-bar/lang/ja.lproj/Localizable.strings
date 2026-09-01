@@ -226,7 +226,7 @@
 "dashboard.general.and.refresh.pages.silent_launch" = "サイレント起動";
 "dashboard.general.and.refresh.pages.silent_launch_description" = "BalanceBarの起動時にメインウインドウを開きません";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "ChatGPTと一緒に起動";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "ChatGPTの起動時、BalanceBarが実行中でなければ自動的に起動します";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "BalanceBarが実行中でなければ、ChatGPTの起動時に自動的に起動します";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "システム設定でBalanceBarの許可が必要です";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "ChatGPTと一緒に起動する設定を更新できませんでした。システム設定 → 一般 → ログイン項目を確認して、もう一度お試しください。";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "ChatGPT起動サービスの状態を読み取れません";

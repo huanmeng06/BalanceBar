@@ -226,7 +226,7 @@
 "dashboard.general.and.refresh.pages.silent_launch" = "靜默啟動";
 "dashboard.general.and.refresh.pages.silent_launch_description" = "啟動 BalanceBar 時不開啟主視窗";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt" = "隨 ChatGPT 啟動";
-"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "ChatGPT 啟動時自動啟動 BalanceBar（若尚未執行）";
+"dashboard.general.and.refresh.pages.launch_with_chatgpt_description" = "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_requires_approval" = "需要在系統設定中允許 BalanceBar";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_operation_failed" = "無法更新「隨 ChatGPT 啟動」。請檢查「系統設定」→「一般」→「登入項目」後重試。";
 "dashboard.general.and.refresh.pages.launch_with_chatgpt_unavailable" = "暫時無法讀取隨 ChatGPT 啟動服務狀態";
