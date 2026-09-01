@@ -97,6 +97,17 @@
 		A10000000000000000000122 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000123 /* ServiceManagement.framework */; };
 		A10000000000000000000124 /* LaunchAtLoginServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */; };
 		A10000000000000000000126 /* ServiceManagement.framework in Test Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000123 /* ServiceManagement.framework */; };
+		A10000000000000200000001 /* InitialLaunchPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000010 /* InitialLaunchPresentation.swift */; };
+		A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */; };
+		A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000012 /* ChatGPTLaunchDecision.swift */; };
+		A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */; };
+		A10000000000000200000005 /* LaunchWithChatGPTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000014 /* LaunchWithChatGPTService.swift */; };
+		A10000000000000200000041 /* ChatGPTLaunchAgentMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000015 /* ChatGPTLaunchAgentMain.swift */; };
+		A10000000000000200000042 /* ChatGPTApplicationIdentity.swift in Launch Agent Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */; };
+		A10000000000000200000043 /* ChatGPTLaunchDecision.swift in Launch Agent Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000012 /* ChatGPTLaunchDecision.swift */; };
+		A10000000000000200000044 /* ChatGPTLaunchAgentRuntime.swift in Launch Agent Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */; };
+		A10000000000000200000045 /* AppKit.framework in Launch Agent Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* AppKit.framework */; };
+		A10000000000000200000046 /* Foundation.framework in Launch Agent Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -200,6 +211,14 @@
 		A10000000000000000000121 /* LaunchAtLoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginService.swift; sourceTree = "<group>"; };
 		A10000000000000000000123 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		A10000000000000000000125 /* LaunchAtLoginServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginServiceTests.swift; sourceTree = "<group>"; };
+		A10000000000000200000010 /* InitialLaunchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/InitialLaunchPresentation.swift"; sourceTree = "<group>"; };
+		A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTApplicationIdentity.swift"; sourceTree = "<group>"; };
+		A10000000000000200000012 /* ChatGPTLaunchDecision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTLaunchDecision.swift"; sourceTree = "<group>"; };
+		A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/ChatGPTLaunchAgentRuntime.swift"; sourceTree = "<group>"; };
+		A10000000000000200000014 /* LaunchWithChatGPTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchWithChatGPTService.swift; sourceTree = "<group>"; };
+		A10000000000000200000015 /* ChatGPTLaunchAgentMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTLaunchAgentMain.swift; sourceTree = "<group>"; };
+		A10000000000000200000016 /* balancebar-chatgpt-launch-agent.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = balancebar-chatgpt-launch-agent.plist; sourceTree = "<group>"; };
+		A10000000000000200000017 /* BalanceBarChatGPTLaunchAgent */ = {isa = PBXFileReference; explicitFileType = compiled.mach-o.executable; includeInIndex = 0; path = BalanceBarChatGPTLaunchAgent; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +244,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000000000000200000032 /* Launch Agent Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000200000045 /* AppKit.framework in Launch Agent Frameworks */,
+				A10000000000000200000046 /* Foundation.framework in Launch Agent Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -232,6 +260,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000001C /* work/balance-bar */,
+				A10000000000000200000020 /* ChatGPT launch agent */,
 				A1000000000000000000002C /* Tests */,
 				A1000000000000000000001D /* Frameworks */,
 				A1000000000000000000001E /* Products */,
@@ -245,6 +274,10 @@
 				A10000000000000000000045 /* AppPreferences.swift */,
 				A10000000000000000000041 /* Localization.swift */,
 				A100000000000000000000F7 /* LocalizationKeys.swift */,
+				A10000000000000200000010 /* InitialLaunchPresentation.swift */,
+				A10000000000000200000011 /* ChatGPTApplicationIdentity.swift */,
+				A10000000000000200000012 /* ChatGPTLaunchDecision.swift */,
+				A10000000000000200000013 /* ChatGPTLaunchAgentRuntime.swift */,
 				A1000000000000000000006D /* DashboardScrollClamping.swift */,
 				A10000000000000000000054 /* Domain */,
 				A10000000000000000000059 /* Services */,
@@ -280,6 +313,7 @@
 			children = (
 				A10000000000000000000016 /* BalanceBar.app */,
 				A1000000000000000000002D /* BalanceBarTests.xctest */,
+				A10000000000000200000017 /* BalanceBarChatGPTLaunchAgent */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -354,10 +388,21 @@
 				A100000000000000000000E8 /* UpdateService.swift */,
 				A10000000000000000000105 /* ReleaseNotes.swift */,
 				A10000000000000000000121 /* LaunchAtLoginService.swift */,
+				A10000000000000200000014 /* LaunchWithChatGPTService.swift */,
 				A1000000000000000000005A /* Parsing */,
 			);
 			name = Services;
 			path = "Sources/Services";
+			sourceTree = "<group>";
+		};
+		A10000000000000200000020 /* ChatGPT launch agent */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000200000015 /* ChatGPTLaunchAgentMain.swift */,
+				A10000000000000200000016 /* balancebar-chatgpt-launch-agent.plist */,
+			);
+			name = "ChatGPT launch agent";
+			path = "work/balancebar-chatgpt-launch-agent";
 			sourceTree = "<group>";
 		};
 		A1000000000000000000005A /* Parsing */ = {
@@ -473,10 +518,12 @@
 				A10000000000000000000003 /* Sources */,
 				A10000000000000000000004 /* Frameworks */,
 				A10000000000000000000005 /* Resources */,
+				A10000000000000200000038 /* Embed ChatGPT launch agent */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A10000000000000200000037 /* BalanceBarChatGPTLaunchAgent */,
 			);
 			name = BalanceBar;
 			packageProductDependencies = (
@@ -484,6 +531,24 @@
 			productName = BalanceBar;
 			productReference = A10000000000000000000016 /* BalanceBar.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A10000000000000200000030 /* BalanceBarChatGPTLaunchAgent */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000200000033 /* Build configuration list for PBXNativeTarget "BalanceBarChatGPTLaunchAgent" */;
+			buildPhases = (
+				A10000000000000200000031 /* Sources */,
+				A10000000000000200000032 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BalanceBarChatGPTLaunchAgent;
+			packageProductDependencies = (
+			);
+			productName = BalanceBarChatGPTLaunchAgent;
+			productReference = A10000000000000200000017 /* BalanceBarChatGPTLaunchAgent */;
+			productType = "com.apple.product-type.tool";
 		};
 		A10000000000000000000032 /* BalanceBarTests */ = {
 			isa = PBXNativeTarget;
@@ -521,6 +586,9 @@
 						CreatedOnToolsVersion = 2600;
 						TestTargetID = A10000000000000000000002;
 					};
+					A10000000000000200000030 = {
+						CreatedOnToolsVersion = 2600;
+					};
 				};
 			};
 			buildConfigurationList = A10000000000000000000006 /* Build configuration list for PBXProject "BalanceBar" */;
@@ -537,6 +605,10 @@
 				ko,
 				es,
 				de,
+				fr,
+				pt,
+				ru,
+				it,
 			);
 			mainGroup = A1000000000000000000001B /* BalanceBar */;
 			productRefGroup = A1000000000000000000001E /* Products */;
@@ -544,6 +616,7 @@
 			projectRoot = "";
 			targets = (
 				A10000000000000000000002 /* BalanceBar */,
+				A10000000000000200000030 /* BalanceBarChatGPTLaunchAgent */,
 				A10000000000000000000032 /* BalanceBarTests */,
 			);
 		};
@@ -596,6 +669,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A10000000000000200000038 /* Embed ChatGPT launch agent */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/BalanceBarChatGPTLaunchAgent",
+				"$(SRCROOT)/work/balancebar-chatgpt-launch-agent/balancebar-chatgpt-launch-agent.plist",
+			);
+			name = "Embed ChatGPT launch agent";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/BalanceBarChatGPTLaunchAgent",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/balancebar-chatgpt-launch-agent.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nlaunch_agents_dir=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchAgents\"\nmkdir -p \"$launch_agents_dir\"\ncp \"$BUILT_PRODUCTS_DIR/BalanceBarChatGPTLaunchAgent\" \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\ncp \"$SRCROOT/work/balancebar-chatgpt-launch-agent/balancebar-chatgpt-launch-agent.plist\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\n/usr/bin/plutil -replace Label -string \"${PRODUCT_BUNDLE_IDENTIFIER}.chatgpt-launch-agent\" \"$launch_agents_dir/balancebar-chatgpt-launch-agent.plist\"\nchmod +x \"$launch_agents_dir/BalanceBarChatGPTLaunchAgent\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A10000000000000000000003 /* Sources */ = {
@@ -651,6 +745,22 @@
 				A10000000000000000000101 /* ReleaseNotes.swift in Sources */,
 				A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */,
 				A10000000000000000000120 /* LaunchAtLoginService.swift in Sources */,
+				A10000000000000200000001 /* InitialLaunchPresentation.swift in Sources */,
+				A10000000000000200000002 /* ChatGPTApplicationIdentity.swift in Sources */,
+				A10000000000000200000003 /* ChatGPTLaunchDecision.swift in Sources */,
+				A10000000000000200000004 /* ChatGPTLaunchAgentRuntime.swift in Sources */,
+				A10000000000000200000005 /* LaunchWithChatGPTService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000200000031 /* Launch Agent Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000200000041 /* ChatGPTLaunchAgentMain.swift in Sources */,
+				A10000000000000200000042 /* ChatGPTApplicationIdentity.swift in Launch Agent Sources */,
+				A10000000000000200000043 /* ChatGPTLaunchDecision.swift in Launch Agent Sources */,
+				A10000000000000200000044 /* ChatGPTLaunchAgentRuntime.swift in Launch Agent Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -773,6 +883,34 @@
 			};
 			name = Release;
 		};
+		A10000000000000200000034 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar.chatgpt-launch-agent";
+				PRODUCT_NAME = BalanceBarChatGPTLaunchAgent;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A10000000000000200000035 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.huanmeng06.BalanceBar.chatgpt-launch-agent";
+				PRODUCT_NAME = BalanceBarChatGPTLaunchAgent;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -803,6 +941,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A10000000000000200000033 /* Build configuration list for PBXNativeTarget "BalanceBarChatGPTLaunchAgent" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000200000034 /* Debug */,
+				A10000000000000200000035 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin PBXContainerItemProxy section */
@@ -813,6 +960,13 @@
 			remoteGlobalIDString = A10000000000000000000002;
 			remoteInfo = BalanceBar;
 		};
+		A10000000000000200000036 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000200000030;
+			remoteInfo = BalanceBarChatGPTLaunchAgent;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
@@ -820,6 +974,11 @@
 			isa = PBXTargetDependency;
 			target = A10000000000000000000002 /* BalanceBar */;
 			targetProxy = A1000000000000000000003A /* PBXContainerItemProxy */;
+		};
+		A10000000000000200000037 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000200000030 /* BalanceBarChatGPTLaunchAgent */;
+			targetProxy = A10000000000000200000036 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 	};

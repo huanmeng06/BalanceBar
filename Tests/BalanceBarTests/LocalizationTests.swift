@@ -650,7 +650,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 448)
+        XCTAssertEqual(expectedKeys.count, 456)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -691,19 +691,19 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testLaunchAtLoginCopyIsLocalizedAcrossAllTwelveLanguages() {
-        let expected: [AppLanguage: (String, String)] = [
-            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar"),
-            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar"),
-            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar"),
-            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します"),
-            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac"),
-            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다"),
-            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac"),
-            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten"),
-            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac"),
-            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac"),
-            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac"),
-            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac")
+        let expected: [AppLanguage: (String, String, String)] = [
+            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar", "登录 Mac 后自动启动 BalanceBar"),
+            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入 Mac 後自動啟動 BalanceBar"),
+            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "登入 Mac 後自動啟動 BalanceBar"),
+            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します", "Macへのログイン後にBalanceBarを自動的に起動します"),
+            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac", "Automatically start BalanceBar after you log in to your Mac"),
+            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다"),
+            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac"),
+            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten", "BalanceBar nach der Anmeldung am Mac automatisch starten"),
+            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac", "Lancer automatiquement BalanceBar après la connexion au Mac"),
+            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac"),
+            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac", "Автоматически запускать BalanceBar после входа на Mac"),
+            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac", "Avvia automaticamente BalanceBar dopo l’accesso al Mac")
         ]
 
         for language in resourceDirectories.values {
@@ -716,10 +716,54 @@ final class LocalizationTests: XCTestCase {
                 .keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription,
                 language: language
             )
+            let approvalDescription = tr(
+                .keyDashboardGeneralAndRefreshPagesLaunchAtLoginRequiresApproval,
+                language: language
+            )
             XCTAssertEqual(title, expectedCopy.0, "Launch at Login title for \(language)")
             XCTAssertEqual(description, expectedCopy.1, "Launch at Login description for \(language)")
+            XCTAssertEqual(
+                approvalDescription,
+                expectedCopy.2,
+                "Launch at Login approval description for \(language)"
+            )
             XCTAssertFalse(title.hasPrefix("⟦"))
             XCTAssertFalse(description.hasPrefix("⟦"))
+            XCTAssertFalse(approvalDescription.hasPrefix("⟦"))
+        }
+    }
+
+    func testStartupCopyMatchesTheProductCopyAcrossAllTwelveLanguages() {
+        let expected: [AppLanguage: (String, String, String, String, String, String)] = [
+            .simplifiedChinese: ("启动", "静默启动", "启动 BalanceBar 时不打开主窗口", "随 ChatGPT 启动", "若 BalanceBar 尚未运行，会随着 ChatGPT 启动时自动启动", "请在“系统设置 → 通用 → 登录项 → App 后台活动”中打开 BalanceBar"),
+            .traditionalChineseTaiwan: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定 → 一般 → 登入項目 → App 背景活動」中開啟 BalanceBar"),
+            .traditionalChineseHongKong: ("啟動", "靜默啟動", "啟動 BalanceBar 時不開啟主視窗", "隨 ChatGPT 啟動", "若 BalanceBar 尚未執行，會隨著 ChatGPT 啟動時自動啟動", "請在「系統設定 → 一般 → 登入項目 → App 背景活動」中開啟 BalanceBar"),
+            .japanese: ("起動", "サイレント起動", "BalanceBarの起動時にメインウインドウを開きません", "ChatGPTと一緒に起動", "BalanceBarが実行中でなければ、ChatGPTの起動時に自動的に起動します", "システム設定 → 一般 → ログイン項目 → AppのバックグラウンドアクティビティでBalanceBarをオンにしてください"),
+            .english: ("Startup", "Launch Silently", "Start BalanceBar without opening the main window", "Launch with ChatGPT", "If BalanceBar is not already running, it will launch automatically when ChatGPT starts", "Turn on BalanceBar under System Settings → General → Login Items → App Background Activity"),
+            .korean: ("시작", "조용히 실행", "BalanceBar를 실행할 때 메인 창을 열지 않습니다", "ChatGPT와 함께 실행", "BalanceBar가 실행 중이 아니면 ChatGPT가 시작될 때 자동으로 실행됩니다", "시스템 설정 → 일반 → 로그인 항목 → 앱 백그라운드 활동에서 BalanceBar를 켜세요"),
+            .spanish: ("Inicio", "Inicio silencioso", "Inicia BalanceBar sin abrir la ventana principal", "Iniciar con ChatGPT", "Si BalanceBar aún no está en ejecución, se iniciará automáticamente cuando se abra ChatGPT", "Activa BalanceBar en Ajustes del Sistema → General → Ítems de inicio → Actividad en segundo plano de las apps"),
+            .german: ("Start", "Im Hintergrund starten", "BalanceBar starten, ohne das Hauptfenster zu öffnen", "Mit ChatGPT starten", "Wenn BalanceBar noch nicht läuft, wird es beim Start von ChatGPT automatisch gestartet", "Aktiviere BalanceBar unter Systemeinstellungen → Allgemein → Anmeldeobjekte → App-Hintergrundaktivität"),
+            .french: ("Démarrage", "Lancement silencieux", "Lancer BalanceBar sans ouvrir la fenêtre principale", "Lancer avec ChatGPT", "Si BalanceBar n’est pas déjà en cours d’exécution, il sera automatiquement lancé au démarrage de ChatGPT", "Activez BalanceBar dans Réglages Système → Général → Éléments d’ouverture → Activité en arrière-plan des apps"),
+            .portuguese: ("Arranque", "Início silencioso", "Inicia o BalanceBar sem abrir a janela principal", "Iniciar com o ChatGPT", "Se o BalanceBar ainda não estiver em execução, será iniciado automaticamente quando o ChatGPT for iniciado", "Ative o BalanceBar em Definições do Sistema → Geral → Elementos de início de sessão → Atividade em segundo plano das aplicações"),
+            .russian: ("Запуск", "Тихий запуск", "Запускать BalanceBar без открытия главного окна", "Запускать вместе с ChatGPT", "Если BalanceBar ещё не запущен, он автоматически запустится при запуске ChatGPT", "Включите BalanceBar в Системных настройках → Основные → Объекты входа → Фоновая активность приложений"),
+            .italian: ("Avvio", "Avvio silenzioso", "Avvia BalanceBar senza aprire la finestra principale", "Avvia con ChatGPT", "Se BalanceBar non è già in esecuzione, verrà avviato automaticamente all’avvio di ChatGPT", "Attiva BalanceBar in Impostazioni di Sistema → Generali → Elementi login → Attività in background delle app")
+        ]
+
+        for language in resourceDirectories.values {
+            guard let expectedCopy = expected[language] else {
+                XCTFail("Missing Startup copy for \(language)")
+                continue
+            }
+            let actual = [
+                tr(.keyDashboardGeneralAndRefreshPagesStartup, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesSilentLaunch, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesSilentLaunchDescription, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTDescription, language: language),
+                tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTRequiresApproval, language: language)
+            ]
+            XCTAssertEqual(actual, [expectedCopy.0, expectedCopy.1, expectedCopy.2, expectedCopy.3, expectedCopy.4, expectedCopy.5], "Startup copy for \(language)")
+            XCTAssertTrue(actual.allSatisfy { !$0.hasPrefix("⟦") })
         }
     }
 

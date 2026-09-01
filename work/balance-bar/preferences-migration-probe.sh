@@ -12,6 +12,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         'import Foundation' \
         'enum AppPreferences {' \
         '    static let updateChannelKey = "updateChannel"' \
+        '    static let silentLaunchKey = "silentLaunch"' \
         '    static let showOpenCodexMenuKey = "showOpenCodexMenu"' \
         '    static let menuBarIconOffsetXKey = "menuBarIconOffsetX"' \
         '    static let menuBarIconOffsetYKey = "menuBarIconOffsetY"' \
@@ -59,6 +60,7 @@ let production: [String: Any] = [
     "menuBarAutoSwitchLunaReserve": NSNumber(value: true),
     "menuBarLunaReserveResetTimeMode": "originalQuota",
     "appLanguage": "en",
+    "silentLaunch": NSNumber(value: true),
     "unknownSecret": "must not migrate",
     "NSStatusItem Preferred Position Item-0": "must not migrate"
 ]
@@ -78,6 +80,7 @@ let selected = PreferencesMigrationPlan.selectedValues(
     local: local
 )
 require((selected["showMenuBarIcon"] as? NSNumber)?.boolValue == false, "production wins")
+require((selected["silentLaunch"] as? NSNumber)?.boolValue == true, "silent launch preference migrates")
 require((selected["activityPollInterval"] as? NSNumber)?.doubleValue == 0.5, "production value migrates")
 require((selected["menuBarStatusItemWidthAdjustment"] as? NSNumber)?.doubleValue == 0.7, "width adjustment migrates")
 require((selected["balanceDisplayThreshold"] as? NSNumber)?.doubleValue == 0.15, "balance display threshold migrates")
@@ -100,6 +103,7 @@ require(selected["NSStatusItem Preferred Position Item-0"] == nil, "system posit
 let existingTarget: [String: Any] = [
     "showMenuBarIcon": NSNumber(value: true),
     "appLanguage": "zh-Hans",
+    "silentLaunch": NSNumber(value: false),
     "menuBarIconDisplayMode": "alwaysVisible",
     "menuBarIconDisplayDelay": "threeMinutes",
     "menuBarQuotaWindowPreference": "sevenDay",
@@ -114,6 +118,7 @@ let selectedWithExisting = PreferencesMigrationPlan.selectedValues(
 )
 require(selectedWithExisting["showMenuBarIcon"] == nil, "existing target value is preserved")
 require(selectedWithExisting["appLanguage"] == nil, "existing target language is preserved")
+require(selectedWithExisting["silentLaunch"] == nil, "existing target silent launch value is preserved")
 require(selectedWithExisting["menuBarIconDisplayMode"] == nil, "existing target icon display mode is preserved")
 require(selectedWithExisting["menuBarIconDisplayDelay"] == nil, "existing target icon display delay is preserved")
 require(selectedWithExisting["menuBarQuotaWindowPreference"] == nil, "existing target quota window preference is preserved")

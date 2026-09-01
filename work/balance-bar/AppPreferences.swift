@@ -177,6 +177,8 @@ final class AppPreferences {
     static let quotaProgressYellowUpperBoundKey = "quotaProgressYellowUpperBound"
     static let updateChannelKey = "updateChannel"
     static let defaultUpdateChannel: UpdateChannel = .stable
+    static let silentLaunchKey = "silentLaunch"
+    static let silentLaunchDefault = false
     static let showOpenCodexMenuKey = "showOpenCodexMenu"
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
     static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
@@ -346,6 +348,10 @@ final class AppPreferences {
             return channel
         }
         set { defaults.set(newValue.rawValue, forKey: Self.updateChannelKey) }
+    }
+    var silentLaunch: Bool {
+        get { bool(Self.silentLaunchKey, default: Self.silentLaunchDefault) }
+        set { defaults.set(newValue, forKey: Self.silentLaunchKey) }
     }
     var balanceDisplayThreshold: Double {
         get {

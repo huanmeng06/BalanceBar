@@ -56,6 +56,23 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.sortProvidersAlphabetically)
     }
 
+    func testSilentLaunchDefaultsOffAndRoundTripsThroughUserDefaults() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertFalse(preferences.silentLaunch)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.silentLaunchKey))
+
+        preferences.silentLaunch = true
+
+        XCTAssertTrue(preferences.silentLaunch)
+        XCTAssertEqual(
+            defaults.object(forKey: AppPreferences.silentLaunchKey) as? Bool,
+            true
+        )
+        XCTAssertTrue(AppPreferences(defaults: defaults).silentLaunch)
+    }
+
     func testUpdateChannelDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

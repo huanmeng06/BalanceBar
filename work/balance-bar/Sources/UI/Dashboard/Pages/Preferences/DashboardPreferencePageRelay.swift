@@ -5,7 +5,8 @@ import AppKit
 final class DashboardPreferencePageRelay: NSObject {
     var onToggle: ((String, Bool) -> Void)?
     var onLaunchAtLogin: ((Bool) -> Void)?
-    var onOpenLaunchAtLoginSettings: (() -> Void)?
+    var onLaunchWithChatGPT: ((Bool) -> Void)?
+    var onOpenLaunchWithChatGPTSettings: (() -> Void)?
     var onInterval: ((String, TimeInterval) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
     var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
@@ -39,8 +40,12 @@ final class DashboardPreferencePageRelay: NSObject {
         onLaunchAtLogin?(sender.state == .on)
     }
 
-    @objc func openLaunchAtLoginSettings(_ sender: NSButton) {
-        onOpenLaunchAtLoginSettings?()
+    @objc func launchWithChatGPT(_ sender: NSSwitch) {
+        onLaunchWithChatGPT?(sender.state == .on)
+    }
+
+    @objc func openLaunchWithChatGPTSettings(_ sender: NSButton) {
+        onOpenLaunchWithChatGPTSettings?()
     }
 
     @objc func interval(_ sender: NSPopUpButton) {

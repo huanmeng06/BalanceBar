@@ -275,19 +275,22 @@ final class DashboardGeneralPage {
         let relay: DashboardPreferencePageRelay
         let updateState: UpdateCheckState
         let launchAtLoginState: LaunchAtLoginState
+        let launchWithChatGPTState: LaunchWithChatGPTState
 
         init(
             preferences: AppPreferences,
             currentProviderName: String,
             relay: DashboardPreferencePageRelay,
             updateState: UpdateCheckState,
-            launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered)
+            launchAtLoginState: LaunchAtLoginState = LaunchAtLoginState(status: .notRegistered),
+            launchWithChatGPTState: LaunchWithChatGPTState = LaunchWithChatGPTState(status: .notRegistered)
         ) {
             self.preferences = preferences
             self.currentProviderName = currentProviderName
             self.relay = relay
             self.updateState = updateState
             self.launchAtLoginState = launchAtLoginState
+            self.launchWithChatGPTState = launchWithChatGPTState
         }
     }
 
@@ -297,8 +300,10 @@ final class DashboardGeneralPage {
     private var updateBadge: NSView?
     private var launchAtLoginSwitch: NSSwitch?
     private var launchAtLoginSubtitleLabel: NSTextField?
-    private var launchAtLoginOpenSettingsButton: NSButton?
-    private var launchAtLoginControls: DashboardAdaptiveControlsStackView?
+    private var launchWithChatGPTSwitch: NSSwitch?
+    private var launchWithChatGPTSubtitleLabel: NSTextField?
+    private var launchWithChatGPTOpenSettingsButton: NSButton?
+    private var launchWithChatGPTControls: DashboardAdaptiveControlsStackView?
 
     func make(_ input: Input) -> NSView {
         let openButton = NSButton(
@@ -324,29 +329,68 @@ final class DashboardGeneralPage {
         let launchAtLoginSubtitleLabel = NSTextField(
             wrappingLabelWithString: launchAtLoginSubtitle(for: input.launchAtLoginState)
         )
-        let launchAtLoginOpenSettingsButton = NSButton(
-            title: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings),
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.openLaunchAtLoginSettings(_:))
-        )
-        launchAtLoginOpenSettingsButton.bezelStyle = .rounded
-        let launchAtLoginControls = DashboardAdaptiveControlsStackView(
-            views: [launchAtLoginOpenSettingsButton, launchAtLoginSwitch]
-        )
-        launchAtLoginControls.orientation = .horizontal
-        launchAtLoginControls.alignment = .centerY
-        launchAtLoginControls.spacing = 8
         apply(
             input.launchAtLoginState,
             to: launchAtLoginSwitch,
-            subtitle: launchAtLoginSubtitleLabel,
-            openSettingsButton: launchAtLoginOpenSettingsButton
+            subtitle: launchAtLoginSubtitleLabel
         )
         let launchAtLoginRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLogin),
             subtitle: launchAtLoginSubtitle(for: input.launchAtLoginState),
             subtitleLabel: launchAtLoginSubtitleLabel,
-            control: launchAtLoginControls
+            control: launchAtLoginSwitch
+        )
+
+        let silentLaunchSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.silentLaunchKey,
+            isOn: input.preferences.silentLaunch,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        let silentLaunchRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardGeneralAndRefreshPagesSilentLaunch),
+            subtitle: tr(.keyDashboardGeneralAndRefreshPagesSilentLaunchDescription),
+            control: silentLaunchSwitch
+        )
+
+        let launchWithChatGPTSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: LaunchWithChatGPTController.toggleIdentifier,
+            isOn: input.launchWithChatGPTState.status == .enabled
+                || input.launchWithChatGPTState.status == .requiresApproval,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.launchWithChatGPT(_:))
+        )
+        let launchWithChatGPTSubtitleLabel = NSTextField(
+            wrappingLabelWithString: launchWithChatGPTSubtitle(for: input.launchWithChatGPTState)
+        )
+        let launchWithChatGPTOpenSettingsButton = NSButton(
+            title: tr(.keyDashboardGeneralAndRefreshPagesLaunchAtLoginOpenSettings),
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.openLaunchWithChatGPTSettings(_:))
+        )
+        launchWithChatGPTOpenSettingsButton.bezelStyle = .rounded
+        let launchWithChatGPTControls = DashboardAdaptiveControlsStackView(
+            views: [launchWithChatGPTOpenSettingsButton, launchWithChatGPTSwitch]
+        )
+        launchWithChatGPTControls.orientation = .horizontal
+        launchWithChatGPTControls.alignment = .centerY
+        launchWithChatGPTControls.spacing = 8
+        apply(
+            input.launchWithChatGPTState,
+            to: launchWithChatGPTSwitch,
+            subtitle: launchWithChatGPTSubtitleLabel,
+            openSettingsButton: launchWithChatGPTOpenSettingsButton
+        )
+        let launchWithChatGPTRow = DashboardSettingsComponents.makeSettingsRow(
+            tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPT),
+            subtitle: launchWithChatGPTSubtitle(for: input.launchWithChatGPTState),
+            subtitleLabel: launchWithChatGPTSubtitleLabel,
+            control: launchWithChatGPTControls
+        )
+
+        let startup = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyDashboardGeneralAndRefreshPagesStartup),
+            rows: [launchAtLoginRow, silentLaunchRow, launchWithChatGPTRow]
         )
 
         let activeRefreshPopup = DashboardSettingsComponents.makeIntervalPopUpButton(
@@ -488,8 +532,10 @@ final class DashboardGeneralPage {
         self.updateBadge = updateBadge
         self.launchAtLoginSwitch = launchAtLoginSwitch
         self.launchAtLoginSubtitleLabel = launchAtLoginSubtitleLabel
-        self.launchAtLoginOpenSettingsButton = launchAtLoginOpenSettingsButton
-        self.launchAtLoginControls = launchAtLoginControls
+        self.launchWithChatGPTSwitch = launchWithChatGPTSwitch
+        self.launchWithChatGPTSubtitleLabel = launchWithChatGPTSubtitleLabel
+        self.launchWithChatGPTOpenSettingsButton = launchWithChatGPTOpenSettingsButton
+        self.launchWithChatGPTControls = launchWithChatGPTControls
 
         let app = DashboardSettingsComponents.makeSettingsSection(tr(.keyDashboardGeneralAndRefreshPagesApplication), rows: [
             DashboardSettingsComponents.makeSettingsRow(
@@ -497,7 +543,6 @@ final class DashboardGeneralPage {
                 subtitle: tr(.keyDashboardGeneralAndRefreshPagesChangesApplyToTheEntireInterfaceImmediately),
                 control: languagePopup
             ),
-            launchAtLoginRow,
             updateChannelRow,
             DashboardSettingsComponents.makeSettingsRow(
                 tr(.keyDashboardGeneralAndRefreshPagesCheckForUpdates3),
@@ -508,24 +553,38 @@ final class DashboardGeneralPage {
                 controlWidthConstrainedToRow: true
             )
         ])
-        return DashboardSettingsComponents.makeSettingsPage([system, refreshing, app])
+        return DashboardSettingsComponents.makeSettingsPage([system, refreshing, startup, app])
     }
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
         guard let launchAtLoginSwitch,
-              let launchAtLoginSubtitleLabel,
-              let launchAtLoginOpenSettingsButton
+              let launchAtLoginSubtitleLabel
         else { return }
         apply(
             state,
             to: launchAtLoginSwitch,
-            subtitle: launchAtLoginSubtitleLabel,
-            openSettingsButton: launchAtLoginOpenSettingsButton
+            subtitle: launchAtLoginSubtitleLabel
         )
-        launchAtLoginControls?.invalidateLayoutAfterContentChange()
         launchAtLoginSwitch.superview?.needsLayout = true
         launchAtLoginSubtitleLabel.superview?.needsLayout = true
         launchAtLoginSubtitleLabel.superview?.superview?.needsLayout = true
+    }
+
+    func refreshLaunchWithChatGPT(_ state: LaunchWithChatGPTState) {
+        guard let launchWithChatGPTSwitch,
+              let launchWithChatGPTSubtitleLabel,
+              let launchWithChatGPTOpenSettingsButton
+        else { return }
+        apply(
+            state,
+            to: launchWithChatGPTSwitch,
+            subtitle: launchWithChatGPTSubtitleLabel,
+            openSettingsButton: launchWithChatGPTOpenSettingsButton
+        )
+        launchWithChatGPTControls?.invalidateLayoutAfterContentChange()
+        launchWithChatGPTSwitch.superview?.needsLayout = true
+        launchWithChatGPTSubtitleLabel.superview?.needsLayout = true
+        launchWithChatGPTSubtitleLabel.superview?.superview?.needsLayout = true
     }
 
     func refresh(updateState: UpdateCheckState) {
@@ -550,11 +609,23 @@ final class DashboardGeneralPage {
         }
     }
 
+    private func launchWithChatGPTSubtitle(for state: LaunchWithChatGPTState) -> String {
+        switch state.notice {
+        case .none:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTDescription)
+        case .requiresApproval:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTRequiresApproval)
+        case .operationFailed:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTOperationFailed)
+        case .unavailable:
+            return tr(.keyDashboardGeneralAndRefreshPagesLaunchWithChatGPTUnavailable)
+        }
+    }
+
     private func apply(
         _ state: LaunchAtLoginState,
         to launchAtLoginSwitch: NSSwitch,
-        subtitle: NSTextField,
-        openSettingsButton: NSButton
+        subtitle: NSTextField
     ) {
         switch state.status {
         case .enabled:
@@ -570,8 +641,26 @@ final class DashboardGeneralPage {
             launchAtLoginSwitch.state = .off
             launchAtLoginSwitch.isEnabled = true
         }
-        openSettingsButton.isHidden = state.notice == .none
         subtitle.stringValue = launchAtLoginSubtitle(for: state)
+        subtitle.invalidateIntrinsicContentSize()
+    }
+
+    private func apply(
+        _ state: LaunchWithChatGPTState,
+        to launchWithChatGPTSwitch: NSSwitch,
+        subtitle: NSTextField,
+        openSettingsButton: NSButton
+    ) {
+        switch state.status {
+        case .enabled, .requiresApproval:
+            launchWithChatGPTSwitch.state = .on
+            launchWithChatGPTSwitch.isEnabled = true
+        case .notRegistered, .notFound, .unknown:
+            launchWithChatGPTSwitch.state = .off
+            launchWithChatGPTSwitch.isEnabled = true
+        }
+        openSettingsButton.isHidden = state.notice == .none
+        subtitle.stringValue = launchWithChatGPTSubtitle(for: state)
         subtitle.invalidateIntrinsicContentSize()
     }
 

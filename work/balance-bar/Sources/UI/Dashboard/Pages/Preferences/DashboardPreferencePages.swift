@@ -3,7 +3,8 @@ import AppKit
 struct DashboardPreferencePageActions {
     let onToggle: (String, Bool) -> Void
     let onLaunchAtLogin: (Bool) -> Void
-    let onOpenLaunchAtLoginSettings: () -> Void
+    let onLaunchWithChatGPT: (Bool) -> Void
+    let onOpenLaunchWithChatGPTSettings: () -> Void
     let onInterval: (String, TimeInterval) -> Void
     let onBalanceDisplayThresholdChanged: (Double) -> Void
     let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
@@ -37,6 +38,7 @@ final class DashboardPreferencePages {
     private let devBundleIdentifier: String
     private let actions: DashboardPreferencePageActions
     private let launchAtLoginController: LaunchAtLoginController
+    private let launchWithChatGPTController: LaunchWithChatGPTController
     private let relay = DashboardPreferencePageRelay()
     private let generalPage = DashboardGeneralPage()
     private let menuPage = DashboardMenuPage()
@@ -48,15 +50,18 @@ final class DashboardPreferencePages {
         preferences: AppPreferences,
         devBundleIdentifier: String,
         actions: DashboardPreferencePageActions,
-        launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController()
+        launchAtLoginController: LaunchAtLoginController = LaunchAtLoginController(),
+        launchWithChatGPTController: LaunchWithChatGPTController = LaunchWithChatGPTController()
     ) {
         self.preferences = preferences
         self.devBundleIdentifier = devBundleIdentifier
         self.actions = actions
         self.launchAtLoginController = launchAtLoginController
+        self.launchWithChatGPTController = launchWithChatGPTController
         relay.onToggle = actions.onToggle
         relay.onLaunchAtLogin = actions.onLaunchAtLogin
-        relay.onOpenLaunchAtLoginSettings = actions.onOpenLaunchAtLoginSettings
+        relay.onLaunchWithChatGPT = actions.onLaunchWithChatGPT
+        relay.onOpenLaunchWithChatGPTSettings = actions.onOpenLaunchWithChatGPTSettings
         relay.onInterval = actions.onInterval
         relay.onOffsetAdjust = actions.onOffsetAdjust
         relay.onOffsetValue = actions.onOffsetValue
@@ -101,7 +106,8 @@ final class DashboardPreferencePages {
                 currentProviderName: currentProviderName,
                 relay: relay,
                 updateState: updateState,
-                launchAtLoginState: launchAtLoginController.currentState()
+                launchAtLoginState: launchAtLoginController.currentState(),
+                launchWithChatGPTState: launchWithChatGPTController.currentState()
             ))
         case .menuBar:
             return menuBarPage.make(.init(
@@ -208,6 +214,14 @@ final class DashboardPreferencePages {
 
     func refreshLaunchAtLogin(_ state: LaunchAtLoginState) {
         generalPage.refreshLaunchAtLogin(state)
+    }
+
+    func refreshLaunchWithChatGPT() {
+        generalPage.refreshLaunchWithChatGPT(launchWithChatGPTController.currentState())
+    }
+
+    func refreshLaunchWithChatGPT(_ state: LaunchWithChatGPTState) {
+        generalPage.refreshLaunchWithChatGPT(state)
     }
 
     func handleAutomaticDetection(_ enabled: Bool) {

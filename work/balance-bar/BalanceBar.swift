@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -217,7 +217,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             setSortAlphabetically: { [weak self] enabled in self?.sortProvidersAlphabetically = enabled },
             onToggle: { [weak self] identifier, enabled in self?.handleDashboardToggle(identifier: identifier, enabled: enabled) },
             onLaunchAtLogin: { [weak self] enabled in self?.handleLaunchAtLoginAction(enabled: enabled) },
-            onOpenLaunchAtLoginSettings: { [weak self] in self?.openLaunchAtLoginSettings() },
+            onLaunchWithChatGPT: { [weak self] enabled in self?.handleLaunchWithChatGPTAction(enabled: enabled) },
+            onOpenLaunchWithChatGPTSettings: { [weak self] in self?.openLaunchWithChatGPTSettings() },
             onInterval: { [weak self] identifier, value in self?.handleDashboardInterval(identifier: identifier, value: value) },
             onBalanceDisplayThresholdChanged: { [weak self] value in
                 self?.handleDashboardBalanceDisplayThresholdChanged(value)
@@ -335,6 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var providerSwitchCoordinator: ProviderSwitchCoordinator!
     private let preferences = AppPreferences()
     private let launchAtLoginController: LaunchAtLoginController
+    private let launchWithChatGPTController: LaunchWithChatGPTController
     private let updateService: UpdateService
     private lazy var updateNotesWindowController = UpdateNotesWindowController(
         onInstall: { [weak self] in self?.updateService.installAvailableUpdate() },
@@ -409,11 +411,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         officialQuotaClient: OfficialQuotaClient = OfficialQuotaClient(),
         openCodexRepository: OpenCodexRepository = OpenCodexRepository(),
         updateService: UpdateService? = nil,
-        launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService()
+        launchAtLoginService: LaunchAtLoginService = SystemLaunchAtLoginService(),
+        launchWithChatGPTService: LaunchWithChatGPTService = SystemLaunchWithChatGPTService()
     ) {
         self.ccSwitchRepository = repository
         self.officialQuotaClient = officialQuotaClient
         self.launchAtLoginController = LaunchAtLoginController(service: launchAtLoginService)
+        self.launchWithChatGPTController = LaunchWithChatGPTController(service: launchWithChatGPTService)
         self.updateService = updateService ?? UpdateService(
             releaseFetcher: DevelopmentReleaseFixture.releaseFetcher(),
             updateChannel: preferences.updateChannel,
@@ -688,8 +692,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         configureApplicationMenu()
         NSApp.appearance = nil
         dashboardComposition.start()
-        let regularPolicyApplied = NSApp.setActivationPolicy(.regular)
-        showDashboard()
+        let initialPresentation = InitialLaunchPresentation.resolve(
+            silentLaunch: preferences.silentLaunch
+        )
+        let regularPolicyApplied: Bool
+        switch initialPresentation {
+        case .dashboard:
+            regularPolicyApplied = NSApp.setActivationPolicy(.regular)
+            showDashboard()
+        case .background:
+            regularPolicyApplied = NSApp.setActivationPolicy(.accessory)
+        }
         statusItemController.start(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
@@ -706,7 +719,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "lifecycle"
         )
         SwitchLog.write(
-            "status chain startup; activation_policy=\(String(describing: NSApp.activationPolicy())); regular_applied=\(regularPolicyApplied); \(statusItemController.startupDiagnostic)",
+            "status chain startup; initial_presentation=\(initialPresentation); activation_policy=\(String(describing: NSApp.activationPolicy())); policy_call_result=\(regularPolicyApplied); \(statusItemController.startupDiagnostic)",
             category: "ui.status-item"
         )
         SwitchLog.write(
@@ -744,6 +757,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         dashboardComposition.refreshLaunchAtLogin()
+        dashboardComposition.refreshLaunchWithChatGPT()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -876,12 +890,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     @objc private func openChatGPT() {
-        let applicationURLs: [URL] = [
-            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex"),
-            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.chat"),
+        let applicationURLs: [URL] = ChatGPTApplicationIdentity.bundleIdentifiers.compactMap {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+        } + [
             URL(fileURLWithPath: "/Applications/ChatGPT.app"),
             URL(fileURLWithPath: "/Applications/ChatGPT Classic.app")
-        ].compactMap { $0 }
+        ]
         guard let url = applicationURLs.first(where: {
             FileManager.default.fileExists(atPath: $0.path)
         }) else {
@@ -972,6 +986,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             }
         case "keepMenuOpenAfterRefresh":
             keepMenuOpenAfterRefresh = enabled
+        case AppPreferences.silentLaunchKey:
+            preferences.silentLaunch = enabled
         case "animateCodexActivity":
             animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)
@@ -997,8 +1013,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func openLaunchAtLoginSettings() {
-        launchAtLoginController.openSystemSettingsLoginItems()
+    private func handleLaunchWithChatGPTAction(enabled: Bool) {
+        applyLaunchWithChatGPT(enabled: enabled)
+    }
+
+    private func applyLaunchWithChatGPT(enabled: Bool) {
+        let outcome = launchWithChatGPTController.setEnabled(enabled)
+        dashboardComposition.refreshLaunchWithChatGPT(outcome.state)
+        guard let error = outcome.error else { return }
+        SwitchLog.write(
+            "launch with ChatGPT operation threw; requested_enabled=\(enabled); observed_status=\(String(describing: outcome.state.status)); error=\(error)",
+            level: .error,
+            category: "configuration"
+        )
+    }
+
+    private func openLaunchWithChatGPTSettings() {
+        launchWithChatGPTController.openSystemSettingsLoginItems()
     }
 
     private func handleDashboardBalanceDisplayThresholdChanged(_ value: Double) {
@@ -1239,6 +1270,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     func handleLaunchAtLoginActionForTesting(enabled: Bool) {
         handleLaunchAtLoginAction(enabled: enabled)
+    }
+
+    func handleLaunchWithChatGPTActionForTesting(enabled: Bool) {
+        handleLaunchWithChatGPTAction(enabled: enabled)
     }
 
     private func showDashboard() {
@@ -1754,6 +1789,9 @@ enum BalanceBarMain {
             return
         }
         let app = NSApplication.shared
+        if InitialLaunchPresentation.resolve(silentLaunch: AppPreferences().silentLaunch) == .background {
+            _ = app.setActivationPolicy(.accessory)
+        }
         let delegate = AppDelegate()
         app.delegate = delegate
         withExtendedLifetime(delegate) {
