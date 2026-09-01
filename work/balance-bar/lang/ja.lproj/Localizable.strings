@@ -411,6 +411,7 @@
 "status.links.editor.display_name" = "表示名";
 "status.item.controller.refresh_now" = "今すぐ更新";
 "status.item.controller.open_main_window" = "メインウインドウを開く";
+"status.item.controller.update_available_badge" = "1件のアップデート";
 "status.item.controller.open_chatgpt" = "ChatGPT を開く";
 "status.item.controller.open_cc_switch" = "CC Switch を開く";
 "status.item.controller.open_opencodex" = "OpenCodex を開く";

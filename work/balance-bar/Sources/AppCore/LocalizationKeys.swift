@@ -422,6 +422,7 @@
     case keyStatusLinksEditorDisplayName = "status.links.editor.display_name"
     case keyStatusItemControllerRefreshNow = "status.item.controller.refresh_now"
     case keyStatusItemControllerOpenMainWindow = "status.item.controller.open_main_window"
+    case keyStatusItemControllerUpdateAvailableBadge = "status.item.controller.update_available_badge"
     case keyStatusItemControllerOpenChatgpt = "status.item.controller.open_chatgpt"
     case keyStatusItemControllerOpenCcSwitch = "status.item.controller.open_cc_switch"
     case keyStatusItemControllerOpenOpencodex = "status.item.controller.open_opencodex"

@@ -37,10 +37,25 @@ final class AppDelegateCompositionTests: XCTestCase {
             source.range(of: "databaseWatcher = CCSwitchDatabaseWatcher", range: handlerStart.upperBound..<source.endIndex)
         )
         let handler = String(source[handlerStart.lowerBound..<handlerEnd.lowerBound])
+        XCTAssertTrue(handler.contains("refreshUpdateState"))
+        XCTAssertTrue(handler.contains("refreshStatusItemMenuInput"))
         XCTAssertFalse(
             handler.contains("showUpdateNotes"),
-            "automatic update state changes must only refresh the dashboard; release notes require the explicit button action"
+            "automatic update state changes must refresh presentation only; release notes require the explicit button action"
         )
+    }
+
+    func testAvailableStateIsTheOnlySourceOfTheStatusMenuBadgePresentation() throws {
+        let source = try balanceBarSource()
+        let propertyStart = try XCTUnwrap(source.range(of: "private var showsAvailableUpdateBadge: Bool"))
+        let propertyEnd = try XCTUnwrap(
+            source.range(of: "private func currentProviderName()", range: propertyStart.upperBound..<source.endIndex)
+        )
+        let property = String(source[propertyStart.lowerBound..<propertyEnd.lowerBound])
+
+        XCTAssertTrue(property.contains("if case .available = updateService.state"))
+        XCTAssertFalse(property.contains("availableReleaseForPresentation"))
+        XCTAssertFalse(property.contains("latest > current"))
     }
 
     func testCompositionLayerOwnsConcreteResponsibilitiesByModule() throws {
@@ -833,6 +848,187 @@ final class AppDelegateCompositionTests: XCTestCase {
     }
 
     @MainActor
+    func testStatusMenuShowsLocalizedNativeBadgeAndDefersTrackingRebuilds() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let withoutUpdate = makeStatusMenuInput(showsAvailableUpdateBadge: false)
+        let withUpdate = makeStatusMenuInput(showsAvailableUpdateBadge: true)
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: withoutUpdate,
+            settings: settings
+        )
+
+        func openMainWindowItem() throws -> NSMenuItem {
+            try XCTUnwrap(
+                controller.menuItemsForTesting.first {
+                    $0.title == tr(.keyStatusItemControllerOpenMainWindow)
+                }
+            )
+        }
+
+        var item = try openMainWindowItem()
+        XCTAssertNil(item.badge)
+        XCTAssertNil(item.view)
+        let initialIDs = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
+
+        controller.updateMenu(input: withoutUpdate)
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            initialIDs,
+            "unchanged presentation input must not rebuild the menu"
+        )
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        controller.updateMenu(input: withUpdate)
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            initialIDs,
+            "a state change during menu tracking must be deferred"
+        )
+        XCTAssertNil(try openMainWindowItem().badge)
+
+        controller.menuDidClose(controller.statusMenuForTesting)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        item = try openMainWindowItem()
+        XCTAssertNotNil(item.badge)
+        XCTAssertEqual(
+            item.badge?.stringValue,
+            tr(.keyStatusItemControllerUpdateAvailableBadge)
+        )
+        XCTAssertNil(item.view, "the update prompt must use AppKit's badge, not a custom menu view")
+        let availableIDs = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
+
+        controller.updateMenu(input: withUpdate)
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            availableIDs,
+            "repeated available presentation must not rebuild the menu"
+        )
+
+        controller.updateMenu(input: withoutUpdate)
+        item = try openMainWindowItem()
+        XCTAssertNil(item.badge, "handled or ignored updates must remove the badge")
+        XCTAssertNotEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            availableIDs
+        )
+    }
+
+    @MainActor
+    func testSilentStartupChecksUpdatesAndSchedulesIndependentBackgroundTimer() throws {
+        _ = NSApplication.shared
+        let defaults = UserDefaults.standard
+        let previousSilentLaunch = defaults.object(forKey: AppPreferences.silentLaunchKey)
+        defer {
+            if let previousSilentLaunch {
+                defaults.set(previousSilentLaunch, forKey: AppPreferences.silentLaunchKey)
+            } else {
+                defaults.removeObject(forKey: AppPreferences.silentLaunchKey)
+            }
+        }
+        defaults.set(true, forKey: AppPreferences.silentLaunchKey)
+
+        let ignoreSuiteName = "AppDelegateCompositionTests.update-badge.\(UUID().uuidString)"
+        let ignoreDefaults = try XCTUnwrap(UserDefaults(suiteName: ignoreSuiteName))
+        defer { ignoreDefaults.removePersistentDomain(forName: ignoreSuiteName) }
+
+        let fetcher = StartupUpdateReleaseFetcher()
+        let service = UpdateService(
+            releaseFetcher: fetcher,
+            currentVersionString: "1.2.0",
+            callbackQueue: .main,
+            workQueue: .main,
+            minimumCheckingDuration: 0,
+            automaticCheckMinimumInterval: 0,
+            ignoredVersionStore: UserDefaultsUpdateVersionIgnoreStore(defaults: ignoreDefaults)
+        )
+        let appDelegate = AppDelegate(
+            repository: CCSwitchRepository(
+                databaseURL: URL(fileURLWithPath: "/nonexistent/issue-276-startup.db")
+            ),
+            updateService: service
+        )
+        defer {
+            appDelegate.applicationWillTerminate(
+                Notification(name: NSApplication.willTerminateNotification)
+            )
+        }
+
+        appDelegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification)
+        )
+
+        XCTAssertFalse(
+            appDelegate.dashboardCompositionForTesting.isVisible,
+            "silent startup must not rely on opening the Dashboard to check updates"
+        )
+        XCTAssertEqual(fetcher.requestCount, 1, "silent startup must initiate one automatic update check")
+        XCTAssertEqual(
+            appDelegate.backgroundUpdateTimerForTesting?.timeInterval,
+            AppDelegate.backgroundUpdateCheckInterval,
+            "the background update timer must use the independent six-hour cadence"
+        )
+        XCTAssertEqual(AppDelegate.backgroundUpdateCheckInterval, 6 * 60 * 60)
+
+        fetcher.resolve(.success([
+            GitHubRelease(
+                tagName: "v1.3.0",
+                draft: false,
+                prerelease: false,
+                assets: [
+                    GitHubReleaseAsset(
+                        name: "BalanceBar-1.3.0.dmg",
+                        browserDownloadURL: URL(string: "https://github.com/huanmeng06/BalanceBar/releases/download/v1.3.0/BalanceBar-1.3.0.dmg"),
+                        size: nil,
+                        digest: nil
+                    )
+                ]
+            )
+        ]))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        guard case .available = service.state else {
+            XCTFail("the startup check should publish the available state")
+            return
+        }
+
+        let availableRequestCount = fetcher.requestCount
+        appDelegate.backgroundUpdateTimerForTesting?.fire()
+        XCTAssertEqual(
+            fetcher.requestCount,
+            availableRequestCount,
+            "the low-frequency check must not clear an already available badge"
+        )
+    }
+
+    @MainActor
     func testStatusItemDisplayModeHidesInPlaceAndRestoresWhenCodexRuns() {
         let controller = StatusItemController(
             actions: StatusItemController.Actions(
@@ -1500,6 +1696,27 @@ final class AppDelegateCompositionTests: XCTestCase {
             .appendingPathComponent("work/balance-bar/BalanceBar.swift"), encoding: .utf8)
     }
 
+    private func makeStatusMenuInput(
+        showsAvailableUpdateBadge: Bool
+    ) -> StatusItemController.MenuInput {
+        StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true,
+            showsAvailableUpdateBadge: showsAvailableUpdateBadge
+        )
+    }
+
     private func compositionSources(file: StaticString = #filePath) throws -> [String: String] {
         let testFile = URL(fileURLWithPath: String(describing: file))
         let repositoryRoot = testFile
@@ -1517,6 +1734,24 @@ final class AppDelegateCompositionTests: XCTestCase {
         return try Dictionary(uniqueKeysWithValues: files.map { name, path in
             (name, try String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8))
         })
+    }
+}
+
+private final class StartupUpdateReleaseFetcher: GitHubReleaseFetching {
+    private(set) var requestCount = 0
+    private var pendingCompletion: ((Result<[GitHubRelease], GitHubReleaseClientError>) -> Void)?
+
+    func fetchReleases(
+        completion: @escaping (Result<[GitHubRelease], GitHubReleaseClientError>) -> Void
+    ) {
+        requestCount += 1
+        pendingCompletion = completion
+    }
+
+    func resolve(_ result: Result<[GitHubRelease], GitHubReleaseClientError>) {
+        let completion = pendingCompletion
+        pendingCompletion = nil
+        completion?(result)
     }
 }
 

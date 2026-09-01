@@ -650,7 +650,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 456)
+        XCTAssertEqual(expectedKeys.count, 457)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -687,6 +687,33 @@ final class LocalizationTests: XCTestCase {
             if newLanguages.contains(language) {
                 XCTAssertEqual(actualKeySequence, expectedKeySequence, "resource key order for \(language)")
             }
+        }
+    }
+
+    func testStatusItemUpdateBadgeCopyIsLocalizedAcrossEverySupportedLanguage() {
+        let expected: [AppLanguage: String] = [
+            .simplifiedChinese: "1 项更新",
+            .traditionalChineseTaiwan: "1 項更新",
+            .traditionalChineseHongKong: "1 項更新",
+            .english: "1 Update",
+            .japanese: "1件のアップデート",
+            .korean: "업데이트 1개",
+            .spanish: "1 actualización",
+            .german: "1 Update",
+            .french: "1 mise à jour",
+            .portuguese: "1 atualização",
+            .russian: "1 обновление",
+            .italian: "1 aggiornamento"
+        ]
+
+        for language in allLanguages {
+            let value = tr(
+                .keyStatusItemControllerUpdateAvailableBadge,
+                language: language
+            )
+            XCTAssertEqual(value, expected[language], "badge copy for \(language)")
+            XCTAssertTrue(value.contains("1"))
+            XCTAssertFalse(value.hasPrefix("⟦"))
         }
     }
 

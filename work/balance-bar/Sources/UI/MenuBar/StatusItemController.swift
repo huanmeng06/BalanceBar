@@ -1550,6 +1550,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showStatusMenu: Bool
         let lunaReserveDisplayMode: LunaReserveDisplayMode
         let lunaReserveHideExhaustedQuota: Bool
+        let showsAvailableUpdateBadge: Bool
 
         init(
             openCodexCards: [OpenCodexModelCard],
@@ -1566,7 +1567,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showOpenCodexMenu: Bool,
             showStatusMenu: Bool,
             lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
-            lunaReserveHideExhaustedQuota: Bool = false
+            lunaReserveHideExhaustedQuota: Bool = false,
+            showsAvailableUpdateBadge: Bool = false
         ) {
             self.openCodexCards = openCodexCards
             self.openCodexState = openCodexState
@@ -1583,6 +1585,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showStatusMenu = showStatusMenu
             self.lunaReserveDisplayMode = lunaReserveDisplayMode
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
+            self.showsAvailableUpdateBadge = showsAvailableUpdateBadge
         }
 
         static func == (lhs: Self, rhs: Self) -> Bool {
@@ -1605,6 +1608,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showStatusMenu == rhs.showStatusMenu
                 && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
+                && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
         }
     }
 
@@ -1640,7 +1644,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         showOpenChatGPTMenu: true,
         showOpenCCSwitchMenu: true,
         showOpenCodexMenu: true,
-        showStatusMenu: true
+        showStatusMenu: true,
+        showsAvailableUpdateBadge: false
     )
     private var settings = MenuBarSettings(
         showIcon: true,
@@ -1707,6 +1712,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         return (primary, secondary)
     }
+
+    // Exposes the live menu to tests that verify AppKit's deferred rebuild
+    // behavior while the status menu is tracking.
+    var statusMenuForTesting: NSMenu { statusMenu }
 
     var startupDiagnostic: String {
         let statusWindow = statusItem?.button?.window
@@ -2657,6 +2666,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         actions.openStatusLink(url)
     }
 
+    private func makeOpenDashboardMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(
+            title: tr(.keyStatusItemControllerOpenMainWindow),
+            action: #selector(openDashboard),
+            keyEquivalent: ""
+        )
+        item.target = self
+        if menuInput.showsAvailableUpdateBadge {
+            item.badge = NSMenuItemBadge(
+                string: tr(.keyStatusItemControllerUpdateAvailableBadge)
+            )
+        }
+        return item
+    }
+
     private func rebuildStatusMenu() {
         statusMenu.removeAllItems()
         if snapshot.kind == .openCodex {
@@ -2683,11 +2707,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             keyEquivalent: "r"
         ).target = self
         statusMenu.addItem(.separator())
-        statusMenu.addItem(
-            withTitle: tr(.keyStatusItemControllerOpenMainWindow),
-            action: #selector(openDashboard),
-            keyEquivalent: ""
-        ).target = self
+        statusMenu.addItem(makeOpenDashboardMenuItem())
         if menuInput.showOpenChatGPTMenu {
             statusMenu.addItem(
                 withTitle: tr(.keyStatusItemControllerOpenChatgpt),
