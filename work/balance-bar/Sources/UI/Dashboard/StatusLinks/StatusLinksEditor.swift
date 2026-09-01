@@ -15,11 +15,8 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     static let resetButtonIdentifier = NSUserInterfaceItemIdentifier("statusLinks.reset")
 
     static let fixedHeight: CGFloat = 204
-    static let tableViewportHeight: CGFloat = 156
-    static let controlBarHeight: CGFloat = 32
-    static let rowHeight: CGFloat = 28
-    private static let controlBarSpacing: CGFloat = 8
-    private static let bottomInset: CGFloat = 8
+    private static let nameCellIdentifier = NSUserInterfaceItemIdentifier("statusLinks.cell.name")
+    private static let urlCellIdentifier = NSUserInterfaceItemIdentifier("statusLinks.cell.url")
     private static let statusLinkPasteboardType = NSPasteboard.PasteboardType(
         "com.huanmeng06.BalanceBar.status-link-row"
     )
@@ -29,9 +26,35 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         case url
     }
 
-    private final class CellTextField: NSTextField {
+    private final class StatusLinkTableCellView: NSTableCellView {
+        let editor = NSTextField()
         var row = 0
         var field: Field = .title
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+
+            editor.translatesAutoresizingMaskIntoConstraints = false
+            editor.isEditable = true
+            editor.isSelectable = true
+            editor.isBordered = false
+            editor.drawsBackground = false
+            editor.focusRingType = .default
+            editor.usesSingleLineMode = true
+            editor.lineBreakMode = .byTruncatingTail
+
+            textField = editor
+            addSubview(editor)
+            NSLayoutConstraint.activate([
+                editor.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+                editor.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+                editor.centerYAnchor.constraint(equalTo: centerYAnchor)
+            ])
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
     }
 
     private(set) var links: [StatusLink]
@@ -40,6 +63,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
+    private let controls = NSStackView()
     private let addButton = NSButton()
     private let removeButton = NSButton()
     private let resetButton = NSButton()
@@ -79,8 +103,6 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         self.onReset = onReset
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-        layer?.masksToBounds = true
         clipsToBounds = true
         configureTable()
         configureControls()
@@ -186,7 +208,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             commit(field)
             return true
         }
-        window.endEditing(for: field)
+        window.endEditing(for: field.editor)
         return true
     }
 
@@ -220,24 +242,17 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             return nil
         }
 
-        let identifier = cellIdentifier(for: field, row: row)
-        let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? CellTextField)
-            ?? CellTextField()
+        let identifier = cellIdentifier(for: field)
+        let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? StatusLinkTableCellView)
+            ?? StatusLinkTableCellView()
         cell.identifier = identifier
         cell.row = row
         cell.field = field
-        cell.delegate = self
-        cell.isEditable = true
-        cell.isSelectable = true
-        cell.isBordered = false
-        cell.drawsBackground = false
-        cell.focusRingType = .default
-        cell.font = .systemFont(ofSize: 13)
-        cell.usesSingleLineMode = true
-        cell.lineBreakMode = .byTruncatingTail
-        cell.placeholderString = placeholder(for: field)
-        cell.stringValue = value(for: field, row: row)
-        cell.setAccessibilityIdentifier(identifier.rawValue)
+        cell.editor.delegate = self
+        cell.editor.font = .systemFont(ofSize: NSFont.systemFontSize)
+        cell.editor.placeholderString = placeholder(for: field)
+        cell.editor.stringValue = value(for: field, row: row)
+        cell.editor.setAccessibilityIdentifier("\(identifier.rawValue).\(row)")
         return cell
     }
 
@@ -308,8 +323,9 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     // MARK: - NSTextFieldDelegate
 
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? CellTextField else { return }
-        commit(field)
+        guard let editor = notification.object as? NSTextField,
+              let cell = cell(containing: editor) else { return }
+        commit(cell)
     }
 
     // MARK: - Actions
@@ -367,17 +383,13 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         tableView.identifier = Self.tableIdentifier
         tableView.delegate = self
         tableView.dataSource = self
+        tableView.style = .fullWidth
+        tableView.rowSizeStyle = .small
         tableView.headerView = NSTableHeaderView()
-        tableView.headerView?.frame.size.height = 24
-        tableView.rowHeight = Self.rowHeight
-        tableView.intercellSpacing = NSSize(width: 8, height: 0)
-        tableView.usesAlternatingRowBackgroundColors = false
-        tableView.selectionHighlightStyle = .regular
         tableView.allowsMultipleSelection = false
         tableView.allowsEmptySelection = true
         tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        tableView.gridStyleMask = [.solidHorizontalGridLineMask]
-        tableView.backgroundColor = .clear
+        tableView.gridStyleMask = []
         tableView.registerForDraggedTypes([Self.statusLinkPasteboardType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
 
@@ -398,16 +410,11 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
         scrollView.identifier = Self.scrollViewIdentifier
         scrollView.documentView = tableView
-        scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
         scrollView.verticalScrollElasticity = .none
         scrollView.horizontalScrollElasticity = .none
-        scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         scrollView.borderType = .bezelBorder
 
         addSubview(scrollView)
@@ -433,7 +440,6 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         resetButton.title = tr(.keyStatusLinksEditorRestoreDefaults)
         resetButton.target = self
         resetButton.action = #selector(resetStatusLinks(_:))
-        resetButton.bezelStyle = .rounded
         resetButton.controlSize = .small
         resetButton.setAccessibilityLabel(tr(.keyStatusLinksEditorRestoreDefaults))
         resetButton.setContentHuggingPriority(.required, for: .horizontal)
@@ -445,10 +451,11 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         buttonGroup.alignment = .centerY
         buttonGroup.spacing = 0
 
-        let controls = NSStackView(views: [buttonGroup, NSView(), resetButton])
+        controls.addArrangedSubview(buttonGroup)
+        controls.addArrangedSubview(NSView())
+        controls.addArrangedSubview(resetButton)
         controls.orientation = .horizontal
         controls.alignment = .centerY
-        controls.spacing = 8
         controls.translatesAutoresizingMaskIntoConstraints = false
         addSubview(controls)
     }
@@ -459,17 +466,16 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         heightConstraint.priority = .required
         heightConstraint.isActive = true
 
-        guard let controls = subviews.compactMap({ $0 as? NSStackView }).last else { return }
+        let horizontalInset = DashboardSettingsComponents.settingsRowHorizontalInset
+        let verticalInset = DashboardSettingsComponents.settingsRowVerticalInset
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
-            controls.leadingAnchor.constraint(equalTo: leadingAnchor),
-            controls.trailingAnchor.constraint(equalTo: trailingAnchor),
-            controls.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: Self.controlBarSpacing),
-            controls.heightAnchor.constraint(equalToConstant: Self.controlBarHeight),
-            controls.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.bottomInset)
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalInset),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
+            scrollView.topAnchor.constraint(equalTo: topAnchor, constant: verticalInset),
+            controls.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            controls.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            controls.topAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            controls.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -verticalInset)
         ])
     }
 
@@ -489,29 +495,27 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         button.toolTip = accessibilityLabel
         button.setContentHuggingPriority(.required, for: .horizontal)
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
-        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
     }
 
     // MARK: - Model and editing helpers
 
-    private var editingCell: CellTextField? {
+    private var editingCell: StatusLinkTableCellView? {
         for row in 0..<tableView.numberOfRows {
             for column in 0..<tableView.numberOfColumns {
                 guard let cell = tableView.view(
                     atColumn: column,
                     row: row,
                     makeIfNecessary: false
-                ) as? CellTextField else { continue }
-                if cell.currentEditor() != nil { return cell }
+                ) as? StatusLinkTableCellView else { continue }
+                if cell.editor.currentEditor() != nil { return cell }
             }
         }
         return nil
     }
 
-    private func commit(_ field: CellTextField) {
+    private func commit(_ field: StatusLinkTableCellView) {
         guard !isTornDown, links.indices.contains(field.row) else { return }
-        let value = field.stringValue
+        let value = field.editor.stringValue
         var updatedLinks = links
         switch field.field {
         case .title:
@@ -564,9 +568,25 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         }
     }
 
-    private func cellIdentifier(for field: Field, row: Int) -> NSUserInterfaceItemIdentifier {
-        let column = field == .title ? Self.nameColumnIdentifier.rawValue : Self.urlColumnIdentifier.rawValue
-        return NSUserInterfaceItemIdentifier("\(column).\(row)")
+    private func cellIdentifier(for field: Field) -> NSUserInterfaceItemIdentifier {
+        switch field {
+        case .title: return Self.nameCellIdentifier
+        case .url: return Self.urlCellIdentifier
+        }
+    }
+
+    private func cell(containing editor: NSTextField) -> StatusLinkTableCellView? {
+        for row in 0..<tableView.numberOfRows {
+            for column in 0..<tableView.numberOfColumns {
+                guard let cell = tableView.view(
+                    atColumn: column,
+                    row: row,
+                    makeIfNecessary: false
+                ) as? StatusLinkTableCellView else { continue }
+                if cell.editor === editor { return cell }
+            }
+        }
+        return nil
     }
 
     private func sourceRow(from info: NSDraggingInfo) -> Int? {
@@ -584,14 +604,19 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     }
 
     private func updateTableFrame() {
-        guard scrollView.contentView.bounds.width > 0 else { return }
-        let headerHeight = tableView.headerView?.frame.height ?? 0
-        let contentHeight = max(Self.tableViewportHeight, headerHeight + CGFloat(links.count) * Self.rowHeight)
+        let viewport = scrollView.contentView.bounds
+        guard viewport.width > 0 else { return }
+        let rowsHeight: CGFloat
+        if tableView.numberOfRows > 0 {
+            rowsHeight = tableView.rect(ofRow: tableView.numberOfRows - 1).maxY
+        } else {
+            rowsHeight = 0
+        }
         tableView.frame = NSRect(
             x: 0,
             y: 0,
-            width: scrollView.contentView.bounds.width,
-            height: contentHeight
+            width: viewport.width,
+            height: max(viewport.height, ceil(rowsHeight))
         )
         tableView.autoresizingMask = [.width]
     }

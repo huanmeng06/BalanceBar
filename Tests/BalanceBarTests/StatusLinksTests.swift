@@ -38,6 +38,9 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(scrollView.documentView === table)
         XCTAssertTrue(scrollView.hasVerticalScroller)
         XCTAssertFalse(scrollView.hasHorizontalScroller)
+        XCTAssertEqual(table.style, .fullWidth)
+        XCTAssertEqual(table.rowSizeStyle, .small)
+        XCTAssertTrue(table.gridStyleMask.isEmpty)
         XCTAssertTrue(
             table.registeredDraggedTypes.contains(
                 NSPasteboard.PasteboardType("com.huanmeng06.BalanceBar.status-link-row")
@@ -46,15 +49,17 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows, 1)
 
         let nameCell = try XCTUnwrap(
-            table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField
+            table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView
         )
         let urlCell = try XCTUnwrap(
-            table.view(atColumn: 1, row: 0, makeIfNecessary: true) as? NSTextField
+            table.view(atColumn: 1, row: 0, makeIfNecessary: true) as? NSTableCellView
         )
-        XCTAssertEqual(nameCell.stringValue, "Status")
-        XCTAssertEqual(urlCell.stringValue, "https://status.example")
-        XCTAssertTrue(nameCell.isEditable)
-        XCTAssertTrue(urlCell.isEditable)
+        let nameField = try XCTUnwrap(nameCell.textField)
+        let urlField = try XCTUnwrap(urlCell.textField)
+        XCTAssertEqual(nameField.stringValue, "Status")
+        XCTAssertEqual(urlField.stringValue, "https://status.example")
+        XCTAssertTrue(nameField.isEditable)
+        XCTAssertTrue(urlField.isEditable)
     }
 
     func testTextEditingPersistsOnlyWhenEditingEnds() throws {
@@ -77,7 +82,8 @@ final class StatusLinksTests: XCTestCase {
             row: 0,
             makeIfNecessary: true
         ))
-        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: cell))
+        let field = try XCTUnwrap((cell as? NSTableCellView)?.textField)
+        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: field))
         XCTAssertTrue(editor.isEditingNameForTesting)
 
         fieldEditor.string = "After"
@@ -102,7 +108,8 @@ final class StatusLinksTests: XCTestCase {
             makeIfNecessary: true
         ))
         editor.tableViewForTesting.editColumn(1, row: 0, with: nil, select: true)
-        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: cell))
+        let field = try XCTUnwrap((cell as? NSTableCellView)?.textField)
+        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: field))
         fieldEditor.string = "https://after.example"
 
         window.close()

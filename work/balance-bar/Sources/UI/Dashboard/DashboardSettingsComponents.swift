@@ -71,13 +71,14 @@ private final class DashboardSettingsRowView: NSView {
         // receive their normal row-width update below.
         if let controlView,
            !(controlView is NSStackView && !(controlView is DashboardSettingsRowControlLayout)) {
-            let availableContentAndControlWidth = max(0, bounds.width - 40)
+            let horizontalInset = DashboardSettingsComponents.settingsRowHorizontalInset
+            let availableContentAndControlWidth = max(0, bounds.width - horizontalInset * 2)
             let adaptiveControl = controlView as? DashboardSettingsRowControlLayout
             adaptiveControl?.updateAvailableRowWidth(availableContentAndControlWidth)
             let actionWidth = controlView.fittingSize.width
             let contentWidthWhenHorizontal = max(
                 0,
-                availableContentAndControlWidth - actionWidth - 20
+                availableContentAndControlWidth - actionWidth - horizontalInset
             )
             let readableContentWidth = minimumReadableContentWidth
             // Keep the controls' own fitting/orientation contract. Ordinary
@@ -389,6 +390,8 @@ private final class DashboardSettingsCardView: NSView {
 enum DashboardSettingsComponents {
     static let settingsSeparatorHeight: CGFloat = 1
     static let standardRowHeight: CGFloat = 62
+    static let settingsRowHorizontalInset: CGFloat = 20
+    static let settingsRowVerticalInset: CGFloat = 11
     static let settingsRowContentControlSpacing: CGFloat = 12
     // This is an inclusive placement budget, not a text truncation limit.
     // Text fields remain uncapped; a fifth natural line moves the control
@@ -853,7 +856,7 @@ enum DashboardSettingsComponents {
         headerTrailingAccessory: NSView? = nil,
         control: NSView? = nil,
         minimumHeight: CGFloat = 58,
-        verticalPadding: CGFloat = 11,
+        verticalPadding: CGFloat = DashboardSettingsComponents.settingsRowVerticalInset,
         controlWidthConstrainedToRow: Bool = false,
         forceDedicatedControlRow: Bool = false
     ) -> NSView {
@@ -969,19 +972,19 @@ enum DashboardSettingsComponents {
             control.translatesAutoresizingMaskIntoConstraints = false
             row.addSubview(control)
             NSLayoutConstraint.activate([
-                labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
-                control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20)
+                labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: settingsRowHorizontalInset),
+                control.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -settingsRowHorizontalInset)
             ])
             let sideBySideConstraints = [
                 labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
                 labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
                 labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding),
-                labels.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -20),
+                labels.trailingAnchor.constraint(lessThanOrEqualTo: control.leadingAnchor, constant: -settingsRowHorizontalInset),
                 control.centerYAnchor.constraint(equalTo: row.centerYAnchor)
             ]
             let dedicatedConstraints = [
                 labels.topAnchor.constraint(equalTo: row.topAnchor, constant: padding),
-                labels.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -20),
+                labels.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -settingsRowHorizontalInset),
                 control.topAnchor.constraint(greaterThanOrEqualTo: labels.bottomAnchor, constant: settingsRowContentControlSpacing),
                 control.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -padding)
             ]
@@ -991,19 +994,22 @@ enum DashboardSettingsComponents {
             )
             if controlWidthConstrainedToRow {
                 let widthConstraint =
-                    control.widthAnchor.constraint(lessThanOrEqualTo: row.widthAnchor, constant: -40)
+                    control.widthAnchor.constraint(
+                        lessThanOrEqualTo: row.widthAnchor,
+                        constant: -settingsRowHorizontalInset * 2
+                    )
                 widthConstraint.isActive = true
             }
             if forceDedicatedControlRow {
-                control.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20).isActive = true
+                control.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: settingsRowHorizontalInset).isActive = true
             }
         } else {
             NSLayoutConstraint.activate([
-                labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 20),
+                labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: settingsRowHorizontalInset),
                 labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
                 labels.topAnchor.constraint(greaterThanOrEqualTo: row.topAnchor, constant: padding),
                 labels.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -padding),
-                labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -20)
+                labels.trailingAnchor.constraint(lessThanOrEqualTo: row.trailingAnchor, constant: -settingsRowHorizontalInset)
             ])
         }
         return row
