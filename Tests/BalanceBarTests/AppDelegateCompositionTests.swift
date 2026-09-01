@@ -65,7 +65,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("DashboardPreferencePages"))
         XCTAssertTrue(dashboard.contains("DashboardProviderPageCoordinator"))
         XCTAssertTrue(dashboard.contains("makeSectionPage"))
-        XCTAssertTrue(dashboard.contains("StatusLinksEditorHostingView"))
+        XCTAssertTrue(dashboard.contains("StatusLinksEditorView"))
 
         let provider = try XCTUnwrap(sources["ProviderRefreshCoordinator.swift"])
         XCTAssertTrue(provider.contains("BalanceAPIClient"))

@@ -192,7 +192,6 @@ swiftc \
     -framework Foundation \
     -framework QuartzCore \
     -framework ServiceManagement \
-    -framework SwiftUI \
     -lsqlite3 \
     -module-cache-path "$module_cache_dir"
 

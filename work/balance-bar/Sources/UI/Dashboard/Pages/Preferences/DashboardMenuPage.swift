@@ -20,14 +20,14 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     struct Input {
         let preferences: AppPreferences
         let relay: DashboardPreferencePageRelay
-        let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
+        let makeStatusLinksEditor: () -> StatusLinksEditorView
         let onBalanceDisplayThresholdChanged: (Double) -> Void
         let onQuotaProgressColorConfigurationChanged: (QuotaProgressColorConfiguration) -> Void
 
         init(
             preferences: AppPreferences,
             relay: DashboardPreferencePageRelay,
-            makeStatusLinksEditor: @escaping () -> StatusLinksEditorHostingView,
+            makeStatusLinksEditor: @escaping () -> StatusLinksEditorView,
             onBalanceDisplayThresholdChanged: @escaping (Double) -> Void,
             onQuotaProgressColorConfigurationChanged: @escaping (QuotaProgressColorConfiguration) -> Void = { _ in }
         ) {
@@ -47,10 +47,8 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     private weak var balanceDisplayCardHeightConstraint: NSLayoutConstraint?
     private var balanceDisplaySeparators: [NSView] = []
     private var statusSubtitleLabel: NSTextField?
-    private var statusLinksEditor: StatusLinksEditorHostingView?
-    private weak var statusLinksRowsStack: NSStackView?
-    private weak var statusLinksCardHeightConstraint: NSLayoutConstraint?
-    private var statusLinksSeparators: [NSView] = []
+    private var statusLinksEditor: StatusLinksEditorView?
+    private weak var statusLinksSeparator: NSView?
     private var balanceDisplayThresholdValue = AppPreferences.defaultBalanceDisplayThreshold
     private var onBalanceDisplayThresholdChanged: ((Double) -> Void)?
     private var onQuotaProgressColorConfigurationChanged: ((QuotaProgressColorConfiguration) -> Void)?
@@ -101,9 +99,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             control: lunaReserveHideExhaustedQuotaSwitch
         )
         self.lunaReserveHideExhaustedQuotaRow = lunaReserveHideExhaustedQuotaRow
-        statusLinksRowsStack = nil
-        statusLinksCardHeightConstraint = nil
-        statusLinksSeparators = []
+        statusLinksSeparator = nil
 
         let balanceDisplayThreshold = NSTextField()
         balanceDisplayThreshold.identifier = NSUserInterfaceItemIdentifier(
@@ -286,7 +282,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         )
 
         // Keep one editor instance in the page for both states so toggling
-        // animates its height in place instead of rebuilding the whole page.
+        // animates its fixed viewport in place instead of rebuilding the page.
         let editor = input.makeStatusLinksEditor()
         statusLinksEditor = editor
         editor.setVisible(statusVisible, animated: false)
@@ -298,19 +294,17 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             tr(.keyDashboardMenuPageStatusLinks),
             rows: [statusRow, editor],
             separatorIndices: [0],
-            rowHeight: { row in
-                (row as? StatusLinksEditorHostingView)?.currentHeight
-            },
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-                self?.statusLinksRowsStack = rowsStack
-                self?.statusLinksCardHeightConstraint = cardHeightConstraint
-                self?.statusLinksSeparators = separators
-                self?.updateStatusLinksLayout()
+                guard let self else { return }
+                self.statusLinksSeparator = separators.first
+                self.statusLinksSeparator?.isHidden = !statusVisible
+                rowsStack.needsLayout = true
+                cardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: separators
+                )
             }
         )
-        DispatchQueue.main.async { [weak editor] in
-            editor?.logGeometry(label: "initial")
-        }
         return DashboardSettingsComponents.makeSettingsPage([balanceDisplay, items, quickLinks, statusLinks])
     }
 
@@ -357,8 +351,9 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2)
             : tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2)
         statusLinksEditor?.setVisible(visible, animated: animated)
-        statusLinksSeparators.forEach { $0.isHidden = !visible }
-        updateStatusLinksLayout()
+        statusLinksSeparator?.isHidden = !visible
+        statusLinksSeparator?.superview?.needsLayout = true
+        statusLinksSeparator?.superview?.superview?.needsLayout = true
     }
 
     func teardown() {
@@ -378,9 +373,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         statusLinksEditor?.teardown()
         statusLinksEditor = nil
         statusSubtitleLabel = nil
-        statusLinksRowsStack = nil
-        statusLinksCardHeightConstraint = nil
-        statusLinksSeparators = []
+        statusLinksSeparator = nil
     }
 
     @objc private func toggleQuotaColor(_ sender: NSButton) {
@@ -486,23 +479,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         case .always:
             return tr(.keyDashboardMenuPageLunaReserveDisplayModeAlways)
         }
-    }
-
-    private func updateStatusLinksLayout() {
-        guard let statusLinksRowsStack,
-              let statusLinksCardHeightConstraint else { return }
-        statusLinksRowsStack.needsLayout = true
-        statusLinksRowsStack.layoutSubtreeIfNeeded()
-        statusLinksCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
-            rowsStack: statusLinksRowsStack,
-            separators: statusLinksSeparators,
-            rowHeight: { row in
-                (row as? StatusLinksEditorHostingView)?.currentHeight
-            }
-        )
-        statusLinksRowsStack.superview?.invalidateIntrinsicContentSize()
-        statusLinksRowsStack.superview?.needsLayout = true
-        statusLinksRowsStack.superview?.superview?.needsLayout = true
     }
 
     private static func parseBalanceDisplayThreshold(_ text: String) -> Double? {

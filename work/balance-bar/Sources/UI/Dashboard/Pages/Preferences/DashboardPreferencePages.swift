@@ -28,7 +28,7 @@ struct DashboardPreferencePageActions {
     let onInstallUpdate: () -> Void
     let onOpenUpdateNotes: () -> Void
     let onOpenOpenCodex: () -> Void
-    let makeStatusLinksEditor: () -> StatusLinksEditorHostingView
+    let makeStatusLinksEditor: () -> StatusLinksEditorView
     let onOpenCodexModeChanged: (OpenCodexDashboardMode) -> Void
     let onClamp: () -> Void
 }

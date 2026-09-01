@@ -1320,11 +1320,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateNotesWindowController.show(currentVersion: currentVersion, releases: releases)
     }
 
-    private func showDashboardSection(
-        _ section: DashboardSection,
-        restoringScrollPosition scrollPosition: StatusLinksScrollPosition? = nil
-    ) {
-        dashboardComposition.showSection(section, restoringScrollPosition: scrollPosition)
+    private func showDashboardSection(_ section: DashboardSection) {
+        dashboardComposition.showSection(section)
     }
 
     private func clampDashboardScrollViewBounds() {

@@ -2,492 +2,251 @@ import AppKit
 import XCTest
 @testable import BalanceBar
 
-private final class StatusLinksFlippedView: NSView {
-    override var isFlipped: Bool { true }
-}
-
 @MainActor
 final class StatusLinksTests: XCTestCase {
-    func testEditorModelDeliversEditAddRemoveAndResetCallbacks() {
-        var changes: [(Int, StatusLinkField, String)] = []
-        var addCount = 0
-        var removedIndices: [Int] = []
+    func testStatusLinkCodableAndEquatableContractIsUnchanged() throws {
+        let links = [
+            StatusLink(title: "Status", url: "https://status.example")
+        ]
+
+        let data = try JSONEncoder().encode(links)
+        XCTAssertEqual(
+            try JSONDecoder().decode([StatusLink].self, from: data),
+            links
+        )
+    }
+
+    func testEditorUsesNativeTableWithNameAndURLColumns() throws {
+        let editor = StatusLinksEditorView(
+            links: [StatusLink(title: "Status", url: "https://status.example")],
+            onLinksChanged: { _ in },
+            onReset: { [] }
+        )
+        let window = attach(editor)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+
+        let table = editor.tableViewForTesting
+        let scrollView = editor.scrollViewForTesting
+        XCTAssertEqual(editor.tableColumnCount, 2)
+        XCTAssertEqual(
+            editor.tableColumnIdentifiers,
+            [StatusLinksEditorView.nameColumnIdentifier, StatusLinksEditorView.urlColumnIdentifier]
+        )
+        XCTAssertTrue(scrollView.documentView === table)
+        XCTAssertTrue(scrollView.hasVerticalScroller)
+        XCTAssertFalse(scrollView.hasHorizontalScroller)
+        XCTAssertTrue(
+            table.registeredDraggedTypes.contains(
+                NSPasteboard.PasteboardType("com.huanmeng06.BalanceBar.status-link-row")
+            )
+        )
+        XCTAssertEqual(table.numberOfRows, 1)
+
+        let nameCell = try XCTUnwrap(
+            table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField
+        )
+        let urlCell = try XCTUnwrap(
+            table.view(atColumn: 1, row: 0, makeIfNecessary: true) as? NSTextField
+        )
+        XCTAssertEqual(nameCell.stringValue, "Status")
+        XCTAssertEqual(urlCell.stringValue, "https://status.example")
+        XCTAssertTrue(nameCell.isEditable)
+        XCTAssertTrue(urlCell.isEditable)
+    }
+
+    func testTextEditingPersistsOnlyWhenEditingEnds() throws {
+        var changes: [[StatusLink]] = []
+        let editor = StatusLinksEditorView(
+            links: [StatusLink(title: "Before", url: "https://before.example")],
+            onLinksChanged: { changes.append($0) },
+            onReset: { [] }
+        )
+        let window = attach(editor)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+
+        let table = editor.tableViewForTesting
+        table.editColumn(0, row: 0, with: nil, select: true)
+        let cell = try XCTUnwrap(table.view(
+            atColumn: 0,
+            row: 0,
+            makeIfNecessary: true
+        ))
+        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: cell))
+        XCTAssertTrue(editor.isEditingNameForTesting)
+
+        fieldEditor.string = "After"
+        XCTAssertTrue(changes.isEmpty, "A keystroke must not persist the whole preferences array")
+
+        editor.endEditing()
+        XCTAssertEqual(changes, [[StatusLink(title: "After", url: "https://before.example")]])
+        XCTAssertEqual(editor.links[0].title, "After")
+    }
+
+    func testCloseNotificationCommitsActiveNativeFieldEditor() throws {
+        var changes: [[StatusLink]] = []
+        let editor = StatusLinksEditorView(
+            links: [StatusLink(title: "Before", url: "https://before.example")],
+            onLinksChanged: { changes.append($0) },
+            onReset: { [] }
+        )
+        let window = attach(editor)
+        let cell = try XCTUnwrap(editor.tableViewForTesting.view(
+            atColumn: 1,
+            row: 0,
+            makeIfNecessary: true
+        ))
+        editor.tableViewForTesting.editColumn(1, row: 0, with: nil, select: true)
+        let fieldEditor = try XCTUnwrap(window.fieldEditor(false, for: cell))
+        fieldEditor.string = "https://after.example"
+
+        window.close()
+
+        XCTAssertEqual(changes, [[StatusLink(title: "Before", url: "https://after.example")]])
+        XCTAssertEqual(editor.links[0].url, "https://after.example")
+        window.contentView = nil
+    }
+
+    func testAddRemoveResetAndNativeReorderUpdateOneArray() throws {
+        var changes: [[StatusLink]] = []
         var resetCount = 0
-        let model = StatusLinksEditorModel(
+        let defaults = [StatusLink(title: "Default", url: "https://default.example")]
+        let editor = StatusLinksEditorView(
             links: [
                 StatusLink(title: "One", url: "https://one.example"),
                 StatusLink(title: "Two", url: "https://two.example")
             ],
-            onChange: { changes.append(($0, $1, $2)) },
-            onAdd: { addCount += 1 },
-            onRemove: { removedIndices.append($0) },
-            onReset: { resetCount += 1 }
+            onLinksChanged: { changes.append($0) },
+            onReset: {
+                resetCount += 1
+                return defaults
+            }
         )
-
-        model.edit(index: 1, field: .title, value: "Updated")
-        model.edit(index: 0, field: .url, value: "https://updated.example")
-        model.edit(index: -1, field: .title, value: "Ignored")
-        model.edit(index: 99, field: .url, value: "Ignored")
-        model.add()
-        model.remove(at: 1)
-        model.remove(at: -1)
-        model.remove(at: 99)
-        model.reset()
-
-        XCTAssertEqual(model.links[1].title, "Updated")
-        XCTAssertEqual(model.links[0].url, "https://updated.example")
-        XCTAssertEqual(changes.count, 2)
-        XCTAssertEqual(changes[0].0, 1)
-        XCTAssertEqual(changes[0].1, .title)
-        XCTAssertEqual(changes[0].2, "Updated")
-        XCTAssertEqual(changes[1].0, 0)
-        XCTAssertEqual(changes[1].1, .url)
-        XCTAssertEqual(changes[1].2, "https://updated.example")
-        XCTAssertEqual(addCount, 1)
-        XCTAssertEqual(removedIndices, [1])
-        XCTAssertEqual(resetCount, 1)
-    }
-
-    func testEditorModelGatesRapidAddsUntilRevealSettles() {
-        var addCount = 0
-        let model = StatusLinksEditorModel(
-            links: [StatusLink(title: "One", url: "https://one.example")],
-            onChange: { _, _, _ in },
-            onAdd: { addCount += 1 },
-            onRemove: { _ in },
-            onReset: { }
-        )
-
-        model.add()
-        model.add()
-        model.add()
-
-        XCTAssertEqual(addCount, 1)
-        XCTAssertTrue(model.isAddInFlight)
-
-        model.revealAddedRow([
-            StatusLink(title: "One", url: "https://one.example"),
-            StatusLink(title: "Two", url: "https://two.example")
-        ])
-        XCTAssertFalse(model.reservesAddedRowSlot)
-        XCTAssertEqual(model.links.count, 2)
-
-        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
-        XCTAssertFalse(model.isAddInFlight)
-        model.add()
-        XCTAssertEqual(addCount, 2)
-    }
-
-    func testHostingViewTracksRowCountHeightAndIdempotentTeardown() {
-        let initialLinks = [
-            StatusLink(title: "One", url: "https://one.example"),
-            StatusLink(title: "Two", url: "https://two.example")
-        ]
-        let editor = StatusLinksEditorHostingView(
-            links: initialLinks,
-            onChange: { _, _, _ in },
-            onAdd: {},
-            onRemove: { _ in },
-            onReset: {}
-        )
-
-        XCTAssertEqual(editor.rowCount, 2)
-        XCTAssertEqual(editor.layoutHeight, 182, accuracy: 0.001)
-        XCTAssertFalse(editor.isTornDown)
-
-        let shorterLinks = [StatusLink(title: "Only", url: "https://only.example")]
-        var completionCount = 0
-        editor.updateLinks(shorterLinks, animated: false) {
-            completionCount += 1
+        let window = attach(editor)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
         }
 
-        XCTAssertEqual(completionCount, 1)
-        XCTAssertEqual(editor.rowCount, 1)
-        XCTAssertEqual(editor.layoutHeight, 147, accuracy: 0.001)
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 0),
+            byExtendingSelection: false
+        )
+        XCTAssertTrue(editor.removeButtonForTesting.isEnabled)
+        editor.removeButtonForTesting.performClick(nil)
+        XCTAssertEqual(editor.links.map(\.title), ["Two"])
 
-        editor.updateLinks([], animated: false)
-        XCTAssertEqual(editor.rowCount, 0)
-        XCTAssertEqual(editor.layoutHeight, 112, accuracy: 0.001)
+        editor.addButtonForTesting.performClick(nil)
+        XCTAssertEqual(editor.links.count, 2)
+        XCTAssertEqual(editor.links.last, StatusLink(title: "", url: ""))
 
-        editor.teardown()
-        editor.teardown()
-        XCTAssertTrue(editor.isTornDown)
+        XCTAssertTrue(editor.reorderForTesting(from: 1, to: 0))
+        XCTAssertEqual(editor.links.map(\.title), ["", "Two"])
+
+        editor.resetButtonForTesting.performClick(nil)
+        XCTAssertEqual(resetCount, 1)
+        XCTAssertEqual(editor.links, defaults)
+        XCTAssertGreaterThanOrEqual(changes.count, 3)
     }
 
-    func testHostingViewCanBeTornDownAndReleasedAfterRepeatedRebuilds() {
-        weak var releasedEditor: StatusLinksEditorHostingView?
+    func testFixedViewportScrollsRowsWithoutChangingEditorHeight() {
+        let first = [StatusLink(title: "One", url: "https://one.example")]
+        let editor = StatusLinksEditorView(
+            links: first,
+            onLinksChanged: { _ in },
+            onReset: { [] }
+        )
+        let window = attach(editor)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
 
+        let initialHeight = editor.layoutHeight
+        editor.updateLinks((0..<20).map {
+            StatusLink(title: "Link \($0)", url: "https://\($0).example")
+        })
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(editor.layoutHeight, initialHeight, accuracy: 0.001)
+        XCTAssertEqual(editor.currentHeight, StatusLinksEditorView.fixedHeight, accuracy: 0.001)
+        XCTAssertGreaterThan(
+            editor.tableViewForTesting.frame.height,
+            editor.scrollViewForTesting.contentView.bounds.height
+        )
+        XCTAssertEqual(editor.frame.height, StatusLinksEditorView.fixedHeight, accuracy: 1)
+    }
+
+    func testVisibilityKeepsOneEditorAndUsesItsFixedHeight() {
+        let editor = StatusLinksEditorView(
+            links: [],
+            onLinksChanged: { _ in },
+            onReset: { [] }
+        )
+        let window = attach(editor)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+
+        editor.setVisible(false, animated: false)
+        window.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertFalse(editor.isVisible)
+        XCTAssertEqual(editor.currentHeight, 0, accuracy: 0.001)
+
+        editor.setVisible(true, animated: false)
+        window.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertTrue(editor.isVisible)
+        XCTAssertEqual(editor.currentHeight, StatusLinksEditorView.fixedHeight, accuracy: 0.001)
+        XCTAssertTrue(editor.superview != nil)
+    }
+
+    func testTeardownIsIdempotentAndReleasesEditor() {
+        weak var releasedEditor: StatusLinksEditorView?
+        var window: NSWindow?
         autoreleasepool {
-            var editor: StatusLinksEditorHostingView? = StatusLinksEditorHostingView(
-                links: [StatusLink(title: "One", url: "https://one.example")],
-                onChange: { _, _, _ in },
-                onAdd: {},
-                onRemove: { _ in },
-                onReset: {}
+            var editor: StatusLinksEditorView? = StatusLinksEditorView(
+                links: [],
+                onLinksChanged: { _ in },
+                onReset: { [] }
             )
             releasedEditor = editor
-            editor?.updateLinks([], animated: false)
+            window = attach(editor!)
             editor?.teardown()
             editor?.teardown()
+            window?.contentView = nil
             editor = nil
         }
+        window = nil
 
         XCTAssertNil(releasedEditor)
     }
 
-    func testAddedRowReservesThenRevealsOneSlotWithoutRecreatingTheHostingView() {
-        func waitForAnimation(_ condition: @escaping () -> Bool) {
-            let deadline = Date().addingTimeInterval(1)
-            while !condition() && Date() < deadline {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
-            }
-        }
-
-        let initialLinks = [StatusLink(title: "One", url: "https://one.example")]
-        let addedLinks = initialLinks + [StatusLink(title: "Two", url: "https://two.example")]
-        let editor = StatusLinksEditorHostingView(
-            links: initialLinks,
-            onChange: { _, _, _ in },
-            onAdd: {},
-            onRemove: { _ in },
-            onReset: {}
-        )
+    @discardableResult
+    private func attach(_ editor: StatusLinksEditorView) -> NSWindow {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 320),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 300),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
-        let contentView = NSView()
-        window.contentView = contentView
-        contentView.addSubview(editor)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 300))
+        window.contentView = container
+        editor.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(editor)
         NSLayoutConstraint.activate([
-            editor.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            editor.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            editor.topAnchor.constraint(equalTo: contentView.topAnchor)
+            editor.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            editor.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            editor.topAnchor.constraint(equalTo: container.topAnchor)
         ])
-        window.layoutIfNeeded()
+        window.makeKeyAndOrderFront(nil)
+        window.contentView?.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
-        defer { window.orderOut(nil) }
-        let hostingView = editor.subviews.first
-
-        editor.updateLinks(addedLinks, animated: true, revealAddedRowsAtCompletion: true)
-
-        XCTAssertEqual(editor.rowCount, 2)
-        XCTAssertEqual(editor.renderedRowCount, 1)
-        XCTAssertFalse(editor.hasReservedAddedRowSlot)
-        XCTAssertTrue(editor.subviews.first === hostingView)
-
-        waitForAnimation {
-            editor.renderedRowCount == 2 && !editor.hasReservedAddedRowSlot
-        }
-        XCTAssertEqual(editor.renderedRowCount, 2)
-        XCTAssertFalse(editor.hasReservedAddedRowSlot)
-        XCTAssertTrue(editor.subviews.first === hostingView)
-
-        editor.updateLinks(initialLinks, animated: true)
-        editor.setVisible(false, animated: true)
-        editor.setVisible(true, animated: true)
-        waitForAnimation {
-            editor.rowCount == 1 && editor.renderedRowCount == 1 && editor.isVisible
-        }
-
-        XCTAssertEqual(editor.rowCount, 1)
-        XCTAssertEqual(editor.renderedRowCount, 1)
-        XCTAssertTrue(editor.isVisible)
-        XCTAssertEqual(editor.subviews.count, 1)
-        XCTAssertTrue(editor.subviews.first === hostingView)
-    }
-
-    func testRapidAddedRowUpdatesKeepOneReservedSlotAndIgnoreStaleCompletion() {
-        func waitForAnimation(_ condition: @escaping () -> Bool) {
-            let deadline = Date().addingTimeInterval(1)
-            while !condition() && Date() < deadline {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
-            }
-        }
-
-        let first = [StatusLink(title: "One", url: "https://one.example")]
-        let second = first + [StatusLink(title: "Two", url: "https://two.example")]
-        let third = second + [StatusLink(title: "Three", url: "https://three.example")]
-        let editor = StatusLinksEditorHostingView(
-            links: first,
-            onChange: { _, _, _ in },
-            onAdd: { },
-            onRemove: { _ in },
-            onReset: { }
-        )
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        let contentView = NSView()
-        window.contentView = contentView
-        contentView.addSubview(editor)
-        NSLayoutConstraint.activate([
-            editor.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            editor.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            editor.topAnchor.constraint(equalTo: contentView.topAnchor)
-        ])
-        window.layoutIfNeeded()
-        defer { window.orderOut(nil) }
-
-        let hostingView = editor.subviews.first
-        editor.updateLinks(second, animated: true, revealAddedRowsAtCompletion: true)
-        XCTAssertEqual(editor.rowCount, 2)
-        XCTAssertEqual(editor.renderedRowCount, 1)
-        XCTAssertFalse(editor.hasReservedAddedRowSlot)
-        XCTAssertTrue(editor.subviews.first === hostingView)
-
-        // A second update supersedes the first completion. It must not reveal
-        // an intermediate row or create a second expanding slot.
-        editor.updateLinks(third, animated: true, revealAddedRowsAtCompletion: true)
-        XCTAssertEqual(editor.rowCount, 3)
-        XCTAssertEqual(editor.renderedRowCount, 1)
-        XCTAssertFalse(editor.hasReservedAddedRowSlot)
-        XCTAssertTrue(editor.subviews.first === hostingView)
-
-        waitForAnimation {
-            editor.renderedRowCount == 3 && !editor.hasReservedAddedRowSlot
-        }
-        XCTAssertEqual(editor.renderedRowCount, 3)
-        XCTAssertFalse(editor.hasReservedAddedRowSlot)
-        XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
-        XCTAssertEqual(editor.subviews.count, 1)
-        XCTAssertTrue(editor.subviews.first === hostingView)
-    }
-
-    func testAddedRowKeepsCardEditorAndViewportAnchorsFixedDuringInsertion() {
-        let initialLinks = [StatusLink(title: "One", url: "https://one.example")]
-        let addedLinks = initialLinks + [StatusLink(title: "Two", url: "https://two.example")]
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 280),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        let page = StatusLinksFlippedView()
-        let scrollView = NSScrollView()
-        let documentView = StatusLinksFlippedView(frame: NSRect(x: 0, y: 0, width: 480, height: 900))
-        let card = StatusLinksFlippedView()
-        let rowsStack = NSStackView()
-        let viewStatusRow = NSView()
-        let editor = StatusLinksEditorHostingView(
-            links: initialLinks,
-            onChange: { _, _, _ in },
-            onAdd: { },
-            onRemove: { _ in },
-            onReset: { }
-        )
-
-        page.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        card.translatesAutoresizingMaskIntoConstraints = false
-        rowsStack.translatesAutoresizingMaskIntoConstraints = false
-        viewStatusRow.translatesAutoresizingMaskIntoConstraints = false
-        viewStatusRow.heightAnchor.constraint(equalToConstant: 62).isActive = true
-        rowsStack.orientation = .vertical
-        rowsStack.alignment = .leading
-        rowsStack.distribution = .fill
-        rowsStack.spacing = 0
-
-        window.contentView = page
-        page.addSubview(scrollView)
-        scrollView.documentView = documentView
-        documentView.addSubview(card)
-        card.addSubview(rowsStack)
-        rowsStack.addArrangedSubview(viewStatusRow)
-        rowsStack.addArrangedSubview(editor)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: page.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: page.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: page.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: page.bottomAnchor),
-            card.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 20),
-            card.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 180),
-            card.widthAnchor.constraint(equalToConstant: 440),
-            card.heightAnchor.constraint(equalToConstant: 62 + editor.layoutHeight),
-            rowsStack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            rowsStack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            rowsStack.topAnchor.constraint(equalTo: card.topAnchor),
-            rowsStack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
-            viewStatusRow.widthAnchor.constraint(equalTo: rowsStack.widthAnchor),
-            editor.widthAnchor.constraint(equalTo: rowsStack.widthAnchor)
-        ])
-        window.layoutIfNeeded()
-        window.displayIfNeeded()
-        defer { window.orderOut(nil) }
-
-        scrollView.contentView.bounds.origin.y = 100
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        let controller = StatusLinksScrollAnchorController(
-            dashboardProvider: { window },
-            contentHostProvider: { page },
-            sectionTitleProvider: { "Menu" },
-            linksCountProvider: { addedLinks.count }
-        )
-        let position = controller.capture(captureLabel: "before add", operation: "add")
-        let initialCardTop = card.convert(
-            NSPoint(x: card.bounds.minX, y: card.bounds.minY),
-            to: scrollView.contentView
-        ).y
-        let initialEditorTop = editor.convert(
-            NSPoint(x: editor.bounds.minX, y: editor.bounds.maxY),
-            to: scrollView.contentView
-        ).y
-        let initialViewportOffset = scrollView.contentView.bounds.origin.y
-
-        XCTAssertTrue(controller.refreshEditorInPlace(
-            links: addedLinks,
-            scrollPosition: position,
-            operation: "add"
-        ))
-
-        let deadline = Date().addingTimeInterval(0.3)
-        while Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
-            window.layoutIfNeeded()
-            let cardTop = card.convert(
-                NSPoint(x: card.bounds.minX, y: card.bounds.minY),
-                to: scrollView.contentView
-            ).y
-            let editorTop = editor.convert(
-                NSPoint(x: editor.bounds.minX, y: editor.bounds.maxY),
-                to: scrollView.contentView
-            ).y
-            XCTAssertEqual(cardTop, initialCardTop, accuracy: 0.5)
-            XCTAssertEqual(editorTop, initialEditorTop, accuracy: 0.5)
-            XCTAssertEqual(scrollView.contentView.bounds.origin.y, initialViewportOffset, accuracy: 0.5)
-            XCTAssertEqual(editor.hostedContentTopInset, 0, accuracy: 0.5)
-        }
-
-        XCTAssertEqual(editor.rowCount, 2)
-        XCTAssertEqual(editor.renderedRowCount, 2)
-        XCTAssertFalse(editor.hasReservedAddedRowSlot)
-        XCTAssertEqual(card.frame.height, 62 + editor.layoutHeight, accuracy: 0.5)
-        XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
-    }
-
-    func testScrollAnchorPreservesDistanceFromBottomAndRigidBounds() {
-        let geometry = DashboardScrollGeometry(
-            documentBounds: NSRect(x: 0, y: 20, width: 400, height: 500),
-            viewportHeight: 120,
-            isDocumentFlipped: true
-        )
-
-        XCTAssertEqual(geometry.maximumOffset, 380, accuracy: 0.001)
-        XCTAssertEqual(
-            StatusLinksScrollAnchor.visualOffsetPreservingDistanceFromBottom(
-                80,
-                geometry: geometry
-            ),
-            300,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            StatusLinksScrollAnchor.visualOffsetPreservingDistanceFromBottom(
-                -10,
-                geometry: geometry
-            ),
-            380,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            StatusLinksScrollAnchor.visualOffsetPreservingDistanceFromBottom(
-                999,
-                geometry: geometry
-            ),
-            0,
-            accuracy: 0.001
-        )
-
-        let viewport = NSRect(x: 0, y: 10, width: 300, height: 100)
-        XCTAssertTrue(StatusLinksScrollAnchor.isViewportYVisible(10, in: viewport))
-        XCTAssertTrue(StatusLinksScrollAnchor.isViewportYVisible(101, in: viewport, tolerance: 1))
-        XCTAssertFalse(StatusLinksScrollAnchor.isViewportYVisible(112, in: viewport, tolerance: 1))
-    }
-
-    func testActiveMaintenanceStopsWhenUserMovesDashboardBounds() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 280),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        let page = StatusLinksFlippedView(
-            frame: NSRect(x: 0, y: 0, width: 480, height: 280)
-        )
-        let scrollView = NSScrollView(frame: page.bounds)
-        let clipView = DashboardClipView(frame: scrollView.bounds)
-        let documentView = StatusLinksFlippedView(
-            frame: NSRect(x: 0, y: 0, width: 480, height: 900)
-        )
-        scrollView.contentView = clipView
-        scrollView.documentView = documentView
-        window.contentView = page
-        page.addSubview(scrollView)
-        window.layoutIfNeeded()
-        defer { window.orderOut(nil) }
-
-        let controller = StatusLinksScrollAnchorController(
-            dashboardProvider: { window },
-            contentHostProvider: { page },
-            sectionTitleProvider: { "Status Links" },
-            linksCountProvider: { 0 }
-        )
-        let position = StatusLinksScrollPosition(
-            operation: "remove",
-            visibleDocumentOffset: 100,
-            contentOriginY: clipView.bounds.origin.y,
-            distanceFromBottom: 200,
-            previousMaximumOffset: 620,
-            bottomAnchorView: nil,
-            bottomAnchorViewportY: nil
-        )
-
-        controller.startMaintenance(position, operation: "remove")
-        XCTAssertTrue(controller.isMaintainingAnchor)
-
-        let userOriginY = clipView.bounds.origin.y + 40
-        clipView.setBoundsOrigin(
-            NSPoint(x: clipView.bounds.minX, y: userOriginY)
-        )
-        XCTAssertFalse(controller.isMaintainingAnchor)
-
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        XCTAssertEqual(clipView.bounds.origin.y, userOriginY, accuracy: 0.0001)
-
-        controller.startMaintenance(position, operation: "remove")
-        XCTAssertTrue(controller.isMaintainingAnchor)
-        let secondUserOriginY = clipView.bounds.origin.y + 40
-        clipView.scroll(
-            to: NSPoint(x: clipView.bounds.minX, y: secondUserOriginY)
-        )
-        XCTAssertFalse(controller.isMaintainingAnchor)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        XCTAssertEqual(clipView.bounds.origin.y, secondUserOriginY, accuracy: 0.0001)
-    }
-
-    func testScrollAnchorControllerCancelsTransactionAndReleasesAfterTeardown() {
-        weak var releasedController: StatusLinksScrollAnchorController?
-
-        autoreleasepool {
-            var controller: StatusLinksScrollAnchorController? =
-                StatusLinksScrollAnchorController(
-                    dashboardProvider: { nil },
-                    contentHostProvider: { nil },
-                    sectionTitleProvider: { "Menu" },
-                    linksCountProvider: { 0 }
-                )
-            releasedController = controller
-            XCTAssertFalse(controller?.isMaintainingAnchor == true)
-            controller?.stop()
-            XCTAssertFalse(controller?.isMaintainingAnchor == true)
-            controller = nil
-        }
-
-        XCTAssertNil(releasedController)
+        return window
     }
 }

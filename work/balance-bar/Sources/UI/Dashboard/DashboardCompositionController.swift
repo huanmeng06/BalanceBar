@@ -64,15 +64,14 @@ struct DashboardCompositionActions {
     let onDidResize: () -> Void
 }
 
-/// Owns Dashboard shell, page composition, page lifecycle, and Status Links
-/// editor coordination. It is deliberately independent of provider/network
-/// refresh implementation and consumes only value/callback boundaries.
+/// Owns Dashboard shell, page composition, and page lifecycle. It is
+/// deliberately independent of provider/network refresh implementation and
+/// consumes only value/callback boundaries.
 final class DashboardCompositionController {
     private let state: DashboardCompositionState
     private let actions: DashboardCompositionActions
     private let launchAtLoginController: LaunchAtLoginController
     private let launchWithChatGPTController: LaunchWithChatGPTController
-    private var statusLinksScrollAnchorController: StatusLinksScrollAnchorController!
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
             onRefresh: actions.onManualRefresh,
@@ -116,7 +115,7 @@ final class DashboardCompositionController {
             onOpenOpenCodex: actions.onOpenOpenCodex,
             makeStatusLinksEditor: { [weak self] in
                 self?.makeStatusLinksEditor()
-                    ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                    ?? StatusLinksEditorView(links: [], onLinksChanged: { _ in }, onReset: { [] })
             },
             onOpenCodexModeChanged: actions.onOpenCodexModeChanged,
             onClamp: actions.onClamp
@@ -138,7 +137,6 @@ final class DashboardCompositionController {
                 self?.actions.onDidShowPage()
             },
             didClose: { [weak self] in
-                self?.statusLinksScrollAnchorController.stop()
                 self?.actions.onDidClose()
             },
             didResize: { [weak self] in
@@ -157,12 +155,6 @@ final class DashboardCompositionController {
         self.actions = actions
         self.launchAtLoginController = launchAtLoginController
         self.launchWithChatGPTController = launchWithChatGPTController
-        statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
-            dashboardProvider: { [weak self] in self?.windowController.window },
-            contentHostProvider: { [weak self] in self?.windowController.contentHost },
-            sectionTitleProvider: { [weak self] in self?.windowController.section.title ?? "" },
-            linksCountProvider: { [weak self] in self?.state.statusLinks().count ?? 0 }
-        )
     }
 
     var window: NSWindow? { windowController.window }
@@ -181,7 +173,6 @@ final class DashboardCompositionController {
     func showSection(_ section: DashboardSection) { windowController.showSection(section) }
     func showProvider(_ providerID: String) { windowController.showProvider(providerID) }
     func teardown() {
-        statusLinksScrollAnchorController.stop()
         dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
         windowController.teardown()
@@ -293,20 +284,11 @@ final class DashboardCompositionController {
     }
 
     func clampScrollBounds() {
-        statusLinksScrollAnchorController.clampDashboardScrollViewBounds()
+        // DashboardScrollClamping keeps ordinary page scrolling native. This
+        // hook remains for adaptive Dashboard pages that request a post-layout
+        // clamp, but Status Links no longer owns a special scroll transaction.
+        DashboardScrollTrace.marker("native-scroll-clamp-no-op", source: "DashboardCompositionController")
     }
-
-    func showSection(
-        _ section: DashboardSection,
-        restoringScrollPosition scrollPosition: StatusLinksScrollPosition? = nil
-    ) {
-        windowController.showSection(section)
-        if let scrollPosition {
-            statusLinksScrollAnchorController.restore(scrollPosition, attempt: 0)
-        }
-    }
-
-    func addStatusLinkForTesting() { addStatusLink() }
 
     func makePageForTesting(_ section: DashboardSection) -> NSView {
         makeSectionPage(for: section)
@@ -321,7 +303,6 @@ final class DashboardCompositionController {
     func teardownForTesting() { teardown() }
 
     private func prepareForPageReplacement() {
-        statusLinksScrollAnchorController.stop()
         dashboardProviderPages.unmount()
         dashboardPreferencePages.teardown()
     }
@@ -367,94 +348,29 @@ final class DashboardCompositionController {
         )
     }
 
-    private func makeStatusLinksEditor() -> StatusLinksEditorHostingView {
-        StatusLinksEditorHostingView(
+    private func makeStatusLinksEditor() -> StatusLinksEditorView {
+        StatusLinksEditorView(
             links: state.statusLinks(),
-            onChange: { [weak self] index, field, value in
-                self?.statusLinkChanged(index: index, field: field, value: value)
+            onLinksChanged: { [weak self] links in
+                self?.statusLinksChanged(links)
             },
-            onAdd: { [weak self] in self?.addStatusLink() },
-            onRemove: { [weak self] index in self?.removeStatusLink(at: index) },
-            onReset: { [weak self] in self?.resetStatusLinks() }
+            onReset: { [weak self] in
+                self?.resetStatusLinks() ?? []
+            }
         )
     }
 
-    private func statusLinkChanged(index: Int, field: StatusLinkField, value: String) {
-        var links = state.statusLinks()
-        guard index >= 0, index < links.count else { return }
-        switch field {
-        case .title: links[index].title = value
-        case .url: links[index].url = value
-        }
+    private func statusLinksChanged(_ links: [StatusLink]) {
         state.setStatusLinks(links)
-        SwitchLog.write(
-            "status link edited; index=\(index); field=\(field == .title ? "title" : "url"); length=\(value.count)",
-            category: "configuration"
-        )
+        SwitchLog.write("status links changed; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
     }
 
-    private func addStatusLink() {
-        let operation = "add"
-        statusLinksScrollAnchorController.logEditorGeometry(label: "before add")
-        let scrollPosition = statusLinksScrollAnchorController.capture(
-            captureLabel: "before add",
-            operation: operation
-        )
-        var links = state.statusLinks()
-        links.append(StatusLink(title: "", url: ""))
-        state.setStatusLinks(links)
-        SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
-        actions.onStatusLinksChanged()
-        if section == .menu,
-           !statusLinksScrollAnchorController.refreshEditorInPlace(
-               links: links,
-               scrollPosition: scrollPosition,
-               operation: operation
-           ) {
-            showSection(.menu, restoringScrollPosition: scrollPosition)
-        }
-    }
-
-    private func removeStatusLink(at index: Int) {
-        let operation = "remove"
-        let scrollPosition = statusLinksScrollAnchorController.capture(
-            captureLabel: "before remove",
-            operation: operation
-        )
-        var links = state.statusLinks()
-        guard index >= 0, index < links.count else { return }
-        links.remove(at: index)
-        state.setStatusLinks(links)
-        SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
-        actions.onStatusLinksChanged()
-        if section == .menu,
-           !statusLinksScrollAnchorController.refreshEditorInPlace(
-               links: links,
-               scrollPosition: scrollPosition,
-               operation: operation
-           ) {
-            showSection(.menu, restoringScrollPosition: scrollPosition)
-        }
-    }
-
-    private func resetStatusLinks() {
-        guard section == .menu else { return }
-        let operation = "reset"
-        let scrollPosition = statusLinksScrollAnchorController.capture(
-            captureLabel: "before reset",
-            operation: operation
-        )
+    private func resetStatusLinks() -> [StatusLink] {
         let links = state.defaultStatusLinks()
         state.setStatusLinks(links)
         SwitchLog.write("status links restored to defaults; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
-        if !statusLinksScrollAnchorController.refreshEditorInPlace(
-            links: links,
-            scrollPosition: scrollPosition,
-            operation: operation
-        ) {
-            showSection(.menu, restoringScrollPosition: scrollPosition)
-        }
+        return links
     }
 }

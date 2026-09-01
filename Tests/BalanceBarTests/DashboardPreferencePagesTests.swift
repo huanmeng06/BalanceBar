@@ -1037,7 +1037,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             preferences: preferences,
             relay: DashboardPreferencePageRelay(),
             makeStatusLinksEditor: {
-                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                StatusLinksEditorView(links: [], onLinksChanged: { _ in }, onReset: { [] })
             },
             onBalanceDisplayThresholdChanged: { value in
                 changedValues.append(value)
@@ -1124,7 +1124,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             preferences: preferences,
             relay: relay,
             makeStatusLinksEditor: {
-                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                StatusLinksEditorView(links: [], onLinksChanged: { _ in }, onReset: { [] })
             },
             onBalanceDisplayThresholdChanged: { _ in }
         ))
@@ -1278,7 +1278,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 preferences: preferences,
                 relay: relay,
                 makeStatusLinksEditor: {
-                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                    StatusLinksEditorView(links: [], onLinksChanged: { _ in }, onReset: { [] })
                 },
                 onBalanceDisplayThresholdChanged: { _ in }
             ))
@@ -1349,12 +1349,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             preferences: preferences,
             relay: DashboardPreferencePageRelay(),
             makeStatusLinksEditor: {
-                StatusLinksEditorHostingView(
+                StatusLinksEditorView(
                     links: [StatusLink(title: "Status", url: "https://status.example")],
-                    onChange: { _, _, _ in },
-                    onAdd: {},
-                    onRemove: { _ in },
-                    onReset: {}
+                    onLinksChanged: { _ in },
+                    onReset: { [] }
                 )
             },
             onBalanceDisplayThresholdChanged: { _ in }
@@ -1376,7 +1374,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let statusRow = try XCTUnwrap(subtitle.superview?.superview)
         let rowsStack = try XCTUnwrap(statusRow.superview as? NSStackView)
         let card = try XCTUnwrap(rowsStack.superview)
-        let editor = try XCTUnwrap(descendants(of: page).compactMap { $0 as? StatusLinksEditorHostingView }.first)
+        let editor = try XCTUnwrap(descendants(of: page).compactMap { $0 as? StatusLinksEditorView }.first)
         let statusSwitch = try XCTUnwrap(
             descendants(of: statusRow)
                 .compactMap { $0 as? NSSwitch }
@@ -1407,10 +1405,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         func expectedCardHeight() -> CGFloat {
             DashboardSettingsComponents.settingsCardHeight(
                 rowsStack: rowsStack,
-                separators: separators,
-                rowHeight: { row in
-                    row === editor ? editor.currentHeight : nil
-                }
+                separators: separators
             )
         }
 
