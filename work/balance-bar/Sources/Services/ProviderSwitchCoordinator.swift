@@ -31,6 +31,10 @@ final class ProviderSwitchCoordinator {
             let current = self.repository.loadChoices(appType: appType).first(where: { $0.isCurrent })
             guard current?.id != providerID else { return }
             let runtimeSnapshot = self.runtime.snapshot()
+            if let restorationPreconditionError = runtimeSnapshot.restorationPreconditionError {
+                self.report(.failure(restorationPreconditionError))
+                return
+            }
             if runtimeSnapshot.wasRunning,
                !self.runtime.terminateAndWait(for: runtimeSnapshot, timeout: 4) {
                 self.actions.failed(tr(.keyProviderSwitchCoordinatorSwitchFailedCcSwitchCouldNotReloadNormally))
@@ -52,15 +56,45 @@ final class ProviderSwitchCoordinator {
         _ result: Result<Void, Error>,
         restoring snapshot: CCSwitchRuntimeSnapshot
     ) {
-        if snapshot.wasRunning {
-            runtime.restore(from: snapshot)
+        guard snapshot.wasRunning else {
+            report(result)
+            return
         }
 
+        // A database write is not reported as changed until CC Switch's
+        // requested presentation has completed or failed explicitly. The
+        // runtime adapter must observe the process/window state; submitting a
+        // launch request is not enough.
+        runtime.restore(from: snapshot) { [weak self] restorationResult in
+            guard let self else { return }
+            self.queue.async {
+                switch (result, restorationResult) {
+                case (.success, .success):
+                    self.actions.changed()
+                case (.success, .failure(let restorationError)):
+                    self.report(.failure(restorationError))
+                case (.failure(let switchError), .success):
+                    self.report(.failure(switchError))
+                case (.failure(let switchError), .failure(let restorationError)):
+                    let combined = NSError(
+                        domain: "BalanceBar.ProviderSwitchCoordinator",
+                        code: 2,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "\(switchError.localizedDescription); \(restorationError.localizedDescription)"
+                        ]
+                    )
+                    self.report(.failure(combined))
+                }
+            }
+        }
+    }
+
+    private func report(_ result: Result<Void, Error>) {
         switch result {
         case .success:
             actions.changed()
         case .failure(let error):
-            actions.failed(tr(.keyProviderSwitchCoordinatorSwitchFailedValue, arguments: [String(describing: error.localizedDescription)]))
+            actions.failed(tr(.keyProviderSwitchCoordinatorSwitchFailedValue, arguments: [error.localizedDescription]))
         }
     }
 }

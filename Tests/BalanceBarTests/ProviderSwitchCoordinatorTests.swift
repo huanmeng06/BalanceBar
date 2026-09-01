@@ -36,20 +36,10 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testPresentationRestorationPolicyDistinguishesAllRuntimeStates() {
-        XCTAssertNil(CCSwitchPresentationState.notRunning.restoration)
-        XCTAssertEqual(
-            CCSwitchPresentationState.trayOnly.restoration,
-            CCSwitchPresentationRestoration(hides: true, activates: false)
-        )
-        XCTAssertEqual(
-            CCSwitchPresentationState.visibleInactive.restoration,
-            CCSwitchPresentationRestoration(hides: false, activates: false)
-        )
-        XCTAssertEqual(
-            CCSwitchPresentationState.visibleActive.restoration,
-            CCSwitchPresentationRestoration(hides: false, activates: true)
-        )
+    func testPresentationStatesRemainDistinct() {
+        XCTAssertNotEqual(CCSwitchPresentationState.notRunning, .trayOnly)
+        XCTAssertNotEqual(CCSwitchPresentationState.trayOnly, .visibleInactive)
+        XCTAssertNotEqual(CCSwitchPresentationState.visibleInactive, .visibleActive)
     }
 
     func testCoreGraphicsVisibilityDetectionRequiresVisibleStandardWindowEvidence() {
@@ -115,7 +105,7 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
     }
 
     func testVisibleInactiveSwitchRestoresWindowWithoutActivation() throws {
-        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleInactive))
+        let runtime = RuntimeSpy(snapshot: visibleInactiveSnapshot())
         let actions = SwitchActionRecorder(testCase: self)
         let coordinator = makeCoordinator(runtime: runtime, actions: actions)
 
@@ -125,10 +115,6 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         XCTAssertEqual(actions.changedCount, 1)
         XCTAssertEqual(runtime.restoredSnapshots, [runtime.snapshotValue])
         XCTAssertEqual(runtime.restoredSnapshots.first?.state, .visibleInactive)
-        XCTAssertEqual(
-            CCSwitchPresentationState.visibleInactive.restoration,
-            CCSwitchPresentationRestoration(hides: false, activates: false)
-        )
     }
 
     func testVisibleActiveSwitchRestoresVisibleActivePresentation() throws {
@@ -142,14 +128,10 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         XCTAssertEqual(actions.changedCount, 1)
         XCTAssertEqual(runtime.restoredSnapshots, [runtime.snapshotValue])
         XCTAssertEqual(runtime.restoredSnapshots.first?.state, .visibleActive)
-        XCTAssertEqual(
-            CCSwitchPresentationState.visibleActive.restoration,
-            CCSwitchPresentationRestoration(hides: false, activates: true)
-        )
     }
 
     func testTerminationTimeoutSkipsRepositoryWriteAndPresentationRestore() throws {
-        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleInactive))
+        let runtime = RuntimeSpy(snapshot: visibleInactiveSnapshot())
         runtime.terminationResult = false
         let actions = SwitchActionRecorder(testCase: self)
         let coordinator = makeCoordinator(runtime: runtime, actions: actions)
@@ -166,7 +148,7 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
     }
 
     func testRepositoryFailureRestoresOriginalPresentation() throws {
-        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleInactive))
+        let runtime = RuntimeSpy(snapshot: visibleInactiveSnapshot())
         let actions = SwitchActionRecorder(testCase: self)
         let coordinator = makeCoordinator(runtime: runtime, actions: actions)
 
@@ -208,6 +190,248 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
         XCTAssertEqual(runtime.restoredSnapshots.first?.state, .visibleActive)
     }
 
+    func testPresentationRestoreFailurePreventsChangedAction() throws {
+        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .trayOnly))
+        runtime.restorationResult = .failure(CCSwitchRuntimeError.presentationDidNotRestore)
+        let actions = SwitchActionRecorder(testCase: self)
+        let coordinator = makeCoordinator(runtime: runtime, actions: actions)
+
+        coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
+        wait(for: [actions.completion], timeout: 2)
+
+        XCTAssertEqual(actions.changedCount, 0)
+        XCTAssertEqual(actions.failureCount, 1)
+        XCTAssertEqual(try currentValue(for: "target"), 1)
+    }
+
+    func testVisibleInactiveWithoutForegroundPreconditionSkipsTerminationAndWrite() throws {
+        let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleInactive))
+        let actions = SwitchActionRecorder(testCase: self)
+        let coordinator = makeCoordinator(runtime: runtime, actions: actions)
+
+        coordinator.switchProvider(providerID: "target", appType: "codex", providerName: "Target")
+        wait(for: [actions.completion], timeout: 2)
+
+        XCTAssertEqual(actions.changedCount, 0)
+        XCTAssertEqual(actions.failureCount, 1)
+        XCTAssertEqual(runtime.terminationTimeouts, [])
+        XCTAssertEqual(runtime.restoredSnapshots, [])
+        XCTAssertEqual(try currentValue(for: "current"), 1)
+        XCTAssertEqual(try currentValue(for: "target"), 0)
+    }
+
+    func testProductionAdapterVisibleInactiveWaitsForWindowAndRestoresPreviousForeground() {
+        let environment = RuntimeControllerEnvironment()
+        let launcher = ApplicationLaunchSpy()
+        launcher.onLaunch = { hides, _ in
+            environment.processExists = true
+            if !hides {
+                // Models CC Switch silent_startup/lightweight mode: the first
+                // launch has no main window, and the Reopen request recreates
+                // and shows it while briefly focusing CC Switch.
+                environment.visible = true
+                environment.active = true
+                environment.frontmostProcessIdentifier = environment.ccSwitchProcessIdentifier
+            }
+        }
+        let runtime = makeRuntimeController(environment: environment, launcher: launcher)
+        let completion = expectation(description: "visible inactive presentation restored")
+        var result: Result<Void, Error>?
+        let snapshot = CCSwitchRuntimeSnapshot(
+            state: .visibleInactive,
+            applicationURL: environment.applicationURL,
+            previousFrontmostProcessIdentifier: environment.previousProcessIdentifier
+        )
+
+        runtime.restore(from: snapshot) {
+            result = $0
+            completion.fulfill()
+        }
+        wait(for: [completion], timeout: 2)
+
+        if case .failure(let error) = result {
+            XCTFail("expected restoration success, got \(error)")
+        }
+        XCTAssertEqual(
+            launcher.requests,
+            [
+                .init(hides: true, activates: false),
+                .init(hides: false, activates: false),
+            ]
+        )
+        XCTAssertEqual(environment.activationCalls, [environment.previousProcessIdentifier])
+        XCTAssertEqual(environment.frontmostProcessIdentifier, environment.previousProcessIdentifier)
+        XCTAssertFalse(environment.active)
+        XCTAssertTrue(environment.visible)
+    }
+
+    func testProductionAdapterVisibleActiveWaitsForWindowAndActiveState() {
+        let environment = RuntimeControllerEnvironment()
+        let launcher = ApplicationLaunchSpy()
+        launcher.onLaunch = { hides, _ in
+            environment.processExists = true
+            if !hides {
+                environment.visible = true
+                environment.active = true
+                environment.frontmostProcessIdentifier = environment.ccSwitchProcessIdentifier
+            }
+        }
+        let runtime = makeRuntimeController(environment: environment, launcher: launcher)
+        let completion = expectation(description: "visible active presentation restored")
+        var result: Result<Void, Error>?
+        let snapshot = CCSwitchRuntimeSnapshot(
+            state: .visibleActive,
+            applicationURL: environment.applicationURL
+        )
+
+        runtime.restore(from: snapshot) {
+            result = $0
+            completion.fulfill()
+        }
+        wait(for: [completion], timeout: 2)
+
+        if case .failure(let error) = result {
+            XCTFail("expected restoration success, got \(error)")
+        }
+        XCTAssertEqual(
+            launcher.requests,
+            [
+                .init(hides: true, activates: false),
+                .init(hides: false, activates: false),
+            ]
+        )
+        XCTAssertTrue(environment.visible)
+        XCTAssertTrue(environment.active)
+        XCTAssertEqual(environment.activationCalls, [])
+    }
+
+    func testProductionAdapterTrayOnlyUsesOneHiddenLaunchAndVerifiesNoWindow() {
+        let environment = RuntimeControllerEnvironment()
+        let launcher = ApplicationLaunchSpy()
+        launcher.onLaunch = { _, _ in
+            environment.processExists = true
+            environment.visible = true
+        }
+        let runtime = makeRuntimeController(environment: environment, launcher: launcher)
+        let completion = expectation(description: "tray presentation restored")
+        var result: Result<Void, Error>?
+        let snapshot = CCSwitchRuntimeSnapshot(
+            state: .trayOnly,
+            applicationURL: environment.applicationURL,
+            previousFrontmostProcessIdentifier: environment.previousProcessIdentifier
+        )
+
+        runtime.restore(from: snapshot) {
+            result = $0
+            completion.fulfill()
+        }
+        wait(for: [completion], timeout: 2)
+
+        if case .failure(let error) = result {
+            XCTFail("expected restoration success, got \(error)")
+        }
+        XCTAssertEqual(launcher.requests, [.init(hides: true, activates: false)])
+        XCTAssertEqual(environment.hideCallCount, 1)
+        XCTAssertFalse(environment.visible)
+    }
+
+    func testProductionAdapterPropagatesOpenApplicationError() {
+        let environment = RuntimeControllerEnvironment()
+        let launcher = ApplicationLaunchSpy()
+        launcher.outcomes = [
+            .failure(NSError(domain: "TestLaunch", code: 7, userInfo: [
+                NSLocalizedDescriptionKey: "launch rejected"
+            ]))
+        ]
+        let runtime = makeRuntimeController(environment: environment, launcher: launcher)
+        let completion = expectation(description: "launch error reported")
+        var result: Result<Void, Error>?
+        let snapshot = CCSwitchRuntimeSnapshot(
+            state: .visibleActive,
+            applicationURL: environment.applicationURL
+        )
+
+        runtime.restore(from: snapshot) {
+            result = $0
+            completion.fulfill()
+        }
+        wait(for: [completion], timeout: 2)
+
+        guard case .failure(let error as CCSwitchRuntimeError) = result else {
+            return XCTFail("expected CCSwitchRuntimeError.launchFailed, got \(String(describing: result))")
+        }
+        guard case .launchFailed(let message) = error else {
+            return XCTFail("expected launch failure, got \(error)")
+        }
+        XCTAssertEqual(message, "launch rejected")
+        XCTAssertEqual(launcher.requests.count, 1)
+    }
+
+    func testProductionAdapterFailsWhenReopenDoesNotRestoreVisibleWindow() {
+        let environment = RuntimeControllerEnvironment()
+        let launcher = ApplicationLaunchSpy()
+        launcher.onLaunch = { hides, _ in
+            environment.processExists = true
+            if hides {
+                environment.visible = false
+            } else {
+                environment.active = true
+                environment.frontmostProcessIdentifier = environment.ccSwitchProcessIdentifier
+            }
+        }
+        let runtime = makeRuntimeController(environment: environment, launcher: launcher)
+        let completion = expectation(description: "window restoration failure reported")
+        var result: Result<Void, Error>?
+        let snapshot = CCSwitchRuntimeSnapshot(
+            state: .visibleInactive,
+            applicationURL: environment.applicationURL,
+            previousFrontmostProcessIdentifier: environment.previousProcessIdentifier
+        )
+
+        runtime.restore(from: snapshot) {
+            result = $0
+            completion.fulfill()
+        }
+        wait(for: [completion], timeout: 2)
+
+        guard case .failure(let error as CCSwitchRuntimeError) = result else {
+            return XCTFail("expected visible-window failure, got \(String(describing: result))")
+        }
+        XCTAssertEqual(error, .presentationDidNotRestore)
+        XCTAssertEqual(launcher.requests.count, 2)
+        XCTAssertEqual(environment.activationCalls, [environment.previousProcessIdentifier])
+    }
+
+    func testProductionAdapterFailsWhenVisibleActiveNeverBecomesActive() {
+        let environment = RuntimeControllerEnvironment()
+        let launcher = ApplicationLaunchSpy()
+        launcher.onLaunch = { hides, _ in
+            environment.processExists = true
+            if !hides {
+                environment.visible = true
+                environment.active = false
+            }
+        }
+        let runtime = makeRuntimeController(environment: environment, launcher: launcher)
+        let completion = expectation(description: "active restoration failure reported")
+        var result: Result<Void, Error>?
+        let snapshot = CCSwitchRuntimeSnapshot(
+            state: .visibleActive,
+            applicationURL: environment.applicationURL
+        )
+
+        runtime.restore(from: snapshot) {
+            result = $0
+            completion.fulfill()
+        }
+        wait(for: [completion], timeout: 2)
+
+        guard case .failure(let error as CCSwitchRuntimeError) = result else {
+            return XCTFail("expected active-state failure, got \(String(describing: result))")
+        }
+        XCTAssertEqual(error, .activePresentationDidNotRestore)
+    }
+
     func testSameProviderNoOpSkipsSnapshotTerminationAndRelaunch() throws {
         let runtime = RuntimeSpy(snapshot: CCSwitchRuntimeSnapshot(state: .visibleActive))
         let actions = SwitchActionRecorder(testCase: self)
@@ -240,6 +464,58 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
                 changed: { actions.changed() },
                 failed: { actions.failed($0) }
             )
+        )
+    }
+
+    private func visibleInactiveSnapshot() -> CCSwitchRuntimeSnapshot {
+        CCSwitchRuntimeSnapshot(
+            state: .visibleInactive,
+            previousFrontmostProcessIdentifier: 4343
+        )
+    }
+
+    private func makeRuntimeController(
+        environment: RuntimeControllerEnvironment,
+        launcher: ApplicationLaunchSpy
+    ) -> CCSwitchRuntimeController {
+        CCSwitchRuntimeController(
+            runningApplicationProvider: { nil },
+            previousFrontmostProcessIdentifierProvider: {
+                environment.frontmostProcessIdentifier
+            },
+            windowInfoProvider: {
+                environment.visible ? environment.visibleWindowInfo : []
+            },
+            processExistsProvider: { processIdentifier in
+                processIdentifier == environment.ccSwitchProcessIdentifier
+                    && environment.processExists
+            },
+            activeStateProvider: { processIdentifier in
+                processIdentifier == environment.ccSwitchProcessIdentifier
+                    && environment.active
+            },
+            hideApplication: { processIdentifier in
+                guard processIdentifier == environment.ccSwitchProcessIdentifier else {
+                    return false
+                }
+                environment.hideCallCount += 1
+                environment.visible = false
+                environment.active = false
+                return environment.hideResult
+            },
+            activateApplication: { processIdentifier in
+                environment.activationCalls.append(processIdentifier)
+                guard environment.activateResult else { return false }
+                environment.frontmostProcessIdentifier = processIdentifier
+                if processIdentifier == environment.previousProcessIdentifier {
+                    environment.active = false
+                }
+                return true
+            },
+            applicationLauncher: launcher,
+            restorationTimeout: 0.05,
+            pollInterval: 0.001,
+            restorationQueue: DispatchQueue(label: "test.cc-switch-restore-\(UUID().uuidString)")
         )
     }
 
@@ -363,6 +639,7 @@ final class ProviderSwitchCoordinatorTests: XCTestCase {
 private final class RuntimeSpy: CCSwitchRuntimeControlling {
     let snapshotValue: CCSwitchRuntimeSnapshot
     var terminationResult = true
+    var restorationResult: Result<Void, Error> = .success(())
     private(set) var snapshotCallCount = 0
     private(set) var terminationTimeouts: [TimeInterval] = []
     private(set) var restoredSnapshots: [CCSwitchRuntimeSnapshot] = []
@@ -381,8 +658,73 @@ private final class RuntimeSpy: CCSwitchRuntimeControlling {
         return terminationResult
     }
 
-    func restore(from snapshot: CCSwitchRuntimeSnapshot) {
+    func restore(
+        from snapshot: CCSwitchRuntimeSnapshot,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
         restoredSnapshots.append(snapshot)
+        completion(restorationResult)
+    }
+}
+
+private final class ApplicationLaunchSpy: CCSwitchApplicationLaunching {
+    struct Request: Equatable {
+        let hides: Bool
+        let activates: Bool
+    }
+
+    private(set) var requests: [Request] = []
+    var outcomes: [Result<pid_t?, Error>] = []
+    var onLaunch: ((Bool, Bool) -> Void)?
+    let processIdentifier: pid_t = 4242
+
+    func launch(
+        at applicationURL: URL,
+        hides: Bool,
+        activates: Bool,
+        completion: @escaping (pid_t?, Error?) -> Void
+    ) {
+        _ = applicationURL
+        requests.append(Request(hides: hides, activates: activates))
+        onLaunch?(hides, activates)
+        let outcome = outcomes.isEmpty
+            ? Result<pid_t?, Error>.success(processIdentifier)
+            : outcomes.removeFirst()
+        switch outcome {
+        case .success(let processIdentifier):
+            completion(processIdentifier, nil)
+        case .failure(let error):
+            completion(nil, error)
+        }
+    }
+}
+
+private final class RuntimeControllerEnvironment {
+    let applicationURL = URL(fileURLWithPath: "/Applications/CC Switch.app")
+    let ccSwitchProcessIdentifier: pid_t = 4242
+    let previousProcessIdentifier: pid_t = 4343
+    var processExists = false
+    var visible = false
+    var active = false
+    var frontmostProcessIdentifier: pid_t? = 4343
+    var hideResult = true
+    var activateResult = true
+    var hideCallCount = 0
+    var activationCalls: [pid_t] = []
+
+    var visibleWindowInfo: [[String: Any]] {
+        [[
+            kCGWindowOwnerPID as String: NSNumber(value: ccSwitchProcessIdentifier),
+            kCGWindowLayer as String: NSNumber(value: 0),
+            kCGWindowIsOnscreen as String: NSNumber(value: true),
+            kCGWindowAlpha as String: NSNumber(value: 1),
+            kCGWindowBounds as String: NSDictionary(dictionary: [
+                "X": 0.0,
+                "Y": 0.0,
+                "Width": 640.0,
+                "Height": 480.0,
+            ]),
+        ]]
     }
 }
 
