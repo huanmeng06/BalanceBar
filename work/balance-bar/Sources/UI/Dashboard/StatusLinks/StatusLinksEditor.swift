@@ -61,9 +61,12 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     private let onLinksChanged: ([StatusLink]) -> Void
     private let onReset: () -> [StatusLink]
 
+    private let listContainer = NSBox()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
-    private let controls = NSStackView()
+    private let horizontalSeparator = NSBox()
+    private let footerView = NSStackView()
+    private let verticalSeparator = NSBox()
     private let addButton = NSButton()
     private let removeButton = NSButton()
     private let resetButton = NSButton()
@@ -84,6 +87,10 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     var addButtonForTesting: NSButton { addButton }
     var removeButtonForTesting: NSButton { removeButton }
     var resetButtonForTesting: NSButton { resetButton }
+    var listContainerForTesting: NSBox { listContainer }
+    var footerViewForTesting: NSStackView { footerView }
+    var horizontalSeparatorForTesting: NSBox { horizontalSeparator }
+    var verticalSeparatorForTesting: NSBox { verticalSeparator }
     var isEditingNameForTesting: Bool {
         editingCell?.field == .title
     }
@@ -415,13 +422,11 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         scrollView.autohidesScrollers = true
         scrollView.verticalScrollElasticity = .none
         scrollView.horizontalScrollElasticity = .none
-        scrollView.borderType = .bezelBorder
-
-        addSubview(scrollView)
+        scrollView.borderType = .noBorder
     }
 
     private func configureControls() {
-        configureSymbolButton(
+        configureFooterButton(
             addButton,
             symbolName: "plus",
             accessibilityLabel: "Add",
@@ -429,7 +434,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         )
         addButton.identifier = Self.addButtonIdentifier
 
-        configureSymbolButton(
+        configureFooterButton(
             removeButton,
             symbolName: "minus",
             accessibilityLabel: "Remove",
@@ -444,20 +449,38 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         resetButton.setAccessibilityLabel(tr(.keyStatusLinksEditorRestoreDefaults))
         resetButton.setContentHuggingPriority(.required, for: .horizontal)
         resetButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        resetButton.translatesAutoresizingMaskIntoConstraints = false
         resetButton.identifier = Self.resetButtonIdentifier
 
-        let buttonGroup = NSStackView(views: [addButton, removeButton])
-        buttonGroup.orientation = .horizontal
-        buttonGroup.alignment = .centerY
-        buttonGroup.spacing = 0
+        listContainer.boxType = .primary
+        listContainer.titlePosition = .noTitle
+        listContainer.contentViewMargins = .zero
+        listContainer.translatesAutoresizingMaskIntoConstraints = false
 
-        controls.addArrangedSubview(buttonGroup)
-        controls.addArrangedSubview(NSView())
-        controls.addArrangedSubview(resetButton)
-        controls.orientation = .horizontal
-        controls.alignment = .centerY
-        controls.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(controls)
+        horizontalSeparator.boxType = .separator
+        horizontalSeparator.translatesAutoresizingMaskIntoConstraints = false
+
+        footerView.orientation = .horizontal
+        footerView.alignment = .centerY
+        footerView.distribution = .fill
+        footerView.spacing = 8
+        footerView.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
+        footerView.translatesAutoresizingMaskIntoConstraints = false
+
+        verticalSeparator.boxType = .separator
+        verticalSeparator.translatesAutoresizingMaskIntoConstraints = false
+        verticalSeparator.widthAnchor.constraint(equalToConstant: 1).isActive = true
+
+        footerView.addArrangedSubview(addButton)
+        footerView.addArrangedSubview(verticalSeparator)
+        footerView.addArrangedSubview(removeButton)
+        verticalSeparator.heightAnchor.constraint(equalTo: footerView.heightAnchor, multiplier: 0.55).isActive = true
+
+        listContainer.addSubview(scrollView)
+        listContainer.addSubview(horizontalSeparator)
+        listContainer.addSubview(footerView)
+        addSubview(listContainer)
+        addSubview(resetButton)
     }
 
     private func installConstraints() {
@@ -468,18 +491,32 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
         let horizontalInset = DashboardSettingsComponents.settingsRowHorizontalInset
         let verticalInset = DashboardSettingsComponents.settingsRowVerticalInset
+        let resetSpacing = DashboardSettingsComponents.settingsRowContentControlSpacing
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalInset),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
-            scrollView.topAnchor.constraint(equalTo: topAnchor, constant: verticalInset),
-            controls.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-            controls.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
-            controls.topAnchor.constraint(equalTo: scrollView.bottomAnchor),
-            controls.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -verticalInset)
+            listContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalInset),
+            listContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
+            listContainer.topAnchor.constraint(equalTo: topAnchor, constant: verticalInset),
+            listContainer.bottomAnchor.constraint(equalTo: resetButton.topAnchor, constant: -resetSpacing),
+            resetButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalInset),
+            resetButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -verticalInset),
+
+            scrollView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: listContainer.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: horizontalSeparator.topAnchor),
+
+            horizontalSeparator.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            horizontalSeparator.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            horizontalSeparator.heightAnchor.constraint(equalToConstant: 1),
+
+            footerView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            footerView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            footerView.topAnchor.constraint(equalTo: horizontalSeparator.bottomAnchor),
+            footerView.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor)
         ])
     }
 
-    private func configureSymbolButton(
+    private func configureFooterButton(
         _ button: NSButton,
         symbolName: String,
         accessibilityLabel: String,
@@ -487,7 +524,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     ) {
         button.target = self
         button.action = action
-        button.bezelStyle = .smallSquare
+        button.isBordered = false
         button.controlSize = .small
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibilityLabel)
         button.imagePosition = .imageOnly
