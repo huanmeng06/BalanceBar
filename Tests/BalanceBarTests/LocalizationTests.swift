@@ -691,19 +691,19 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testLaunchAtLoginCopyIsLocalizedAcrossAllTwelveLanguages() {
-        let expected: [AppLanguage: (String, String)] = [
-            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar"),
-            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar"),
-            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar"),
-            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します"),
-            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac"),
-            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다"),
-            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac"),
-            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten"),
-            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac"),
-            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac"),
-            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac"),
-            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac")
+        let expected: [AppLanguage: (String, String, String)] = [
+            .simplifiedChinese: ("登录时自动启动", "登录 Mac 后自动启动 BalanceBar", "请在“系统设置 → 通用 → 登录项 → 登录时打开”中启用 BalanceBar"),
+            .traditionalChineseTaiwan: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "請在「系統設定 → 一般 → 登入項目 → 登入時開啟」中啟用 BalanceBar"),
+            .traditionalChineseHongKong: ("登入時自動啟動", "登入 Mac 後自動啟動 BalanceBar", "請在「系統設定 → 一般 → 登入項目 → 登入時開啟」中啟用 BalanceBar"),
+            .japanese: ("ログイン時に起動", "Macへのログイン後にBalanceBarを自動的に起動します", "「システム設定」→「一般」→「ログイン項目」→「ログイン時に開く」でBalanceBarを有効にしてください"),
+            .english: ("Launch at Login", "Automatically start BalanceBar after you log in to your Mac", "Enable BalanceBar under System Settings → General → Login Items → Open at Login"),
+            .korean: ("로그인 시 실행", "Mac에 로그인한 후 BalanceBar를 자동으로 실행합니다", "시스템 설정 → 일반 → 로그인 항목 → 로그인 시 열기에서 BalanceBar를 켜세요"),
+            .spanish: ("Abrir al iniciar sesión", "Abre BalanceBar automáticamente después de iniciar sesión en el Mac", "Activa BalanceBar en Configuración del Sistema → General → Ítems de inicio → Abrir al iniciar sesión"),
+            .german: ("Beim Anmelden starten", "BalanceBar nach der Anmeldung am Mac automatisch starten", "Aktiviere BalanceBar unter Systemeinstellungen → Allgemein → Anmeldeobjekte → Bei der Anmeldung öffnen"),
+            .french: ("Lancer à la connexion", "Lancer automatiquement BalanceBar après la connexion au Mac", "Activez BalanceBar dans Réglages Système → Général → Éléments d’ouverture → Ouvrir à l’ouverture de session"),
+            .portuguese: ("Iniciar ao iniciar sessão", "Inicia o BalanceBar automaticamente depois de iniciar sessão no Mac", "Ative o BalanceBar em Definições do Sistema → Geral → Elementos de início de sessão → Abrir ao iniciar sessão"),
+            .russian: ("Запуск при входе", "Автоматически запускать BalanceBar после входа на Mac", "Включите BalanceBar в Системных настройках → Основные → Объекты входа → Открывать при входе"),
+            .italian: ("Avvia all'accesso", "Avvia automaticamente BalanceBar dopo l’accesso al Mac", "Attiva BalanceBar in Impostazioni di Sistema → Generali → Elementi login → Apri all’accesso")
         ]
 
         for language in resourceDirectories.values {
@@ -716,10 +716,20 @@ final class LocalizationTests: XCTestCase {
                 .keyDashboardGeneralAndRefreshPagesLaunchAtLoginDescription,
                 language: language
             )
+            let approvalDescription = tr(
+                .keyDashboardGeneralAndRefreshPagesLaunchAtLoginRequiresApproval,
+                language: language
+            )
             XCTAssertEqual(title, expectedCopy.0, "Launch at Login title for \(language)")
             XCTAssertEqual(description, expectedCopy.1, "Launch at Login description for \(language)")
+            XCTAssertEqual(
+                approvalDescription,
+                expectedCopy.2,
+                "Launch at Login approval description for \(language)"
+            )
             XCTAssertFalse(title.hasPrefix("⟦"))
             XCTAssertFalse(description.hasPrefix("⟦"))
+            XCTAssertFalse(approvalDescription.hasPrefix("⟦"))
         }
     }
 

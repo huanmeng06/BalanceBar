@@ -114,7 +114,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertTrue(launchSwitch.isEnabled)
         XCTAssertFalse(openSettingsButton.isHidden)
         XCTAssertTrue(labels.contains {
-            $0.stringValue == "BalanceBar needs approval in System Settings"
+            $0.stringValue == "Enable BalanceBar under System Settings → General → Login Items → Open at Login"
         })
 
         controller.refreshLaunchAtLogin(
