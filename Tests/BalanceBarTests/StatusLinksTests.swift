@@ -266,10 +266,18 @@ final class StatusLinksTests: XCTestCase {
             object: field
         ))
 
-        window.close()
+        // Exercise the production lifecycle boundary directly. Destroying a
+        // headless XCTest window while AppKit owns a live field editor can
+        // terminate the test host before the observer is evaluated on CI.
+        NotificationCenter.default.post(
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
 
         XCTAssertEqual(changes, [[StatusLink(title: "Before", url: "https://after.example")]])
         XCTAssertEqual(editor.links[0].url, "https://after.example")
+        editor.endEditing()
+        window.orderOut(nil)
         window.contentView = nil
     }
 
