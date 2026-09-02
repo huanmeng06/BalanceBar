@@ -72,10 +72,21 @@ final class StatusLinksTests: XCTestCase {
         )
         XCTAssertEqual(
             tableContainer.borderWidth,
-            StatusLinksEditorHostingView.tableBorderWidth,
+            0,
             accuracy: 0.001
         )
         XCTAssertEqual(tableContainer.borderColor, NSColor.separatorColor)
+        let containerLayer = try XCTUnwrap(tableContainer.layer)
+        XCTAssertEqual(
+            containerLayer.borderWidth,
+            StatusLinksEditorHostingView.tableBorderWidth,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            containerLayer.cornerRadius,
+            StatusLinksEditorHostingView.tableCornerRadius,
+            accuracy: 0.001
+        )
         XCTAssertEqual(scrollView.borderType, .noBorder)
         XCTAssertTrue(scrollView.wantsLayer)
         let tableLayer = try XCTUnwrap(scrollView.layer)

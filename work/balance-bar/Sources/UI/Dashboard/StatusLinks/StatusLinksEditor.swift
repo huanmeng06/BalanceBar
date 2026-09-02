@@ -485,12 +485,20 @@ final class StatusLinksEditorHostingView: NSView,
     private func configureTableContainer(_ container: NSBox, contentView: NSView) {
         container.translatesAutoresizingMaskIntoConstraints = false
         container.boxType = .custom
-        container.borderWidth = Self.tableBorderWidth
+        container.borderWidth = 0
         container.cornerRadius = Self.tableCornerRadius
         container.borderColor = .separatorColor
         container.fillColor = .clear
         container.contentViewMargins = .zero
         container.contentView = contentView
+        // Keep the rounded frame on one compositing surface so its top and
+        // bottom edges have identical geometry when the window is inactive.
+        container.wantsLayer = true
+        container.layer?.cornerRadius = Self.tableCornerRadius
+        container.layer?.cornerCurve = .continuous
+        container.layer?.borderWidth = Self.tableBorderWidth
+        container.layer?.borderColor = NSColor.separatorColor.cgColor
+        container.layer?.masksToBounds = true
 
         let borderInset = Self.tableBorderWidth
         NSLayoutConstraint.activate([
