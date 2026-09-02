@@ -1416,6 +1416,12 @@ struct MenuBarIconDisplayStateMachine {
 }
 
 final class StatusItemController: NSObject, NSMenuDelegate {
+    /// macOS renders status items whose button carries no image with a
+    /// greyed-out, translucent appearance on displays that do not own
+    /// keyboard focus. Assigning an empty image keeps the item on the
+    /// standard image-backed rendering path so its inactive-display dimming
+    /// matches the rest of the menu bar.
+    static let placeholderButtonImage = NSImage()
     private static let statusItemVisibilityStabilityDelay: TimeInterval = 0.2
     private static let subscriptionFont = NSFont.systemFont(ofSize: 13, weight: .regular)
 
@@ -1980,7 +1986,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.length = 56
         button.title = ""
         button.attributedTitle = NSAttributedString(string: "")
-        button.image = nil
+        button.image = Self.placeholderButtonImage
         button.toolTip = "BalanceBar"
 
         if let iconURL = Bundle.main.url(forResource: "CodexIcon", withExtension: "svg"),
