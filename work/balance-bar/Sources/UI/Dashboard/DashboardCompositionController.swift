@@ -72,7 +72,6 @@ final class DashboardCompositionController {
     private let actions: DashboardCompositionActions
     private let launchAtLoginController: LaunchAtLoginController
     private let launchWithChatGPTController: LaunchWithChatGPTController
-    private var statusLinksScrollAnchorController: StatusLinksScrollAnchorController!
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
             onRefresh: actions.onManualRefresh,
@@ -138,7 +137,6 @@ final class DashboardCompositionController {
                 self?.actions.onDidShowPage()
             },
             didClose: { [weak self] in
-                self?.statusLinksScrollAnchorController.stop()
                 self?.actions.onDidClose()
             },
             didResize: { [weak self] in
@@ -157,12 +155,6 @@ final class DashboardCompositionController {
         self.actions = actions
         self.launchAtLoginController = launchAtLoginController
         self.launchWithChatGPTController = launchWithChatGPTController
-        statusLinksScrollAnchorController = StatusLinksScrollAnchorController(
-            dashboardProvider: { [weak self] in self?.windowController.window },
-            contentHostProvider: { [weak self] in self?.windowController.contentHost },
-            sectionTitleProvider: { [weak self] in self?.windowController.section.title ?? "" },
-            linksCountProvider: { [weak self] in self?.state.statusLinks().count ?? 0 }
-        )
     }
 
     var window: NSWindow? { windowController.window }
@@ -181,7 +173,6 @@ final class DashboardCompositionController {
     func showSection(_ section: DashboardSection) { windowController.showSection(section) }
     func showProvider(_ providerID: String) { windowController.showProvider(providerID) }
     func teardown() {
-        statusLinksScrollAnchorController.stop()
         dashboardProviderPages.teardown()
         dashboardPreferencePages.teardown()
         windowController.teardown()
@@ -293,17 +284,8 @@ final class DashboardCompositionController {
     }
 
     func clampScrollBounds() {
-        statusLinksScrollAnchorController.clampDashboardScrollViewBounds()
-    }
-
-    func showSection(
-        _ section: DashboardSection,
-        restoringScrollPosition scrollPosition: StatusLinksScrollPosition? = nil
-    ) {
-        windowController.showSection(section)
-        if let scrollPosition {
-            statusLinksScrollAnchorController.restore(scrollPosition, attempt: 0)
-        }
+        // NSScrollView/NSClipView owns ordinary bounds clamping. This hook is
+        // retained for the Advanced page's layout callback.
     }
 
     func addStatusLinkForTesting() { addStatusLink() }
@@ -321,7 +303,6 @@ final class DashboardCompositionController {
     func teardownForTesting() { teardown() }
 
     private func prepareForPageReplacement() {
-        statusLinksScrollAnchorController.stop()
         dashboardProviderPages.unmount()
         dashboardPreferencePages.teardown()
     }
@@ -395,66 +376,32 @@ final class DashboardCompositionController {
     }
 
     private func addStatusLink() {
-        let operation = "add"
-        statusLinksScrollAnchorController.logEditorGeometry(label: "before add")
-        let scrollPosition = statusLinksScrollAnchorController.capture(
-            captureLabel: "before add",
-            operation: operation
-        )
+        guard section == .menu else { return }
         var links = state.statusLinks()
         links.append(StatusLink(title: "", url: ""))
         state.setStatusLinks(links)
         SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
-        if section == .menu,
-           !statusLinksScrollAnchorController.refreshEditorInPlace(
-               links: links,
-               scrollPosition: scrollPosition,
-               operation: operation
-           ) {
-            showSection(.menu, restoringScrollPosition: scrollPosition)
-        }
+        dashboardPreferencePages.updateMenuStatusLinks(links, selectLastRow: true)
     }
 
     private func removeStatusLink(at index: Int) {
-        let operation = "remove"
-        let scrollPosition = statusLinksScrollAnchorController.capture(
-            captureLabel: "before remove",
-            operation: operation
-        )
+        guard section == .menu else { return }
         var links = state.statusLinks()
         guard index >= 0, index < links.count else { return }
         links.remove(at: index)
         state.setStatusLinks(links)
         SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
-        if section == .menu,
-           !statusLinksScrollAnchorController.refreshEditorInPlace(
-               links: links,
-               scrollPosition: scrollPosition,
-               operation: operation
-           ) {
-            showSection(.menu, restoringScrollPosition: scrollPosition)
-        }
+        dashboardPreferencePages.updateMenuStatusLinks(links)
     }
 
     private func resetStatusLinks() {
         guard section == .menu else { return }
-        let operation = "reset"
-        let scrollPosition = statusLinksScrollAnchorController.capture(
-            captureLabel: "before reset",
-            operation: operation
-        )
         let links = state.defaultStatusLinks()
         state.setStatusLinks(links)
         SwitchLog.write("status links restored to defaults; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
-        if !statusLinksScrollAnchorController.refreshEditorInPlace(
-            links: links,
-            scrollPosition: scrollPosition,
-            operation: operation
-        ) {
-            showSection(.menu, restoringScrollPosition: scrollPosition)
-        }
+        dashboardPreferencePages.updateMenuStatusLinks(links)
     }
 }

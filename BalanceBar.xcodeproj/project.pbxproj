@@ -61,7 +61,6 @@
 		A100000000000000000000A1 /* DashboardSettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000A2 /* DashboardSettingsComponents.swift */; };
 		A10000000000000000000094 /* DashboardComponentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000095 /* DashboardComponentsTests.swift */; };
 		A10000000000000000000096 /* StatusLinksEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000097 /* StatusLinksEditor.swift */; };
-		A10000000000000000000098 /* StatusLinksScrollAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000099 /* StatusLinksScrollAnchor.swift */; };
 		A1000000000000000000009A /* StatusLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009B /* StatusLinksTests.swift */; };
 		A1000000000000000000009D /* DashboardWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000009E /* DashboardWindowController.swift */; };
 		A1000000000000000000009F /* DashboardWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000A0 /* DashboardWindowControllerTests.swift */; };
@@ -179,7 +178,6 @@
 		A100000000000000000000A2 /* DashboardSettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSettingsComponents.swift; sourceTree = "<group>"; };
 		A10000000000000000000095 /* DashboardComponentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardComponentsTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000097 /* StatusLinksEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksEditor.swift; sourceTree = "<group>"; };
-		A10000000000000000000099 /* StatusLinksScrollAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksScrollAnchor.swift; sourceTree = "<group>"; };
 		A1000000000000000000009B /* StatusLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLinksTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000009E /* DashboardWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowController.swift; sourceTree = "<group>"; };
 		A100000000000000000000A0 /* DashboardWindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowControllerTests.swift; sourceTree = "<group>"; };
@@ -490,7 +488,6 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000097 /* StatusLinksEditor.swift */,
-				A10000000000000000000099 /* StatusLinksScrollAnchor.swift */,
 			);
 			name = StatusLinks;
 			path = StatusLinks;
@@ -724,7 +721,6 @@
 				A100000000000000000000A1 /* DashboardSettingsComponents.swift in Sources */,
 				A1000000000000000000009D /* DashboardWindowController.swift in Sources */,
 				A10000000000000000000096 /* StatusLinksEditor.swift in Sources */,
-				A10000000000000000000098 /* StatusLinksScrollAnchor.swift in Sources */,
 				A100000000000000000000B0 /* DashboardAboutPage.swift in Sources */,
 				A100000000000000000000B2 /* DashboardAdvancedPage.swift in Sources */,
 				A100000000000000000000B4 /* DashboardGeneralAndRefreshPages.swift in Sources */,

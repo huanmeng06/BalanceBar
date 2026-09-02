@@ -292,6 +292,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     func testMenuPageLaysOutReachableStatusLinksEditorWhenMenuDisplayIsEnabled() throws {
+        _ = NSApplication.shared
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")
         let previousLinks = defaults.object(forKey: "statusLinks")
@@ -330,10 +331,12 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertFalse(editor.isHidden)
         XCTAssertGreaterThan(editor.frame.width, 0)
         XCTAssertEqual(editor.frame.height, editor.layoutHeight, accuracy: 1)
-        XCTAssertEqual(editor.subviews.count, 1, "Status Links host was torn down after page creation")
-        let hostingView = try XCTUnwrap(editor.subviews.first)
-        XCTAssertGreaterThan(hostingView.frame.width, 0)
-        XCTAssertGreaterThan(hostingView.frame.height, 0)
+        XCTAssertTrue(editor.clipsToBounds)
+        XCTAssertTrue(editor.scrollViewForTesting.documentView === editor.tableViewForTesting)
+        XCTAssertTrue(editor.tableViewForTesting.headerView is NSTableHeaderView)
+        XCTAssertEqual(editor.tableViewForTesting.tableColumns.count, 2)
+        XCTAssertGreaterThan(editor.scrollViewForTesting.frame.width, 0)
+        XCTAssertGreaterThan(editor.scrollViewForTesting.frame.height, 0)
 
         let editorRectInCard = editor.convert(editor.bounds, to: card)
         XCTAssertTrue(
@@ -352,13 +355,15 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             "Status Links editor must be reachable by scrolling"
         )
 
+        let scrollFrame = editor.scrollViewForTesting.frame
         XCTAssertTrue(
-            editor.hostedContentIsWithinRevealBounds,
-            "Hosted Status Links content must stay inside its clipped editor bounds"
+            editor.bounds.insetBy(dx: -1, dy: -1).contains(scrollFrame),
+            "Native Status Links table viewport must stay inside its clipped editor bounds"
         )
     }
 
-    func testProductionMenuAddKeepsVisibleStatusLinksAnchorsFixedAtDocumentBottom() throws {
+    func testProductionMenuAddKeepsStatusLinksCardHeightFixedAndUsesTableScrolling() throws {
+        _ = NSApplication.shared
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")
         let previousLinks = defaults.object(forKey: "statusLinks")
@@ -376,10 +381,10 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         }
 
         defaults.set(true, forKey: "showStatusMenu")
-        defaults.set([
-            ["title": "One", "url": "https://one.example"],
-            ["title": "Two", "url": "https://two.example"]
-        ], forKey: "statusLinks")
+        let configuredLinks = (0..<6).map {
+            StatusLink(title: "Link \($0)", url: "https://\($0).example")
+        }
+        defaults.set(try JSONEncoder().encode(configuredLinks), forKey: "statusLinks")
         let appDelegate = AppDelegate(
             repository: CCSwitchRepository(databaseURL: URL(fileURLWithPath: "/nonexistent/issue-26-add-anchor.db"))
         )
@@ -395,92 +400,30 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let editor = try XCTUnwrap(findStatusLinksEditor(in: page))
         let card = try XCTUnwrap(ancestors(of: editor).first { $0.layer?.cornerRadius == 18 })
 
-        let geometry = DashboardScrollGeometry(
-            documentBounds: documentView.bounds,
-            viewportHeight: scrollView.contentView.bounds.height,
-            isDocumentFlipped: documentView.isFlipped
-        )
-        XCTAssertGreaterThan(geometry.maximumOffset, 0)
-        let bottomRect = geometry.visibleDocumentRect(
-            forVisualOffset: max(0, geometry.maximumOffset - 1)
-        )
-        let documentY = geometry.contentOriginDocumentY(
-            for: bottomRect,
-            contentViewIsFlipped: scrollView.contentView.isFlipped
-        )
-        let contentOriginY = documentView.convert(
-            NSPoint(x: documentView.bounds.minX, y: documentY),
-            to: scrollView.contentView
-        ).y
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: contentOriginY))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-
-        func visibleOffset() -> CGFloat {
-            let current = DashboardScrollGeometry(
-                documentBounds: documentView.bounds,
-                viewportHeight: scrollView.contentView.bounds.height,
-                isDocumentFlipped: documentView.isFlipped
-            )
-            return current.clampedVisualOffset(for: scrollView.contentView.convert(
-                scrollView.contentView.bounds,
-                to: documentView
-            ))
-        }
-        func cardTop() -> CGFloat {
-            let y = card.isFlipped ? card.bounds.minY : card.bounds.maxY
-            return card.convert(NSPoint(x: card.bounds.minX, y: y), to: scrollView.contentView).y
-        }
-
-        let initialOffset = visibleOffset()
-        let initialTitleY = try XCTUnwrap(editor.viewportAnchorY(
-            identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor"),
-            in: scrollView.contentView
-        ))
-        let initialHeaderY = try XCTUnwrap(editor.viewportAnchorY(
-            identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor"),
-            in: scrollView.contentView
-        ))
-        let initialCardTop = cardTop()
-        let initialEditorTop = editor.convert(
-            NSPoint(x: editor.bounds.minX, y: editor.isFlipped ? editor.bounds.minY : editor.bounds.maxY),
-            to: scrollView.contentView
-        ).y
+        let initialEditorHeight = editor.frame.height
+        let initialCardHeight = card.frame.height
         let initialDocumentHeight = documentView.bounds.height
 
         appDelegate.dashboardCompositionForTesting.addStatusLinkForTesting()
 
-        let deadline = Date().addingTimeInterval(0.34)
-        while Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.016))
-            window.layoutIfNeeded()
-            window.displayIfNeeded()
-            XCTAssertEqual(visibleOffset(), initialOffset, accuracy: 0.5)
-            XCTAssertEqual(cardTop(), initialCardTop, accuracy: 0.5)
-            XCTAssertEqual(
-                editor.convert(
-                    NSPoint(x: editor.bounds.minX, y: editor.isFlipped ? editor.bounds.minY : editor.bounds.maxY),
-                    to: scrollView.contentView
-                ).y,
-                initialEditorTop,
-                accuracy: 0.5
-            )
-            XCTAssertEqual(try XCTUnwrap(editor.viewportAnchorY(
-                identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor"),
-                in: scrollView.contentView
-            )), initialTitleY, accuracy: 0.5)
-            XCTAssertEqual(try XCTUnwrap(editor.viewportAnchorY(
-                identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor"),
-                in: scrollView.contentView
-            )), initialHeaderY, accuracy: 0.5)
-        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
 
-        XCTAssertEqual(editor.rowCount, 3)
-        XCTAssertEqual(editor.renderedRowCount, 3)
-        XCTAssertGreaterThan(documentView.bounds.height, initialDocumentHeight)
-        XCTAssertTrue(editor.hostedContentIsWithinRevealBounds)
+        XCTAssertEqual(editor.rowCount, 7)
+        XCTAssertEqual(editor.layoutHeight, StatusLinksEditorHostingView.fixedHeight, accuracy: 0.001)
+        XCTAssertEqual(editor.frame.height, initialEditorHeight, accuracy: 1)
+        XCTAssertEqual(card.frame.height, initialCardHeight, accuracy: 1)
+        XCTAssertEqual(documentView.bounds.height, initialDocumentHeight, accuracy: 1)
+        XCTAssertGreaterThan(
+            editor.tableViewForTesting.frame.height,
+            editor.scrollViewForTesting.contentView.bounds.height,
+            "Additional rows should be handled by the native table viewport"
+        )
     }
 
     func testStatusMenuToggleUpdatesDashboardImmediatelyAndPreservesConfiguredLinks() throws {
+        _ = NSApplication.shared
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")
         let previousLinks = defaults.object(forKey: "statusLinks")
@@ -530,8 +473,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(findStatusLinksEditors(in: hiddenPage).count, 1)
         let hiddenEditor = try XCTUnwrap(findStatusLinksEditor(in: hiddenPage))
         XCTAssertFalse(hiddenEditor.isVisible)
-        XCTAssertTrue(hiddenEditor === visibleEditor, "Toggle must not recreate the hosting view")
-        XCTAssertEqual(hiddenEditor.subviews.count, 1)
+        XCTAssertTrue(hiddenEditor === visibleEditor, "Toggle must not recreate the native editor")
+        XCTAssertTrue(hiddenEditor.scrollViewForTesting.documentView === hiddenEditor.tableViewForTesting)
         XCTAssertFalse(defaults.bool(forKey: "showStatusMenu"))
         let persistedAfterHide = try JSONDecoder().decode(
             [StatusLink].self,
@@ -552,8 +495,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(findStatusLinksEditors(in: restoredPage).count, 1)
         let restoredEditor = try XCTUnwrap(findStatusLinksEditor(in: restoredPage))
         XCTAssertTrue(restoredEditor.isVisible)
-        XCTAssertTrue(restoredEditor === visibleEditor, "Toggle must not recreate the hosting view")
-        XCTAssertEqual(restoredEditor.subviews.count, 1)
+        XCTAssertTrue(restoredEditor === visibleEditor, "Toggle must not recreate the native editor")
+        XCTAssertTrue(restoredEditor.scrollViewForTesting.documentView === restoredEditor.tableViewForTesting)
         XCTAssertEqual(restoredEditor.rowCount, customLinks.count)
         XCTAssertEqual(restoredEditor.frame.height, restoredEditor.layoutHeight, accuracy: 1)
         let persistedAfterRestore = try JSONDecoder().decode(
@@ -563,7 +506,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(persistedAfterRestore, customLinks)
     }
 
-    func testRapidStatusMenuTogglesKeepSingleHostingViewAndStableFinalFrames() throws {
+    func testRapidStatusMenuTogglesKeepSingleNativeEditorAndStableFinalFrames() throws {
+        _ = NSApplication.shared
         let defaults = UserDefaults.standard
         let previousValue = defaults.object(forKey: "showStatusMenu")
         let previousLinks = defaults.object(forKey: "statusLinks")
@@ -611,13 +555,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             let page = try XCTUnwrap(menuPage(in: window))
             let editors = findStatusLinksEditors(in: page)
             XCTAssertEqual(editors.count, 1, "Rapid toggles must keep exactly one editor")
-            XCTAssertTrue(editors.first === editor, "Rapid toggles must not recreate the hosting view")
-            XCTAssertEqual(editors.first?.subviews.count, 1)
+            XCTAssertTrue(editors.first === editor, "Rapid toggles must not recreate the native editor")
+            XCTAssertTrue(editors.first?.scrollViewForTesting.documentView === editors.first?.tableViewForTesting)
             XCTAssertEqual(editors.first?.isVisible, shouldShow)
-            XCTAssertTrue(
-                editors.first?.hostedContentIsWithinRevealBounds ?? false,
-                "The hosted editor must stay inside its own reveal bounds during every toggle frame"
-            )
         }
 
         let finalToggle = try XCTUnwrap(
@@ -634,7 +574,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(visibleEditor.alphaValue, 1, accuracy: 0.01)
         XCTAssertEqual(visibleEditor.frame.height, visibleEditor.layoutHeight, accuracy: 1)
         XCTAssertEqual(visibleEditor.rowCount, customLinks.count)
-        XCTAssertTrue(visibleEditor.hostedContentIsWithinRevealBounds)
+        XCTAssertTrue(visibleEditor.scrollViewForTesting.documentView === visibleEditor.tableViewForTesting)
 
         finalToggle.state = .off
         _ = NSApp.sendAction(finalToggle.action!, to: finalToggle.target, from: finalToggle)
@@ -661,10 +601,7 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 editorRect.intersects(statusRowRect),
                 "The editor must never animate through the View Status sibling row"
             )
-            XCTAssertTrue(
-                hiddenEditor.hostedContentIsWithinRevealBounds,
-                "The SwiftUI content must remain within the editor reveal boundary"
-            )
+            XCTAssertTrue(hiddenEditor.clipsToBounds)
         }
     }
 

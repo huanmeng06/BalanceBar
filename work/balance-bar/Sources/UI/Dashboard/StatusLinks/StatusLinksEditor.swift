@@ -1,63 +1,61 @@
 import AppKit
-import SwiftUI
 
 enum StatusLinkField: Equatable {
     case title
     case url
 }
 
-/// An inert AppKit marker gives regression tests the frame of the actual
-/// SwiftUI title/header content without adding another hosting view.
-private struct StatusLinksGeometryAnchor: NSViewRepresentable {
-    let identifier: NSUserInterfaceItemIdentifier
+/// The native AppKit editor for the configurable menu-bar status links.
+///
+/// The historical type name is kept because Dashboard composition and a few
+/// test seams use it. It is no longer a hosting view: every editor control,
+/// including the editable table cells, is AppKit-owned.
+final class StatusLinksEditorHostingView: NSView,
+    NSTableViewDataSource,
+    NSTableViewDelegate,
+    NSTextFieldDelegate
+{
+    static let fixedHeight: CGFloat = 222
+    static let tableViewportHeight: CGFloat = 134
+    static let tableHeaderHeight: CGFloat = 24
+    static let tableRowHeight: CGFloat = 22
+    static let nameColumnMinimumWidth: CGFloat = 120
+    static let urlColumnMinimumWidth: CGFloat = 220
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        view.identifier = identifier
-        return view
-    }
+    private let onChange: (Int, StatusLinkField, String) -> Void
+    private let onAdd: () -> Void
+    private let onRemove: (Int) -> Void
+    private let onReset: () -> Void
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        nsView.identifier = identifier
-    }
-}
+    private(set) var links: [StatusLink]
+    private(set) var isTornDown = false
 
-/// A native SwiftUI text field kept at its natural single-line height and
-/// centered by the fixed-height outer container. The system rounded-border
-/// style owns the background, border, focus ring, and appearance adaptation.
-struct StatusTextField: View {
-    @Binding var text: String
-    let placeholder: String
-    let accessibilityIdentifier: String
+    let tableView: NSTableView
+    let scrollView: NSScrollView
+    let nameColumn: NSTableColumn
+    let urlColumn: NSTableColumn
+    let titleLabel: NSTextField
+    let resetButton: NSButton
+    let actionsControl: NSSegmentedControl
 
-    var body: some View {
-        HStack(spacing: 0) {
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityIdentifier(accessibilityIdentifier)
-        }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 28,
-            maxHeight: 28,
-            alignment: .center
-        )
-    }
-}
+    private var heightConstraint: NSLayoutConstraint?
+    private var lastColumnLayoutWidth: CGFloat = -1
+    private var editingGeneration = 0
 
-final class StatusLinksEditorModel: ObservableObject {
-    @Published var links: [StatusLink]
-    @Published var reservesAddedRowSlot = false
-    @Published var revealingAddedRowIndex: Int?
-    @Published private(set) var isAddInFlight = false
-    let onChange: (Int, StatusLinkField, String) -> Void
-    let onAdd: () -> Void
-    let onRemove: (Int) -> Void
-    let onReset: () -> Void
-    private var revealGeneration = 0
+    // These accessors keep the view hierarchy easy to inspect in focused
+    // XCTest coverage without exposing implementation state to production.
+    var tableViewForTesting: NSTableView { tableView }
+    var scrollViewForTesting: NSScrollView { scrollView }
+    var resetButtonForTesting: NSButton { resetButton }
+    var actionsControlForTesting: NSSegmentedControl { actionsControl }
+
+    var addButtonForTesting: NSSegmentedControl { actionsControl }
+    var removeButtonForTesting: NSSegmentedControl { actionsControl }
+
+    var rowCount: Int { links.count }
+    var layoutHeight: CGFloat { Self.fixedHeight }
+    var currentHeight: CGFloat { max(0, heightConstraint?.constant ?? layoutHeight) }
+    var isVisible: Bool { currentHeight > 0 && alphaValue > 0 }
 
     init(
         links: [StatusLink],
@@ -71,460 +69,544 @@ final class StatusLinksEditorModel: ObservableObject {
         self.onAdd = onAdd
         self.onRemove = onRemove
         self.onReset = onReset
-    }
 
-    func edit(index: Int, field: StatusLinkField, value: String) {
-        guard links.indices.contains(index) else { return }
-        switch field {
-        case .title:
-            links[index].title = value
-        case .url:
-            links[index].url = value
-        }
-        onChange(index, field, value)
-    }
-
-    func add() {
-        guard !isAddInFlight else { return }
-        isAddInFlight = true
-        onAdd()
-    }
-
-    func remove(at index: Int) {
-        guard links.indices.contains(index) else { return }
-        onRemove(index)
-    }
-
-    func reset() {
-        onReset()
-    }
-
-    func reserveAddedRowSlot() {
-        reservesAddedRowSlot = true
-    }
-
-    func cancelAddInsertion() {
-        revealGeneration &+= 1
-        isAddInFlight = false
-        reservesAddedRowSlot = false
-        revealingAddedRowIndex = nil
-    }
-
-    func revealAddedRow(_ newLinks: [StatusLink]) {
-        revealGeneration &+= 1
-        let generation = revealGeneration
-        links = newLinks
-        reservesAddedRowSlot = false
-        revealingAddedRowIndex = newLinks.indices.last
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.revealGeneration == generation else { return }
-            withAnimation(.easeInOut(duration: 0.16)) {
-                self.revealingAddedRowIndex = nil
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-                guard let self, self.revealGeneration == generation else { return }
-                self.isAddInFlight = false
-            }
-        }
-    }
-}
-
-struct StatusLinksEditorView: View {
-    @ObservedObject var model: StatusLinksEditorModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 0) {
-                Text(tr(.keyStatusLinksEditorStatusLinks))
-                    .font(.system(size: 13, weight: .medium))
-                Spacer(minLength: 12)
-                Button(tr(.keyStatusLinksEditorRestoreDefaults), action: model.reset)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .font(.system(size: 12))
-                    .accessibilityIdentifier("statusLinks.reset")
-            }
-            .frame(height: 24)
-            .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.title.anchor")))
-
-            HStack(spacing: 8) {
-                Text(tr(.keyStatusLinksEditorName))
-                    .frame(width: 160, alignment: .leading)
-                Text(tr(.keyStatusLinksEditorUrl))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Color.clear.frame(width: 24, height: 1)
-            }
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.tertiary)
-            .frame(height: 20, alignment: .center)
-            .background(StatusLinksGeometryAnchor(identifier: NSUserInterfaceItemIdentifier("statusLinks.header.anchor")))
-
-            ForEach(model.links.indices, id: \.self) { index in
-                HStack(spacing: 8) {
-                    StatusTextField(
-                        text: $model.links[index].title,
-                        placeholder: tr(.keyStatusLinksEditorDisplayName),
-                        accessibilityIdentifier: "statusLinks.name.\(index)"
-                    )
-                    .frame(width: 160)
-                    .onChange(of: model.links[index].title) { _, value in
-                        model.edit(index: index, field: .title, value: value)
-                    }
-
-                    StatusTextField(
-                        text: $model.links[index].url,
-                        placeholder: "https://",
-                        accessibilityIdentifier: "statusLinks.url.\(index)"
-                    )
-                    .frame(maxWidth: .infinity)
-                    .onChange(of: model.links[index].url) { _, value in
-                        model.edit(index: index, field: .url, value: value)
-                    }
-
-                    Button {
-                        model.remove(at: index)
-                    } label: {
-                        Image(systemName: "minus.circle")
-                            .font(.system(size: 16))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 28)
-                    .accessibilityIdentifier("statusLinks.remove.\(index)")
-                }
-                .frame(height: 35)
-                .opacity(model.revealingAddedRowIndex == index ? 0 : 1)
-                .animation(
-                    .easeInOut(duration: 0.16),
-                    value: model.revealingAddedRowIndex == index
-                )
-            }
-
-            if model.reservesAddedRowSlot {
-                Color.clear.frame(height: 35)
-            }
-
-            Color.clear.frame(height: 8)
-
-            Button(action: model.add) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 17))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color(nsColor: .controlAccentColor))
-            .frame(width: 32, height: 28, alignment: .leading)
-            .disabled(model.isAddInFlight)
-            .accessibilityIdentifier("statusLinks.add")
-
-            // Consume only surplus host height below the controls. This pins
-            // title, headers, and existing rows to the visual top while the
-            // outer AppKit reveal interpolates its height.
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-}
-
-/// AppKit only hosts the SwiftUI editor and controls its stable outer height.
-/// No AppKit text field, cell, or field editor is involved in status-link rows.
-final class StatusLinksEditorHostingView: NSView {
-    private let model: StatusLinksEditorModel
-    private let hostingView: NSHostingView<StatusLinksEditorView>
-    private var heightConstraint: NSLayoutConstraint?
-    private var hostingHeightConstraint: NSLayoutConstraint?
-    private var links: [StatusLink]
-    private var visibilityGeneration = 0
-    private var linkUpdateGeneration = 0
-    private(set) var isTornDown = false
-
-    var rowCount: Int { links.count }
-    var layoutHeight: CGFloat { 112 + CGFloat(links.count * 35) }
-    /// The height currently owned by the editor's AppKit row. Unlike
-    /// `layoutHeight`, this is zero while the editor is hidden and therefore
-    /// is safe for mixed-card height calculation.
-    var currentHeight: CGFloat { max(0, heightConstraint?.constant ?? layoutHeight) }
-    var isVisible: Bool {
-        (heightConstraint?.constant ?? 0) > 0 && alphaValue > 0
-    }
-
-    var renderedRowCount: Int { model.links.count }
-    var hasReservedAddedRowSlot: Bool { model.reservesAddedRowSlot }
-    var isAddInFlight: Bool { model.isAddInFlight }
-    var hostedContentTopInset: CGFloat {
-        bounds.maxY - convert(hostingView.bounds, from: hostingView).maxY
-    }
-
-    func viewportAnchorY(
-        identifier: NSUserInterfaceItemIdentifier,
-        in viewport: NSView
-    ) -> CGFloat? {
-        guard let anchor = findDescendant(with: identifier, in: hostingView) else {
-            return nil
-        }
-        return anchor.convert(
-            NSPoint(x: anchor.bounds.minX, y: anchor.bounds.maxY),
-            to: viewport
-        ).y
-    }
-
-    /// The hosted SwiftUI hierarchy is always bounded by this view before it
-    /// becomes visible. This makes the reveal independent of stack layout
-    /// interpolation and prevents content from crossing preceding rows.
-    var hostedContentIsWithinRevealBounds: Bool {
-        let hostedBounds = convert(hostingView.bounds, from: hostingView)
-        return bounds.insetBy(dx: -0.5, dy: -0.5).contains(hostedBounds)
-    }
-
-    init(
-        links: [StatusLink],
-        onChange: @escaping (Int, StatusLinkField, String) -> Void,
-        onAdd: @escaping () -> Void,
-        onRemove: @escaping (Int) -> Void,
-        onReset: @escaping () -> Void
-    ) {
-        self.links = links
-        let model = StatusLinksEditorModel(
-            links: links,
-            onChange: onChange,
-            onAdd: onAdd,
-            onRemove: onRemove,
-            onReset: onReset
+        let tableView = NSTableView()
+        let nameColumn = NSTableColumn(
+            identifier: NSUserInterfaceItemIdentifier("statusLinks.name.column")
         )
-        self.model = model
-        self.hostingView = NSHostingView(
-            rootView: StatusLinksEditorView(model: model)
+        let urlColumn = NSTableColumn(
+            identifier: NSUserInterfaceItemIdentifier("statusLinks.url.column")
         )
-        // The surrounding constraints own the host size throughout the row
-        // reveal. Do not let NSHostingView negotiate an intrinsic size while
-        // that height is interpolating, which can recenter the SwiftUI root.
-        self.hostingView.sizingOptions = []
+        let scrollView = NSScrollView()
+        let titleLabel = NSTextField(
+            labelWithString: tr(.keyStatusLinksEditorStatusLinks)
+        )
+        let resetButton = NSButton(
+            title: tr(.keyStatusLinksEditorRestoreDefaults),
+            target: nil,
+            action: nil
+        )
+        let actionsControl = NSSegmentedControl()
+
+        self.tableView = tableView
+        self.scrollView = scrollView
+        self.nameColumn = nameColumn
+        self.urlColumn = urlColumn
+        self.titleLabel = titleLabel
+        self.resetButton = resetButton
+        self.actionsControl = actionsControl
+
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.masksToBounds = true
-        clipsToBounds = true
+
         translatesAutoresizingMaskIntoConstraints = false
-        hostingView.wantsLayer = true
-        hostingView.layer?.masksToBounds = true
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(hostingView)
-        NSLayoutConstraint.activate([
-            hostingView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            hostingView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hostingView.topAnchor.constraint(equalTo: topAnchor)
-        ])
-        let hostingHeightConstraint = hostingView.heightAnchor.constraint(
-            equalToConstant: layoutHeight
+        clipsToBounds = true
+
+        configureTitle(titleLabel)
+        configureResetButton(resetButton)
+        configureTable(
+            tableView,
+            nameColumn: nameColumn,
+            urlColumn: urlColumn
         )
-        hostingHeightConstraint.isActive = true
-        self.hostingHeightConstraint = hostingHeightConstraint
-        let heightConstraint = heightAnchor.constraint(equalToConstant: layoutHeight)
+        configureScrollView(scrollView, documentView: tableView)
+        configureActionsControl(actionsControl)
+
+        addSubview(titleLabel)
+        addSubview(resetButton)
+        addSubview(scrollView)
+        addSubview(actionsControl)
+
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            titleLabel.heightAnchor.constraint(equalToConstant: 24),
+
+            resetButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            resetButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            scrollView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            scrollView.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
+
+            actionsControl.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            actionsControl.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 8),
+            actionsControl.heightAnchor.constraint(equalToConstant: 24)
+        ])
+
+        let heightConstraint = heightAnchor.constraint(equalToConstant: Self.fixedHeight)
         heightConstraint.isActive = true
         self.heightConstraint = heightConstraint
-        SwitchLog.write(
-            "status-link editor runtime; implementation=SwiftUI.TextField; rows=\(links.count); host=\(String(reflecting: type(of: hostingView)))",
-            level: .debug,
-            category: "ui.geometry"
-        )
+
+        updateRemoveControlState()
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    private func findDescendant(
-        with identifier: NSUserInterfaceItemIdentifier,
-        in view: NSView
-    ) -> NSView? {
-        if view.identifier == identifier { return view }
-        for child in view.subviews {
-            if let match = findDescendant(with: identifier, in: child) {
-                return match
-            }
-        }
-        return nil
-    }
-
-    func updateLinks(
-        _ newLinks: [StatusLink],
-        animated: Bool,
-        revealAddedRowsAtCompletion: Bool = false,
-        completion: (() -> Void)? = nil
-    ) {
-        guard !isTornDown else {
-            completion?()
-            return
-        }
-        linkUpdateGeneration &+= 1
-        let updateGeneration = linkUpdateGeneration
-        // The editor owns the card height only while its own row is changing.
-        // Ordinary adaptive rows in the mixed card remain automatically
-        // measured before and after this transition.
-        setAncestorCardAutomaticHeightUpdates(false)
-        let deferAddedRows = revealAddedRowsAtCompletion && newLinks.count > links.count
-        links = newLinks
-        // Deletion already has the desired motion: the removed row vanishes
-        // first and the card then collapses. For an addition, play that same
-        // geometry in reverse by expanding an empty 35pt slot first and only
-        // revealing the new SwiftUI row once the expansion has settled.
-        if deferAddedRows {
-            // The outer AppKit editor supplies the expanding 35pt slot. Keep
-            // the sole SwiftUI host on its old rows until that expansion has
-            // settled so changing its intrinsic content cannot displace the
-            // title/header mid-animation.
-        } else {
-            model.cancelAddInsertion()
-            model.links = newLinks
-        }
-        let targetHeight = layoutHeight
-        let applyHeight = {
-            guard self.linkUpdateGeneration == updateGeneration else { return }
-            self.heightConstraint?.constant = targetHeight
-            self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
-            // Keep the hosted old rows at their fixed top-aligned height
-            // during the empty-slot expansion. Once the outer reveal reaches
-            // its final size, grow this sole host and reveal the new row.
-            self.hostingHeightConstraint?.constant = targetHeight
-            self.needsLayout = true
-            self.superview?.needsLayout = true
-            if deferAddedRows {
-                self.superview?.layoutSubtreeIfNeeded()
-                self.model.revealAddedRow(newLinks)
-            }
-            self.setAncestorCardAutomaticHeightUpdates(true)
-            self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
-            self.superview?.needsLayout = true
-            self.superview?.layoutSubtreeIfNeeded()
-            completion?()
-        }
-        if animated {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.20
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
-                self.heightConstraint?.animator().constant = targetHeight
-                self.synchronizeAncestorCardHeight(animated: true, editorHeight: targetHeight)
-                self.superview?.layoutSubtreeIfNeeded()
-            } completionHandler: {
-                applyHeight()
-            }
-        } else {
-            applyHeight()
-        }
-    }
-
-    func setVisible(_ visible: Bool, animated: Bool) {
-        guard !isTornDown else { return }
-        visibilityGeneration += 1
-        let generation = visibilityGeneration
-        let targetHeight: CGFloat = visible ? layoutHeight : 0
-        setAncestorCardAutomaticHeightUpdates(false)
-        let applyLayout = { [weak self] in
-            guard let self else { return }
-            self.heightConstraint?.constant = targetHeight
-            self.hostingHeightConstraint?.constant = targetHeight
-            self.synchronizeAncestorCardHeight()
-            self.needsLayout = true
-            self.superview?.needsLayout = true
-            self.superview?.layoutSubtreeIfNeeded()
-            self.setAncestorCardAutomaticHeightUpdates(true)
-            self.synchronizeAncestorCardHeight(editorHeight: targetHeight)
-            self.superview?.needsLayout = true
-            self.superview?.layoutSubtreeIfNeeded()
-        }
-        guard animated else {
-            alphaValue = visible ? 1 : 0
-            applyLayout()
-            return
-        }
-
-        if visible {
-            // Establish the final frame first. Only opacity is animated, so
-            // the editor never travels through the rows above it.
-            alphaValue = 0
-            applyLayout()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                self.animator().alphaValue = 1
-            }
-            return
-        }
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.14
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            self.animator().alphaValue = 0
-        } completionHandler: { [weak self] in
-            guard let self, self.visibilityGeneration == generation else { return }
-            self.alphaValue = 0
-            applyLayout()
-        }
-    }
-
-    func teardown() {
-        guard !isTornDown else { return }
-        isTornDown = true
-        heightConstraint?.isActive = false
-        heightConstraint = nil
-        hostingHeightConstraint?.isActive = false
-        hostingHeightConstraint = nil
-        hostingView.removeFromSuperview()
-    }
-
-    func logGeometry(label: String) {
-        let card = (superview as? NSStackView)?.superview
-        SwitchLog.write(
-            "status-link geometry; label=\(label); rows=\(links.count); editor_frame=\(DashboardLogging.rect(frame)); card_frame=\(card.map { DashboardLogging.rect($0.frame) } ?? "none")",
-            category: "ui.geometry"
-        )
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 
     deinit {
         teardown()
     }
 
-    private func ancestorCardInfo(
-        editorHeight: CGFloat? = nil
-    ) -> (NSView, NSLayoutConstraint, CGFloat)? {
+    override func layout() {
+        super.layout()
+        updateColumnWidthsIfNeeded()
+        updateTableDocumentFrame()
+    }
+
+    func updateLinks(
+        _ newLinks: [StatusLink],
+        selectLastRow: Bool = false,
+        completion: (() -> Void)? = nil
+    ) {
+        guard !isTornDown else {
+            completion?()
+            return
+        }
+
+        let oldCount = links.count
+        let previousSelection = tableView.selectedRow
+        let isAddingRow = selectLastRow && newLinks.count > oldCount
+
+        links = newLinks
+        tableView.reloadData()
+        tableView.noteNumberOfRowsChanged()
+        updateTableDocumentFrame()
+
+        let nextSelection: Int?
+        if newLinks.isEmpty {
+            nextSelection = nil
+        } else if isAddingRow {
+            nextSelection = newLinks.indices.last
+        } else if previousSelection >= 0 {
+            nextSelection = min(previousSelection, newLinks.count - 1)
+        } else {
+            nextSelection = nil
+        }
+
+        applySelection(nextSelection)
+        completion?()
+
+        if isAddingRow, let nextSelection {
+            beginNameEditing(row: nextSelection)
+        }
+    }
+
+    func setVisible(_ visible: Bool, animated: Bool) {
+        guard !isTornDown else { return }
+        let targetHeight = visible ? Self.fixedHeight : 0
+        let generation = editingGeneration
+
+        // Keep the native controls pinned to the top while the outer row is
+        // collapsed. clipsToBounds prevents the fixed editor content from
+        // crossing the preceding settings row during a reveal.
+        heightConstraint?.constant = targetHeight
+        synchronizeAncestorCardHeight(animated: animated)
+
+        guard animated else {
+            alphaValue = visible ? 1 : 0
+            needsLayout = true
+            superview?.needsLayout = true
+            return
+        }
+
+        if visible {
+            alphaValue = 0
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.allowsImplicitAnimation = true
+                self.animator().alphaValue = 1
+            }
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.14
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.allowsImplicitAnimation = true
+                self.animator().alphaValue = 0
+            } completionHandler: { [weak self] in
+                guard let self, self.editingGeneration == generation else { return }
+                self.alphaValue = 0
+                self.needsLayout = true
+                self.superview?.needsLayout = true
+            }
+        }
+    }
+
+    func teardown() {
+        guard !isTornDown else { return }
+        isTornDown = true
+        editingGeneration &+= 1
+        tableView.delegate = nil
+        tableView.dataSource = nil
+        resetButton.target = nil
+        actionsControl.target = nil
+        heightConstraint?.isActive = false
+        heightConstraint = nil
+    }
+
+    // MARK: - NSTableViewDataSource
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        links.count
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        viewFor tableColumn: NSTableColumn?,
+        row: Int
+    ) -> NSView? {
+        guard links.indices.contains(row), let tableColumn else { return nil }
+
+        let isNameColumn = tableColumn.identifier == nameColumn.identifier
+        let cellIdentifier = NSUserInterfaceItemIdentifier(
+            isNameColumn ? "statusLinks.name.cell" : "statusLinks.url.cell"
+        )
+        let cell = (tableView.makeView(withIdentifier: cellIdentifier, owner: self)
+            as? NSTableCellView) ?? makeCell(identifier: cellIdentifier)
+        cell.identifier = cellIdentifier
+
+        let field: NSTextField
+        if let existing = cell.textField {
+            field = existing
+        } else {
+            field = makeTextField()
+            cell.textField = field
+            cell.addSubview(field)
+            NSLayoutConstraint.activate([
+                field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                field.heightAnchor.constraint(equalToConstant: Self.tableRowHeight - 2)
+            ])
+        }
+
+        field.tag = row
+        field.identifier = NSUserInterfaceItemIdentifier(
+            "statusLinks.\(isNameColumn ? "name" : "url").\(row)"
+        )
+        field.placeholderString = isNameColumn
+            ? tr(.keyStatusLinksEditorDisplayName)
+            : "https://"
+        field.stringValue = isNameColumn ? links[row].title : links[row].url
+        field.setAccessibilityLabel(
+            isNameColumn
+                ? "\(tr(.keyStatusLinksEditorName)) \(row + 1)"
+                : "\(tr(.keyStatusLinksEditorUrl)) \(row + 1)"
+        )
+        field.delegate = self
+        field.isEditable = true
+        field.isSelectable = true
+        field.isContinuous = true
+        field.isBordered = false
+        field.drawsBackground = false
+        field.usesSingleLineMode = true
+        field.lineBreakMode = .byTruncatingTail
+        field.focusRingType = .default
+
+        return cell
+    }
+
+    // MARK: - NSTableViewDelegate
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateRemoveControlState()
+    }
+
+    // MARK: - NSTextFieldDelegate
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        commit(field)
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        commit(field)
+    }
+
+    // MARK: - Native actions
+
+    @objc private func performAction(_ sender: NSSegmentedControl) {
+        let segment = sender.selectedSegment
+        sender.selectedSegment = -1
+        performAction(segment: segment)
+    }
+
+    private func performAction(segment: Int) {
+        switch segment {
+        case 0:
+            onAdd()
+        case 1:
+            let row = tableView.selectedRow
+            guard links.indices.contains(row) else {
+                updateRemoveControlState()
+                return
+            }
+            onRemove(row)
+        default:
+            break
+        }
+    }
+
+    func performActionForTesting(segment: Int) {
+        performAction(segment: segment)
+    }
+
+    @objc private func restoreDefaults(_ sender: NSButton) {
+        onReset()
+    }
+
+    private func configureTitle(_ label: NSTextField) {
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
+    }
+
+    private func configureResetButton(_ button: NSButton) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.target = self
+        button.action = #selector(restoreDefaults(_:))
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 12)
+        button.identifier = NSUserInterfaceItemIdentifier("statusLinks.reset")
+        button.setAccessibilityLabel(tr(.keyStatusLinksEditorRestoreDefaults))
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
+    private func configureTable(
+        _ table: NSTableView,
+        nameColumn: NSTableColumn,
+        urlColumn: NSTableColumn
+    ) {
+        nameColumn.title = tr(.keyStatusLinksEditorName)
+        nameColumn.minWidth = Self.nameColumnMinimumWidth
+        nameColumn.resizingMask = .autoresizingMask
+        urlColumn.title = tr(.keyStatusLinksEditorUrl)
+        urlColumn.minWidth = Self.urlColumnMinimumWidth
+        urlColumn.resizingMask = .autoresizingMask
+
+        table.addTableColumn(nameColumn)
+        table.addTableColumn(urlColumn)
+        table.headerView = NSTableHeaderView()
+        table.headerView?.identifier = NSUserInterfaceItemIdentifier("statusLinks.header")
+        table.headerView?.frame.size.height = Self.tableHeaderHeight
+        table.delegate = self
+        table.dataSource = self
+        table.identifier = NSUserInterfaceItemIdentifier("statusLinks.table")
+        table.allowsEmptySelection = true
+        table.allowsMultipleSelection = false
+        table.allowsColumnSelection = false
+        table.allowsColumnReordering = false
+        table.allowsColumnResizing = true
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        table.rowSizeStyle = .medium
+        table.rowHeight = Self.tableRowHeight
+        table.intercellSpacing = NSSize(width: 0, height: 0)
+        table.style = .fullWidth
+        table.selectionHighlightStyle = .regular
+        table.usesAlternatingRowBackgroundColors = false
+        table.gridStyleMask = []
+        table.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
+        table.setAccessibilityRole(.table)
+    }
+
+    private func configureScrollView(_ scrollView: NSScrollView, documentView: NSView) {
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = documentView
+        scrollView.borderType = .bezelBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.drawsBackground = false
+        scrollView.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
+
+        documentView.translatesAutoresizingMaskIntoConstraints = true
+        documentView.autoresizingMask = [.width]
+    }
+
+    private func configureActionsControl(_ control: NSSegmentedControl) {
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.segmentCount = 2
+        control.trackingMode = .momentary
+        control.segmentStyle = .automatic
+        control.setWidth(28, forSegment: 0)
+        control.setWidth(28, forSegment: 1)
+        control.setLabel("+", forSegment: 0)
+        control.setLabel("−", forSegment: 1)
+        if let plus = NSImage(
+            systemSymbolName: "plus",
+            accessibilityDescription: "Add status link"
+        ) {
+            control.setImage(plus, forSegment: 0)
+        }
+        if let minus = NSImage(
+            systemSymbolName: "minus",
+            accessibilityDescription: "Remove status link"
+        ) {
+            control.setImage(minus, forSegment: 1)
+        }
+        control.target = self
+        control.action = #selector(performAction(_:))
+        control.identifier = NSUserInterfaceItemIdentifier("statusLinks.actions")
+        control.toolTip = "Add or remove status links"
+        control.setAccessibilityLabel("Status Links actions")
+    }
+
+    private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
+        let cell = NSTableCellView()
+        cell.identifier = identifier
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        return cell
+    }
+
+    private func makeTextField() -> NSTextField {
+        let field = NSTextField()
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.font = .systemFont(ofSize: 13)
+        field.alignment = .left
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return field
+    }
+
+    private func updateColumnWidthsIfNeeded() {
+        let availableWidth = tableView.bounds.width
+        guard availableWidth > 0,
+              abs(availableWidth - lastColumnLayoutWidth) > 0.5 else { return }
+
+        let nameWidth = max(
+            Self.nameColumnMinimumWidth,
+            min(availableWidth / 3, availableWidth - Self.urlColumnMinimumWidth)
+        )
+        nameColumn.width = nameWidth
+        urlColumn.width = max(Self.urlColumnMinimumWidth, availableWidth - nameWidth)
+        lastColumnLayoutWidth = availableWidth
+    }
+
+    private func updateTableDocumentFrame() {
+        let viewportSize = scrollView.contentView.bounds.size
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+
+        let rowExtent = tableView.rowHeight + tableView.intercellSpacing.height
+        let documentHeight = max(
+            viewportSize.height,
+            Self.tableHeaderHeight + CGFloat(links.count) * rowExtent
+        )
+        let newFrame = NSRect(
+            x: 0,
+            y: 0,
+            width: viewportSize.width,
+            height: documentHeight
+        )
+        if tableView.frame != newFrame {
+            tableView.frame = newFrame
+        }
+    }
+
+    private func applySelection(_ row: Int?) {
+        guard let row, links.indices.contains(row) else {
+            tableView.deselectAll(nil)
+            updateRemoveControlState()
+            return
+        }
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        tableView.scrollRowToVisible(row)
+        updateRemoveControlState()
+    }
+
+    private func updateRemoveControlState() {
+        actionsControl.setEnabled(
+            links.indices.contains(tableView.selectedRow),
+            forSegment: 1
+        )
+    }
+
+    private func beginNameEditing(row: Int) {
+        guard links.indices.contains(row) else { return }
+        editingGeneration &+= 1
+        let generation = editingGeneration
+        applySelection(row)
+
+        func editIfPossible() {
+            guard !self.isTornDown,
+                  generation == self.editingGeneration,
+                  self.links.indices.contains(row) else { return }
+            self.tableView.layoutSubtreeIfNeeded()
+            let cell = self.tableView.view(
+                atColumn: 0,
+                row: row,
+                makeIfNecessary: true
+            ) as? NSTableCellView
+            self.tableView.editColumn(0, row: row, with: nil, select: true)
+            if self.tableView.editedRow < 0, let field = cell?.textField {
+                self.window?.makeFirstResponder(field)
+            }
+        }
+
+        editIfPossible()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, generation == self.editingGeneration else { return }
+            editIfPossible()
+        }
+    }
+
+    private func commit(_ field: NSTextField) {
+        let row = field.tag
+        guard links.indices.contains(row),
+              let fieldIdentifier = field.identifier?.rawValue else { return }
+
+        let statusField: StatusLinkField
+        if fieldIdentifier.hasPrefix("statusLinks.name.") {
+            statusField = .title
+        } else if fieldIdentifier.hasPrefix("statusLinks.url.") {
+            statusField = .url
+        } else {
+            return
+        }
+
+        let value = field.stringValue
+        switch statusField {
+        case .title:
+            guard links[row].title != value else { return }
+            links[row].title = value
+        case .url:
+            guard links[row].url != value else { return }
+            links[row].url = value
+        }
+        onChange(row, statusField, value)
+    }
+
+    private func synchronizeAncestorCardHeight(animated: Bool) {
         guard let rowsStack = superview as? NSStackView,
-              let card = rowsStack.superview else { return nil }
+              let card = rowsStack.superview else { return }
         let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
         let requiredHeight = DashboardSettingsComponents.settingsCardHeight(
             rowsStack: rowsStack,
             separators: separators,
             rowHeight: { [weak self] row in
                 guard let self, row === self else { return nil }
-                return max(0, editorHeight ?? heightConstraint?.constant ?? layoutHeight)
+                return self.currentHeight
             }
         )
         let constraint = card.constraints.first {
-            ($0.firstItem as? NSView) === card &&
-                $0.firstAttribute == .height &&
-                $0.relation == .equal
-        } ?? card.heightAnchor.constraint(equalToConstant: requiredHeight)
-        if !constraint.isActive { constraint.isActive = true }
-        return (card, constraint, requiredHeight)
-    }
-
-    private func synchronizeAncestorCardHeight(
-        animated: Bool = false,
-        editorHeight: CGFloat? = nil
-    ) {
-        guard let info = ancestorCardInfo(editorHeight: editorHeight) else { return }
-        if animated {
-            info.1.animator().constant = info.2
-        } else {
-            info.1.constant = info.2
+            ($0.firstItem as? NSView) === card
+                && $0.firstAttribute == .height
+                && $0.relation == .equal
         }
-        info.0.needsLayout = true
-    }
-
-    private func setAncestorCardAutomaticHeightUpdates(_ enabled: Bool) {
-        guard let rowsStack = superview as? NSStackView,
-              let card = rowsStack.superview else { return }
-        DashboardSettingsComponents.setSettingsCardAutomaticHeightUpdates(
-            for: card,
-            enabled: enabled
-        )
+        if animated {
+            constraint?.animator().constant = requiredHeight
+        } else {
+            constraint?.constant = requiredHeight
+        }
+        card.invalidateIntrinsicContentSize()
+        card.needsLayout = true
+        rowsStack.needsLayout = true
     }
 }
