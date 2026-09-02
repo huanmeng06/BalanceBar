@@ -48,7 +48,7 @@ final class StatusLinksEditorHostingView: NSView,
     NSTableViewDelegate,
     NSTextFieldDelegate
 {
-    static let fixedHeight: CGFloat = 222
+    static let fixedHeight: CGFloat = 190
     static let tableViewportHeight: CGFloat = 134
     static let tableHeaderHeight: CGFloat = 24
     static let tableRowHeight: CGFloat = 22
@@ -68,7 +68,6 @@ final class StatusLinksEditorHostingView: NSView,
     let scrollView: NSScrollView
     let nameColumn: NSTableColumn
     let urlColumn: NSTableColumn
-    let titleLabel: NSTextField
     let resetButton: NSButton
     let actionsControl: NSSegmentedControl
 
@@ -112,9 +111,6 @@ final class StatusLinksEditorHostingView: NSView,
             identifier: NSUserInterfaceItemIdentifier("statusLinks.url.column")
         )
         let scrollView = NSScrollView()
-        let titleLabel = NSTextField(
-            labelWithString: tr(.keyStatusLinksEditorStatusLinks)
-        )
         let resetButton = NSButton(
             title: tr(.keyStatusLinksEditorRestoreDefaults),
             target: nil,
@@ -126,7 +122,6 @@ final class StatusLinksEditorHostingView: NSView,
         self.scrollView = scrollView
         self.nameColumn = nameColumn
         self.urlColumn = urlColumn
-        self.titleLabel = titleLabel
         self.resetButton = resetButton
         self.actionsControl = actionsControl
 
@@ -135,7 +130,6 @@ final class StatusLinksEditorHostingView: NSView,
         translatesAutoresizingMaskIntoConstraints = false
         clipsToBounds = true
 
-        configureTitle(titleLabel)
         configureResetButton(resetButton)
         configureTable(
             tableView,
@@ -145,27 +139,26 @@ final class StatusLinksEditorHostingView: NSView,
         configureScrollView(scrollView, documentView: tableView)
         configureActionsControl(actionsControl)
 
-        addSubview(titleLabel)
         addSubview(resetButton)
         addSubview(scrollView)
         addSubview(actionsControl)
 
         NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            titleLabel.heightAnchor.constraint(equalToConstant: 24),
-
-            resetButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            resetButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
-
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            scrollView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            scrollView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             scrollView.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
 
             actionsControl.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
             actionsControl.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 8),
-            actionsControl.heightAnchor.constraint(equalToConstant: 24)
+            actionsControl.heightAnchor.constraint(equalToConstant: 24),
+
+            resetButton.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            resetButton.leadingAnchor.constraint(
+                greaterThanOrEqualTo: actionsControl.trailingAnchor,
+                constant: 12
+            ),
+            resetButton.centerYAnchor.constraint(equalTo: actionsControl.centerYAnchor)
         ])
 
         let heightConstraint = heightAnchor.constraint(equalToConstant: Self.fixedHeight)
@@ -403,14 +396,6 @@ final class StatusLinksEditorHostingView: NSView,
 
     @objc private func restoreDefaults(_ sender: NSButton) {
         onReset()
-    }
-
-    private func configureTitle(_ label: NSTextField) {
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.setContentHuggingPriority(.required, for: .horizontal)
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
-        label.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
     }
 
     private func configureResetButton(_ button: NSButton) {

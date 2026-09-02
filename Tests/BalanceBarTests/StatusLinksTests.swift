@@ -77,6 +77,18 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 1), .center)
         XCTAssertEqual(editor.resetButtonForTesting.identifier?.rawValue, "statusLinks.reset")
+        XCTAssertFalse(editor.subviews.contains { $0 is NSTextField })
+        XCTAssertEqual(
+            editor.resetButtonForTesting.frame.midY,
+            editor.actionsControlForTesting.frame.midY,
+            accuracy: 1,
+            "Restore Defaults should share the action row with +/-"
+        )
+        XCTAssertLessThan(
+            editor.resetButtonForTesting.frame.maxY,
+            scrollView.frame.minY,
+            "Restore Defaults should be below the table viewport"
+        )
 
         let rowView = try XCTUnwrap(table.rowView(atRow: 0, makeIfNecessary: true))
         let statusLinksRowView = try XCTUnwrap(rowView as? StatusLinksRowView)
