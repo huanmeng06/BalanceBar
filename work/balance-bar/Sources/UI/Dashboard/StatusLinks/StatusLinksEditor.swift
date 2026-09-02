@@ -5,52 +5,6 @@ enum StatusLinkField: Equatable {
     case url
 }
 
-/// Keeps native table grid lines confined to the header and real data rows.
-/// The table still owns all grid, selection, and color drawing through AppKit.
-final class StatusLinksTableView: NSTableView {
-    private(set) var lastGridClipRectForTesting: NSRect?
-
-    override func drawGrid(inClipRect clipRect: NSRect) {
-        guard numberOfRows > 0 else {
-            lastGridClipRectForTesting = nil
-            return
-        }
-
-        let lastRowRect = rect(ofRow: numberOfRows - 1)
-        guard !lastRowRect.isNull,
-              lastRowRect.minY > bounds.minY else {
-            lastGridClipRectForTesting = nil
-            return
-        }
-
-        let rowsRect = NSRect(
-            x: bounds.minX,
-            y: bounds.minY,
-            width: bounds.width,
-            height: lastRowRect.minY - bounds.minY
-        )
-        let gridClipRect = clipRect.intersection(rowsRect)
-        guard !gridClipRect.isNull,
-              gridClipRect.width > 0,
-              gridClipRect.height > 0 else {
-            lastGridClipRectForTesting = nil
-            return
-        }
-
-        lastGridClipRectForTesting = gridClipRect
-        super.drawGrid(inClipRect: gridClipRect)
-    }
-}
-
-/// Keeps the native selection drawing while avoiding an extra bottom line
-/// below a selection that has become inactive.
-final class StatusLinksRowView: NSTableRowView {
-    override func drawSeparator(in dirtyRect: NSRect) {
-        guard !(isSelected && !isEmphasized) else { return }
-        super.drawSeparator(in: dirtyRect)
-    }
-}
-
 /// Prevents a short embedded table from forwarding scroll gestures to the
 /// surrounding settings page. Drawing remains entirely AppKit-owned.
 final class StatusLinksScrollView: NSScrollView {
@@ -90,7 +44,7 @@ final class StatusLinksEditorHostingView: NSView,
     private(set) var links: [StatusLink]
     private(set) var isTornDown = false
 
-    let tableView: StatusLinksTableView
+    let tableView: NSTableView
     let tableContainer: NSBox
     let scrollView: StatusLinksScrollView
     let nameColumn: NSTableColumn
@@ -131,7 +85,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.onRemove = onRemove
         self.onReset = onReset
 
-        let tableView = StatusLinksTableView()
+        let tableView = NSTableView()
         let nameColumn = NSTableColumn(
             identifier: NSUserInterfaceItemIdentifier("statusLinks.name.column")
         )
@@ -374,13 +328,6 @@ final class StatusLinksEditorHostingView: NSView,
 
     // MARK: - NSTableViewDelegate
 
-    func tableView(
-        _ tableView: NSTableView,
-        rowViewForRow row: Int
-    ) -> NSTableRowView? {
-        StatusLinksRowView()
-    }
-
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateRemoveControlState()
     }
@@ -443,7 +390,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private func configureTable(
-        _ table: StatusLinksTableView,
+        _ table: NSTableView,
         nameColumn: NSTableColumn,
         urlColumn: NSTableColumn
     ) {
@@ -472,8 +419,7 @@ final class StatusLinksEditorHostingView: NSView,
         table.style = .fullWidth
         table.selectionHighlightStyle = .regular
         table.usesAlternatingRowBackgroundColors = true
-        table.gridStyleMask = [.solidHorizontalGridLineMask]
-        table.gridColor = .separatorColor
+        table.gridStyleMask = []
         table.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
         table.setAccessibilityRole(.table)
     }

@@ -106,7 +106,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.tableColumns[0].title, tr(.keyStatusLinksEditorName))
         XCTAssertEqual(table.tableColumns[1].title, tr(.keyStatusLinksEditorUrl))
         XCTAssertEqual(table.numberOfRows, links.count)
-        XCTAssertEqual(table.gridStyleMask, .solidHorizontalGridLineMask)
+        XCTAssertTrue(table.gridStyleMask.isEmpty)
         XCTAssertEqual(table.style, .fullWidth)
         XCTAssertTrue(table.usesAlternatingRowBackgroundColors)
         XCTAssertFalse(scrollView.hasVerticalScroller)
@@ -199,73 +199,6 @@ final class StatusLinksTests: XCTestCase {
             "The URL field's trailing inset should match the name field's leading inset"
         )
 
-        let nativeTable = try XCTUnwrap(table as? StatusLinksTableView)
-        nativeTable.drawGrid(inClipRect: table.bounds)
-        let gridClipRect = try XCTUnwrap(nativeTable.lastGridClipRectForTesting)
-        let lastRowRect = table.rect(ofRow: table.numberOfRows - 1)
-        XCTAssertLessThanOrEqual(
-            gridClipRect.maxY,
-            lastRowRect.minY + 0.001,
-            "Native grid drawing must stop before the last real row"
-        )
-    }
-
-    func testStatusLinksRowViewUsesNativeSeparatorPolicy() throws {
-        let editor = makeEditor(links: [
-            StatusLink(title: "One", url: "https://one.example"),
-            StatusLink(title: "Two", url: "https://two.example")
-        ])
-        let window = makeWindow(for: editor)
-        defer { window.orderOut(nil) }
-
-        let table = editor.tableViewForTesting
-        let row = try XCTUnwrap(table.rowView(atRow: 0, makeIfNecessary: true) as? StatusLinksRowView)
-        func renderSeparator(selected: Bool, emphasized: Bool) throws -> NSBitmapImageRep {
-            row.isSelected = selected
-            row.isEmphasized = emphasized
-            let bitmap = try XCTUnwrap(row.bitmapImageRepForCachingDisplay(in: row.bounds))
-            let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = context
-            NSColor.white.setFill()
-            row.bounds.fill()
-            row.drawSeparator(in: row.bounds)
-            context.flushGraphics()
-            NSGraphicsContext.restoreGraphicsState()
-            return bitmap
-        }
-
-        func sameColor(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
-            abs(lhs.redComponent - rhs.redComponent) < 0.001
-                && abs(lhs.greenComponent - rhs.greenComponent) < 0.001
-                && abs(lhs.blueComponent - rhs.blueComponent) < 0.001
-                && abs(lhs.alphaComponent - rhs.alphaComponent) < 0.001
-        }
-
-        let bitmap = try renderSeparator(selected: false, emphasized: true)
-        let inactiveBitmap = try renderSeparator(selected: true, emphasized: false)
-        let x = Int(row.bounds.midX)
-        let normalBackground = try XCTUnwrap(bitmap.colorAt(x: x, y: bitmap.pixelsHigh / 2))
-        let normalHasNativeSeparator = (0..<bitmap.pixelsHigh).contains { y in
-            guard let color = bitmap.colorAt(x: x, y: y) else { return false }
-            return !sameColor(color, normalBackground)
-        }
-        XCTAssertTrue(
-            normalHasNativeSeparator,
-            "A normal row should keep AppKit's native separator"
-        )
-
-        let inactiveBackground = try XCTUnwrap(
-            inactiveBitmap.colorAt(x: x, y: inactiveBitmap.pixelsHigh / 2)
-        )
-        let inactiveHasSeparator = (0..<inactiveBitmap.pixelsHigh).contains { y in
-            guard let color = inactiveBitmap.colorAt(x: x, y: y) else { return false }
-            return !sameColor(color, inactiveBackground)
-        }
-        XCTAssertFalse(
-            inactiveHasSeparator,
-            "An inactive selected row should not draw its own bottom separator"
-        )
     }
 
     func testEditorKeepsFixedHeightAndScrollsRowsInsideNativeTable() throws {
@@ -314,15 +247,6 @@ final class StatusLinksTests: XCTestCase {
             (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true
         )
         XCTAssertEqual(editor.scrollViewForTesting.verticalScrollElasticity, .none)
-
-        let nativeTable = try XCTUnwrap(
-            editor.tableViewForTesting as? StatusLinksTableView
-        )
-        nativeTable.drawGrid(inClipRect: nativeTable.bounds)
-        XCTAssertNil(
-            nativeTable.lastGridClipRectForTesting,
-            "An empty native table must not draw grid lines"
-        )
     }
 
     func testEditorCommitsNativeNameAndURLEdits() throws {
