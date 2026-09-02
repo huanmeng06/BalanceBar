@@ -69,6 +69,7 @@ final class StatusLinksEditorHostingView: NSView,
     static let tableCornerRadius: CGFloat = 12
     static let tableBorderWidth: CGFloat = 1
     static let fieldHorizontalInset: CGFloat = 12
+    static let fieldTrailingInset: CGFloat = fieldHorizontalInset * 2
     static let nameColumnMinimumWidth: CGFloat = 120
     static let urlColumnMinimumWidth: CGFloat = 220
 
@@ -329,7 +330,7 @@ final class StatusLinksEditorHostingView: NSView,
                 ),
                 field.trailingAnchor.constraint(
                     equalTo: cell.trailingAnchor,
-                    constant: -Self.fieldHorizontalInset
+                    constant: -Self.fieldTrailingInset
                 ),
                 field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 field.heightAnchor.constraint(equalToConstant: field.intrinsicContentSize.height)
@@ -550,7 +551,6 @@ final class StatusLinksEditorHostingView: NSView,
     private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
         let cell = NSTableCellView()
         cell.identifier = identifier
-        cell.translatesAutoresizingMaskIntoConstraints = false
         return cell
     }
 

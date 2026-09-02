@@ -171,6 +171,21 @@ final class StatusLinksTests: XCTestCase {
             "The Status Links editor must not embed a SwiftUI hosting view"
         )
 
+        table.layoutSubtreeIfNeeded()
+        nameCell.layoutSubtreeIfNeeded()
+        urlCell.layoutSubtreeIfNeeded()
+        let nameFieldFrame = nameField.convert(nameField.bounds, to: table)
+        let urlFieldFrame = urlField.convert(urlField.bounds, to: table)
+        let tableBounds = table.bounds
+        let leadingInset = nameFieldFrame.minX - tableBounds.minX
+        let trailingInset = tableBounds.maxX - urlFieldFrame.maxX
+        XCTAssertEqual(
+            trailingInset,
+            leadingInset,
+            accuracy: 0.001,
+            "The URL field's trailing inset should match the name field's leading inset"
+        )
+
         let nativeTable = try XCTUnwrap(table as? StatusLinksTableView)
         nativeTable.drawGrid(inClipRect: table.bounds)
         let gridClipRect = try XCTUnwrap(nativeTable.lastGridClipRectForTesting)
