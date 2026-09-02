@@ -160,6 +160,15 @@ final class StatusLinksTests: XCTestCase {
         )
     }
 
+    func testEmptyEditorDoesNotAllowVerticalDragging() {
+        let editor = makeEditor(links: [])
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        XCTAssertFalse(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertEqual(editor.scrollViewForTesting.verticalScrollElasticity, .none)
+    }
+
     func testEditorCommitsNativeNameAndURLEdits() throws {
         var changes: [(Int, StatusLinkField, String)] = []
         let editor = makeEditor(

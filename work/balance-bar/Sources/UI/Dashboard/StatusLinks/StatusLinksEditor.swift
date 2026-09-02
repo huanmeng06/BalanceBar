@@ -164,6 +164,7 @@ final class StatusLinksEditorHostingView: NSView,
         let isAddingRow = selectLastRow && newLinks.count > oldCount
 
         links = newLinks
+        updateScrollViewState()
         tableView.reloadData()
         tableView.noteNumberOfRowsChanged()
         updateTableDocumentFrame()
@@ -413,15 +414,20 @@ final class StatusLinksEditorHostingView: NSView,
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
         scrollView.borderType = .bezelBorder
-        scrollView.hasVerticalScroller = true
+        scrollView.hasVerticalScroller = !links.isEmpty
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
+        scrollView.verticalScrollElasticity = .none
         scrollView.drawsBackground = false
         scrollView.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
 
         documentView.translatesAutoresizingMaskIntoConstraints = true
         documentView.autoresizingMask = [.width]
+    }
+
+    private func updateScrollViewState() {
+        scrollView.hasVerticalScroller = !links.isEmpty
     }
 
     private func configureActionsControl(_ control: NSSegmentedControl) {
