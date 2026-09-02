@@ -75,10 +75,8 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     private let listContainer = NSBox()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
-    private let horizontalSeparator = NSBox()
     private let footerHostView = NSView()
     private let footerView = NSStackView()
-    private let verticalSeparator = NSBox()
     private let addButton = NSButton()
     private let removeButton = NSButton()
     private let resetButton = NSButton()
@@ -104,8 +102,6 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     var listContainerForTesting: NSBox { listContainer }
     var footerHostViewForTesting: NSView { footerHostView }
     var footerViewForTesting: NSStackView { footerView }
-    var horizontalSeparatorForTesting: NSBox { horizontalSeparator }
-    var verticalSeparatorForTesting: NSBox { verticalSeparator }
     var isEditingNameForTesting: Bool {
         pendingEdit?.field == .title
     }
@@ -463,7 +459,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         tableView.dataSource = self
         tableView.style = .fullWidth
         tableView.rowSizeStyle = .medium
-        tableView.headerView = nil
+        tableView.headerView = NSTableHeaderView()
         tableView.selectionHighlightStyle = .regular
         tableView.allowsMultipleSelection = false
         tableView.allowsEmptySelection = true
@@ -533,9 +529,6 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         listContainer.titlePosition = .noTitle
         listContainer.translatesAutoresizingMaskIntoConstraints = false
 
-        horizontalSeparator.boxType = .separator
-        horizontalSeparator.translatesAutoresizingMaskIntoConstraints = false
-
         footerHostView.translatesAutoresizingMaskIntoConstraints = false
         footerHostView.setContentHuggingPriority(.required, for: .vertical)
         footerHostView.setContentCompressionResistancePriority(.required, for: .vertical)
@@ -549,19 +542,13 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         footerView.setContentHuggingPriority(.required, for: .horizontal)
         footerView.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        verticalSeparator.boxType = .separator
-        verticalSeparator.translatesAutoresizingMaskIntoConstraints = false
-        verticalSeparator.widthAnchor.constraint(equalToConstant: 1).isActive = true
-
         footerView.addArrangedSubview(addButton)
-        footerView.addArrangedSubview(verticalSeparator)
         footerView.addArrangedSubview(removeButton)
 
         guard let listContentView = listContainer.contentView else {
             preconditionFailure("A primary NSBox must provide a native content view")
         }
         listContentView.addSubview(scrollView)
-        listContentView.addSubview(horizontalSeparator)
         listContentView.addSubview(footerHostView)
         footerHostView.addSubview(footerView)
         addSubview(listContainer)
@@ -577,8 +564,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         let horizontalInset = DashboardSettingsComponents.settingsRowHorizontalInset
         let verticalInset = DashboardSettingsComponents.settingsRowVerticalInset
         let resetSpacing = DashboardSettingsComponents.settingsRowContentControlSpacing
-        let systemControlHeight = max(addButton.fittingSize.height, removeButton.fittingSize.height)
-        let footerHeight = ceil(systemControlHeight + resetSpacing)
+        let footerHeight = ceil(max(addButton.fittingSize.height, removeButton.fittingSize.height))
         let footerHeightConstraint = footerHostView.heightAnchor.constraint(equalToConstant: footerHeight)
         footerHeightConstraint.priority = .defaultHigh
         guard let listContentView = listContainer.contentView else {
@@ -614,25 +600,17 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             scrollView.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: listContentView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: horizontalSeparator.topAnchor),
-
-            horizontalSeparator.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
-            horizontalSeparator.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
-            horizontalSeparator.heightAnchor.constraint(equalToConstant: 1),
+            scrollView.bottomAnchor.constraint(equalTo: footerHostView.topAnchor),
 
             footerHostView.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
             footerHostView.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
-            footerHostView.topAnchor.constraint(equalTo: horizontalSeparator.bottomAnchor),
+            footerHostView.topAnchor.constraint(equalTo: scrollView.bottomAnchor),
             footerHostView.bottomAnchor.constraint(equalTo: listContentView.bottomAnchor),
             footerHeightConstraint,
 
             footerView.leadingAnchor.constraint(equalTo: footerHostView.leadingAnchor),
             footerView.topAnchor.constraint(equalTo: footerHostView.topAnchor),
             footerView.bottomAnchor.constraint(equalTo: footerHostView.bottomAnchor),
-            verticalSeparator.heightAnchor.constraint(
-                equalTo: footerHostView.heightAnchor,
-                multiplier: 0.55
-            ),
             addButton.widthAnchor.constraint(equalTo: footerHostView.heightAnchor),
             addButton.heightAnchor.constraint(equalTo: footerHostView.heightAnchor),
             removeButton.widthAnchor.constraint(equalTo: footerHostView.heightAnchor),
@@ -649,8 +627,8 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         button.target = self
         button.action = action
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.isBordered = false
-        button.controlSize = .small
+        button.setButtonType(.momentaryPushIn)
+        button.bezelStyle = .smallSquare
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibilityLabel)
         button.imagePosition = .imageOnly
         button.setAccessibilityLabel(accessibilityLabel)
@@ -808,9 +786,14 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         let availableWidth = tableView.bounds.width
         guard availableWidth > 0 else { return }
 
-        let nameWidth = floor(availableWidth / 3)
-        tableView.tableColumns[0].width = nameWidth
-        tableView.tableColumns[1].width = nameWidth * 2
+        let nameColumn = tableView.tableColumns[0]
+        let urlColumn = tableView.tableColumns[1]
+        let nameWidth = min(
+            max(availableWidth / 3, nameColumn.minWidth),
+            max(nameColumn.minWidth, availableWidth - urlColumn.minWidth)
+        )
+        nameColumn.width = nameWidth
+        urlColumn.width = max(urlColumn.minWidth, availableWidth - nameWidth)
     }
 
     private func invalidateEditorLayout() {

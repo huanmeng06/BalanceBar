@@ -45,7 +45,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(table.allowsColumnSelection)
         XCTAssertFalse(table.allowsColumnReordering)
         XCTAssertTrue(table.gridStyleMask.isEmpty)
-        XCTAssertNil(table.headerView)
+        XCTAssertNotNil(table.headerView)
         XCTAssertEqual(table.tableColumns.map(\.title), [
             tr(.keyStatusLinksEditorName),
             tr(.keyStatusLinksEditorUrl)
@@ -56,26 +56,15 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(scrollView.borderType, .noBorder)
         XCTAssertFalse(scrollView.drawsBackground)
         XCTAssertLessThan(table.backgroundColor.alphaComponent, 1)
-        XCTAssertFalse(editor.addButtonForTesting.isBordered)
-        XCTAssertFalse(editor.removeButtonForTesting.isBordered)
-        XCTAssertGreaterThan(
-            editor.addButtonForTesting.frame.height,
-            editor.addButtonForTesting.fittingSize.height
-        )
-        XCTAssertGreaterThan(
-            editor.removeButtonForTesting.frame.height,
-            editor.removeButtonForTesting.fittingSize.height
-        )
-        XCTAssertEqual(editor.horizontalSeparatorForTesting.boxType, .separator)
-        XCTAssertEqual(editor.verticalSeparatorForTesting.boxType, .separator)
+        XCTAssertEqual(editor.addButtonForTesting.bezelStyle, .smallSquare)
+        XCTAssertEqual(editor.removeButtonForTesting.bezelStyle, .smallSquare)
         let listContentView = try XCTUnwrap(editor.listContainerForTesting.contentView)
         XCTAssertTrue(scrollView.isDescendant(of: listContentView))
         XCTAssertTrue(editor.footerHostViewForTesting.isDescendant(of: listContentView))
         XCTAssertTrue(editor.footerViewForTesting.isDescendant(of: listContentView))
-        XCTAssertTrue(editor.horizontalSeparatorForTesting.isDescendant(of: listContentView))
         XCTAssertTrue(editor.footerViewForTesting.arrangedSubviews.contains { $0 === editor.addButtonForTesting })
-        XCTAssertTrue(editor.footerViewForTesting.arrangedSubviews.contains { $0 === editor.verticalSeparatorForTesting })
         XCTAssertTrue(editor.footerViewForTesting.arrangedSubviews.contains { $0 === editor.removeButtonForTesting })
+        XCTAssertEqual(editor.footerViewForTesting.arrangedSubviews.count, 2)
         XCTAssertFalse(listContentView.subviews.contains { $0 === editor.resetButtonForTesting })
         XCTAssertTrue(
             table.registeredDraggedTypes.contains(
@@ -161,8 +150,7 @@ final class StatusLinksTests: XCTestCase {
             for hostedView in [
                 editor.scrollViewForTesting,
                 editor.footerHostViewForTesting,
-                editor.footerViewForTesting,
-                editor.horizontalSeparatorForTesting
+                editor.footerViewForTesting
             ] {
                 let hostedFrame = hostedView.convert(hostedView.bounds, to: listContentView)
                 XCTAssertTrue(
@@ -173,43 +161,31 @@ final class StatusLinksTests: XCTestCase {
             let footer = editor.footerViewForTesting
             let footerHost = editor.footerHostViewForTesting
             let add = editor.addButtonForTesting
-            let separator = editor.verticalSeparatorForTesting
             let remove = editor.removeButtonForTesting
             let footerFrame = footer.convert(footer.bounds, to: editor)
             let footerHostFrame = footerHost.convert(footerHost.bounds, to: editor)
-            let horizontalFrame = editor.horizontalSeparatorForTesting.convert(
-                editor.horizontalSeparatorForTesting.bounds,
-                to: editor
-            )
             let addFrame = add.convert(add.bounds, to: editor)
-            let separatorFrame = separator.convert(separator.bounds, to: editor)
             let removeFrame = remove.convert(remove.bounds, to: editor)
-            let sortedButtonFrames = [addFrame, removeFrame].sorted { $0.minX < $1.minX }
 
             XCTAssertGreaterThan(addFrame.width, 0)
             XCTAssertGreaterThan(removeFrame.width, 0)
-            XCTAssertEqual(addFrame.height, footerHostFrame.height, accuracy: 1)
-            XCTAssertEqual(removeFrame.height, footerHostFrame.height, accuracy: 1)
-            XCTAssertGreaterThan(
-                addFrame.height,
-                add.fittingSize.height,
-                "Add must fill the footer's native vertical hit area at width \(width)"
-            )
-            XCTAssertGreaterThan(
-                removeFrame.height,
-                remove.fittingSize.height,
-                "Remove must fill the footer's native vertical hit area at width \(width)"
-            )
-            XCTAssertLessThan(sortedButtonFrames[0].maxX, separatorFrame.minX)
-            XCTAssertLessThan(separatorFrame.maxX, sortedButtonFrames[1].minX)
-            XCTAssertEqual(horizontalFrame.maxY, footerHostFrame.minY, accuracy: 1)
-            XCTAssertGreaterThan(footerHostFrame.height, add.fittingSize.height)
-            XCTAssertEqual(
-                editor.tableViewForTesting.tableColumns[1].width,
-                editor.tableViewForTesting.tableColumns[0].width * 2,
-                accuracy: 1,
-                "Name and URL columns must remain 1:2 at width \(width)"
-            )
+            XCTAssertGreaterThan(footerHostFrame.height, 0)
+            XCTAssertEqual(footer.arrangedSubviews.count, 2)
+            XCTAssertEqual(footer.spacing, 0)
+            XCTAssertEqual(add.bezelStyle, .smallSquare)
+            XCTAssertEqual(remove.bezelStyle, .smallSquare)
+            XCTAssertEqual(addFrame.height, removeFrame.height, accuracy: 1)
+            XCTAssertEqual(addFrame.width, addFrame.height, accuracy: 1)
+            XCTAssertEqual(removeFrame.width, removeFrame.height, accuracy: 1)
+            XCTAssertEqual(addFrame.maxX, removeFrame.minX, accuracy: 1)
+            XCTAssertEqual(footerFrame.minX, footerHostFrame.minX, accuracy: 1)
+            XCTAssertEqual(footerFrame.maxX, removeFrame.maxX, accuracy: 1)
+            XCTAssertLessThan(footerFrame.width, footerHostFrame.width)
+
+            let nameWidth = editor.tableViewForTesting.tableColumns[0].width
+            let urlWidth = editor.tableViewForTesting.tableColumns[1].width
+            XCTAssertGreaterThan(nameWidth, 0)
+            XCTAssertEqual(urlWidth / nameWidth, 2, accuracy: 0.02)
 
             let isRightToLeft = editor.userInterfaceLayoutDirection == .rightToLeft
             if isRightToLeft {
@@ -386,7 +362,7 @@ final class StatusLinksTests: XCTestCase {
             editor.tableViewForTesting.frame.height,
             editor.scrollViewForTesting.contentView.bounds.height
         )
-        XCTAssertNil(editor.tableViewForTesting.headerView)
+        XCTAssertNotNil(editor.tableViewForTesting.headerView)
         XCTAssertEqual(
             editor.tableViewForTesting.tableColumns[1].width,
             editor.tableViewForTesting.tableColumns[0].width * 2,
