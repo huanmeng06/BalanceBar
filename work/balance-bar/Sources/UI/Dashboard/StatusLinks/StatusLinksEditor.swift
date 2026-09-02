@@ -112,7 +112,7 @@ final class StatusLinksEditorHostingView: NSView,
     let resetButton: NSButton
     let actionsControl: NSSegmentedControl
     let moveControl: NSSegmentedControl
-    let moreButton: NSButton
+    let moreControl: NSSegmentedControl
     let moreIconView: NSImageView
 
     private let moreMenu = NSMenu()
@@ -139,7 +139,7 @@ final class StatusLinksEditorHostingView: NSView,
     var resetButtonForTesting: NSButton { resetButton }
     var actionsControlForTesting: NSSegmentedControl { actionsControl }
     var moveControlForTesting: NSSegmentedControl { moveControl }
-    var moreButtonForTesting: NSButton { moreButton }
+    var moreControlForTesting: NSSegmentedControl { moreControl }
     var moreIconViewForTesting: NSImageView { moreIconView }
     var moreMenuForTesting: NSMenu { moreMenu }
 
@@ -190,7 +190,7 @@ final class StatusLinksEditorHostingView: NSView,
         )
         let actionsControl = NSSegmentedControl()
         let moveControl = NSSegmentedControl()
-        let moreButton = NSButton()
+        let moreControl = NSSegmentedControl()
         let moreIconView = StatusLinksPassthroughImageView()
 
         self.tableView = tableView
@@ -201,7 +201,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.resetButton = resetButton
         self.actionsControl = actionsControl
         self.moveControl = moveControl
-        self.moreButton = moreButton
+        self.moreControl = moreControl
         self.moreIconView = moreIconView
 
         super.init(frame: .zero)
@@ -219,8 +219,8 @@ final class StatusLinksEditorHostingView: NSView,
         configureTableContainer(tableContainer, contentView: scrollView)
         configureActionsControl(actionsControl)
         configureMoveControl(moveControl)
-        configureMoreButton(
-            moreButton,
+        configureMoreControl(
+            moreControl,
             iconView: moreIconView,
             matching: actionsControl
         )
@@ -233,9 +233,9 @@ final class StatusLinksEditorHostingView: NSView,
         addSubview(tableContainer)
         addSubview(actionsControl)
         addSubview(moveControl)
-        addSubview(moreButton)
+        addSubview(moreControl)
 
-        moreButton.addSubview(moreIconView)
+        moreControl.addSubview(moreIconView)
 
         NSLayoutConstraint.activate([
             tableContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
@@ -251,19 +251,19 @@ final class StatusLinksEditorHostingView: NSView,
             moveControl.topAnchor.constraint(equalTo: actionsControl.topAnchor),
             moveControl.heightAnchor.constraint(equalTo: actionsControl.heightAnchor),
 
-            moreButton.leadingAnchor.constraint(equalTo: moveControl.trailingAnchor, constant: 8),
-            moreButton.topAnchor.constraint(equalTo: actionsControl.topAnchor),
-            moreButton.widthAnchor.constraint(equalToConstant: 28),
-            moreButton.heightAnchor.constraint(equalTo: actionsControl.heightAnchor),
+            moreControl.leadingAnchor.constraint(equalTo: moveControl.trailingAnchor, constant: 8),
+            moreControl.topAnchor.constraint(equalTo: actionsControl.topAnchor),
+            moreControl.widthAnchor.constraint(equalToConstant: 28),
+            moreControl.heightAnchor.constraint(equalTo: actionsControl.heightAnchor),
 
-            moreIconView.leadingAnchor.constraint(equalTo: moreButton.leadingAnchor),
-            moreIconView.trailingAnchor.constraint(equalTo: moreButton.trailingAnchor),
-            moreIconView.topAnchor.constraint(equalTo: moreButton.topAnchor),
-            moreIconView.bottomAnchor.constraint(equalTo: moreButton.bottomAnchor),
+            moreIconView.leadingAnchor.constraint(equalTo: moreControl.leadingAnchor),
+            moreIconView.trailingAnchor.constraint(equalTo: moreControl.trailingAnchor),
+            moreIconView.topAnchor.constraint(equalTo: moreControl.topAnchor),
+            moreIconView.bottomAnchor.constraint(equalTo: moreControl.bottomAnchor),
 
             resetButton.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor),
             resetButton.leadingAnchor.constraint(
-                greaterThanOrEqualTo: moreButton.trailingAnchor,
+                greaterThanOrEqualTo: moreControl.trailingAnchor,
                 constant: 12
             ),
             resetButton.centerYAnchor.constraint(equalTo: actionsControl.centerYAnchor)
@@ -383,6 +383,7 @@ final class StatusLinksEditorHostingView: NSView,
                 self.defersTableGeometryUpdate = false
                 self.updateColumnWidthsIfNeeded()
                 self.updateTableDocumentFrame()
+                self.resetHorizontalScrollOffset()
                 if case .reload = effectiveMutation {
                     self.applySelection(nextSelection, scroll: false)
                     self.focusTableForInsertion()
@@ -487,7 +488,7 @@ final class StatusLinksEditorHostingView: NSView,
         resetButton.target = nil
         actionsControl.target = nil
         moveControl.target = nil
-        moreButton.target = nil
+        moreControl.target = nil
         moreMenu.delegate = nil
         openLinkMenuItem?.target = nil
         copyURLMenuItem?.target = nil
@@ -655,8 +656,9 @@ final class StatusLinksEditorHostingView: NSView,
         performMoveAction(segment: segment)
     }
 
-    @objc private func showMoreMenu(_ sender: NSButton) {
-        guard sender.isEnabled else { return }
+    @objc private func showMoreMenu(_ sender: NSSegmentedControl) {
+        guard sender.isEnabled(forSegment: 0) else { return }
+        sender.selectedSegment = -1
         updateMoreMenuState()
         moreMenu.popUp(
             positioning: nil,
@@ -885,20 +887,30 @@ final class StatusLinksEditorHostingView: NSView,
         control.setAccessibilityLabel("Move status link")
     }
 
-    private func configureMoreButton(
-        _ button: NSButton,
+    private func configureMoreControl(
+        _ control: NSSegmentedControl,
         iconView: NSImageView,
-        matching control: NSSegmentedControl
+        matching actionsControl: NSSegmentedControl
     ) {
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.setButtonType(.momentaryPushIn)
-        button.bezelStyle = .rounded
-        button.controlSize = control.controlSize
-        button.isBordered = true
-        button.title = ""
-        button.image = nil
-        button.imagePosition = .imageOnly
-        button.imageScaling = .scaleProportionallyDown
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.segmentCount = 1
+        control.trackingMode = .momentary
+        control.segmentStyle = .automatic
+        control.controlSize = actionsControl.controlSize
+        control.font = actionsControl.font
+        control.setWidth(28, forSegment: 0)
+        // The overlay icon view draws the symbol, so the segment itself stays
+        // empty; bezel, pressed, disabled and Dark Mode rendering match the
+        // neighboring native segmented controls exactly.
+        control.setLabel("", forSegment: 0)
+        control.target = self
+        control.action = #selector(showMoreMenu(_:))
+        control.identifier = NSUserInterfaceItemIdentifier("statusLinks.more")
+        control.toolTip = tr(.keyStatusLinksEditorMoreActions)
+        control.setAccessibilityLabel(tr(.keyStatusLinksEditorMoreActions))
+        control.setContentHuggingPriority(.required, for: .horizontal)
+        control.setContentCompressionResistancePriority(.required, for: .horizontal)
+
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageAlignment = .alignCenter
         iconView.imageScaling = .scaleProportionallyDown
@@ -907,13 +919,6 @@ final class StatusLinksEditorHostingView: NSView,
             named: "ellipsis",
             accessibilityDescription: tr(.keyStatusLinksEditorMoreActions)
         )
-        button.target = self
-        button.action = #selector(showMoreMenu(_:))
-        button.identifier = NSUserInterfaceItemIdentifier("statusLinks.more")
-        button.toolTip = tr(.keyStatusLinksEditorMoreActions)
-        button.setAccessibilityLabel(tr(.keyStatusLinksEditorMoreActions))
-        button.setContentHuggingPriority(.required, for: .horizontal)
-        button.setContentCompressionResistancePriority(.required, for: .horizontal)
     }
 
     private func setMoreButtonSymbol(named symbolName: String, accessibilityDescription: String) {
@@ -922,7 +927,7 @@ final class StatusLinksEditorHostingView: NSView,
             accessibilityDescription: accessibilityDescription
         ) else { return }
         moreIconView.image = image
-        moreButton.setAccessibilityLabel(accessibilityDescription)
+        moreControl.setAccessibilityLabel(accessibilityDescription)
     }
 
     private func showMoreActionSuccess() {
@@ -1099,12 +1104,16 @@ final class StatusLinksEditorHostingView: NSView,
         }
 
         guard !allowed else { return }
-        let currentBounds = scrollView.contentView.bounds
-        guard abs(currentBounds.origin.x) > Self.horizontalOverflowTolerance else { return }
-        scrollView.contentView.scroll(
-            to: NSPoint(x: 0, y: currentBounds.origin.y)
-        )
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        resetHorizontalScrollOffset()
+    }
+
+    // Keeps the leftmost content (for example the newly added row's Name
+    // field) visible after the URL column shrinks back or an Add starts.
+    private func resetHorizontalScrollOffset() {
+        let clipView = scrollView.contentView
+        guard abs(clipView.bounds.origin.x) > Self.horizontalOverflowTolerance else { return }
+        clipView.scroll(to: NSPoint(x: 0, y: clipView.bounds.origin.y))
+        scrollView.reflectScrolledClipView(clipView)
     }
 
     private var tableRowInsertionAnimation: NSTableView.AnimationOptions {
@@ -1216,7 +1225,7 @@ final class StatusLinksEditorHostingView: NSView,
               let duplicateMenuItem else { return }
 
         guard let row = selectedRow else {
-            moreButton.isEnabled = false
+            moreControl.setEnabled(false, forSegment: 0)
             openLinkMenuItem.isEnabled = false
             copyURLMenuItem.isEnabled = false
             duplicateMenuItem.isEnabled = false
@@ -1225,7 +1234,7 @@ final class StatusLinksEditorHostingView: NSView,
 
         let rawURL = links[row].url
         let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        moreButton.isEnabled = true
+        moreControl.setEnabled(true, forSegment: 0)
         openLinkMenuItem.isEnabled = Self.validatedWebURL(from: rawURL) != nil
         copyURLMenuItem.isEnabled = !trimmedURL.isEmpty
         duplicateMenuItem.isEnabled = true

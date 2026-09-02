@@ -233,21 +233,23 @@ final class StatusLinksTests: XCTestCase {
         )
         XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
         XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
-        let moreButton = editor.moreButtonForTesting
-        XCTAssertEqual(moreButton.identifier?.rawValue, "statusLinks.more")
-        XCTAssertEqual(moreButton.controlSize, editor.actionsControlForTesting.controlSize)
-        XCTAssertEqual(moreButton.bezelStyle, .rounded)
+        let moreControl = editor.moreControlForTesting
+        XCTAssertEqual(moreControl.identifier?.rawValue, "statusLinks.more")
+        XCTAssertEqual(moreControl.controlSize, editor.actionsControlForTesting.controlSize)
+        XCTAssertEqual(moreControl.segmentStyle, editor.actionsControlForTesting.segmentStyle)
+        XCTAssertEqual(moreControl.segmentCount, 1)
+        XCTAssertEqual(moreControl.trackingMode, .momentary)
         XCTAssertEqual(
-            moreButton.frame.minX - moveControl.frame.maxX,
+            moreControl.frame.minX - moveControl.frame.maxX,
             8,
             accuracy: 1,
             "More should follow the move control with an 8 pt gap"
         )
-        XCTAssertEqual(moreButton.frame.height, moveControl.frame.height, accuracy: 1)
-        XCTAssertFalse(moreButton.isEnabled)
-        XCTAssertEqual(moreButton.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(moreControl.frame.height, moveControl.frame.height, accuracy: 1)
+        XCTAssertFalse(moreControl.isEnabled(forSegment: 0))
+        XCTAssertEqual(moreControl.alphaValue, 1, accuracy: 0.001)
         let moreIconView = editor.moreIconViewForTesting
-        XCTAssertTrue(moreIconView.superview === moreButton)
+        XCTAssertTrue(moreIconView.superview === moreControl)
         XCTAssertTrue(moreIconView is StatusLinksPassthroughImageView)
         XCTAssertEqual(
             moreIconView.image?.accessibilityDescription,
@@ -564,6 +566,49 @@ final class StatusLinksTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(scrollView.contentView.bounds.origin.x, 0, accuracy: 0.001)
+    }
+
+    func testAddWhileHorizontallyScrolledShowsNewRowNameEditing() throws {
+        let longURL = "https://" + String(repeating: "x", count: 55)
+        var editor: StatusLinksEditorHostingView!
+        editor = makeEditor(
+            links: [StatusLink(title: "Long", url: longURL)],
+            onAdd: { index in
+                var updatedLinks = editor.links
+                updatedLinks.insert(StatusLink(title: "", url: ""), at: index)
+                editor.updateLinks(
+                    updatedLinks,
+                    mutation: .insert(index),
+                    selectLastRow: true
+                )
+            }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let scrollView = try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView)
+        XCTAssertTrue(scrollView.allowsHorizontalScrolling)
+        scrollView.contentView.scroll(
+            to: NSPoint(x: scrollView.contentView.bounds.maxX, y: 0)
+        )
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        XCTAssertGreaterThan(scrollView.contentView.bounds.origin.x, 0)
+
+        editor.performActionForTesting(segment: 0)
+        window.layoutIfNeeded()
+
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertEqual(scrollView.contentView.bounds.origin.x, 0, accuracy: 0.001)
+
+        let nameField = try XCTUnwrap(
+            (editor.tableViewForTesting.view(atColumn: 0, row: 1, makeIfNecessary: true)
+                as? NSTableCellView)?.textField
+        )
+        let fieldFrame = scrollView.contentView.convert(nameField.bounds, from: nameField)
+        XCTAssertTrue(
+            scrollView.contentView.bounds.contains(fieldFrame),
+            "The inserted row's Name field should be visible when inline editing starts"
+        )
     }
 
     func testEditorCommitsNativeNameAndURLEdits() throws {
@@ -1127,19 +1172,19 @@ final class StatusLinksTests: XCTestCase {
             )
         }
 
-        XCTAssertFalse(editor.moreButtonForTesting.isEnabled)
+        XCTAssertFalse(editor.moreControlForTesting.isEnabled(forSegment: 0))
         XCTAssertFalse(openLink.isEnabled)
         XCTAssertFalse(copyURL.isEnabled)
         XCTAssertFalse(duplicate.isEnabled)
 
         select(0)
-        XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
+        XCTAssertTrue(editor.moreControlForTesting.isEnabled(forSegment: 0))
         XCTAssertFalse(openLink.isEnabled, "Empty URL cannot be opened")
         XCTAssertFalse(copyURL.isEnabled, "Empty URL cannot be copied")
         XCTAssertTrue(duplicate.isEnabled)
 
         select(1)
-        XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
+        XCTAssertTrue(editor.moreControlForTesting.isEnabled(forSegment: 0))
         XCTAssertFalse(openLink.isEnabled, "Only http(s) URLs with a host can be opened")
         XCTAssertTrue(copyURL.isEnabled, "Any non-empty URL text can be copied")
         XCTAssertTrue(duplicate.isEnabled)
@@ -1204,16 +1249,16 @@ final class StatusLinksTests: XCTestCase {
             editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted)
         )
-        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreControlForTesting.alphaValue, 1, accuracy: 0.001)
         XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
-        XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
+        XCTAssertTrue(editor.moreControlForTesting.isEnabled(forSegment: 0))
 
         RunLoop.main.run(until: Date().addingTimeInterval(1.4))
         XCTAssertEqual(
             editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
-        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreControlForTesting.alphaValue, 1, accuracy: 0.001)
         XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
@@ -1247,7 +1292,7 @@ final class StatusLinksTests: XCTestCase {
             editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted)
         )
-        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreControlForTesting.alphaValue, 1, accuracy: 0.001)
         XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
@@ -1332,9 +1377,9 @@ final class StatusLinksTests: XCTestCase {
             1,
             "The first success feedback should be fading out"
         )
-        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreControlForTesting.alphaValue, 1, accuracy: 0.001)
         editor.performMoreMenuActionForTesting(at: 1)
-        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreControlForTesting.alphaValue, 1, accuracy: 0.001)
         XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
         XCTAssertEqual(
@@ -1343,7 +1388,7 @@ final class StatusLinksTests: XCTestCase {
             "The first reset must not end the second success state early"
         )
         XCTAssertEqual(
-            editor.moreButtonForTesting.alphaValue,
+            editor.moreControlForTesting.alphaValue,
             1,
             accuracy: 0.001,
             "An interrupted fade must not make the second feedback translucent"
@@ -1355,7 +1400,7 @@ final class StatusLinksTests: XCTestCase {
             editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
-        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreControlForTesting.alphaValue, 1, accuracy: 0.001)
         XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
