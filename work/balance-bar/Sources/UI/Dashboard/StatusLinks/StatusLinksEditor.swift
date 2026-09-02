@@ -556,7 +556,6 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
         footerView.addArrangedSubview(addButton)
         footerView.addArrangedSubview(verticalSeparator)
         footerView.addArrangedSubview(removeButton)
-        verticalSeparator.heightAnchor.constraint(equalTo: footerHostView.heightAnchor, multiplier: 0.55).isActive = true
 
         guard let listContentView = listContainer.contentView else {
             preconditionFailure("A primary NSBox must provide a native content view")
@@ -630,6 +629,10 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
             footerView.leadingAnchor.constraint(equalTo: footerHostView.leadingAnchor),
             footerView.topAnchor.constraint(equalTo: footerHostView.topAnchor),
             footerView.bottomAnchor.constraint(equalTo: footerHostView.bottomAnchor),
+            verticalSeparator.heightAnchor.constraint(
+                equalTo: footerHostView.heightAnchor,
+                multiplier: 0.55
+            ),
             addButton.widthAnchor.constraint(equalTo: footerHostView.heightAnchor),
             addButton.heightAnchor.constraint(equalTo: footerHostView.heightAnchor),
             removeButton.widthAnchor.constraint(equalTo: footerHostView.heightAnchor),
