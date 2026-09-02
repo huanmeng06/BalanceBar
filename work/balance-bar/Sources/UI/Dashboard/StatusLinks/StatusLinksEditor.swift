@@ -471,7 +471,7 @@ final class StatusLinksEditorHostingView: NSView,
         table.intercellSpacing = NSSize(width: 0, height: 0)
         table.style = .fullWidth
         table.selectionHighlightStyle = .regular
-        table.usesAlternatingRowBackgroundColors = false
+        table.usesAlternatingRowBackgroundColors = true
         table.gridStyleMask = [.solidHorizontalGridLineMask]
         table.gridColor = .separatorColor
         table.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))

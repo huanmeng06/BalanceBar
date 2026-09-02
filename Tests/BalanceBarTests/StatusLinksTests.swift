@@ -108,6 +108,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows, links.count)
         XCTAssertEqual(table.gridStyleMask, .solidHorizontalGridLineMask)
         XCTAssertEqual(table.style, .fullWidth)
+        XCTAssertTrue(table.usesAlternatingRowBackgroundColors)
         XCTAssertFalse(scrollView.hasVerticalScroller)
         XCTAssertFalse((scrollView as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true)
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
