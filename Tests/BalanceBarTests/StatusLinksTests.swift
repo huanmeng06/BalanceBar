@@ -184,6 +184,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(scrollView.borderType, .noBorder)
         XCTAssertFalse(scrollView.hasHorizontalScroller)
         XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
+        XCTAssertTrue(scrollView.usesPredominantAxisScrolling)
         XCTAssertTrue(scrollView.contentView is StatusLinksVerticalClipView)
         XCTAssertEqual(
             scrollView.contentView.constrainBoundsRect(
@@ -397,7 +398,172 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(
             (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true
         )
+        XCTAssertFalse(
+            (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsHorizontalScrolling ?? true
+        )
         XCTAssertEqual(editor.scrollViewForTesting.verticalScrollElasticity, .none)
+    }
+
+    func testShortURLsOnlyAllowVerticalScrollingAndClampHorizontalOffset() throws {
+        let links = (0..<12).map {
+            StatusLink(title: "Link \($0)", url: "https://\($0).example")
+        }
+        let editor = makeEditor(links: links)
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let scrollView = try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView)
+        let clipView = scrollView.contentView
+        let table = editor.tableViewForTesting
+
+        XCTAssertTrue(scrollView.allowsVerticalScrolling)
+        XCTAssertFalse(scrollView.allowsHorizontalScrolling)
+        XCTAssertEqual(table.frame.width, clipView.bounds.width, accuracy: 0.001)
+
+        let proposedBounds = clipView.constrainBoundsRect(
+            NSRect(x: 24, y: clipView.bounds.minY, width: clipView.bounds.width, height: clipView.bounds.height)
+        )
+        XCTAssertEqual(proposedBounds.origin.x, 0, accuracy: 0.001)
+        clipView.scroll(to: NSPoint(x: 24, y: clipView.bounds.origin.y))
+        scrollView.reflectScrolledClipView(clipView)
+        XCTAssertEqual(clipView.bounds.origin.x, 0, accuracy: 0.001)
+    }
+
+    func testLongURLEnablesHorizontalScrollingWithoutVerticalScrolling() throws {
+        let longURL = "https://" + String(repeating: "x", count: 55)
+        let editor = makeEditor(links: [StatusLink(title: "Long", url: longURL)])
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let scrollView = try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView)
+        let viewportWidth = scrollView.contentView.bounds.width
+        let normalNameWidth = max(
+            StatusLinksEditorHostingView.nameColumnMinimumWidth,
+            min(viewportWidth / 3, viewportWidth - StatusLinksEditorHostingView.urlColumnMinimumWidth)
+        )
+        let normalURLWidth = max(
+            StatusLinksEditorHostingView.urlColumnMinimumWidth,
+            viewportWidth - normalNameWidth
+        )
+
+        XCTAssertFalse(scrollView.allowsVerticalScrolling)
+        XCTAssertTrue(scrollView.allowsHorizontalScrolling)
+        XCTAssertGreaterThan(editor.tableViewForTesting.frame.width, viewportWidth)
+        XCTAssertEqual(editor.nameColumn.width, normalNameWidth, accuracy: 0.001)
+        XCTAssertGreaterThan(editor.urlColumn.width, normalURLWidth)
+
+        scrollView.contentView.scroll(to: NSPoint(x: 24, y: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        XCTAssertGreaterThan(scrollView.contentView.bounds.origin.x, 0)
+    }
+
+    func testLongURLEnablesBothScrollAxesForLongList() throws {
+        let longURL = "https://" + String(repeating: "x", count: 55)
+        let links = (0..<12).map {
+            StatusLink(title: "Link \($0)", url: longURL)
+        }
+        let editor = makeEditor(links: links)
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let scrollView = try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView)
+        XCTAssertTrue(scrollView.allowsVerticalScrolling)
+        XCTAssertTrue(scrollView.allowsHorizontalScrolling)
+        XCTAssertGreaterThan(
+            editor.tableViewForTesting.frame.width,
+            scrollView.contentView.bounds.width
+        )
+    }
+
+    func testShorteningURLDisablesHorizontalScrollingAndResetsOffset() throws {
+        let longURL = "https://" + String(repeating: "x", count: 55)
+        let editor = makeEditor(links: [StatusLink(title: "Long", url: longURL)])
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let scrollView = try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView)
+        XCTAssertTrue(scrollView.allowsHorizontalScrolling)
+        scrollView.contentView.scroll(to: NSPoint(x: 24, y: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        XCTAssertGreaterThan(scrollView.contentView.bounds.origin.x, 0)
+
+        let urlField = try XCTUnwrap(
+            (editor.tableViewForTesting.view(atColumn: 1, row: 0, makeIfNecessary: true)
+                as? NSTableCellView)?.textField
+        )
+        urlField.stringValue = "https://short.example"
+        editor.controlTextDidChange(
+            Notification(name: NSNotification.Name("StatusLinksShortenURL"), object: urlField)
+        )
+        window.layoutIfNeeded()
+
+        XCTAssertFalse(scrollView.allowsHorizontalScrolling)
+        XCTAssertEqual(
+            editor.tableViewForTesting.frame.width,
+            scrollView.contentView.bounds.width,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(scrollView.contentView.bounds.origin.x, 0, accuracy: 0.001)
+    }
+
+    func testWideningViewportDisablesHorizontalScrollingAndResetsOffset() throws {
+        let editor = makeEditor(links: [StatusLink(title: "Short", url: "https://short.example")])
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let scrollView = try XCTUnwrap(editor.scrollViewForTesting as? StatusLinksScrollView)
+        let initialViewportWidth = scrollView.contentView.bounds.width
+        let initialNameWidth = max(
+            StatusLinksEditorHostingView.nameColumnMinimumWidth,
+            min(initialViewportWidth / 3, initialViewportWidth - StatusLinksEditorHostingView.urlColumnMinimumWidth)
+        )
+        let initialVisibleURLWidth = max(
+            0,
+            initialViewportWidth - initialNameWidth - StatusLinksEditorHostingView.fieldHorizontalInset
+                - StatusLinksEditorHostingView.fieldTrailingInset
+        )
+
+        window.setContentSize(NSSize(width: 900, height: 320))
+        window.layoutIfNeeded()
+        let wideViewportWidth = scrollView.contentView.bounds.width
+        let wideNameWidth = max(
+            StatusLinksEditorHostingView.nameColumnMinimumWidth,
+            min(wideViewportWidth / 3, wideViewportWidth - StatusLinksEditorHostingView.urlColumnMinimumWidth)
+        )
+        let wideVisibleURLWidth = max(
+            0,
+            wideViewportWidth - wideNameWidth - StatusLinksEditorHostingView.fieldHorizontalInset
+                - StatusLinksEditorHostingView.fieldTrailingInset
+        )
+        XCTAssertGreaterThan(wideVisibleURLWidth, initialVisibleURLWidth)
+
+        var longURL = "https://"
+        let targetWidth = (initialVisibleURLWidth + wideVisibleURLWidth) / 2
+        while (longURL as NSString).size(withAttributes: [.font: StatusLinksEditorHostingView.tableFieldFont]).width
+            <= targetWidth {
+            longURL.append("x")
+        }
+        window.setContentSize(NSSize(width: 640, height: 320))
+        window.layoutIfNeeded()
+        editor.updateLinks([
+            StatusLink(title: "Long", url: longURL)
+        ])
+        window.layoutIfNeeded()
+        XCTAssertTrue(scrollView.allowsHorizontalScrolling)
+        scrollView.contentView.scroll(to: NSPoint(x: 24, y: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        XCTAssertGreaterThan(scrollView.contentView.bounds.origin.x, 0)
+
+        window.setContentSize(NSSize(width: 900, height: 320))
+        window.layoutIfNeeded()
+
+        XCTAssertFalse(scrollView.allowsHorizontalScrolling)
+        XCTAssertEqual(
+            editor.tableViewForTesting.frame.width,
+            scrollView.contentView.bounds.width,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(scrollView.contentView.bounds.origin.x, 0, accuracy: 0.001)
     }
 
     func testEditorCommitsNativeNameAndURLEdits() throws {

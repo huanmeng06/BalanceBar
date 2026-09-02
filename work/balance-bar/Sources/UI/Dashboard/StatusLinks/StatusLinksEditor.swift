@@ -16,17 +16,48 @@ enum StatusLinksMutation: Equatable {
 /// surrounding settings page. Drawing remains entirely AppKit-owned.
 final class StatusLinksScrollView: NSScrollView {
     var allowsVerticalScrolling = false
+    var allowsHorizontalScrolling = false
+    var onViewportWidthChange: (() -> Void)?
+
+    private var lastViewportWidth: CGFloat = -1
+
+    override func layout() {
+        super.layout()
+
+        let viewportWidth = contentView.bounds.width
+        guard viewportWidth > 0,
+              abs(viewportWidth - lastViewportWidth) > 0.5 else { return }
+        lastViewportWidth = viewportWidth
+        onViewportWidthChange?()
+    }
 
     override func scrollWheel(with event: NSEvent) {
-        guard allowsVerticalScrolling else { return }
+        guard allowsVerticalScrolling || allowsHorizontalScrolling else { return }
         super.scrollWheel(with: event)
+
+        guard !allowsHorizontalScrolling else { return }
+        let currentY = contentView.bounds.origin.y
+        contentView.scroll(to: NSPoint(x: 0, y: currentY))
+        reflectScrolledClipView(contentView)
     }
 }
 
 final class StatusLinksVerticalClipView: NSClipView {
+    var allowsHorizontalScrolling = false
+
+    override func scroll(to newOrigin: NSPoint) {
+        var constrainedOrigin = newOrigin
+        if !allowsHorizontalScrolling {
+            constrainedOrigin.x = 0
+        }
+        super.scroll(to: constrainedOrigin)
+    }
+
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         var constrainedBounds = super.constrainBoundsRect(proposedBounds)
-        constrainedBounds.origin.x = 0
+        if !allowsHorizontalScrolling {
+            constrainedBounds.origin.x = 0
+        }
         return constrainedBounds
     }
 }
@@ -52,6 +83,8 @@ final class StatusLinksEditorHostingView: NSView,
     static let tableViewportHeight: CGFloat = 134
     static let tableRowHeight: CGFloat = 22
     static let tableRowMoveAnimationDuration: TimeInterval = 0.16
+    static let tableFieldFont = NSFont.systemFont(ofSize: 13)
+    static let horizontalOverflowTolerance: CGFloat = 0.5
     static let tableCornerRadius: CGFloat = 12
     static let tableBorderWidth: CGFloat = 1
     static let fieldHorizontalInset: CGFloat = 12
@@ -89,6 +122,8 @@ final class StatusLinksEditorHostingView: NSView,
 
     private var heightConstraint: NSLayoutConstraint?
     private var lastColumnLayoutWidth: CGFloat = -1
+    private var baseNameColumnWidth: CGFloat = 0
+    private var baseURLColumnWidth: CGFloat = 0
     private var editingGeneration = 0
     private var pendingMoveSelection: Int?
     private var pendingDuplicateSelection: Int?
@@ -190,6 +225,9 @@ final class StatusLinksEditorHostingView: NSView,
             matching: actionsControl
         )
         configureMoreMenu()
+        scrollView.onViewportWidthChange = { [weak self] in
+            self?.updateColumnWidthsIfNeeded()
+        }
 
         addSubview(resetButton)
         addSubview(tableContainer)
@@ -343,8 +381,8 @@ final class StatusLinksEditorHostingView: NSView,
 
             if let insertedRowForEditing, isAddMutation {
                 self.defersTableGeometryUpdate = false
-                self.updateTableDocumentFrame()
                 self.updateColumnWidthsIfNeeded()
+                self.updateTableDocumentFrame()
                 if case .reload = effectiveMutation {
                     self.applySelection(nextSelection, scroll: false)
                     self.focusTableForInsertion()
@@ -352,6 +390,7 @@ final class StatusLinksEditorHostingView: NSView,
                 self.tableView.scrollRowToVisible(insertedRowForEditing)
                 self.beginNameEditing(row: insertedRowForEditing)
             } else {
+                self.updateColumnWidthsIfNeeded()
                 self.updateTableDocumentFrame()
                 self.applySelection(nextSelection)
             }
@@ -535,11 +574,13 @@ final class StatusLinksEditorHostingView: NSView,
     func controlTextDidChange(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         commit(field)
+        updateHorizontalScrollingIfURLField(field)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         commit(field)
+        updateHorizontalScrollingIfURLField(field)
     }
 
     // MARK: - Native actions
@@ -727,6 +768,7 @@ final class StatusLinksEditorHostingView: NSView,
         scrollView.scrollerStyle = .overlay
         scrollView.horizontalScrollElasticity = .none
         scrollView.verticalScrollElasticity = .none
+        scrollView.usesPredominantAxisScrolling = true
         scrollView.drawsBackground = false
         scrollView.wantsLayer = true
         scrollView.layer?.cornerRadius = Self.tableCornerRadius
@@ -735,7 +777,7 @@ final class StatusLinksEditorHostingView: NSView,
         scrollView.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
 
         documentView.translatesAutoresizingMaskIntoConstraints = true
-        documentView.autoresizingMask = [.width]
+        documentView.autoresizingMask = []
     }
 
     private func configureTableContainer(_ container: NSBox, contentView: NSView) {
@@ -984,7 +1026,7 @@ final class StatusLinksEditorHostingView: NSView,
     private func makeTextField() -> NSTextField {
         let field = NSTextField()
         field.translatesAutoresizingMaskIntoConstraints = false
-        field.font = .systemFont(ofSize: 13)
+        field.font = Self.tableFieldFont
         field.alignment = .left
         field.isBordered = false
         field.drawsBackground = false
@@ -996,16 +1038,73 @@ final class StatusLinksEditorHostingView: NSView,
 
     private func updateColumnWidthsIfNeeded() {
         let availableWidth = scrollView.contentView.bounds.width
-        guard availableWidth > 0,
-              abs(availableWidth - lastColumnLayoutWidth) > 0.5 else { return }
+        guard availableWidth > 0 else { return }
 
-        let nameWidth = max(
-            Self.nameColumnMinimumWidth,
-            min(availableWidth / 3, availableWidth - Self.urlColumnMinimumWidth)
+        if abs(availableWidth - lastColumnLayoutWidth) > Self.horizontalOverflowTolerance
+            || baseNameColumnWidth == 0
+            || baseURLColumnWidth == 0 {
+            baseNameColumnWidth = max(
+                Self.nameColumnMinimumWidth,
+                min(availableWidth / 3, availableWidth - Self.urlColumnMinimumWidth)
+            )
+            baseURLColumnWidth = max(
+                Self.urlColumnMinimumWidth,
+                availableWidth - baseNameColumnWidth
+            )
+            lastColumnLayoutWidth = availableWidth
+        }
+
+        let visibleURLFieldWidth = max(
+            0,
+            baseURLColumnWidth - Self.fieldHorizontalInset - Self.fieldTrailingInset
         )
-        nameColumn.width = nameWidth
-        urlColumn.width = max(Self.urlColumnMinimumWidth, availableWidth - nameWidth)
-        lastColumnLayoutWidth = availableWidth
+        let longestURLTextWidth = links.map { measuredTextWidth($0.url) }.max() ?? 0
+        let needsHorizontalScrolling = longestURLTextWidth
+            > visibleURLFieldWidth + Self.horizontalOverflowTolerance
+        let requiredURLColumnWidth = max(
+            baseURLColumnWidth,
+            longestURLTextWidth + Self.fieldHorizontalInset + Self.fieldTrailingInset
+        )
+        let targetURLColumnWidth = needsHorizontalScrolling
+            ? requiredURLColumnWidth
+            : baseURLColumnWidth
+        let documentWidth = max(
+            availableWidth,
+            baseNameColumnWidth + targetURLColumnWidth
+        )
+
+        if abs(nameColumn.width - baseNameColumnWidth) > Self.horizontalOverflowTolerance {
+            nameColumn.width = baseNameColumnWidth
+        }
+        if abs(urlColumn.width - targetURLColumnWidth) > Self.horizontalOverflowTolerance {
+            urlColumn.width = targetURLColumnWidth
+        }
+        if abs(tableView.frame.width - documentWidth) > Self.horizontalOverflowTolerance {
+            var frame = tableView.frame
+            frame.size.width = documentWidth
+            tableView.frame = frame
+        }
+        updateHorizontalScrollingState(needsHorizontalScrolling)
+    }
+
+    private func measuredTextWidth(_ text: String) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: Self.tableFieldFont]).width
+    }
+
+    private func updateHorizontalScrollingState(_ allowed: Bool) {
+        scrollView.allowsHorizontalScrolling = allowed
+        scrollView.horizontalScrollElasticity = allowed ? .automatic : .none
+        if let clipView = scrollView.contentView as? StatusLinksVerticalClipView {
+            clipView.allowsHorizontalScrolling = allowed
+        }
+
+        guard !allowed else { return }
+        let currentBounds = scrollView.contentView.bounds
+        guard abs(currentBounds.origin.x) > Self.horizontalOverflowTolerance else { return }
+        scrollView.contentView.scroll(
+            to: NSPoint(x: 0, y: currentBounds.origin.y)
+        )
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     private var tableRowInsertionAnimation: NSTableView.AnimationOptions {
@@ -1174,6 +1273,11 @@ final class StatusLinksEditorHostingView: NSView,
             links[row].url = value
         }
         onChange(row, statusField, value)
+    }
+
+    private func updateHorizontalScrollingIfURLField(_ field: NSTextField) {
+        guard field.identifier?.rawValue.hasPrefix("statusLinks.url.") == true else { return }
+        updateColumnWidthsIfNeeded()
     }
 
     private func finishEditing() {
