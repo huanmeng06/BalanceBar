@@ -73,6 +73,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows, links.count)
         XCTAssertEqual(table.gridStyleMask, .solidHorizontalGridLineMask)
         XCTAssertEqual(table.style, .fullWidth)
+        XCTAssertFalse(scrollView.hasVerticalScroller)
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
@@ -145,6 +146,7 @@ final class StatusLinksTests: XCTestCase {
             editor.scrollViewForTesting.contentView.bounds.height,
             "Long lists should scroll within the table viewport"
         )
+        XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
 
         editor.updateLinks(links + [StatusLink(title: "Link 12", url: "https://12.example")])
         window.layoutIfNeeded()

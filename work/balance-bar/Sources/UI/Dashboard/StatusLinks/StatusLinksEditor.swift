@@ -164,7 +164,6 @@ final class StatusLinksEditorHostingView: NSView,
         let isAddingRow = selectLastRow && newLinks.count > oldCount
 
         links = newLinks
-        updateScrollViewState()
         tableView.reloadData()
         tableView.noteNumberOfRowsChanged()
         updateTableDocumentFrame()
@@ -414,7 +413,7 @@ final class StatusLinksEditorHostingView: NSView,
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
         scrollView.borderType = .bezelBorder
-        scrollView.hasVerticalScroller = !links.isEmpty
+        scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
@@ -424,10 +423,6 @@ final class StatusLinksEditorHostingView: NSView,
 
         documentView.translatesAutoresizingMaskIntoConstraints = true
         documentView.autoresizingMask = [.width]
-    }
-
-    private func updateScrollViewState() {
-        scrollView.hasVerticalScroller = !links.isEmpty
     }
 
     private func configureActionsControl(_ control: NSSegmentedControl) {
@@ -501,9 +496,14 @@ final class StatusLinksEditorHostingView: NSView,
         guard viewportSize.width > 0, viewportSize.height > 0 else { return }
 
         let rowExtent = tableView.rowHeight + tableView.intercellSpacing.height
+        let contentHeight = Self.tableHeaderHeight + CGFloat(links.count) * rowExtent
+        let shouldScroll = contentHeight > viewportSize.height + 0.5
+        if scrollView.hasVerticalScroller != shouldScroll {
+            scrollView.hasVerticalScroller = shouldScroll
+        }
         let documentHeight = max(
             viewportSize.height,
-            Self.tableHeaderHeight + CGFloat(links.count) * rowExtent
+            contentHeight
         )
         let newFrame = NSRect(
             x: 0,
