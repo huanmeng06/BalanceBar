@@ -1226,6 +1226,7 @@ final class StatusLinksEditorHostingView: NSView,
 
         guard let row = selectedRow else {
             moreControl.setEnabled(false, forSegment: 0)
+            syncMoreIconEnabled(false)
             openLinkMenuItem.isEnabled = false
             copyURLMenuItem.isEnabled = false
             duplicateMenuItem.isEnabled = false
@@ -1235,9 +1236,18 @@ final class StatusLinksEditorHostingView: NSView,
         let rawURL = links[row].url
         let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
         moreControl.setEnabled(true, forSegment: 0)
+        syncMoreIconEnabled(true)
         openLinkMenuItem.isEnabled = Self.validatedWebURL(from: rawURL) != nil
         copyURLMenuItem.isEnabled = !trimmedURL.isEmpty
         duplicateMenuItem.isEnabled = true
+    }
+
+    // The overlay icon is drawn outside the segment's own content, so it does
+    // not inherit the segment's disabled tint. Mirror the enabled state with
+    // the system disabled control color to match the neighboring segments.
+    private func syncMoreIconEnabled(_ enabled: Bool) {
+        moreIconView.isEnabled = enabled
+        moreIconView.contentTintColor = enabled ? nil : .disabledControlTextColor
     }
 
     private static func validatedWebURL(from rawURL: String) -> URL? {

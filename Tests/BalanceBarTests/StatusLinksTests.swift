@@ -251,6 +251,7 @@ final class StatusLinksTests: XCTestCase {
         let moreIconView = editor.moreIconViewForTesting
         XCTAssertTrue(moreIconView.superview === moreControl)
         XCTAssertTrue(moreIconView is StatusLinksPassthroughImageView)
+        XCTAssertFalse(moreIconView.isEnabled)
         XCTAssertEqual(
             moreIconView.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
@@ -1173,12 +1174,14 @@ final class StatusLinksTests: XCTestCase {
         }
 
         XCTAssertFalse(editor.moreControlForTesting.isEnabled(forSegment: 0))
+        XCTAssertFalse(editor.moreIconViewForTesting.isEnabled)
         XCTAssertFalse(openLink.isEnabled)
         XCTAssertFalse(copyURL.isEnabled)
         XCTAssertFalse(duplicate.isEnabled)
 
         select(0)
         XCTAssertTrue(editor.moreControlForTesting.isEnabled(forSegment: 0))
+        XCTAssertTrue(editor.moreIconViewForTesting.isEnabled)
         XCTAssertFalse(openLink.isEnabled, "Empty URL cannot be opened")
         XCTAssertFalse(copyURL.isEnabled, "Empty URL cannot be copied")
         XCTAssertTrue(duplicate.isEnabled)
