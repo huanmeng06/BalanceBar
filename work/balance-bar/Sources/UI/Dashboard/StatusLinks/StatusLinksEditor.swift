@@ -5,6 +5,43 @@ enum StatusLinkField: Equatable {
     case url
 }
 
+/// Keeps native table grid lines confined to the header and real data rows.
+/// The table still owns all grid, selection, and color drawing through AppKit.
+final class StatusLinksTableView: NSTableView {
+    private(set) var lastGridClipRectForTesting: NSRect?
+
+    override func drawGrid(inClipRect clipRect: NSRect) {
+        guard numberOfRows > 0 else {
+            lastGridClipRectForTesting = nil
+            return
+        }
+
+        let lastRowRect = rect(ofRow: numberOfRows - 1)
+        guard !lastRowRect.isNull,
+              lastRowRect.maxY > bounds.minY else {
+            lastGridClipRectForTesting = nil
+            return
+        }
+
+        let rowsRect = NSRect(
+            x: bounds.minX,
+            y: bounds.minY,
+            width: bounds.width,
+            height: lastRowRect.maxY - bounds.minY
+        )
+        let gridClipRect = clipRect.intersection(rowsRect)
+        guard !gridClipRect.isNull,
+              gridClipRect.width > 0,
+              gridClipRect.height > 0 else {
+            lastGridClipRectForTesting = nil
+            return
+        }
+
+        lastGridClipRectForTesting = gridClipRect
+        super.drawGrid(inClipRect: gridClipRect)
+    }
+}
+
 /// Prevents a short embedded table from forwarding scroll gestures to the
 /// surrounding settings page. Drawing remains entirely AppKit-owned.
 final class StatusLinksScrollView: NSScrollView {
@@ -42,7 +79,7 @@ final class StatusLinksEditorHostingView: NSView,
     private(set) var links: [StatusLink]
     private(set) var isTornDown = false
 
-    let tableView: NSTableView
+    let tableView: StatusLinksTableView
     let scrollView: StatusLinksScrollView
     let nameColumn: NSTableColumn
     let urlColumn: NSTableColumn
@@ -81,7 +118,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.onRemove = onRemove
         self.onReset = onReset
 
-        let tableView = NSTableView()
+        let tableView = StatusLinksTableView()
         let nameColumn = NSTableColumn(
             identifier: NSUserInterfaceItemIdentifier("statusLinks.name.column")
         )
@@ -383,7 +420,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private func configureTable(
-        _ table: NSTableView,
+        _ table: StatusLinksTableView,
         nameColumn: NSTableColumn,
         urlColumn: NSTableColumn
     ) {
@@ -506,14 +543,21 @@ final class StatusLinksEditorHostingView: NSView,
         let viewportSize = scrollView.contentView.bounds.size
         guard viewportSize.width > 0, viewportSize.height > 0 else { return }
 
-        let rowExtent = tableView.rowHeight + tableView.intercellSpacing.height
-        let contentHeight = Self.tableHeaderHeight + CGFloat(links.count) * rowExtent
-        let shouldScroll = contentHeight > viewportSize.height + 0.5
+        let lastRow = tableView.numberOfRows - 1
+        let rowsHeight: CGFloat
+        if lastRow >= 0 {
+            let lastRowRect = tableView.rect(ofRow: lastRow)
+            rowsHeight = lastRowRect.isNull ? 0 : lastRowRect.maxY
+        } else {
+            rowsHeight = 0
+        }
+
+        let shouldScroll = rowsHeight > viewportSize.height + 0.5
         scrollView.allowsVerticalScrolling = shouldScroll
         if scrollView.hasVerticalScroller != shouldScroll {
             scrollView.hasVerticalScroller = shouldScroll
         }
-        let documentHeight = contentHeight
+        let documentHeight = max(viewportSize.height, rowsHeight)
         let newFrame = NSRect(
             x: 0,
             y: 0,

@@ -75,11 +75,6 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.style, .fullWidth)
         XCTAssertFalse(scrollView.hasVerticalScroller)
         XCTAssertFalse((scrollView as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true)
-        XCTAssertLessThan(
-            table.frame.height,
-            scrollView.contentView.bounds.height,
-            "The native table should not create separator rows below the last link"
-        )
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
@@ -133,6 +128,16 @@ final class StatusLinksTests: XCTestCase {
             },
             "The Status Links editor must not embed a SwiftUI hosting view"
         )
+
+        let nativeTable = try XCTUnwrap(table as? StatusLinksTableView)
+        nativeTable.drawGrid(inClipRect: table.bounds)
+        let gridClipRect = try XCTUnwrap(nativeTable.lastGridClipRectForTesting)
+        let lastRowRect = table.rect(ofRow: table.numberOfRows - 1)
+        XCTAssertLessThanOrEqual(
+            gridClipRect.maxY,
+            lastRowRect.maxY + 0.001,
+            "Native grid drawing must stop at the last real row"
+        )
     }
 
     func testEditorKeepsFixedHeightAndScrollsRowsInsideNativeTable() throws {
@@ -171,7 +176,7 @@ final class StatusLinksTests: XCTestCase {
         )
     }
 
-    func testEmptyEditorDoesNotAllowVerticalDragging() {
+    func testEmptyEditorDoesNotAllowVerticalDragging() throws {
         let editor = makeEditor(links: [])
         let window = makeWindow(for: editor)
         defer { window.orderOut(nil) }
@@ -181,6 +186,15 @@ final class StatusLinksTests: XCTestCase {
             (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true
         )
         XCTAssertEqual(editor.scrollViewForTesting.verticalScrollElasticity, .none)
+
+        let nativeTable = try XCTUnwrap(
+            editor.tableViewForTesting as? StatusLinksTableView
+        )
+        nativeTable.drawGrid(inClipRect: nativeTable.bounds)
+        XCTAssertNil(
+            nativeTable.lastGridClipRectForTesting,
+            "An empty native table must not draw grid lines"
+        )
     }
 
     func testEditorCommitsNativeNameAndURLEdits() throws {
