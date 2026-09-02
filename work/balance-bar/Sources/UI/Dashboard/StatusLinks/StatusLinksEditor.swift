@@ -584,6 +584,25 @@ final class StatusLinksEditorHostingView: NSView,
         updateHorizontalScrollingIfURLField(field)
     }
 
+    func control(
+        _ control: NSControl,
+        textView: NSTextView,
+        doCommandBy commandSelector: Selector
+    ) -> Bool {
+        guard commandSelector == #selector(NSText.insertTab(_:)),
+              let field = control as? NSTextField,
+              field.identifier?.rawValue.hasPrefix("statusLinks.url.") == true,
+              field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+
+        let prefix = "https://"
+        textView.string = prefix
+        textView.selectedRange = NSRange(location: (prefix as NSString).length, length: 0)
+        commit(field)
+        return true
+    }
+
     // MARK: - Native actions
 
     @objc private func performAction(_ sender: NSSegmentedControl) {

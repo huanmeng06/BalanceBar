@@ -650,6 +650,64 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(changes[1].2, "https://updated.example")
     }
 
+    func testTabOnEmptyURLFieldFillsSchemeInsteadOfLeavingField() throws {
+        var editor: StatusLinksEditorHostingView!
+        var changes: [(Int, StatusLinkField, String)] = []
+        editor = makeEditor(
+            links: [StatusLink(title: "One", url: "")],
+            onChange: { changes.append(($0, $1, $2)) }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let urlField = try XCTUnwrap(
+            (editor.tableViewForTesting.view(atColumn: 1, row: 0, makeIfNecessary: true)
+                as? NSTableCellView)?.textField
+        )
+        let nameField = try XCTUnwrap(
+            (editor.tableViewForTesting.view(atColumn: 0, row: 0, makeIfNecessary: true)
+                as? NSTableCellView)?.textField
+        )
+        let insertTab = #selector(NSText.insertTab(_:))
+
+        XCTAssertTrue(window.makeFirstResponder(urlField))
+        let urlTextView = try XCTUnwrap(
+            window.fieldEditor(true, for: urlField) as? NSTextView
+        )
+
+        XCTAssertTrue(
+            editor.control(urlField, textView: urlTextView, doCommandBy: insertTab),
+            "Tab on an empty URL field should fill the scheme instead of leaving the field"
+        )
+        XCTAssertEqual(urlField.stringValue, "https://")
+        XCTAssertEqual(urlTextView.string, "https://")
+        XCTAssertEqual(urlTextView.selectedRange.location, 8)
+        XCTAssertEqual(changes.count, 1)
+        XCTAssertEqual(changes.first?.0, 0)
+        XCTAssertEqual(changes.first?.1, .url)
+        XCTAssertEqual(changes.first?.2, "https://")
+
+        XCTAssertFalse(
+            editor.control(urlField, textView: urlTextView, doCommandBy: insertTab),
+            "Tab on a non-empty URL field moves focus normally"
+        )
+        urlTextView.string = "   "
+        XCTAssertTrue(
+            editor.control(urlField, textView: urlTextView, doCommandBy: insertTab),
+            "Whitespace-only URL fields also get the scheme filled"
+        )
+        XCTAssertEqual(urlField.stringValue, "https://")
+
+        XCTAssertTrue(window.makeFirstResponder(nameField))
+        let nameTextView = try XCTUnwrap(
+            window.fieldEditor(true, for: nameField) as? NSTextView
+        )
+        XCTAssertFalse(
+            editor.control(nameField, textView: nameTextView, doCommandBy: insertTab),
+            "Tab on the Name field moves focus normally"
+        )
+    }
+
     func testAddCommitsActiveNameEditBeforeInserting() throws {
         var editor: StatusLinksEditorHostingView!
         let table = TrackingStatusLinksTableView()
