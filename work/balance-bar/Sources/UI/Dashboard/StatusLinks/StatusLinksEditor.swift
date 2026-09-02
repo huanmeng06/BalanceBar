@@ -618,7 +618,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
             horizontalSeparator.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
             horizontalSeparator.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
-            horizontalSeparator.heightAnchor.constraint(equalToConstant: horizontalSeparator.fittingSize.height),
+            horizontalSeparator.heightAnchor.constraint(equalToConstant: 1),
 
             footerHostView.leadingAnchor.constraint(equalTo: listContentView.leadingAnchor),
             footerHostView.trailingAnchor.constraint(equalTo: listContentView.trailingAnchor),
@@ -648,6 +648,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
     ) {
         button.target = self
         button.action = action
+        button.translatesAutoresizingMaskIntoConstraints = false
         button.isBordered = false
         button.controlSize = .small
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibilityLabel)
@@ -809,7 +810,7 @@ final class StatusLinksEditorView: NSView, NSTableViewDataSource, NSTableViewDel
 
         let nameWidth = floor(availableWidth / 3)
         tableView.tableColumns[0].width = nameWidth
-        tableView.tableColumns[1].width = availableWidth - nameWidth
+        tableView.tableColumns[1].width = nameWidth * 2
     }
 
     private func invalidateEditorLayout() {
