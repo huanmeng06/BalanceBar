@@ -308,9 +308,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 self?.updateStatusLinksLayout()
             }
         )
-        DispatchQueue.main.async { [weak editor] in
-            editor?.logGeometry(label: "initial")
-        }
         return DashboardSettingsComponents.makeSettingsPage([balanceDisplay, items, quickLinks, statusLinks])
     }
 
@@ -333,6 +330,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         quotaColorConfiguration = preferences.quotaProgressColorConfiguration
         quotaColorSlider?.configuration = quotaColorConfiguration
         updateQuotaColorButtons()
+        let statusLinks = preferences.statusLinks
+        if statusLinksEditor?.links != statusLinks {
+            statusLinksEditor?.updateLinks(statusLinks)
+        }
         balanceDisplayThresholdValue = preferences.balanceDisplayThreshold
         balanceDisplayThresholdField?.stringValue = Self.formattedBalanceDisplayThreshold(
             balanceDisplayThresholdValue
@@ -359,6 +360,24 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         statusLinksEditor?.setVisible(visible, animated: animated)
         statusLinksSeparators.forEach { $0.isHidden = !visible }
         updateStatusLinksLayout()
+    }
+
+    func updateStatusLinks(
+        _ links: [StatusLink],
+        mutation: StatusLinksMutation = .reload,
+        selectLastRow: Bool = false,
+        completion: (() -> Void)? = nil
+    ) {
+        guard let statusLinksEditor else {
+            completion?()
+            return
+        }
+        statusLinksEditor.updateLinks(
+            links,
+            mutation: mutation,
+            selectLastRow: selectLastRow,
+            completion: completion
+        )
     }
 
     func teardown() {

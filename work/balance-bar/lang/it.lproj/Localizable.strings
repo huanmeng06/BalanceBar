@@ -409,6 +409,11 @@
 "status.links.editor.name" = "Nome";
 "status.links.editor.url" = "URL";
 "status.links.editor.display_name" = "Nome visualizzato";
+"status.links.editor.more_actions" = "Altre azioni";
+"status.links.editor.open_link" = "Apri link";
+"status.links.editor.copy_url" = "Copia URL";
+"status.links.editor.copy_item" = "Copia elemento";
+"status.links.editor.action_completed" = "Azione completata";
 "status.item.controller.refresh_now" = "Aggiorna ora";
 "status.item.controller.open_main_window" = "Apri finestra principale";
 "status.item.controller.update_available_badge" = "1 aggiornamento";

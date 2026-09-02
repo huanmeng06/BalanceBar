@@ -318,9 +318,9 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
         page.frame = contentHost.bounds
         page.autoresizingMask = [.width, .height]
         contentHost.addSubview(page)
-        // Complete the replacement synchronously so newly hosted SwiftUI
-        // accessibility descendants are materialized before callers inspect
-        // the page (notably on Xcode 16.4 CI).
+        // Complete the replacement synchronously so native accessibility
+        // descendants are materialized before callers inspect the page
+        // (notably on Xcode 16.4 CI).
         contentHost.layoutSubtreeIfNeeded()
         window?.displayIfNeeded()
         actions.didShowPage()

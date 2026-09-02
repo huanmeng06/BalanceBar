@@ -409,6 +409,11 @@
 "status.links.editor.name" = "Nom";
 "status.links.editor.url" = "URL";
 "status.links.editor.display_name" = "Nom d’affichage";
+"status.links.editor.more_actions" = "Autres actions";
+"status.links.editor.open_link" = "Ouvrir le lien";
+"status.links.editor.copy_url" = "Copier l’URL";
+"status.links.editor.copy_item" = "Copier l’élément";
+"status.links.editor.action_completed" = "Action terminée";
 "status.item.controller.refresh_now" = "Actualiser maintenant";
 "status.item.controller.open_main_window" = "Ouvrir la fenêtre principale";
 "status.item.controller.update_available_badge" = "1 mise à jour";

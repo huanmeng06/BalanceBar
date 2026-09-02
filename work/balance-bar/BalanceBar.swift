@@ -278,7 +278,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onClamp: { [weak self] in self?.clampDashboardScrollViewBounds() },
             onStatusLinksChanged: { [weak self] in
                 guard let self else { return }
-                self.render(self.snapshot)
                 self.statusItemController.updateMenu(input: self.makeStatusItemMenuInput())
             },
             onDidShowPage: { [weak self] in
@@ -1320,11 +1319,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateNotesWindowController.show(currentVersion: currentVersion, releases: releases)
     }
 
-    private func showDashboardSection(
-        _ section: DashboardSection,
-        restoringScrollPosition scrollPosition: StatusLinksScrollPosition? = nil
-    ) {
-        dashboardComposition.showSection(section, restoringScrollPosition: scrollPosition)
+    private func showDashboardSection(_ section: DashboardSection) {
+        dashboardComposition.showSection(section)
     }
 
     private func clampDashboardScrollViewBounds() {

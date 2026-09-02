@@ -337,9 +337,8 @@ private final class DashboardSettingsCardView: NSView {
     weak var heightConstraint: NSLayoutConstraint?
     var separators: [NSView] = []
     var rowHeight: ((NSView) -> CGFloat?)?
-    // A custom provider owns an animated row's height (for example the
-    // Status Links editor) and synchronizes the card explicitly so the
-    // surrounding scroll anchors remain stable during that animation.
+    // A custom provider may own a row's measured height (for example the
+    // fixed-height Status Links editor) while the other rows remain adaptive.
     var automaticallyUpdatesHeight = true
     private var isUpdatingHeight = false
 
