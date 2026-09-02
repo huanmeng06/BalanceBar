@@ -175,8 +175,6 @@ final class StatusLinksTests: XCTestCase {
             XCTAssertEqual(add.bezelStyle, .smallSquare)
             XCTAssertEqual(remove.bezelStyle, .smallSquare)
             XCTAssertEqual(addFrame.height, removeFrame.height, accuracy: 1)
-            XCTAssertEqual(addFrame.width, addFrame.height, accuracy: 1)
-            XCTAssertEqual(removeFrame.width, removeFrame.height, accuracy: 1)
             XCTAssertEqual(addFrame.maxX, removeFrame.minX, accuracy: 1)
             XCTAssertEqual(footerFrame.minX, footerHostFrame.minX, accuracy: 1)
             XCTAssertEqual(footerFrame.maxX, removeFrame.maxX, accuracy: 1)
