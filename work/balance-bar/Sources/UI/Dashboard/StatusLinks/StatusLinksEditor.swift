@@ -6,10 +6,10 @@ enum StatusLinkField: Equatable {
 }
 
 final class StatusLinksRowView: NSTableRowView {
-    let selectionTrailingInset: CGFloat
+    let selectionHorizontalInset: CGFloat
 
-    init(selectionTrailingInset: CGFloat) {
-        self.selectionTrailingInset = selectionTrailingInset
+    init(selectionHorizontalInset: CGFloat) {
+        self.selectionHorizontalInset = selectionHorizontalInset
         super.init(frame: .zero)
     }
 
@@ -19,9 +19,9 @@ final class StatusLinksRowView: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         let selectionBounds = NSRect(
-            x: bounds.minX,
+            x: bounds.minX + selectionHorizontalInset,
             y: bounds.minY,
-            width: max(0, bounds.width - selectionTrailingInset),
+            width: max(0, bounds.width - (selectionHorizontalInset * 2)),
             height: bounds.height
         )
         super.drawSelection(in: dirtyRect.intersection(selectionBounds))
@@ -42,7 +42,7 @@ final class StatusLinksEditorHostingView: NSView,
     static let tableViewportHeight: CGFloat = 134
     static let tableHeaderHeight: CGFloat = 24
     static let tableRowHeight: CGFloat = 22
-    static let tableTrailingInset: CGFloat = 12
+    static let tableHorizontalInset: CGFloat = 12
     static let nameColumnMinimumWidth: CGFloat = 120
     static let urlColumnMinimumWidth: CGFloat = 220
 
@@ -299,10 +299,13 @@ final class StatusLinksEditorHostingView: NSView,
             cell.textField = field
             cell.addSubview(field)
             NSLayoutConstraint.activate([
-                field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                field.leadingAnchor.constraint(
+                    equalTo: cell.leadingAnchor,
+                    constant: Self.tableHorizontalInset
+                ),
                 field.trailingAnchor.constraint(
                     equalTo: cell.trailingAnchor,
-                    constant: -Self.tableTrailingInset
+                    constant: -Self.tableHorizontalInset
                 ),
                 field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 field.heightAnchor.constraint(equalToConstant: Self.tableRowHeight - 2)
@@ -345,7 +348,7 @@ final class StatusLinksEditorHostingView: NSView,
         _ tableView: NSTableView,
         rowViewForRow row: Int
     ) -> NSTableRowView? {
-        StatusLinksRowView(selectionTrailingInset: Self.tableTrailingInset)
+        StatusLinksRowView(selectionHorizontalInset: Self.tableHorizontalInset)
     }
 
     // MARK: - NSTextFieldDelegate

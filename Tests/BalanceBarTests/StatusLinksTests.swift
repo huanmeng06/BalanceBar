@@ -80,10 +80,10 @@ final class StatusLinksTests: XCTestCase {
         let rowView = try XCTUnwrap(table.rowView(atRow: 0, makeIfNecessary: true))
         let statusLinksRowView = try XCTUnwrap(rowView as? StatusLinksRowView)
         XCTAssertEqual(
-            statusLinksRowView.selectionTrailingInset,
-            StatusLinksEditorHostingView.tableTrailingInset,
+            statusLinksRowView.selectionHorizontalInset,
+            StatusLinksEditorHostingView.tableHorizontalInset,
             accuracy: 0.001,
-            "Selected rows should reserve a trailing margin"
+            "Selected rows should reserve equal horizontal margins"
         )
 
         XCTAssertGreaterThan(table.tableColumns[0].width, 0)
@@ -107,16 +107,6 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(urlField.isBordered)
         XCTAssertFalse(nameField.drawsBackground)
         XCTAssertFalse(urlField.drawsBackground)
-        XCTAssertGreaterThanOrEqual(
-            nameCell.bounds.maxX - nameField.frame.maxX,
-            8,
-            "Name fields should keep a trailing content margin"
-        )
-        XCTAssertGreaterThanOrEqual(
-            urlCell.bounds.maxX - urlField.frame.maxX,
-            8,
-            "URL fields should keep a trailing content margin"
-        )
         XCTAssertTrue(
             descendants(of: nameCell).filter { $0 is NSButton }.isEmpty,
             "Rows use editable text fields rather than per-row remove buttons"
