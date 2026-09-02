@@ -301,6 +301,7 @@ final class StatusLinksEditorHostingView: NSView,
         moreActionFeedbackGeneration &+= 1
         moreActionResetWorkItem?.cancel()
         moreActionResetWorkItem = nil
+        cancelMoreActionFeedbackAnimation()
         tableView.delegate = nil
         tableView.dataSource = nil
         resetButton.target = nil
@@ -730,8 +731,10 @@ final class StatusLinksEditorHostingView: NSView,
 
     private func showMoreActionSuccess() {
         moreActionResetWorkItem?.cancel()
+        moreActionResetWorkItem = nil
         moreActionFeedbackGeneration &+= 1
         let generation = moreActionFeedbackGeneration
+        cancelMoreActionFeedbackAnimation()
         let completedDescription = tr(.keyStatusLinksEditorActionCompleted)
         setMoreButtonSymbol(
             named: "checkmark",
@@ -740,15 +743,45 @@ final class StatusLinksEditorHostingView: NSView,
 
         let resetWorkItem = DispatchWorkItem { [weak self] in
             guard let self,
+                  !self.isTornDown,
                   self.moreActionFeedbackGeneration == generation else { return }
+            self.resetMoreActionFeedback(generation: generation)
+        }
+        moreActionResetWorkItem = resetWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: resetWorkItem)
+    }
+
+    private func resetMoreActionFeedback(generation: Int) {
+        guard !isTornDown,
+              moreActionFeedbackGeneration == generation else { return }
+
+        moreActionResetWorkItem = nil
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.allowsImplicitAnimation = true
+            moreButton.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self,
+                  !self.isTornDown,
+                  self.moreActionFeedbackGeneration == generation else { return }
+
             self.setMoreButtonSymbol(
                 named: "ellipsis",
                 accessibilityDescription: tr(.keyStatusLinksEditorMoreActions)
             )
-            self.moreActionResetWorkItem = nil
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.14
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                context.allowsImplicitAnimation = true
+                self.moreButton.animator().alphaValue = 1
+            }
         }
-        moreActionResetWorkItem = resetWorkItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: resetWorkItem)
+    }
+
+    private func cancelMoreActionFeedbackAnimation() {
+        moreButton.layer?.removeAllAnimations()
+        moreButton.alphaValue = 1
     }
 
     private func configureMoreMenu() {

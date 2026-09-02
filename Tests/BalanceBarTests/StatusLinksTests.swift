@@ -555,13 +555,15 @@ final class StatusLinksTests: XCTestCase {
             editor.moreButtonForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted)
         )
+        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
         XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
 
-        RunLoop.main.run(until: Date().addingTimeInterval(1.1))
+        RunLoop.main.run(until: Date().addingTimeInterval(1.4))
         XCTAssertEqual(
             editor.moreButtonForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
+        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
     func testMoreCopyURLSuccessShowsCheckmarkAndKeepsURLDataUnchanged() throws {
@@ -594,6 +596,7 @@ final class StatusLinksTests: XCTestCase {
             editor.moreButtonForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted)
         )
+        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
     func testMoreOpenLinkFailureDoesNotShowSuccess() throws {
@@ -664,20 +667,38 @@ final class StatusLinksTests: XCTestCase {
         )
 
         editor.performMoreMenuActionForTesting(at: 1)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        RunLoop.main.run(until: Date().addingTimeInterval(1.08))
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorActionCompleted),
+            "The checkmark should remain until the fade-out completes"
+        )
+        XCTAssertLessThan(
+            editor.moreButtonForTesting.alphaValue,
+            1,
+            "The first success feedback should be fading out"
+        )
         editor.performMoreMenuActionForTesting(at: 1)
+        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
         XCTAssertEqual(
             editor.moreButtonForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted),
             "The first reset must not end the second success state early"
         )
+        XCTAssertEqual(
+            editor.moreButtonForTesting.alphaValue,
+            1,
+            accuracy: 0.001,
+            "An interrupted fade must not make the second feedback translucent"
+        )
 
-        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.9))
         XCTAssertEqual(
             editor.moreButtonForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
+        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
     func testEditorPreservesAndClampsSelectionWhenLinksChange() throws {
