@@ -356,7 +356,8 @@ final class DashboardCompositionController {
             },
             onAdd: { [weak self] in self?.addStatusLink() },
             onRemove: { [weak self] index in self?.removeStatusLink(at: index) },
-            onReset: { [weak self] in self?.resetStatusLinks() }
+            onReset: { [weak self] in self?.resetStatusLinks() },
+            onMove: { [weak self] from, to in self?.moveStatusLink(from: from, to: to) }
         )
     }
 
@@ -392,6 +393,21 @@ final class DashboardCompositionController {
         links.remove(at: index)
         state.setStatusLinks(links)
         SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
+        actions.onStatusLinksChanged()
+        dashboardPreferencePages.updateMenuStatusLinks(links)
+    }
+
+    private func moveStatusLink(from: Int, to: Int) {
+        guard section == .menu else { return }
+        var links = state.statusLinks()
+        guard links.indices.contains(from), links.indices.contains(to), from != to else { return }
+        let movedLink = links.remove(at: from)
+        links.insert(movedLink, at: to)
+        state.setStatusLinks(links)
+        SwitchLog.write(
+            "status link moved; from=\(from); to=\(to)",
+            category: "configuration"
+        )
         actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(links)
     }

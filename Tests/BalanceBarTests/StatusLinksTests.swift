@@ -39,14 +39,16 @@ final class StatusLinksTests: XCTestCase {
         onChange: @escaping (Int, StatusLinkField, String) -> Void = { _, _, _ in },
         onAdd: @escaping () -> Void = {},
         onRemove: @escaping (Int) -> Void = { _ in },
-        onReset: @escaping () -> Void = {}
+        onReset: @escaping () -> Void = {},
+        onMove: @escaping (Int, Int) -> Void = { _, _ in }
     ) -> StatusLinksEditorHostingView {
         StatusLinksEditorHostingView(
             links: links,
             onChange: onChange,
             onAdd: onAdd,
             onRemove: onRemove,
-            onReset: onReset
+            onReset: onReset,
+            onMove: onMove
         )
     }
 
@@ -115,6 +117,19 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 1), .center)
+        let moveControl = editor.moveControlForTesting
+        XCTAssertEqual(moveControl.segmentCount, 2)
+        XCTAssertEqual(moveControl.segmentStyle, .automatic)
+        XCTAssertEqual(moveControl.trackingMode, .momentary)
+        XCTAssertNotNil(moveControl.image(forSegment: 0))
+        XCTAssertNotNil(moveControl.image(forSegment: 1))
+        XCTAssertEqual(
+            moveControl.frame.minX - editor.actionsControlForTesting.frame.maxX,
+            8,
+            accuracy: 1
+        )
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.resetButtonForTesting.identifier?.rawValue, "statusLinks.reset")
         XCTAssertFalse(editor.subviews.contains { $0 is NSTextField })
         XCTAssertEqual(
@@ -323,6 +338,80 @@ final class StatusLinksTests: XCTestCase {
 
         editor.resetButtonForTesting.performClick(nil)
         XCTAssertEqual(resetCount, 1)
+    }
+
+    func testEditorMoveControlsFollowSelectionAndMoveRows() throws {
+        let initialLinks = [
+            StatusLink(title: "One", url: "https://one.example"),
+            StatusLink(title: "Two", url: "https://two.example"),
+            StatusLink(title: "Three", url: "https://three.example")
+        ]
+        var editor: StatusLinksEditorHostingView!
+        var moves: [String] = []
+        editor = makeEditor(
+            links: initialLinks,
+            onMove: { from, to in
+                moves.append("\(from)->\(to)")
+                var reordered = editor.links
+                let movedLink = reordered.remove(at: from)
+                reordered.insert(movedLink, at: to)
+                editor.updateLinks(reordered)
+            }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let moveControl = editor.moveControlForTesting
+        func select(_ row: Int?) {
+            if let row {
+                editor.tableViewForTesting.selectRowIndexes(
+                    IndexSet(integer: row),
+                    byExtendingSelection: false
+                )
+            } else {
+                editor.tableViewForTesting.deselectAll(nil)
+            }
+            editor.tableViewSelectionDidChange(Notification(name: NSNotification.Name("Selection")))
+        }
+
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
+
+        select(0)
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
+        XCTAssertTrue(moveControl.isEnabled(forSegment: 1))
+        editor.performMoveActionForTesting(segment: 0)
+        XCTAssertTrue(moves.isEmpty)
+
+        editor.performMoveActionForTesting(segment: 1)
+        XCTAssertEqual(moves, ["0->1"])
+        XCTAssertEqual(editor.links.map(\.title), ["Two", "One", "Three"])
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertTrue(moveControl.isEnabled(forSegment: 0))
+        XCTAssertTrue(moveControl.isEnabled(forSegment: 1))
+
+        editor.performMoveActionForTesting(segment: 1)
+        XCTAssertEqual(moves, ["0->1", "1->2"])
+        XCTAssertEqual(editor.links.map(\.title), ["Two", "Three", "One"])
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
+        XCTAssertTrue(moveControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
+
+        editor.performMoveActionForTesting(segment: 0)
+        XCTAssertEqual(moves, ["0->1", "1->2", "2->1"])
+        XCTAssertEqual(editor.links.map(\.title), ["Two", "One", "Three"])
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertTrue(moveControl.isEnabled(forSegment: 0))
+        XCTAssertTrue(moveControl.isEnabled(forSegment: 1))
+
+        select(nil)
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
+
+        editor.updateLinks([initialLinks[0]])
+        select(0)
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
+        XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
     }
 
     func testEditorPreservesAndClampsSelectionWhenLinksChange() throws {

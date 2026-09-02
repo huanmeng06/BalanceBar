@@ -40,6 +40,7 @@ final class StatusLinksEditorHostingView: NSView,
     private let onAdd: () -> Void
     private let onRemove: (Int) -> Void
     private let onReset: () -> Void
+    private let onMove: (Int, Int) -> Void
 
     private(set) var links: [StatusLink]
     private(set) var isTornDown = false
@@ -51,10 +52,12 @@ final class StatusLinksEditorHostingView: NSView,
     let urlColumn: NSTableColumn
     let resetButton: NSButton
     let actionsControl: NSSegmentedControl
+    let moveControl: NSSegmentedControl
 
     private var heightConstraint: NSLayoutConstraint?
     private var lastColumnLayoutWidth: CGFloat = -1
     private var editingGeneration = 0
+    private var pendingMoveSelection: Int?
 
     // These accessors keep the view hierarchy easy to inspect in focused
     // XCTest coverage without exposing implementation state to production.
@@ -63,6 +66,7 @@ final class StatusLinksEditorHostingView: NSView,
     var scrollViewForTesting: NSScrollView { scrollView }
     var resetButtonForTesting: NSButton { resetButton }
     var actionsControlForTesting: NSSegmentedControl { actionsControl }
+    var moveControlForTesting: NSSegmentedControl { moveControl }
 
     var addButtonForTesting: NSSegmentedControl { actionsControl }
     var removeButtonForTesting: NSSegmentedControl { actionsControl }
@@ -77,13 +81,15 @@ final class StatusLinksEditorHostingView: NSView,
         onChange: @escaping (Int, StatusLinkField, String) -> Void,
         onAdd: @escaping () -> Void,
         onRemove: @escaping (Int) -> Void,
-        onReset: @escaping () -> Void
+        onReset: @escaping () -> Void,
+        onMove: @escaping (Int, Int) -> Void = { _, _ in }
     ) {
         self.links = links
         self.onChange = onChange
         self.onAdd = onAdd
         self.onRemove = onRemove
         self.onReset = onReset
+        self.onMove = onMove
 
         let tableView = NSTableView()
         let nameColumn = NSTableColumn(
@@ -100,6 +106,7 @@ final class StatusLinksEditorHostingView: NSView,
             action: nil
         )
         let actionsControl = NSSegmentedControl()
+        let moveControl = NSSegmentedControl()
 
         self.tableView = tableView
         self.tableContainer = tableContainer
@@ -108,6 +115,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.urlColumn = urlColumn
         self.resetButton = resetButton
         self.actionsControl = actionsControl
+        self.moveControl = moveControl
 
         super.init(frame: .zero)
 
@@ -123,10 +131,12 @@ final class StatusLinksEditorHostingView: NSView,
         configureScrollView(scrollView, documentView: tableView)
         configureTableContainer(tableContainer, contentView: scrollView)
         configureActionsControl(actionsControl)
+        configureMoveControl(moveControl)
 
         addSubview(resetButton)
         addSubview(tableContainer)
         addSubview(actionsControl)
+        addSubview(moveControl)
 
         NSLayoutConstraint.activate([
             tableContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
@@ -138,9 +148,13 @@ final class StatusLinksEditorHostingView: NSView,
             actionsControl.topAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: 8),
             actionsControl.heightAnchor.constraint(equalToConstant: 24),
 
+            moveControl.leadingAnchor.constraint(equalTo: actionsControl.trailingAnchor, constant: 8),
+            moveControl.topAnchor.constraint(equalTo: actionsControl.topAnchor),
+            moveControl.heightAnchor.constraint(equalTo: actionsControl.heightAnchor),
+
             resetButton.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor),
             resetButton.leadingAnchor.constraint(
-                greaterThanOrEqualTo: actionsControl.trailingAnchor,
+                greaterThanOrEqualTo: moveControl.trailingAnchor,
                 constant: 12
             ),
             resetButton.centerYAnchor.constraint(equalTo: actionsControl.centerYAnchor)
@@ -150,7 +164,7 @@ final class StatusLinksEditorHostingView: NSView,
         heightConstraint.isActive = true
         self.heightConstraint = heightConstraint
 
-        updateRemoveControlState()
+        updateActionControlState()
     }
 
     required init?(coder: NSCoder) {
@@ -180,6 +194,8 @@ final class StatusLinksEditorHostingView: NSView,
         let oldCount = links.count
         let previousSelection = tableView.selectedRow
         let isAddingRow = selectLastRow && newLinks.count > oldCount
+        let requestedMoveSelection = pendingMoveSelection
+        pendingMoveSelection = nil
 
         links = newLinks
         tableView.reloadData()
@@ -189,6 +205,9 @@ final class StatusLinksEditorHostingView: NSView,
         let nextSelection: Int?
         if newLinks.isEmpty {
             nextSelection = nil
+        } else if let requestedMoveSelection,
+                  newLinks.indices.contains(requestedMoveSelection) {
+            nextSelection = requestedMoveSelection
         } else if isAddingRow {
             nextSelection = newLinks.indices.last
         } else if previousSelection >= 0 {
@@ -254,6 +273,7 @@ final class StatusLinksEditorHostingView: NSView,
         tableView.dataSource = nil
         resetButton.target = nil
         actionsControl.target = nil
+        moveControl.target = nil
         heightConstraint?.isActive = false
         heightConstraint = nil
     }
@@ -329,7 +349,7 @@ final class StatusLinksEditorHostingView: NSView,
     // MARK: - NSTableViewDelegate
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        updateRemoveControlState()
+        updateActionControlState()
     }
 
     // MARK: - NSTextFieldDelegate
@@ -359,17 +379,58 @@ final class StatusLinksEditorHostingView: NSView,
         case 1:
             let row = tableView.selectedRow
             guard links.indices.contains(row) else {
-                updateRemoveControlState()
+                updateActionControlState()
                 return
             }
             onRemove(row)
         default:
             break
         }
+        updateActionControlState()
     }
 
     func performActionForTesting(segment: Int) {
         performAction(segment: segment)
+    }
+
+    @objc private func performMoveAction(_ sender: NSSegmentedControl) {
+        let segment = sender.selectedSegment
+        sender.selectedSegment = -1
+        performMoveAction(segment: segment)
+    }
+
+    private func performMoveAction(segment: Int) {
+        guard segment == 0 || segment == 1 else {
+            updateActionControlState()
+            return
+        }
+
+        let from = tableView.selectedRow
+        guard links.indices.contains(from) else {
+            updateActionControlState()
+            return
+        }
+
+        let to = segment == 0 ? from - 1 : from + 1
+        guard links.indices.contains(to) else {
+            updateActionControlState()
+            return
+        }
+
+        pendingMoveSelection = to
+        onMove(from, to)
+
+        // The data source normally calls updateLinks synchronously. Keep the
+        // selection responsive as well when a caller updates asynchronously.
+        if pendingMoveSelection != nil {
+            pendingMoveSelection = nil
+            applySelection(to)
+        }
+        updateActionControlState()
+    }
+
+    func performMoveActionForTesting(segment: Int) {
+        performMoveAction(segment: segment)
     }
 
     @objc private func restoreDefaults(_ sender: NSButton) {
@@ -518,6 +579,37 @@ final class StatusLinksEditorHostingView: NSView,
         control.setAccessibilityLabel("Status Links actions")
     }
 
+    private func configureMoveControl(_ control: NSSegmentedControl) {
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.segmentCount = 2
+        control.trackingMode = .momentary
+        control.segmentStyle = .automatic
+        control.setWidth(28, forSegment: 0)
+        control.setWidth(28, forSegment: 1)
+        control.segmentDistribution = .fillEqually
+        if let up = NSImage(
+            systemSymbolName: "chevron.up",
+            accessibilityDescription: "Move status link up"
+        ) {
+            control.setImage(up, forSegment: 0)
+            control.setLabel("", forSegment: 0)
+        }
+        if let down = NSImage(
+            systemSymbolName: "chevron.down",
+            accessibilityDescription: "Move status link down"
+        ) {
+            control.setImage(down, forSegment: 1)
+            control.setLabel("", forSegment: 1)
+        }
+        control.setAlignment(.center, forSegment: 0)
+        control.setAlignment(.center, forSegment: 1)
+        control.target = self
+        control.action = #selector(performMoveAction(_:))
+        control.identifier = NSUserInterfaceItemIdentifier("statusLinks.move")
+        control.toolTip = "Move status link up or down"
+        control.setAccessibilityLabel("Move status link")
+    }
+
     private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
         let cell = NSTableCellView()
         cell.identifier = identifier
@@ -584,19 +676,27 @@ final class StatusLinksEditorHostingView: NSView,
     private func applySelection(_ row: Int?) {
         guard let row, links.indices.contains(row) else {
             tableView.deselectAll(nil)
-            updateRemoveControlState()
+            updateActionControlState()
             return
         }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
-        updateRemoveControlState()
+        updateActionControlState()
     }
 
-    private func updateRemoveControlState() {
+    private func updateActionControlState() {
+        let selectedRow = tableView.selectedRow
         actionsControl.setEnabled(
-            links.indices.contains(tableView.selectedRow),
+            links.indices.contains(selectedRow),
             forSegment: 1
         )
+        guard links.indices.contains(selectedRow) else {
+            moveControl.setEnabled(false, forSegment: 0)
+            moveControl.setEnabled(false, forSegment: 1)
+            return
+        }
+        moveControl.setEnabled(selectedRow > links.startIndex, forSegment: 0)
+        moveControl.setEnabled(selectedRow < links.endIndex - 1, forSegment: 1)
     }
 
     private func beginNameEditing(row: Int) {
