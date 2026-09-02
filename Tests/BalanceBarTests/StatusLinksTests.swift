@@ -8,6 +8,7 @@ private final class TrackingStatusLinksTableView: NSTableView {
     private(set) var insertedRows: [(IndexSet, NSTableView.AnimationOptions)] = []
     private(set) var removedRows: [(IndexSet, NSTableView.AnimationOptions)] = []
     private(set) var movedRows: [(Int, Int)] = []
+    private(set) var moveAnimationDurations: [TimeInterval] = []
     private(set) var scrolledRows: [Int] = []
     private(set) var editedRows: [Int] = []
     private(set) var selectedRowsWhenInsertStarted: [Int] = []
@@ -36,6 +37,7 @@ private final class TrackingStatusLinksTableView: NSTableView {
 
     override func moveRow(at oldRow: Int, to newRow: Int) {
         movedRows.append((oldRow, newRow))
+        moveAnimationDurations.append(NSAnimationContext.current.duration)
         super.moveRow(at: oldRow, to: newRow)
     }
 
@@ -670,6 +672,10 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(moves, ["0->1"])
         XCTAssertEqual(table.reloadCount, 0)
         XCTAssertEqual(table.movedRows.map { "\($0.0)->\($0.1)" }, ["0->1"])
+        XCTAssertEqual(
+            table.moveAnimationDurations,
+            [StatusLinksEditorHostingView.tableRowMoveAnimationDuration]
+        )
         XCTAssertEqual(editor.links.map(\.title), ["Two", "One", "Three"])
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
         XCTAssertTrue(moveControl.isEnabled(forSegment: 0))

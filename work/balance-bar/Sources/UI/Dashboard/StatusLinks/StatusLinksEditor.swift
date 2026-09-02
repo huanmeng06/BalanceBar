@@ -43,6 +43,7 @@ final class StatusLinksEditorHostingView: NSView,
     static let fixedHeight: CGFloat = 190
     static let tableViewportHeight: CGFloat = 134
     static let tableRowHeight: CGFloat = 22
+    static let tableRowMoveAnimationDuration: TimeInterval = 0.16
     static let tableCornerRadius: CGFloat = 12
     static let tableBorderWidth: CGFloat = 1
     static let fieldHorizontalInset: CGFloat = 12
@@ -371,7 +372,12 @@ final class StatusLinksEditorHostingView: NSView,
             )
             finishMutation()
         case .move(let from, let to):
-            tableView.moveRow(at: from, to: to)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Self.tableRowMoveAnimationDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.allowsImplicitAnimation = true
+                tableView.moveRow(at: from, to: to)
+            }
             finishMutation()
         case .reload:
             tableView.reloadData()
