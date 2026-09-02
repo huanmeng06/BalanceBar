@@ -5,6 +5,13 @@ enum StatusLinkField: Equatable {
     case url
 }
 
+enum StatusLinksMutation: Equatable {
+    case insert(Int)
+    case remove(Int)
+    case move(from: Int, to: Int)
+    case reload
+}
+
 /// Prevents a short embedded table from forwarding scroll gestures to the
 /// surrounding settings page. Drawing remains entirely AppKit-owned.
 final class StatusLinksScrollView: NSScrollView {
@@ -44,12 +51,13 @@ final class StatusLinksEditorHostingView: NSView,
     static let urlColumnMinimumWidth: CGFloat = 220
 
     private let onChange: (Int, StatusLinkField, String) -> Void
-    private let onAdd: () -> Void
+    private let onAdd: (Int) -> Void
     private let onRemove: (Int) -> Void
     private let onReset: () -> Void
     private let onMove: (Int, Int) -> Void
     private let onDuplicate: (Int) -> Void
     private let openURL: (URL) -> Bool
+    private let shouldReduceMotion: () -> Bool
 
     private(set) var links: [StatusLink]
     private(set) var isTornDown = false
@@ -75,6 +83,8 @@ final class StatusLinksEditorHostingView: NSView,
     private var editingGeneration = 0
     private var pendingMoveSelection: Int?
     private var pendingDuplicateSelection: Int?
+    private var tableDocumentFrameUpdateGeneration = 0
+    private var defersTableDocumentFrameUpdate = false
     private var moreActionResetWorkItem: DispatchWorkItem?
     private var moreActionFeedbackGeneration = 0
 
@@ -101,12 +111,16 @@ final class StatusLinksEditorHostingView: NSView,
     init(
         links: [StatusLink],
         onChange: @escaping (Int, StatusLinkField, String) -> Void,
-        onAdd: @escaping () -> Void,
+        onAdd: @escaping (Int) -> Void,
         onRemove: @escaping (Int) -> Void,
         onReset: @escaping () -> Void,
         onMove: @escaping (Int, Int) -> Void = { _, _ in },
         onDuplicate: @escaping (Int) -> Void = { _ in },
-        openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
+        openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
+        tableView: NSTableView = NSTableView(),
+        shouldReduceMotion: @escaping () -> Bool = {
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
     ) {
         self.links = links
         self.onChange = onChange
@@ -116,8 +130,8 @@ final class StatusLinksEditorHostingView: NSView,
         self.onMove = onMove
         self.onDuplicate = onDuplicate
         self.openURL = openURL
+        self.shouldReduceMotion = shouldReduceMotion
 
-        let tableView = NSTableView()
         let nameColumn = NSTableColumn(
             identifier: NSUserInterfaceItemIdentifier("statusLinks.name.column")
         )
@@ -227,11 +241,13 @@ final class StatusLinksEditorHostingView: NSView,
     override func layout() {
         super.layout()
         updateColumnWidthsIfNeeded()
+        guard !defersTableDocumentFrameUpdate else { return }
         updateTableDocumentFrame()
     }
 
     func updateLinks(
         _ newLinks: [StatusLink],
+        mutation: StatusLinksMutation = .reload,
         selectLastRow: Bool = false,
         completion: (() -> Void)? = nil
     ) {
@@ -240,37 +256,122 @@ final class StatusLinksEditorHostingView: NSView,
             return
         }
 
-        let oldCount = links.count
+        let oldLinks = links
         let previousSelection = tableView.selectedRow
-        let isAddingRow = selectLastRow && newLinks.count > oldCount
         let requestedSelection = pendingMoveSelection ?? pendingDuplicateSelection
         pendingMoveSelection = nil
         pendingDuplicateSelection = nil
 
+        let effectiveMutation = validatedMutation(
+            mutation,
+            oldLinks: oldLinks,
+            newLinks: newLinks
+        )
+        if effectiveMutation == .reload {
+            cancelDeferredTableDocumentFrameUpdate()
+        } else {
+            scheduleTableDocumentFrameUpdate()
+        }
+        let previousTableFrame = tableView.frame
         links = newLinks
-        tableView.reloadData()
-        tableView.noteNumberOfRowsChanged()
-        updateTableDocumentFrame()
+        editingGeneration &+= 1
+
+        switch effectiveMutation {
+        case .insert(let index):
+            tableView.insertRows(
+                at: IndexSet(integer: index),
+                withAnimation: tableRowInsertionAnimation
+            )
+        case .remove(let index):
+            tableView.removeRows(
+                at: IndexSet(integer: index),
+                withAnimation: tableRowRemovalAnimation
+            )
+        case .move(let from, let to):
+            tableView.moveRow(at: from, to: to)
+        case .reload:
+            tableView.reloadData()
+        }
+
+        if effectiveMutation != .reload,
+           previousTableFrame != tableView.frame {
+            tableView.frame = previousTableFrame
+        }
 
         let nextSelection: Int?
         if newLinks.isEmpty {
             nextSelection = nil
-        } else if let requestedSelection,
-                  newLinks.indices.contains(requestedSelection) {
-            nextSelection = requestedSelection
-        } else if isAddingRow {
-            nextSelection = newLinks.indices.last
-        } else if previousSelection >= 0 {
-            nextSelection = min(previousSelection, newLinks.count - 1)
         } else {
-            nextSelection = nil
+            switch effectiveMutation {
+            case .insert(let index):
+                nextSelection = index
+            case .remove(let index):
+                if previousSelection == index {
+                    nextSelection = min(index, newLinks.count - 1)
+                } else if previousSelection > index {
+                    nextSelection = newLinks.indices.contains(previousSelection - 1)
+                        ? previousSelection - 1
+                        : newLinks.indices.last
+                } else if newLinks.indices.contains(previousSelection) {
+                    nextSelection = previousSelection
+                } else {
+                    nextSelection = nil
+                }
+            case .move(let from, let to):
+                if let requestedSelection,
+                   newLinks.indices.contains(requestedSelection) {
+                    nextSelection = requestedSelection
+                } else if previousSelection == from {
+                    nextSelection = to
+                } else if newLinks.indices.contains(previousSelection) {
+                    nextSelection = previousSelection
+                } else {
+                    nextSelection = nil
+                }
+            case .reload:
+                if let requestedSelection,
+                   newLinks.indices.contains(requestedSelection) {
+                    nextSelection = requestedSelection
+                } else if selectLastRow && newLinks.count > oldLinks.count {
+                    nextSelection = newLinks.indices.last
+                } else if previousSelection >= 0 {
+                    nextSelection = min(previousSelection, newLinks.count - 1)
+                } else {
+                    nextSelection = nil
+                }
+            }
         }
 
-        applySelection(nextSelection)
+        let insertedRowForEditing: Int?
+        switch effectiveMutation {
+        case .insert(let index) where selectLastRow:
+            insertedRowForEditing = index
+        case .reload where selectLastRow && newLinks.count > oldLinks.count:
+            insertedRowForEditing = nextSelection
+        default:
+            insertedRowForEditing = nil
+        }
+
+        applySelection(nextSelection, scroll: insertedRowForEditing == nil)
         completion?()
 
-        if isAddingRow, let nextSelection {
-            beginNameEditing(row: nextSelection)
+        if effectiveMutation == .reload && insertedRowForEditing == nil {
+            updateTableDocumentFrame()
+        }
+
+        if let insertedRowForEditing {
+            if effectiveMutation == .reload {
+                scheduleTableDocumentFrameUpdate()
+            }
+            let generation = editingGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      !self.isTornDown,
+                      generation == self.editingGeneration,
+                      self.links.indices.contains(insertedRowForEditing) else { return }
+                self.tableView.scrollRowToVisible(insertedRowForEditing)
+                self.beginNameEditing(row: insertedRowForEditing)
+            }
         }
     }
 
@@ -319,6 +420,8 @@ final class StatusLinksEditorHostingView: NSView,
         guard !isTornDown else { return }
         isTornDown = true
         editingGeneration &+= 1
+        tableDocumentFrameUpdateGeneration &+= 1
+        defersTableDocumentFrameUpdate = false
         moreActionFeedbackGeneration &+= 1
         moreActionResetWorkItem?.cancel()
         moreActionResetWorkItem = nil
@@ -379,7 +482,6 @@ final class StatusLinksEditorHostingView: NSView,
             ])
         }
 
-        field.tag = row
         field.identifier = NSUserInterfaceItemIdentifier(
             "statusLinks.\(isNameColumn ? "name" : "url").\(row)"
         )
@@ -434,13 +536,15 @@ final class StatusLinksEditorHostingView: NSView,
     private func performAction(segment: Int) {
         switch segment {
         case 0:
-            onAdd()
+            finishEditing()
+            onAdd(links.count)
         case 1:
             let row = tableView.selectedRow
             guard links.indices.contains(row) else {
                 updateActionControlState()
                 return
             }
+            finishEditing()
             onRemove(row)
         default:
             break
@@ -476,6 +580,7 @@ final class StatusLinksEditorHostingView: NSView,
             return
         }
 
+        finishEditing()
         pendingMoveSelection = to
         onMove(from, to)
 
@@ -884,6 +989,59 @@ final class StatusLinksEditorHostingView: NSView,
         lastColumnLayoutWidth = availableWidth
     }
 
+    private var tableRowInsertionAnimation: NSTableView.AnimationOptions {
+        shouldReduceMotion() ? [] : .effectGap
+    }
+
+    private var tableRowRemovalAnimation: NSTableView.AnimationOptions {
+        shouldReduceMotion() ? [] : .effectFade
+    }
+
+    private func validatedMutation(
+        _ mutation: StatusLinksMutation,
+        oldLinks: [StatusLink],
+        newLinks: [StatusLink]
+    ) -> StatusLinksMutation {
+        guard tableView.numberOfRows == oldLinks.count else { return .reload }
+
+        switch mutation {
+        case .insert(let index):
+            guard newLinks.count == oldLinks.count + 1,
+                  newLinks.indices.contains(index) else { return .reload }
+        case .remove(let index):
+            guard oldLinks.indices.contains(index),
+                  newLinks.count == oldLinks.count - 1 else { return .reload }
+        case .move(let from, let to):
+            guard from != to,
+                  oldLinks.indices.contains(from),
+                  newLinks.count == oldLinks.count,
+                  newLinks.indices.contains(to) else { return .reload }
+        case .reload:
+            return .reload
+        }
+        return mutation
+    }
+
+    private func scheduleTableDocumentFrameUpdate() {
+        tableDocumentFrameUpdateGeneration &+= 1
+        let generation = tableDocumentFrameUpdateGeneration
+        defersTableDocumentFrameUpdate = true
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.tableDocumentFrameUpdateGeneration == generation,
+                  !self.isTornDown else { return }
+            self.defersTableDocumentFrameUpdate = false
+            self.updateTableDocumentFrame()
+            self.needsLayout = true
+        }
+    }
+
+    private func cancelDeferredTableDocumentFrameUpdate() {
+        tableDocumentFrameUpdateGeneration &+= 1
+        defersTableDocumentFrameUpdate = false
+    }
+
     private func updateTableDocumentFrame() {
         let viewportSize = scrollView.contentView.bounds.size
         guard viewportSize.width > 0, viewportSize.height > 0 else { return }
@@ -914,14 +1072,16 @@ final class StatusLinksEditorHostingView: NSView,
         }
     }
 
-    private func applySelection(_ row: Int?) {
+    private func applySelection(_ row: Int?, scroll: Bool = true) {
         guard let row, links.indices.contains(row) else {
             tableView.deselectAll(nil)
             updateActionControlState()
             return
         }
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        tableView.scrollRowToVisible(row)
+        if scroll {
+            tableView.scrollRowToVisible(row)
+        }
         updateActionControlState()
     }
 
@@ -1016,7 +1176,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private func commit(_ field: NSTextField) {
-        let row = field.tag
+        let row = tableView.row(for: field)
         guard links.indices.contains(row),
               let fieldIdentifier = field.identifier?.rawValue else { return }
 
@@ -1039,6 +1199,11 @@ final class StatusLinksEditorHostingView: NSView,
             links[row].url = value
         }
         onChange(row, statusField, value)
+    }
+
+    private func finishEditing() {
+        guard let window else { return }
+        _ = window.makeFirstResponder(nil)
     }
 
     private func synchronizeAncestorCardHeight(animated: Bool) {

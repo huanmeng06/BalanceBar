@@ -1037,7 +1037,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             preferences: preferences,
             relay: DashboardPreferencePageRelay(),
             makeStatusLinksEditor: {
-                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
             onBalanceDisplayThresholdChanged: { value in
                 changedValues.append(value)
@@ -1124,7 +1124,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             preferences: preferences,
             relay: relay,
             makeStatusLinksEditor: {
-                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
             onBalanceDisplayThresholdChanged: { _ in }
         ))
@@ -1278,7 +1278,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 preferences: preferences,
                 relay: relay,
                 makeStatusLinksEditor: {
-                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
                 },
                 onBalanceDisplayThresholdChanged: { _ in }
             ))
@@ -1352,7 +1352,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 StatusLinksEditorHostingView(
                     links: [StatusLink(title: "Status", url: "https://status.example")],
                     onChange: { _, _, _ in },
-                    onAdd: {},
+                    onAdd: { _ in },
                     onRemove: { _ in },
                     onReset: {}
                 )

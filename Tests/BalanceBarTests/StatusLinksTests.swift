@@ -3,6 +3,40 @@ import XCTest
 @testable import BalanceBar
 
 @MainActor
+private final class TrackingStatusLinksTableView: NSTableView {
+    private(set) var reloadCount = 0
+    private(set) var insertedRows: [(IndexSet, NSTableView.AnimationOptions)] = []
+    private(set) var removedRows: [(IndexSet, NSTableView.AnimationOptions)] = []
+    private(set) var movedRows: [(Int, Int)] = []
+
+    override func reloadData() {
+        reloadCount += 1
+        super.reloadData()
+    }
+
+    override func insertRows(
+        at rowIndexes: IndexSet,
+        withAnimation animationOptions: NSTableView.AnimationOptions
+    ) {
+        insertedRows.append((rowIndexes, animationOptions))
+        super.insertRows(at: rowIndexes, withAnimation: animationOptions)
+    }
+
+    override func removeRows(
+        at rowIndexes: IndexSet,
+        withAnimation animationOptions: NSTableView.AnimationOptions
+    ) {
+        removedRows.append((rowIndexes, animationOptions))
+        super.removeRows(at: rowIndexes, withAnimation: animationOptions)
+    }
+
+    override func moveRow(at oldRow: Int, to newRow: Int) {
+        movedRows.append((oldRow, newRow))
+        super.moveRow(at: oldRow, to: newRow)
+    }
+}
+
+@MainActor
 final class StatusLinksTests: XCTestCase {
     private func makeWindow(
         for editor: StatusLinksEditorHostingView,
@@ -37,12 +71,14 @@ final class StatusLinksTests: XCTestCase {
     private func makeEditor(
         links: [StatusLink],
         onChange: @escaping (Int, StatusLinkField, String) -> Void = { _, _, _ in },
-        onAdd: @escaping () -> Void = {},
+        onAdd: @escaping (Int) -> Void = { _ in },
         onRemove: @escaping (Int) -> Void = { _ in },
         onReset: @escaping () -> Void = {},
         onMove: @escaping (Int, Int) -> Void = { _, _ in },
         onDuplicate: @escaping (Int) -> Void = { _ in },
-        openURL: @escaping (URL) -> Bool = { _ in false }
+        openURL: @escaping (URL) -> Bool = { _ in false },
+        tableView: NSTableView? = nil,
+        shouldReduceMotion: @escaping () -> Bool = { false }
     ) -> StatusLinksEditorHostingView {
         StatusLinksEditorHostingView(
             links: links,
@@ -52,7 +88,9 @@ final class StatusLinksTests: XCTestCase {
             onReset: onReset,
             onMove: onMove,
             onDuplicate: onDuplicate,
-            openURL: openURL
+            openURL: openURL,
+            tableView: tableView ?? NSTableView(),
+            shouldReduceMotion: shouldReduceMotion
         )
     }
 
@@ -347,10 +385,11 @@ final class StatusLinksTests: XCTestCase {
         var resetCount = 0
         editor = makeEditor(
             links: [StatusLink(title: "One", url: "https://one.example")],
-            onAdd: {
+            onAdd: { index in
                 addCount += 1
                 editor.updateLinks(
                     editor.links + [StatusLink(title: "", url: "")],
+                    mutation: .insert(index),
                     selectLastRow: true
                 )
             },
@@ -378,6 +417,123 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(resetCount, 1)
     }
 
+    func testInsertMutationUsesExactIndexWithoutReloadAndSelectsNewRow() throws {
+        var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
+        var insertedIndex: Int?
+        editor = makeEditor(
+            links: [
+                StatusLink(title: "One", url: "https://one.example"),
+                StatusLink(title: "Two", url: "https://two.example")
+            ],
+            onAdd: { index in
+                insertedIndex = index
+                var updatedLinks = editor.links
+                updatedLinks.insert(StatusLink(title: "New", url: ""), at: index)
+                editor.updateLinks(
+                    updatedLinks,
+                    mutation: .insert(index)
+                )
+            },
+            tableView: table
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.performActionForTesting(segment: 0)
+
+        XCTAssertEqual(insertedIndex, 2)
+        XCTAssertEqual(table.reloadCount, 0)
+        XCTAssertEqual(table.insertedRows.count, 1)
+        XCTAssertEqual(table.insertedRows[0].0, IndexSet(integer: 2))
+        XCTAssertEqual(table.insertedRows[0].1, .effectGap)
+        XCTAssertEqual(editor.rowCount, 3)
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
+    }
+
+    func testRemoveMutationUsesExactIndexAndSelectsReplacementRow() throws {
+        var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
+        var removedIndex: Int?
+        editor = makeEditor(
+            links: [
+                StatusLink(title: "One", url: "https://one.example"),
+                StatusLink(title: "Two", url: "https://two.example"),
+                StatusLink(title: "Three", url: "https://three.example")
+            ],
+            onRemove: { index in
+                removedIndex = index
+                var updatedLinks = editor.links
+                updatedLinks.remove(at: index)
+                editor.updateLinks(updatedLinks, mutation: .remove(index))
+            },
+            tableView: table
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 1),
+            byExtendingSelection: false
+        )
+
+        editor.performActionForTesting(segment: 1)
+
+        XCTAssertEqual(removedIndex, 1)
+        XCTAssertEqual(table.reloadCount, 0)
+        XCTAssertEqual(table.removedRows.count, 1)
+        XCTAssertEqual(table.removedRows[0].0, IndexSet(integer: 1))
+        XCTAssertEqual(table.removedRows[0].1, .effectFade)
+        XCTAssertEqual(editor.rowCount, 2)
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+    }
+
+    func testRemoveMutationSelectsNewLastRowOrClearsOnlyRowSelection() throws {
+        var lastEditor: StatusLinksEditorHostingView!
+        let lastTable = TrackingStatusLinksTableView()
+        lastEditor = makeEditor(
+            links: [
+                StatusLink(title: "One", url: "https://one.example"),
+                StatusLink(title: "Two", url: "https://two.example")
+            ],
+            onRemove: { index in
+                var updatedLinks = lastEditor.links
+                updatedLinks.remove(at: index)
+                lastEditor.updateLinks(updatedLinks, mutation: .remove(index))
+            },
+            tableView: lastTable
+        )
+        let lastWindow = makeWindow(for: lastEditor)
+        defer { lastWindow.orderOut(nil) }
+        lastEditor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 1),
+            byExtendingSelection: false
+        )
+        lastEditor.performActionForTesting(segment: 1)
+        XCTAssertEqual(lastEditor.tableViewForTesting.selectedRow, 0)
+
+        var onlyEditor: StatusLinksEditorHostingView!
+        let onlyTable = TrackingStatusLinksTableView()
+        onlyEditor = makeEditor(
+            links: [StatusLink(title: "Only", url: "https://only.example")],
+            onRemove: { index in
+                var updatedLinks = onlyEditor.links
+                updatedLinks.remove(at: index)
+                onlyEditor.updateLinks(updatedLinks, mutation: .remove(index))
+            },
+            tableView: onlyTable
+        )
+        let onlyWindow = makeWindow(for: onlyEditor)
+        defer { onlyWindow.orderOut(nil) }
+        onlyEditor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 0),
+            byExtendingSelection: false
+        )
+        onlyEditor.performActionForTesting(segment: 1)
+        XCTAssertEqual(onlyEditor.rowCount, 0)
+        XCTAssertEqual(onlyEditor.tableViewForTesting.selectedRow, -1)
+        XCTAssertEqual(onlyTable.removedRows[0].0, IndexSet(integer: 0))
+    }
+
     func testEditorMoveControlsFollowSelectionAndMoveRows() throws {
         let initialLinks = [
             StatusLink(title: "One", url: "https://one.example"),
@@ -385,6 +541,7 @@ final class StatusLinksTests: XCTestCase {
             StatusLink(title: "Three", url: "https://three.example")
         ]
         var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
         var moves: [String] = []
         editor = makeEditor(
             links: initialLinks,
@@ -393,8 +550,9 @@ final class StatusLinksTests: XCTestCase {
                 var reordered = editor.links
                 let movedLink = reordered.remove(at: from)
                 reordered.insert(movedLink, at: to)
-                editor.updateLinks(reordered)
-            }
+                editor.updateLinks(reordered, mutation: .move(from: from, to: to))
+            },
+            tableView: table
         )
         let window = makeWindow(for: editor)
         defer { window.orderOut(nil) }
@@ -423,6 +581,8 @@ final class StatusLinksTests: XCTestCase {
 
         editor.performMoveActionForTesting(segment: 1)
         XCTAssertEqual(moves, ["0->1"])
+        XCTAssertEqual(table.reloadCount, 0)
+        XCTAssertEqual(table.movedRows.map { "\($0.0)->\($0.1)" }, ["0->1"])
         XCTAssertEqual(editor.links.map(\.title), ["Two", "One", "Three"])
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
         XCTAssertTrue(moveControl.isEnabled(forSegment: 0))
@@ -430,6 +590,10 @@ final class StatusLinksTests: XCTestCase {
 
         editor.performMoveActionForTesting(segment: 1)
         XCTAssertEqual(moves, ["0->1", "1->2"])
+        XCTAssertEqual(
+            table.movedRows.map { "\($0.0)->\($0.1)" },
+            ["0->1", "1->2"]
+        )
         XCTAssertEqual(editor.links.map(\.title), ["Two", "Three", "One"])
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
         XCTAssertTrue(moveControl.isEnabled(forSegment: 0))
@@ -437,6 +601,10 @@ final class StatusLinksTests: XCTestCase {
 
         editor.performMoveActionForTesting(segment: 0)
         XCTAssertEqual(moves, ["0->1", "1->2", "2->1"])
+        XCTAssertEqual(
+            table.movedRows.map { "\($0.0)->\($0.1)" },
+            ["0->1", "1->2", "2->1"]
+        )
         XCTAssertEqual(editor.links.map(\.title), ["Two", "One", "Three"])
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
         XCTAssertTrue(moveControl.isEnabled(forSegment: 0))
@@ -450,6 +618,136 @@ final class StatusLinksTests: XCTestCase {
         select(0)
         XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
         XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
+    }
+
+    func testInvalidMutationFallsBackToReload() throws {
+        let table = TrackingStatusLinksTableView()
+        let editor = makeEditor(
+            links: [
+                StatusLink(title: "One", url: "https://one.example"),
+                StatusLink(title: "Two", url: "https://two.example")
+            ],
+            tableView: table
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.updateLinks(
+            [StatusLink(title: "Only", url: "https://only.example")],
+            mutation: .remove(99)
+        )
+
+        XCTAssertEqual(table.reloadCount, 1)
+        XCTAssertTrue(table.insertedRows.isEmpty)
+        XCTAssertTrue(table.removedRows.isEmpty)
+        XCTAssertTrue(table.movedRows.isEmpty)
+        XCTAssertEqual(editor.rowCount, 1)
+    }
+
+    func testReduceMotionDisablesNativeInsertAndRemoveAnimations() throws {
+        var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
+        editor = makeEditor(
+            links: [StatusLink(title: "One", url: "https://one.example")],
+            onAdd: { index in
+                var updatedLinks = editor.links
+                updatedLinks.insert(StatusLink(title: "Two", url: "https://two.example"), at: index)
+                editor.updateLinks(updatedLinks, mutation: .insert(index))
+            },
+            onRemove: { index in
+                var updatedLinks = editor.links
+                updatedLinks.remove(at: index)
+                editor.updateLinks(updatedLinks, mutation: .remove(index))
+            },
+            tableView: table,
+            shouldReduceMotion: { true }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.performActionForTesting(segment: 0)
+        XCTAssertEqual(table.insertedRows.last?.1, [])
+        editor.performActionForTesting(segment: 1)
+        XCTAssertEqual(table.removedRows.last?.1, [])
+    }
+
+    func testIncrementalMutationsUpdateScrollbarAfterRowsChange() throws {
+        var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
+        let initialLinks = (0..<5).map {
+            StatusLink(title: "Link \($0)", url: "https://\($0).example")
+        }
+        editor = makeEditor(
+            links: initialLinks,
+            onAdd: { index in
+                var updatedLinks = editor.links
+                updatedLinks.insert(
+                    StatusLink(title: "New", url: "https://new.example"),
+                    at: index
+                )
+                editor.updateLinks(updatedLinks, mutation: .insert(index))
+            },
+            onRemove: { index in
+                var updatedLinks = editor.links
+                updatedLinks.remove(at: index)
+                editor.updateLinks(updatedLinks, mutation: .remove(index))
+            },
+            tableView: table
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        XCTAssertFalse(editor.scrollViewForTesting.hasVerticalScroller)
+        let initialTableHeight = editor.tableViewForTesting.frame.height
+
+        editor.performActionForTesting(segment: 0)
+        XCTAssertEqual(
+            editor.tableViewForTesting.frame.height,
+            initialTableHeight,
+            accuracy: 0.001,
+            "The document frame should not jump before the row insertion settles"
+        )
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        window.layoutIfNeeded()
+        XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
+
+        editor.performActionForTesting(segment: 1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        window.layoutIfNeeded()
+        XCTAssertFalse(editor.scrollViewForTesting.hasVerticalScroller)
+    }
+
+    func testTextFieldCommitUsesCurrentTableRowAfterMove() throws {
+        var changes: [(Int, StatusLinkField, String)] = []
+        let table = TrackingStatusLinksTableView()
+        let editor = makeEditor(
+            links: [
+                StatusLink(title: "One", url: "https://one.example"),
+                StatusLink(title: "Two", url: "https://two.example"),
+                StatusLink(title: "Three", url: "https://three.example")
+            ],
+            onChange: { changes.append(($0, $1, $2)) },
+            tableView: table
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let field = try XCTUnwrap(
+            (editor.tableViewForTesting.view(atColumn: 0, row: 1, makeIfNecessary: true)
+                as? NSTableCellView)?.textField
+        )
+        var reordered = editor.links
+        let movedLink = reordered.remove(at: 1)
+        reordered.insert(movedLink, at: 2)
+        editor.updateLinks(reordered, mutation: .move(from: 1, to: 2))
+
+        field.stringValue = "Moved"
+        editor.controlTextDidChange(
+            Notification(name: NSNotification.Name("StatusLinksMovedFieldChange"), object: field)
+        )
+
+        XCTAssertEqual(changes.map { ($0.0, $0.1, $0.2) }.map { "\($0.0):\($0.1):\($0.2)" }, ["2:title:Moved"])
+        XCTAssertEqual(editor.links[2].title, "Moved")
     }
 
     func testEditorMoreMenuTracksURLStateAndDuplicatesSelectedRow() throws {
@@ -466,7 +764,7 @@ final class StatusLinksTests: XCTestCase {
                 duplicatedIndices.append(index)
                 var updatedLinks = editor.links
                 updatedLinks.insert(updatedLinks[index], at: index + 1)
-                editor.updateLinks(updatedLinks)
+                editor.updateLinks(updatedLinks, mutation: .insert(index + 1))
             }
         )
         let window = makeWindow(for: editor)
@@ -644,7 +942,7 @@ final class StatusLinksTests: XCTestCase {
             onDuplicate: { index in
                 var updatedLinks = editor.links
                 updatedLinks.insert(updatedLinks[index], at: index + 1)
-                editor.updateLinks(updatedLinks)
+                editor.updateLinks(updatedLinks, mutation: .insert(index + 1))
             }
         )
         let window = makeWindow(for: editor)
@@ -660,6 +958,8 @@ final class StatusLinksTests: XCTestCase {
         editor.performMoreMenuActionForTesting(at: 3)
 
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(editor.tableViewForTesting.editedRow, -1)
         XCTAssertEqual(
             editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)

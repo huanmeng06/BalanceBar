@@ -362,8 +362,16 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         updateStatusLinksLayout()
     }
 
-    func updateStatusLinks(_ links: [StatusLink], selectLastRow: Bool = false) {
-        statusLinksEditor?.updateLinks(links, selectLastRow: selectLastRow)
+    func updateStatusLinks(
+        _ links: [StatusLink],
+        mutation: StatusLinksMutation = .reload,
+        selectLastRow: Bool = false
+    ) {
+        statusLinksEditor?.updateLinks(
+            links,
+            mutation: mutation,
+            selectLastRow: selectLastRow
+        )
         updateStatusLinksLayout()
     }
 

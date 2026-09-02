@@ -115,7 +115,7 @@ final class DashboardCompositionController {
             onOpenOpenCodex: actions.onOpenOpenCodex,
             makeStatusLinksEditor: { [weak self] in
                 self?.makeStatusLinksEditor()
-                    ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: {}, onRemove: { _ in }, onReset: {})
+                    ?? StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
             },
             onOpenCodexModeChanged: actions.onOpenCodexModeChanged,
             onClamp: actions.onClamp
@@ -288,7 +288,7 @@ final class DashboardCompositionController {
         // retained for the Advanced page's layout callback.
     }
 
-    func addStatusLinkForTesting() { addStatusLink() }
+    func addStatusLinkForTesting() { addStatusLink(at: state.statusLinks().count) }
 
     func makePageForTesting(_ section: DashboardSection) -> NSView {
         makeSectionPage(for: section)
@@ -354,7 +354,7 @@ final class DashboardCompositionController {
             onChange: { [weak self] index, field, value in
                 self?.statusLinkChanged(index: index, field: field, value: value)
             },
-            onAdd: { [weak self] in self?.addStatusLink() },
+            onAdd: { [weak self] index in self?.addStatusLink(at: index) },
             onRemove: { [weak self] index in self?.removeStatusLink(at: index) },
             onReset: { [weak self] in self?.resetStatusLinks() },
             onMove: { [weak self] from, to in self?.moveStatusLink(from: from, to: to) },
@@ -377,14 +377,19 @@ final class DashboardCompositionController {
         actions.onStatusLinksChanged()
     }
 
-    private func addStatusLink() {
+    private func addStatusLink(at index: Int) {
         guard section == .menu else { return }
         var links = state.statusLinks()
-        links.append(StatusLink(title: "", url: ""))
+        guard links.indices.contains(index) || index == links.endIndex else { return }
+        links.insert(StatusLink(title: "", url: ""), at: index)
         state.setStatusLinks(links)
         SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
-        dashboardPreferencePages.updateMenuStatusLinks(links, selectLastRow: true)
+        dashboardPreferencePages.updateMenuStatusLinks(
+            links,
+            mutation: .insert(index),
+            selectLastRow: true
+        )
     }
 
     private func removeStatusLink(at index: Int) {
@@ -395,7 +400,7 @@ final class DashboardCompositionController {
         state.setStatusLinks(links)
         SwitchLog.write("status link removed; index=\(index); count=\(links.count)", category: "configuration")
         actions.onStatusLinksChanged()
-        dashboardPreferencePages.updateMenuStatusLinks(links)
+        dashboardPreferencePages.updateMenuStatusLinks(links, mutation: .remove(index))
     }
 
     private func moveStatusLink(from: Int, to: Int) {
@@ -410,7 +415,10 @@ final class DashboardCompositionController {
             category: "configuration"
         )
         actions.onStatusLinksChanged()
-        dashboardPreferencePages.updateMenuStatusLinks(links)
+        dashboardPreferencePages.updateMenuStatusLinks(
+            links,
+            mutation: .move(from: from, to: to)
+        )
     }
 
     private func duplicateStatusLink(at index: Int) {
@@ -424,7 +432,10 @@ final class DashboardCompositionController {
             category: "configuration"
         )
         actions.onStatusLinksChanged()
-        dashboardPreferencePages.updateMenuStatusLinks(links)
+        dashboardPreferencePages.updateMenuStatusLinks(
+            links,
+            mutation: .insert(index + 1)
+        )
     }
 
     private func resetStatusLinks() {

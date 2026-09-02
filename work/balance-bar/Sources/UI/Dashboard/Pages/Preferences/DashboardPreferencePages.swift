@@ -232,8 +232,16 @@ final class DashboardPreferencePages {
         menuPage.updateStatusVisibility(visible, animated: animated)
     }
 
-    func updateMenuStatusLinks(_ links: [StatusLink], selectLastRow: Bool = false) {
-        menuPage.updateStatusLinks(links, selectLastRow: selectLastRow)
+    func updateMenuStatusLinks(
+        _ links: [StatusLink],
+        mutation: StatusLinksMutation = .reload,
+        selectLastRow: Bool = false
+    ) {
+        menuPage.updateStatusLinks(
+            links,
+            mutation: mutation,
+            selectLastRow: selectLastRow
+        )
     }
 
     func teardown() {
