@@ -24,7 +24,8 @@ final class StatusLinksScrollView: NSScrollView {
 final class StatusLinksEditorHostingView: NSView,
     NSTableViewDataSource,
     NSTableViewDelegate,
-    NSTextFieldDelegate
+    NSTextFieldDelegate,
+    NSMenuDelegate
 {
     static let fixedHeight: CGFloat = 190
     static let tableViewportHeight: CGFloat = 134
@@ -41,6 +42,7 @@ final class StatusLinksEditorHostingView: NSView,
     private let onRemove: (Int) -> Void
     private let onReset: () -> Void
     private let onMove: (Int, Int) -> Void
+    private let onDuplicate: (Int) -> Void
 
     private(set) var links: [StatusLink]
     private(set) var isTornDown = false
@@ -53,11 +55,18 @@ final class StatusLinksEditorHostingView: NSView,
     let resetButton: NSButton
     let actionsControl: NSSegmentedControl
     let moveControl: NSSegmentedControl
+    let moreButton: NSButton
+
+    private let moreMenu = NSMenu()
+    private var openLinkMenuItem: NSMenuItem?
+    private var copyURLMenuItem: NSMenuItem?
+    private var duplicateMenuItem: NSMenuItem?
 
     private var heightConstraint: NSLayoutConstraint?
     private var lastColumnLayoutWidth: CGFloat = -1
     private var editingGeneration = 0
     private var pendingMoveSelection: Int?
+    private var pendingDuplicateSelection: Int?
 
     // These accessors keep the view hierarchy easy to inspect in focused
     // XCTest coverage without exposing implementation state to production.
@@ -67,6 +76,8 @@ final class StatusLinksEditorHostingView: NSView,
     var resetButtonForTesting: NSButton { resetButton }
     var actionsControlForTesting: NSSegmentedControl { actionsControl }
     var moveControlForTesting: NSSegmentedControl { moveControl }
+    var moreButtonForTesting: NSButton { moreButton }
+    var moreMenuForTesting: NSMenu { moreMenu }
 
     var addButtonForTesting: NSSegmentedControl { actionsControl }
     var removeButtonForTesting: NSSegmentedControl { actionsControl }
@@ -82,7 +93,8 @@ final class StatusLinksEditorHostingView: NSView,
         onAdd: @escaping () -> Void,
         onRemove: @escaping (Int) -> Void,
         onReset: @escaping () -> Void,
-        onMove: @escaping (Int, Int) -> Void = { _, _ in }
+        onMove: @escaping (Int, Int) -> Void = { _, _ in },
+        onDuplicate: @escaping (Int) -> Void = { _ in }
     ) {
         self.links = links
         self.onChange = onChange
@@ -90,6 +102,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.onRemove = onRemove
         self.onReset = onReset
         self.onMove = onMove
+        self.onDuplicate = onDuplicate
 
         let tableView = NSTableView()
         let nameColumn = NSTableColumn(
@@ -107,6 +120,7 @@ final class StatusLinksEditorHostingView: NSView,
         )
         let actionsControl = NSSegmentedControl()
         let moveControl = NSSegmentedControl()
+        let moreButton = NSButton()
 
         self.tableView = tableView
         self.tableContainer = tableContainer
@@ -116,6 +130,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.resetButton = resetButton
         self.actionsControl = actionsControl
         self.moveControl = moveControl
+        self.moreButton = moreButton
 
         super.init(frame: .zero)
 
@@ -132,11 +147,14 @@ final class StatusLinksEditorHostingView: NSView,
         configureTableContainer(tableContainer, contentView: scrollView)
         configureActionsControl(actionsControl)
         configureMoveControl(moveControl)
+        configureMoreButton(moreButton, matching: actionsControl)
+        configureMoreMenu()
 
         addSubview(resetButton)
         addSubview(tableContainer)
         addSubview(actionsControl)
         addSubview(moveControl)
+        addSubview(moreButton)
 
         NSLayoutConstraint.activate([
             tableContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
@@ -152,9 +170,14 @@ final class StatusLinksEditorHostingView: NSView,
             moveControl.topAnchor.constraint(equalTo: actionsControl.topAnchor),
             moveControl.heightAnchor.constraint(equalTo: actionsControl.heightAnchor),
 
+            moreButton.leadingAnchor.constraint(equalTo: moveControl.trailingAnchor, constant: 8),
+            moreButton.topAnchor.constraint(equalTo: actionsControl.topAnchor),
+            moreButton.widthAnchor.constraint(equalToConstant: 28),
+            moreButton.heightAnchor.constraint(equalTo: actionsControl.heightAnchor),
+
             resetButton.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor),
             resetButton.leadingAnchor.constraint(
-                greaterThanOrEqualTo: moveControl.trailingAnchor,
+                greaterThanOrEqualTo: moreButton.trailingAnchor,
                 constant: 12
             ),
             resetButton.centerYAnchor.constraint(equalTo: actionsControl.centerYAnchor)
@@ -194,8 +217,9 @@ final class StatusLinksEditorHostingView: NSView,
         let oldCount = links.count
         let previousSelection = tableView.selectedRow
         let isAddingRow = selectLastRow && newLinks.count > oldCount
-        let requestedMoveSelection = pendingMoveSelection
+        let requestedSelection = pendingMoveSelection ?? pendingDuplicateSelection
         pendingMoveSelection = nil
+        pendingDuplicateSelection = nil
 
         links = newLinks
         tableView.reloadData()
@@ -205,9 +229,9 @@ final class StatusLinksEditorHostingView: NSView,
         let nextSelection: Int?
         if newLinks.isEmpty {
             nextSelection = nil
-        } else if let requestedMoveSelection,
-                  newLinks.indices.contains(requestedMoveSelection) {
-            nextSelection = requestedMoveSelection
+        } else if let requestedSelection,
+                  newLinks.indices.contains(requestedSelection) {
+            nextSelection = requestedSelection
         } else if isAddingRow {
             nextSelection = newLinks.indices.last
         } else if previousSelection >= 0 {
@@ -274,6 +298,11 @@ final class StatusLinksEditorHostingView: NSView,
         resetButton.target = nil
         actionsControl.target = nil
         moveControl.target = nil
+        moreButton.target = nil
+        moreMenu.delegate = nil
+        openLinkMenuItem?.target = nil
+        copyURLMenuItem?.target = nil
+        duplicateMenuItem?.target = nil
         heightConstraint?.isActive = false
         heightConstraint = nil
     }
@@ -433,8 +462,54 @@ final class StatusLinksEditorHostingView: NSView,
         performMoveAction(segment: segment)
     }
 
+    @objc private func showMoreMenu(_ sender: NSButton) {
+        guard sender.isEnabled else { return }
+        updateMoreMenuState()
+        moreMenu.popUp(
+            positioning: nil,
+            at: NSPoint(x: sender.bounds.midX, y: sender.bounds.maxY),
+            in: sender
+        )
+    }
+
+    @objc private func openSelectedLink(_ sender: NSMenuItem) {
+        guard let row = selectedRow,
+              links.indices.contains(row),
+              let url = Self.validatedWebURL(from: links[row].url) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func copySelectedURL(_ sender: NSMenuItem) {
+        guard let row = selectedRow,
+              links.indices.contains(row) else { return }
+        let url = links[row].url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url, forType: .string)
+    }
+
+    @objc private func duplicateSelectedItem(_ sender: NSMenuItem) {
+        guard let row = selectedRow,
+              links.indices.contains(row) else {
+            updateActionControlState()
+            return
+        }
+
+        pendingDuplicateSelection = row + 1
+        onDuplicate(row)
+        updateActionControlState()
+    }
+
+    func performMoreMenuActionForTesting(at index: Int) {
+        updateMoreMenuState()
+        moreMenu.performActionForItem(at: index)
+    }
+
     @objc private func restoreDefaults(_ sender: NSButton) {
         onReset()
+        updateActionControlState()
     }
 
     private func configureResetButton(_ button: NSButton) {
@@ -610,6 +685,65 @@ final class StatusLinksEditorHostingView: NSView,
         control.setAccessibilityLabel("Move status link")
     }
 
+    private func configureMoreButton(_ button: NSButton, matching control: NSSegmentedControl) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setButtonType(.momentaryPushIn)
+        button.bezelStyle = .rounded
+        button.controlSize = control.controlSize
+        button.isBordered = true
+        button.title = ""
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+        button.image = NSImage(
+            systemSymbolName: "ellipsis",
+            accessibilityDescription: tr(.keyStatusLinksEditorMoreActions)
+        )
+        button.target = self
+        button.action = #selector(showMoreMenu(_:))
+        button.identifier = NSUserInterfaceItemIdentifier("statusLinks.more")
+        button.toolTip = tr(.keyStatusLinksEditorMoreActions)
+        button.setAccessibilityLabel(tr(.keyStatusLinksEditorMoreActions))
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
+    private func configureMoreMenu() {
+        let openLink = NSMenuItem(
+            title: tr(.keyStatusLinksEditorOpenLink),
+            action: #selector(openSelectedLink(_:)),
+            keyEquivalent: ""
+        )
+        let copyURL = NSMenuItem(
+            title: tr(.keyStatusLinksEditorCopyURL),
+            action: #selector(copySelectedURL(_:)),
+            keyEquivalent: ""
+        )
+        let duplicate = NSMenuItem(
+            title: tr(.keyStatusLinksEditorCopyItem),
+            action: #selector(duplicateSelectedItem(_:)),
+            keyEquivalent: ""
+        )
+
+        openLink.target = self
+        copyURL.target = self
+        duplicate.target = self
+        openLink.identifier = NSUserInterfaceItemIdentifier("statusLinks.more.openLink")
+        copyURL.identifier = NSUserInterfaceItemIdentifier("statusLinks.more.copyURL")
+        duplicate.identifier = NSUserInterfaceItemIdentifier("statusLinks.more.copyItem")
+
+        moreMenu.autoenablesItems = false
+        moreMenu.delegate = self
+        moreMenu.identifier = NSUserInterfaceItemIdentifier("statusLinks.more.menu")
+        moreMenu.addItem(openLink)
+        moreMenu.addItem(copyURL)
+        moreMenu.addItem(.separator())
+        moreMenu.addItem(duplicate)
+
+        openLinkMenuItem = openLink
+        copyURLMenuItem = copyURL
+        duplicateMenuItem = duplicate
+    }
+
     private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
         let cell = NSTableCellView()
         cell.identifier = identifier
@@ -693,10 +827,56 @@ final class StatusLinksEditorHostingView: NSView,
         guard links.indices.contains(selectedRow) else {
             moveControl.setEnabled(false, forSegment: 0)
             moveControl.setEnabled(false, forSegment: 1)
+            updateMoreMenuState()
             return
         }
         moveControl.setEnabled(selectedRow > links.startIndex, forSegment: 0)
         moveControl.setEnabled(selectedRow < links.endIndex - 1, forSegment: 1)
+        updateMoreMenuState()
+    }
+
+    // MARK: - More menu state
+
+    func menuWillOpen(_ menu: NSMenu) {
+        guard menu === moreMenu else { return }
+        updateMoreMenuState()
+    }
+
+    private var selectedRow: Int? {
+        let row = tableView.selectedRow
+        return links.indices.contains(row) ? row : nil
+    }
+
+    private func updateMoreMenuState() {
+        guard let openLinkMenuItem,
+              let copyURLMenuItem,
+              let duplicateMenuItem else { return }
+
+        guard let row = selectedRow else {
+            moreButton.isEnabled = false
+            openLinkMenuItem.isEnabled = false
+            copyURLMenuItem.isEnabled = false
+            duplicateMenuItem.isEnabled = false
+            return
+        }
+
+        let rawURL = links[row].url
+        let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        moreButton.isEnabled = true
+        openLinkMenuItem.isEnabled = Self.validatedWebURL(from: rawURL) != nil
+        copyURLMenuItem.isEnabled = !trimmedURL.isEmpty
+        duplicateMenuItem.isEnabled = true
+    }
+
+    private static func validatedWebURL(from rawURL: String) -> URL? {
+        let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedURL.isEmpty,
+              let url = URL(string: trimmedURL),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host,
+              !host.isEmpty else { return nil }
+        return url
     }
 
     private func beginNameEditing(row: Int) {

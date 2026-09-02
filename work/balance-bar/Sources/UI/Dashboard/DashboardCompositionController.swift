@@ -357,7 +357,8 @@ final class DashboardCompositionController {
             onAdd: { [weak self] in self?.addStatusLink() },
             onRemove: { [weak self] index in self?.removeStatusLink(at: index) },
             onReset: { [weak self] in self?.resetStatusLinks() },
-            onMove: { [weak self] from, to in self?.moveStatusLink(from: from, to: to) }
+            onMove: { [weak self] from, to in self?.moveStatusLink(from: from, to: to) },
+            onDuplicate: { [weak self] index in self?.duplicateStatusLink(at: index) }
         )
     }
 
@@ -406,6 +407,20 @@ final class DashboardCompositionController {
         state.setStatusLinks(links)
         SwitchLog.write(
             "status link moved; from=\(from); to=\(to)",
+            category: "configuration"
+        )
+        actions.onStatusLinksChanged()
+        dashboardPreferencePages.updateMenuStatusLinks(links)
+    }
+
+    private func duplicateStatusLink(at index: Int) {
+        guard section == .menu else { return }
+        var links = state.statusLinks()
+        guard links.indices.contains(index) else { return }
+        links.insert(links[index], at: index + 1)
+        state.setStatusLinks(links)
+        SwitchLog.write(
+            "status link duplicated; index=\(index); count=\(links.count)",
             category: "configuration"
         )
         actions.onStatusLinksChanged()

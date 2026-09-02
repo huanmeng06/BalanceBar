@@ -409,6 +409,10 @@
 "status.links.editor.name" = "名稱";
 "status.links.editor.url" = "網址";
 "status.links.editor.display_name" = "顯示名稱";
+"status.links.editor.more_actions" = "更多操作";
+"status.links.editor.open_link" = "開啟連結";
+"status.links.editor.copy_url" = "複製 URL";
+"status.links.editor.copy_item" = "複製項目";
 "status.item.controller.refresh_now" = "立即刷新";
 "status.item.controller.open_main_window" = "開啟主視窗";
 "status.item.controller.update_available_badge" = "1 項更新";

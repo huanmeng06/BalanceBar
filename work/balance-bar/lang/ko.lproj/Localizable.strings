@@ -409,6 +409,10 @@
 "status.links.editor.name" = "이름";
 "status.links.editor.url" = "URL";
 "status.links.editor.display_name" = "표시 이름";
+"status.links.editor.more_actions" = "추가 작업";
+"status.links.editor.open_link" = "링크 열기";
+"status.links.editor.copy_url" = "URL 복사";
+"status.links.editor.copy_item" = "항목 복사";
 "status.item.controller.refresh_now" = "지금 업데이트";
 "status.item.controller.open_main_window" = "주 윈도우 열기";
 "status.item.controller.update_available_badge" = "업데이트 1개";

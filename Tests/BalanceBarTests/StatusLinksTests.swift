@@ -40,7 +40,8 @@ final class StatusLinksTests: XCTestCase {
         onAdd: @escaping () -> Void = {},
         onRemove: @escaping (Int) -> Void = { _ in },
         onReset: @escaping () -> Void = {},
-        onMove: @escaping (Int, Int) -> Void = { _, _ in }
+        onMove: @escaping (Int, Int) -> Void = { _, _ in },
+        onDuplicate: @escaping (Int) -> Void = { _ in }
     ) -> StatusLinksEditorHostingView {
         StatusLinksEditorHostingView(
             links: links,
@@ -48,7 +49,8 @@ final class StatusLinksTests: XCTestCase {
             onAdd: onAdd,
             onRemove: onRemove,
             onReset: onReset,
-            onMove: onMove
+            onMove: onMove,
+            onDuplicate: onDuplicate
         )
     }
 
@@ -130,6 +132,28 @@ final class StatusLinksTests: XCTestCase {
         )
         XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
         XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
+        let moreButton = editor.moreButtonForTesting
+        XCTAssertEqual(moreButton.identifier?.rawValue, "statusLinks.more")
+        XCTAssertEqual(moreButton.controlSize, editor.actionsControlForTesting.controlSize)
+        XCTAssertEqual(moreButton.bezelStyle, .rounded)
+        XCTAssertNotNil(moreButton.image)
+        XCTAssertEqual(
+            moreButton.frame.minX - moveControl.frame.maxX,
+            8,
+            accuracy: 1,
+            "More should follow the move control with an 8 pt gap"
+        )
+        XCTAssertEqual(moreButton.frame.height, moveControl.frame.height, accuracy: 1)
+        XCTAssertFalse(moreButton.isEnabled)
+        let moreMenu = editor.moreMenuForTesting
+        XCTAssertEqual(moreMenu.items.count, 4)
+        XCTAssertEqual(moreMenu.items[0].title, tr(.keyStatusLinksEditorOpenLink))
+        XCTAssertEqual(moreMenu.items[1].title, tr(.keyStatusLinksEditorCopyURL))
+        XCTAssertTrue(moreMenu.items[2].isSeparatorItem)
+        XCTAssertEqual(moreMenu.items[3].title, tr(.keyStatusLinksEditorCopyItem))
+        XCTAssertFalse(moreMenu.items[0].isEnabled)
+        XCTAssertFalse(moreMenu.items[1].isEnabled)
+        XCTAssertFalse(moreMenu.items[3].isEnabled)
         XCTAssertEqual(editor.resetButtonForTesting.identifier?.rawValue, "statusLinks.reset")
         XCTAssertFalse(editor.subviews.contains { $0 is NSTextField })
         XCTAssertEqual(
@@ -412,6 +436,94 @@ final class StatusLinksTests: XCTestCase {
         select(0)
         XCTAssertFalse(moveControl.isEnabled(forSegment: 0))
         XCTAssertFalse(moveControl.isEnabled(forSegment: 1))
+    }
+
+    func testEditorMoreMenuTracksURLStateAndDuplicatesSelectedRow() throws {
+        let initialLinks = [
+            StatusLink(title: "Empty", url: ""),
+            StatusLink(title: "Invalid", url: "ftp://example.com"),
+            StatusLink(title: "Valid", url: "https://example.com/status")
+        ]
+        var editor: StatusLinksEditorHostingView!
+        var duplicatedIndices: [Int] = []
+        editor = makeEditor(
+            links: initialLinks,
+            onDuplicate: { index in
+                duplicatedIndices.append(index)
+                var updatedLinks = editor.links
+                updatedLinks.insert(updatedLinks[index], at: index + 1)
+                editor.updateLinks(updatedLinks)
+            }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let menu = editor.moreMenuForTesting
+        let openLink = menu.items[0]
+        let copyURL = menu.items[1]
+        let duplicate = menu.items[3]
+
+        func select(_ row: Int?) {
+            if let row {
+                editor.tableViewForTesting.selectRowIndexes(
+                    IndexSet(integer: row),
+                    byExtendingSelection: false
+                )
+            } else {
+                editor.tableViewForTesting.deselectAll(nil)
+            }
+            editor.tableViewSelectionDidChange(
+                Notification(name: NSNotification.Name("StatusLinksMoreSelection"))
+            )
+        }
+
+        XCTAssertFalse(editor.moreButtonForTesting.isEnabled)
+        XCTAssertFalse(openLink.isEnabled)
+        XCTAssertFalse(copyURL.isEnabled)
+        XCTAssertFalse(duplicate.isEnabled)
+
+        select(0)
+        XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
+        XCTAssertFalse(openLink.isEnabled, "Empty URL cannot be opened")
+        XCTAssertFalse(copyURL.isEnabled, "Empty URL cannot be copied")
+        XCTAssertTrue(duplicate.isEnabled)
+
+        select(1)
+        XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
+        XCTAssertFalse(openLink.isEnabled, "Only http(s) URLs with a host can be opened")
+        XCTAssertTrue(copyURL.isEnabled, "Any non-empty URL text can be copied")
+        XCTAssertTrue(duplicate.isEnabled)
+
+        let pasteboard = NSPasteboard.general
+        let previousPasteboardString = pasteboard.string(forType: .string)
+        defer {
+            pasteboard.clearContents()
+            if let previousPasteboardString {
+                pasteboard.setString(previousPasteboardString, forType: .string)
+            }
+        }
+        editor.performMoreMenuActionForTesting(at: 1)
+        XCTAssertEqual(pasteboard.string(forType: .string), "ftp://example.com")
+        XCTAssertEqual(editor.links, initialLinks)
+
+        select(2)
+        editor.menuWillOpen(menu)
+        XCTAssertTrue(openLink.isEnabled)
+        XCTAssertTrue(copyURL.isEnabled)
+        XCTAssertTrue(duplicate.isEnabled)
+
+        select(1)
+        editor.performMoreMenuActionForTesting(at: 3)
+        XCTAssertEqual(duplicatedIndices, [1])
+        XCTAssertEqual(editor.links.map(\.title), ["Empty", "Invalid", "Invalid", "Valid"])
+        XCTAssertEqual(
+            editor.links.map(\.url),
+            ["", "ftp://example.com", "ftp://example.com", "https://example.com/status"]
+        )
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
+        XCTAssertFalse(openLink.isEnabled)
+        XCTAssertTrue(copyURL.isEnabled)
+        XCTAssertTrue(duplicate.isEnabled)
     }
 
     func testEditorPreservesAndClampsSelectionWhenLinksChange() throws {

@@ -409,6 +409,10 @@
 "status.links.editor.name" = "Имя";
 "status.links.editor.url" = "URL";
 "status.links.editor.display_name" = "Отображаемое имя";
+"status.links.editor.more_actions" = "Другие действия";
+"status.links.editor.open_link" = "Открыть ссылку";
+"status.links.editor.copy_url" = "Скопировать URL";
+"status.links.editor.copy_item" = "Скопировать элемент";
 "status.item.controller.refresh_now" = "Обновить сейчас";
 "status.item.controller.open_main_window" = "Открыть главное окно";
 "status.item.controller.update_available_badge" = "1 обновление";
