@@ -73,13 +73,9 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows, links.count)
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
+        XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
+        XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 1), .center)
         XCTAssertEqual(editor.resetButtonForTesting.identifier?.rawValue, "statusLinks.reset")
-        XCTAssertEqual(
-            editor.actionsControlForTesting.frame.midX,
-            scrollView.frame.midX,
-            accuracy: 1,
-            "The add/remove control should be centered below the table"
-        )
 
         XCTAssertGreaterThan(table.tableColumns[0].width, 0)
         XCTAssertGreaterThan(table.tableColumns[1].width, table.tableColumns[0].width)

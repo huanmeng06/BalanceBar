@@ -129,7 +129,7 @@ final class StatusLinksEditorHostingView: NSView,
             scrollView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
             scrollView.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
 
-            actionsControl.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            actionsControl.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
             actionsControl.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 8),
             actionsControl.heightAnchor.constraint(equalToConstant: 24)
         ])
@@ -438,20 +438,27 @@ final class StatusLinksEditorHostingView: NSView,
         control.segmentStyle = .automatic
         control.setWidth(28, forSegment: 0)
         control.setWidth(28, forSegment: 1)
-        control.setLabel("+", forSegment: 0)
-        control.setLabel("−", forSegment: 1)
+        control.segmentDistribution = .fillEqually
         if let plus = NSImage(
             systemSymbolName: "plus",
             accessibilityDescription: "Add status link"
         ) {
             control.setImage(plus, forSegment: 0)
+            control.setLabel("", forSegment: 0)
+        } else {
+            control.setLabel("+", forSegment: 0)
         }
         if let minus = NSImage(
             systemSymbolName: "minus",
             accessibilityDescription: "Remove status link"
         ) {
             control.setImage(minus, forSegment: 1)
+            control.setLabel("", forSegment: 1)
+        } else {
+            control.setLabel("−", forSegment: 1)
         }
+        control.setAlignment(.center, forSegment: 0)
+        control.setAlignment(.center, forSegment: 1)
         control.target = self
         control.action = #selector(performAction(_:))
         control.identifier = NSUserInterfaceItemIdentifier("statusLinks.actions")
