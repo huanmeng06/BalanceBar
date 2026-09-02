@@ -487,7 +487,7 @@ final class StatusLinksEditorHostingView: NSView,
         container.boxType = .custom
         container.borderWidth = Self.tableBorderWidth
         container.cornerRadius = Self.tableCornerRadius
-        container.borderColor = .gridColor
+        container.borderColor = .separatorColor
         container.fillColor = .clear
         container.contentViewMargins = .zero
         container.contentView = contentView
