@@ -81,6 +81,7 @@ final class StatusLinksEditorHostingView: NSView,
     private(set) var isTornDown = false
 
     let tableView: StatusLinksTableView
+    let tableContainer: NSBox
     let scrollView: StatusLinksScrollView
     let nameColumn: NSTableColumn
     let urlColumn: NSTableColumn
@@ -94,6 +95,7 @@ final class StatusLinksEditorHostingView: NSView,
     // These accessors keep the view hierarchy easy to inspect in focused
     // XCTest coverage without exposing implementation state to production.
     var tableViewForTesting: NSTableView { tableView }
+    var tableContainerForTesting: NSBox { tableContainer }
     var scrollViewForTesting: NSScrollView { scrollView }
     var resetButtonForTesting: NSButton { resetButton }
     var actionsControlForTesting: NSSegmentedControl { actionsControl }
@@ -126,6 +128,7 @@ final class StatusLinksEditorHostingView: NSView,
         let urlColumn = NSTableColumn(
             identifier: NSUserInterfaceItemIdentifier("statusLinks.url.column")
         )
+        let tableContainer = NSBox()
         let scrollView = StatusLinksScrollView()
         let resetButton = NSButton(
             title: tr(.keyStatusLinksEditorRestoreDefaults),
@@ -135,6 +138,7 @@ final class StatusLinksEditorHostingView: NSView,
         let actionsControl = NSSegmentedControl()
 
         self.tableView = tableView
+        self.tableContainer = tableContainer
         self.scrollView = scrollView
         self.nameColumn = nameColumn
         self.urlColumn = urlColumn
@@ -153,23 +157,24 @@ final class StatusLinksEditorHostingView: NSView,
             urlColumn: urlColumn
         )
         configureScrollView(scrollView, documentView: tableView)
+        configureTableContainer(tableContainer, contentView: scrollView)
         configureActionsControl(actionsControl)
 
         addSubview(resetButton)
-        addSubview(scrollView)
+        addSubview(tableContainer)
         addSubview(actionsControl)
 
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            scrollView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            scrollView.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
+            tableContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            tableContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            tableContainer.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            tableContainer.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
 
-            actionsControl.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-            actionsControl.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 8),
+            actionsControl.leadingAnchor.constraint(equalTo: tableContainer.leadingAnchor),
+            actionsControl.topAnchor.constraint(equalTo: tableContainer.bottomAnchor, constant: 8),
             actionsControl.heightAnchor.constraint(equalToConstant: 24),
 
-            resetButton.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            resetButton.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor),
             resetButton.leadingAnchor.constraint(
                 greaterThanOrEqualTo: actionsControl.trailingAnchor,
                 constant: 12
@@ -469,13 +474,42 @@ final class StatusLinksEditorHostingView: NSView,
         scrollView.wantsLayer = true
         scrollView.layer?.cornerRadius = Self.tableCornerRadius
         scrollView.layer?.cornerCurve = .continuous
-        scrollView.layer?.borderWidth = Self.tableBorderWidth
-        scrollView.layer?.borderColor = NSColor.separatorColor.cgColor
         scrollView.layer?.masksToBounds = true
         scrollView.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
 
         documentView.translatesAutoresizingMaskIntoConstraints = true
         documentView.autoresizingMask = [.width]
+    }
+
+    private func configureTableContainer(_ container: NSBox, contentView: NSView) {
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.boxType = .custom
+        container.borderWidth = Self.tableBorderWidth
+        container.cornerRadius = Self.tableCornerRadius
+        container.borderColor = .gridColor
+        container.fillColor = .clear
+        container.contentViewMargins = .zero
+        container.contentView = contentView
+
+        let borderInset = Self.tableBorderWidth
+        NSLayoutConstraint.activate([
+            contentView.leadingAnchor.constraint(
+                equalTo: container.leadingAnchor,
+                constant: borderInset
+            ),
+            contentView.trailingAnchor.constraint(
+                equalTo: container.trailingAnchor,
+                constant: -borderInset
+            ),
+            contentView.topAnchor.constraint(
+                equalTo: container.topAnchor,
+                constant: borderInset
+            ),
+            contentView.bottomAnchor.constraint(
+                equalTo: container.bottomAnchor,
+                constant: -borderInset
+            )
+        ])
     }
 
     private func configureActionsControl(_ control: NSSegmentedControl) {

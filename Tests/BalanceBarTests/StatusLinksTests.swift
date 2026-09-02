@@ -60,19 +60,27 @@ final class StatusLinksTests: XCTestCase {
         defer { window.orderOut(nil) }
 
         let table = editor.tableViewForTesting
+        let tableContainer = editor.tableContainerForTesting
         let scrollView = editor.scrollViewForTesting
         XCTAssertTrue(scrollView.documentView === table)
+        XCTAssertTrue(tableContainer.contentView === scrollView)
+        XCTAssertEqual(tableContainer.boxType, .custom)
+        XCTAssertEqual(
+            tableContainer.cornerRadius,
+            StatusLinksEditorHostingView.tableCornerRadius,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            tableContainer.borderWidth,
+            StatusLinksEditorHostingView.tableBorderWidth,
+            accuracy: 0.001
+        )
         XCTAssertEqual(scrollView.borderType, .noBorder)
         XCTAssertTrue(scrollView.wantsLayer)
         let tableLayer = try XCTUnwrap(scrollView.layer)
         XCTAssertEqual(
             tableLayer.cornerRadius,
             StatusLinksEditorHostingView.tableCornerRadius,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            tableLayer.borderWidth,
-            StatusLinksEditorHostingView.tableBorderWidth,
             accuracy: 0.001
         )
         XCTAssertEqual(tableLayer.cornerCurve, .continuous)
@@ -104,7 +112,7 @@ final class StatusLinksTests: XCTestCase {
         )
         XCTAssertLessThan(
             editor.resetButtonForTesting.frame.maxY,
-            scrollView.frame.minY,
+            tableContainer.frame.minY,
             "Restore Defaults should be below the table viewport"
         )
 
