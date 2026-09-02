@@ -485,7 +485,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.reloadCount, 0)
         XCTAssertEqual(table.insertedRows.count, 1)
         XCTAssertEqual(table.insertedRows[0].0, IndexSet(integer: 2))
-        XCTAssertEqual(table.insertedRows[0].1, .slideDown)
+        XCTAssertEqual(table.insertedRows[0].1, .effectFade)
         XCTAssertEqual(editor.rowCount, 3)
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
     }
@@ -756,8 +756,8 @@ final class StatusLinksTests: XCTestCase {
         editor.performActionForTesting(segment: 0)
         XCTAssertEqual(
             table.insertedRows.last?.1,
-            .slideDown,
-            "Add should use the native vertical insertion animation"
+            .effectFade,
+            "Add should use the native fade-in insertion animation"
         )
         XCTAssertEqual(table.reloadCount, 0)
         XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)

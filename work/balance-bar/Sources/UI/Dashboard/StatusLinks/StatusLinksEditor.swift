@@ -1011,7 +1011,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private var tableRowInsertionAnimation: NSTableView.AnimationOptions {
-        shouldReduceMotion() ? [] : .slideDown
+        shouldReduceMotion() ? [] : .effectFade
     }
 
     private var tableRowRemovalAnimation: NSTableView.AnimationOptions {
