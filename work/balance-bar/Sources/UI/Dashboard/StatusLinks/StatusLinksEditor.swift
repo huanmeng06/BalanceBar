@@ -129,7 +129,7 @@ final class StatusLinksEditorHostingView: NSView,
             scrollView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
             scrollView.heightAnchor.constraint(equalToConstant: Self.tableViewportHeight),
 
-            actionsControl.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            actionsControl.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             actionsControl.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 8),
             actionsControl.heightAnchor.constraint(equalToConstant: 24)
         ])
