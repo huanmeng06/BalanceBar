@@ -23,6 +23,14 @@ final class StatusLinksScrollView: NSScrollView {
     }
 }
 
+final class StatusLinksVerticalClipView: NSClipView {
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        var constrainedBounds = super.constrainBoundsRect(proposedBounds)
+        constrainedBounds.origin.x = 0
+        return constrainedBounds
+    }
+}
+
 final class StatusLinksPassthroughImageView: NSImageView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
@@ -710,12 +718,14 @@ final class StatusLinksEditorHostingView: NSView,
 
     private func configureScrollView(_ scrollView: StatusLinksScrollView, documentView: NSView) {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.contentView = StatusLinksVerticalClipView()
         scrollView.documentView = documentView
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
+        scrollView.horizontalScrollElasticity = .none
         scrollView.verticalScrollElasticity = .none
         scrollView.drawsBackground = false
         scrollView.wantsLayer = true

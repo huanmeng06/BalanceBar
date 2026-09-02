@@ -182,6 +182,16 @@ final class StatusLinksTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(scrollView.borderType, .noBorder)
+        XCTAssertFalse(scrollView.hasHorizontalScroller)
+        XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
+        XCTAssertTrue(scrollView.contentView is StatusLinksVerticalClipView)
+        XCTAssertEqual(
+            scrollView.contentView.constrainBoundsRect(
+                NSRect(x: 24, y: 12, width: 320, height: 120)
+            ).origin.x,
+            0,
+            accuracy: 0.001
+        )
         XCTAssertTrue(scrollView.wantsLayer)
         let tableLayer = try XCTUnwrap(scrollView.layer)
         XCTAssertEqual(
