@@ -62,7 +62,7 @@ final class StatusLinksTests: XCTestCase {
         let table = editor.tableViewForTesting
         let scrollView = editor.scrollViewForTesting
         XCTAssertTrue(scrollView.documentView === table)
-        XCTAssertTrue(table.headerView is NSTableHeaderView)
+        XCTAssertNil(table.headerView)
         XCTAssertEqual(table.tableColumns.count, 2)
         XCTAssertEqual(table.tableColumns.map(\.identifier), [
             NSUserInterfaceItemIdentifier("statusLinks.name.column"),

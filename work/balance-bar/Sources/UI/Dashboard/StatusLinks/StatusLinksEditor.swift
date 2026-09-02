@@ -65,7 +65,6 @@ final class StatusLinksEditorHostingView: NSView,
 {
     static let fixedHeight: CGFloat = 190
     static let tableViewportHeight: CGFloat = 134
-    static let tableHeaderHeight: CGFloat = 24
     static let tableRowHeight: CGFloat = 22
     static let fieldHorizontalInset: CGFloat = 12
     static let nameColumnMinimumWidth: CGFloat = 120
@@ -433,9 +432,7 @@ final class StatusLinksEditorHostingView: NSView,
 
         table.addTableColumn(nameColumn)
         table.addTableColumn(urlColumn)
-        table.headerView = NSTableHeaderView()
-        table.headerView?.identifier = NSUserInterfaceItemIdentifier("statusLinks.header")
-        table.headerView?.frame.size.height = Self.tableHeaderHeight
+        table.headerView = nil
         table.delegate = self
         table.dataSource = self
         table.identifier = NSUserInterfaceItemIdentifier("statusLinks.table")
