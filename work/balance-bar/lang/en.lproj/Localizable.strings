@@ -413,6 +413,7 @@
 "status.links.editor.open_link" = "Open Link";
 "status.links.editor.copy_url" = "Copy URL";
 "status.links.editor.copy_item" = "Copy Item";
+"status.links.editor.action_completed" = "Action completed";
 "status.item.controller.refresh_now" = "Refresh Now";
 "status.item.controller.open_main_window" = "Open Main Window";
 "status.item.controller.update_available_badge" = "1 Update";

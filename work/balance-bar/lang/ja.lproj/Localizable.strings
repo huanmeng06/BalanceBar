@@ -413,6 +413,7 @@
 "status.links.editor.open_link" = "リンクを開く";
 "status.links.editor.copy_url" = "URLをコピー";
 "status.links.editor.copy_item" = "項目をコピー";
+"status.links.editor.action_completed" = "操作が完了しました";
 "status.item.controller.refresh_now" = "今すぐ更新";
 "status.item.controller.open_main_window" = "メインウインドウを開く";
 "status.item.controller.update_available_badge" = "1件のアップデート";

@@ -424,6 +424,7 @@
     case keyStatusLinksEditorOpenLink = "status.links.editor.open_link"
     case keyStatusLinksEditorCopyURL = "status.links.editor.copy_url"
     case keyStatusLinksEditorCopyItem = "status.links.editor.copy_item"
+    case keyStatusLinksEditorActionCompleted = "status.links.editor.action_completed"
     case keyStatusItemControllerRefreshNow = "status.item.controller.refresh_now"
     case keyStatusItemControllerOpenMainWindow = "status.item.controller.open_main_window"
     case keyStatusItemControllerUpdateAvailableBadge = "status.item.controller.update_available_badge"

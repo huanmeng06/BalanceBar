@@ -43,6 +43,7 @@ final class StatusLinksEditorHostingView: NSView,
     private let onReset: () -> Void
     private let onMove: (Int, Int) -> Void
     private let onDuplicate: (Int) -> Void
+    private let openURL: (URL) -> Bool
 
     private(set) var links: [StatusLink]
     private(set) var isTornDown = false
@@ -67,6 +68,8 @@ final class StatusLinksEditorHostingView: NSView,
     private var editingGeneration = 0
     private var pendingMoveSelection: Int?
     private var pendingDuplicateSelection: Int?
+    private var moreActionResetWorkItem: DispatchWorkItem?
+    private var moreActionFeedbackGeneration = 0
 
     // These accessors keep the view hierarchy easy to inspect in focused
     // XCTest coverage without exposing implementation state to production.
@@ -94,7 +97,8 @@ final class StatusLinksEditorHostingView: NSView,
         onRemove: @escaping (Int) -> Void,
         onReset: @escaping () -> Void,
         onMove: @escaping (Int, Int) -> Void = { _, _ in },
-        onDuplicate: @escaping (Int) -> Void = { _ in }
+        onDuplicate: @escaping (Int) -> Void = { _ in },
+        openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) {
         self.links = links
         self.onChange = onChange
@@ -103,6 +107,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.onReset = onReset
         self.onMove = onMove
         self.onDuplicate = onDuplicate
+        self.openURL = openURL
 
         let tableView = NSTableView()
         let nameColumn = NSTableColumn(
@@ -293,6 +298,9 @@ final class StatusLinksEditorHostingView: NSView,
         guard !isTornDown else { return }
         isTornDown = true
         editingGeneration &+= 1
+        moreActionFeedbackGeneration &+= 1
+        moreActionResetWorkItem?.cancel()
+        moreActionResetWorkItem = nil
         tableView.delegate = nil
         tableView.dataSource = nil
         resetButton.target = nil
@@ -476,7 +484,9 @@ final class StatusLinksEditorHostingView: NSView,
         guard let row = selectedRow,
               links.indices.contains(row),
               let url = Self.validatedWebURL(from: links[row].url) else { return }
-        NSWorkspace.shared.open(url)
+        if openURL(url) {
+            showMoreActionSuccess()
+        }
     }
 
     @objc private func copySelectedURL(_ sender: NSMenuItem) {
@@ -487,7 +497,9 @@ final class StatusLinksEditorHostingView: NSView,
 
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(url, forType: .string)
+        if pasteboard.setString(url, forType: .string) {
+            showMoreActionSuccess()
+        }
     }
 
     @objc private func duplicateSelectedItem(_ sender: NSMenuItem) {
@@ -694,8 +706,8 @@ final class StatusLinksEditorHostingView: NSView,
         button.title = ""
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
-        button.image = NSImage(
-            systemSymbolName: "ellipsis",
+        setMoreButtonSymbol(
+            named: "ellipsis",
             accessibilityDescription: tr(.keyStatusLinksEditorMoreActions)
         )
         button.target = self
@@ -705,6 +717,38 @@ final class StatusLinksEditorHostingView: NSView,
         button.setAccessibilityLabel(tr(.keyStatusLinksEditorMoreActions))
         button.setContentHuggingPriority(.required, for: .horizontal)
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
+    private func setMoreButtonSymbol(named symbolName: String, accessibilityDescription: String) {
+        guard let image = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: accessibilityDescription
+        ) else { return }
+        moreButton.image = image
+        moreButton.setAccessibilityLabel(accessibilityDescription)
+    }
+
+    private func showMoreActionSuccess() {
+        moreActionResetWorkItem?.cancel()
+        moreActionFeedbackGeneration &+= 1
+        let generation = moreActionFeedbackGeneration
+        let completedDescription = tr(.keyStatusLinksEditorActionCompleted)
+        setMoreButtonSymbol(
+            named: "checkmark",
+            accessibilityDescription: completedDescription
+        )
+
+        let resetWorkItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.moreActionFeedbackGeneration == generation else { return }
+            self.setMoreButtonSymbol(
+                named: "ellipsis",
+                accessibilityDescription: tr(.keyStatusLinksEditorMoreActions)
+            )
+            self.moreActionResetWorkItem = nil
+        }
+        moreActionResetWorkItem = resetWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: resetWorkItem)
     }
 
     private func configureMoreMenu() {

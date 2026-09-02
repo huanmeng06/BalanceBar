@@ -413,6 +413,7 @@
 "status.links.editor.open_link" = "打开链接";
 "status.links.editor.copy_url" = "复制 URL";
 "status.links.editor.copy_item" = "复制条目";
+"status.links.editor.action_completed" = "操作完成";
 "status.item.controller.refresh_now" = "立即刷新";
 "status.item.controller.open_main_window" = "打开主窗口";
 "status.item.controller.update_available_badge" = "1 项更新";

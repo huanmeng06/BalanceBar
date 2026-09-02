@@ -41,7 +41,8 @@ final class StatusLinksTests: XCTestCase {
         onRemove: @escaping (Int) -> Void = { _ in },
         onReset: @escaping () -> Void = {},
         onMove: @escaping (Int, Int) -> Void = { _, _ in },
-        onDuplicate: @escaping (Int) -> Void = { _ in }
+        onDuplicate: @escaping (Int) -> Void = { _ in },
+        openURL: @escaping (URL) -> Bool = { _ in false }
     ) -> StatusLinksEditorHostingView {
         StatusLinksEditorHostingView(
             links: links,
@@ -50,7 +51,8 @@ final class StatusLinksTests: XCTestCase {
             onRemove: onRemove,
             onReset: onReset,
             onMove: onMove,
-            onDuplicate: onDuplicate
+            onDuplicate: onDuplicate,
+            openURL: openURL
         )
     }
 
@@ -524,6 +526,158 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(openLink.isEnabled)
         XCTAssertTrue(copyURL.isEnabled)
         XCTAssertTrue(duplicate.isEnabled)
+    }
+
+    func testMoreOpenLinkSuccessShowsCheckmarkAndRestoresEllipsis() throws {
+        let expectedURL = URL(string: "https://example.com/status")!
+        var openedURL: URL?
+        let editor = makeEditor(
+            links: [StatusLink(title: "Status", url: expectedURL.absoluteString)],
+            openURL: { url in
+                openedURL = url
+                return true
+            }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 0),
+            byExtendingSelection: false
+        )
+        editor.tableViewSelectionDidChange(
+            Notification(name: NSNotification.Name("StatusLinksOpenSelection"))
+        )
+
+        editor.performMoreMenuActionForTesting(at: 0)
+        XCTAssertEqual(openedURL, expectedURL)
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorActionCompleted)
+        )
+        XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
+
+        RunLoop.main.run(until: Date().addingTimeInterval(1.1))
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorMoreActions)
+        )
+    }
+
+    func testMoreCopyURLSuccessShowsCheckmarkAndKeepsURLDataUnchanged() throws {
+        let links = [StatusLink(title: "Status", url: "https://example.com/status")]
+        let editor = makeEditor(links: links)
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 0),
+            byExtendingSelection: false
+        )
+        editor.tableViewSelectionDidChange(
+            Notification(name: NSNotification.Name("StatusLinksCopySelection"))
+        )
+
+        let pasteboard = NSPasteboard.general
+        let previousPasteboardString = pasteboard.string(forType: .string)
+        defer {
+            pasteboard.clearContents()
+            if let previousPasteboardString {
+                pasteboard.setString(previousPasteboardString, forType: .string)
+            }
+        }
+
+        editor.performMoreMenuActionForTesting(at: 1)
+        XCTAssertEqual(pasteboard.string(forType: .string), links[0].url)
+        XCTAssertEqual(editor.links, links)
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorActionCompleted)
+        )
+    }
+
+    func testMoreOpenLinkFailureDoesNotShowSuccess() throws {
+        let editor = makeEditor(
+            links: [StatusLink(title: "Status", url: "https://example.com/status")],
+            openURL: { _ in false }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 0),
+            byExtendingSelection: false
+        )
+        editor.tableViewSelectionDidChange(
+            Notification(name: NSNotification.Name("StatusLinksOpenFailureSelection"))
+        )
+        editor.performMoreMenuActionForTesting(at: 0)
+
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorMoreActions)
+        )
+    }
+
+    func testMoreDuplicateDoesNotShowSuccessFeedback() throws {
+        var editor: StatusLinksEditorHostingView!
+        editor = makeEditor(
+            links: [StatusLink(title: "Status", url: "https://example.com/status")],
+            onDuplicate: { index in
+                var updatedLinks = editor.links
+                updatedLinks.insert(updatedLinks[index], at: index + 1)
+                editor.updateLinks(updatedLinks)
+            }
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 0),
+            byExtendingSelection: false
+        )
+        editor.tableViewSelectionDidChange(
+            Notification(name: NSNotification.Name("StatusLinksDuplicateSelection"))
+        )
+        editor.performMoreMenuActionForTesting(at: 3)
+
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorMoreActions)
+        )
+    }
+
+    func testMoreSuccessFeedbackRestartsItsResetTimer() throws {
+        let editor = makeEditor(
+            links: [StatusLink(title: "Status", url: "https://example.com/status")]
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: 0),
+            byExtendingSelection: false
+        )
+        editor.tableViewSelectionDidChange(
+            Notification(name: NSNotification.Name("StatusLinksTimerSelection"))
+        )
+
+        editor.performMoreMenuActionForTesting(at: 1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        editor.performMoreMenuActionForTesting(at: 1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorActionCompleted),
+            "The first reset must not end the second success state early"
+        )
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(
+            editor.moreButtonForTesting.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorMoreActions)
+        )
     }
 
     func testEditorPreservesAndClampsSelectionWhenLinksChange() throws {
