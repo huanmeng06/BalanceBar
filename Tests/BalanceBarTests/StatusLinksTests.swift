@@ -135,8 +135,8 @@ final class StatusLinksTests: XCTestCase {
         let lastRowRect = table.rect(ofRow: table.numberOfRows - 1)
         XCTAssertLessThanOrEqual(
             gridClipRect.maxY,
-            lastRowRect.maxY + 0.001,
-            "Native grid drawing must stop at the last real row"
+            lastRowRect.minY + 0.001,
+            "Native grid drawing must stop before the last real row"
         )
     }
 

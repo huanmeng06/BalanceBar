@@ -18,7 +18,7 @@ final class StatusLinksTableView: NSTableView {
 
         let lastRowRect = rect(ofRow: numberOfRows - 1)
         guard !lastRowRect.isNull,
-              lastRowRect.maxY > bounds.minY else {
+              lastRowRect.minY > bounds.minY else {
             lastGridClipRectForTesting = nil
             return
         }
@@ -27,7 +27,7 @@ final class StatusLinksTableView: NSTableView {
             x: bounds.minX,
             y: bounds.minY,
             width: bounds.width,
-            height: lastRowRect.maxY - bounds.minY
+            height: lastRowRect.minY - bounds.minY
         )
         let gridClipRect = clipRect.intersection(rowsRect)
         guard !gridClipRect.isNull,
