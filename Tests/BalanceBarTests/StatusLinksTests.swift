@@ -74,6 +74,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.gridStyleMask, .solidHorizontalGridLineMask)
         XCTAssertEqual(table.style, .fullWidth)
         XCTAssertFalse(scrollView.hasVerticalScroller)
+        XCTAssertFalse((scrollView as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true)
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
@@ -147,6 +148,9 @@ final class StatusLinksTests: XCTestCase {
             "Long lists should scroll within the table viewport"
         )
         XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertTrue(
+            (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? false
+        )
 
         editor.updateLinks(links + [StatusLink(title: "Link 12", url: "https://12.example")])
         window.layoutIfNeeded()
@@ -168,6 +172,9 @@ final class StatusLinksTests: XCTestCase {
         defer { window.orderOut(nil) }
 
         XCTAssertFalse(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertFalse(
+            (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true
+        )
         XCTAssertEqual(editor.scrollViewForTesting.verticalScrollElasticity, .none)
     }
 

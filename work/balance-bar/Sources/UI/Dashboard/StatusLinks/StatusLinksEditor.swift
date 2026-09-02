@@ -5,6 +5,17 @@ enum StatusLinkField: Equatable {
     case url
 }
 
+/// Prevents a short embedded table from forwarding scroll gestures to the
+/// surrounding settings page. Drawing remains entirely AppKit-owned.
+final class StatusLinksScrollView: NSScrollView {
+    var allowsVerticalScrolling = false
+
+    override func scrollWheel(with event: NSEvent) {
+        guard allowsVerticalScrolling else { return }
+        super.scrollWheel(with: event)
+    }
+}
+
 /// The native AppKit editor for the configurable menu-bar status links.
 ///
 /// The historical type name is kept because Dashboard composition and a few
@@ -32,7 +43,7 @@ final class StatusLinksEditorHostingView: NSView,
     private(set) var isTornDown = false
 
     let tableView: NSTableView
-    let scrollView: NSScrollView
+    let scrollView: StatusLinksScrollView
     let nameColumn: NSTableColumn
     let urlColumn: NSTableColumn
     let resetButton: NSButton
@@ -77,7 +88,7 @@ final class StatusLinksEditorHostingView: NSView,
         let urlColumn = NSTableColumn(
             identifier: NSUserInterfaceItemIdentifier("statusLinks.url.column")
         )
-        let scrollView = NSScrollView()
+        let scrollView = StatusLinksScrollView()
         let resetButton = NSButton(
             title: tr(.keyStatusLinksEditorRestoreDefaults),
             target: nil,
@@ -409,7 +420,7 @@ final class StatusLinksEditorHostingView: NSView,
         table.setAccessibilityRole(.table)
     }
 
-    private func configureScrollView(_ scrollView: NSScrollView, documentView: NSView) {
+    private func configureScrollView(_ scrollView: StatusLinksScrollView, documentView: NSView) {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
         scrollView.borderType = .bezelBorder
@@ -498,6 +509,7 @@ final class StatusLinksEditorHostingView: NSView,
         let rowExtent = tableView.rowHeight + tableView.intercellSpacing.height
         let contentHeight = Self.tableHeaderHeight + CGFloat(links.count) * rowExtent
         let shouldScroll = contentHeight > viewportSize.height + 0.5
+        scrollView.allowsVerticalScrolling = shouldScroll
         if scrollView.hasVerticalScroller != shouldScroll {
             scrollView.hasVerticalScroller = shouldScroll
         }
