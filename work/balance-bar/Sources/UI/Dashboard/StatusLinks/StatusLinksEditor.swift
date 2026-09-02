@@ -42,6 +42,15 @@ final class StatusLinksTableView: NSTableView {
     }
 }
 
+/// Keeps the native selection drawing while avoiding an extra bottom line
+/// below a selection that has become inactive.
+final class StatusLinksRowView: NSTableRowView {
+    override func drawSeparator(in dirtyRect: NSRect) {
+        guard !(isSelected && !isEmphasized) else { return }
+        super.drawSeparator(in: dirtyRect)
+    }
+}
+
 /// Prevents a short embedded table from forwarding scroll gestures to the
 /// surrounding settings page. Drawing remains entirely AppKit-owned.
 final class StatusLinksScrollView: NSScrollView {
@@ -364,6 +373,13 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     // MARK: - NSTableViewDelegate
+
+    func tableView(
+        _ tableView: NSTableView,
+        rowViewForRow row: Int
+    ) -> NSTableRowView? {
+        StatusLinksRowView()
+    }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateRemoveControlState()
