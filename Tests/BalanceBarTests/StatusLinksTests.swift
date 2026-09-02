@@ -138,7 +138,6 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(moreButton.identifier?.rawValue, "statusLinks.more")
         XCTAssertEqual(moreButton.controlSize, editor.actionsControlForTesting.controlSize)
         XCTAssertEqual(moreButton.bezelStyle, .rounded)
-        XCTAssertNotNil(moreButton.image)
         XCTAssertEqual(
             moreButton.frame.minX - moveControl.frame.maxX,
             8,
@@ -147,6 +146,19 @@ final class StatusLinksTests: XCTestCase {
         )
         XCTAssertEqual(moreButton.frame.height, moveControl.frame.height, accuracy: 1)
         XCTAssertFalse(moreButton.isEnabled)
+        XCTAssertEqual(moreButton.alphaValue, 1, accuracy: 0.001)
+        let moreIconView = editor.moreIconViewForTesting
+        XCTAssertTrue(moreIconView.superview === moreButton)
+        XCTAssertTrue(moreIconView is StatusLinksPassthroughImageView)
+        XCTAssertEqual(
+            moreIconView.image?.accessibilityDescription,
+            tr(.keyStatusLinksEditorMoreActions)
+        )
+        XCTAssertEqual(moreIconView.alphaValue, 1, accuracy: 0.001)
+        XCTAssertNil(
+            moreIconView.hitTest(NSPoint(x: moreIconView.bounds.midX, y: moreIconView.bounds.midY)),
+            "The icon overlay must not intercept More button clicks"
+        )
         let moreMenu = editor.moreMenuForTesting
         XCTAssertEqual(moreMenu.items.count, 4)
         XCTAssertEqual(moreMenu.items[0].title, tr(.keyStatusLinksEditorOpenLink))
@@ -552,18 +564,20 @@ final class StatusLinksTests: XCTestCase {
         editor.performMoreMenuActionForTesting(at: 0)
         XCTAssertEqual(openedURL, expectedURL)
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted)
         )
         XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
         XCTAssertTrue(editor.moreButtonForTesting.isEnabled)
 
         RunLoop.main.run(until: Date().addingTimeInterval(1.4))
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
         XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
     func testMoreCopyURLSuccessShowsCheckmarkAndKeepsURLDataUnchanged() throws {
@@ -593,10 +607,11 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), links[0].url)
         XCTAssertEqual(editor.links, links)
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted)
         )
         XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
     func testMoreOpenLinkFailureDoesNotShowSuccess() throws {
@@ -617,7 +632,7 @@ final class StatusLinksTests: XCTestCase {
         editor.performMoreMenuActionForTesting(at: 0)
 
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
     }
@@ -646,7 +661,7 @@ final class StatusLinksTests: XCTestCase {
 
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
     }
@@ -669,20 +684,22 @@ final class StatusLinksTests: XCTestCase {
         editor.performMoreMenuActionForTesting(at: 1)
         RunLoop.main.run(until: Date().addingTimeInterval(1.08))
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted),
             "The checkmark should remain until the fade-out completes"
         )
         XCTAssertLessThan(
-            editor.moreButtonForTesting.alphaValue,
+            editor.moreIconViewForTesting.alphaValue,
             1,
             "The first success feedback should be fading out"
         )
+        XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
         editor.performMoreMenuActionForTesting(at: 1)
         XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorActionCompleted),
             "The first reset must not end the second success state early"
         )
@@ -692,13 +709,15 @@ final class StatusLinksTests: XCTestCase {
             accuracy: 0.001,
             "An interrupted fade must not make the second feedback translucent"
         )
+        XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
 
         RunLoop.main.run(until: Date().addingTimeInterval(0.9))
         XCTAssertEqual(
-            editor.moreButtonForTesting.image?.accessibilityDescription,
+            editor.moreIconViewForTesting.image?.accessibilityDescription,
             tr(.keyStatusLinksEditorMoreActions)
         )
         XCTAssertEqual(editor.moreButtonForTesting.alphaValue, 1, accuracy: 0.001)
+        XCTAssertEqual(editor.moreIconViewForTesting.alphaValue, 1, accuracy: 0.001)
     }
 
     func testEditorPreservesAndClampsSelectionWhenLinksChange() throws {

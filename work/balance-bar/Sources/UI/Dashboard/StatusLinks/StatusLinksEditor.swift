@@ -16,6 +16,12 @@ final class StatusLinksScrollView: NSScrollView {
     }
 }
 
+final class StatusLinksPassthroughImageView: NSImageView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
 /// The native AppKit editor for the configurable menu-bar status links.
 ///
 /// The historical type name is kept because Dashboard composition and a few
@@ -57,6 +63,7 @@ final class StatusLinksEditorHostingView: NSView,
     let actionsControl: NSSegmentedControl
     let moveControl: NSSegmentedControl
     let moreButton: NSButton
+    let moreIconView: NSImageView
 
     private let moreMenu = NSMenu()
     private var openLinkMenuItem: NSMenuItem?
@@ -80,6 +87,7 @@ final class StatusLinksEditorHostingView: NSView,
     var actionsControlForTesting: NSSegmentedControl { actionsControl }
     var moveControlForTesting: NSSegmentedControl { moveControl }
     var moreButtonForTesting: NSButton { moreButton }
+    var moreIconViewForTesting: NSImageView { moreIconView }
     var moreMenuForTesting: NSMenu { moreMenu }
 
     var addButtonForTesting: NSSegmentedControl { actionsControl }
@@ -126,6 +134,7 @@ final class StatusLinksEditorHostingView: NSView,
         let actionsControl = NSSegmentedControl()
         let moveControl = NSSegmentedControl()
         let moreButton = NSButton()
+        let moreIconView = StatusLinksPassthroughImageView()
 
         self.tableView = tableView
         self.tableContainer = tableContainer
@@ -136,6 +145,7 @@ final class StatusLinksEditorHostingView: NSView,
         self.actionsControl = actionsControl
         self.moveControl = moveControl
         self.moreButton = moreButton
+        self.moreIconView = moreIconView
 
         super.init(frame: .zero)
 
@@ -152,7 +162,11 @@ final class StatusLinksEditorHostingView: NSView,
         configureTableContainer(tableContainer, contentView: scrollView)
         configureActionsControl(actionsControl)
         configureMoveControl(moveControl)
-        configureMoreButton(moreButton, matching: actionsControl)
+        configureMoreButton(
+            moreButton,
+            iconView: moreIconView,
+            matching: actionsControl
+        )
         configureMoreMenu()
 
         addSubview(resetButton)
@@ -160,6 +174,8 @@ final class StatusLinksEditorHostingView: NSView,
         addSubview(actionsControl)
         addSubview(moveControl)
         addSubview(moreButton)
+
+        moreButton.addSubview(moreIconView)
 
         NSLayoutConstraint.activate([
             tableContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
@@ -179,6 +195,11 @@ final class StatusLinksEditorHostingView: NSView,
             moreButton.topAnchor.constraint(equalTo: actionsControl.topAnchor),
             moreButton.widthAnchor.constraint(equalToConstant: 28),
             moreButton.heightAnchor.constraint(equalTo: actionsControl.heightAnchor),
+
+            moreIconView.leadingAnchor.constraint(equalTo: moreButton.leadingAnchor),
+            moreIconView.trailingAnchor.constraint(equalTo: moreButton.trailingAnchor),
+            moreIconView.topAnchor.constraint(equalTo: moreButton.topAnchor),
+            moreIconView.bottomAnchor.constraint(equalTo: moreButton.bottomAnchor),
 
             resetButton.trailingAnchor.constraint(equalTo: tableContainer.trailingAnchor),
             resetButton.leadingAnchor.constraint(
@@ -698,15 +719,24 @@ final class StatusLinksEditorHostingView: NSView,
         control.setAccessibilityLabel("Move status link")
     }
 
-    private func configureMoreButton(_ button: NSButton, matching control: NSSegmentedControl) {
+    private func configureMoreButton(
+        _ button: NSButton,
+        iconView: NSImageView,
+        matching control: NSSegmentedControl
+    ) {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setButtonType(.momentaryPushIn)
         button.bezelStyle = .rounded
         button.controlSize = control.controlSize
         button.isBordered = true
         button.title = ""
+        button.image = nil
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.imageAlignment = .alignCenter
+        iconView.imageScaling = .scaleProportionallyDown
+        iconView.setAccessibilityElement(false)
         setMoreButtonSymbol(
             named: "ellipsis",
             accessibilityDescription: tr(.keyStatusLinksEditorMoreActions)
@@ -725,7 +755,7 @@ final class StatusLinksEditorHostingView: NSView,
             systemSymbolName: symbolName,
             accessibilityDescription: accessibilityDescription
         ) else { return }
-        moreButton.image = image
+        moreIconView.image = image
         moreButton.setAccessibilityLabel(accessibilityDescription)
     }
 
@@ -760,7 +790,7 @@ final class StatusLinksEditorHostingView: NSView,
             context.duration = 0.12
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             context.allowsImplicitAnimation = true
-            moreButton.animator().alphaValue = 0
+            moreIconView.animator().alphaValue = 0
         } completionHandler: { [weak self] in
             guard let self,
                   !self.isTornDown,
@@ -774,14 +804,14 @@ final class StatusLinksEditorHostingView: NSView,
                 context.duration = 0.14
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 context.allowsImplicitAnimation = true
-                self.moreButton.animator().alphaValue = 1
+                self.moreIconView.animator().alphaValue = 1
             }
         }
     }
 
     private func cancelMoreActionFeedbackAnimation() {
-        moreButton.layer?.removeAllAnimations()
-        moreButton.alphaValue = 1
+        moreIconView.layer?.removeAllAnimations()
+        moreIconView.alphaValue = 1
     }
 
     private func configureMoreMenu() {
