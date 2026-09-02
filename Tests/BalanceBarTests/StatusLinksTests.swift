@@ -8,6 +8,8 @@ private final class TrackingStatusLinksTableView: NSTableView {
     private(set) var insertedRows: [(IndexSet, NSTableView.AnimationOptions)] = []
     private(set) var removedRows: [(IndexSet, NSTableView.AnimationOptions)] = []
     private(set) var movedRows: [(Int, Int)] = []
+    private(set) var scrolledRows: [Int] = []
+    private(set) var editedRows: [Int] = []
 
     override func reloadData() {
         reloadCount += 1
@@ -33,6 +35,21 @@ private final class TrackingStatusLinksTableView: NSTableView {
     override func moveRow(at oldRow: Int, to newRow: Int) {
         movedRows.append((oldRow, newRow))
         super.moveRow(at: oldRow, to: newRow)
+    }
+
+    override func scrollRowToVisible(_ row: Int) {
+        scrolledRows.append(row)
+        super.scrollRowToVisible(row)
+    }
+
+    override func editColumn(
+        _ column: Int,
+        row: Int,
+        with event: NSEvent?,
+        select: Bool
+    ) {
+        editedRows.append(row)
+        super.editColumn(column, row: row, with: event, select: select)
     }
 }
 
@@ -66,6 +83,18 @@ final class StatusLinksTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+
+    @discardableResult
+    private func waitUntil(
+        timeout: TimeInterval = 1,
+        condition: () -> Bool
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        return condition()
     }
 
     private func makeEditor(
@@ -153,7 +182,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(table.gridStyleMask.isEmpty)
         XCTAssertEqual(table.style, .fullWidth)
         XCTAssertTrue(table.usesAlternatingRowBackgroundColors)
-        XCTAssertFalse(scrollView.hasVerticalScroller)
+        XCTAssertTrue(scrollView.hasVerticalScroller)
         XCTAssertFalse((scrollView as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true)
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
@@ -280,7 +309,7 @@ final class StatusLinksTests: XCTestCase {
         urlCell.layoutSubtreeIfNeeded()
         let nameFieldFrame = nameField.convert(nameField.bounds, to: table)
         let urlFieldFrame = urlField.convert(urlField.bounds, to: table)
-        let tableBounds = table.bounds
+        let tableBounds = scrollView.contentView.bounds
         let leadingInset = nameFieldFrame.minX - tableBounds.minX
         let trailingInset = tableBounds.maxX - urlFieldFrame.maxX
         XCTAssertEqual(
@@ -333,7 +362,7 @@ final class StatusLinksTests: XCTestCase {
         let window = makeWindow(for: editor)
         defer { window.orderOut(nil) }
 
-        XCTAssertFalse(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
         XCTAssertFalse(
             (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true
         )
@@ -380,6 +409,7 @@ final class StatusLinksTests: XCTestCase {
 
     func testEditorNativeActionsAddSelectsNewRowRemoveUsesSelectionAndResetCallsBack() throws {
         var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
         var addCount = 0
         var removedIndices: [Int] = []
         var resetCount = 0
@@ -394,7 +424,8 @@ final class StatusLinksTests: XCTestCase {
                 )
             },
             onRemove: { removedIndices.append($0) },
-            onReset: { resetCount += 1 }
+            onReset: { resetCount += 1 },
+            tableView: table
         )
         let window = makeWindow(for: editor)
         defer { window.orderOut(nil) }
@@ -403,11 +434,19 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(removedIndices.isEmpty, "Remove is disabled until a row is selected")
 
         editor.performActionForTesting(segment: 0)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        window.layoutIfNeeded()
+        XCTAssertTrue(
+            waitUntil {
+                editor.tableViewForTesting.selectedRow == 1
+                    && table.editedRows == [1]
+            },
+            "Add should select and begin editing only after insertion settles"
+        )
         XCTAssertEqual(addCount, 1)
         XCTAssertEqual(editor.rowCount, 2)
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertFalse(table.scrolledRows.isEmpty)
+        XCTAssertTrue(table.scrolledRows.allSatisfy { $0 == 1 })
+        XCTAssertEqual(table.editedRows, [1])
         XCTAssertTrue(editor.actionsControlForTesting.isEnabled(forSegment: 1))
 
         editor.performActionForTesting(segment: 1)
@@ -446,7 +485,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.reloadCount, 0)
         XCTAssertEqual(table.insertedRows.count, 1)
         XCTAssertEqual(table.insertedRows[0].0, IndexSet(integer: 2))
-        XCTAssertEqual(table.insertedRows[0].1, .effectGap)
+        XCTAssertEqual(table.insertedRows[0].1, .slideDown)
         XCTAssertEqual(editor.rowCount, 3)
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
     }
@@ -652,7 +691,11 @@ final class StatusLinksTests: XCTestCase {
             onAdd: { index in
                 var updatedLinks = editor.links
                 updatedLinks.insert(StatusLink(title: "Two", url: "https://two.example"), at: index)
-                editor.updateLinks(updatedLinks, mutation: .insert(index))
+                editor.updateLinks(
+                    updatedLinks,
+                    mutation: .insert(index),
+                    selectLastRow: true
+                )
             },
             onRemove: { index in
                 var updatedLinks = editor.links
@@ -671,9 +714,10 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.removedRows.last?.1, [])
     }
 
-    func testIncrementalMutationsUpdateScrollbarAfterRowsChange() throws {
+    func testIncrementalMutationsKeepScrollerAndWidthsStableAcrossThreshold() throws {
         var editor: StatusLinksEditorHostingView!
         let table = TrackingStatusLinksTableView()
+        var completionCount = 0
         let initialLinks = (0..<5).map {
             StatusLink(title: "Link \($0)", url: "https://\($0).example")
         }
@@ -685,7 +729,12 @@ final class StatusLinksTests: XCTestCase {
                     StatusLink(title: "New", url: "https://new.example"),
                     at: index
                 )
-                editor.updateLinks(updatedLinks, mutation: .insert(index))
+                editor.updateLinks(
+                    updatedLinks,
+                    mutation: .insert(index),
+                    selectLastRow: true,
+                    completion: { completionCount += 1 }
+                )
             },
             onRemove: { index in
                 var updatedLinks = editor.links
@@ -697,24 +746,53 @@ final class StatusLinksTests: XCTestCase {
         let window = makeWindow(for: editor)
         defer { window.orderOut(nil) }
 
-        XCTAssertFalse(editor.scrollViewForTesting.hasVerticalScroller)
-        let initialTableHeight = editor.tableViewForTesting.frame.height
-
+        XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertFalse(
+            (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true
+        )
+        let initialTableWidth = editor.tableViewForTesting.frame.width
+        let initialNameColumnWidth = table.tableColumns[0].width
+        let initialURLColumnWidth = table.tableColumns[1].width
         editor.performActionForTesting(segment: 0)
         XCTAssertEqual(
-            editor.tableViewForTesting.frame.height,
-            initialTableHeight,
-            accuracy: 0.001,
-            "The document frame should not jump before the row insertion settles"
+            table.insertedRows.last?.1,
+            .slideDown,
+            "Add should use the native vertical insertion animation"
         )
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        window.layoutIfNeeded()
+        XCTAssertEqual(table.reloadCount, 0)
         XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertEqual(editor.tableViewForTesting.frame.width, initialTableWidth, accuracy: 0.001)
+        XCTAssertEqual(table.tableColumns[0].width, initialNameColumnWidth, accuracy: 0.001)
+        XCTAssertEqual(table.tableColumns[1].width, initialURLColumnWidth, accuracy: 0.001)
+        XCTAssertEqual(completionCount, 0, "Add completion must wait for native insertion")
+        XCTAssertTrue(table.scrolledRows.isEmpty)
+        XCTAssertTrue(table.editedRows.isEmpty)
+
+        XCTAssertTrue(
+            waitUntil { completionCount == 1 },
+            "Add completion should run after the native insertion settles"
+        )
+        window.layoutIfNeeded()
+        XCTAssertTrue(
+            (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? false
+        )
+        XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertEqual(editor.tableViewForTesting.frame.width, initialTableWidth, accuracy: 0.001)
+        XCTAssertEqual(table.tableColumns[0].width, initialNameColumnWidth, accuracy: 0.001)
+        XCTAssertEqual(table.tableColumns[1].width, initialURLColumnWidth, accuracy: 0.001)
+        XCTAssertFalse(table.scrolledRows.isEmpty)
+        XCTAssertTrue(table.scrolledRows.allSatisfy { $0 == 5 })
+        XCTAssertEqual(table.editedRows, [5])
 
         editor.performActionForTesting(segment: 1)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         window.layoutIfNeeded()
-        XCTAssertFalse(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
+        XCTAssertFalse(
+            (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true
+        )
+        XCTAssertEqual(editor.tableViewForTesting.frame.width, initialTableWidth, accuracy: 0.001)
+        XCTAssertEqual(table.tableColumns[0].width, initialNameColumnWidth, accuracy: 0.001)
+        XCTAssertEqual(table.tableColumns[1].width, initialURLColumnWidth, accuracy: 0.001)
     }
 
     func testTextFieldCommitUsesCurrentTableRowAfterMove() throws {

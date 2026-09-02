@@ -365,14 +365,19 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     func updateStatusLinks(
         _ links: [StatusLink],
         mutation: StatusLinksMutation = .reload,
-        selectLastRow: Bool = false
+        selectLastRow: Bool = false,
+        completion: (() -> Void)? = nil
     ) {
-        statusLinksEditor?.updateLinks(
+        guard let statusLinksEditor else {
+            completion?()
+            return
+        }
+        statusLinksEditor.updateLinks(
             links,
             mutation: mutation,
-            selectLastRow: selectLastRow
+            selectLastRow: selectLastRow,
+            completion: completion
         )
-        updateStatusLinksLayout()
     }
 
     func teardown() {

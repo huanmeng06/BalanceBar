@@ -384,11 +384,13 @@ final class DashboardCompositionController {
         links.insert(StatusLink(title: "", url: ""), at: index)
         state.setStatusLinks(links)
         SwitchLog.write("status link added; count=\(links.count)", category: "configuration")
-        actions.onStatusLinksChanged()
         dashboardPreferencePages.updateMenuStatusLinks(
             links,
             mutation: .insert(index),
-            selectLastRow: true
+            selectLastRow: true,
+            completion: { [weak self] in
+                self?.actions.onStatusLinksChanged()
+            }
         )
     }
 

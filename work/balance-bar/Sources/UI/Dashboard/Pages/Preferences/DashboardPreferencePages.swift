@@ -235,12 +235,14 @@ final class DashboardPreferencePages {
     func updateMenuStatusLinks(
         _ links: [StatusLink],
         mutation: StatusLinksMutation = .reload,
-        selectLastRow: Bool = false
+        selectLastRow: Bool = false,
+        completion: (() -> Void)? = nil
     ) {
         menuPage.updateStatusLinks(
             links,
             mutation: mutation,
-            selectLastRow: selectLastRow
+            selectLastRow: selectLastRow,
+            completion: completion
         )
     }
 

@@ -83,8 +83,7 @@ final class StatusLinksEditorHostingView: NSView,
     private var editingGeneration = 0
     private var pendingMoveSelection: Int?
     private var pendingDuplicateSelection: Int?
-    private var tableDocumentFrameUpdateGeneration = 0
-    private var defersTableDocumentFrameUpdate = false
+    private var defersTableGeometryUpdate = false
     private var moreActionResetWorkItem: DispatchWorkItem?
     private var moreActionFeedbackGeneration = 0
 
@@ -240,8 +239,8 @@ final class StatusLinksEditorHostingView: NSView,
 
     override func layout() {
         super.layout()
+        guard !defersTableGeometryUpdate else { return }
         updateColumnWidthsIfNeeded()
-        guard !defersTableDocumentFrameUpdate else { return }
         updateTableDocumentFrame()
     }
 
@@ -267,36 +266,6 @@ final class StatusLinksEditorHostingView: NSView,
             oldLinks: oldLinks,
             newLinks: newLinks
         )
-        if effectiveMutation == .reload {
-            cancelDeferredTableDocumentFrameUpdate()
-        } else {
-            scheduleTableDocumentFrameUpdate()
-        }
-        let previousTableFrame = tableView.frame
-        links = newLinks
-        editingGeneration &+= 1
-
-        switch effectiveMutation {
-        case .insert(let index):
-            tableView.insertRows(
-                at: IndexSet(integer: index),
-                withAnimation: tableRowInsertionAnimation
-            )
-        case .remove(let index):
-            tableView.removeRows(
-                at: IndexSet(integer: index),
-                withAnimation: tableRowRemovalAnimation
-            )
-        case .move(let from, let to):
-            tableView.moveRow(at: from, to: to)
-        case .reload:
-            tableView.reloadData()
-        }
-
-        if effectiveMutation != .reload,
-           previousTableFrame != tableView.frame {
-            tableView.frame = previousTableFrame
-        }
 
         let nextSelection: Int?
         if newLinks.isEmpty {
@@ -352,26 +321,69 @@ final class StatusLinksEditorHostingView: NSView,
             insertedRowForEditing = nil
         }
 
-        applySelection(nextSelection, scroll: insertedRowForEditing == nil)
-        completion?()
-
-        if effectiveMutation == .reload && insertedRowForEditing == nil {
-            updateTableDocumentFrame()
+        let shouldDeferAddCompletion = insertedRowForEditing != nil
+        let shouldAnimateAdd: Bool
+        if case .insert = effectiveMutation {
+            shouldAnimateAdd = selectLastRow
+        } else {
+            shouldAnimateAdd = false
         }
+        editingGeneration &+= 1
+        let mutationGeneration = editingGeneration
+        defersTableGeometryUpdate = shouldDeferAddCompletion
+        links = newLinks
 
-        if let insertedRowForEditing {
-            if effectiveMutation == .reload {
-                scheduleTableDocumentFrameUpdate()
-            }
-            let generation = editingGeneration
-            DispatchQueue.main.async { [weak self] in
-                guard let self,
-                      !self.isTornDown,
-                      generation == self.editingGeneration,
-                      self.links.indices.contains(insertedRowForEditing) else { return }
+        let finishMutation = { [weak self] in
+            guard let self,
+                  !self.isTornDown,
+                  self.editingGeneration == mutationGeneration else { return }
+
+            if let insertedRowForEditing, shouldDeferAddCompletion {
+                self.defersTableGeometryUpdate = false
+                self.updateTableDocumentFrame()
+                self.updateColumnWidthsIfNeeded()
+                self.applySelection(nextSelection, scroll: false)
                 self.tableView.scrollRowToVisible(insertedRowForEditing)
                 self.beginNameEditing(row: insertedRowForEditing)
+            } else {
+                self.updateTableDocumentFrame()
+                self.applySelection(nextSelection)
             }
+            completion?()
+        }
+
+        switch effectiveMutation {
+        case .insert(let index):
+            let animation = tableRowInsertionAnimation
+            if shouldAnimateAdd, !animation.isEmpty {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.allowsImplicitAnimation = true
+                    self.tableView.insertRows(
+                        at: IndexSet(integer: index),
+                        withAnimation: animation
+                    )
+                } completionHandler: {
+                    finishMutation()
+                }
+            } else {
+                tableView.insertRows(
+                    at: IndexSet(integer: index),
+                    withAnimation: animation
+                )
+                finishMutation()
+            }
+        case .remove(let index):
+            tableView.removeRows(
+                at: IndexSet(integer: index),
+                withAnimation: tableRowRemovalAnimation
+            )
+            finishMutation()
+        case .move(let from, let to):
+            tableView.moveRow(at: from, to: to)
+            finishMutation()
+        case .reload:
+            tableView.reloadData()
+            finishMutation()
         }
     }
 
@@ -420,8 +432,7 @@ final class StatusLinksEditorHostingView: NSView,
         guard !isTornDown else { return }
         isTornDown = true
         editingGeneration &+= 1
-        tableDocumentFrameUpdateGeneration &+= 1
-        defersTableDocumentFrameUpdate = false
+        defersTableGeometryUpdate = false
         moreActionFeedbackGeneration &+= 1
         moreActionResetWorkItem?.cancel()
         moreActionResetWorkItem = nil
@@ -703,7 +714,7 @@ final class StatusLinksEditorHostingView: NSView,
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
         scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = false
+        scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
@@ -976,7 +987,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private func updateColumnWidthsIfNeeded() {
-        let availableWidth = tableView.bounds.width
+        let availableWidth = scrollView.contentView.bounds.width
         guard availableWidth > 0,
               abs(availableWidth - lastColumnLayoutWidth) > 0.5 else { return }
 
@@ -990,7 +1001,7 @@ final class StatusLinksEditorHostingView: NSView,
     }
 
     private var tableRowInsertionAnimation: NSTableView.AnimationOptions {
-        shouldReduceMotion() ? [] : .effectGap
+        shouldReduceMotion() ? [] : .slideDown
     }
 
     private var tableRowRemovalAnimation: NSTableView.AnimationOptions {
@@ -1022,26 +1033,6 @@ final class StatusLinksEditorHostingView: NSView,
         return mutation
     }
 
-    private func scheduleTableDocumentFrameUpdate() {
-        tableDocumentFrameUpdateGeneration &+= 1
-        let generation = tableDocumentFrameUpdateGeneration
-        defersTableDocumentFrameUpdate = true
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  self.tableDocumentFrameUpdateGeneration == generation,
-                  !self.isTornDown else { return }
-            self.defersTableDocumentFrameUpdate = false
-            self.updateTableDocumentFrame()
-            self.needsLayout = true
-        }
-    }
-
-    private func cancelDeferredTableDocumentFrameUpdate() {
-        tableDocumentFrameUpdateGeneration &+= 1
-        defersTableDocumentFrameUpdate = false
-    }
-
     private func updateTableDocumentFrame() {
         let viewportSize = scrollView.contentView.bounds.size
         guard viewportSize.width > 0, viewportSize.height > 0 else { return }
@@ -1057,18 +1048,11 @@ final class StatusLinksEditorHostingView: NSView,
 
         let shouldScroll = rowsHeight > viewportSize.height + 0.5
         scrollView.allowsVerticalScrolling = shouldScroll
-        if scrollView.hasVerticalScroller != shouldScroll {
-            scrollView.hasVerticalScroller = shouldScroll
-        }
         let documentHeight = max(viewportSize.height, rowsHeight)
-        let newFrame = NSRect(
-            x: 0,
-            y: 0,
-            width: viewportSize.width,
-            height: documentHeight
-        )
-        if tableView.frame != newFrame {
-            tableView.frame = newFrame
+        if abs(tableView.frame.height - documentHeight) > 0.001 {
+            var frame = tableView.frame
+            frame.size.height = documentHeight
+            tableView.frame = frame
         }
     }
 
@@ -1149,30 +1133,8 @@ final class StatusLinksEditorHostingView: NSView,
     private func beginNameEditing(row: Int) {
         guard links.indices.contains(row) else { return }
         editingGeneration &+= 1
-        let generation = editingGeneration
-        applySelection(row)
-
-        func editIfPossible() {
-            guard !self.isTornDown,
-                  generation == self.editingGeneration,
-                  self.links.indices.contains(row) else { return }
-            self.tableView.layoutSubtreeIfNeeded()
-            let cell = self.tableView.view(
-                atColumn: 0,
-                row: row,
-                makeIfNecessary: true
-            ) as? NSTableCellView
-            self.tableView.editColumn(0, row: row, with: nil, select: true)
-            if self.tableView.editedRow < 0, let field = cell?.textField {
-                self.window?.makeFirstResponder(field)
-            }
-        }
-
-        editIfPossible()
-        DispatchQueue.main.async { [weak self] in
-            guard let self, generation == self.editingGeneration else { return }
-            editIfPossible()
-        }
+        tableView.layoutSubtreeIfNeeded()
+        tableView.editColumn(0, row: row, with: nil, select: true)
     }
 
     private func commit(_ field: NSTextField) {

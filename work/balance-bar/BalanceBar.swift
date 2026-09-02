@@ -278,7 +278,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onClamp: { [weak self] in self?.clampDashboardScrollViewBounds() },
             onStatusLinksChanged: { [weak self] in
                 guard let self else { return }
-                self.render(self.snapshot)
                 self.statusItemController.updateMenu(input: self.makeStatusItemMenuInput())
             },
             onDidShowPage: { [weak self] in
