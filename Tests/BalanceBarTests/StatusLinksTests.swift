@@ -72,6 +72,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.tableColumns[1].title, tr(.keyStatusLinksEditorUrl))
         XCTAssertEqual(table.numberOfRows, links.count)
         XCTAssertEqual(table.gridStyleMask, .solidHorizontalGridLineMask)
+        XCTAssertEqual(table.style, .fullWidth)
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
@@ -88,15 +89,6 @@ final class StatusLinksTests: XCTestCase {
             editor.resetButtonForTesting.frame.maxY,
             scrollView.frame.minY,
             "Restore Defaults should be below the table viewport"
-        )
-
-        let rowView = try XCTUnwrap(table.rowView(atRow: 0, makeIfNecessary: true))
-        let statusLinksRowView = try XCTUnwrap(rowView as? StatusLinksRowView)
-        XCTAssertEqual(
-            statusLinksRowView.selectionHorizontalInset,
-            StatusLinksEditorHostingView.tableHorizontalInset,
-            accuracy: 0.001,
-            "Selected rows should reserve equal horizontal margins"
         )
 
         XCTAssertGreaterThan(table.tableColumns[0].width, 0)

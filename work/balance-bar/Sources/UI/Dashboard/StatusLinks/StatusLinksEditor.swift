@@ -5,39 +5,6 @@ enum StatusLinkField: Equatable {
     case url
 }
 
-final class StatusLinksRowView: NSTableRowView {
-    let selectionHorizontalInset: CGFloat
-
-    init(selectionHorizontalInset: CGFloat) {
-        self.selectionHorizontalInset = selectionHorizontalInset
-        super.init(frame: .zero)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func drawSelection(in dirtyRect: NSRect) {
-        let selectionBounds = NSRect(
-            x: bounds.minX + selectionHorizontalInset,
-            y: bounds.minY,
-            width: max(0, bounds.width - (selectionHorizontalInset * 2)),
-            height: bounds.height
-        )
-        super.drawSelection(in: dirtyRect.intersection(selectionBounds))
-    }
-
-    override func drawSeparator(in dirtyRect: NSRect) {
-        let separatorBounds = NSRect(
-            x: bounds.minX + selectionHorizontalInset,
-            y: dirtyRect.minY,
-            width: max(0, bounds.width - (selectionHorizontalInset * 2)),
-            height: dirtyRect.height
-        )
-        super.drawSeparator(in: dirtyRect.intersection(separatorBounds))
-    }
-}
-
 /// The native AppKit editor for the configurable menu-bar status links.
 ///
 /// The historical type name is kept because Dashboard composition and a few
@@ -52,7 +19,7 @@ final class StatusLinksEditorHostingView: NSView,
     static let tableViewportHeight: CGFloat = 134
     static let tableHeaderHeight: CGFloat = 24
     static let tableRowHeight: CGFloat = 22
-    static let tableHorizontalInset: CGFloat = 12
+    static let fieldHorizontalInset: CGFloat = 12
     static let nameColumnMinimumWidth: CGFloat = 120
     static let urlColumnMinimumWidth: CGFloat = 220
 
@@ -304,11 +271,11 @@ final class StatusLinksEditorHostingView: NSView,
             NSLayoutConstraint.activate([
                 field.leadingAnchor.constraint(
                     equalTo: cell.leadingAnchor,
-                    constant: Self.tableHorizontalInset
+                    constant: Self.fieldHorizontalInset
                 ),
                 field.trailingAnchor.constraint(
                     equalTo: cell.trailingAnchor,
-                    constant: -Self.tableHorizontalInset
+                    constant: -Self.fieldHorizontalInset
                 ),
                 field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 field.heightAnchor.constraint(equalToConstant: Self.tableRowHeight - 2)
@@ -345,13 +312,6 @@ final class StatusLinksEditorHostingView: NSView,
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateRemoveControlState()
-    }
-
-    func tableView(
-        _ tableView: NSTableView,
-        rowViewForRow row: Int
-    ) -> NSTableRowView? {
-        StatusLinksRowView(selectionHorizontalInset: Self.tableHorizontalInset)
     }
 
     // MARK: - NSTextFieldDelegate
