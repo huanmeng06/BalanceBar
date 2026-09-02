@@ -75,6 +75,11 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.style, .fullWidth)
         XCTAssertFalse(scrollView.hasVerticalScroller)
         XCTAssertFalse((scrollView as? StatusLinksScrollView)?.allowsVerticalScrolling ?? true)
+        XCTAssertLessThan(
+            table.frame.height,
+            scrollView.contentView.bounds.height,
+            "The native table should not create separator rows below the last link"
+        )
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)

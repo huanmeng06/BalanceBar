@@ -513,10 +513,7 @@ final class StatusLinksEditorHostingView: NSView,
         if scrollView.hasVerticalScroller != shouldScroll {
             scrollView.hasVerticalScroller = shouldScroll
         }
-        let documentHeight = max(
-            viewportSize.height,
-            contentHeight
-        )
+        let documentHeight = contentHeight
         let newFrame = NSRect(
             x: 0,
             y: 0,
