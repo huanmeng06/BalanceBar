@@ -26,6 +26,16 @@ final class StatusLinksRowView: NSTableRowView {
         )
         super.drawSelection(in: dirtyRect.intersection(selectionBounds))
     }
+
+    override func drawSeparator(in dirtyRect: NSRect) {
+        let separatorBounds = NSRect(
+            x: bounds.minX + selectionHorizontalInset,
+            y: dirtyRect.minY,
+            width: max(0, bounds.width - (selectionHorizontalInset * 2)),
+            height: dirtyRect.height
+        )
+        super.drawSeparator(in: dirtyRect.intersection(separatorBounds))
+    }
 }
 
 /// The native AppKit editor for the configurable menu-bar status links.
@@ -448,7 +458,8 @@ final class StatusLinksEditorHostingView: NSView,
         table.style = .fullWidth
         table.selectionHighlightStyle = .regular
         table.usesAlternatingRowBackgroundColors = false
-        table.gridStyleMask = []
+        table.gridStyleMask = [.solidHorizontalGridLineMask]
+        table.gridColor = .separatorColor
         table.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
         table.setAccessibilityRole(.table)
     }

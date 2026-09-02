@@ -71,6 +71,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.tableColumns[0].title, tr(.keyStatusLinksEditorName))
         XCTAssertEqual(table.tableColumns[1].title, tr(.keyStatusLinksEditorUrl))
         XCTAssertEqual(table.numberOfRows, links.count)
+        XCTAssertEqual(table.gridStyleMask, .solidHorizontalGridLineMask)
         XCTAssertEqual(editor.actionsControlForTesting.segmentCount, 2)
         XCTAssertFalse(editor.actionsControlForTesting.isEnabled(forSegment: 1))
         XCTAssertEqual(editor.actionsControlForTesting.alignment(forSegment: 0), .center)
