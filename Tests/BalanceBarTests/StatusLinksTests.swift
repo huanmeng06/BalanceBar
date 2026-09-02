@@ -114,6 +114,25 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertFalse(urlField.isBordered)
         XCTAssertFalse(nameField.drawsBackground)
         XCTAssertFalse(urlField.drawsBackground)
+        let nameFieldHeight = try XCTUnwrap(
+            nameField.constraints.first {
+                $0.firstAttribute == .height && $0.priority == .required
+            }
+        )
+        XCTAssertEqual(
+            nameFieldHeight.constant,
+            nameField.intrinsicContentSize.height,
+            accuracy: 0.001,
+            "The editable field should use its single-line height"
+        )
+        XCTAssertTrue(
+            nameCell.constraints.contains {
+                ($0.firstItem as? NSTextField) === nameField
+                    && $0.firstAttribute == .centerY
+                    && abs($0.constant) < 0.001
+            },
+            "The editable field should be vertically centered in its cell"
+        )
         XCTAssertTrue(
             descendants(of: nameCell).filter { $0 is NSButton }.isEmpty,
             "Rows use editable text fields rather than per-row remove buttons"

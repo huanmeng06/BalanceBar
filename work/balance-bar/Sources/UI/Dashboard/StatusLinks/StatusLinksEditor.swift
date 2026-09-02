@@ -325,7 +325,7 @@ final class StatusLinksEditorHostingView: NSView,
                     constant: -Self.fieldHorizontalInset
                 ),
                 field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                field.heightAnchor.constraint(equalToConstant: Self.tableRowHeight - 2)
+                field.heightAnchor.constraint(equalToConstant: field.intrinsicContentSize.height)
             ])
         }
 
@@ -517,6 +517,9 @@ final class StatusLinksEditorHostingView: NSView,
         field.translatesAutoresizingMaskIntoConstraints = false
         field.font = .systemFont(ofSize: 13)
         field.alignment = .left
+        field.isBordered = false
+        field.drawsBackground = false
+        field.usesSingleLineMode = true
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.required, for: .horizontal)
         return field
