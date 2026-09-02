@@ -321,16 +321,10 @@ final class StatusLinksEditorHostingView: NSView,
             insertedRowForEditing = nil
         }
 
-        let shouldDeferAddCompletion = insertedRowForEditing != nil
-        let shouldAnimateAdd: Bool
-        if case .insert = effectiveMutation {
-            shouldAnimateAdd = selectLastRow
-        } else {
-            shouldAnimateAdd = false
-        }
+        let isAddMutation = insertedRowForEditing != nil
         editingGeneration &+= 1
         let mutationGeneration = editingGeneration
-        defersTableGeometryUpdate = shouldDeferAddCompletion
+        defersTableGeometryUpdate = isAddMutation
         links = newLinks
 
         let finishMutation = { [weak self] in
@@ -338,12 +332,13 @@ final class StatusLinksEditorHostingView: NSView,
                   !self.isTornDown,
                   self.editingGeneration == mutationGeneration else { return }
 
-            if let insertedRowForEditing, shouldDeferAddCompletion {
+            if let insertedRowForEditing, isAddMutation {
                 self.defersTableGeometryUpdate = false
                 self.updateTableDocumentFrame()
                 self.updateColumnWidthsIfNeeded()
                 if case .reload = effectiveMutation {
                     self.applySelection(nextSelection, scroll: false)
+                    self.focusTableForInsertion()
                 }
                 self.tableView.scrollRowToVisible(insertedRowForEditing)
                 self.beginNameEditing(row: insertedRowForEditing)
@@ -356,32 +351,19 @@ final class StatusLinksEditorHostingView: NSView,
 
         switch effectiveMutation {
         case .insert(let index):
-            let animation = tableRowInsertionAnimation
-            if shouldAnimateAdd, !animation.isEmpty {
-                NSAnimationContext.runAnimationGroup { context in
-                    context.allowsImplicitAnimation = true
-                    self.tableView.insertRows(
-                        at: IndexSet(integer: index),
-                        withAnimation: animation
-                    )
-                    self.tableView.selectRowIndexes(
-                        IndexSet(integer: index),
-                        byExtendingSelection: false
-                    )
-                } completionHandler: {
-                    finishMutation()
-                }
-            } else {
-                tableView.insertRows(
-                    at: IndexSet(integer: index),
-                    withAnimation: animation
-                )
-                tableView.selectRowIndexes(
-                    IndexSet(integer: index),
-                    byExtendingSelection: false
-                )
-                finishMutation()
+            let animation = isAddMutation ? [] : tableRowInsertionAnimation
+            tableView.insertRows(
+                at: IndexSet(integer: index),
+                withAnimation: animation
+            )
+            tableView.selectRowIndexes(
+                IndexSet(integer: index),
+                byExtendingSelection: false
+            )
+            if isAddMutation {
+                focusTableForInsertion()
             }
+            finishMutation()
         case .remove(let index):
             tableView.removeRows(
                 at: IndexSet(integer: index),
@@ -1077,6 +1059,11 @@ final class StatusLinksEditorHostingView: NSView,
             tableView.scrollRowToVisible(row)
         }
         updateActionControlState()
+    }
+
+    private func focusTableForInsertion() {
+        guard let window else { return }
+        _ = window.makeFirstResponder(tableView)
     }
 
     private func updateActionControlState() {

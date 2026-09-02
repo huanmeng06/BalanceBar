@@ -10,6 +10,7 @@ private final class TrackingStatusLinksTableView: NSTableView {
     private(set) var movedRows: [(Int, Int)] = []
     private(set) var scrolledRows: [Int] = []
     private(set) var editedRows: [Int] = []
+    private(set) var selectedRowsWhenInsertStarted: [Int] = []
 
     override func reloadData() {
         reloadCount += 1
@@ -21,6 +22,7 @@ private final class TrackingStatusLinksTableView: NSTableView {
         withAnimation animationOptions: NSTableView.AnimationOptions
     ) {
         insertedRows.append((rowIndexes, animationOptions))
+        selectedRowsWhenInsertStarted.append(selectedRow)
         super.insertRows(at: rowIndexes, withAnimation: animationOptions)
     }
 
@@ -54,14 +56,31 @@ private final class TrackingStatusLinksTableView: NSTableView {
 }
 
 @MainActor
+private final class TrackingStatusLinksWindow: NSWindow {
+    private(set) var selectedRowsWhenTableBecameFirstResponder: [Int] = []
+
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        if let tableView = responder as? NSTableView {
+            selectedRowsWhenTableBecameFirstResponder.append(tableView.selectedRow)
+        }
+        return super.makeFirstResponder(responder)
+    }
+
+    func resetFirstResponderTracking() {
+        selectedRowsWhenTableBecameFirstResponder.removeAll()
+    }
+}
+
+@MainActor
 final class StatusLinksTests: XCTestCase {
     private func makeWindow(
         for editor: StatusLinksEditorHostingView,
         width: CGFloat = 640,
-        height: CGFloat = 320
+        height: CGFloat = 320,
+        providedWindow: NSWindow? = nil
     ) -> NSWindow {
         _ = NSApplication.shared
-        let window = NSWindow(
+        let window = providedWindow ?? NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled],
             backing: .buffered,
@@ -407,6 +426,39 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(changes[1].2, "https://updated.example")
     }
 
+    func testAddCommitsActiveNameEditBeforeInserting() throws {
+        var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
+        editor = makeEditor(
+            links: [StatusLink(title: "One", url: "https://one.example")],
+            onAdd: { index in
+                var updatedLinks = editor.links
+                updatedLinks.insert(StatusLink(title: "", url: ""), at: index)
+                editor.updateLinks(
+                    updatedLinks,
+                    mutation: .insert(index),
+                    selectLastRow: true
+                )
+            },
+            tableView: table
+        )
+        let window = makeWindow(for: editor)
+        defer { window.orderOut(nil) }
+
+        let nameField = try XCTUnwrap(
+            (editor.tableViewForTesting.view(atColumn: 0, row: 0, makeIfNecessary: true)
+                as? NSTableCellView)?.textField
+        )
+        nameField.stringValue = "Edited before Add"
+        XCTAssertTrue(window.makeFirstResponder(nameField))
+
+        editor.performActionForTesting(segment: 0)
+
+        XCTAssertEqual(editor.links[0].title, "Edited before Add")
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertEqual(table.editedRows, [1])
+    }
+
     func testEditorNativeActionsAddSelectsNewRowRemoveUsesSelectionAndResetCallsBack() throws {
         var editor: StatusLinksEditorHostingView!
         let table = TrackingStatusLinksTableView()
@@ -434,16 +486,11 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertTrue(removedIndices.isEmpty, "Remove is disabled until a row is selected")
 
         editor.performActionForTesting(segment: 0)
-        XCTAssertTrue(
-            waitUntil {
-                editor.tableViewForTesting.selectedRow == 1
-                    && table.editedRows == [1]
-            },
-            "Add should select and begin editing only after insertion settles"
-        )
+        XCTAssertEqual(table.insertedRows.last?.1, [])
         XCTAssertEqual(addCount, 1)
         XCTAssertEqual(editor.rowCount, 2)
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 1)
+        XCTAssertTrue(editor.tableViewForTesting.isRowSelected(1))
         XCTAssertFalse(table.scrolledRows.isEmpty)
         XCTAssertTrue(table.scrolledRows.allSatisfy { $0 == 1 })
         XCTAssertEqual(table.editedRows, [1])
@@ -471,7 +518,8 @@ final class StatusLinksTests: XCTestCase {
                 updatedLinks.insert(StatusLink(title: "New", url: ""), at: index)
                 editor.updateLinks(
                     updatedLinks,
-                    mutation: .insert(index)
+                    mutation: .insert(index),
+                    selectLastRow: true
                 )
             },
             tableView: table
@@ -485,7 +533,7 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(table.reloadCount, 0)
         XCTAssertEqual(table.insertedRows.count, 1)
         XCTAssertEqual(table.insertedRows[0].0, IndexSet(integer: 2))
-        XCTAssertEqual(table.insertedRows[0].1, .effectFade)
+        XCTAssertEqual(table.insertedRows[0].1, [])
         XCTAssertEqual(editor.rowCount, 3)
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
     }
@@ -717,6 +765,12 @@ final class StatusLinksTests: XCTestCase {
     func testIncrementalMutationsKeepScrollerAndWidthsStableAcrossThreshold() throws {
         var editor: StatusLinksEditorHostingView!
         let table = TrackingStatusLinksTableView()
+        let trackingWindow = TrackingStatusLinksWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 320),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
         var completionCount = 0
         let initialLinks = (0..<5).map {
             StatusLink(title: "Link \($0)", url: "https://\($0).example")
@@ -743,7 +797,7 @@ final class StatusLinksTests: XCTestCase {
             },
             tableView: table
         )
-        let window = makeWindow(for: editor)
+        let window = makeWindow(for: editor, providedWindow: trackingWindow)
         defer { window.orderOut(nil) }
 
         XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
@@ -753,13 +807,23 @@ final class StatusLinksTests: XCTestCase {
         let initialTableWidth = editor.tableViewForTesting.frame.width
         let initialNameColumnWidth = table.tableColumns[0].width
         let initialURLColumnWidth = table.tableColumns[1].width
+        editor.tableViewForTesting.selectRowIndexes(
+            IndexSet(integer: initialLinks.count - 1),
+            byExtendingSelection: false
+        )
+        trackingWindow.resetFirstResponderTracking()
         editor.performActionForTesting(segment: 0)
         XCTAssertEqual(
             table.insertedRows.last?.1,
-            .effectFade,
-            "Add should use the native fade-in insertion animation"
+            [],
+            "Add should materialize the new row without an insertion animation"
         )
         XCTAssertEqual(table.reloadCount, 0)
+        XCTAssertEqual(
+            table.selectedRowsWhenInsertStarted,
+            [initialLinks.count - 1],
+            "The previous selection must still exist when the incremental insert starts"
+        )
         XCTAssertTrue(editor.scrollViewForTesting.hasVerticalScroller)
         XCTAssertEqual(editor.tableViewForTesting.frame.width, initialTableWidth, accuracy: 0.001)
         XCTAssertEqual(table.tableColumns[0].width, initialNameColumnWidth, accuracy: 0.001)
@@ -771,14 +835,17 @@ final class StatusLinksTests: XCTestCase {
             "The inserted row should be selected synchronously after insertRows"
         )
         XCTAssertTrue(editor.tableViewForTesting.isRowSelected(insertedIndex))
-        XCTAssertEqual(completionCount, 0, "Add completion must wait for native insertion")
-        XCTAssertTrue(table.scrolledRows.isEmpty)
-        XCTAssertTrue(table.editedRows.isEmpty)
-
+        XCTAssertFalse(trackingWindow.selectedRowsWhenTableBecameFirstResponder.isEmpty)
         XCTAssertTrue(
-            waitUntil { completionCount == 1 },
-            "Add completion should run after the native insertion settles"
+            trackingWindow.selectedRowsWhenTableBecameFirstResponder.allSatisfy {
+                $0 == insertedIndex
+            },
+            "The table must only receive focus after the inserted row is selected"
         )
+        XCTAssertEqual(completionCount, 1, "Add completion should run synchronously")
+        XCTAssertFalse(table.scrolledRows.isEmpty)
+        XCTAssertTrue(table.scrolledRows.allSatisfy { $0 == insertedIndex })
+        XCTAssertEqual(table.editedRows, [insertedIndex])
         window.layoutIfNeeded()
         XCTAssertTrue(
             (editor.scrollViewForTesting as? StatusLinksScrollView)?.allowsVerticalScrolling ?? false
@@ -844,6 +911,7 @@ final class StatusLinksTests: XCTestCase {
             StatusLink(title: "Valid", url: "https://example.com/status")
         ]
         var editor: StatusLinksEditorHostingView!
+        let table = TrackingStatusLinksTableView()
         var duplicatedIndices: [Int] = []
         editor = makeEditor(
             links: initialLinks,
@@ -852,7 +920,8 @@ final class StatusLinksTests: XCTestCase {
                 var updatedLinks = editor.links
                 updatedLinks.insert(updatedLinks[index], at: index + 1)
                 editor.updateLinks(updatedLinks, mutation: .insert(index + 1))
-            }
+            },
+            tableView: table
         )
         let window = makeWindow(for: editor)
         defer { window.orderOut(nil) }
@@ -920,6 +989,7 @@ final class StatusLinksTests: XCTestCase {
             ["", "ftp://example.com", "ftp://example.com", "https://example.com/status"]
         )
         XCTAssertEqual(editor.tableViewForTesting.selectedRow, 2)
+        XCTAssertEqual(table.insertedRows.last?.1, .effectFade)
         XCTAssertFalse(openLink.isEnabled)
         XCTAssertTrue(copyURL.isEnabled)
         XCTAssertTrue(duplicate.isEnabled)
