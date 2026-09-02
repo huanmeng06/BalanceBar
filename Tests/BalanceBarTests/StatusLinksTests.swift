@@ -764,6 +764,13 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(editor.tableViewForTesting.frame.width, initialTableWidth, accuracy: 0.001)
         XCTAssertEqual(table.tableColumns[0].width, initialNameColumnWidth, accuracy: 0.001)
         XCTAssertEqual(table.tableColumns[1].width, initialURLColumnWidth, accuracy: 0.001)
+        let insertedIndex = initialLinks.count
+        XCTAssertEqual(
+            editor.tableViewForTesting.selectedRow,
+            insertedIndex,
+            "The inserted row should be selected synchronously after insertRows"
+        )
+        XCTAssertTrue(editor.tableViewForTesting.isRowSelected(insertedIndex))
         XCTAssertEqual(completionCount, 0, "Add completion must wait for native insertion")
         XCTAssertTrue(table.scrolledRows.isEmpty)
         XCTAssertTrue(table.editedRows.isEmpty)
@@ -780,9 +787,11 @@ final class StatusLinksTests: XCTestCase {
         XCTAssertEqual(editor.tableViewForTesting.frame.width, initialTableWidth, accuracy: 0.001)
         XCTAssertEqual(table.tableColumns[0].width, initialNameColumnWidth, accuracy: 0.001)
         XCTAssertEqual(table.tableColumns[1].width, initialURLColumnWidth, accuracy: 0.001)
+        XCTAssertEqual(editor.tableViewForTesting.selectedRow, insertedIndex)
+        XCTAssertTrue(editor.tableViewForTesting.isRowSelected(insertedIndex))
         XCTAssertFalse(table.scrolledRows.isEmpty)
-        XCTAssertTrue(table.scrolledRows.allSatisfy { $0 == 5 })
-        XCTAssertEqual(table.editedRows, [5])
+        XCTAssertTrue(table.scrolledRows.allSatisfy { $0 == insertedIndex })
+        XCTAssertEqual(table.editedRows, [insertedIndex])
 
         editor.performActionForTesting(segment: 1)
         window.layoutIfNeeded()

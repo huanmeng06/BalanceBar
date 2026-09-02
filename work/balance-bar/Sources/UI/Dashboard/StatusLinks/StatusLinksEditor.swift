@@ -342,7 +342,9 @@ final class StatusLinksEditorHostingView: NSView,
                 self.defersTableGeometryUpdate = false
                 self.updateTableDocumentFrame()
                 self.updateColumnWidthsIfNeeded()
-                self.applySelection(nextSelection, scroll: false)
+                if case .reload = effectiveMutation {
+                    self.applySelection(nextSelection, scroll: false)
+                }
                 self.tableView.scrollRowToVisible(insertedRowForEditing)
                 self.beginNameEditing(row: insertedRowForEditing)
             } else {
@@ -362,6 +364,10 @@ final class StatusLinksEditorHostingView: NSView,
                         at: IndexSet(integer: index),
                         withAnimation: animation
                     )
+                    self.tableView.selectRowIndexes(
+                        IndexSet(integer: index),
+                        byExtendingSelection: false
+                    )
                 } completionHandler: {
                     finishMutation()
                 }
@@ -369,6 +375,10 @@ final class StatusLinksEditorHostingView: NSView,
                 tableView.insertRows(
                     at: IndexSet(integer: index),
                     withAnimation: animation
+                )
+                tableView.selectRowIndexes(
+                    IndexSet(integer: index),
+                    byExtendingSelection: false
                 )
                 finishMutation()
             }
