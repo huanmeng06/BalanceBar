@@ -62,6 +62,21 @@ final class StatusLinksTests: XCTestCase {
         let table = editor.tableViewForTesting
         let scrollView = editor.scrollViewForTesting
         XCTAssertTrue(scrollView.documentView === table)
+        XCTAssertEqual(scrollView.borderType, .noBorder)
+        XCTAssertTrue(scrollView.wantsLayer)
+        let tableLayer = try XCTUnwrap(scrollView.layer)
+        XCTAssertEqual(
+            tableLayer.cornerRadius,
+            StatusLinksEditorHostingView.tableCornerRadius,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            tableLayer.borderWidth,
+            StatusLinksEditorHostingView.tableBorderWidth,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(tableLayer.cornerCurve, .continuous)
+        XCTAssertTrue(tableLayer.masksToBounds)
         XCTAssertNil(table.headerView)
         XCTAssertEqual(table.tableColumns.count, 2)
         XCTAssertEqual(table.tableColumns.map(\.identifier), [

@@ -66,6 +66,8 @@ final class StatusLinksEditorHostingView: NSView,
     static let fixedHeight: CGFloat = 190
     static let tableViewportHeight: CGFloat = 134
     static let tableRowHeight: CGFloat = 22
+    static let tableCornerRadius: CGFloat = 12
+    static let tableBorderWidth: CGFloat = 1
     static let fieldHorizontalInset: CGFloat = 12
     static let nameColumnMinimumWidth: CGFloat = 120
     static let urlColumnMinimumWidth: CGFloat = 220
@@ -457,13 +459,19 @@ final class StatusLinksEditorHostingView: NSView,
     private func configureScrollView(_ scrollView: StatusLinksScrollView, documentView: NSView) {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         scrollView.verticalScrollElasticity = .none
         scrollView.drawsBackground = false
+        scrollView.wantsLayer = true
+        scrollView.layer?.cornerRadius = Self.tableCornerRadius
+        scrollView.layer?.cornerCurve = .continuous
+        scrollView.layer?.borderWidth = Self.tableBorderWidth
+        scrollView.layer?.borderColor = NSColor.separatorColor.cgColor
+        scrollView.layer?.masksToBounds = true
         scrollView.setAccessibilityLabel(tr(.keyStatusLinksEditorStatusLinks))
 
         documentView.translatesAutoresizingMaskIntoConstraints = true
