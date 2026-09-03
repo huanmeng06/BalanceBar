@@ -151,6 +151,16 @@ struct MenuBarBitmapImagePlacement: Equatable {
             dy: canonicalToImageOffset.height
         )
     }
+
+    /// Converts a rect from the image canvas back into the canonical button
+    /// coordinate space. This is used by the overlay experiment to reuse the
+    /// exact icon placement already measured for the bitmap-backed button.
+    func canonicalRect(forImageRect rect: NSRect) -> NSRect {
+        rect.offsetBy(
+            dx: -canonicalToImageOffset.width,
+            dy: -canonicalToImageOffset.height
+        )
+    }
 }
 
 enum MenuBarBitmapImageLayout {

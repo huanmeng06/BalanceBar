@@ -36,6 +36,205 @@ enum MenuBarActivityAnimationPolicy {
     }
 }
 
+/// Rendering choices for the Codex activity icon. The overlay case is an
+/// intentionally isolated experiment; normal builds keep the native cached
+/// frame path unless the build explicitly opts into the experiment.
+enum MenuBarAnimationRenderingMode: Equatable {
+    case nativeCachedFrames
+    case overlayCoreAnimation
+
+    static var configured: Self {
+#if BALANCEBAR_EXPERIMENTAL_OVERLAY
+        .overlayCoreAnimation
+#else
+        .nativeCachedFrames
+#endif
+    }
+}
+
+/// A borderless, non-activating window used only by the overlay experiment.
+/// Keeping the key/main overrides here makes the stacking experiment unable to
+/// steal activation even if AppKit changes the default for borderless windows.
+final class MenuBarAnimationOverlayWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+/// Presents the Codex icon above the native status item without mutating the
+/// status button during the animation. Geometry and appearance are updated by
+/// the controller at state/layout boundaries; the rotation itself is owned by
+/// the independent window's Core Animation layer.
+final class MenuBarAnimationOverlayController {
+    private static let rotationAnimationKey = "balancebar.menu-bar-overlay.rotation"
+    private static let rotationDuration: CFTimeInterval = 1.2
+
+    private let window: MenuBarAnimationOverlayWindow
+    private let imageView: NSImageView
+    private var animationRequested = false
+
+    private(set) var animationStartCount = 0
+    private(set) var animationStopCount = 0
+    private(set) var geometrySyncCount = 0
+    private(set) var appearanceUpdateCount = 0
+
+    var isAnimating: Bool { animationRequested }
+    var isVisible: Bool { window.isVisible }
+
+    var ignoresMouseEventsForTesting: Bool { window.ignoresMouseEvents }
+    var isOpaqueForTesting: Bool { window.isOpaque }
+    var hasShadowForTesting: Bool { window.hasShadow }
+    var canBecomeKeyForTesting: Bool { window.canBecomeKey }
+    var canBecomeMainForTesting: Bool { window.canBecomeMain }
+    var windowLevelForTesting: NSWindow.Level { window.level }
+    var animationKeysForTesting: [String] { imageView.layer?.animationKeys() ?? [] }
+
+    init() {
+        window = MenuBarAnimationOverlayWindow(
+            contentRect: .zero,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
+        )
+        imageView = NSImageView(frame: .zero)
+
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.ignoresMouseEvents = true
+        window.level = .statusBar
+        window.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .ignoresCycle,
+            .transient
+        ]
+        window.isExcludedFromWindowsMenu = true
+        window.hidesOnDeactivate = false
+        window.animationBehavior = .none
+        window.isReleasedWhenClosed = false
+
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.imageAlignment = .alignCenter
+        imageView.wantsLayer = true
+        imageView.autoresizingMask = [.width, .height]
+        imageView.layer?.backgroundColor = NSColor.clear.cgColor
+        window.contentView = imageView
+        window.orderOut(nil)
+    }
+
+    func start(
+        image: NSImage,
+        screenFrame: NSRect?,
+        appearance: NSAppearance?
+    ) {
+        animationRequested = true
+        update(image: image, appearance: appearance)
+        if imageView.layer?.animation(forKey: Self.rotationAnimationKey) == nil {
+            let animation = CABasicAnimation(keyPath: "transform.rotation.z")
+            animation.fromValue = 0.0
+            animation.toValue = -Double.pi * 2
+            animation.duration = Self.rotationDuration
+            animation.repeatCount = .greatestFiniteMagnitude
+            animation.timingFunction = CAMediaTimingFunction(name: .linear)
+            animation.isRemovedOnCompletion = false
+            imageView.layer?.add(animation, forKey: Self.rotationAnimationKey)
+            animationStartCount += 1
+        }
+        synchronize(
+            screenFrame: screenFrame,
+            appearance: appearance,
+            shouldShow: true
+        )
+    }
+
+    func synchronize(
+        screenFrame: NSRect?,
+        appearance: NSAppearance?,
+        shouldShow: Bool
+    ) {
+        guard animationRequested,
+              shouldShow,
+              let screenFrame,
+              screenFrame.width > 0,
+              screenFrame.height > 0 else {
+            if window.isVisible {
+                window.orderOut(nil)
+            }
+            return
+        }
+
+        update(appearance: appearance)
+        let alignedFrame = Self.pixelAligned(
+            screenFrame,
+            scale: window.screen?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor
+                ?? 2
+        )
+        if window.frame != alignedFrame {
+            window.setFrame(alignedFrame, display: false)
+            geometrySyncCount += 1
+        }
+        if !window.isVisible {
+            // `orderFrontRegardless` does not make the non-key window active;
+            // the window class also rejects key/main status defensively.
+            window.orderFrontRegardless()
+        }
+    }
+
+    func stop() {
+        guard animationRequested || window.isVisible else { return }
+        let wasAnimating = animationRequested
+        animationRequested = false
+        imageView.layer?.removeAnimation(forKey: Self.rotationAnimationKey)
+        if window.isVisible {
+            window.orderOut(nil)
+        }
+        animationStopCount += 1
+#if BALANCEBAR_EXPERIMENTAL_OVERLAY
+        if wasAnimating {
+            SwitchLog.write(
+                "menu bar overlay animation stopped; starts=\(animationStartCount); stops=\(animationStopCount); geometry_syncs=\(geometrySyncCount); appearance_updates=\(appearanceUpdateCount)",
+                category: "ui.animation-overlay",
+                throttleKey: "menu-bar-overlay-stop",
+                minimumInterval: 0
+            )
+        }
+#endif
+    }
+
+    func teardown() {
+        stop()
+        window.orderOut(nil)
+    }
+
+    private func update(image: NSImage? = nil, appearance: NSAppearance? = nil) {
+        if let image, imageView.image !== image {
+            imageView.image = image
+        }
+        if let appearance,
+           window.appearance?.name != appearance.name {
+            window.appearance = appearance
+            imageView.contentTintColor = .labelColor
+            appearanceUpdateCount += 1
+        } else if image != nil, imageView.contentTintColor == nil {
+            imageView.contentTintColor = .labelColor
+        }
+    }
+
+    private static func pixelAligned(_ frame: NSRect, scale: CGFloat) -> NSRect {
+        let safeScale = scale > 0 ? scale : 2
+        func aligned(_ value: CGFloat) -> CGFloat {
+            (value * safeScale).rounded() / safeScale
+        }
+        return NSRect(
+            x: aligned(frame.minX),
+            y: aligned(frame.minY),
+            width: aligned(frame.width),
+            height: aligned(frame.height)
+        )
+    }
+}
+
 final class RotatingTemplateImageView: PassthroughImageView {
     /// 36 discrete frames over a 1.2 s rotation = 30 fps. Pixel updates
     /// are the only way the macOS 26 status-item replicant snapshot can show

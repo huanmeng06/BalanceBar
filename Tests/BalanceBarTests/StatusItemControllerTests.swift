@@ -412,6 +412,115 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testOverlayAnimationUsesIndependentNonActivatingWindowAndCAAnimation() {
+        let overlay = MenuBarAnimationOverlayController()
+        defer { overlay.teardown() }
+
+        XCTAssertTrue(overlay.ignoresMouseEventsForTesting)
+        XCTAssertFalse(overlay.isOpaqueForTesting)
+        XCTAssertFalse(overlay.hasShadowForTesting)
+        XCTAssertFalse(overlay.canBecomeKeyForTesting)
+        XCTAssertFalse(overlay.canBecomeMainForTesting)
+        XCTAssertEqual(
+            overlay.windowLevelForTesting.rawValue,
+            NSWindow.Level.statusBar.rawValue
+        )
+
+        overlay.start(
+            image: NSImage(size: NSSize(width: 16, height: 16)),
+            screenFrame: NSRect(x: 10, y: 20, width: 16, height: 16),
+            appearance: NSAppearance(named: .aqua)
+        )
+
+        XCTAssertTrue(overlay.isAnimating)
+        XCTAssertTrue(overlay.isVisible)
+        XCTAssertEqual(overlay.animationStartCount, 1)
+        XCTAssertTrue(
+            overlay.animationKeysForTesting.contains(
+                "balancebar.menu-bar-overlay.rotation"
+            )
+        )
+
+        overlay.synchronize(
+            screenFrame: NSRect(x: 10, y: 20, width: 16, height: 16),
+            appearance: NSAppearance(named: .aqua),
+            shouldShow: false
+        )
+        XCTAssertFalse(overlay.isVisible)
+
+        overlay.stop()
+        XCTAssertFalse(overlay.isAnimating)
+        XCTAssertEqual(overlay.animationStopCount, 1)
+    }
+
+    @MainActor
+    func testOverlayCodexAnimationKeepsNativeStatusImageStaticAndSkipsNativeFrameCache() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Overlay Codex animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(animationRenderingMode: .overlayCoreAnimation)
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let settings = makeSettings(usesBitmapContent: true)
+
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: settings
+        )
+        controller.setCodexIconForTesting(
+            makeSolidImage(
+                size: NSSize(width: 16, height: 16),
+                red: 0.2,
+                green: 0.4,
+                blue: 0.8
+            )
+        )
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+
+        let nativeImage = try XCTUnwrap(controller.menuBarButtonImageForTesting)
+        XCTAssertEqual(controller.animationRenderingModeForTesting, .overlayCoreAnimation)
+        XCTAssertTrue(controller.overlayCodexAnimationIsActiveForTesting)
+        XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 0)
+        XCTAssertEqual(controller.overlayAnimationStartCountForTesting, 1)
+
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: settings
+        )
+        XCTAssertTrue(controller.menuBarButtonImageForTesting === nativeImage)
+        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 0)
+        XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertFalse(controller.overlayCodexAnimationIsActiveForTesting)
+        XCTAssertFalse(controller.overlayAnimationIsAnimatingForTesting)
+        XCTAssertFalse(controller.menuBarButtonImageForTesting === nativeImage)
+    }
+
+    @MainActor
     func testRuntimeDisplayPolicyPublishesAndClearsItsWarningImmediately() {
         var visibilityTransitions: [StatusItemVisibility] = []
         let controller = StatusItemController(
@@ -513,7 +622,9 @@ final class StatusItemControllerTests: XCTestCase {
         }
     }
 
-    private func makeController() -> StatusItemController {
+    private func makeController(
+        animationRenderingMode: MenuBarAnimationRenderingMode = .nativeCachedFrames
+    ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: {},
@@ -527,7 +638,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
-            )
+            ),
+            animationRenderingMode: animationRenderingMode
         )
     }
 

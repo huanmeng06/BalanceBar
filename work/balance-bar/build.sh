@@ -20,6 +20,9 @@ Build the macOS app without changing the checked-in Info.plist.
               Build a demo app that shows the 7-day quota at 0% with Luna Reserve available at 45%.
   demo-both-exhausted
               Build a demo app that shows both standard quotas at 0% with Luna Reserve available at 45%.
+
+Set BALANCEBAR_EXPERIMENTAL_OVERLAY=1 when building the isolated E overlay
+animation experiment. The default native cached-frame path is unchanged.
 EOF
 }
 
@@ -109,6 +112,13 @@ esac
 
 demo_mode="${demo_mode:-}"
 
+swift_compilation_condition_args=()
+case "${BALANCEBAR_EXPERIMENTAL_OVERLAY:-0}" in
+    0) ;;
+    1) swift_compilation_condition_args=(-D BALANCEBAR_EXPERIMENTAL_OVERLAY) ;;
+    *) die "BALANCEBAR_EXPERIMENTAL_OVERLAY must be 0 or 1" ;;
+esac
+
 contents_dir="$app_bundle/Contents"
 executable_dir="$contents_dir/MacOS"
 resources_dir="$contents_dir/Resources"
@@ -182,7 +192,11 @@ done < <(find "$source_dir" -type f -name '*.swift' -print | LC_ALL=C sort)
 printf 'build-balancebar: compiling %d Swift source file(s)\n' "${#swift_sources[@]}"
 printf 'build-balancebar: SDK %s; target %s\n' "$balancebar_sdk_version" "$balancebar_swift_target"
 printf '  %s\n' "${swift_sources[@]}"
-swiftc \
+swiftc_args=(swiftc)
+if (( ${#swift_compilation_condition_args[@]} > 0 )); then
+    swiftc_args+=("${swift_compilation_condition_args[@]}")
+fi
+"${swiftc_args[@]}" \
     -parse-as-library \
     -sdk "$balancebar_sdk_path" \
     -target "$balancebar_swift_target" \

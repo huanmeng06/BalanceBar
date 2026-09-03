@@ -2109,6 +2109,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var codexIconImage: NSImage?
     private var claudeIconImage: NSImage?
     private var claudeThinkingAnimator: ClaudeThinkingAnimator?
+    private let animationRenderingMode: MenuBarAnimationRenderingMode
+    private var isOverlayCodexAnimationActive = false
+    private var menuBarAnimationOverlay: MenuBarAnimationOverlayController?
     private var snapshot = Snapshot.placeholder
     private var refreshDate: Date?
     private var menuInput = MenuInput(
@@ -2178,6 +2181,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var menuBarPrimaryTextForTesting: String { menuBarPrimaryLabel.stringValue }
 
     var menuBarSecondaryTextForTesting: String { menuBarSecondaryLabel.stringValue }
+
+    var animationRenderingModeForTesting: MenuBarAnimationRenderingMode {
+        animationRenderingMode
+    }
+
+    var overlayCodexAnimationIsActiveForTesting: Bool {
+        isOverlayCodexAnimationActive
+    }
+
+    var overlayAnimationIsAnimatingForTesting: Bool {
+        menuBarAnimationOverlay?.isAnimating ?? false
+    }
+
+    var overlayAnimationStartCountForTesting: Int {
+        menuBarAnimationOverlay?.animationStartCount ?? 0
+    }
+
+    var overlayAnimationStopCountForTesting: Int {
+        menuBarAnimationOverlay?.animationStopCount ?? 0
+    }
+
+    var nativeCodexAnimationIsRotatingForTesting: Bool {
+        menuBarIconView.isRotating
+    }
 
     // Rendering-cache diagnostics keep the production seam read-only while
     // allowing focused tests to prove finite precomposition and cache reuse.
@@ -2249,8 +2276,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return "status_visible=\(isVisible); menu_bound=\(statusItem?.menu === statusMenu); menu_items=\(statusMenu.items.count); button_window=\(statusWindow != nil)"
     }
 
-    init(actions: Actions) {
+    init(
+        actions: Actions,
+        animationRenderingMode: MenuBarAnimationRenderingMode = .configured
+    ) {
         self.actions = actions
+        self.animationRenderingMode = animationRenderingMode
         super.init()
         bitmapRenderContainer.onEffectiveAppearanceChanged = { [weak self] in
             self?.handleBitmapEffectiveAppearanceChanged()
@@ -2262,6 +2293,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         ) { [weak self] _ in
             guard let self, self.statusItem != nil else { return }
             self.refreshBitmapContentAfterExternalVisualChange()
+            self.synchronizeMenuBarAnimationOverlay()
             self.scheduleStatusItemAttachmentCheck(
                 reason: "screen-parameters",
                 reanchor: false
@@ -2271,6 +2303,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     deinit {
         removeStatusItemWindowObservation()
+        menuBarAnimationOverlay?.teardown()
         if let screenParametersObserver {
             NotificationCenter.default.removeObserver(screenParametersObserver)
         }
@@ -2278,12 +2311,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func handleBitmapEffectiveAppearanceChanged() {
         refreshBitmapContentAfterExternalVisualChange()
+        synchronizeMenuBarAnimationOverlay()
     }
 
     private func refreshBitmapContentAfterExternalVisualChange() {
         guard usesBitmapContent, statusItem != nil else { return }
         invalidateBitmapContentCache()
         layoutStatusItem(for: snapshot)
+        synchronizeMenuBarAnimationOverlay()
     }
 
     func start(
@@ -2336,6 +2371,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.onSourceImageChanged = nil
         menuBarIconView.onFrameImageChanged = nil
         menuBarIconView.onAnimationFrameIndexChanged = nil
+        isOverlayCodexAnimationActive = false
+        menuBarAnimationOverlay?.teardown()
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
         invalidateBitmapContentCache()
@@ -2355,6 +2392,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings
     ) {
         let bitmapContentModeChanged = usesBitmapContent != settings.usesBitmapContent
+        let showIconChanged = self.settings.showIcon != settings.showIcon
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         self.snapshot = snapshot
@@ -2362,6 +2400,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.menuInput = menuInput
         self.settings = settings
         if bitmapContentModeChanged {
+            if !settings.usesBitmapContent {
+                setOverlayCodexAnimationActive(false, rebuild: false)
+            }
             usesBitmapContent = settings.usesBitmapContent
             configureMenuBarContentPresentation()
         }
@@ -2380,6 +2421,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         applyMenuBarIconDisplayPolicy()
         layoutStatusItem(for: snapshot)
+        if (bitmapContentModeChanged || showIconChanged),
+           animationRenderingMode == .overlayCoreAnimation {
+            updateActivityIcon()
+        }
         rebuildOrDeferMenu()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
@@ -2449,6 +2494,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if usesBitmapContent {
             refreshMenuBarContentBitmap()
         }
+        synchronizeMenuBarAnimationOverlay()
     }
 
     func updateMenu(input: MenuInput) {
@@ -2703,6 +2749,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 queue: .main
             ) { [weak self] _ in
                 guard let self, self.statusItem != nil else { return }
+                self.synchronizeMenuBarAnimationOverlay()
                 self.scheduleStatusItemAttachmentCheck(
                     reason: "window-\(notificationName.rawValue)",
                     reanchor: false
@@ -2741,6 +2788,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func verifyStatusItemAttachment(reason: String, reanchor: Bool) {
         guard let item = statusItem else {
             statusItemVisibilityStateMachine.reset()
+            synchronizeMenuBarAnimationOverlay()
             publishStatusItemVisibility()
             SwitchLog.write(
                 "status item attachment failed; reason=missing item",
@@ -2756,12 +2804,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // last confirmed space state so it can coexist with this policy
             // state and be re-evaluated when the item is shown again.
             statusItemReanchorAttempts = 0
+            synchronizeMenuBarAnimationOverlay()
             publishStatusItemVisibility()
             return
         }
 
         guard let button = item.button else {
             statusItemVisibilityStateMachine.reset()
+            synchronizeMenuBarAnimationOverlay()
             publishStatusItemVisibility()
             SwitchLog.write(
                 "status item attachment failed; reason=missing button",
@@ -2795,6 +2845,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             ),
             reason: reason
         )
+        synchronizeMenuBarAnimationOverlay()
         let attached = window.map { window in
             guard let screen else { return false }
             let frame = window.frame
@@ -2843,17 +2894,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch activeClient {
         case .codex:
             claudeThinkingAnimator?.stop()
+            let shouldAnimate = MenuBarActivityAnimationPolicy.shouldAnimate(
+                taskRunning: isCodexTaskRunning,
+                preferenceEnabled: animationEnabled,
+                reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            )
+            let shouldUseOverlay = shouldAnimate
+                && animationRenderingMode == .overlayCoreAnimation
+                && usesBitmapContent
+                && settings.showIcon
+                && codexIconImage != nil
+
+            if shouldUseOverlay {
+                if !isOverlayCodexAnimationActive {
+                    isOverlayCodexAnimationActive = true
+                    menuBarIconView.stopRotating()
+                    invalidateBitmapContentCache()
+                    layoutStatusItem(for: snapshot)
+                }
+                menuBarIconView.stopRotating()
+                if let codexIconImage {
+                    overlayAnimationController().start(
+                        image: codexIconImage,
+                        screenFrame: menuBarAnimationOverlayScreenFrame(),
+                        appearance: statusItem?.button?.effectiveAppearance
+                    )
+                }
+                synchronizeMenuBarAnimationOverlay()
+                return
+            }
+
+            setOverlayCodexAnimationActive(false)
             // While the rotation is feeding frames, re-assigning the static
             // source would clobber the current frame for one tick and dirty
             // the view; the rotation frames already derive from this source.
             if !menuBarIconView.isRotating, let codexIconImage {
                 menuBarIconView.setSourceImage(codexIconImage)
             }
-            if MenuBarActivityAnimationPolicy.shouldAnimate(
-                taskRunning: isCodexTaskRunning,
-                preferenceEnabled: animationEnabled,
-                reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            ) {
+            if shouldAnimate {
                 if usesBitmapContent {
                     ensureCodexAnimationFrameCache()
                     if !menuBarIconView.isRotating {
@@ -2876,6 +2954,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
             }
         case .claude:
+            setOverlayCodexAnimationActive(false)
             menuBarIconView.stopRotating()
             if claudeThinkingAnimator?.isAnimating != true, let claudeIconImage {
                 menuBarIconView.setSourceImage(claudeIconImage)
@@ -2892,6 +2971,80 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    private func setOverlayCodexAnimationActive(
+        _ active: Bool,
+        rebuild: Bool = true
+    ) {
+        guard isOverlayCodexAnimationActive != active else { return }
+        isOverlayCodexAnimationActive = active
+        if !active {
+            menuBarAnimationOverlay?.stop()
+        }
+        guard rebuild, usesBitmapContent else { return }
+        invalidateBitmapContentCache()
+        layoutStatusItem(for: snapshot)
+    }
+
+    private func overlayAnimationController() -> MenuBarAnimationOverlayController {
+        if let menuBarAnimationOverlay {
+            return menuBarAnimationOverlay
+        }
+        let overlay = MenuBarAnimationOverlayController()
+        menuBarAnimationOverlay = overlay
+        return overlay
+    }
+
+    private var shouldUseOverlayCodexAnimation: Bool {
+        animationRenderingMode == .overlayCoreAnimation
+            && usesBitmapContent
+            && activeClient == .codex
+            && settings.showIcon
+            && isOverlayCodexAnimationActive
+    }
+
+    /// Uses the already measured bitmap placement and the real status-button
+    /// window to convert the visible icon pixels into screen coordinates.
+    /// There is no independent overlay layout constant to drift from the
+    /// native menu-bar content.
+    private func menuBarAnimationOverlayScreenFrame() -> NSRect? {
+        guard shouldUseOverlayCodexAnimation,
+              let button = statusItem?.button,
+              let window = button.window,
+              let placement = menuBarBitmapImagePlacement,
+              let iconDrawRect = cachedMenuBarIconDrawRect else {
+            return nil
+        }
+        let iconRectInButton = placement.canonicalRect(forImageRect: iconDrawRect)
+        return window.convertToScreen(button.convert(iconRectInButton, to: nil))
+    }
+
+    private func synchronizeMenuBarAnimationOverlay() {
+        guard let overlay = menuBarAnimationOverlay else { return }
+        guard shouldUseOverlayCodexAnimation,
+              let statusItem,
+              let button = statusItem.button,
+              let window = button.window,
+              let screenFrame = menuBarAnimationOverlayScreenFrame() else {
+            overlay.synchronize(
+                screenFrame: nil,
+                appearance: nil,
+                shouldShow: false
+            )
+            return
+        }
+
+        let shouldShow = statusItem.isVisible
+            && !button.isHidden
+            && window.isVisible
+            && window.occlusionState.contains(.visible)
+            && !statusItemVisibility.isHiddenByMenuBarSpace
+        overlay.synchronize(
+            screenFrame: shouldShow ? screenFrame : nil,
+            appearance: button.effectiveAppearance,
+            shouldShow: shouldShow
+        )
+    }
+
     private func applyMenuBarIconDisplayPolicy() {
         guard let statusItem else { return }
         let shouldDisplay = menuBarIconDisplayStateMachine.shouldDisplay
@@ -2904,6 +3057,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
         }
         publishStatusItemVisibility()
+        synchronizeMenuBarAnimationOverlay()
         if changed, shouldDisplay {
             scheduleStatusItemAttachmentCheck(
                 reason: "activity-running",
@@ -3113,6 +3267,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.isHidden = false
         button.isEnabled = true
         applyMenuBarIconDisplayPolicy()
+        synchronizeMenuBarAnimationOverlay()
     }
 
     private func applyMenuBarFonts() {
@@ -3320,6 +3475,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var shouldPrepareCodexAnimationFrames: Bool {
         usesBitmapContent
+            && animationRenderingMode == .nativeCachedFrames
             && activeClient == .codex
             && isCodexTaskRunning
             && animationEnabled
@@ -3602,7 +3758,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         let staticImage: NSImage?
-        if let sourceImage, let iconDrawRect {
+        if !shouldUseOverlayCodexAnimation,
+           let sourceImage,
+           let iconDrawRect {
             staticImage = Self.makeCompleteMenuBarBitmap(
                 textBitmap: textBitmap,
                 iconImage: sourceImage,
