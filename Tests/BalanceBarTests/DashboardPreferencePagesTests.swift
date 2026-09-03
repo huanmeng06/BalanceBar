@@ -2081,6 +2081,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
             targetFrame.intersects(scrollView.contentView.bounds),
             "the runtime warning action must reveal the icon display mode row in the current page"
         )
+        XCTAssertGreaterThan(
+            targetFrame.minY,
+            scrollView.contentView.bounds.minY + 20,
+            "the runtime warning action should leave space above the target row"
+        )
+        XCTAssertLessThan(
+            targetFrame.maxY,
+            scrollView.contentView.bounds.maxY - 20,
+            "the runtime warning action should leave space below the target row"
+        )
         XCTAssertEqual(systemSettingsOpenCount, 0)
     }
 

@@ -1477,7 +1477,18 @@ final class DashboardMenuBarPage {
             : taskStatusIconRow
         guard let destination else { return }
         destination.window?.layoutIfNeeded()
-        destination.scrollToVisible(destination.bounds)
+
+        // Expand the requested rect by the available viewport margin so that
+        // scrollToVisible places the row with comfortable space around it
+        // instead of stopping as soon as its bottom edge becomes visible.
+        guard let scrollView = destination.enclosingScrollView else {
+            destination.scrollToVisible(destination.bounds)
+            return
+        }
+        let viewportHeight = scrollView.contentView.bounds.height
+        let verticalMargin = max(0, (viewportHeight - destination.bounds.height) / 2)
+        let revealRect = destination.bounds.insetBy(dx: 0, dy: -verticalMargin)
+        destination.scrollToVisible(revealRect)
     }
 
     private func updateQuotaVisibility(
