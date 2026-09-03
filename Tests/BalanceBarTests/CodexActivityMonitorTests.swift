@@ -425,6 +425,61 @@ final class CodexActivityMonitorTests: XCTestCase {
         )
     }
 
+    func testUnchangedLogsMetadataUsesInMemoryFastPathAndClockExpiry() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        let monitor = makeMonitor()
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        let logsURL = fixtureDirectory.appendingPathComponent("logs_1.sqlite")
+        guard let permissions = try FileManager.default
+            .attributesOfItem(atPath: logsURL.path)[.posixPermissions] as? NSNumber else {
+            XCTFail("logs fixture permissions were unavailable")
+            return
+        }
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: permissions],
+                ofItemAtPath: logsURL.path
+            )
+        }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0)],
+            ofItemAtPath: logsURL.path
+        )
+
+        XCTAssertTrue(
+            monitor.isTaskRunning(now: currentDate),
+            "unchanged metadata must evaluate cached state without reopening SQLite"
+        )
+
+        currentDate = currentDate.addingTimeInterval(601)
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "the in-memory state must still expire when the database is unchanged"
+        )
+    }
+
+    func testChangedLogsMetadataWithoutNewRowsKeepsIncrementalState() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#)
+        ])
+        let monitor = makeMonitor()
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try updateLogBody(
+            rowID: 1,
+            body: #"{"type":"response.output_text.delta"}"#
+        )
+
+        XCTAssertTrue(
+            monitor.isTaskRunning(now: currentDate),
+            "a metadata-only change with the same max rowid must not bootstrap or discard state"
+        )
+    }
+
     func testRecentTerminalRolloutOverridesDelayedLogActivity() throws {
         let sessionURL = try writeSession([
             eventMessage("task_started"),
@@ -876,6 +931,23 @@ final class CodexActivityMonitorTests: XCTestCase {
                     timestamp: row.timestamp,
                     body: row.body
                 )
+            }
+        }
+    }
+
+    private func updateLogBody(rowID: Int64, body: String) throws {
+        try withDatabase(named: "logs_1.sqlite") { database in
+            var statement: OpaquePointer?
+            let sql = "UPDATE logs SET feedback_log_body = ? WHERE rowid = ?"
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+                  let statement else {
+                throw fixtureError("failed to prepare logs fixture update")
+            }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, body, -1, Self.sqliteTransient)
+            sqlite3_bind_int64(statement, 2, rowID)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw fixtureError("failed to update logs fixture row")
             }
         }
     }

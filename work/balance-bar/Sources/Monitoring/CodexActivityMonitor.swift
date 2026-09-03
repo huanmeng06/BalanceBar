@@ -57,6 +57,13 @@ final class CodexActivityMonitor {
         let terminalSeen: Bool
     }
 
+    private struct DatabaseSignature: Equatable {
+        let path: String
+        let main: CodexFileIdentity
+        let wal: CodexFileIdentity?
+        let sharedMemory: CodexFileIdentity?
+    }
+
     private struct ThreadLogState {
         var latestActivity: Int64 = 0
         var latestInProgress: Int64 = 0
@@ -66,6 +73,7 @@ final class CodexActivityMonitor {
     private struct LogsScanCache {
         let databasePath: String
         let databaseFileID: UInt64
+        var observedSignature: DatabaseSignature
         var lastRowID: Int64
         var threads: [String: ThreadLogState]
     }
@@ -374,8 +382,16 @@ final class CodexActivityMonitor {
 
     private func logsDatabaseIsRunning(now: Date) -> Bool? {
         guard let databasePath = latestDatabase(prefix: "logs_", now: now),
-              let databaseIdentity = codexFileIdentity(atPath: databasePath) else {
+              let signature = databaseSignature(atPath: databasePath) else {
             return nil
+        }
+
+        if let cached = logsScanCache,
+           cached.observedSignature == signature {
+            var nextCache = cached
+            let running = pruneAndEvaluateLogs(now: now, cache: &nextCache)
+            logsScanCache = nextCache
+            return running
         }
 
         var database: OpaquePointer?
@@ -393,7 +409,7 @@ final class CodexActivityMonitor {
         let shouldBootstrap: Bool
         if let cached = logsScanCache {
             shouldBootstrap = cached.databasePath != databasePath
-                || cached.databaseFileID != databaseIdentity.fileID
+                || cached.databaseFileID != signature.main.fileID
                 || highWaterMark < cached.lastRowID
         } else {
             shouldBootstrap = true
@@ -402,34 +418,43 @@ final class CodexActivityMonitor {
         var nextCache = shouldBootstrap
             ? LogsScanCache(
                 databasePath: databasePath,
-                databaseFileID: databaseIdentity.fileID,
+                databaseFileID: signature.main.fileID,
+                observedSignature: signature,
                 lastRowID: 0,
                 threads: [:]
             )
             : logsScanCache!
         if shouldBootstrap || highWaterMark > nextCache.lastRowID {
+            var candidateThreads = nextCache.threads
             guard scanLogs(
                 in: database,
                 bootstrap: shouldBootstrap,
                 afterRowID: nextCache.lastRowID,
                 throughRowID: highWaterMark,
                 cutoff: Int64(now.timeIntervalSince1970) - Int64(Self.activityWindow),
-                threads: &nextCache.threads
+                threads: &candidateThreads
             ) else {
                 return nil
             }
+            nextCache.threads = candidateThreads
             nextCache.lastRowID = highWaterMark
         }
 
+        nextCache.observedSignature = signature
+        let running = pruneAndEvaluateLogs(now: now, cache: &nextCache)
+        logsScanCache = nextCache
+        return running
+    }
+
+    private func pruneAndEvaluateLogs(now: Date, cache: inout LogsScanCache) -> Bool {
         let nowEpoch = Int64(now.timeIntervalSince1970)
         let cutoff = nowEpoch - Int64(Self.activityWindow)
-        nextCache.threads = nextCache.threads.filter { _, state in
+        cache.threads = cache.threads.filter { _, state in
             max(state.latestActivity, max(state.latestInProgress, state.latestDone)) >= cutoff
         }
-        logsScanCache = nextCache
 
         var runningUntil: TimeInterval?
-        for state in nextCache.threads.values {
+        for state in cache.threads.values {
             if state.latestInProgress > state.latestDone,
                state.latestActivity > state.latestDone,
                nowEpoch - state.latestActivity < Int64(Self.activityWindow) {
@@ -446,6 +471,16 @@ final class CodexActivityMonitor {
             }
         }
         return runningUntil != nil
+    }
+
+    private func databaseSignature(atPath path: String) -> DatabaseSignature? {
+        guard let main = codexFileIdentity(atPath: path) else { return nil }
+        return DatabaseSignature(
+            path: path,
+            main: main,
+            wal: codexFileIdentity(atPath: "\(path)-wal"),
+            sharedMemory: codexFileIdentity(atPath: "\(path)-shm")
+        )
     }
 
     private func maximumLogRowID(in database: OpaquePointer) -> Int64? {
