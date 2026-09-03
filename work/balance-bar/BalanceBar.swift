@@ -323,6 +323,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var isCodexTaskRunning = false
     private var isClaudeTaskRunning = false
     private var isClaudeProcessAvailable = false
+    private var codexActivityRefreshLifecycle = ActivityRefreshLifecycle()
+    private var claudeActivityRefreshLifecycle = ActivityRefreshLifecycle()
     private var lifecycle = ApplicationLifecycleState()
     private var lastCodexUsageRefresh: Date?
     private var postCodexRefreshDeadline: Date?
@@ -537,7 +539,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 setActiveClient: { [weak self] client in self?.setActiveClient(client) },
                 setCodexTaskRunning: { [weak self] running in self?.setCodexTaskRunning(running) },
-                setClaudeTaskRunning: { [weak self] running in self?.setClaudeTaskRunning(running) }
+                setClaudeTaskRunning: { [weak self] running in self?.setClaudeTaskRunning(running) },
+                resetActivityRefreshState: { [weak self] in self?.resetActivityRefreshState() },
+                observeCodexActivity: { [weak self] update in self?.observeCodexActivity(update) },
+                observeClaudeActivity: { [weak self] update in self?.observeClaudeActivity(update) }
             )
         )
         statusItemController = StatusItemController(
@@ -1159,7 +1164,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             codexUsageRefreshInterval = value
         case "postCodexRefreshDuration":
             postCodexRefreshDuration = value
-            if !isCodexTaskRunning, postCodexRefreshDeadline != nil {
+            let lifecycle = activeClient == .codex
+                ? codexActivityRefreshLifecycle
+                : claudeActivityRefreshLifecycle
+            if let anchor = lifecycle.trailingRefreshAnchor {
+                postCodexRefreshDeadline = value > 0
+                    ? anchor.addingTimeInterval(value)
+                    : nil
+            } else if !isCodexTaskRunning, postCodexRefreshDeadline != nil {
                 postCodexRefreshDeadline = value > 0
                     ? Date().addingTimeInterval(value)
                     : nil
@@ -1391,6 +1403,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         RunLoop.main.add(timer, forMode: .common)
     }
 
+    private func resetActivityRefreshState() {
+        codexActivityRefreshLifecycle.reset()
+        claudeActivityRefreshLifecycle.reset()
+        lastCodexUsageRefresh = nil
+        postCodexRefreshDeadline = nil
+    }
+
+    private func observeCodexActivity(_ update: ActivityLifecycleUpdate) {
+        codexActivityRefreshLifecycle.apply(update)
+        guard activeClient == .codex else { return }
+        reconcileActivityRefreshWindow(for: .codex, observation: update.observation)
+    }
+
+    private func observeClaudeActivity(_ update: ActivityLifecycleUpdate) {
+        claudeActivityRefreshLifecycle.apply(update)
+        guard activeClient == .claude else { return }
+        reconcileActivityRefreshWindow(for: .claude, observation: update.observation)
+    }
+
+    private func reconcileActivityRefreshWindow(
+        for client: AssistantClient,
+        observation: ActivityMonitorObservation
+    ) {
+        switch observation {
+        case .active, .contextCompaction:
+            // Active work and compaction cancel any potential end from an
+            // earlier ambiguous-idle sample. Compaction itself remains
+            // refresh-suspended until normal activity appears again.
+            postCodexRefreshDeadline = nil
+        case .ambiguousIdle, .hardTerminal:
+            let lifecycle = client == .codex
+                ? codexActivityRefreshLifecycle
+                : claudeActivityRefreshLifecycle
+            guard let anchor = lifecycle.trailingRefreshAnchor else { return }
+            establishPostCodexRefreshWindow(from: anchor)
+        }
+    }
+
+    private func establishPostCodexRefreshWindow(from anchor: Date) {
+        guard postCodexRefreshDuration > 0 else {
+            postCodexRefreshDeadline = nil
+            return
+        }
+        let candidate = anchor.addingTimeInterval(postCodexRefreshDuration)
+        if let current = postCodexRefreshDeadline {
+            postCodexRefreshDeadline = min(current, candidate)
+        } else {
+            postCodexRefreshDeadline = candidate
+        }
+    }
+
     private func setCodexTaskRunning(_ running: Bool, force: Bool = false) {
         let wasRunning = isCodexTaskRunning
         let stateChanged = running != wasRunning
@@ -1399,7 +1462,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             SwitchLog.write("task state changed; client=codex; running=\(running)")
         }
         if activeClient == .codex {
-            updateActiveUsageRefresh(running: running, wasRunning: wasRunning)
+            updateActiveUsageRefresh(
+                running: running,
+                wasRunning: wasRunning,
+                client: .codex
+            )
         }
         if force || stateChanged {
             updateStatusItemActivity()
@@ -1419,36 +1486,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             SwitchLog.write("task state changed; client=claude; running=\(running)")
         }
         if activeClient == .claude {
-            updateActiveUsageRefresh(running: running, wasRunning: wasRunning)
+            updateActiveUsageRefresh(
+                running: running,
+                wasRunning: wasRunning,
+                client: .claude
+            )
         }
         guard force || stateChanged else { return }
         updateStatusItemActivity()
     }
 
-    private func updateActiveUsageRefresh(running: Bool, wasRunning: Bool) {
+    private func updateActiveUsageRefresh(
+        running: Bool,
+        wasRunning: Bool,
+        client: AssistantClient
+    ) {
         let now = Date()
-        let stateChanged = running != wasRunning
-
-        if running {
-            postCodexRefreshDeadline = nil
-        } else if stateChanged && wasRunning {
-            // Third-party relays may post usage a few seconds after Codex has
-            // finished. Keep a short trailing refresh window so the final
-            // balance appears without requiring a manual refresh.
-            postCodexRefreshDeadline = now.addingTimeInterval(postCodexRefreshDuration)
-        }
-
+        let lifecycle = client == .codex
+            ? codexActivityRefreshLifecycle
+            : claudeActivityRefreshLifecycle
+        let resumed = client == .codex
+            ? codexActivityRefreshLifecycle.consumeImmediateResume()
+            : claudeActivityRefreshLifecycle.consumeImmediateResume()
         let inTrailingWindow = postCodexRefreshDeadline.map { now < $0 } ?? false
-        let shouldRefreshUsage = running || inTrailingWindow || stateChanged
-        let refreshIsDue = lastCodexUsageRefresh.map {
-            now.timeIntervalSince($0) >= codexUsageRefreshInterval
-        } ?? true
-        if shouldRefreshUsage && (stateChanged || refreshIsDue) {
+        let shouldRefreshUsage = ActivityRefreshPolicy.shouldRefreshUsage(
+            taskRunning: running,
+            wasTaskRunning: wasRunning,
+            phase: lifecycle.phase,
+            inTrailingWindow: inTrailingWindow
+        )
+        let shouldIssueRefresh = ActivityRefreshPolicy.shouldIssueRefresh(
+            taskRunning: running,
+            wasTaskRunning: wasRunning,
+            phase: lifecycle.phase,
+            inTrailingWindow: inTrailingWindow,
+            now: now,
+            lastRefresh: lastCodexUsageRefresh,
+            refreshInterval: codexUsageRefreshInterval,
+            resumed: resumed
+        )
+        if shouldIssueRefresh {
             lastCodexUsageRefresh = now
             refresh(reason: .activityUsage)
         } else if !shouldRefreshUsage {
             lastCodexUsageRefresh = nil
             postCodexRefreshDeadline = nil
+            if !inTrailingWindow {
+                if client == .codex {
+                    codexActivityRefreshLifecycle.clearTrailingRefreshAnchor()
+                } else {
+                    claudeActivityRefreshLifecycle.clearTrailingRefreshAnchor()
+                }
+            }
         }
     }
 
@@ -1466,6 +1555,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
+        let lifecycle = activeClient == .codex
+            ? codexActivityRefreshLifecycle
+            : claudeActivityRefreshLifecycle
+        if let anchor = lifecycle.trailingRefreshAnchor {
+            establishPostCodexRefreshWindow(from: anchor)
+        }
         updateStatusItemActivity()
         refreshStatusItemMenuInput()
         // Never flash the generic ellipsis during a focus switch. Reuse the

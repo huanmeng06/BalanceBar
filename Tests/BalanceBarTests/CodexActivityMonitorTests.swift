@@ -603,6 +603,38 @@ final class CodexActivityMonitorTests: XCTestCase {
         )
     }
 
+    func testContextCompactionProvidesLifecycleEvidenceWithoutChangingLegacyBoolean() throws {
+        let sessionURL = try writeSession([
+            responseItem(phase: "final_answer"),
+            topLevelEvent("context_compacted")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "the legacy Boolean remains false until explicit post-compaction activity"
+        )
+        XCTAssertEqual(
+            monitor.activityObservation(now: currentDate),
+            .contextCompaction,
+            "the lifecycle coordinator must be able to keep the task alive during compaction"
+        )
+    }
+
+    func testHardTerminalProvidesImmediateLifecycleEvidence() throws {
+        let sessionURL = try writeSession([
+            eventMessage("task_started"),
+            eventMessage("task_failed")
+        ])
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+
+        XCTAssertEqual(
+            makeMonitor().activityObservation(now: currentDate),
+            .hardTerminal
+        )
+    }
+
     func testTerminalAfterContextCompactionStillSuppressesTrailingActivity() throws {
         let sessionURL = try writeSession([
             responseItem(phase: "final_answer"),
