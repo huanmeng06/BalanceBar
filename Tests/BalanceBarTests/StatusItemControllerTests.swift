@@ -445,12 +445,27 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(
             overlay.iconLayerPositionForTesting,
             CGPoint(
-                x: overlay.rootLayerBoundsForTesting.midX,
-                y: overlay.rootLayerBoundsForTesting.midY
+                x: overlay.rootViewBoundsForTesting.midX,
+                y: overlay.rootViewBoundsForTesting.midY
             )
         )
         XCTAssertEqual(overlay.iconLayerBoundsSizeForTesting, expectedIconSize)
         XCTAssertTrue(overlay.iconLayerHasContentsForTesting)
+        XCTAssertTrue(overlay.iconLayerContentsIsCGImageForTesting)
+        let contentsScale = overlay.iconLayerContentsScaleForTesting
+        XCTAssertEqual(
+            overlay.iconLayerContentsPixelSizeForTesting,
+            NSSize(
+                width: expectedIconSize.width * contentsScale,
+                height: expectedIconSize.height * contentsScale
+            )
+        )
+        XCTAssertGreaterThanOrEqual(contentsScale, 1)
+        XCTAssertEqual(
+            overlay.iconLayerContentsRectForTesting,
+            CGRect(x: 0, y: 0, width: 1, height: 1)
+        )
+        XCTAssertEqual(overlay.iconLayerContentsGravityForTesting, .resize)
         XCTAssertEqual(overlay.animationStartCount, 1)
         XCTAssertTrue(
             overlay.animationKeysForTesting.contains(

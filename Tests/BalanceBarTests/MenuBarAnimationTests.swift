@@ -74,6 +74,90 @@ final class MenuBarAnimationTests: XCTestCase {
         )
     }
 
+    func testOverlayIconRasterKeepsLogicalAndPixelGeometryCentered() throws {
+        let logicalSize = NSSize(width: 16, height: 16)
+        let contentsScale: CGFloat = 2
+        let appearance = try XCTUnwrap(NSAppearance(named: .aqua))
+        let sourceImage = makeCenteredAsymmetricMarkerImage(size: logicalSize)
+
+        let raster = try XCTUnwrap(
+            MenuBarAnimationOverlayController.makeTintedLayerRaster(
+                from: sourceImage,
+                size: logicalSize,
+                scale: contentsScale,
+                appearance: appearance
+            )
+        )
+
+        XCTAssertEqual(raster.logicalSize, logicalSize)
+        XCTAssertEqual(raster.contentsScale, contentsScale, accuracy: 0.000_001)
+        XCTAssertEqual(raster.cgImage.width, 32)
+        XCTAssertEqual(raster.cgImage.height, 32)
+
+        let metrics = try alphaMetrics(for: raster.cgImage)
+        XCTAssertEqual(metrics.centroid.x, 16, accuracy: 0.5)
+        XCTAssertEqual(metrics.centroid.y, 16, accuracy: 0.5)
+        XCTAssertEqual(metrics.bounds.midX, 16, accuracy: 1)
+        XCTAssertEqual(metrics.bounds.midY, 16, accuracy: 1)
+    }
+
+    func testOverlayIconRenderedRotationKeepsVisibleRasterCentroidAtLayerCenter() throws {
+        let logicalSize = NSSize(width: 16, height: 16)
+        let contentsScale: CGFloat = 2
+        let appearance = try XCTUnwrap(NSAppearance(named: .aqua))
+        let sourceImage = makeCenteredAsymmetricMarkerImage(size: logicalSize)
+        let raster = try XCTUnwrap(
+            MenuBarAnimationOverlayController.makeTintedLayerRaster(
+                from: sourceImage,
+                size: logicalSize,
+                scale: contentsScale,
+                appearance: appearance
+            )
+        )
+
+        let rootLayer = CALayer()
+        rootLayer.frame = NSRect(origin: .zero, size: logicalSize)
+        rootLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        rootLayer.position = CGPoint(
+            x: logicalSize.width / 2,
+            y: logicalSize.height / 2
+        )
+        rootLayer.contentsScale = contentsScale
+
+        let iconLayer = CALayer()
+        iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        iconLayer.bounds = NSRect(origin: .zero, size: logicalSize)
+        iconLayer.position = CGPoint(
+            x: logicalSize.width / 2,
+            y: logicalSize.height / 2
+        )
+        iconLayer.contents = raster.cgImage
+        iconLayer.contentsScale = raster.contentsScale
+        iconLayer.contentsRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+        iconLayer.contentsGravity = .resize
+        rootLayer.addSublayer(iconLayer)
+
+        let expectedCenter = CGPoint(
+            x: logicalSize.width * contentsScale / 2,
+            y: logicalSize.height * contentsScale / 2
+        )
+        for angle in [0, Double.pi / 2, Double.pi, Double.pi * 1.5] {
+            iconLayer.setAffineTransform(
+                CGAffineTransform(rotationAngle: CGFloat(angle))
+            )
+            let rendered = try XCTUnwrap(
+                renderLayer(
+                    rootLayer,
+                    logicalSize: logicalSize,
+                    contentsScale: contentsScale
+                )
+            )
+            let metrics = try alphaMetrics(for: rendered)
+            XCTAssertEqual(metrics.centroid.x, expectedCenter.x, accuracy: 0.5)
+            XCTAssertEqual(metrics.centroid.y, expectedCenter.y, accuracy: 0.5)
+        }
+    }
+
     func testFrameDisplayDoesNotEmitSemanticSourceChangesAndStopRestoresSource() {
         let imageView = RotatingTemplateImageView(
             frame: NSRect(x: 0, y: 0, width: 16, height: 16)
@@ -261,5 +345,102 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         XCTAssertTrue(pagePreviewPath.contains("previewIcon.image = image"))
         XCTAssertFalse(pagePreviewPath.contains("layoutSubtreeIfNeeded"))
+    }
+
+    private struct AlphaMetrics {
+        let centroid: CGPoint
+        let bounds: CGRect
+    }
+
+    private func makeCenteredAsymmetricMarkerImage(size: NSSize) -> NSImage {
+        NSImage(size: size, flipped: false) { rect in
+            NSColor.white.setFill()
+            let markerSize: CGFloat = 2
+            NSRect(
+                x: rect.midX - 5,
+                y: rect.midY - 5,
+                width: markerSize,
+                height: markerSize
+            ).fill()
+            NSRect(
+                x: rect.midX + 3,
+                y: rect.midY + 3,
+                width: markerSize,
+                height: markerSize
+            ).fill()
+            return true
+        }
+    }
+
+    private func renderLayer(
+        _ layer: CALayer,
+        logicalSize: NSSize,
+        contentsScale: CGFloat
+    ) -> CGImage? {
+        let pixelsWide = Int((logicalSize.width * contentsScale).rounded())
+        let pixelsHigh = Int((logicalSize.height * contentsScale).rounded())
+        guard let context = CGContext(
+            data: nil,
+            width: pixelsWide,
+            height: pixelsHigh,
+            bitsPerComponent: 8,
+            bytesPerRow: pixelsWide * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+        context.clear(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
+        context.saveGState()
+        context.scaleBy(x: contentsScale, y: contentsScale)
+        layer.render(in: context)
+        context.restoreGState()
+        return context.makeImage()
+    }
+
+    private func alphaMetrics(for image: CGImage) throws -> AlphaMetrics {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        var alphaTotal: CGFloat = 0
+        var weightedX: CGFloat = 0
+        var weightedY: CGFloat = 0
+        var minX = image.width
+        var minY = image.height
+        var maxX = -1
+        var maxY = -1
+
+        for y in 0..<image.height {
+            for x in 0..<image.width {
+                let alpha = bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0
+                guard alpha > 0.01 else { continue }
+                let weight = alpha
+                alphaTotal += weight
+                weightedX += (CGFloat(x) + 0.5) * weight
+                weightedY += (CGFloat(y) + 0.5) * weight
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+
+        guard alphaTotal > 0, maxX >= minX, maxY >= minY else {
+            throw NSError(
+                domain: "BalanceBarTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Rendered layer contains no alpha"]
+            )
+        }
+        return AlphaMetrics(
+            centroid: CGPoint(
+                x: weightedX / alphaTotal,
+                y: weightedY / alphaTotal
+            ),
+            bounds: CGRect(
+                x: CGFloat(minX),
+                y: CGFloat(minY),
+                width: CGFloat(maxX - minX + 1),
+                height: CGFloat(maxY - minY + 1)
+            )
+        )
     }
 }

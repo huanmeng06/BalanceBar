@@ -64,6 +64,12 @@ private final class MenuBarAnimationOverlayRootView: NSView {
     override var isFlipped: Bool { false }
 }
 
+struct MenuBarAnimationOverlayIconRaster {
+    let cgImage: CGImage
+    let contentsScale: CGFloat
+    let logicalSize: NSSize
+}
+
 /// Presents the Codex icon above the native status item without mutating the
 /// status button during the animation. Geometry and appearance are updated by
 /// the controller at state/layout boundaries; the rotation itself is owned by
@@ -103,11 +109,26 @@ final class MenuBarAnimationOverlayController {
     var windowLevelForTesting: NSWindow.Level { window.level }
     var animationKeysForTesting: [String] { iconLayer.animationKeys() ?? [] }
     var rootLayerAnimationKeysForTesting: [String] { rootLayer.animationKeys() ?? [] }
-    var rootLayerBoundsForTesting: NSRect { rootLayer.bounds }
+    var rootViewBoundsForTesting: NSRect { rootView.bounds }
     var iconLayerAnchorPointForTesting: CGPoint { iconLayer.anchorPoint }
     var iconLayerPositionForTesting: CGPoint { iconLayer.position }
     var iconLayerBoundsSizeForTesting: NSSize { iconLayer.bounds.size }
     var iconLayerHasContentsForTesting: Bool { iconLayer.contents != nil }
+    var iconLayerContentsIsCGImageForTesting: Bool {
+        guard let contents = iconLayer.contents else { return false }
+        return CFGetTypeID(contents as CFTypeRef) == CGImage.typeID
+    }
+    var iconLayerContentsPixelSizeForTesting: NSSize? {
+        guard iconLayerContentsIsCGImageForTesting,
+              let contents = iconLayer.contents else { return nil }
+        let image = contents as! CGImage
+        return NSSize(width: image.width, height: image.height)
+    }
+    var iconLayerContentsScaleForTesting: CGFloat { iconLayer.contentsScale }
+    var iconLayerContentsRectForTesting: CGRect { iconLayer.contentsRect }
+    var iconLayerContentsGravityForTesting: CALayerContentsGravity {
+        iconLayer.contentsGravity
+    }
 
     init() {
         let window = MenuBarAnimationOverlayWindow(
@@ -123,7 +144,8 @@ final class MenuBarAnimationOverlayController {
         }
         let iconLayer = CALayer()
         iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        iconLayer.contentsGravity = .resizeAspect
+        iconLayer.contentsGravity = .resize
+        iconLayer.contentsRect = CGRect(x: 0, y: 0, width: 1, height: 1)
         iconLayer.masksToBounds = false
         rootLayer.backgroundColor = NSColor.clear.cgColor
         rootLayer.addSublayer(iconLayer)
@@ -259,8 +281,7 @@ final class MenuBarAnimationOverlayController {
     private func layoutLayers() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        rootLayer.frame = rootView.bounds
-        let rootBounds = rootLayer.bounds
+        let rootBounds = rootView.bounds
         iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         iconLayer.bounds = NSRect(origin: .zero, size: rootBounds.size)
         iconLayer.position = CGPoint(
@@ -271,10 +292,10 @@ final class MenuBarAnimationOverlayController {
         CATransaction.commit()
     }
 
-    /// Converts the template NSImage into one appearance-resolved bitmap at
-    /// a layout boundary. The resulting NSImage is assigned directly to
-    /// CALayer.contents, which lets AppKit manage its backing-resolution
-    /// representation without bringing an NSImageView into the animation path.
+    /// Converts the template NSImage into one appearance-resolved CGImage at
+    /// a layout boundary. The raster's pixel dimensions explicitly match its
+    /// logical layer size and contentsScale, so CALayer does not need to
+    /// select an NSImage representation or perform an additional aspect fit.
     private func updateIconContentsIfNeeded() {
         guard let sourceImage,
               iconLayer.bounds.width > 0,
@@ -294,25 +315,35 @@ final class MenuBarAnimationOverlayController {
             return
         }
 
-        let contents = Self.makeTintedLayerImage(
+        guard let raster = Self.makeTintedLayerRaster(
             from: sourceImage,
             size: iconSize,
             scale: contentsScale,
             appearance: appearance
-        )
-        iconLayer.contents = contents ?? sourceImage
+        ) else {
+            iconLayer.contents = nil
+            return
+        }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        iconLayer.contents = raster.cgImage
+        iconLayer.contentsScale = raster.contentsScale
+        iconLayer.contentsRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+        CATransaction.commit()
+
         renderedSourceImageIdentity = sourceIdentity
         renderedAppearanceName = appearance.name
-        renderedIconSize = iconSize
-        renderedContentsScale = contentsScale
+        renderedIconSize = raster.logicalSize
+        renderedContentsScale = raster.contentsScale
     }
 
-    private static func makeTintedLayerImage(
+    static func makeTintedLayerRaster(
         from image: NSImage,
         size: NSSize,
         scale: CGFloat,
         appearance: NSAppearance
-    ) -> NSImage? {
+    ) -> MenuBarAnimationOverlayIconRaster? {
         guard size.width > 0, size.height > 0 else { return nil }
         let safeScale = scale > 0 ? scale : 2
         let pixelsWide = max(1, Int((size.width * safeScale).rounded()))
@@ -329,10 +360,13 @@ final class MenuBarAnimationOverlayController {
             bitmapFormat: [],
             bytesPerRow: 0,
             bitsPerPixel: 0
-        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+        ) else {
             return nil
         }
         bitmap.size = size
+        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+            return nil
+        }
         if let bitmapData = bitmap.bitmapData {
             memset(bitmapData, 0, bitmap.bytesPerRow * bitmap.pixelsHigh)
         }
@@ -340,6 +374,11 @@ final class MenuBarAnimationOverlayController {
         let drawRect = NSRect(origin: .zero, size: size)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
+        // NSGraphicsContext(bitmapImageRep:) keeps pixel coordinates as its
+        // default user space. Explicitly map logical points to the target
+        // raster before drawing; bitmap.size is metadata and does not apply
+        // this scale to the drawing CTM.
+        context.cgContext.scaleBy(x: safeScale, y: safeScale)
         appearance.performAsCurrentDrawingAppearance {
             image.draw(
                 in: drawRect,
@@ -355,10 +394,12 @@ final class MenuBarAnimationOverlayController {
         context.flushGraphics()
         NSGraphicsContext.restoreGraphicsState()
 
-        let tintedImage = NSImage(size: size)
-        tintedImage.addRepresentation(bitmap)
-        tintedImage.isTemplate = false
-        return tintedImage
+        guard let cgImage = bitmap.cgImage else { return nil }
+        return MenuBarAnimationOverlayIconRaster(
+            cgImage: cgImage,
+            contentsScale: safeScale,
+            logicalSize: size
+        )
     }
 
     private static func pixelAligned(_ frame: NSRect, scale: CGFloat) -> NSRect {
