@@ -426,17 +426,39 @@ final class StatusItemControllerTests: XCTestCase {
             NSWindow.Level.statusBar.rawValue
         )
 
+        let expectedIconSize = NSSize(width: 16, height: 16)
+
         overlay.start(
-            image: NSImage(size: NSSize(width: 16, height: 16)),
-            screenFrame: NSRect(x: 10, y: 20, width: 16, height: 16),
+            image: NSImage(size: expectedIconSize),
+            screenFrame: NSRect(
+                x: 10,
+                y: 20,
+                width: expectedIconSize.width,
+                height: expectedIconSize.height
+            ),
             appearance: NSAppearance(named: .aqua)
         )
 
         XCTAssertTrue(overlay.isAnimating)
         XCTAssertTrue(overlay.isVisible)
+        XCTAssertEqual(overlay.iconLayerAnchorPointForTesting, CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(
+            overlay.iconLayerPositionForTesting,
+            CGPoint(
+                x: overlay.rootLayerBoundsForTesting.midX,
+                y: overlay.rootLayerBoundsForTesting.midY
+            )
+        )
+        XCTAssertEqual(overlay.iconLayerBoundsSizeForTesting, expectedIconSize)
+        XCTAssertTrue(overlay.iconLayerHasContentsForTesting)
         XCTAssertEqual(overlay.animationStartCount, 1)
         XCTAssertTrue(
             overlay.animationKeysForTesting.contains(
+                "balancebar.menu-bar-overlay.rotation"
+            )
+        )
+        XCTAssertFalse(
+            overlay.rootLayerAnimationKeysForTesting.contains(
                 "balancebar.menu-bar-overlay.rotation"
             )
         )

@@ -60,6 +60,10 @@ final class MenuBarAnimationOverlayWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 }
 
+private final class MenuBarAnimationOverlayRootView: NSView {
+    override var isFlipped: Bool { false }
+}
+
 /// Presents the Codex icon above the native status item without mutating the
 /// status button during the animation. Geometry and appearance are updated by
 /// the controller at state/layout boundaries; the rotation itself is owned by
@@ -69,8 +73,19 @@ final class MenuBarAnimationOverlayController {
     private static let rotationDuration: CFTimeInterval = 1.2
 
     private let window: MenuBarAnimationOverlayWindow
-    private let imageView: NSImageView
+    private let rootView: MenuBarAnimationOverlayRootView
+    private let rootLayer: CALayer
+    /// This is deliberately a layer owned by BalanceBar rather than an
+    /// AppKit-managed NSImageView backing layer. Its geometry is established
+    /// before the compositor animation is installed, so the pivot is always
+    /// the icon's own center.
+    private let iconLayer: CALayer
     private var animationRequested = false
+    private var sourceImage: NSImage?
+    private var renderedSourceImageIdentity: ObjectIdentifier?
+    private var renderedAppearanceName: NSAppearance.Name?
+    private var renderedIconSize: NSSize = .zero
+    private var renderedContentsScale: CGFloat = 0
 
     private(set) var animationStartCount = 0
     private(set) var animationStopCount = 0
@@ -86,16 +101,37 @@ final class MenuBarAnimationOverlayController {
     var canBecomeKeyForTesting: Bool { window.canBecomeKey }
     var canBecomeMainForTesting: Bool { window.canBecomeMain }
     var windowLevelForTesting: NSWindow.Level { window.level }
-    var animationKeysForTesting: [String] { imageView.layer?.animationKeys() ?? [] }
+    var animationKeysForTesting: [String] { iconLayer.animationKeys() ?? [] }
+    var rootLayerAnimationKeysForTesting: [String] { rootLayer.animationKeys() ?? [] }
+    var rootLayerBoundsForTesting: NSRect { rootLayer.bounds }
+    var iconLayerAnchorPointForTesting: CGPoint { iconLayer.anchorPoint }
+    var iconLayerPositionForTesting: CGPoint { iconLayer.position }
+    var iconLayerBoundsSizeForTesting: NSSize { iconLayer.bounds.size }
+    var iconLayerHasContentsForTesting: Bool { iconLayer.contents != nil }
 
     init() {
-        window = MenuBarAnimationOverlayWindow(
+        let window = MenuBarAnimationOverlayWindow(
             contentRect: .zero,
             styleMask: [.borderless],
             backing: .buffered,
             defer: true
         )
-        imageView = NSImageView(frame: .zero)
+        let rootView = MenuBarAnimationOverlayRootView(frame: .zero)
+        rootView.wantsLayer = true
+        guard let rootLayer = rootView.layer else {
+            fatalError("MenuBarAnimationOverlayRootView must provide a backing layer")
+        }
+        let iconLayer = CALayer()
+        iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        iconLayer.contentsGravity = .resizeAspect
+        iconLayer.masksToBounds = false
+        rootLayer.backgroundColor = NSColor.clear.cgColor
+        rootLayer.addSublayer(iconLayer)
+
+        self.window = window
+        self.rootView = rootView
+        self.rootLayer = rootLayer
+        self.iconLayer = iconLayer
 
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -113,12 +149,8 @@ final class MenuBarAnimationOverlayController {
         window.animationBehavior = .none
         window.isReleasedWhenClosed = false
 
-        imageView.imageScaling = .scaleProportionallyDown
-        imageView.imageAlignment = .alignCenter
-        imageView.wantsLayer = true
-        imageView.autoresizingMask = [.width, .height]
-        imageView.layer?.backgroundColor = NSColor.clear.cgColor
-        window.contentView = imageView
+        rootView.autoresizingMask = [.width, .height]
+        window.contentView = rootView
         window.orderOut(nil)
     }
 
@@ -128,8 +160,18 @@ final class MenuBarAnimationOverlayController {
         appearance: NSAppearance?
     ) {
         animationRequested = true
-        update(image: image, appearance: appearance)
-        if imageView.layer?.animation(forKey: Self.rotationAnimationKey) == nil {
+        sourceImage = image
+        guard synchronize(
+            screenFrame: screenFrame,
+            appearance: appearance,
+            shouldShow: true
+        ) else {
+            return
+        }
+
+        // The window frame, root-layer layout, icon contents, and appearance
+        // are all stable before this is submitted to Core Animation.
+        if iconLayer.animation(forKey: Self.rotationAnimationKey) == nil {
             let animation = CABasicAnimation(keyPath: "transform.rotation.z")
             animation.fromValue = 0.0
             animation.toValue = -Double.pi * 2
@@ -137,21 +179,17 @@ final class MenuBarAnimationOverlayController {
             animation.repeatCount = .greatestFiniteMagnitude
             animation.timingFunction = CAMediaTimingFunction(name: .linear)
             animation.isRemovedOnCompletion = false
-            imageView.layer?.add(animation, forKey: Self.rotationAnimationKey)
+            iconLayer.add(animation, forKey: Self.rotationAnimationKey)
             animationStartCount += 1
         }
-        synchronize(
-            screenFrame: screenFrame,
-            appearance: appearance,
-            shouldShow: true
-        )
     }
 
+    @discardableResult
     func synchronize(
         screenFrame: NSRect?,
         appearance: NSAppearance?,
         shouldShow: Bool
-    ) {
+    ) -> Bool {
         guard animationRequested,
               shouldShow,
               let screenFrame,
@@ -160,10 +198,9 @@ final class MenuBarAnimationOverlayController {
             if window.isVisible {
                 window.orderOut(nil)
             }
-            return
+            return false
         }
 
-        update(appearance: appearance)
         let alignedFrame = Self.pixelAligned(
             screenFrame,
             scale: window.screen?.backingScaleFactor
@@ -174,18 +211,21 @@ final class MenuBarAnimationOverlayController {
             window.setFrame(alignedFrame, display: false)
             geometrySyncCount += 1
         }
+        layoutLayers()
+        update(appearance: appearance)
         if !window.isVisible {
             // `orderFrontRegardless` does not make the non-key window active;
             // the window class also rejects key/main status defensively.
             window.orderFrontRegardless()
         }
+        return true
     }
 
     func stop() {
         guard animationRequested || window.isVisible else { return }
         let wasAnimating = animationRequested
         animationRequested = false
-        imageView.layer?.removeAnimation(forKey: Self.rotationAnimationKey)
+        iconLayer.removeAnimation(forKey: Self.rotationAnimationKey)
         if window.isVisible {
             window.orderOut(nil)
         }
@@ -207,18 +247,118 @@ final class MenuBarAnimationOverlayController {
         window.orderOut(nil)
     }
 
-    private func update(image: NSImage? = nil, appearance: NSAppearance? = nil) {
-        if let image, imageView.image !== image {
-            imageView.image = image
-        }
+    private func update(appearance: NSAppearance? = nil) {
         if let appearance,
            window.appearance?.name != appearance.name {
             window.appearance = appearance
-            imageView.contentTintColor = .labelColor
             appearanceUpdateCount += 1
-        } else if image != nil, imageView.contentTintColor == nil {
-            imageView.contentTintColor = .labelColor
         }
+        updateIconContentsIfNeeded()
+    }
+
+    private func layoutLayers() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        rootLayer.frame = rootView.bounds
+        let rootBounds = rootLayer.bounds
+        iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        iconLayer.bounds = NSRect(origin: .zero, size: rootBounds.size)
+        iconLayer.position = CGPoint(
+            x: rootBounds.midX,
+            y: rootBounds.midY
+        )
+        iconLayer.contentsScale = max(window.backingScaleFactor, 1)
+        CATransaction.commit()
+    }
+
+    /// Converts the template NSImage into one appearance-resolved bitmap at
+    /// a layout boundary. The resulting NSImage is assigned directly to
+    /// CALayer.contents, which lets AppKit manage its backing-resolution
+    /// representation without bringing an NSImageView into the animation path.
+    private func updateIconContentsIfNeeded() {
+        guard let sourceImage,
+              iconLayer.bounds.width > 0,
+              iconLayer.bounds.height > 0 else {
+            return
+        }
+
+        let appearance = window.effectiveAppearance
+        let sourceIdentity = ObjectIdentifier(sourceImage)
+        let iconSize = iconLayer.bounds.size
+        let contentsScale = max(window.backingScaleFactor, 1)
+        guard renderedSourceImageIdentity != sourceIdentity
+                || renderedAppearanceName != appearance.name
+                || renderedIconSize != iconSize
+                || renderedContentsScale != contentsScale
+                || iconLayer.contents == nil else {
+            return
+        }
+
+        let contents = Self.makeTintedLayerImage(
+            from: sourceImage,
+            size: iconSize,
+            scale: contentsScale,
+            appearance: appearance
+        )
+        iconLayer.contents = contents ?? sourceImage
+        renderedSourceImageIdentity = sourceIdentity
+        renderedAppearanceName = appearance.name
+        renderedIconSize = iconSize
+        renderedContentsScale = contentsScale
+    }
+
+    private static func makeTintedLayerImage(
+        from image: NSImage,
+        size: NSSize,
+        scale: CGFloat,
+        appearance: NSAppearance
+    ) -> NSImage? {
+        guard size.width > 0, size.height > 0 else { return nil }
+        let safeScale = scale > 0 ? scale : 2
+        let pixelsWide = max(1, Int((size.width * safeScale).rounded()))
+        let pixelsHigh = max(1, Int((size.height * safeScale).rounded()))
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+            return nil
+        }
+        bitmap.size = size
+        if let bitmapData = bitmap.bitmapData {
+            memset(bitmapData, 0, bitmap.bytesPerRow * bitmap.pixelsHigh)
+        }
+
+        let drawRect = NSRect(origin: .zero, size: size)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        appearance.performAsCurrentDrawingAppearance {
+            image.draw(
+                in: drawRect,
+                from: .zero,
+                operation: .copy,
+                fraction: 1,
+                respectFlipped: true,
+                hints: [.interpolation: NSImageInterpolation.high]
+            )
+            NSColor.labelColor.set()
+            drawRect.fill(using: .sourceIn)
+        }
+        context.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+
+        let tintedImage = NSImage(size: size)
+        tintedImage.addRepresentation(bitmap)
+        tintedImage.isTemplate = false
+        return tintedImage
     }
 
     private static func pixelAligned(_ frame: NSRect, scale: CGFloat) -> NSRect {
