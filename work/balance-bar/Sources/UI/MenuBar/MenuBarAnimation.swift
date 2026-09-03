@@ -37,12 +37,12 @@ enum MenuBarActivityAnimationPolicy {
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
-    /// 18 frames over a 1.2 s rotation = approximately 15 fps. Frame swaps
+    /// 36 frames over a 1.2 s rotation = 30 fps. Frame swaps
     /// are the only way the macOS 26 status-item replicant snapshot can show
     /// motion (it renders model state via renderInContext, so render-server-
     /// side animations are invisible), so this animation intentionally keeps a
     /// fixed, bounded update cadence.
-    static let frameCount = 18
+    static let frameCount = 36
     static let rotationDuration: TimeInterval = 1.2
     static let rotationFrameInterval = rotationDuration / Double(frameCount)
     private var sourceImage: NSImage?
