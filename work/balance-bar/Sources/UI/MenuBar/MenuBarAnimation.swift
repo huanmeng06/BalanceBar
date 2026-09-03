@@ -37,12 +37,12 @@ enum MenuBarActivityAnimationPolicy {
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
-    /// 36 frames over a 1.2 s rotation = exactly 30 fps, keeping the original
-    /// 10°-per-frame step granularity. Frame swaps are the only way the macOS
-    /// 26 status-item replicant snapshot can show motion (it renders model
-    /// state via renderInContext, so render-server-side animations are
-    /// invisible), so this animation necessarily invalidates per frame.
-    static let frameCount = 36
+    /// 18 frames over a 1.2 s rotation = approximately 15 fps. Frame swaps
+    /// are the only way the macOS 26 status-item replicant snapshot can show
+    /// motion (it renders model state via renderInContext, so render-server-
+    /// side animations are invisible), so this animation intentionally keeps a
+    /// fixed, bounded update cadence.
+    static let frameCount = 18
     static let rotationDuration: TimeInterval = 1.2
     static let rotationFrameInterval = rotationDuration / Double(frameCount)
     private var sourceImage: NSImage?
@@ -56,6 +56,18 @@ final class RotatingTemplateImageView: PassthroughImageView {
     /// the bitmap; this is intentionally separate from semantic state work.
     var onFrameImageChanged: ((NSImage?) -> Void)?
     var isRotating: Bool { rotationTimer != nil }
+
+    /// The already-rasterized frames for the current semantic source. The
+    /// controller uses these to build complete button-ready bitmaps when the
+    /// content changes, rather than composing one on every timer tick.
+    var animationFrames: [NSImage] { rotationFrames }
+
+    var sourceImageForRendering: NSImage? { sourceImage }
+
+    func animationFrameIndex(for image: NSImage?) -> Int? {
+        guard let image else { return nil }
+        return rotationFrames.firstIndex { $0 === image }
+    }
 
     func setSourceImage(_ image: NSImage) {
         let sourceChanged = sourceImage !== image

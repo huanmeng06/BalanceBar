@@ -4,11 +4,17 @@ import XCTest
 
 final class MenuBarAnimationTests: XCTestCase {
     func testCodexAnimationKeepsItsDiscreteFrameCountDurationAndOrder() {
-        XCTAssertEqual(RotatingTemplateImageView.frameCount, 36)
+        XCTAssertEqual(RotatingTemplateImageView.frameCount, 18)
         XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.2, accuracy: 0.000_001)
         XCTAssertEqual(
             RotatingTemplateImageView.rotationFrameInterval,
-            1.2 / 36,
+            1.2 / 18,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            Double(RotatingTemplateImageView.frameCount)
+                / RotatingTemplateImageView.rotationDuration,
+            15,
             accuracy: 0.000_001
         )
 
@@ -83,6 +89,7 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(sourceChanges.count, 1)
         XCTAssertEqual(displayedImages.count, 0)
         XCTAssertTrue(imageView.image === source)
+        XCTAssertEqual(imageView.animationFrames.count, RotatingTemplateImageView.frameCount)
 
         imageView.displayImage(frame)
         XCTAssertEqual(sourceChanges.count, 1)
@@ -180,6 +187,40 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(semanticPath.contains("layoutStatusItem"))
         XCTAssertTrue(semanticPath.contains("actions.iconChanged"))
         XCTAssertFalse(semanticPath.contains("menuBarIconView.image = image"))
+
+        let frameCallbackStart = try XCTUnwrap(
+            statusItemSource.range(of: "menuBarIconView.onFrameImageChanged = {")
+        )
+        let frameCallbackEnd = try XCTUnwrap(
+            statusItemSource.range(
+                of: "actions.frameImageChanged(image)",
+                range: frameCallbackStart.upperBound..<statusItemSource.endIndex
+            )
+        )
+        let frameCallbackPath = String(
+            statusItemSource[frameCallbackStart.lowerBound..<frameCallbackEnd.upperBound]
+        )
+        let codexFramePath = try XCTUnwrap(
+            frameCallbackPath.range(of: "if self.activeClient == .codex")
+        )
+        let claudeFramePath = try XCTUnwrap(
+            frameCallbackPath.range(
+                of: "} else {",
+                range: codexFramePath.upperBound..<frameCallbackPath.endIndex
+            )
+        )
+        XCTAssertTrue(
+            frameCallbackPath[codexFramePath.lowerBound..<claudeFramePath.lowerBound]
+                .contains("applyCachedCodexAnimationFrame")
+        )
+        XCTAssertFalse(
+            frameCallbackPath[codexFramePath.lowerBound..<claudeFramePath.lowerBound]
+                .contains("composeMenuBarContentBitmap")
+        )
+        XCTAssertTrue(
+            frameCallbackPath[claudeFramePath.lowerBound..<frameCallbackPath.endIndex]
+                .contains("composeMenuBarContentBitmap")
+        )
 
         let compositionSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(

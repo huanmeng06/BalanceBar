@@ -20,7 +20,14 @@ final class MenuBarContentView: NSView {
 /// top-origin coordinate semantics as the live status button; otherwise the
 /// shared menu-bar frames are interpreted upside down before rasterization.
 final class MenuBarBitmapRenderView: NSView {
+    var onEffectiveAppearanceChanged: (() -> Void)?
+
     override var isFlipped: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onEffectiveAppearanceChanged?()
+    }
 }
 
 final class MenuBarTextView: NSView {
