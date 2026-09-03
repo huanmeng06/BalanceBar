@@ -14,6 +14,7 @@ struct DashboardCompositionState {
     let refreshDate: () -> Date?
     let menuBarSnapshot: (Snapshot) -> Snapshot
     let iconImage: () -> NSImage?
+    let menuBarAnimationActive: () -> Bool
     let statusItemVisibility: () -> StatusItemVisibility
     let currentOpenCodexResolution: () -> OpenCodexDashboardResolution?
     let runtimeCandidate: () -> OpenCodexEndpointCandidate?
@@ -197,7 +198,8 @@ final class DashboardCompositionController {
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
-            iconImage: state.iconImage()
+            iconImage: state.iconImage(),
+            menuBarAnimationActive: state.menuBarAnimationActive()
         )
     }
 
@@ -212,6 +214,13 @@ final class DashboardCompositionController {
     func updateMenuBarPreviewIcon(_ image: NSImage?) {
         guard window?.isVisible == true, section == .menuBar else { return }
         dashboardPreferencePages.updateMenuBarPreviewIcon(image)
+    }
+
+    /// Updates the Dashboard preview's independent Core Animation state. This
+    /// is a lifecycle boundary, not a frame callback: E stops publishing
+    /// native bitmap frames while its overlay is active.
+    func updateMenuBarPreviewAnimation(_ active: Bool) {
+        dashboardPreferencePages.updateMenuBarPreviewAnimation(active)
     }
 
     func refreshMenuBarWidthAdjustment(
@@ -316,6 +325,7 @@ final class DashboardCompositionController {
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
+            menuBarAnimationActive: state.menuBarAnimationActive(),
             currentOpenCodexResolution: state.currentOpenCodexResolution(),
             runtimeCandidate: state.runtimeCandidate(),
             updateState: state.updateState()

@@ -367,6 +367,8 @@ final class DashboardMenuBarPage {
     static let iconDisplayModeRevealHighlightAnimationKey =
         "menuBarIconDisplayModeRevealHighlight"
     static let iconDisplayModeRevealHighlightDuration: TimeInterval = 0.72
+    static let previewRotationAnimationKey = "menuBarPreview.rotation"
+    static let previewRotationDuration: TimeInterval = 1.2
     static let systemMenuBarSettingsURL = URL(
         string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension"
     )!
@@ -442,6 +444,7 @@ final class DashboardMenuBarPage {
         let menuBarSnapshot: (Snapshot) -> Snapshot
         let statusItemVisibility: StatusItemVisibility
         let iconImage: NSImage?
+        let menuBarAnimationActive: Bool
         let relay: DashboardPreferencePageRelay
 
         init(
@@ -450,13 +453,15 @@ final class DashboardMenuBarPage {
             menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
             iconImage: NSImage?,
             relay: DashboardPreferencePageRelay,
-            statusItemVisibility: StatusItemVisibility = .unknown
+            statusItemVisibility: StatusItemVisibility = .unknown,
+            menuBarAnimationActive: Bool = false
         ) {
             self.preferences = preferences
             self.snapshot = snapshot
             self.menuBarSnapshot = menuBarSnapshot
             self.statusItemVisibility = statusItemVisibility
             self.iconImage = iconImage
+            self.menuBarAnimationActive = menuBarAnimationActive
             self.relay = relay
         }
     }
@@ -473,6 +478,19 @@ final class DashboardMenuBarPage {
 
     private let previewIcon = PassthroughImageView()
     private let previewIconSlot = NSView()
+    /// E's Dashboard preview uses its own BalanceBar-owned layer. The
+    /// AppKit-managed NSImageView remains the static fallback and is never the
+    /// rotation target.
+    private let previewAnimationLayer = CALayer()
+    private var previewAnimationRequested = false
+    private var previewAnimationImage: NSImage?
+    private var previewAnimationStaticImage: NSImage?
+    private var previewAnimationSourceImageIdentity: ObjectIdentifier?
+    private var previewAnimationAppearanceName: NSAppearance.Name?
+    private var previewAnimationSize: NSSize = .zero
+    private var previewAnimationScale: CGFloat = 0
+    private var previewAnimationRetryScheduled = false
+    private(set) var previewAnimationRasterizationCountForTesting = 0
     private let previewText = MenuBarTextView()
     private let previewPrimary = NSTextField(labelWithString: "…")
     private let previewSecondary = NSTextField(labelWithString: "")
@@ -536,6 +554,7 @@ final class DashboardMenuBarPage {
     func teardown() {
         removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
+        stopPreviewAnimation()
         pageActionTarget.onRevealIconDisplayModeSetting = nil
     }
 
@@ -543,7 +562,35 @@ final class DashboardMenuBarPage {
     /// full settings-page refresh performed by refresh(...).
     func updatePreviewIcon(_ image: NSImage?) {
         guard isBuilt else { return }
+        if previewAnimationRequested {
+            updatePreviewAnimation(true, image: image)
+            return
+        }
         previewIcon.image = image
+    }
+
+    var previewAnimationIsActiveForTesting: Bool {
+        previewAnimationRequested
+    }
+
+    var previewAnimationIsAnimatingForTesting: Bool {
+        previewAnimationLayer.animation(forKey: Self.previewRotationAnimationKey) != nil
+    }
+
+    var previewAnimationLayerAnchorPointForTesting: CGPoint {
+        previewAnimationLayer.anchorPoint
+    }
+
+    var previewAnimationLayerPositionForTesting: CGPoint {
+        previewAnimationLayer.position
+    }
+
+    var previewAnimationLayerBoundsSizeForTesting: NSSize {
+        previewAnimationLayer.bounds.size
+    }
+
+    var previewIconLayerAnimationKeysForTesting: [String] {
+        previewIcon.layer?.animationKeys() ?? []
     }
 
     private static func makeWarningRow(
@@ -633,6 +680,7 @@ final class DashboardMenuBarPage {
         previewIcon.imageScaling = .scaleProportionallyDown
         previewIcon.translatesAutoresizingMaskIntoConstraints = false
         previewIcon.wantsLayer = true
+        previewIcon.layer?.masksToBounds = false
         previewIcon.identifier = NSUserInterfaceItemIdentifier("menuBarPreviewIcon")
         previewIcon.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
@@ -652,6 +700,11 @@ final class DashboardMenuBarPage {
         previewTextWidth.isActive = true
         textWidthConstraint = previewTextWidth
         previewIconSlot.translatesAutoresizingMaskIntoConstraints = false
+        previewAnimationLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        previewAnimationLayer.contentsGravity = .resize
+        previewAnimationLayer.contentsRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+        previewAnimationLayer.isHidden = true
+        previewIcon.layer?.addSublayer(previewAnimationLayer)
         previewIconSlot.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewIconSlot.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
         previewIconSlot.addSubview(previewIcon)
@@ -1092,7 +1145,8 @@ final class DashboardMenuBarPage {
             preferences: input.preferences,
             menuBarSnapshot: input.menuBarSnapshot,
             iconImage: input.iconImage,
-            statusItemVisibility: input.statusItemVisibility
+            statusItemVisibility: input.statusItemVisibility,
+            menuBarAnimationActive: input.menuBarAnimationActive
         )
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
@@ -1107,7 +1161,8 @@ final class DashboardMenuBarPage {
         preferences: AppPreferences,
         menuBarSnapshot: (Snapshot) -> Snapshot,
         iconImage: NSImage?,
-        statusItemVisibility: StatusItemVisibility = .unknown
+        statusItemVisibility: StatusItemVisibility = .unknown,
+        menuBarAnimationActive: Bool = false
     ) {
         guard isBuilt else { return }
         updatePreviewWarnings(statusItemVisibility)
@@ -1152,7 +1207,10 @@ final class DashboardMenuBarPage {
             hasSecondary: hasSecondary
         )
         textWidthConstraint?.constant = geometry.textWidth
-        previewIcon.image = iconImage
+        let shouldAnimatePreview = menuBarAnimationActive && preferences.showMenuBarIcon
+        if !shouldAnimatePreview {
+            previewIcon.image = iconImage
+        }
         previewIcon.contentTintColor = .labelColor
         let iconOffsetX = preferences.menuBarIconOffsetX
         let iconOffsetY = preferences.menuBarIconOffsetY
@@ -1418,6 +1476,126 @@ final class DashboardMenuBarPage {
                 )
             ))
         }
+        updatePreviewAnimation(
+            shouldAnimatePreview,
+            image: iconImage
+        )
+    }
+
+    /// Starts or updates the Dashboard preview's independent CA animation.
+    /// The icon contents are rasterized only when the source, appearance,
+    /// size, or backing scale changes; steady-state is compositor-owned.
+    func setPreviewAnimationActive(_ active: Bool) {
+        updatePreviewAnimation(active, image: previewAnimationImage)
+    }
+
+    func updatePreviewAnimation(_ active: Bool, image: NSImage?) {
+        previewAnimationRequested = active
+        previewAnimationImage = image
+        if image == nil {
+            previewAnimationStaticImage = nil
+        }
+        guard isBuilt else { return }
+
+        guard active,
+              !previewIconSlot.isHidden,
+              let resolvedImage = image,
+              resolvedImage.size.width > 0,
+              resolvedImage.size.height > 0 else {
+            stopPreviewAnimation()
+            return
+        }
+
+        let iconBounds = previewIcon.bounds
+        guard iconBounds.width > 0, iconBounds.height > 0 else {
+            schedulePreviewAnimationRetry()
+            return
+        }
+
+        let fitScale = min(
+            iconBounds.width / resolvedImage.size.width,
+            iconBounds.height / resolvedImage.size.height,
+            1
+        )
+        let iconSize = NSSize(
+            width: resolvedImage.size.width * fitScale,
+            height: resolvedImage.size.height * fitScale
+        )
+        let scale = max(previewIcon.window?.backingScaleFactor ?? 2, 1)
+        let appearance = previewIcon.effectiveAppearance
+        let sourceIdentity = ObjectIdentifier(resolvedImage)
+
+        // Keep the latest source available for the static fallback without
+        // putting its pixels back into the host image view during an active
+        // animation refresh.
+        previewAnimationStaticImage = resolvedImage
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        previewAnimationLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        previewAnimationLayer.bounds = NSRect(origin: .zero, size: iconSize)
+        previewAnimationLayer.position = CGPoint(
+            x: iconBounds.midX,
+            y: iconBounds.midY
+        )
+        previewAnimationLayer.contentsScale = scale
+        if previewAnimationSourceImageIdentity != sourceIdentity
+                || previewAnimationAppearanceName != appearance.name
+                || previewAnimationSize != iconSize
+                || previewAnimationScale != scale
+                || previewAnimationLayer.contents == nil,
+           let raster = MenuBarAnimationOverlayController.makeTintedLayerRaster(
+               from: resolvedImage,
+               size: iconSize,
+               scale: scale,
+               appearance: appearance
+           ) {
+            previewAnimationLayer.contents = raster.cgImage
+            previewAnimationLayer.contentsScale = raster.contentsScale
+            previewAnimationRasterizationCountForTesting += 1
+            previewAnimationSourceImageIdentity = sourceIdentity
+            previewAnimationAppearanceName = appearance.name
+            previewAnimationSize = raster.logicalSize
+            previewAnimationScale = raster.contentsScale
+        }
+        previewAnimationLayer.isHidden = false
+        // Keep the AppKit image view as the transformed host so the existing
+        // preview offsets/centering remain intact, but remove its static
+        // pixels while the BalanceBar-owned child layer is visible.
+        previewIcon.image = nil
+        CATransaction.commit()
+
+        if previewAnimationLayer.animation(forKey: Self.previewRotationAnimationKey) == nil {
+            let animation = CABasicAnimation(keyPath: "transform.rotation.z")
+            animation.fromValue = 0.0
+            animation.toValue = -Double.pi * 2
+            animation.duration = Self.previewRotationDuration
+            animation.repeatCount = .greatestFiniteMagnitude
+            animation.timingFunction = CAMediaTimingFunction(name: .linear)
+            animation.isRemovedOnCompletion = false
+            previewAnimationLayer.add(animation, forKey: Self.previewRotationAnimationKey)
+        }
+    }
+
+    private func schedulePreviewAnimationRetry() {
+        guard !previewAnimationRetryScheduled else { return }
+        previewAnimationRetryScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.previewAnimationRetryScheduled = false
+            self.updatePreviewAnimation(
+                self.previewAnimationRequested,
+                image: self.previewAnimationImage
+            )
+        }
+    }
+
+    private func stopPreviewAnimation() {
+        previewAnimationRequested = false
+        previewAnimationLayer.removeAnimation(forKey: Self.previewRotationAnimationKey)
+        previewAnimationLayer.isHidden = true
+        previewIcon.image = previewAnimationStaticImage ?? previewAnimationImage
+        previewAnimationStaticImage = nil
     }
 
     private func updatePreviewWarnings(_ statusItemVisibility: StatusItemVisibility) {

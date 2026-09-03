@@ -4025,6 +4025,69 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(refreshedFontPresetControl.isEnabled)
     }
 
+    func testMenuBarPreviewUsesOwnedCenteredLayerForOverlayAnimation() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPreviewAnimation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let iconImage = NSImage(size: NSSize(width: 16, height: 16))
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .balance("Provider", 80, "USD", nil, Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            relay: DashboardPreferencePageRelay()
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+
+        controller.updatePreviewAnimation(true, image: iconImage)
+
+        XCTAssertTrue(controller.previewAnimationIsActiveForTesting)
+        XCTAssertTrue(controller.previewAnimationIsAnimatingForTesting)
+        XCTAssertEqual(
+            controller.previewAnimationLayerAnchorPointForTesting,
+            CGPoint(x: 0.5, y: 0.5)
+        )
+        XCTAssertEqual(
+            controller.previewAnimationLayerPositionForTesting,
+            CGPoint(
+                x: MenuBarLayout.iconSlotWidth / 2,
+                y: MenuBarLayout.iconSlotWidth / 2
+            )
+        )
+        XCTAssertEqual(
+            controller.previewAnimationLayerBoundsSizeForTesting,
+            NSSize(width: 16, height: 16)
+        )
+        XCTAssertFalse(
+            controller.previewIconLayerAnimationKeysForTesting.contains(
+                DashboardMenuBarPage.previewRotationAnimationKey
+            )
+        )
+        let rasterizationCount = controller.previewAnimationRasterizationCountForTesting
+
+        controller.updatePreviewAnimation(true, image: iconImage)
+        XCTAssertTrue(controller.previewAnimationIsAnimatingForTesting)
+        XCTAssertEqual(
+            controller.previewAnimationRasterizationCountForTesting,
+            rasterizationCount,
+            "steady-state preview refresh must reuse layer contents"
+        )
+
+        controller.updatePreviewAnimation(false, image: iconImage)
+        XCTAssertFalse(controller.previewAnimationIsActiveForTesting)
+        XCTAssertFalse(controller.previewAnimationIsAnimatingForTesting)
+    }
+
     func testMenuBarWidthOnlyRefreshUpdatesSummaryWithoutFightingSlider() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

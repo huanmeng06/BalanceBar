@@ -1891,6 +1891,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let openStatusLink: (URL) -> Void
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
+        let overlayAnimationStateChanged: (Bool) -> Void
         let visibilityChanged: (StatusItemVisibility) -> Void
 
         init(
@@ -1906,6 +1907,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             openStatusLink: @escaping (URL) -> Void,
             iconChanged: @escaping (NSImage?) -> Void,
             frameImageChanged: @escaping (NSImage?) -> Void = { _ in },
+            overlayAnimationStateChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
         ) {
             self.manualRefresh = manualRefresh
@@ -1920,6 +1922,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.openStatusLink = openStatusLink
             self.iconChanged = iconChanged
             self.frameImageChanged = frameImageChanged
+            self.overlayAnimationStateChanged = overlayAnimationStateChanged
             self.visibilityChanged = visibilityChanged
         }
     }
@@ -2112,6 +2115,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let animationRenderingMode: MenuBarAnimationRenderingMode
     private var isOverlayCodexAnimationActive = false
     private var menuBarAnimationOverlay: MenuBarAnimationOverlayController?
+    private var isDeferringOverlaySynchronization = false
+    private var fontSizeLayoutSettlementScheduled = false
     private var snapshot = Snapshot.placeholder
     private var refreshDate: Date?
     private var menuInput = MenuInput(
@@ -2187,6 +2192,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     var overlayCodexAnimationIsActiveForTesting: Bool {
+        isOverlayCodexAnimationActive
+    }
+
+    var isOverlayCodexAnimationActiveForDashboard: Bool {
         isOverlayCodexAnimationActive
     }
 
@@ -2371,7 +2380,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.onSourceImageChanged = nil
         menuBarIconView.onFrameImageChanged = nil
         menuBarIconView.onAnimationFrameIndexChanged = nil
-        isOverlayCodexAnimationActive = false
+        setOverlayCodexAnimationActive(false, rebuild: false)
         menuBarAnimationOverlay?.teardown()
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
@@ -2448,7 +2457,31 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 range: AppPreferences.menuBarFontSizeRange
             )
         )
+        // AppKit may publish the new status-button bounds one run-loop turn
+        // after `statusItem.length` changes. Keep the visible text/cache
+        // update synchronous, but defer the overlay's screen conversion until
+        // that new button footprint is observable so the icon never takes one
+        // frame through the old geometry.
+        isDeferringOverlaySynchronization = true
         layoutStatusItem(for: snapshot)
+        isDeferringOverlaySynchronization = false
+        scheduleFontSizeLayoutSettlement()
+    }
+
+    private func scheduleFontSizeLayoutSettlement() {
+        guard !fontSizeLayoutSettlementScheduled else { return }
+        fontSizeLayoutSettlementScheduled = true
+        let generation = lifecycleGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.fontSizeLayoutSettlementScheduled = false
+            guard self.lifecycleGeneration == generation,
+                  self.statusItem != nil else { return }
+            self.isDeferringOverlaySynchronization = true
+            self.layoutStatusItem(for: self.snapshot)
+            self.isDeferringOverlaySynchronization = false
+            self.synchronizeMenuBarAnimationOverlay()
+        }
     }
 
     private func applyPendingWidthAdjustment(_ widthAdjustment: CGFloat) {
@@ -2492,7 +2525,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
         }
         if usesBitmapContent {
-            refreshMenuBarContentBitmap()
+            refreshMenuBarContentBitmap(
+                buttonSize: NSSize(
+                    width: requestedLength,
+                    height: button.bounds.height
+                )
+            )
         }
         synchronizeMenuBarAnimationOverlay()
     }
@@ -2907,7 +2945,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
             if shouldUseOverlay {
                 if !isOverlayCodexAnimationActive {
-                    isOverlayCodexAnimationActive = true
+                    setOverlayCodexAnimationActive(true, rebuild: false)
                     menuBarIconView.stopRotating()
                     invalidateBitmapContentCache()
                     layoutStatusItem(for: snapshot)
@@ -2977,6 +3015,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     ) {
         guard isOverlayCodexAnimationActive != active else { return }
         isOverlayCodexAnimationActive = active
+        actions.overlayAnimationStateChanged(active)
         if !active {
             menuBarAnimationOverlay?.stop()
         }
@@ -3019,6 +3058,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func synchronizeMenuBarAnimationOverlay() {
+        guard !isDeferringOverlaySynchronization else { return }
         guard let overlay = menuBarAnimationOverlay else { return }
         guard shouldUseOverlayCodexAnimation,
               let statusItem,
@@ -3238,13 +3278,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lastMenuBarIconYOffset = iconYOffset
         lastMenuBarOfficialTextYOffset = officialTextYOffset
         lastMenuBarEffectiveSnapshot = effectiveSnapshot
+        let requestedButtonSize = NSSize(
+            width: max(0, statusItem.length),
+            height: buttonHeight
+        )
         applyMenuBarContentFrames(
             button: button,
             // AppKit can update the status button's bounds one run-loop turn
             // after `statusItem.length` changes. Pass the requested footprint
             // immediately so toggling the icon cannot leave the amount
             // centered against the previous icon-inclusive width.
-            buttonSize: NSSize(width: max(0, statusItem.length), height: buttonHeight),
+            buttonSize: requestedButtonSize,
             geometry: geometry,
             iconViewYOffset: iconYOffset,
             effectiveSnapshot: effectiveSnapshot,
@@ -3253,7 +3297,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if usesBitmapContent {
             // Frames are final here; snapshot the offscreen tree into the
             // button image so the real button carries no live view hierarchy.
-            refreshMenuBarContentBitmap()
+            refreshMenuBarContentBitmap(buttonSize: requestedButtonSize)
         }
         logMenuBarIconFrames(
             snapshot: effectiveSnapshot,
@@ -3590,7 +3634,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeMenuBarBitmapAnimationVisualSignature(
         button: NSStatusBarButton,
         placement: MenuBarBitmapImagePlacement,
-        scale: CGFloat
+        scale: CGFloat,
+        buttonBounds: NSRect? = nil
     ) -> MenuBarBitmapAnimationVisualSignature {
         let canonicalFrame: (NSView) -> NSRect = { view in
             view.convert(view.bounds, to: self.bitmapRenderContainer)
@@ -3647,7 +3692,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             ),
             bitmapBounds: bitmapRenderContainer.bounds,
             bitmapFrame: bitmapRenderContainer.frame,
-            buttonBounds: button.bounds,
+            buttonBounds: buttonBounds ?? button.bounds,
             placement: placement,
             backingScale: scale,
             iconVisible: iconVisible,
@@ -3691,24 +3736,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// image and (when Codex animation is active) every complete button-ready
     /// animation frame from that base. The visual signature is evaluated
     /// before any rasterization so a repeated `update(...)` is a no-op.
-    private func refreshMenuBarContentBitmap() {
+    private func refreshMenuBarContentBitmap(buttonSize: NSSize? = nil) {
         guard usesBitmapContent,
               let button = statusItem?.button,
-              bitmapRenderContainer.bounds.width > 0,
-              bitmapRenderContainer.bounds.height > 0 else {
+              button.bounds.height > 0 else {
             return
         }
 
-        bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
+        let effectiveButtonSize = buttonSize ?? button.bounds.size
+        guard effectiveButtonSize.width > 0, effectiveButtonSize.height > 0 else {
+            return
+        }
+        bitmapRenderContainer.frame = NSRect(origin: .zero, size: effectiveButtonSize)
+        let effectiveButtonBounds = NSRect(
+            origin: button.bounds.origin,
+            size: effectiveButtonSize
+        )
         let scale = button.window?.backingScaleFactor ?? 2
         let placement = MenuBarBitmapImageLayout.placement(
             for: button,
-            canonicalBounds: bitmapRenderContainer.bounds
+            canonicalBounds: bitmapRenderContainer.bounds,
+            buttonBounds: effectiveButtonBounds
         )
         let signature = makeMenuBarBitmapAnimationVisualSignature(
             button: button,
             placement: placement,
-            scale: scale
+            scale: scale,
+            buttonBounds: effectiveButtonBounds
         )
 
         if signature == cachedMenuBarContentVisualSignature,

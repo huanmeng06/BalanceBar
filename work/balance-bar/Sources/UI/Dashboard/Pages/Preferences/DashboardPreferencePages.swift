@@ -95,6 +95,7 @@ final class DashboardPreferencePages {
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
         statusItemVisibility: StatusItemVisibility,
         iconImage: NSImage?,
+        menuBarAnimationActive: Bool = false,
         currentOpenCodexResolution: OpenCodexDashboardResolution?,
         runtimeCandidate: OpenCodexEndpointCandidate?,
         updateState: UpdateCheckState
@@ -116,7 +117,8 @@ final class DashboardPreferencePages {
                 menuBarSnapshot: menuBarSnapshot,
                 iconImage: iconImage,
                 relay: relay,
-                statusItemVisibility: statusItemVisibility
+                statusItemVisibility: statusItemVisibility,
+                menuBarAnimationActive: menuBarAnimationActive
             ))
         case .menu:
             return menuPage.make(.init(
@@ -151,14 +153,16 @@ final class DashboardPreferencePages {
         snapshot: Snapshot,
         menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
         statusItemVisibility: StatusItemVisibility,
-        iconImage: NSImage?
+        iconImage: NSImage?,
+        menuBarAnimationActive: Bool = false
     ) {
         menuBarPage.refresh(
             snapshot: snapshot,
             preferences: preferences,
             menuBarSnapshot: menuBarSnapshot,
             iconImage: iconImage,
-            statusItemVisibility: statusItemVisibility
+            statusItemVisibility: statusItemVisibility,
+            menuBarAnimationActive: menuBarAnimationActive
         )
     }
 
@@ -168,6 +172,10 @@ final class DashboardPreferencePages {
 
     func updateMenuBarPreviewIcon(_ image: NSImage?) {
         menuBarPage.updatePreviewIcon(image)
+    }
+
+    func updateMenuBarPreviewAnimation(_ active: Bool) {
+        menuBarPage.setPreviewAnimationActive(active)
     }
 
     func refreshMenuBarWidthAdjustment(

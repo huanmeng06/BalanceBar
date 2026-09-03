@@ -179,14 +179,16 @@ enum MenuBarBitmapImageLayout {
     /// mutate the live button or trigger another status-item snapshot.
     static func placement(
         for button: NSStatusBarButton,
-        canonicalBounds: NSRect
+        canonicalBounds: NSRect,
+        buttonBounds: NSRect? = nil
     ) -> MenuBarBitmapImagePlacement {
+        let effectiveButtonBounds = buttonBounds ?? button.bounds
         let destinationRect: NSRect
         if let cell = button.cell?.copy() as? NSCell {
             cell.image = NSImage(size: canonicalBounds.size)
-            destinationRect = cell.imageRect(forBounds: button.bounds)
+            destinationRect = cell.imageRect(forBounds: effectiveButtonBounds)
         } else {
-            destinationRect = button.bounds
+            destinationRect = effectiveButtonBounds
         }
         return MenuBarBitmapImagePlacement(
             canonicalBounds: canonicalBounds,

@@ -496,7 +496,11 @@ final class StatusItemControllerTests: XCTestCase {
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             "Overlay Codex animation is disabled by the system reduce-motion setting"
         )
-        let controller = makeController(animationRenderingMode: .overlayCoreAnimation)
+        var animationStateChanges: [Bool] = []
+        let controller = makeController(
+            animationRenderingMode: .overlayCoreAnimation,
+            overlayAnimationStateChanged: { animationStateChanges.append($0) }
+        )
         defer { controller.teardown() }
         let snapshot = Snapshot.balance(
             "Provider",
@@ -535,6 +539,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 0)
         XCTAssertEqual(controller.overlayAnimationStartCountForTesting, 1)
+        XCTAssertEqual(animationStateChanges, [true])
 
         controller.update(
             snapshot: snapshot,
@@ -555,6 +560,61 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(controller.overlayCodexAnimationIsActiveForTesting)
         XCTAssertFalse(controller.overlayAnimationIsAnimatingForTesting)
         XCTAssertFalse(controller.menuBarButtonImageForTesting === nativeImage)
+        XCTAssertEqual(animationStateChanges, [true, false])
+    }
+
+    @MainActor
+    func testFontSizeRefreshKeepsOverlayAnimationPhaseAndSettlesOnce() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Overlay Codex animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(animationRenderingMode: .overlayCoreAnimation)
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(usesBitmapContent: true)
+        )
+        controller.setCodexIconForTesting(NSImage(size: NSSize(width: 16, height: 16)))
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+
+        let animationStarts = controller.overlayAnimationStartCountForTesting
+        XCTAssertEqual(animationStarts, 1)
+        XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
+
+        controller.updateFontSize(10.4)
+
+        XCTAssertEqual(controller.overlayAnimationStartCountForTesting, animationStarts)
+        XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
+        XCTAssertEqual(
+            controller.menuBarFontPointSizesForTesting?.primary ?? .nan,
+            10.4,
+            accuracy: 0.001
+        )
+
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+
+        XCTAssertEqual(controller.overlayAnimationStartCountForTesting, animationStarts)
+        XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
+        XCTAssertEqual(
+            controller.menuBarFontPointSizesForTesting?.primary ?? .nan,
+            10.4,
+            accuracy: 0.001
+        )
     }
 
     @MainActor
@@ -660,7 +720,8 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     private func makeController(
-        animationRenderingMode: MenuBarAnimationRenderingMode = .nativeCachedFrames
+        animationRenderingMode: MenuBarAnimationRenderingMode = .nativeCachedFrames,
+        overlayAnimationStateChanged: @escaping (Bool) -> Void = { _ in }
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -674,7 +735,8 @@ final class StatusItemControllerTests: XCTestCase {
                 switchOpenCodexPreference: { _ in },
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
-                iconChanged: { _ in }
+                iconChanged: { _ in },
+                overlayAnimationStateChanged: overlayAnimationStateChanged
             ),
             animationRenderingMode: animationRenderingMode
         )

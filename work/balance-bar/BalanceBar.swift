@@ -198,6 +198,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             refreshDate: { [weak self] in self?.refreshDate(for: self?.snapshot ?? .placeholder) },
             menuBarSnapshot: { [weak self] snapshot in self?.menuBarSnapshot(for: snapshot) ?? snapshot },
             iconImage: { [weak self] in self?.statusItemController?.iconImage },
+            menuBarAnimationActive: { [weak self] in
+                self?.statusItemController?.isOverlayCodexAnimationActiveForDashboard ?? false
+            },
             statusItemVisibility: { [weak self] in
                 self?.statusItemController?.statusItemVisibility ?? .unknown
             },
@@ -581,6 +584,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 frameImageChanged: { [weak self] image in
                     self?.dashboardComposition.updateMenuBarPreviewIcon(image)
+                },
+                overlayAnimationStateChanged: { [weak self] active in
+                    self?.dashboardComposition.updateMenuBarPreviewAnimation(active)
                 },
                 visibilityChanged: { [weak self] _ in
                     guard let self else { return }
