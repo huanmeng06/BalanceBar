@@ -1145,6 +1145,18 @@ enum StatusItemVisibility: Equatable {
     case unknown
     case visible
     case hiddenByMenuBarSpace
+    case hiddenByRuntimePolicy
+    case hiddenByMenuBarSpaceAndRuntimePolicy
+
+    var isHiddenByMenuBarSpace: Bool {
+        self == .hiddenByMenuBarSpace
+            || self == .hiddenByMenuBarSpaceAndRuntimePolicy
+    }
+
+    var isHiddenByRuntimePolicy: Bool {
+        self == .hiddenByRuntimePolicy
+            || self == .hiddenByMenuBarSpaceAndRuntimePolicy
+    }
 }
 
 struct StatusItemVisibilityEvidence {
@@ -1787,7 +1799,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
         }
         statusItemVisibilityStateMachine.reset()
-        updateStatusItemVisibility(.unknown)
+        publishStatusItemVisibility()
         statusMenu.delegate = self
         if statusItem == nil {
             installStatusItem()
@@ -1805,7 +1817,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         removeStatusItemWindowObservation()
         statusItemVisibilityStateMachine.reset()
         menuBarIconDisplayStateMachine.reset()
-        updateStatusItemVisibility(.unknown)
+        publishStatusItemVisibility()
         statusItemAttachmentCheckScheduled = false
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
@@ -1857,6 +1869,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 at: Date()
             )
         }
+        applyMenuBarIconDisplayPolicy()
         layoutStatusItem(for: snapshot)
         rebuildOrDeferMenu()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
@@ -1944,6 +1957,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         actions.visibilityChanged(visibility)
     }
 
+    /// Publishes the product of the independent AppKit space evidence and the
+    /// user-selected runtime display policy. The space state machine itself
+    /// remains unaware of the policy state; this is only a presentation-layer
+    /// combination for the menu bar and Dashboard.
+    private func publishStatusItemVisibility() {
+        let isHiddenByMenuBarSpace =
+            statusItemVisibilityStateMachine.visibility.isHiddenByMenuBarSpace
+        let isHiddenByRuntimePolicy = !menuBarIconDisplayStateMachine.shouldDisplay
+        let visibility: StatusItemVisibility
+        switch (isHiddenByMenuBarSpace, isHiddenByRuntimePolicy) {
+        case (true, true):
+            visibility = .hiddenByMenuBarSpaceAndRuntimePolicy
+        case (true, false):
+            visibility = .hiddenByMenuBarSpace
+        case (false, true):
+            visibility = .hiddenByRuntimePolicy
+        case (false, false):
+            visibility = statusItemVisibilityStateMachine.visibility
+        }
+        updateStatusItemVisibility(visibility)
+    }
+
     func updateActivity(
         activeClient: AssistantClient,
         codexTaskRunning: Bool,
@@ -2006,7 +2041,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func configureStatusItem() {
         guard let statusItem, let button = statusItem.button else { return }
         statusItemVisibilityStateMachine.reset()
-        updateStatusItemVisibility(.unknown)
+        publishStatusItemVisibility()
         statusItem.isVisible = menuBarIconDisplayStateMachine.shouldDisplay
         statusItem.length = 56
         button.title = ""
@@ -2144,11 +2179,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         with evidence: StatusItemVisibilityEvidence,
         reason: String
     ) {
-        let visibility = statusItemVisibilityStateMachine.ingest(
+        _ = statusItemVisibilityStateMachine.ingest(
             evidence,
             at: Date()
         )
-        updateStatusItemVisibility(visibility)
+        publishStatusItemVisibility()
         guard statusItemVisibilityStateMachine.needsAdditionalHiddenSample else {
             return
         }
@@ -2160,11 +2195,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func verifyStatusItemAttachment(reason: String, reanchor: Bool) {
-        guard let item = statusItem, let button = item.button else {
+        guard let item = statusItem else {
             statusItemVisibilityStateMachine.reset()
-            updateStatusItemVisibility(.unknown)
+            publishStatusItemVisibility()
             SwitchLog.write(
-                "status item attachment failed; reason=missing item or button",
+                "status item attachment failed; reason=missing item",
+                level: .error,
+                category: "ui.status-item"
+            )
+            return
+        }
+
+        guard menuBarIconDisplayStateMachine.shouldDisplay else {
+            // An intentionally hidden status item must not be fed into the
+            // AppKit space detector as false visibility evidence. Retain the
+            // last confirmed space state so it can coexist with this policy
+            // state and be re-evaluated when the item is shown again.
+            statusItemReanchorAttempts = 0
+            publishStatusItemVisibility()
+            return
+        }
+
+        guard let button = item.button else {
+            statusItemVisibilityStateMachine.reset()
+            publishStatusItemVisibility()
+            SwitchLog.write(
+                "status item attachment failed; reason=missing button",
                 level: .error,
                 category: "ui.status-item"
             )
@@ -2215,12 +2271,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
 
         guard !attached else {
-            statusItemReanchorAttempts = 0
-            return
-        }
-        guard menuBarIconDisplayStateMachine.shouldDisplay else {
-            // An intentionally hidden status item still owns its NSStatusItem
-            // and must not be mistaken for an AppKit attachment failure.
             statusItemReanchorAttempts = 0
             return
         }
@@ -2284,13 +2334,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func applyMenuBarIconDisplayPolicy() {
         guard let statusItem else { return }
         let shouldDisplay = menuBarIconDisplayStateMachine.shouldDisplay
-        guard statusItem.isVisible != shouldDisplay else { return }
-        statusItem.isVisible = shouldDisplay
-        SwitchLog.write(
-            "menu bar display mode applied; mode=\(settings.iconDisplayMode.rawValue); delay_seconds=\(settings.iconDisplayDelay.duration); codex_running=\(isCodexTaskRunning); visible=\(shouldDisplay)",
-            category: "ui.status-item"
-        )
-        if shouldDisplay {
+        let changed = statusItem.isVisible != shouldDisplay
+        if changed {
+            statusItem.isVisible = shouldDisplay
+            SwitchLog.write(
+                "menu bar display mode applied; mode=\(settings.iconDisplayMode.rawValue); delay_seconds=\(settings.iconDisplayDelay.duration); codex_running=\(isCodexTaskRunning); visible=\(shouldDisplay)",
+                category: "ui.status-item"
+            )
+        }
+        publishStatusItemVisibility()
+        if changed, shouldDisplay {
             scheduleStatusItemAttachmentCheck(
                 reason: "activity-running",
                 reanchor: true

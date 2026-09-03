@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "暂无日志";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "菜单栏空间不足，BalanceBar 暂时不可见；请关闭或移除部分菜单栏图标后重试。";
 "dashboard.menu.bar.page.open_settings" = "打开设置";
+"dashboard.menu.bar.page.runtime_only_warning" = "当前已启用「仅在运行时显示」，任务结束后的隐藏延迟已到期，因此菜单栏图标暂时隐藏。";
+"dashboard.menu.bar.page.set_now" = "立即设置";
 "dashboard.menu.bar.page.preview" = "预览";
 "dashboard.menu.bar.page.current_layout" = "当前布局";
 "dashboard.menu.bar.page.quota_and_reset" = "额度与重置";

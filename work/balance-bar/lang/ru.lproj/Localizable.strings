@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "Журналов пока нет";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "В строке меню недостаточно места, поэтому BalanceBar временно скрыт; скройте или удалите некоторые значки в строке меню и повторите попытку.";
 "dashboard.menu.bar.page.open_settings" = "Открыть настройки";
+"dashboard.menu.bar.page.runtime_only_warning" = "Включён режим «Только во время работы», и задержка скрытия после задачи истекла, поэтому значок в строке меню временно скрыт.";
+"dashboard.menu.bar.page.set_now" = "Настроить сейчас";
 "dashboard.menu.bar.page.preview" = "Предпросмотр";
 "dashboard.menu.bar.page.current_layout" = "Текущий макет";
 "dashboard.menu.bar.page.quota_and_reset" = "Квота и сброс";

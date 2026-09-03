@@ -1843,6 +1843,247 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
+    func testMenuBarPreviewShowsIndependentWarningsAndDynamicSeparators() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPreviewWarnings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .unknown
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let overflowRow = try XCTUnwrap(
+            descendant(withIdentifier: DashboardMenuBarPage.overflowWarningRowIdentifier, in: page)
+        )
+        let runtimeRow = try XCTUnwrap(
+            descendant(withIdentifier: DashboardMenuBarPage.runtimeOnlyWarningRowIdentifier, in: page)
+        )
+        let rowsStack = try XCTUnwrap(overflowRow.superview as? NSStackView)
+        let previewCard = try XCTUnwrap(rowsStack.superview)
+        let separators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
+        XCTAssertEqual(separators.count, 2)
+
+        let cases: [(StatusItemVisibility, Bool, Bool, [Bool])] = [
+            (.unknown, false, false, [true, true]),
+            (.hiddenByMenuBarSpace, true, false, [false, true]),
+            (.hiddenByRuntimePolicy, false, true, [false, true]),
+            (.hiddenByMenuBarSpaceAndRuntimePolicy, true, true, [false, false])
+        ]
+        for (visibility, showsOverflow, showsRuntime, separatorHidden) in cases {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil,
+                statusItemVisibility: visibility
+            )
+            window.layoutIfNeeded()
+            page.layoutSubtreeIfNeeded()
+
+            XCTAssertEqual(overflowRow.isHidden, !showsOverflow)
+            XCTAssertEqual(runtimeRow.isHidden, !showsRuntime)
+            XCTAssertEqual(separators.map(\.isHidden), separatorHidden)
+            XCTAssertEqual(
+                previewCard.frame.height,
+                DashboardSettingsComponents.settingsCardHeight(
+                    rowsStack: rowsStack,
+                    separators: separators
+                ),
+                accuracy: 0.5
+            )
+        }
+    }
+
+    func testRuntimeOnlyWarningIsLocalizedForEveryConcreteSupportedLanguage() {
+        let cases: [(AppLanguage, String, String)] = [
+            (
+                .simplifiedChinese,
+                "当前已启用「仅在运行时显示」，任务结束后的隐藏延迟已到期，因此菜单栏图标暂时隐藏。",
+                "立即设置"
+            ),
+            (
+                .english,
+                "Only While Running is enabled and the post-task hide delay has elapsed, so the menu bar icon is temporarily hidden.",
+                "Set Now"
+            ),
+            (
+                .traditionalChineseTaiwan,
+                "目前已啟用「僅在執行時顯示」，任務結束後的隱藏延遲已到期，因此選單列圖示暫時隱藏。",
+                "立即設定"
+            ),
+            (
+                .traditionalChineseHongKong,
+                "目前已啟用「僅在執行時顯示」，任務結束後的隱藏延遲已到期，因此選單列圖示暫時隱藏。",
+                "立即設定"
+            ),
+            (
+                .japanese,
+                "「実行中のみ表示」が有効で、タスク終了後の非表示までの時間が経過したため、メニューバーアイコンは一時的に非表示です。",
+                "今すぐ設定"
+            ),
+            (
+                .korean,
+                "실행 중에만 표시가 활성화되어 작업 종료 후 숨김 지연 시간이 지나 메뉴 막대 아이콘이 일시적으로 숨겨졌습니다.",
+                "지금 설정"
+            ),
+            (
+                .spanish,
+                "Solo durante la ejecución está activado y el retraso para ocultar tras la tarea ha terminado, por lo que el icono de la barra de menús está oculto temporalmente.",
+                "Configurar ahora"
+            ),
+            (
+                .german,
+                "Nur während der Ausführung ist aktiviert und die Ausblendverzögerung nach der Aufgabe ist abgelaufen. Das Menüleistensymbol ist daher vorübergehend ausgeblendet.",
+                "Jetzt festlegen"
+            ),
+            (
+                .french,
+                "« Uniquement pendant l’exécution » est activé et le délai de masquage après la tâche est écoulé ; l’icône de la barre des menus est donc temporairement masquée.",
+                "Configurer maintenant"
+            ),
+            (
+                .portuguese,
+                "Somente durante a execução está ativado e o atraso para ocultar após a tarefa terminou; o ícone da barra de menus está temporariamente oculto.",
+                "Configurar agora"
+            ),
+            (
+                .russian,
+                "Включён режим «Только во время работы», и задержка скрытия после задачи истекла, поэтому значок в строке меню временно скрыт.",
+                "Настроить сейчас"
+            ),
+            (
+                .italian,
+                "È attiva l’opzione «Solo durante l’esecuzione» e il ritardo di occultamento dopo l’attività è terminato, quindi l’icona nella barra dei menu è temporaneamente nascosta.",
+                "Configura ora"
+            )
+        ]
+        for (language, expectedText, expectedButtonTitle) in cases {
+            XCTAssertEqual(
+                DashboardMenuBarPage.runtimeOnlyWarningText(for: language),
+                expectedText,
+                "missing runtime warning localization for \(language.rawValue)"
+            )
+            XCTAssertEqual(
+                DashboardMenuBarPage.runtimeOnlyWarningSettingsButtonText(for: language),
+                expectedButtonTitle,
+                "missing runtime warning action localization for \(language.rawValue)"
+            )
+        }
+    }
+
+    func testRuntimeOnlyWarningScrollsCurrentPageWithoutOpeningSystemSettings() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarRuntimeWarningScroll.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        preferences.showMenuBarIcon = true
+        preferences.menuBarIconDisplayMode = .onlyWhileRunning
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        var systemSettingsOpenCount = 0
+        relay.onOpenSystemMenuBarSettings = { systemSettingsOpenCount += 1 }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay,
+            statusItemVisibility: .hiddenByRuntimePolicy
+        ))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+        }
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let runtimeButton = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .first {
+                    $0.identifier?.rawValue == DashboardMenuBarPage.runtimeOnlyWarningSettingsButtonIdentifier
+                }
+        )
+        let iconDisplayModeRow = try XCTUnwrap(
+            descendant(withIdentifier: AppPreferences.menuBarIconDisplayModeKey, in: page)
+        )
+        let scrollView = try XCTUnwrap(
+            descendants(of: page).compactMap { $0 as? NSScrollView }.first
+        )
+        XCTAssertNotEqual(
+            runtimeButton.action,
+            #selector(DashboardPreferencePageRelay.openSystemMenuBarSettings(_:))
+        )
+        XCTAssertFalse(runtimeButton.isHidden)
+        XCTAssertEqual(systemSettingsOpenCount, 0)
+
+        runtimeButton.performClick(nil)
+        window.layoutIfNeeded()
+        page.layoutSubtreeIfNeeded()
+
+        let targetFrame = iconDisplayModeRow.convert(
+            iconDisplayModeRow.bounds,
+            to: scrollView.contentView
+        )
+        XCTAssertTrue(
+            targetFrame.intersects(scrollView.contentView.bounds),
+            "the runtime warning action must reveal the icon display mode row in the current page"
+        )
+        XCTAssertEqual(systemSettingsOpenCount, 0)
+    }
+
     func testMenuBarPendingVisibilityDoesNotRebuildDashboardHierarchy() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

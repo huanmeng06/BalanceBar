@@ -284,6 +284,14 @@ final class MenuBarWidthSlider: NSSlider {
     }
 }
 
+private final class DashboardMenuBarPageActionTarget: NSObject {
+    var onRevealIconDisplayModeSetting: (() -> Void)?
+
+    @objc func revealIconDisplayModeSetting(_ sender: Any?) {
+        onRevealIconDisplayModeSetting?()
+    }
+}
+
 final class DashboardMenuBarPage {
     static let iconOffsetsResetIdentifier = "menuBarIconOffsetsReset"
     static let amountOffsetsResetIdentifier = "menuBarAmountOffsetsReset"
@@ -348,6 +356,14 @@ final class DashboardMenuBarPage {
     static let overflowWarningIdentifier = "menuBarOverflowWarning"
     static let overflowWarningRowIdentifier = "menuBarOverflowWarningRow"
     static let overflowWarningSettingsButtonIdentifier = "menuBarOverflowWarningSettingsButton"
+    static let runtimeOnlyWarningIdentifier = "menuBarRuntimeOnlyWarning"
+    static let runtimeOnlyWarningRowIdentifier = "menuBarRuntimeOnlyWarningRow"
+    static let runtimeOnlyWarningSettingsButtonIdentifier = "menuBarRuntimeOnlyWarningSettingsButton"
+    // Compatibility aliases keep the presentation concept easy to discover
+    // for callers that refer to the state as a runtime warning.
+    static let runtimeWarningIdentifier = runtimeOnlyWarningIdentifier
+    static let runtimeWarningRowIdentifier = runtimeOnlyWarningRowIdentifier
+    static let runtimeWarningSettingsButtonIdentifier = runtimeOnlyWarningSettingsButtonIdentifier
     static let systemMenuBarSettingsURL = URL(
         string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension"
     )!
@@ -397,6 +413,26 @@ final class DashboardMenuBarPage {
         tr(.keyDashboardMenuBarPageOpenSettings, language: language)
     }
 
+    static func runtimeOnlyWarningText(for language: AppLanguage = .selected) -> String {
+        tr(.keyDashboardMenuBarPageRuntimeOnlyWarning, language: language)
+    }
+
+    static func runtimeOnlyWarningSettingsButtonText(
+        for language: AppLanguage = .selected
+    ) -> String {
+        tr(.keyDashboardMenuBarPageSetNow, language: language)
+    }
+
+    static func runtimeWarningText(for language: AppLanguage = .selected) -> String {
+        runtimeOnlyWarningText(for: language)
+    }
+
+    static func runtimeWarningSettingsButtonText(
+        for language: AppLanguage = .selected
+    ) -> String {
+        runtimeOnlyWarningSettingsButtonText(for: language)
+    }
+
     struct Input {
         let preferences: AppPreferences
         let snapshot: Snapshot
@@ -444,6 +480,9 @@ final class DashboardMenuBarPage {
     private weak var overflowWarningLabel: NSTextField?
     private weak var overflowWarningSettingsButton: NSButton?
     private weak var overflowWarningRow: NSView?
+    private weak var runtimeOnlyWarningLabel: NSTextField?
+    private weak var runtimeOnlyWarningSettingsButton: NSButton?
+    private weak var runtimeOnlyWarningRow: NSView?
     private weak var previewRowsStack: NSStackView?
     private weak var previewCardHeightConstraint: NSLayoutConstraint?
     private var previewSeparators: [NSView] = []
@@ -484,6 +523,7 @@ final class DashboardMenuBarPage {
     private var transientWidthAdjustment: Double?
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
+    private let pageActionTarget = DashboardMenuBarPageActionTarget()
 
     deinit {
         removeFontSizePresetTrackingObserver()
@@ -491,6 +531,7 @@ final class DashboardMenuBarPage {
 
     func teardown() {
         removeFontSizePresetTrackingObserver()
+        pageActionTarget.onRevealIconDisplayModeSetting = nil
     }
 
     /// Updates only the preview bitmap. Animation frames must not repeat the
@@ -500,12 +541,13 @@ final class DashboardMenuBarPage {
         previewIcon.image = image
     }
 
-    private static func makeOverflowWarningRow(
+    private static func makeWarningRow(
         label: NSTextField,
-        settingsButton: NSButton
+        settingsButton: NSButton,
+        identifier: String
     ) -> NSView {
         let row = NSView()
-        row.identifier = NSUserInterfaceItemIdentifier(Self.overflowWarningRowIdentifier)
+        row.identifier = NSUserInterfaceItemIdentifier(identifier)
         row.translatesAutoresizingMaskIntoConstraints = false
         row.heightAnchor.constraint(equalToConstant: Self.previewRowHeight).isActive = true
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -527,7 +569,21 @@ final class DashboardMenuBarPage {
         return row
     }
 
+    private static func makeOverflowWarningRow(
+        label: NSTextField,
+        settingsButton: NSButton
+    ) -> NSView {
+        makeWarningRow(
+            label: label,
+            settingsButton: settingsButton,
+            identifier: Self.overflowWarningRowIdentifier
+        )
+    }
+
     func make(_ input: Input) -> NSView {
+        pageActionTarget.onRevealIconDisplayModeSetting = { [weak self] in
+            self?.revealIconDisplayModeSetting()
+        }
         removeFontSizePresetTrackingObserver()
         quotaRowsStack = nil
         quotaCardHeightConstraint = nil
@@ -744,10 +800,53 @@ final class DashboardMenuBarPage {
             label: overflowWarningLabel,
             settingsButton: overflowWarningSettingsButton
         )
-        overflowWarningRow.isHidden = input.statusItemVisibility != .hiddenByMenuBarSpace
+        let runtimeOnlyWarningLabel = NSTextField(
+            wrappingLabelWithString: Self.runtimeOnlyWarningText()
+        )
+        runtimeOnlyWarningLabel.identifier = NSUserInterfaceItemIdentifier(
+            Self.runtimeOnlyWarningIdentifier
+        )
+        runtimeOnlyWarningLabel.font = .systemFont(ofSize: 12)
+        runtimeOnlyWarningLabel.textColor = .secondaryLabelColor
+        runtimeOnlyWarningLabel.lineBreakMode = .byWordWrapping
+        runtimeOnlyWarningLabel.usesSingleLineMode = false
+        runtimeOnlyWarningLabel.maximumNumberOfLines = 0
+        runtimeOnlyWarningLabel.setContentCompressionResistancePriority(
+            .defaultLow,
+            for: .horizontal
+        )
+        let runtimeOnlyWarningSettingsButton = NSButton(
+            title: Self.runtimeOnlyWarningSettingsButtonText(),
+            target: pageActionTarget,
+            action: #selector(DashboardMenuBarPageActionTarget.revealIconDisplayModeSetting(_:))
+        )
+        runtimeOnlyWarningSettingsButton.identifier = NSUserInterfaceItemIdentifier(
+            Self.runtimeOnlyWarningSettingsButtonIdentifier
+        )
+        runtimeOnlyWarningSettingsButton.bezelStyle = .rounded
+        runtimeOnlyWarningSettingsButton.controlSize = .regular
+        runtimeOnlyWarningSettingsButton.toolTip = Self.runtimeOnlyWarningSettingsButtonText()
+        runtimeOnlyWarningSettingsButton.setAccessibilityLabel(
+            Self.runtimeOnlyWarningSettingsButtonText()
+        )
+        runtimeOnlyWarningSettingsButton.setContentHuggingPriority(.required, for: .horizontal)
+        runtimeOnlyWarningSettingsButton.setContentCompressionResistancePriority(
+            .required,
+            for: .horizontal
+        )
+        let runtimeOnlyWarningRow = Self.makeWarningRow(
+            label: runtimeOnlyWarningLabel,
+            settingsButton: runtimeOnlyWarningSettingsButton,
+            identifier: Self.runtimeOnlyWarningRowIdentifier
+        )
+        overflowWarningRow.isHidden = !input.statusItemVisibility.isHiddenByMenuBarSpace
+        runtimeOnlyWarningRow.isHidden = !input.statusItemVisibility.isHiddenByRuntimePolicy
         self.overflowWarningLabel = overflowWarningLabel
         self.overflowWarningSettingsButton = overflowWarningSettingsButton
         self.overflowWarningRow = overflowWarningRow
+        self.runtimeOnlyWarningLabel = runtimeOnlyWarningLabel
+        self.runtimeOnlyWarningSettingsButton = runtimeOnlyWarningSettingsButton
+        self.runtimeOnlyWarningRow = runtimeOnlyWarningRow
         let quotaWindowPreferenceRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageQuotaDisplayPriority),
             subtitle: tr(.keyDashboardMenuBarPageQuotaDisplayPriorityDescription),
@@ -827,7 +926,8 @@ final class DashboardMenuBarPage {
                 minimumHeight: Self.previewRowHeight,
                 verticalPadding: Self.previewRowVerticalPadding
             ),
-            overflowWarningRow
+            overflowWarningRow,
+            runtimeOnlyWarningRow
         ], onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
             self?.previewRowsStack = rowsStack
             self?.previewCardHeightConstraint = cardHeightConstraint
@@ -1005,7 +1105,7 @@ final class DashboardMenuBarPage {
         statusItemVisibility: StatusItemVisibility = .unknown
     ) {
         guard isBuilt else { return }
-        updateOverflowWarning(statusItemVisibility)
+        updatePreviewWarnings(statusItemVisibility)
         previewIconSlot.isHidden = !preferences.showMenuBarIcon
         previewText.isHidden = !preferences.showMenuBarAmount
         iconSwitch?.isEnabled = preferences.showMenuBarAmount
@@ -1315,20 +1415,45 @@ final class DashboardMenuBarPage {
         }
     }
 
-    private func updateOverflowWarning(_ statusItemVisibility: StatusItemVisibility) {
+    private func updatePreviewWarnings(_ statusItemVisibility: StatusItemVisibility) {
         guard let overflowWarningLabel,
-              let overflowWarningRow else { return }
-        let shouldShow = statusItemVisibility == .hiddenByMenuBarSpace
+              let overflowWarningRow,
+              let runtimeOnlyWarningLabel,
+              let runtimeOnlyWarningRow else { return }
+        let shouldShowOverflowWarning = statusItemVisibility.isHiddenByMenuBarSpace
+        let shouldShowRuntimeOnlyWarning = statusItemVisibility.isHiddenByRuntimePolicy
         overflowWarningLabel.stringValue = Self.overflowWarningText()
         overflowWarningSettingsButton?.title = Self.overflowWarningSettingsButtonText()
         overflowWarningSettingsButton?.toolTip = Self.overflowWarningSettingsButtonText()
         overflowWarningSettingsButton?.setAccessibilityLabel(
             Self.overflowWarningSettingsButtonText()
         )
-        overflowWarningLabel.isHidden = !shouldShow
-        overflowWarningRow.isHidden = !shouldShow
-        if let separator = previewSeparators.first {
-            separator.isHidden = !shouldShow
+        runtimeOnlyWarningLabel.stringValue = Self.runtimeOnlyWarningText()
+        runtimeOnlyWarningSettingsButton?.title = Self.runtimeOnlyWarningSettingsButtonText()
+        runtimeOnlyWarningSettingsButton?.toolTip = Self.runtimeOnlyWarningSettingsButtonText()
+        runtimeOnlyWarningSettingsButton?.setAccessibilityLabel(
+            Self.runtimeOnlyWarningSettingsButtonText()
+        )
+        overflowWarningLabel.isHidden = !shouldShowOverflowWarning
+        overflowWarningRow.isHidden = !shouldShowOverflowWarning
+        runtimeOnlyWarningLabel.isHidden = !shouldShowRuntimeOnlyWarning
+        runtimeOnlyWarningRow.isHidden = !shouldShowRuntimeOnlyWarning
+
+        // The current-layout row is always visible. Each separator is shown
+        // only when it separates two visible rows in the fixed order:
+        // current layout → overflow warning → runtime warning.
+        let visibleRows = [
+            true,
+            shouldShowOverflowWarning,
+            shouldShowRuntimeOnlyWarning
+        ]
+        for (index, separator) in previewSeparators.enumerated() {
+            guard index + 1 < visibleRows.count else {
+                separator.isHidden = true
+                continue
+            }
+            let hasVisibleRowAfter = visibleRows[(index + 1)...].contains(true)
+            separator.isHidden = !(visibleRows[index] && hasVisibleRowAfter)
         }
         updatePreviewCardLayout()
     }
@@ -1336,10 +1461,23 @@ final class DashboardMenuBarPage {
     private func updatePreviewCardLayout() {
         guard let previewRowsStack,
               let previewCardHeightConstraint else { return }
+        previewRowsStack.needsLayout = true
         previewCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
             rowsStack: previewRowsStack,
             separators: previewSeparators
         )
+        previewRowsStack.superview?.invalidateIntrinsicContentSize()
+        previewRowsStack.superview?.needsLayout = true
+        previewRowsStack.superview?.superview?.needsLayout = true
+    }
+
+    private func revealIconDisplayModeSetting() {
+        let destination = iconDisplayModeRow?.isHidden == false
+            ? iconDisplayModeRow
+            : taskStatusIconRow
+        guard let destination else { return }
+        destination.window?.layoutIfNeeded()
+        destination.scrollToVisible(destination.bounds)
     }
 
     private func updateQuotaVisibility(

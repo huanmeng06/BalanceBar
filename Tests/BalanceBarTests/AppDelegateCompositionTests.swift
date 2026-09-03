@@ -479,6 +479,21 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(machine.needsAdditionalHiddenSample)
     }
 
+    func testStatusItemVisibilityCarriesIndependentSpaceAndRuntimeEvidence() {
+        XCTAssertFalse(StatusItemVisibility.unknown.isHiddenByMenuBarSpace)
+        XCTAssertFalse(StatusItemVisibility.unknown.isHiddenByRuntimePolicy)
+        XCTAssertTrue(StatusItemVisibility.hiddenByMenuBarSpace.isHiddenByMenuBarSpace)
+        XCTAssertFalse(StatusItemVisibility.hiddenByMenuBarSpace.isHiddenByRuntimePolicy)
+        XCTAssertFalse(StatusItemVisibility.hiddenByRuntimePolicy.isHiddenByMenuBarSpace)
+        XCTAssertTrue(StatusItemVisibility.hiddenByRuntimePolicy.isHiddenByRuntimePolicy)
+        XCTAssertTrue(
+            StatusItemVisibility.hiddenByMenuBarSpaceAndRuntimePolicy.isHiddenByMenuBarSpace
+        )
+        XCTAssertTrue(
+            StatusItemVisibility.hiddenByMenuBarSpaceAndRuntimePolicy.isHiddenByRuntimePolicy
+        )
+    }
+
     func testMenuBarIconDisplayStateMachineDebouncesIdleAndRecoversImmediately() {
         var machine = MenuBarIconDisplayStateMachine()
         let start = Date(timeIntervalSince1970: 2_000)
