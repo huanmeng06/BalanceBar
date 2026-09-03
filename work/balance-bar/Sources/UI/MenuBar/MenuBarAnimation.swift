@@ -37,7 +37,7 @@ enum MenuBarActivityAnimationPolicy {
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
-    /// 36 frames over a 1.2 s rotation = 30 fps. Frame swaps
+    /// 36 discrete frames over a 1.2 s rotation = 30 fps. Pixel updates
     /// are the only way the macOS 26 status-item replicant snapshot can show
     /// motion (it renders model state via renderInContext, so render-server-
     /// side animations are invisible), so this animation intentionally keeps a
@@ -55,7 +55,12 @@ final class RotatingTemplateImageView: PassthroughImageView {
     /// Called after the displayed bitmap changes. Consumers must only mirror
     /// the bitmap; this is intentionally separate from semantic state work.
     var onFrameImageChanged: ((NSImage?) -> Void)?
+    /// Called with the discrete frame index before the image view is mutated.
+    /// Bitmap-backed Codex animation uses this seam to update a stable image
+    /// backing without changing this detached view's image every tick.
+    var onAnimationFrameIndexChanged: ((Int) -> Void)?
     var isRotating: Bool { rotationTimer != nil }
+    var currentAnimationFrameIndex: Int { animationState.frameIndex }
 
     /// The already-rasterized frames for the current semantic source. The
     /// controller uses these to build complete button-ready bitmaps when the
@@ -67,6 +72,11 @@ final class RotatingTemplateImageView: PassthroughImageView {
     func animationFrameIndex(for image: NSImage?) -> Int? {
         guard let image else { return nil }
         return rotationFrames.firstIndex { $0 === image }
+    }
+
+    func animationFrame(at index: Int) -> NSImage? {
+        guard rotationFrames.indices.contains(index) else { return nil }
+        return rotationFrames[index]
     }
 
     func setSourceImage(_ image: NSImage) {
@@ -119,7 +129,11 @@ final class RotatingTemplateImageView: PassthroughImageView {
             return
         }
         let frame = rotationFrames[frameIndex]
-        displayImage(frame)
+        if let onAnimationFrameIndexChanged {
+            onAnimationFrameIndexChanged(frameIndex)
+        } else {
+            displayImage(frame)
+        }
     }
 
     private static func makeRotationFrames(from sourceImage: NSImage) -> [NSImage] {

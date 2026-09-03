@@ -156,6 +156,7 @@ final class MenuBarAnimationTests: XCTestCase {
             )
         )
         let framePath = String(animationSource[frameStart.lowerBound..<frameEnd.lowerBound])
+        XCTAssertTrue(framePath.contains("onAnimationFrameIndexChanged"))
         XCTAssertTrue(framePath.contains("displayImage(frame)"))
         XCTAssertFalse(framePath.contains("onSourceImageChanged"))
         XCTAssertFalse(framePath.contains("layoutStatusItem"))
@@ -200,27 +201,24 @@ final class MenuBarAnimationTests: XCTestCase {
         let frameCallbackPath = String(
             statusItemSource[frameCallbackStart.lowerBound..<frameCallbackEnd.upperBound]
         )
-        let codexFramePath = try XCTUnwrap(
-            frameCallbackPath.range(of: "if self.activeClient == .codex")
+        XCTAssertFalse(frameCallbackPath.contains("applyCachedCodexAnimationFrame"))
+        XCTAssertTrue(frameCallbackPath.contains("activeClient != .codex"))
+        XCTAssertTrue(frameCallbackPath.contains("composeMenuBarContentBitmap"))
+
+        let indexCallbackStart = try XCTUnwrap(
+            statusItemSource.range(of: "menuBarIconView.onAnimationFrameIndexChanged = {")
         )
-        let claudeFramePath = try XCTUnwrap(
-            frameCallbackPath.range(
-                of: "} else {",
-                range: codexFramePath.upperBound..<frameCallbackPath.endIndex
+        let indexCallbackEnd = try XCTUnwrap(
+            statusItemSource.range(
+                of: "actions.frameImageChanged(frame)",
+                range: indexCallbackStart.upperBound..<statusItemSource.endIndex
             )
         )
-        XCTAssertTrue(
-            frameCallbackPath[codexFramePath.lowerBound..<claudeFramePath.lowerBound]
-                .contains("applyCachedCodexAnimationFrame")
+        let indexCallbackPath = String(
+            statusItemSource[indexCallbackStart.lowerBound..<indexCallbackEnd.upperBound]
         )
-        XCTAssertFalse(
-            frameCallbackPath[codexFramePath.lowerBound..<claudeFramePath.lowerBound]
-                .contains("composeMenuBarContentBitmap")
-        )
-        XCTAssertTrue(
-            frameCallbackPath[claudeFramePath.lowerBound..<frameCallbackPath.endIndex]
-                .contains("composeMenuBarContentBitmap")
-        )
+        XCTAssertTrue(indexCallbackPath.contains("applyStableCodexAnimationFrame"))
+        XCTAssertTrue(indexCallbackPath.contains("actions.frameImageChanged(frame)"))
 
         let compositionSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(

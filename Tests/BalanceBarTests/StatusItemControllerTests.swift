@@ -137,6 +137,52 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(cache.rebuildCount, 0)
     }
 
+    func testStableBitmapFrameBufferMutatesOneImageBackingAcrossManyTicks() throws {
+        let sourceFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
+            NSImage(size: NSSize(width: 16, height: 16))
+        }
+        let completeFrames = (0..<RotatingTemplateImageView.frameCount).map { index in
+            makeSolidImage(
+                size: NSSize(width: 56, height: 22),
+                red: CGFloat(index + 1) / CGFloat(RotatingTemplateImageView.frameCount + 1),
+                green: 0.25,
+                blue: 0.75
+            )
+        }
+        let signature = makeVisualSignature(sourceFrames: sourceFrames)
+        var buffer = MenuBarStableBitmapAnimationFrameBuffer()
+
+        XCTAssertTrue(
+            buffer.rebuildIfNeeded(
+                signature: signature,
+                sourceFrames: sourceFrames,
+                completeFrames: completeFrames
+            )
+        )
+        let stableImage = try XCTUnwrap(buffer.image)
+        let initialPixelData = try XCTUnwrap(buffer.backingPixelDataForTesting)
+        XCTAssertEqual(buffer.count, RotatingTemplateImageView.frameCount)
+        XCTAssertEqual(buffer.rebuildCount, 1)
+        XCTAssertEqual(stableImage.cacheMode, .never)
+
+        for tick in 0..<100 {
+            XCTAssertTrue(buffer.apply(frameIndex: tick % completeFrames.count))
+            XCTAssertTrue(buffer.image === stableImage)
+        }
+
+        XCTAssertEqual(buffer.rebuildCount, 1)
+        XCTAssertEqual(buffer.pixelCopyCount, 100)
+        XCTAssertNotEqual(buffer.backingPixelDataForTesting, initialPixelData)
+        XCTAssertTrue(
+            buffer.rebuildIfNeeded(
+                signature: signature,
+                sourceFrames: sourceFrames,
+                completeFrames: completeFrames
+            )
+        )
+        XCTAssertEqual(buffer.rebuildCount, 1)
+    }
+
     func testBitmapVisualSignatureIncludesContentGeometryAppearanceAndRenderingInputs() {
         let sourceFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
             NSImage(size: NSSize(width: 16, height: 16))
@@ -207,11 +253,20 @@ final class StatusItemControllerTests: XCTestCase {
         )
         let buildCount = controller.codexAnimationCacheBuildCountForTesting
         let compositionCount = controller.codexAnimationFrameCompositionCountForTesting
+        let stableImage = try XCTUnwrap(controller.stableCodexAnimationImageForTesting)
+        let stableImageAssignments = controller.stableCodexAnimationImageAssignmentCountForTesting
+        let stableRebuildCount = controller.stableCodexAnimationRebuildCountForTesting
         XCTAssertEqual(
             controller.codexAnimationCacheFrameCountForTesting,
             RotatingTemplateImageView.frameCount
         )
+        XCTAssertEqual(
+            controller.stableCodexAnimationFrameCountForTesting,
+            RotatingTemplateImageView.frameCount
+        )
         XCTAssertEqual(compositionCount, RotatingTemplateImageView.frameCount)
+        XCTAssertEqual(stableRebuildCount, 1)
+        XCTAssertTrue(controller.menuBarButtonImageForTesting === stableImage)
         XCTAssertGreaterThanOrEqual(buildCount, 1)
 
         controller.update(
@@ -224,6 +279,33 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(
             controller.codexAnimationFrameCompositionCountForTesting,
             compositionCount
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationImageAssignmentCountForTesting,
+            stableImageAssignments
+        )
+        XCTAssertTrue(controller.menuBarButtonImageForTesting === stableImage)
+
+        for tick in 0..<100 {
+            controller.advanceCodexAnimationFrameForTesting(
+                tick % RotatingTemplateImageView.frameCount
+            )
+            XCTAssertTrue(controller.menuBarButtonImageForTesting === stableImage)
+        }
+        XCTAssertEqual(
+            controller.codexAnimationFrameCompositionCountForTesting,
+            compositionCount,
+            "100 stable-image ticks must not compose complete bitmaps"
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationImageAssignmentCountForTesting,
+            stableImageAssignments,
+            "100 stable-image ticks must not assign button.image"
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationPixelCopyCountForTesting,
+            101,
+            "initial frame plus 100 steady-state ticks should copy pixels"
         )
 
         let changedSnapshot = Snapshot.balance(
@@ -241,10 +323,17 @@ final class StatusItemControllerTests: XCTestCase {
         )
         let changedBuildCount = controller.codexAnimationCacheBuildCountForTesting
         let changedCompositionCount = controller.codexAnimationFrameCompositionCountForTesting
+        let changedStableImage = try XCTUnwrap(controller.stableCodexAnimationImageForTesting)
         XCTAssertEqual(changedBuildCount, buildCount + 1)
         XCTAssertEqual(
             changedCompositionCount,
             compositionCount + RotatingTemplateImageView.frameCount
+        )
+        XCTAssertTrue(controller.menuBarButtonImageForTesting === changedStableImage)
+        XCTAssertFalse(changedStableImage === stableImage)
+        XCTAssertEqual(
+            controller.stableCodexAnimationImageAssignmentCountForTesting,
+            stableImageAssignments + 1
         )
 
         RunLoop.main.run(
@@ -320,6 +409,24 @@ final class StatusItemControllerTests: XCTestCase {
             claudeTaskRunning: false,
             animationEnabled: true
         )
+    }
+
+    private func makeSolidImage(
+        size: NSSize,
+        red: CGFloat,
+        green: CGFloat,
+        blue: CGFloat
+    ) -> NSImage {
+        NSImage(size: size, flipped: true) { rect in
+            NSColor(
+                calibratedRed: red,
+                green: green,
+                blue: blue,
+                alpha: 1
+            ).setFill()
+            rect.fill()
+            return true
+        }
     }
 
     private func makeController() -> StatusItemController {
