@@ -44,6 +44,7 @@ final class CodexActivityMonitor {
     private static let responseTerminalTypes: Set<String> = [
         "response.completed", "response.failed", "response.incomplete", "response.cancelled"
     ]
+    private static let completionTypes: Set<String> = terminalTypes.union(responseTerminalTypes)
     private static let responseTerminalStatuses: Set<String> = [
         "completed", "failed", "cancelled", "canceled", "incomplete"
     ]
@@ -63,10 +64,18 @@ final class CodexActivityMonitor {
         let sharedMemory: CodexFileIdentity?
     }
 
-    private struct LogsActivityCache {
-        let signature: DatabaseSignature
-        let running: Bool
-        let validUntil: TimeInterval
+    private struct ThreadLogState {
+        var latestActivity: Int64 = 0
+        var latestInProgress: Int64 = 0
+        var latestDone: Int64 = 0
+    }
+
+    private struct LogsScanCache {
+        let databasePath: String
+        let databaseFileID: UInt64
+        var observedSignature: DatabaseSignature
+        var lastRowID: Int64
+        var threads: [String: ThreadLogState]
     }
 
     private struct RolloutCandidate {
@@ -79,7 +88,7 @@ final class CodexActivityMonitor {
     private var sessionCache: [String: SessionCache] = [:]
     private var rolloutPathsCache: (scannedAt: Date, candidates: [RolloutCandidate]) = (.distantPast, [])
     private var latestDatabaseCache: [String: (scannedAt: Date, path: String)] = [:]
-    private var logsActivityCache: LogsActivityCache?
+    private var logsScanCache: LogsScanCache?
 
     init(codexDirectory: URL? = nil, clock: @escaping () -> Date = { Date() }) {
         self.codexDirectory = codexDirectory
@@ -239,29 +248,25 @@ final class CodexActivityMonitor {
         let tailOffset = identity.size > UInt64(Self.activityTailBytes)
             ? identity.size - UInt64(Self.activityTailBytes)
             : 0
-        var combined = Data(pendingLine.utf8)
-        combined.append(data)
-        let bytes = Array(combined)
-        var lineStart = 0
-        var index = 0
-        while index < bytes.count {
-            guard bytes[index] == UInt8(ascii: "\n") else {
-                index += 1
-                continue
-            }
-            let lineData = Data(bytes[lineStart..<index])
-            let absoluteLineStart = combinedStartOffset + UInt64(lineStart)
-            consumeSessionLine(
-                lineData,
-                lifecycleOnly: absoluteLineStart < tailOffset,
+        if pendingLine.isEmpty {
+            pendingLine = consumeSessionData(
+                data,
+                combinedStartOffset: combinedStartOffset,
+                tailOffset: tailOffset,
                 running: &running,
                 terminalSeen: &terminalSeen
             )
-            lineStart = index + 1
-            index += 1
+        } else {
+            var combined = Data(pendingLine.utf8)
+            combined.append(data)
+            pendingLine = consumeSessionData(
+                combined,
+                combinedStartOffset: combinedStartOffset,
+                tailOffset: tailOffset,
+                running: &running,
+                terminalSeen: &terminalSeen
+            )
         }
-
-        pendingLine = String(decoding: bytes[lineStart..<bytes.count], as: UTF8.self)
         return SessionCache(
             identity: identity,
             bytesScanned: identity.size,
@@ -269,6 +274,35 @@ final class CodexActivityMonitor {
             running: running,
             terminalSeen: terminalSeen
         )
+    }
+
+    private func consumeSessionData(
+        _ data: Data,
+        combinedStartOffset: UInt64,
+        tailOffset: UInt64,
+        running: inout Bool,
+        terminalSeen: inout Bool
+    ) -> String {
+        var lineStart = data.startIndex
+        var index = data.startIndex
+        while index < data.endIndex {
+            if data[index] == UInt8(ascii: "\n") {
+                let lineData = data.subdata(in: lineStart..<index)
+                let lineOffset = combinedStartOffset
+                    + UInt64(data.distance(from: data.startIndex, to: lineStart))
+                consumeSessionLine(
+                    lineData,
+                    lifecycleOnly: lineOffset < tailOffset,
+                    running: &running,
+                    terminalSeen: &terminalSeen
+                )
+                lineStart = data.index(after: index)
+                index = lineStart
+            } else {
+                index = data.index(after: index)
+            }
+        }
+        return String(decoding: data[lineStart..<data.endIndex], as: UTF8.self)
     }
 
     private func consumeSessionLine(
@@ -352,11 +386,12 @@ final class CodexActivityMonitor {
             return nil
         }
 
-        let nowEpoch = Int64(now.timeIntervalSince1970)
-        if let cached = logsActivityCache,
-           cached.signature == signature,
-           !cached.running || now.timeIntervalSince1970 < cached.validUntil {
-            return cached.running
+        if let cached = logsScanCache,
+           cached.observedSignature == signature {
+            var nextCache = cached
+            let running = pruneAndEvaluateLogs(now: now, cache: &nextCache)
+            logsScanCache = nextCache
+            return running
         }
 
         var database: OpaquePointer?
@@ -367,78 +402,75 @@ final class CodexActivityMonitor {
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 150)
 
-        // Require an explicit response-in-progress event to start activity;
-        // streaming output then keeps that active turn alive until a terminal
-        // event wins. Output from an older completed turn is not sufficient.
-        let normalized = "replace(feedback_log_body, ' ', '')"
-        let outputActivity = """
-        \(normalized) like '%response.output_item.added%'
-        or \(normalized) like '%response.output_text.delta%'
-        """
-        let inProgress = """
-        \(normalized) like '%response.in_progress%'
-        or \(normalized) like '%\"status\":\"in_progress\"%'
-        """
-        let activity = "\(outputActivity) or \(inProgress)"
-        let completion = (Self.terminalTypes.union(Self.responseTerminalTypes)).sorted().map {
-            "\(normalized) like '%\"type\":\"\($0)\"%'"
-        }
-        .joined(separator: " or ")
-        let phaseCompletion = """
-        \(normalized) like '%\"phase\":\"final\"%'
-        or \(normalized) like '%\"phase\":\"final_answer\"%'
-        """
-        let sql = """
-        SELECT
-          max(CASE WHEN \(activity) THEN ts ELSE 0 END) AS latest_activity,
-          max(CASE WHEN \(inProgress) THEN ts ELSE 0 END) AS latest_in_progress,
-          max(CASE WHEN (\(completion)) OR (\(phaseCompletion)) THEN ts ELSE 0 END) AS latest_done
-        FROM logs INDEXED BY idx_logs_ts
-        WHERE thread_id IS NOT NULL
-          AND ts >= ?
-          AND ((\(activity)) OR (\(completion)) OR (\(phaseCompletion)))
-        GROUP BY thread_id;
-        """
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else {
+        guard let highWaterMark = maximumLogRowID(in: database) else {
             return nil
         }
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, nowEpoch - Int64(Self.activityWindow))
+
+        let shouldBootstrap: Bool
+        if let cached = logsScanCache {
+            shouldBootstrap = cached.databasePath != databasePath
+                || cached.databaseFileID != signature.main.fileID
+                || highWaterMark < cached.lastRowID
+        } else {
+            shouldBootstrap = true
+        }
+
+        var nextCache = shouldBootstrap
+            ? LogsScanCache(
+                databasePath: databasePath,
+                databaseFileID: signature.main.fileID,
+                observedSignature: signature,
+                lastRowID: 0,
+                threads: [:]
+            )
+            : logsScanCache!
+        if shouldBootstrap || highWaterMark > nextCache.lastRowID {
+            var candidateThreads = nextCache.threads
+            guard scanLogs(
+                in: database,
+                bootstrap: shouldBootstrap,
+                afterRowID: nextCache.lastRowID,
+                throughRowID: highWaterMark,
+                cutoff: Int64(now.timeIntervalSince1970) - Int64(Self.activityWindow),
+                threads: &candidateThreads
+            ) else {
+                return nil
+            }
+            nextCache.threads = candidateThreads
+            nextCache.lastRowID = highWaterMark
+        }
+
+        nextCache.observedSignature = signature
+        let running = pruneAndEvaluateLogs(now: now, cache: &nextCache)
+        logsScanCache = nextCache
+        return running
+    }
+
+    private func pruneAndEvaluateLogs(now: Date, cache: inout LogsScanCache) -> Bool {
+        let nowEpoch = Int64(now.timeIntervalSince1970)
+        let cutoff = nowEpoch - Int64(Self.activityWindow)
+        cache.threads = cache.threads.filter { _, state in
+            max(state.latestActivity, max(state.latestInProgress, state.latestDone)) >= cutoff
+        }
 
         var runningUntil: TimeInterval?
-        var stepResult = sqlite3_step(statement)
-        while stepResult == SQLITE_ROW {
-            let latestActivity = sqlite3_column_int64(statement, 0)
-            let latestInProgress = sqlite3_column_int64(statement, 1)
-            let latestDone = sqlite3_column_int64(statement, 2)
-            if latestInProgress > latestDone,
-               latestActivity > latestDone,
-               nowEpoch - latestActivity < Int64(Self.activityWindow) {
-                let expiresAt = TimeInterval(latestActivity + Int64(Self.activityWindow))
+        for state in cache.threads.values {
+            if state.latestInProgress > state.latestDone,
+               state.latestActivity > state.latestDone,
+               nowEpoch - state.latestActivity < Int64(Self.activityWindow) {
+                let expiresAt = TimeInterval(state.latestActivity + Int64(Self.activityWindow))
                 runningUntil = max(runningUntil ?? .leastNormalMagnitude, expiresAt)
-            } else if latestInProgress > latestDone,
-                      latestActivity > 0,
-                      latestDone == 0,
-                      nowEpoch - latestActivity < 20 {
+            } else if state.latestInProgress > state.latestDone,
+                      state.latestActivity > 0,
+                      state.latestDone == 0,
+                      nowEpoch - state.latestActivity < 20 {
                 // Events can share a one-second timestamp. Keep a short grace
                 // period so an active stream does not flicker off at a boundary.
-                let expiresAt = TimeInterval(latestActivity + 20)
+                let expiresAt = TimeInterval(state.latestActivity + 20)
                 runningUntil = max(runningUntil ?? .leastNormalMagnitude, expiresAt)
             }
-            stepResult = sqlite3_step(statement)
         }
-        guard stepResult == SQLITE_DONE else { return nil }
-
-        let running = runningUntil != nil
-        logsActivityCache = LogsActivityCache(
-            signature: signature,
-            running: running,
-            validUntil: runningUntil ?? .infinity
-        )
-        return running
+        return runningUntil != nil
     }
 
     private func databaseSignature(atPath path: String) -> DatabaseSignature? {
@@ -449,6 +481,105 @@ final class CodexActivityMonitor {
             wal: codexFileIdentity(atPath: "\(path)-wal"),
             sharedMemory: codexFileIdentity(atPath: "\(path)-shm")
         )
+    }
+
+    private func maximumLogRowID(in database: OpaquePointer) -> Int64? {
+        var statement: OpaquePointer?
+        let sql = "SELECT max(rowid) FROM logs;"
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return sqlite3_column_int64(statement, 0)
+    }
+
+    private func scanLogs(
+        in database: OpaquePointer,
+        bootstrap: Bool,
+        afterRowID: Int64,
+        throughRowID: Int64,
+        cutoff: Int64,
+        threads: inout [String: ThreadLogState]
+    ) -> Bool {
+        let sql: String
+        if bootstrap {
+            sql = """
+            SELECT rowid, thread_id, ts, feedback_log_body
+            FROM logs INDEXED BY idx_logs_ts
+            WHERE thread_id IS NOT NULL
+              AND ts >= ?
+              AND rowid <= ?
+            ORDER BY ts, rowid;
+            """
+        } else {
+            sql = """
+            SELECT rowid, thread_id, ts, feedback_log_body
+            FROM logs
+            WHERE rowid > ?
+              AND rowid <= ?
+              AND thread_id IS NOT NULL
+            ORDER BY rowid;
+            """
+        }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            return false
+        }
+        defer { sqlite3_finalize(statement) }
+        if bootstrap {
+            sqlite3_bind_int64(statement, 1, cutoff)
+            sqlite3_bind_int64(statement, 2, throughRowID)
+        } else {
+            sqlite3_bind_int64(statement, 1, afterRowID)
+            sqlite3_bind_int64(statement, 2, throughRowID)
+        }
+
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
+            guard let threadText = sqlite3_column_text(statement, 1) else {
+                stepResult = sqlite3_step(statement)
+                continue
+            }
+            let threadID = String(cString: threadText)
+            let timestamp = sqlite3_column_int64(statement, 2)
+            let body = sqlite3_column_text(statement, 3).map(String.init(cString:)) ?? ""
+            let signals = classifyLogBody(body)
+            if signals.activity || signals.inProgress || signals.done {
+                var state = threads[threadID] ?? ThreadLogState()
+                if signals.activity {
+                    state.latestActivity = max(state.latestActivity, timestamp)
+                }
+                if signals.inProgress {
+                    state.latestInProgress = max(state.latestInProgress, timestamp)
+                }
+                if signals.done {
+                    state.latestDone = max(state.latestDone, timestamp)
+                }
+                threads[threadID] = state
+            }
+            stepResult = sqlite3_step(statement)
+        }
+        return stepResult == SQLITE_DONE
+    }
+
+    private func classifyLogBody(_ body: String) -> (activity: Bool, inProgress: Bool, done: Bool) {
+        // Keep the existing SQL semantics: remove literal spaces once, then
+        // classify the normalized body without asking SQLite to rescan it.
+        let normalized = body.replacingOccurrences(of: " ", with: "").lowercased()
+        let outputActivity = normalized.contains("response.output_item.added")
+            || normalized.contains("response.output_text.delta")
+        let inProgress = normalized.contains("response.in_progress")
+            || normalized.contains("\"status\":\"in_progress\"")
+        let done = Self.completionTypes.contains { type in
+            normalized.contains("\"type\":\"\(type)\"")
+        }
+            || normalized.contains("\"phase\":\"final\"")
+            || normalized.contains("\"phase\":\"final_answer\"")
+        return (outputActivity || inProgress, inProgress, done)
     }
 
     private func latestDatabase(prefix: String, now: Date) -> String? {

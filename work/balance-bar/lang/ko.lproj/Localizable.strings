@@ -344,6 +344,7 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "다른 메뉴 막대 아이콘과의 간격 조정: -10.0pt(더 좁게)에서 +10.0pt(더 넓게); 기본값 0pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "0.01 이상, 소수점 이하 두 자리까지의 금액을 입력하세요";
 "dashboard.menu.page.balance_display" = "잔액 표시";
+"dashboard.menu.page.progress_bar" = "진행률 막대";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ 표시 방식";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "메뉴에서 %1$@를 표시할 시점을 선택";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "표시 안 함";

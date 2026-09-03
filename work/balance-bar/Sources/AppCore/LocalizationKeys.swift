@@ -346,6 +346,7 @@
     case keyDashboardMenuBarPageAdjustsMenuBarWidthFrom100PtNarrowTo100PtWideDefault0Pt = "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt"
     case keyDashboardMenuPageEnterAnAmountOfAtLeast001WithUpToTwoDecimalPlaces = "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places"
     case keyDashboardMenuPageBalanceDisplay = "dashboard.menu.page.balance_display"
+    case keyDashboardMenuPageProgressBar = "dashboard.menu.page.progress_bar"
     case keyDashboardMenuPageProgressColorRanges = "dashboard.menu.page.progress_color_ranges"
     case keyDashboardMenuPageProgressColorRangesDescription = "dashboard.menu.page.progress_color_ranges_description"
     case keyDashboardMenuPageDisplayedColors = "dashboard.menu.page.displayed_colors"
