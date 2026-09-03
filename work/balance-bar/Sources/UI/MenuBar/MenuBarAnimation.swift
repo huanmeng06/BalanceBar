@@ -37,8 +37,13 @@ enum MenuBarActivityAnimationPolicy {
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
+    /// 36 frames over a 1.2 s rotation = exactly 30 fps, keeping the original
+    /// 10°-per-frame step granularity. Frame swaps are the only way the macOS
+    /// 26 status-item replicant snapshot can show motion (it renders model
+    /// state via renderInContext, so render-server-side animations are
+    /// invisible), so this animation necessarily invalidates per frame.
     static let frameCount = 36
-    static let rotationDuration: TimeInterval = 1.15
+    static let rotationDuration: TimeInterval = 1.2
     static let rotationFrameInterval = rotationDuration / Double(frameCount)
     private var sourceImage: NSImage?
     private var rotationFrames: [NSImage] = []
@@ -58,7 +63,11 @@ final class RotatingTemplateImageView: PassthroughImageView {
             rotationFrames = Self.makeRotationFrames(from: image)
         }
         sourceImage = image
-        self.image = image
+        if self.image !== image {
+            // Activity state transitions re-send the same source image; only a
+            // real bitmap change may dirty the image view.
+            self.image = image
+        }
         if sourceChanged {
             onSourceImageChanged?(image)
         }
@@ -172,6 +181,8 @@ final class ClaudeThinkingAnimator {
         self.outputSize = outputSize
     }
 
+    var isAnimating: Bool { timer != nil }
+
     func start() {
         guard timer == nil else { return }
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
@@ -191,6 +202,7 @@ final class ClaudeThinkingAnimator {
     }
 
     func stop() {
+        guard timer != nil else { return }
         timer?.invalidate()
         timer = nil
         animationState.reset()

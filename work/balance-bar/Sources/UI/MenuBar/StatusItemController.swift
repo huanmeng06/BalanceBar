@@ -1628,6 +1628,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
     private let menuBarContentStack = MenuBarContentView()
+    /// Experimental single-bitmap content mode (#284 option 3): the content
+    /// view tree lives offscreen as a layout/render engine and the button
+    /// displays one template bitmap, so macOS 26's replicant machinery has no
+    /// custom view hierarchy to re-snapshot. Opt-in via
+    /// `defaults write <domain> menuBarBitmapContent -bool YES` + relaunch.
+    private let usesBitmapContent = UserDefaults.standard.object(forKey: "menuBarBitmapContent") as? Bool ?? false
+    private let bitmapRenderContainer = NSView(frame: NSRect(x: 0, y: 0, width: 56, height: 22))
+    private var cachedMenuBarTextBitmap: NSImage?
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
     private var isMenuBarContentStackConfigured = false
@@ -1689,12 +1697,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // are the rendered primary ink and icon bounds, not the anti-clipping
     // label/frame allocation.
     var menuBarPrimaryInkBoundsForTesting: NSRect? {
-        menuBarPrimaryInkBounds(in: statusItem?.button)
+        menuBarPrimaryInkBounds(in: menuBarContentCoordinateSpace)
     }
 
     var menuBarIconFrameForTesting: NSRect? {
-        guard let button = statusItem?.button else { return nil }
-        return menuBarIconView.convert(menuBarIconView.bounds, to: button)
+        guard let space = menuBarContentCoordinateSpace else { return nil }
+        return menuBarIconView.convert(menuBarIconView.bounds, to: space)
     }
 
     var menuBarButtonBoundsForTesting: NSRect? {
@@ -1902,6 +1910,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 officialTextYOffset: lastMenuBarOfficialTextYOffset
             )
         }
+        if usesBitmapContent {
+            refreshMenuBarContentBitmap()
+        }
     }
 
     func updateMenu(input: MenuInput) {
@@ -2018,7 +2029,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.actions.iconChanged(image)
         }
         menuBarIconView.onFrameImageChanged = { [weak self] image in
-            self?.actions.frameImageChanged(image)
+            guard let self else { return }
+            if self.usesBitmapContent {
+                self.composeMenuBarContentBitmap(iconImage: image)
+            }
+            self.actions.frameImageChanged(image)
         }
         actions.iconChanged(menuBarIconView.image)
         menuBarIconView.imageScaling = .scaleProportionallyDown
@@ -2029,7 +2044,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
         configureMenuBarContentStackIfNeeded()
-        button.addSubview(menuBarContentStack)
+        if usesBitmapContent {
+            bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
+            bitmapRenderContainer.addSubview(menuBarContentStack)
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleNone
+        } else {
+            button.addSubview(menuBarContentStack)
+        }
         layoutStatusItem(for: snapshot)
         SwitchLog.write(
             "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
@@ -2220,7 +2242,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch activeClient {
         case .codex:
             claudeThinkingAnimator?.stop()
-            if let codexIconImage {
+            // While the rotation is feeding frames, re-assigning the static
+            // source would clobber the current frame for one tick and dirty
+            // the view; the rotation frames already derive from this source.
+            if !menuBarIconView.isRotating, let codexIconImage {
                 menuBarIconView.setSourceImage(codexIconImage)
             }
             if MenuBarActivityAnimationPolicy.shouldAnimate(
@@ -2234,7 +2259,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
         case .claude:
             menuBarIconView.stopRotating()
-            if let claudeIconImage {
+            if claudeThinkingAnimator?.isAnimating != true, let claudeIconImage {
                 menuBarIconView.setSourceImage(claudeIconImage)
             }
             if MenuBarActivityAnimationPolicy.shouldAnimate(
@@ -2287,6 +2312,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         hasSecondary: Bool,
         iconYOffset: CGFloat
     ) {
+        guard !usesBitmapContent else { return }
         guard settings.showIcon else { return }
         let kind: String
         switch snapshot.kind {
@@ -2325,7 +2351,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             settings.showAmount ? effectiveSnapshot.menuBarPrimary : "",
             to: menuBarPrimaryLabel
         )
-        menuBarSecondaryLabel.stringValue = reservedSecondary
+        if menuBarSecondaryLabel.stringValue != reservedSecondary {
+            menuBarSecondaryLabel.stringValue = reservedSecondary
+        }
         menuBarIconSlot.isHidden = !settings.showIcon
         menuBarTextStack.isHidden = !settings.showAmount
         let geometry = MenuBarLayout.geometry(
@@ -2345,11 +2373,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hasSecondary: hasSecondary
         )
 
+        // macOS 26's status-item replicant machinery re-snapshots the whole
+        // button content whenever the item looks mutated; assigning the same
+        // length again re-enters that loop for no visual change.
+        let requestedLength: CGFloat
         if isSingleLineAmountMode(
             effectiveSnapshot: effectiveSnapshot,
             geometry: geometry
         ) {
-            statusItem.length = MenuBarLayout.singleLineStatusItemLength(
+            requestedLength = MenuBarLayout.singleLineStatusItemLength(
                 primaryText: effectiveSnapshot.menuBarPrimary,
                 showIcon: settings.showIcon,
                 isBalance: effectiveSnapshot.kind == .balance,
@@ -2357,11 +2389,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 widthAdjustment: settings.widthAdjustment
             )
         } else {
-            statusItem.length = MenuBarLayout.statusItemLength(
+            requestedLength = MenuBarLayout.statusItemLength(
                 contentWidth: geometry.contentWidth,
                 horizontalPadding: settings.horizontalPadding,
                 widthAdjustment: settings.widthAdjustment
             )
+        }
+        if statusItem.length != requestedLength {
+            SwitchLog.write(
+                "status item length changed; old=\(statusItem.length); new=\(requestedLength)",
+                level: .debug,
+                category: "ui.status-item"
+            )
+            statusItem.length = requestedLength
         }
         button.layoutSubtreeIfNeeded()
 
@@ -2413,27 +2453,40 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             effectiveSnapshot: effectiveSnapshot,
             officialTextYOffset: officialTextYOffset
         )
+        if usesBitmapContent {
+            // Frames are final here; snapshot the offscreen tree into the
+            // button image so the real button carries no live view hierarchy.
+            refreshMenuBarContentBitmap()
+        }
         logMenuBarIconFrames(
             snapshot: effectiveSnapshot,
             button: button,
             hasSecondary: hasSecondary,
             iconYOffset: iconYOffset
         )
-        button.toolTip = effectiveSnapshot.menuBarToolTip
+        if button.toolTip != effectiveSnapshot.menuBarToolTip {
+            button.toolTip = effectiveSnapshot.menuBarToolTip
+        }
         button.isHidden = false
         button.isEnabled = true
         applyMenuBarIconDisplayPolicy()
     }
 
     private func applyMenuBarFonts() {
-        menuBarPrimaryLabel.font = MenuBarLayout.primaryFont(
-            size: settings.fontSize
-        )
-        menuBarSecondaryLabel.font = MenuBarLayout.secondaryFont(
+        // Reassigning fonts (even equal ones) dirties the text fields and feeds
+        // macOS 26's status-item replicant re-snapshot loop, so guard first.
+        let primaryFont = MenuBarLayout.primaryFont(size: settings.fontSize)
+        if menuBarPrimaryLabel.font != primaryFont {
+            menuBarPrimaryLabel.font = primaryFont
+        }
+        let secondaryFont = MenuBarLayout.secondaryFont(
             size: CGFloat(
                 AppPreferences.secondaryMenuBarFontSize(for: Double(settings.fontSize))
             )
         )
+        if menuBarSecondaryLabel.font != secondaryFont {
+            menuBarSecondaryLabel.font = secondaryFont
+        }
     }
 
     private func applyMenuBarContentFrames(
@@ -2511,7 +2564,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             ).text
             menuBarTextStack.frame = zeroUserTextFrame
             let horizontalCorrection: CGFloat
-            if let primaryInk = menuBarPrimaryInkBounds(in: button) {
+            if let primaryInk = menuBarPrimaryInkBounds(in: menuBarContentCoordinateSpace) {
                 let targetX = MenuBarLayout.singleLinePrimaryAnchorX(
                     backgroundBounds: backgroundBounds,
                     primaryText: effectiveSnapshot.menuBarPrimary,
@@ -2532,7 +2585,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // the button center. The user amount offset is the target visual
             // displacement, while official/balance baseline constants are
             // absorbed by this measured correction.
-            if let primaryInk = menuBarPrimaryInkBounds(in: button) {
+            if let primaryInk = menuBarPrimaryInkBounds(in: menuBarContentCoordinateSpace) {
                 let automaticTextYOffset = MenuBarLayout.singleLinePrimaryAutomaticYOffset(
                     fontSize: settings.fontSize
                 )
@@ -2579,8 +2632,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func menuBarPrimaryInkBounds(in button: NSStatusBarButton?) -> NSRect? {
-        guard let button,
+    /// The view whose coordinate space the content frames live in: the status
+    /// button in the classic path, the offscreen render container in bitmap
+    /// mode. Both share a (0,0)-origin bounds of the same size.
+    private var menuBarContentCoordinateSpace: NSView? {
+        if usesBitmapContent {
+            return bitmapRenderContainer.bounds.width > 0 ? bitmapRenderContainer : nil
+        }
+        return statusItem?.button
+    }
+
+    private func menuBarPrimaryInkBounds(in coordinateSpace: NSView?) -> NSRect? {
+        guard let coordinateSpace,
               settings.showAmount,
               let geometry = lastMenuBarGeometry,
               menuBarPrimaryLabel.frame.width > 0,
@@ -2594,7 +2657,105 @@ final class StatusItemController: NSObject, NSMenuDelegate {
               ) else {
             return nil
         }
-        return menuBarPrimaryLabel.convert(localBounds, to: button)
+        return menuBarPrimaryLabel.convert(localBounds, to: coordinateSpace)
+    }
+
+    /// Renders the offscreen content tree into a template bitmap and displays
+    /// it as the button image. Template masking makes the bitmap monochrome
+    /// and appearance-adaptive; only the alpha shape carries the visuals.
+    private func refreshMenuBarContentBitmap() {
+        guard usesBitmapContent,
+              let button = statusItem?.button,
+              bitmapRenderContainer.bounds.width > 0,
+              bitmapRenderContainer.bounds.height > 0 else {
+            return
+        }
+        bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
+        let scale = button.window?.backingScaleFactor ?? 2
+        guard let full = Self.renderViewToTemplateImage(bitmapRenderContainer, scale: scale) else {
+            return
+        }
+        button.image = full
+        // Cache the icon-free variant so animation frames can composite the
+        // rotated icon over static text instead of re-rendering the tree.
+        let iconWasHidden = menuBarIconSlot.isHidden
+        menuBarIconSlot.isHidden = true
+        cachedMenuBarTextBitmap = Self.renderViewToTemplateImage(bitmapRenderContainer, scale: scale)
+        menuBarIconSlot.isHidden = iconWasHidden
+    }
+
+    /// Composites one animation frame over the cached text bitmap. The
+    /// rotation frames and the text bitmap are all template content, so the
+    /// composed image is again a monochrome appearance-adaptive mask.
+    private func composeMenuBarContentBitmap(iconImage: NSImage?) {
+        guard usesBitmapContent,
+              let button = statusItem?.button,
+              let textBitmap = cachedMenuBarTextBitmap else {
+            return
+        }
+        let bounds = bitmapRenderContainer.bounds
+        let composed = NSImage(size: bounds.size)
+        composed.isTemplate = true
+        composed.lockFocus()
+        textBitmap.draw(in: NSRect(origin: .zero, size: bounds.size))
+        if let iconImage, !menuBarIconSlot.isHidden {
+            // menuBarIconView.frame is in its superview's (iconSlot) space;
+            // resolve the view's actual position inside the render container
+            // before drawing, and center-fit like NSImageView's
+            // scaleProportionallyDown so the rotating frame lands exactly
+            // where the static render placed the icon.
+            let viewBoundsInContainer = menuBarIconView.convert(
+                menuBarIconView.bounds,
+                to: bitmapRenderContainer
+            )
+            let iconSize = iconImage.size
+            if iconSize.width > 0, iconSize.height > 0,
+               viewBoundsInContainer.width > 0, viewBoundsInContainer.height > 0 {
+                let scaleFactor = min(
+                    viewBoundsInContainer.width / iconSize.width,
+                    viewBoundsInContainer.height / iconSize.height,
+                    1
+                )
+                let fittedSize = NSSize(
+                    width: iconSize.width * scaleFactor,
+                    height: iconSize.height * scaleFactor
+                )
+                iconImage.draw(in: NSRect(
+                    x: viewBoundsInContainer.midX - fittedSize.width / 2,
+                    y: viewBoundsInContainer.midY - fittedSize.height / 2,
+                    width: fittedSize.width,
+                    height: fittedSize.height
+                ))
+            }
+        }
+        composed.unlockFocus()
+        button.image = composed
+    }
+
+    private static func renderViewToTemplateImage(_ view: NSView, scale: CGFloat) -> NSImage? {
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        let safeScale = scale > 0 ? scale : 2
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: max(1, Int((bounds.width * safeScale).rounded())),
+            pixelsHigh: max(1, Int((bounds.height * safeScale).rounded())),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return nil
+        }
+        rep.size = bounds.size
+        view.cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        image.isTemplate = true
+        return image
     }
 
     private func menuBarSnapshot(for snapshot: Snapshot) -> Snapshot {

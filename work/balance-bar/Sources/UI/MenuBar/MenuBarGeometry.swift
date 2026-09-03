@@ -179,7 +179,12 @@ enum MenuBarLayout {
                 range: moonRange
             )
         }
-        label.attributedStringValue = attributed
+        // Assigning a fresh attributed string with equal content still dirties
+        // the label and re-enters macOS 26's status-item replicant snapshot
+        // loop, so skip the assignment when nothing visibly changed.
+        if label.attributedStringValue != attributed {
+            label.attributedStringValue = attributed
+        }
     }
 
     static let iconSlotWidth: CGFloat = 18
