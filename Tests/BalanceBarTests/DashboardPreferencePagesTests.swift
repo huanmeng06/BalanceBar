@@ -2056,9 +2056,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     $0.identifier?.rawValue == DashboardMenuBarPage.runtimeOnlyWarningSettingsButtonIdentifier
                 }
         )
-        let iconDisplayModeRow = try XCTUnwrap(
+        let iconDisplayModeControl = try XCTUnwrap(
             descendant(withIdentifier: AppPreferences.menuBarIconDisplayModeKey, in: page)
         )
+        let iconDisplayModeRow = try XCTUnwrap(iconDisplayModeControl.superview)
         let scrollView = try XCTUnwrap(
             descendants(of: page).compactMap { $0 as? NSScrollView }.first
         )
@@ -2090,6 +2091,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
             targetFrame.maxY,
             scrollView.contentView.bounds.maxY - 20,
             "the runtime warning action should leave space below the target row"
+        )
+        let highlightAnimation = try XCTUnwrap(
+            iconDisplayModeRow.layer?.animation(
+                forKey: DashboardMenuBarPage.iconDisplayModeRevealHighlightAnimationKey
+            ) as? CAKeyframeAnimation
+        )
+        XCTAssertEqual(highlightAnimation.values?.count, 3)
+        XCTAssertEqual(
+            highlightAnimation.duration,
+            DashboardMenuBarPage.iconDisplayModeRevealHighlightDuration,
+            accuracy: 0.001
         )
         XCTAssertEqual(systemSettingsOpenCount, 0)
     }

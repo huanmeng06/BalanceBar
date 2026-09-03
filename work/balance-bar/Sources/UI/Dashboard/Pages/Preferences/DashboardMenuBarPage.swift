@@ -364,6 +364,9 @@ final class DashboardMenuBarPage {
     static let runtimeWarningIdentifier = runtimeOnlyWarningIdentifier
     static let runtimeWarningRowIdentifier = runtimeOnlyWarningRowIdentifier
     static let runtimeWarningSettingsButtonIdentifier = runtimeOnlyWarningSettingsButtonIdentifier
+    static let iconDisplayModeRevealHighlightAnimationKey =
+        "menuBarIconDisplayModeRevealHighlight"
+    static let iconDisplayModeRevealHighlightDuration: TimeInterval = 0.72
     static let systemMenuBarSettingsURL = URL(
         string: "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension"
     )!
@@ -526,10 +529,12 @@ final class DashboardMenuBarPage {
     private let pageActionTarget = DashboardMenuBarPageActionTarget()
 
     deinit {
+        removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
     }
 
     func teardown() {
+        removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
         pageActionTarget.onRevealIconDisplayModeSetting = nil
     }
@@ -1489,6 +1494,32 @@ final class DashboardMenuBarPage {
         let verticalMargin = max(0, (viewportHeight - destination.bounds.height) / 2)
         let revealRect = destination.bounds.insetBy(dx: 0, dy: -verticalMargin)
         destination.scrollToVisible(revealRect)
+        flashIconDisplayModeRevealDestination(destination)
+    }
+
+    private func flashIconDisplayModeRevealDestination(_ destination: NSView) {
+        destination.wantsLayer = true
+        guard let layer = destination.layer else { return }
+        let animationKey = Self.iconDisplayModeRevealHighlightAnimationKey
+        layer.removeAnimation(forKey: animationKey)
+
+        let baseColor = layer.backgroundColor ?? NSColor.clear.cgColor
+        let highlightColor = NSColor.controlAccentColor
+            .withAlphaComponent(0.24)
+            .cgColor
+        let animation = CAKeyframeAnimation(keyPath: "backgroundColor")
+        animation.values = [baseColor, highlightColor, baseColor]
+        animation.keyTimes = [0, 0.25, 1]
+        animation.duration = Self.iconDisplayModeRevealHighlightDuration
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.backgroundColor = baseColor
+        layer.add(animation, forKey: animationKey)
+    }
+
+    private func removeIconDisplayModeRevealHighlight() {
+        let animationKey = Self.iconDisplayModeRevealHighlightAnimationKey
+        iconDisplayModeRow?.layer?.removeAnimation(forKey: animationKey)
+        taskStatusIconRow?.layer?.removeAnimation(forKey: animationKey)
     }
 
     private func updateQuotaVisibility(
