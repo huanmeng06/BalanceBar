@@ -344,6 +344,7 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "Adjust spacing from other menu bar icons: -10.0 pt narrower to +10.0 pt wider; default 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Enter an amount of at least 0.01 with up to two decimal places";
 "dashboard.menu.page.balance_display" = "Balance Display";
+"dashboard.menu.page.progress_bar" = "Progress Bar";
 "dashboard.menu.page.luna_reserve_display_mode" = "🌙 %1$@ Display";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Choose when %1$@ is shown in the menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Do not show";

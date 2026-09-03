@@ -344,6 +344,7 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "Настройка расстояния до других значков строки меню: от уменьшения на 10,0 pt до увеличения на 10,0 pt; по умолчанию — 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Введите значение не менее 0,01 с точностью до двух знаков после запятой";
 "dashboard.menu.page.balance_display" = "Отображение баланса";
+"dashboard.menu.page.progress_bar" = "Индикатор выполнения";
 "dashboard.menu.page.luna_reserve_display_mode" = "Отображение 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Выберите, когда показывать 🌙 %1$@ в меню";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Не показывать";
