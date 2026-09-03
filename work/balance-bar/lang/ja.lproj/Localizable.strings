@@ -164,6 +164,9 @@
 "dashboard.advanced.page.reload" = "再読み込み";
 "dashboard.advanced.page.show_in_finder" = "Finder に表示";
 "dashboard.advanced.page.diagnostics" = "診断";
+"dashboard.advanced.page.rendering" = "レンダリング";
+"dashboard.advanced.page.traditional_menu_bar_rendering" = "従来のメニューバーレンダリング";
+"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "有効にすると従来のレンダリングを使用します。表示品質はわずかに向上する場合がありますが、システムリソースの使用量が増える可能性があります。";
 "dashboard.advanced.page.debug_log" = "デバッグログ";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "実行状態とエラーを記録します";
 "dashboard.advanced.page.enter_port_manually" = "ポートを手動で入力";

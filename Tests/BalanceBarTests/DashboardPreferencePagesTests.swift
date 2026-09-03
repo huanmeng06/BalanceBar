@@ -4168,6 +4168,64 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
+    func testTraditionalRenderingSettingIsLocalizedDefaultsOffAndPersistsInverseBitmapValue() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+
+        for language in AppLanguage.allCases where language != .system {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.Rendering.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+
+            let preferences = AppPreferences(defaults: defaults)
+            let relay = DashboardPreferencePageRelay()
+            relay.onToggle = { identifier, enabled in
+                guard identifier == AppPreferences.menuBarTraditionalRenderingKey else { return }
+                preferences.menuBarTraditionalRendering = enabled
+            }
+            let page = DashboardAdvancedPage().make(.init(
+                preferences: preferences,
+                mode: OpenCodexDashboardMode(automaticDetection: true, manualPort: nil),
+                currentResolution: OpenCodexDashboardResolver.resolve(
+                    manualPort: nil,
+                    runtimeCandidate: nil
+                ),
+                runtimeCandidate: nil,
+                relay: relay,
+                logViewer: NSView(),
+                onModeChanged: { _ in },
+                onClamp: {}
+            ))
+
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            XCTAssertTrue(labels.contains {
+                $0.stringValue == tr(.keyDashboardAdvancedPageRendering, language: language)
+            })
+            XCTAssertTrue(labels.contains {
+                $0.stringValue == tr(.keyDashboardAdvancedPageTraditionalMenuBarRendering, language: language)
+            })
+            XCTAssertTrue(labels.contains {
+                $0.stringValue == tr(.keyDashboardAdvancedPageTraditionalMenuBarRenderingDescription, language: language)
+            })
+
+            let renderingSwitch = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSSwitch }
+                    .first { $0.identifier?.rawValue == AppPreferences.menuBarTraditionalRenderingKey }
+            )
+            XCTAssertEqual(renderingSwitch.state, .off)
+            XCTAssertTrue(preferences.menuBarBitmapContent)
+            XCTAssertFalse(preferences.menuBarTraditionalRendering)
+
+            renderingSwitch.state = .on
+            relay.toggle(renderingSwitch)
+            XCTAssertTrue(preferences.menuBarTraditionalRendering)
+            XCTAssertFalse(preferences.menuBarBitmapContent)
+        }
+    }
+
     func testOpenCodexSettingsWordingAndControlsAcrossLanguagesAndModes() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

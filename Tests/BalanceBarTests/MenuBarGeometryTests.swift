@@ -1543,6 +1543,138 @@ final class MenuBarGeometryTests: XCTestCase {
         }
     }
 
+    func testBitmapRenderRootMatchesClassicFlippedCoordinateSpace() {
+        let button = NSStatusBarButton(
+            frame: NSRect(x: 0, y: 0, width: 120, height: 24)
+        )
+        let bitmapRoot = MenuBarBitmapRenderView(
+            frame: NSRect(x: 0, y: 0, width: 120, height: 24)
+        )
+
+        XCTAssertTrue(button.isFlipped)
+        XCTAssertTrue(bitmapRoot.isFlipped)
+        XCTAssertEqual(bitmapRoot.isFlipped, button.isFlipped)
+    }
+
+    func testBitmapImagePlacementUsesActualCellImageRectAndRetinaCanvas() throws {
+        let button = NSStatusBarButton(
+            frame: NSRect(x: 0, y: 0, width: 100, height: 24)
+        )
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
+        button.image = NSImage(size: button.bounds.size)
+
+        let placement = MenuBarBitmapImageLayout.placement(
+            for: button,
+            canonicalBounds: button.bounds
+        )
+        let actualImageRect = try XCTUnwrap(
+            button.cell?.imageRect(forBounds: button.bounds)
+        )
+
+        XCTAssertEqual(placement.imageDestinationRect, actualImageRect)
+        XCTAssertEqual(actualImageRect, button.bounds)
+        XCTAssertTrue(placement.isIdentity)
+        XCTAssertEqual(placement.canvasSize, button.bounds.size)
+
+        let retinaPixels = MenuBarBitmapImageLayout.pixelDimensions(
+            for: NSSize(width: 50.5, height: 12),
+            scale: 2
+        )
+        XCTAssertEqual(retinaPixels.width, 101)
+        XCTAssertEqual(retinaPixels.height, 24)
+
+        // Exercise the non-identity mapping explicitly as a contract for a
+        // future cell/image inset: canonical points move by the exact
+        // destination-origin delta, with no bitmap-specific Y constant.
+        let insetPlacement = MenuBarBitmapImagePlacement(
+            canonicalBounds: button.bounds,
+            imageDestinationRect: NSRect(
+                x: 3,
+                y: 2,
+                width: button.bounds.width,
+                height: button.bounds.height
+            )
+        )
+        let canonicalIcon = NSRect(x: 10, y: 4, width: 18, height: 18)
+        XCTAssertEqual(
+            insetPlacement.imageRect(forCanonicalRect: canonicalIcon),
+            NSRect(x: 7, y: 2, width: 18, height: 18)
+        )
+    }
+
+    func testClassicAndBitmapMenuBarCoordinateSpacesPreserveInkAndIconY() throws {
+        let scenarios: [
+            (name: String, primary: String, secondary: String?, isBalance: Bool)
+        ] = [
+            ("official-single-line", "48%", nil, false),
+            ("third-party-single-line", "USD 123,456.78", nil, true),
+            ("official-two-line", "48%", "Reset in 2h", false)
+        ]
+        let userOffsets: [CGFloat] = [0, 2, -2]
+        let buttonSize = NSSize(width: 180, height: 24)
+
+        for scenario in scenarios {
+            for preset in MenuBarFontSizePreset.allCases {
+                for showIcon in [false, true] {
+                    for amountOffsetY in userOffsets {
+                        let classicRoot = NSStatusBarButton(
+                            frame: NSRect(origin: .zero, size: buttonSize)
+                        )
+                        let bitmapRoot = MenuBarBitmapRenderView(
+                            frame: NSRect(origin: .zero, size: buttonSize)
+                        )
+                        let classic = try renderMenuBarComponents(
+                            in: classicRoot,
+                            primaryText: scenario.primary,
+                            secondaryText: scenario.secondary,
+                            fontSize: CGFloat(preset.primarySize),
+                            showIcon: showIcon,
+                            isBalance: scenario.isBalance,
+                            amountOffsetY: amountOffsetY
+                        )
+                        let bitmap = try renderMenuBarComponents(
+                            in: bitmapRoot,
+                            primaryText: scenario.primary,
+                            secondaryText: scenario.secondary,
+                            fontSize: CGFloat(preset.primarySize),
+                            showIcon: showIcon,
+                            isBalance: scenario.isBalance,
+                            amountOffsetY: amountOffsetY
+                        )
+                        let context = "\(scenario.name)/\(preset.rawValue)/icon=\(showIcon)/offset=\(amountOffsetY)"
+
+                        XCTAssertEqual(
+                            classic.primaryInk.midY,
+                            bitmap.primaryInk.midY,
+                            accuracy: 0.25,
+                            "primary ink Y drifted in \(context)"
+                        )
+                        if showIcon {
+                            let classicIcon = try XCTUnwrap(classic.iconFrame)
+                            let bitmapIcon = try XCTUnwrap(bitmap.iconFrame)
+                            XCTAssertEqual(
+                                classicIcon.midY,
+                                bitmapIcon.midY,
+                                accuracy: 0.25,
+                                "icon Y drifted in \(context)"
+                            )
+                            XCTAssertEqual(
+                                classic.primaryInk.midY - classicIcon.midY,
+                                bitmap.primaryInk.midY - bitmapIcon.midY,
+                                accuracy: 0.25,
+                                "icon/text relative Y drifted in \(context)"
+                            )
+                        } else {
+                            XCTAssertNil(classic.iconFrame)
+                            XCTAssertNil(bitmap.iconFrame)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func testOfficialTwoLineGeometryDoesNotUseSingleLinePrimaryAnchor() {
         let primary = NSTextField(labelWithString: "87%")
         primary.font = MenuBarLayout.primaryFont(size: 13)
@@ -1609,6 +1741,143 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(state.advance(frameCount: 3), 0)
         XCTAssertEqual(state.advance(frameCount: 0), nil)
         XCTAssertEqual(state.frameIndex, 0)
+    }
+
+    private struct RenderedMenuBarComponents {
+        let primaryInk: NSRect
+        let iconFrame: NSRect?
+    }
+
+    private func renderMenuBarComponents(
+        in root: NSView,
+        primaryText: String,
+        secondaryText: String?,
+        fontSize: CGFloat,
+        showIcon: Bool,
+        isBalance: Bool,
+        amountOffsetY: CGFloat
+    ) throws -> RenderedMenuBarComponents {
+        let buttonSize = root.bounds.size
+        let content = MenuBarContentView()
+        let iconSlot = PassthroughView()
+        let iconView = PassthroughImageView()
+        let textStack = MenuBarTextView()
+        let primary = PassthroughTextField(labelWithString: primaryText)
+        let secondary = PassthroughTextField(labelWithString: secondaryText ?? "")
+        let hasSecondary = secondaryText != nil
+
+        primary.font = MenuBarLayout.primaryFont(size: fontSize)
+        MenuBarLayout.applyPrimaryText(primaryText, to: primary)
+        secondary.font = MenuBarLayout.secondaryFont(
+            size: CGFloat(AppPreferences.secondaryMenuBarFontSize(for: Double(fontSize)))
+        )
+        root.addSubview(content)
+        content.addSubview(iconSlot)
+        content.addSubview(textStack)
+        iconSlot.addSubview(iconView)
+        textStack.addSubview(primary)
+        textStack.addSubview(secondary)
+        textStack.wantsLayer = true
+
+        let geometry = MenuBarLayout.geometry(
+            primarySize: primary.intrinsicContentSize,
+            secondarySize: secondary.intrinsicContentSize,
+            showIcon: showIcon,
+            showAmount: true,
+            hasSecondary: hasSecondary,
+            isBalance: isBalance
+        )
+        let officialTextYOffset = isBalance
+            ? 0
+            : MenuBarLayout.officialTextYOffset(hasSecondary: hasSecondary)
+        let iconViewYOffset: CGFloat
+        if !isBalance, showIcon {
+            let apiGeometry = MenuBarLayout.geometry(
+                primarySize: primary.intrinsicContentSize,
+                secondarySize: secondary.intrinsicContentSize,
+                showIcon: true,
+                showAmount: true,
+                hasSecondary: false,
+                isBalance: true
+            )
+            iconViewYOffset = geometry.iconViewYOffset(
+                alignedTo: apiGeometry,
+                buttonHeight: buttonSize.height,
+                referenceIconViewYOffset: MenuBarLayout.singleLineIconYOffset
+            )
+        } else if isBalance, showIcon {
+            iconViewYOffset = MenuBarLayout.singleLineIconYOffset
+        } else {
+            iconViewYOffset = 0
+        }
+
+        let frames = MenuBarLayout.frames(
+            buttonSize: buttonSize,
+            geometry: geometry,
+            iconViewYOffset: iconViewYOffset,
+            textOffset: NSSize(width: 0, height: amountOffsetY + officialTextYOffset)
+        )
+        content.frame = frames.content
+        iconSlot.frame = frames.iconSlot
+        iconView.frame = frames.icon
+        textStack.frame = frames.text
+        iconSlot.isHidden = !showIcon
+        textStack.isHidden = false
+        textStack.layer?.setAffineTransform(.identity)
+        if isBalance, showIcon {
+            textStack.layer?.setAffineTransform(CGAffineTransform(
+                translationX: 0,
+                y: -MenuBarLayout.singleLineTextYOffset
+            ))
+        }
+
+        let isSingleLine = !hasSecondary
+        if isSingleLine {
+            let zeroUserTextFrame = MenuBarLayout.frames(
+                buttonSize: buttonSize,
+                geometry: geometry,
+                iconViewYOffset: iconViewYOffset,
+                textOffset: NSSize(width: 0, height: officialTextYOffset)
+            ).text
+            textStack.frame = zeroUserTextFrame
+            root.layoutSubtreeIfNeeded()
+            let zeroInk = try XCTUnwrap(
+                MenuBarLayout.appKitRenderedTextBounds(
+                    for: primary,
+                    frameSize: NSSize(
+                        width: primary.bounds.width,
+                        height: geometry.primaryHeight
+                    )
+                )
+            )
+            let zeroInkInRoot = primary.convert(zeroInk, to: root)
+            let correction = MenuBarLayout.primaryInkVerticalCorrection(
+                primaryInk: zeroInkInRoot,
+                coordinateBounds: root.bounds,
+                amountOffsetY: amountOffsetY,
+                automaticYOffset: MenuBarLayout.singleLinePrimaryAutomaticYOffset(
+                    fontSize: fontSize
+                )
+            )
+            textStack.frame = zeroUserTextFrame.offsetBy(dx: 0, dy: correction)
+        }
+
+        root.layoutSubtreeIfNeeded()
+        let localInk = try XCTUnwrap(
+            MenuBarLayout.appKitRenderedTextBounds(
+                for: primary,
+                frameSize: NSSize(
+                    width: primary.bounds.width,
+                    height: geometry.primaryHeight
+                )
+            )
+        )
+        return RenderedMenuBarComponents(
+            primaryInk: primary.convert(localInk, to: root),
+            iconFrame: showIcon
+                ? iconView.convert(iconView.bounds, to: root)
+                : nil
+        )
     }
 
     private func makeGeometry(

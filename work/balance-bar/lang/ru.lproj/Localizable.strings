@@ -164,6 +164,9 @@
 "dashboard.advanced.page.reload" = "Перезагрузить";
 "dashboard.advanced.page.show_in_finder" = "Показать в Finder";
 "dashboard.advanced.page.diagnostics" = "Диагностика";
+"dashboard.advanced.page.rendering" = "Рендеринг";
+"dashboard.advanced.page.traditional_menu_bar_rendering" = "Традиционный рендеринг строки меню";
+"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "При включении используется традиционный рендеринг. Качество отображения может немного улучшиться, но потребление системных ресурсов может возрасти.";
 "dashboard.advanced.page.debug_log" = "Журнал отладки";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Записывает состояние выполнения и ошибки";
 "dashboard.advanced.page.enter_port_manually" = "Ввести порт вручную";

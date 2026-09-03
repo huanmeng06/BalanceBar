@@ -164,6 +164,9 @@
 "dashboard.advanced.page.reload" = "重新加载";
 "dashboard.advanced.page.show_in_finder" = "在 Finder 中显示";
 "dashboard.advanced.page.diagnostics" = "诊断";
+"dashboard.advanced.page.rendering" = "渲染";
+"dashboard.advanced.page.traditional_menu_bar_rendering" = "传统菜单栏渲染";
+"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "开启后使用传统渲染，显示效果略有提升，但可能增加性能占用。";
 "dashboard.advanced.page.debug_log" = "调试日志";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "记录运行状态与错误";
 "dashboard.advanced.page.enter_port_manually" = "手动输入端口号";

@@ -5,10 +5,10 @@ import XCTest
 final class MenuBarAnimationTests: XCTestCase {
     func testCodexAnimationKeepsItsDiscreteFrameCountDurationAndOrder() {
         XCTAssertEqual(RotatingTemplateImageView.frameCount, 36)
-        XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.15, accuracy: 0.000_001)
+        XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.2, accuracy: 0.000_001)
         XCTAssertEqual(
             RotatingTemplateImageView.rotationFrameInterval,
-            1.15 / 36,
+            1.2 / 36,
             accuracy: 0.000_001
         )
 

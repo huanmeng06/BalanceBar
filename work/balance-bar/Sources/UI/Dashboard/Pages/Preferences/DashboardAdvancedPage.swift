@@ -120,6 +120,23 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         // not distribute the stale separator space into the first row.
         updateCardLayout()
 
+        let traditionalRenderingSwitch = DashboardSettingsComponents.makeSwitch(
+            identifier: AppPreferences.menuBarTraditionalRenderingKey,
+            isOn: input.preferences.menuBarTraditionalRendering,
+            target: input.relay,
+            action: #selector(DashboardPreferencePageRelay.toggle(_:))
+        )
+        let rendering = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyDashboardAdvancedPageRendering),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(.keyDashboardAdvancedPageTraditionalMenuBarRendering),
+                    subtitle: tr(.keyDashboardAdvancedPageTraditionalMenuBarRenderingDescription),
+                    control: traditionalRenderingSwitch
+                )
+            ]
+        )
+
         let refreshLog = NSButton(
             title: tr(.keyDashboardAdvancedPageReload),
             target: input.relay,
@@ -141,7 +158,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
             ),
             input.logViewer
         ])
-        return DashboardSettingsComponents.makeSettingsPage([openCodex, logs])
+        return DashboardSettingsComponents.makeSettingsPage([openCodex, rendering, logs])
     }
 
     func handleAutomaticDetection(_ enabled: Bool) {

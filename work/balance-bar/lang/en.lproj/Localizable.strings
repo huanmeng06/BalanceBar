@@ -164,6 +164,9 @@
 "dashboard.advanced.page.reload" = "Reload";
 "dashboard.advanced.page.show_in_finder" = "Show in Finder";
 "dashboard.advanced.page.diagnostics" = "Diagnostics";
+"dashboard.advanced.page.rendering" = "Rendering";
+"dashboard.advanced.page.traditional_menu_bar_rendering" = "Traditional Menu Bar Rendering";
+"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "Uses traditional rendering when enabled. Visual quality may improve slightly, but it may use more system resources.";
 "dashboard.advanced.page.debug_log" = "Debug Log";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Records runtime status and errors";
 "dashboard.advanced.page.enter_port_manually" = "Enter Port Manually";

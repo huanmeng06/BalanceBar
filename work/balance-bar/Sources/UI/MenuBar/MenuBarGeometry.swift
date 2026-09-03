@@ -121,6 +121,70 @@ enum MenuBarOffsetLayout {
     }
 }
 
+/// Describes how canonical menu-bar coordinates are placed into the image
+/// canvas supplied to an image-backed status button. `NSButtonCell` may center
+/// a scale-none image in a destination rect that is not identical to the
+/// button bounds, so bitmap content must be translated using that real rect.
+struct MenuBarBitmapImagePlacement: Equatable {
+    let canonicalBounds: NSRect
+    let imageDestinationRect: NSRect
+
+    var canvasSize: NSSize { canonicalBounds.size }
+
+    /// Translation from canonical button-space points to image-canvas points.
+    /// The final image is drawn by AppKit at `imageDestinationRect.origin`.
+    var canonicalToImageOffset: NSSize {
+        NSSize(
+            width: canonicalBounds.minX - imageDestinationRect.minX,
+            height: canonicalBounds.minY - imageDestinationRect.minY
+        )
+    }
+
+    var isIdentity: Bool {
+        imageDestinationRect.origin == canonicalBounds.origin
+            && imageDestinationRect.size == canonicalBounds.size
+    }
+
+    func imageRect(forCanonicalRect rect: NSRect) -> NSRect {
+        rect.offsetBy(
+            dx: canonicalToImageOffset.width,
+            dy: canonicalToImageOffset.height
+        )
+    }
+}
+
+enum MenuBarBitmapImageLayout {
+    static func pixelDimensions(
+        for pointSize: NSSize,
+        scale: CGFloat
+    ) -> (width: Int, height: Int) {
+        let safeScale = scale > 0 ? scale : 2
+        return (
+            width: max(1, Int((pointSize.width * safeScale).rounded())),
+            height: max(1, Int((pointSize.height * safeScale).rounded()))
+        )
+    }
+
+    /// Resolve the destination rect from a copied cell so probing it cannot
+    /// mutate the live button or trigger another status-item snapshot.
+    static func placement(
+        for button: NSStatusBarButton,
+        canonicalBounds: NSRect
+    ) -> MenuBarBitmapImagePlacement {
+        let destinationRect: NSRect
+        if let cell = button.cell?.copy() as? NSCell {
+            cell.image = NSImage(size: canonicalBounds.size)
+            destinationRect = cell.imageRect(forBounds: button.bounds)
+        } else {
+            destinationRect = button.bounds
+        }
+        return MenuBarBitmapImagePlacement(
+            canonicalBounds: canonicalBounds,
+            imageDestinationRect: destinationRect
+        )
+    }
+}
+
 enum MenuBarLayout {
     static let primaryFontPointSize: CGFloat = CGFloat(
         AppPreferences.menuBarFontSizeDefault
@@ -179,7 +243,12 @@ enum MenuBarLayout {
                 range: moonRange
             )
         }
-        label.attributedStringValue = attributed
+        // Assigning a fresh attributed string with equal content still dirties
+        // the label and re-enters macOS 26's status-item replicant snapshot
+        // loop, so skip the assignment when nothing visibly changed.
+        if label.attributedStringValue != attributed {
+            label.attributedStringValue = attributed
+        }
     }
 
     static let iconSlotWidth: CGFloat = 18
@@ -221,6 +290,22 @@ enum MenuBarLayout {
 
     static func officialTextYOffset(hasSecondary: Bool) -> CGFloat {
         hasSecondary ? officialSecondaryTextYOffset : officialAmountOnlyTextYOffset
+    }
+
+    /// Returns the frame-space correction needed to place measured primary
+    /// ink at its canonical visual Y. Callers must pass bounds from the same
+    /// flipped coordinate space that contains `primaryInk`.
+    static func primaryInkVerticalCorrection(
+        primaryInk: NSRect,
+        coordinateBounds: NSRect,
+        amountOffsetY: CGFloat,
+        automaticYOffset: CGFloat
+    ) -> CGFloat {
+        let targetY = coordinateBounds.midY + MenuBarOffsetLayout.yDelta(
+            visualY: amountOffsetY + automaticYOffset,
+            in: .flippedFrame
+        )
+        return targetY - primaryInk.midY
     }
 
     /// The large amount-only preset now needs two half-point AppKit optical

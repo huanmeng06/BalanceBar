@@ -16,6 +16,13 @@ final class MenuBarContentView: NSView {
     override var isFlipped: Bool { true }
 }
 
+/// Offscreen root for bitmap-backed status-item content. It must use the same
+/// top-origin coordinate semantics as the live status button; otherwise the
+/// shared menu-bar frames are interpreted upside down before rasterization.
+final class MenuBarBitmapRenderView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 final class MenuBarTextView: NSView {
     override var isFlipped: Bool { true }
 

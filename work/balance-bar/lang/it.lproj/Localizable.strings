@@ -164,6 +164,9 @@
 "dashboard.advanced.page.reload" = "Ricarica";
 "dashboard.advanced.page.show_in_finder" = "Mostra nel Finder";
 "dashboard.advanced.page.diagnostics" = "Diagnostica";
+"dashboard.advanced.page.rendering" = "Rendering";
+"dashboard.advanced.page.traditional_menu_bar_rendering" = "Rendering tradizionale della barra dei menu";
+"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "Quando è attivato, usa il rendering tradizionale. La qualità visiva può migliorare leggermente, ma il consumo di risorse di sistema potrebbe aumentare.";
 "dashboard.advanced.page.debug_log" = "Registro di debug";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Registra lo stato di esecuzione e gli errori";
 "dashboard.advanced.page.enter_port_manually" = "Inserisci la porta manualmente";
