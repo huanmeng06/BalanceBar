@@ -164,6 +164,9 @@
 "dashboard.advanced.page.reload" = "다시 불러오기";
 "dashboard.advanced.page.show_in_finder" = "Finder에서 보기";
 "dashboard.advanced.page.diagnostics" = "진단";
+"dashboard.advanced.page.rendering" = "렌더링";
+"dashboard.advanced.page.traditional_menu_bar_rendering" = "기존 메뉴 막대 렌더링";
+"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "활성화하면 기존 렌더링을 사용합니다. 표시 품질이 약간 향상될 수 있지만 시스템 리소스를 더 사용할 수 있습니다.";
 "dashboard.advanced.page.debug_log" = "디버그 로그";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "실행 중 상태와 오류 기록";
 "dashboard.advanced.page.enter_port_manually" = "포트를 수동으로 입력";

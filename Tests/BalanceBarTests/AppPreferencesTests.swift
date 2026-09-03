@@ -56,6 +56,34 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.sortProvidersAlphabetically)
     }
 
+    func testMenuBarRenderingDefaultsToBitmapAndTraditionalSwitchUsesInverseStorage() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertTrue(preferences.menuBarBitmapContent)
+        XCTAssertFalse(preferences.menuBarTraditionalRendering)
+        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarBitmapContentKey))
+
+        preferences.menuBarTraditionalRendering = true
+        XCTAssertTrue(preferences.menuBarTraditionalRendering)
+        XCTAssertFalse(preferences.menuBarBitmapContent)
+        XCTAssertEqual(
+            defaults.object(forKey: AppPreferences.menuBarBitmapContentKey) as? Bool,
+            false
+        )
+
+        preferences.menuBarTraditionalRendering = false
+        XCTAssertFalse(preferences.menuBarTraditionalRendering)
+        XCTAssertTrue(preferences.menuBarBitmapContent)
+        XCTAssertEqual(
+            defaults.object(forKey: AppPreferences.menuBarBitmapContentKey) as? Bool,
+            true
+        )
+
+        defaults.set(false, forKey: AppPreferences.menuBarBitmapContentKey)
+        XCTAssertTrue(preferences.menuBarTraditionalRendering)
+    }
+
     func testSilentLaunchDefaultsOffAndRoundTripsThroughUserDefaults() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

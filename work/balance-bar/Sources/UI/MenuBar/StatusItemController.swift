@@ -1493,6 +1493,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
         let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
+        let usesBitmapContent: Bool
 
         init(
             showIcon: Bool,
@@ -1512,7 +1513,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
             autoSwitchLunaReserve: Bool = false,
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
-            quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default
+            quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
+            usesBitmapContent: Bool = AppPreferences.menuBarBitmapContentDefault
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -1531,6 +1533,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.autoSwitchLunaReserve = autoSwitchLunaReserve
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
+            self.usesBitmapContent = usesBitmapContent
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -1628,12 +1631,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
     private let menuBarContentStack = MenuBarContentView()
-    /// Experimental single-bitmap content mode (#284 option 3): the content
-    /// view tree lives offscreen as a layout/render engine and the button
-    /// displays one template bitmap, so macOS 26's replicant machinery has no
-    /// custom view hierarchy to re-snapshot. Opt-in via
-    /// `defaults write <domain> menuBarBitmapContent -bool YES` + relaunch.
-    private let usesBitmapContent = UserDefaults.standard.object(forKey: "menuBarBitmapContent") as? Bool ?? false
+    /// The bitmap-backed content mode keeps the content view tree offscreen as
+    /// a layout/render engine while the button displays one template bitmap,
+    /// so macOS 26's replicant machinery has no custom view hierarchy to
+    /// re-snapshot. It is the default; the Advanced > Rendering switch can
+    /// opt into the traditional live-view path.
+    private var usesBitmapContent = false
     private let bitmapRenderContainer = MenuBarBitmapRenderView(
         frame: NSRect(x: 0, y: 0, width: 56, height: 22)
     )
@@ -1771,6 +1774,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lifecycleGeneration += 1
         let isNewStatusItem = statusItem == nil
         if isNewStatusItem {
+            usesBitmapContent = settings.usesBitmapContent
             menuBarIconDisplayStateMachine.reset()
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
@@ -1829,12 +1833,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput: MenuInput,
         settings: MenuBarSettings
     ) {
+        let bitmapContentModeChanged = usesBitmapContent != settings.usesBitmapContent
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
         self.settings = settings
+        if bitmapContentModeChanged {
+            usesBitmapContent = settings.usesBitmapContent
+            configureMenuBarContentPresentation()
+        }
         if iconDisplayModeChanged {
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
@@ -2049,14 +2058,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
         configureMenuBarContentStackIfNeeded()
-        if usesBitmapContent {
-            bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
-            bitmapRenderContainer.addSubview(menuBarContentStack)
-            button.imagePosition = .imageOnly
-            button.imageScaling = .scaleNone
-        } else {
-            button.addSubview(menuBarContentStack)
-        }
+        configureMenuBarContentPresentation()
         layoutStatusItem(for: snapshot)
         SwitchLog.write(
             "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
@@ -2309,6 +2311,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarContentStack.addSubview(menuBarIconSlot)
         menuBarContentStack.addSubview(menuBarTextStack)
         menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
+    }
+
+    /// Switches the live content tree between the classic button hierarchy and
+    /// the offscreen bitmap root. The same method is used at initial setup and
+    /// when the Advanced settings switch changes, so both paths clean up the
+    /// previous attachment before laying out the new coordinate space.
+    private func configureMenuBarContentPresentation() {
+        guard let button = statusItem?.button else { return }
+        menuBarContentStack.removeFromSuperview()
+        cachedMenuBarTextBitmap = nil
+        menuBarBitmapImagePlacement = nil
+        button.image = Self.placeholderButtonImage
+
+        if usesBitmapContent {
+            bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
+            bitmapRenderContainer.addSubview(menuBarContentStack)
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleNone
+        } else {
+            button.addSubview(menuBarContentStack)
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
+        }
     }
 
     private func logMenuBarIconFrames(
