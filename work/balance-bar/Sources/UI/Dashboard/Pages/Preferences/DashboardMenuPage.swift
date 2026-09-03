@@ -161,12 +161,21 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             tr(.keyDashboardMenuPageBalanceDisplay),
             rows: [
                 lunaReserveDisplayModeRow,
-                lunaReserveHideExhaustedQuotaRow,
-                DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
-                    subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
-                    control: balanceDisplayThreshold
-                ),
+                lunaReserveHideExhaustedQuotaRow
+            ],
+            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                self?.balanceDisplayRowsStack = rowsStack
+                self?.balanceDisplayCardHeightConstraint = cardHeightConstraint
+                self?.balanceDisplaySeparators = separators
+                self?.updateLunaReserveDisplayModeVisibility(
+                    input.preferences.menuLunaReserveDisplayMode
+                )
+            }
+        )
+
+        let progressBar = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyDashboardMenuPageProgressBar),
+            rows: [
                 DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuPageProgressColorRanges),
                     subtitle: tr(.keyDashboardMenuPageProgressColorRangesDescription),
@@ -181,16 +190,13 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                     subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
                     control: colorControls,
                     controlWidthConstrainedToRow: true
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
+                    subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
+                    control: balanceDisplayThreshold
                 )
-            ],
-            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-                self?.balanceDisplayRowsStack = rowsStack
-                self?.balanceDisplayCardHeightConstraint = cardHeightConstraint
-                self?.balanceDisplaySeparators = separators
-                self?.updateLunaReserveDisplayModeVisibility(
-                    input.preferences.menuLunaReserveDisplayMode
-                )
-            }
+            ]
         )
 
         let quickSwitch = DashboardSettingsComponents.makeSwitch(
@@ -308,7 +314,13 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 self?.updateStatusLinksLayout()
             }
         )
-        return DashboardSettingsComponents.makeSettingsPage([balanceDisplay, items, quickLinks, statusLinks])
+        return DashboardSettingsComponents.makeSettingsPage([
+            balanceDisplay,
+            progressBar,
+            items,
+            quickLinks,
+            statusLinks
+        ])
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -442,12 +454,10 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         let shouldShowHideOption = mode != .disabled
         lunaReserveHideExhaustedQuotaRow?.isHidden = !shouldShowHideOption
         lunaReserveHideExhaustedQuotaSwitch?.isEnabled = shouldShowHideOption
-        if balanceDisplaySeparators.count > 1 {
-            // When the dependent switch is hidden, keep the separator before
-            // the existing threshold row so the two visible settings remain
-            // visually grouped.
-            balanceDisplaySeparators[0].isHidden = !shouldShowHideOption
-            balanceDisplaySeparators[1].isHidden = false
+        if let separator = balanceDisplaySeparators.first {
+            // When the dependent switch is hidden, collapse the separator
+            // between the two remaining balance-display rows.
+            separator.isHidden = !shouldShowHideOption
         }
         updateBalanceDisplayLayout()
     }

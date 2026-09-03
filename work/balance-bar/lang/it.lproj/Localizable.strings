@@ -344,6 +344,7 @@
 "dashboard.menu.bar.page.adjusts_menu_bar_width_from_10_0_pt_narrow_to_10_0_pt_wide_default_0_pt" = "Regola la spaziatura dalle altre icone della barra dei menu: da -10,0 pt più stretta a +10,0 pt più larga; valore predefinito: 0 pt";
 "dashboard.menu.page.enter_an_amount_of_at_least_0_01_with_up_to_two_decimal_places" = "Inserisci un valore di almeno 0,01 con un massimo di due cifre decimali";
 "dashboard.menu.page.balance_display" = "Visualizzazione del saldo";
+"dashboard.menu.page.progress_bar" = "Barra di avanzamento";
 "dashboard.menu.page.luna_reserve_display_mode" = "Visualizzazione di 🌙 %1$@";
 "dashboard.menu.page.luna_reserve_display_mode_description" = "Scegli quando mostrare 🌙 %1$@ nel menu";
 "dashboard.menu.page.luna_reserve_display_mode_disabled" = "Non mostrare";

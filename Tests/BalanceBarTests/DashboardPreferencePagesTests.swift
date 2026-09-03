@@ -1020,7 +1020,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         }
     }
 
-    func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() {
+    func testBalanceDisplayThresholdRowUsesSelectedCopyAndPersistsValue() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -1047,11 +1047,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
         XCTAssertEqual(labels.first { $0.stringValue == "余额显示" }?.stringValue, "余额显示")
+        XCTAssertEqual(labels.first { $0.stringValue == "进度条" }?.stringValue, "进度条")
         XCTAssertEqual(labels.first { $0.stringValue == "低余额警示阈值" }?.stringValue, "低余额警示阈值")
         XCTAssertEqual(
             labels.first { $0.stringValue == "充值后若余额仍低于此金额，进度条继续显示为红色" }?.stringValue,
             "充值后若余额仍低于此金额，进度条继续显示为红色"
         )
+
+        let balanceDisplaySection = try XCTUnwrap(
+            settingsSection(withTitle: tr(.keyDashboardMenuPageBalanceDisplay), in: page)
+        )
+        let progressBarSection = try XCTUnwrap(
+            settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
+        )
+        let balanceDisplayRows = settingsRows(in: balanceDisplaySection)
+        let progressBarRows = settingsRows(in: progressBarSection)
+        XCTAssertEqual(balanceDisplayRows.count, 2)
+        XCTAssertEqual(progressBarRows.count, 3)
+        let sectionTitles = labels.map(\.stringValue)
+        let balanceDisplayIndex = try XCTUnwrap(
+            sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageBalanceDisplay))
+        )
+        let progressBarIndex = try XCTUnwrap(
+            sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageProgressBar))
+        )
+        let menuBehaviorIndex = try XCTUnwrap(
+            sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageMenuBehavior))
+        )
+        XCTAssertLessThan(balanceDisplayIndex, progressBarIndex)
+        XCTAssertLessThan(progressBarIndex, menuBehaviorIndex)
 
         guard let field = descendants(of: page)
             .compactMap({ $0 as? NSTextField })
@@ -1068,6 +1092,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
             })?.superview else {
             return XCTFail("Expected both balance display and dropdown-menu rows")
         }
+        XCTAssertTrue(progressBarRows[2] === thresholdRow)
+        XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
         XCTAssertEqual(
             equalHeightConstraint(in: thresholdRow),
             equalHeightConstraint(in: quickSwitchRow),
@@ -1093,6 +1119,189 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(changedValues, [0.25])
         XCTAssertEqual(field.stringValue, "0.25")
+    }
+
+    func testProgressBarSectionLocalizesRowsAndPersistsControlsAcrossSupportedLanguages() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        let expectedSectionTitles: [AppLanguage: String] = [
+            .simplifiedChinese: "进度条",
+            .traditionalChineseTaiwan: "進度條",
+            .traditionalChineseHongKong: "進度條",
+            .english: "Progress Bar",
+            .japanese: "進捗バー",
+            .korean: "진행률 막대",
+            .spanish: "Barra de progreso",
+            .german: "Fortschrittsbalken",
+            .french: "Barre de progression",
+            .portuguese: "Barra de progresso",
+            .russian: "Индикатор выполнения",
+            .italian: "Barra di avanzamento"
+        ]
+
+        for language in AppLanguage.allCases where language != .system {
+            AppLanguage.selected = language
+            let suiteName = "DashboardPreferencePagesTests.ProgressBarSection.\(language.rawValue).\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            let preferences = AppPreferences(defaults: defaults)
+            var thresholdChanges: [Double] = []
+            var colorChanges: [QuotaProgressColorConfiguration] = []
+            let pageController = DashboardMenuPage()
+            let page = pageController.make(.init(
+                preferences: preferences,
+                relay: DashboardPreferencePageRelay(),
+                makeStatusLinksEditor: {
+                    StatusLinksEditorHostingView(links: [], onChange: { _, _, _ in }, onAdd: { _ in }, onRemove: { _ in }, onReset: {})
+                },
+                onBalanceDisplayThresholdChanged: { value in
+                    thresholdChanges.append(value)
+                    preferences.balanceDisplayThreshold = value
+                },
+                onQuotaProgressColorConfigurationChanged: { configuration in
+                    colorChanges.append(configuration)
+                    preferences.quotaProgressColorConfiguration = configuration
+                }
+            ))
+            defer {
+                pageController.teardown()
+                defaults.removePersistentDomain(forName: suiteName)
+            }
+
+            let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+            let labelStrings = labels.map(\.stringValue)
+            XCTAssertTrue(
+                labelStrings.contains(expectedSectionTitles[language]!),
+                "localized progress-bar section title for \(language)"
+            )
+            for key in [
+                LocalizationKey.keyDashboardMenuPageProgressBar,
+                .keyDashboardMenuPageLowBalanceDisplayThreshold,
+                .keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount,
+                .keyDashboardMenuPageProgressColorRanges,
+                .keyDashboardMenuPageProgressColorRangesDescription,
+                .keyDashboardMenuPageDisplayedColors,
+                .keyDashboardMenuPageDisplayedColorsDescription
+            ] {
+                XCTAssertFalse(
+                    tr(key, language: language).hasPrefix("⟦"),
+                    "localized progress-bar copy exists for \(language): \(key.rawValue)"
+                )
+            }
+
+            let balanceDisplaySection = try XCTUnwrap(
+                settingsSection(withTitle: tr(.keyDashboardMenuPageBalanceDisplay, language: language), in: page)
+            )
+            let progressBarSection = try XCTUnwrap(
+                settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar, language: language), in: page)
+            )
+            let balanceDisplayRows = settingsRows(in: balanceDisplaySection)
+            let progressBarRows = settingsRows(in: progressBarSection)
+            XCTAssertEqual(balanceDisplayRows.count, 2, "Balance Display row count for \(language)")
+            XCTAssertEqual(progressBarRows.count, 3, "Progress Bar row count for \(language)")
+
+            let expectedRows = [
+                (
+                    tr(.keyDashboardMenuPageProgressColorRanges, language: language),
+                    tr(.keyDashboardMenuPageProgressColorRangesDescription, language: language)
+                ),
+                (
+                    tr(.keyDashboardMenuPageDisplayedColors, language: language),
+                    tr(.keyDashboardMenuPageDisplayedColorsDescription, language: language)
+                ),
+                (
+                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold, language: language),
+                    tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount, language: language)
+                )
+            ]
+            for (row, expected) in zip(progressBarRows, expectedRows) {
+                let rowText = nonEmptyTextFields(in: row)
+                XCTAssertTrue(rowText.contains(expected.0), "progress-bar row title for \(language)")
+                XCTAssertTrue(rowText.contains(expected.1), "progress-bar row subtitle for \(language)")
+            }
+
+            let sectionTitles = labelStrings
+            let balanceDisplayIndex = try XCTUnwrap(
+                sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageBalanceDisplay, language: language))
+            )
+            let progressBarIndex = try XCTUnwrap(
+                sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageProgressBar, language: language))
+            )
+            let menuBehaviorIndex = try XCTUnwrap(
+                sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageMenuBehavior, language: language))
+            )
+            XCTAssertLessThan(balanceDisplayIndex, progressBarIndex, "section order for \(language)")
+            XCTAssertLessThan(progressBarIndex, menuBehaviorIndex, "section order for \(language)")
+
+            let thresholdField = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSTextField }
+                    .first { $0.identifier?.rawValue == AppPreferences.balanceDisplayThresholdKey }
+            )
+            let thresholdRow = try XCTUnwrap(
+                progressBarRows.first { isDescendant(thresholdField, of: $0) }
+            )
+            let slider = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? QuotaColorThresholdSlider }
+                    .first
+            )
+            let sliderRow = try XCTUnwrap(
+                progressBarRows.first { isDescendant(slider, of: $0) }
+            )
+            let colorButtons = descendants(of: page)
+                .compactMap { $0 as? NSButton }
+                .filter { $0.identifier?.rawValue.hasPrefix("quotaProgressColor.") == true }
+            XCTAssertEqual(
+                Set(colorButtons.compactMap { $0.identifier?.rawValue }),
+                Set(QuotaProgressColor.allCases.map { "quotaProgressColor.\($0.rawValue)" })
+            )
+            XCTAssertTrue(colorButtons.allSatisfy { $0.target === pageController })
+            let colorRow = try XCTUnwrap(
+                progressBarRows.first { row in colorButtons.contains { isDescendant($0, of: row) } }
+            )
+            XCTAssertEqual(
+                progressBarRows.map(ObjectIdentifier.init),
+                [sliderRow, colorRow, thresholdRow].map(ObjectIdentifier.init)
+            )
+            XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
+            XCTAssertEqual(thresholdField.stringValue, "0.10")
+            XCTAssertEqual(slider.configuration, preferences.quotaProgressColorConfiguration)
+
+            thresholdField.stringValue = "0.25"
+            pageController.controlTextDidEndEditing(
+                Notification(name: NSNotification.Name("BalanceBarTests.progressBarThresholdDidEndEditing"), object: thresholdField)
+            )
+            XCTAssertEqual(thresholdChanges, [0.25])
+            XCTAssertEqual(preferences.balanceDisplayThreshold, 0.25, accuracy: 0.000001)
+            XCTAssertEqual(defaults.double(forKey: AppPreferences.balanceDisplayThresholdKey), 0.25, accuracy: 0.000001)
+
+            slider.applyRawThumbValueForTesting(32.6, after: .orange)
+            let changedConfiguration = try XCTUnwrap(colorChanges.last)
+            XCTAssertEqual(changedConfiguration.orangeUpperBound, 35)
+            XCTAssertEqual(preferences.quotaProgressColorConfiguration.orangeUpperBound, 35)
+            XCTAssertEqual(defaults.double(forKey: AppPreferences.quotaProgressOrangeUpperBoundKey), 35, accuracy: 0.000001)
+
+            let greenButton = try XCTUnwrap(
+                colorButtons.first { $0.identifier?.rawValue == "quotaProgressColor.green" }
+            )
+            greenButton.state = .off
+            _ = NSApp.sendAction(
+                try XCTUnwrap(greenButton.action),
+                to: greenButton.target,
+                from: greenButton
+            )
+            XCTAssertEqual(colorChanges.count, 2)
+            XCTAssertFalse(preferences.quotaProgressColorConfiguration.enabledColors.contains(.green))
+            XCTAssertFalse(
+                defaults.stringArray(forKey: AppPreferences.quotaProgressEnabledColorsKey)?.contains("green") == true
+            )
+
+            pageController.refresh(preferences: AppPreferences(defaults: defaults))
+            XCTAssertEqual(thresholdField.stringValue, "0.25")
+            XCTAssertEqual(slider.configuration.orangeUpperBound, 35)
+            XCTAssertEqual(greenButton.state, .off)
+        }
     }
 
     func testLunaReserveMenuDisplaySettingsLocalizePersistAndRevealExhaustedQuotaSwitch() throws {
@@ -1181,12 +1390,34 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         let thresholdRow = try XCTUnwrap(thresholdField.superview)
         let rowsStack = try XCTUnwrap(displayModeRow.superview as? NSStackView)
+        let balanceDisplayRows = rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+        let balanceDisplaySeparators = rowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
         XCTAssertEqual(
-            Array(rowsStack.arrangedSubviews.filter { !($0 is NSBox) }.prefix(3)).map(ObjectIdentifier.init),
-            [displayModeRow, hideRow, thresholdRow].map(ObjectIdentifier.init)
+            balanceDisplayRows.map(ObjectIdentifier.init),
+            [displayModeRow, hideRow].map(ObjectIdentifier.init)
+        )
+        XCTAssertEqual(balanceDisplaySeparators.count, 1)
+        XCTAssertFalse(balanceDisplaySeparators[0].isHidden)
+        let progressBarSection = try XCTUnwrap(
+            settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
+        )
+        let progressBarRows = settingsRows(in: progressBarSection)
+        XCTAssertEqual(progressBarRows.last.map(ObjectIdentifier.init), ObjectIdentifier(thresholdRow))
+        XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
+        XCTAssertEqual(
+            progressBarRows.count,
+            3
         )
         XCTAssertFalse(hideRow.isHidden)
         XCTAssertTrue(hideSwitch.isEnabled)
+        XCTAssertEqual(
+            rowsStack.superview?.frame.height ?? 0,
+            DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: rowsStack,
+                separators: balanceDisplaySeparators
+            ),
+            accuracy: 0.5
+        )
 
         displayModeControl.selectItem(at: 1)
         relay.lunaReserveDisplayMode(displayModeControl)
@@ -1210,9 +1441,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         displayModeControl.selectItem(at: 0)
         relay.lunaReserveDisplayMode(displayModeControl)
+        window.layoutIfNeeded()
         XCTAssertEqual(changedModes, [.whenQuotaExhausted, .always, .disabled])
         XCTAssertTrue(hideRow.isHidden)
         XCTAssertFalse(hideSwitch.isEnabled)
+        XCTAssertTrue(balanceDisplaySeparators[0].isHidden)
+        XCTAssertEqual(
+            rowsStack.superview?.frame.height ?? 0,
+            DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: rowsStack,
+                separators: balanceDisplaySeparators
+            ),
+            accuracy: 0.5
+        )
         XCTAssertEqual(
             AppPreferences(defaults: defaults).menuLunaReserveDisplayMode,
             .disabled
@@ -1221,8 +1462,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
         displayModeControl.selectItem(at: 2)
         relay.lunaReserveDisplayMode(displayModeControl)
+        window.layoutIfNeeded()
         XCTAssertFalse(hideRow.isHidden)
         XCTAssertTrue(hideSwitch.isEnabled)
+        XCTAssertFalse(balanceDisplaySeparators[0].isHidden)
+        XCTAssertEqual(
+            rowsStack.superview?.frame.height ?? 0,
+            DashboardSettingsComponents.settingsCardHeight(
+                rowsStack: rowsStack,
+                separators: balanceDisplaySeparators
+            ),
+            accuracy: 0.5
+        )
         XCTAssertEqual(hideSwitch.state, .on)
 
         hideSwitch.state = .off
@@ -4477,6 +4728,35 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func settingsSection(withTitle title: String, in page: NSView) -> NSStackView? {
+        descendants(of: page)
+            .compactMap { $0 as? NSStackView }
+            .first { section in
+                guard section.arrangedSubviews.count == 2,
+                      let heading = section.arrangedSubviews.first as? NSTextField else {
+                    return false
+                }
+                return heading.stringValue == title
+            }
+    }
+
+    private func settingsRows(in section: NSStackView) -> [NSView] {
+        guard let card = section.arrangedSubviews.last,
+              let rowsStack = card.subviews.first(where: { $0 is NSStackView }) as? NSStackView else {
+            return []
+        }
+        return rowsStack.arrangedSubviews.filter { !($0 is NSBox) }
+    }
+
+    private func isDescendant(_ view: NSView, of ancestor: NSView) -> Bool {
+        var current: NSView? = view
+        while let candidate = current {
+            if candidate === ancestor { return true }
+            current = candidate.superview
+        }
+        return false
     }
 
     private func view(withIdentifier identifier: String, in view: NSView) -> NSView? {
