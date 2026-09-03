@@ -297,6 +297,134 @@ final class CodexActivityMonitorTests: XCTestCase {
         XCTAssertTrue(makeMonitor().isTaskRunning(now: currentDate))
     }
 
+    func testIncrementalLogsBootstrapAppendStartAndStop() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 5, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        let monitor = makeMonitor()
+
+        XCTAssertFalse(monitor.isTaskRunning(now: currentDate))
+
+        try appendLogs(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        XCTAssertTrue(
+            monitor.isTaskRunning(now: currentDate),
+            "new in-progress and output rows must be visible on the next poll"
+        )
+
+        try appendLogs(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.completed"}"#)
+        ])
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "a newly appended terminal row must stop the same monitor instance"
+        )
+    }
+
+    func testIncrementalLogsKeepMultipleThreadStatesIndependent() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "thread-a", timestamp: epoch - 5, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "thread-a", timestamp: epoch - 5, body: #"{"type":"response.output_text.delta"}"#),
+            (threadID: "thread-b", timestamp: epoch - 5, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        let monitor = makeMonitor()
+
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try appendLogs(rows: [
+            (threadID: "thread-a", timestamp: epoch - 1, body: #"{"type":"response.completed"}"#),
+            (threadID: "thread-b", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "thread-b", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        XCTAssertTrue(
+            monitor.isTaskRunning(now: currentDate),
+            "completion of one thread must not erase activity from another thread"
+        )
+
+        try appendLogs(rows: [
+            (threadID: "thread-b", timestamp: epoch - 1, body: #"{"type":"response.completed"}"#)
+        ])
+        XCTAssertFalse(monitor.isTaskRunning(now: currentDate))
+    }
+
+    func testLogsDatabaseReplacementResetsTheCursorByInode() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#)
+        ])
+        let monitor = makeMonitor()
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try replaceLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "a replacement database must not retain the old inode's in-progress state"
+        )
+    }
+
+    func testLogsRowIDRollbackResetsTheIncrementalState() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        let monitor = makeMonitor()
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try rewriteLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "a rowid rollback after truncation must discard the previous thread maxima"
+        )
+    }
+
+    func testStaleIncrementalLogStateExpiresBeforeLaterOutput() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        let monitor = makeMonitor()
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        currentDate = currentDate.addingTimeInterval(601)
+        XCTAssertFalse(monitor.isTaskRunning(now: currentDate))
+
+        try appendLogs(rows: [
+            (threadID: "fixture-thread", timestamp: epoch, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "stale in-progress state must not make later output active without a new start signal"
+        )
+    }
+
+    func testIncrementalCompletionAtTheSameSecondWinsOverInProgress() throws {
+        try makeLogsDatabase(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.in_progress"}"#),
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.output_text.delta"}"#)
+        ])
+        let monitor = makeMonitor()
+        XCTAssertTrue(monitor.isTaskRunning(now: currentDate))
+
+        try appendLogs(rows: [
+            (threadID: "fixture-thread", timestamp: epoch - 1, body: #"{"type":"response.completed"}"#)
+        ])
+
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "a completion sharing the in-progress timestamp must not enter the grace path"
+        )
+    }
+
     func testRecentTerminalRolloutOverridesDelayedLogActivity() throws {
         let sessionURL = try writeSession([
             eventMessage("task_started"),
@@ -322,6 +450,24 @@ final class CodexActivityMonitorTests: XCTestCase {
         ])
 
         XCTAssertFalse(makeMonitor().isTaskRunning(now: currentDate))
+    }
+
+    func testPendingUnterminatedRolloutLineContinuesOnTheNextPoll() throws {
+        let sessionURL = try writeUnterminatedSession(eventMessage("task_started"))
+        try makeStateDatabase(rolloutPath: sessionURL.path)
+        let monitor = makeMonitor()
+
+        XCTAssertFalse(
+            monitor.isTaskRunning(now: currentDate),
+            "an unterminated JSONL record must remain pending until its newline arrives"
+        )
+
+        try appendSession([""], to: sessionURL)
+        currentDate = currentDate.addingTimeInterval(0.1)
+        XCTAssertTrue(
+            monitor.isTaskRunning(now: currentDate),
+            "the pending record must be parsed after the next append completes its line"
+        )
     }
 
     func testIdleRecentResponseItemWithoutTaskStartIsInactive() throws {
@@ -585,6 +731,15 @@ final class CodexActivityMonitorTests: XCTestCase {
         return url
     }
 
+    @discardableResult
+    private func writeUnterminatedSession(_ line: String, in directory: URL? = nil) throws -> URL {
+        let targetDirectory = directory ?? fixtureDirectory!
+        let url = targetDirectory.appendingPathComponent("session-\(UUID().uuidString).jsonl")
+        try Data(line.utf8).write(to: url)
+        try setSessionModificationDate(url, to: currentDate)
+        return url
+    }
+
     private func appendSession(_ lines: [String], to url: URL) throws {
         let handle = try FileHandle(forWritingTo: url)
         try handle.seekToEnd()
@@ -685,22 +840,71 @@ final class CodexActivityMonitorTests: XCTestCase {
         }
     }
 
+    private func appendLogs(
+        rows: [(threadID: String, timestamp: Int64, body: String)]
+    ) throws {
+        try withDatabase(named: "logs_1.sqlite") { database in
+            for row in rows {
+                try insertLog(
+                    database,
+                    threadID: row.threadID,
+                    timestamp: row.timestamp,
+                    body: row.body
+                )
+            }
+        }
+    }
+
+    private func replaceLogsDatabase(
+        rows: [(threadID: String, timestamp: Int64, body: String)]
+    ) throws {
+        let url = fixtureDirectory.appendingPathComponent("logs_1.sqlite")
+        try FileManager.default.removeItem(at: url)
+        try makeLogsDatabase(rows: rows)
+    }
+
+    private func rewriteLogsDatabase(
+        rows: [(threadID: String, timestamp: Int64, body: String)]
+    ) throws {
+        try withDatabase(named: "logs_1.sqlite") { database in
+            try execute(database, sql: "DELETE FROM logs")
+            for (index, row) in rows.enumerated() {
+                try insertLog(
+                    database,
+                    rowID: Int64(index + 1),
+                    threadID: row.threadID,
+                    timestamp: row.timestamp,
+                    body: row.body
+                )
+            }
+        }
+    }
+
     private func insertLog(
         _ database: OpaquePointer,
+        rowID: Int64? = nil,
         threadID: String,
         timestamp: Int64,
         body: String
     ) throws {
         var statement: OpaquePointer?
-        let sql = "INSERT INTO logs (thread_id, ts, feedback_log_body) VALUES (?, ?, ?)"
+        let sql = rowID == nil
+            ? "INSERT INTO logs (thread_id, ts, feedback_log_body) VALUES (?, ?, ?)"
+            : "INSERT INTO logs (rowid, thread_id, ts, feedback_log_body) VALUES (?, ?, ?, ?)"
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else {
             throw fixtureError("failed to prepare logs fixture insert")
         }
         defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, threadID, -1, Self.sqliteTransient)
-        sqlite3_bind_int64(statement, 2, timestamp)
-        sqlite3_bind_text(statement, 3, body, -1, Self.sqliteTransient)
+        let threadColumn: Int32 = rowID == nil ? 1 : 2
+        let timestampColumn: Int32 = rowID == nil ? 2 : 3
+        let bodyColumn: Int32 = rowID == nil ? 3 : 4
+        if let rowID {
+            sqlite3_bind_int64(statement, 1, rowID)
+        }
+        sqlite3_bind_text(statement, threadColumn, threadID, -1, Self.sqliteTransient)
+        sqlite3_bind_int64(statement, timestampColumn, timestamp)
+        sqlite3_bind_text(statement, bodyColumn, body, -1, Self.sqliteTransient)
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw fixtureError("failed to insert logs fixture row")
         }
