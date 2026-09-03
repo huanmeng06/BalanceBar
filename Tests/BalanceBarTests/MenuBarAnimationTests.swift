@@ -99,13 +99,15 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(metrics.centroid.y, 16, accuracy: 0.5)
         XCTAssertEqual(metrics.bounds.midX, 16, accuracy: 1)
         XCTAssertEqual(metrics.bounds.midY, 16, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(metrics.bounds.width, 18)
+        XCTAssertGreaterThanOrEqual(metrics.bounds.height, 18)
     }
 
-    func testOverlayIconRenderedRotationKeepsVisibleRasterCentroidAtLayerCenter() throws {
+    func testBundledCodexIconRenderedRotationKeepsCompleteRasterCentered() throws {
         let logicalSize = NSSize(width: 16, height: 16)
         let contentsScale: CGFloat = 2
         let appearance = try XCTUnwrap(NSAppearance(named: .aqua))
-        let sourceImage = makeCenteredAsymmetricMarkerImage(size: logicalSize)
+        let sourceImage = try bundledCodexIconImage(size: logicalSize)
         let raster = try XCTUnwrap(
             MenuBarAnimationOverlayController.makeTintedLayerRaster(
                 from: sourceImage,
@@ -155,6 +157,8 @@ final class MenuBarAnimationTests: XCTestCase {
             let metrics = try alphaMetrics(for: rendered)
             XCTAssertEqual(metrics.centroid.x, expectedCenter.x, accuracy: 0.5)
             XCTAssertEqual(metrics.centroid.y, expectedCenter.y, accuracy: 0.5)
+            XCTAssertGreaterThanOrEqual(metrics.bounds.width, 24)
+            XCTAssertGreaterThanOrEqual(metrics.bounds.height, 24)
         }
     }
 
@@ -370,6 +374,24 @@ final class MenuBarAnimationTests: XCTestCase {
             ).fill()
             return true
         }
+    }
+
+    private func bundledCodexIconImage(size: NSSize) throws -> NSImage {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let image = try XCTUnwrap(
+            NSImage(
+                contentsOf: repositoryRoot.appendingPathComponent(
+                    "work/balance-bar/CodexIcon.svg"
+                )
+            )
+        )
+        image.size = size
+        image.isTemplate = true
+        return image
     }
 
     private func renderLayer(

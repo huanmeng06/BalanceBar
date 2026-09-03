@@ -364,21 +364,30 @@ final class MenuBarAnimationOverlayController {
             return nil
         }
         bitmap.size = size
-        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+        guard let bitmapData = bitmap.bitmapData,
+              let bitmapContext = CGContext(
+                data: bitmapData,
+                width: pixelsWide,
+                height: pixelsHigh,
+                bitsPerComponent: 8,
+                bytesPerRow: bitmap.bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
             return nil
         }
-        if let bitmapData = bitmap.bitmapData {
-            memset(bitmapData, 0, bitmap.bytesPerRow * bitmap.pixelsHigh)
-        }
+        memset(bitmapData, 0, bitmap.bytesPerRow * bitmap.pixelsHigh)
 
         let drawRect = NSRect(origin: .zero, size: size)
+        let context = NSGraphicsContext(cgContext: bitmapContext, flipped: false)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
-        // NSGraphicsContext(bitmapImageRep:) keeps pixel coordinates as its
-        // default user space. Explicitly map logical points to the target
-        // raster before drawing; bitmap.size is metadata and does not apply
-        // this scale to the drawing CTM.
-        context.cgContext.scaleBy(x: safeScale, y: safeScale)
+        // Use a raw bitmap CGContext with a known identity CTM. Constructing
+        // NSGraphicsContext directly from a bitmap rep whose logical size has
+        // already been set installs its own point-to-pixel scale; applying a
+        // second scale would zoom and clip the icon. This path owns exactly
+        // one logical-point to pixel transform.
+        bitmapContext.scaleBy(x: safeScale, y: safeScale)
         appearance.performAsCurrentDrawingAppearance {
             image.draw(
                 in: drawRect,
@@ -394,7 +403,7 @@ final class MenuBarAnimationOverlayController {
         context.flushGraphics()
         NSGraphicsContext.restoreGraphicsState()
 
-        guard let cgImage = bitmap.cgImage else { return nil }
+        guard let cgImage = bitmapContext.makeImage() else { return nil }
         return MenuBarAnimationOverlayIconRaster(
             cgImage: cgImage,
             contentsScale: safeScale,
