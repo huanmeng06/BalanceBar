@@ -177,11 +177,6 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             tr(.keyDashboardMenuPageProgressBar),
             rows: [
                 DashboardSettingsComponents.makeSettingsRow(
-                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
-                    subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
-                    control: balanceDisplayThreshold
-                ),
-                DashboardSettingsComponents.makeSettingsRow(
                     tr(.keyDashboardMenuPageProgressColorRanges),
                     subtitle: tr(.keyDashboardMenuPageProgressColorRangesDescription),
                     headerTrailingAccessory: resetButton,
@@ -195,6 +190,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                     subtitle: tr(.keyDashboardMenuPageDisplayedColorsDescription),
                     control: colorControls,
                     controlWidthConstrainedToRow: true
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold),
+                    subtitle: tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount),
+                    control: balanceDisplayThreshold
                 )
             ]
         )

@@ -1092,7 +1092,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             })?.superview else {
             return XCTFail("Expected both balance display and dropdown-menu rows")
         }
-        XCTAssertTrue(progressBarRows[0] === thresholdRow)
+        XCTAssertTrue(progressBarRows[2] === thresholdRow)
         XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
         XCTAssertEqual(
             equalHeightConstraint(in: thresholdRow),
@@ -1202,16 +1202,16 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
             let expectedRows = [
                 (
-                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold, language: language),
-                    tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount, language: language)
-                ),
-                (
                     tr(.keyDashboardMenuPageProgressColorRanges, language: language),
                     tr(.keyDashboardMenuPageProgressColorRangesDescription, language: language)
                 ),
                 (
                     tr(.keyDashboardMenuPageDisplayedColors, language: language),
                     tr(.keyDashboardMenuPageDisplayedColorsDescription, language: language)
+                ),
+                (
+                    tr(.keyDashboardMenuPageLowBalanceDisplayThreshold, language: language),
+                    tr(.keyDashboardMenuPageAfterARechargeKeepTheProgressBarRedWhileTheBalanceRemainsBelowThisAmount, language: language)
                 )
             ]
             for (row, expected) in zip(progressBarRows, expectedRows) {
@@ -1262,7 +1262,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             XCTAssertEqual(
                 progressBarRows.map(ObjectIdentifier.init),
-                [thresholdRow, sliderRow, colorRow].map(ObjectIdentifier.init)
+                [sliderRow, colorRow, thresholdRow].map(ObjectIdentifier.init)
             )
             XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
             XCTAssertEqual(thresholdField.stringValue, "0.10")
@@ -1402,7 +1402,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
         let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(progressBarRows.first.map(ObjectIdentifier.init), ObjectIdentifier(thresholdRow))
+        XCTAssertEqual(progressBarRows.last.map(ObjectIdentifier.init), ObjectIdentifier(thresholdRow))
         XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
         XCTAssertEqual(
             progressBarRows.count,
