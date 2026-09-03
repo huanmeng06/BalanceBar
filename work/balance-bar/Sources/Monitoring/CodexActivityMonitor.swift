@@ -55,6 +55,8 @@ final class CodexActivityMonitor {
         let pendingLine: String
         let running: Bool
         let terminalSeen: Bool
+        let hardTerminalSeen: Bool
+        let contextCompactionSeen: Bool
     }
 
     private struct DatabaseSignature: Equatable {
@@ -68,6 +70,8 @@ final class CodexActivityMonitor {
         var latestActivity: Int64 = 0
         var latestInProgress: Int64 = 0
         var latestDone: Int64 = 0
+        var latestHardTerminal: Int64 = 0
+        var latestContextCompaction: Int64 = 0
     }
 
     private struct LogsScanCache {
@@ -76,6 +80,12 @@ final class CodexActivityMonitor {
         var observedSignature: DatabaseSignature
         var lastRowID: Int64
         var threads: [String: ThreadLogState]
+    }
+
+    private struct LogsActivityEvaluation {
+        let isRunning: Bool
+        let hasHardTerminal: Bool
+        let hasContextCompaction: Bool
     }
 
     private struct RolloutCandidate {
@@ -102,19 +112,26 @@ final class CodexActivityMonitor {
         // aggregate signal. A rollout result, when available, remains
         // authoritative so a delayed log completion cannot resurrect a task
         // that the session file has already ended.
-        let logsState = logsDatabaseIsRunning(now: now)
-
-        // Keep rollout parsing as a compatibility path for older/incomplete
-        // logs databases. Its state is incremental, so an active append only
-        // parses the bytes that arrived since the previous sample.
-        return recentRolloutRunningState(now: now) ?? logsState ?? false
+        return activityObservation(now: now).legacyIsTaskRunning
     }
 
-    private func recentRolloutRunningState(now: Date) -> Bool? {
+    /// Returns lifecycle evidence for ActivityCoordinator while keeping the
+    /// legacy Boolean method's meaning stable for existing callers/tests.
+    func activityObservation(now: Date? = nil) -> ActivityMonitorObservation {
+        let now = now ?? clock()
+        if let rolloutObservation = recentRolloutActivityObservation(now: now) {
+            return rolloutObservation
+        }
+        return logsDatabaseActivityObservation(now: now) ?? .ambiguousIdle
+    }
+
+    private func recentRolloutActivityObservation(now: Date) -> ActivityMonitorObservation? {
         let candidates = recentRolloutPaths(now: now)
         var nextCache: [String: SessionCache] = [:]
         var parsedAny = false
         var anyRunning = false
+        var anyContextCompaction = false
+        var anyHardTerminal = false
         for candidate in candidates {
             // The path list is cached for one second, so recheck both clocks
             // on every poll before reusing a cached parse result.
@@ -126,6 +143,8 @@ final class CodexActivityMonitor {
                cached.identity == identity {
                 nextCache[candidate.path] = cached
                 anyRunning = anyRunning || cached.running
+                anyContextCompaction = anyContextCompaction || cached.contextCompactionSeen
+                anyHardTerminal = anyHardTerminal || cached.hardTerminalSeen
                 continue
             }
             guard let entry = parseSession(
@@ -135,9 +154,15 @@ final class CodexActivityMonitor {
             ) else { continue }
             nextCache[candidate.path] = entry
             anyRunning = anyRunning || entry.running
+            anyContextCompaction = anyContextCompaction || entry.contextCompactionSeen
+            anyHardTerminal = anyHardTerminal || entry.hardTerminalSeen
         }
         sessionCache = nextCache
-        return parsedAny ? anyRunning : nil
+        guard parsedAny else { return nil }
+        if anyRunning { return .active }
+        if anyContextCompaction { return .contextCompaction }
+        if anyHardTerminal { return .hardTerminal }
+        return .ambiguousIdle
     }
 
     private func recentRolloutPaths(now: Date) -> [RolloutCandidate] {
@@ -208,6 +233,8 @@ final class CodexActivityMonitor {
         let startOffset: UInt64
         var running: Bool
         var terminalSeen: Bool
+        var hardTerminalSeen: Bool
+        var contextCompactionSeen: Bool
         var pendingLine: String
         if canContinue, let cached {
             // Codex appends to a session file. Continue from the previous byte
@@ -215,6 +242,8 @@ final class CodexActivityMonitor {
             startOffset = cached.bytesScanned
             running = cached.running
             terminalSeen = cached.terminalSeen
+            hardTerminalSeen = cached.hardTerminalSeen
+            contextCompactionSeen = cached.contextCompactionSeen
             pendingLine = cached.pendingLine
         } else {
             let tailOffset = identity.size > UInt64(Self.activityTailBytes)
@@ -225,6 +254,8 @@ final class CodexActivityMonitor {
                 : 0
             running = false
             terminalSeen = false
+            hardTerminalSeen = false
+            contextCompactionSeen = false
             pendingLine = ""
         }
 
@@ -254,7 +285,9 @@ final class CodexActivityMonitor {
                 combinedStartOffset: combinedStartOffset,
                 tailOffset: tailOffset,
                 running: &running,
-                terminalSeen: &terminalSeen
+                terminalSeen: &terminalSeen,
+                hardTerminalSeen: &hardTerminalSeen,
+                contextCompactionSeen: &contextCompactionSeen
             )
         } else {
             var combined = Data(pendingLine.utf8)
@@ -264,7 +297,9 @@ final class CodexActivityMonitor {
                 combinedStartOffset: combinedStartOffset,
                 tailOffset: tailOffset,
                 running: &running,
-                terminalSeen: &terminalSeen
+                terminalSeen: &terminalSeen,
+                hardTerminalSeen: &hardTerminalSeen,
+                contextCompactionSeen: &contextCompactionSeen
             )
         }
         return SessionCache(
@@ -272,7 +307,9 @@ final class CodexActivityMonitor {
             bytesScanned: identity.size,
             pendingLine: pendingLine,
             running: running,
-            terminalSeen: terminalSeen
+            terminalSeen: terminalSeen,
+            hardTerminalSeen: hardTerminalSeen,
+            contextCompactionSeen: contextCompactionSeen
         )
     }
 
@@ -281,7 +318,9 @@ final class CodexActivityMonitor {
         combinedStartOffset: UInt64,
         tailOffset: UInt64,
         running: inout Bool,
-        terminalSeen: inout Bool
+        terminalSeen: inout Bool,
+        hardTerminalSeen: inout Bool,
+        contextCompactionSeen: inout Bool
     ) -> String {
         var lineStart = data.startIndex
         var index = data.startIndex
@@ -294,7 +333,9 @@ final class CodexActivityMonitor {
                     lineData,
                     lifecycleOnly: lineOffset < tailOffset,
                     running: &running,
-                    terminalSeen: &terminalSeen
+                    terminalSeen: &terminalSeen,
+                    hardTerminalSeen: &hardTerminalSeen,
+                    contextCompactionSeen: &contextCompactionSeen
                 )
                 lineStart = data.index(after: index)
                 index = lineStart
@@ -309,21 +350,28 @@ final class CodexActivityMonitor {
         _ lineData: Data,
         lifecycleOnly: Bool,
         running: inout Bool,
-        terminalSeen: inout Bool
+        terminalSeen: inout Bool,
+        hardTerminalSeen: inout Bool,
+        contextCompactionSeen: inout Bool
     ) {
         guard let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
               let topType = object["type"] as? String else { return }
         if Self.contextCompactionTypes.contains(topType) {
             // Context compaction continues the same task after a prior
-            // final_answer marker. It is a lifecycle boundary, not activity
-            // itself; wait for explicit reasoning or tool activity to reopen.
+            // final_answer marker. Keep it as separate lifecycle evidence so
+            // the coordinator can keep the task active without a compaction
+            // timer, while the legacy Boolean remains unchanged.
             running = false
             terminalSeen = false
+            hardTerminalSeen = false
+            contextCompactionSeen = true
             return
         }
         if Self.responseTerminalTypes.contains(topType) {
             running = false
             terminalSeen = true
+            hardTerminalSeen = true
+            contextCompactionSeen = false
             return
         }
         if topType == "event_msg", let payload = object["payload"] as? [String: Any],
@@ -331,20 +379,27 @@ final class CodexActivityMonitor {
             if Self.contextCompactionTypes.contains(payloadType) {
                 running = false
                 terminalSeen = false
+                hardTerminalSeen = false
+                contextCompactionSeen = true
             } else if payloadType == "agent_message",
                let phase = payload["phase"] as? String,
                Self.terminalPhases.contains(phase) {
                 running = false
                 terminalSeen = true
+                contextCompactionSeen = false
             } else if Self.terminalTypes.contains(payloadType)
                         || Self.responseTerminalTypes.contains(payloadType) {
                 running = false
                 terminalSeen = true
+                hardTerminalSeen = true
+                contextCompactionSeen = false
             } else if Self.startTypes.contains(payloadType) {
                 // A start before the activity tail only reopens the lifecycle
                 // context. It must not make arbitrary recent output active.
                 running = lifecycleOnly ? false : true
                 terminalSeen = false
+                hardTerminalSeen = false
+                contextCompactionSeen = false
             } else if !lifecycleOnly,
                       Self.ongoingActivityTypes.contains(payloadType),
                       !terminalSeen {
@@ -357,14 +412,19 @@ final class CodexActivityMonitor {
             if let payloadType, Self.contextCompactionTypes.contains(payloadType) {
                 running = false
                 terminalSeen = false
+                hardTerminalSeen = false
+                contextCompactionSeen = true
             } else if let phase, Self.terminalPhases.contains(phase) {
                 running = false
                 terminalSeen = true
+                contextCompactionSeen = false
             } else if let status,
                       Self.responseTerminalStatuses.contains(status),
                       payloadType == nil || Self.terminalResponseItemTypes.contains(payloadType ?? "") {
                 running = false
                 terminalSeen = true
+                hardTerminalSeen = true
+                contextCompactionSeen = false
             } else if !lifecycleOnly, status == "in_progress", !terminalSeen {
                 running = true
             } else if !lifecycleOnly,
@@ -380,7 +440,7 @@ final class CodexActivityMonitor {
         }
     }
 
-    private func logsDatabaseIsRunning(now: Date) -> Bool? {
+    private func logsDatabaseActivityObservation(now: Date) -> ActivityMonitorObservation? {
         guard let databasePath = latestDatabase(prefix: "logs_", now: now),
               let signature = databaseSignature(atPath: databasePath) else {
             return nil
@@ -389,9 +449,9 @@ final class CodexActivityMonitor {
         if let cached = logsScanCache,
            cached.observedSignature == signature {
             var nextCache = cached
-            let running = pruneAndEvaluateLogs(now: now, cache: &nextCache)
+            let evaluation = pruneAndEvaluateLogs(now: now, cache: &nextCache)
             logsScanCache = nextCache
-            return running
+            return observation(for: evaluation)
         }
 
         var database: OpaquePointer?
@@ -441,19 +501,34 @@ final class CodexActivityMonitor {
         }
 
         nextCache.observedSignature = signature
-        let running = pruneAndEvaluateLogs(now: now, cache: &nextCache)
+        let evaluation = pruneAndEvaluateLogs(now: now, cache: &nextCache)
         logsScanCache = nextCache
-        return running
+        return observation(for: evaluation)
     }
 
-    private func pruneAndEvaluateLogs(now: Date, cache: inout LogsScanCache) -> Bool {
+    private func observation(for evaluation: LogsActivityEvaluation) -> ActivityMonitorObservation {
+        if evaluation.isRunning { return .active }
+        if evaluation.hasContextCompaction { return .contextCompaction }
+        if evaluation.hasHardTerminal { return .hardTerminal }
+        return .ambiguousIdle
+    }
+
+    private func pruneAndEvaluateLogs(
+        now: Date,
+        cache: inout LogsScanCache
+    ) -> LogsActivityEvaluation {
         let nowEpoch = Int64(now.timeIntervalSince1970)
         let cutoff = nowEpoch - Int64(Self.activityWindow)
         cache.threads = cache.threads.filter { _, state in
-            max(state.latestActivity, max(state.latestInProgress, state.latestDone)) >= cutoff
+            max(
+                max(state.latestActivity, state.latestInProgress),
+                max(state.latestDone, max(state.latestHardTerminal, state.latestContextCompaction))
+            ) >= cutoff
         }
 
         var runningUntil: TimeInterval?
+        var hasHardTerminal = false
+        var hasContextCompaction = false
         for state in cache.threads.values {
             if state.latestInProgress > state.latestDone,
                state.latestActivity > state.latestDone,
@@ -469,8 +544,19 @@ final class CodexActivityMonitor {
                 let expiresAt = TimeInterval(state.latestActivity + 20)
                 runningUntil = max(runningUntil ?? .leastNormalMagnitude, expiresAt)
             }
+
+            if state.latestContextCompaction > state.latestDone {
+                hasContextCompaction = true
+            } else if state.latestHardTerminal >= state.latestDone,
+                      state.latestHardTerminal > 0 {
+                hasHardTerminal = true
+            }
         }
-        return runningUntil != nil
+        return LogsActivityEvaluation(
+            isRunning: runningUntil != nil,
+            hasHardTerminal: hasHardTerminal,
+            hasContextCompaction: hasContextCompaction
+        )
     }
 
     private func databaseSignature(atPath path: String) -> DatabaseSignature? {
@@ -548,7 +634,7 @@ final class CodexActivityMonitor {
             let timestamp = sqlite3_column_int64(statement, 2)
             let body = sqlite3_column_text(statement, 3).map(String.init(cString:)) ?? ""
             let signals = classifyLogBody(body)
-            if signals.activity || signals.inProgress || signals.done {
+            if signals.activity || signals.inProgress || signals.done || signals.contextCompaction {
                 var state = threads[threadID] ?? ThreadLogState()
                 if signals.activity {
                     state.latestActivity = max(state.latestActivity, timestamp)
@@ -559,6 +645,12 @@ final class CodexActivityMonitor {
                 if signals.done {
                     state.latestDone = max(state.latestDone, timestamp)
                 }
+                if signals.hardTerminal {
+                    state.latestHardTerminal = max(state.latestHardTerminal, timestamp)
+                }
+                if signals.contextCompaction {
+                    state.latestContextCompaction = max(state.latestContextCompaction, timestamp)
+                }
                 threads[threadID] = state
             }
             stepResult = sqlite3_step(statement)
@@ -566,7 +658,13 @@ final class CodexActivityMonitor {
         return stepResult == SQLITE_DONE
     }
 
-    private func classifyLogBody(_ body: String) -> (activity: Bool, inProgress: Bool, done: Bool) {
+    private func classifyLogBody(_ body: String) -> (
+        activity: Bool,
+        inProgress: Bool,
+        done: Bool,
+        hardTerminal: Bool,
+        contextCompaction: Bool
+    ) {
         // Keep the existing SQL semantics: remove literal spaces once, then
         // classify the normalized body without asking SQLite to rescan it.
         let normalized = body.replacingOccurrences(of: " ", with: "").lowercased()
@@ -574,12 +672,20 @@ final class CodexActivityMonitor {
             || normalized.contains("response.output_text.delta")
         let inProgress = normalized.contains("response.in_progress")
             || normalized.contains("\"status\":\"in_progress\"")
-        let done = Self.completionTypes.contains { type in
+        let hardTerminal = Self.completionTypes.contains { type in
             normalized.contains("\"type\":\"\(type)\"")
         }
-            || normalized.contains("\"phase\":\"final\"")
+        let softTerminal = normalized.contains("\"phase\":\"final\"")
             || normalized.contains("\"phase\":\"final_answer\"")
-        return (outputActivity || inProgress, inProgress, done)
+        let contextCompaction = normalized.contains("\"type\":\"compacted\"")
+            || normalized.contains("\"type\":\"context_compacted\"")
+        return (
+            outputActivity || inProgress,
+            inProgress,
+            hardTerminal || softTerminal,
+            hardTerminal,
+            contextCompaction
+        )
     }
 
     private func latestDatabase(prefix: String, now: Date) -> String? {

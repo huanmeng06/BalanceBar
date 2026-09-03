@@ -1,5 +1,319 @@
 import AppKit
 
+/// The monitor result is deliberately more precise than the legacy
+/// `isTaskRunning` Boolean. A missing activity sample is not proof that a
+/// task ended, while a lifecycle terminal is strong enough to end it
+/// immediately. Context compaction is kept separate so it can keep a task
+/// alive without adding another timer.
+enum ActivityMonitorObservation: Equatable {
+    case active
+    case ambiguousIdle
+    case hardTerminal
+    case contextCompaction
+
+    var isActiveEvidence: Bool {
+        switch self {
+        case .active, .contextCompaction:
+            return true
+        case .ambiguousIdle, .hardTerminal:
+            return false
+        }
+    }
+
+    /// Preserves the old monitor Boolean semantics. Context compaction by
+    /// itself was historically not reported as running until explicit
+    /// follow-up activity appeared; the coordinator can still use it as
+    /// lifecycle evidence.
+    var legacyIsTaskRunning: Bool {
+        self == .active
+    }
+}
+
+struct ActivityLifecycleUpdate: Equatable {
+    let taskRunning: Bool
+    let observation: ActivityMonitorObservation
+    let trailingRefreshAnchor: Date?
+}
+
+enum ActivityRefreshPhase: Equatable {
+    case inactive
+    case normalActive
+    case suspended
+}
+
+/// Tracks the refresh-side phase independently from the task lifecycle. A
+/// suspended phase keeps the task UI alive but does not authorize normal
+/// active-duty refreshes. Ambiguous idle may retain a trailing anchor; active
+/// work and compaction explicitly cancel that potential end.
+struct ActivityRefreshLifecycle {
+    private(set) var phase: ActivityRefreshPhase = .inactive
+    private(set) var trailingRefreshAnchor: Date?
+    private var immediateResumePending = false
+
+    mutating func apply(_ update: ActivityLifecycleUpdate) {
+        let previousPhase = phase
+        switch update.observation {
+        case .active:
+            phase = update.taskRunning ? .normalActive : .inactive
+            trailingRefreshAnchor = nil
+        case .contextCompaction:
+            phase = update.taskRunning ? .suspended : .inactive
+            trailingRefreshAnchor = nil
+        case .ambiguousIdle:
+            phase = update.taskRunning ? .suspended : .inactive
+            if let anchor = update.trailingRefreshAnchor {
+                trailingRefreshAnchor = earliestDate(trailingRefreshAnchor, anchor)
+            }
+        case .hardTerminal:
+            phase = .inactive
+            if let anchor = update.trailingRefreshAnchor {
+                trailingRefreshAnchor = earliestDate(trailingRefreshAnchor, anchor)
+            }
+        }
+
+        if previousPhase == .suspended, phase == .normalActive {
+            immediateResumePending = true
+        } else if phase != .normalActive {
+            immediateResumePending = false
+        }
+    }
+
+    mutating func consumeImmediateResume() -> Bool {
+        let pending = immediateResumePending
+        immediateResumePending = false
+        return pending
+    }
+
+    mutating func clearTrailingRefreshAnchor() {
+        trailingRefreshAnchor = nil
+    }
+
+    mutating func reset() {
+        phase = .inactive
+        trailingRefreshAnchor = nil
+        immediateResumePending = false
+    }
+
+    func trailingRefreshDeadline(duration: TimeInterval) -> Date? {
+        guard duration > 0, let trailingRefreshAnchor else { return nil }
+        return trailingRefreshAnchor.addingTimeInterval(duration)
+    }
+
+    private func earliestDate(_ lhs: Date?, _ rhs: Date) -> Date {
+        guard let lhs else { return rhs }
+        return min(lhs, rhs)
+    }
+}
+
+enum ActivityRefreshPolicy {
+    static func shouldRefreshUsage(
+        taskRunning: Bool,
+        wasTaskRunning: Bool,
+        phase: ActivityRefreshPhase,
+        inTrailingWindow: Bool
+    ) -> Bool {
+        let stateChanged = taskRunning != wasTaskRunning
+        let normalActive = taskRunning && phase == .normalActive
+        return normalActive || inTrailingWindow || (stateChanged && !taskRunning)
+    }
+
+    static func shouldIssueRefresh(
+        taskRunning: Bool,
+        wasTaskRunning: Bool,
+        phase: ActivityRefreshPhase,
+        inTrailingWindow: Bool,
+        now: Date,
+        lastRefresh: Date?,
+        refreshInterval: TimeInterval,
+        resumed: Bool
+    ) -> Bool {
+        guard shouldRefreshUsage(
+            taskRunning: taskRunning,
+            wasTaskRunning: wasTaskRunning,
+            phase: phase,
+            inTrailingWindow: inTrailingWindow
+        ) else {
+            return false
+        }
+        let stateChanged = taskRunning != wasTaskRunning
+        let refreshIsDue = lastRefresh.map {
+            now.timeIntervalSince($0) >= refreshInterval
+        } ?? true
+        return stateChanged || resumed || refreshIsDue
+    }
+}
+
+/// Stabilizes one provider's raw monitor evidence before it reaches the
+/// application state and its refresh/render side effects.
+struct ActivityLifecycleStateMachine {
+    static let activationConfirmationInterval: TimeInterval = 0.5
+    static let ambiguousIdleGraceInterval: TimeInterval = 10
+    private static let minimumActivationSamples = 2
+
+    private enum PendingTransitionKind: Equatable {
+        case activation
+        case ambiguousIdle
+    }
+
+    private struct PendingTransition {
+        let kind: PendingTransitionKind
+        let startedAt: Date
+        var lastSampleAt: Date
+        var sampleCount: Int
+    }
+
+    private(set) var isRunning = false
+    private var pendingTransition: PendingTransition?
+    private var expectedSampleInterval: TimeInterval = 0.25
+
+    mutating func updateSampleInterval(_ interval: TimeInterval) {
+        guard interval.isFinite, interval > 0 else { return }
+        expectedSampleInterval = interval
+    }
+
+    /// Ingest one monitor observation and return the stable lifecycle state.
+    /// This method has no timer: a transition can only be committed by a
+    /// subsequent monitor sample.
+    @discardableResult
+    mutating func observe(
+        _ observation: ActivityMonitorObservation,
+        at date: Date
+    ) -> Bool {
+        observeUpdate(observation, at: date).taskRunning
+    }
+
+    /// Ingest one monitor observation and retain the evidence needed by both
+    /// the task UI and the independent activity-refresh lifecycle.
+    @discardableResult
+    mutating func observeUpdate(
+        _ observation: ActivityMonitorObservation,
+        at date: Date
+    ) -> ActivityLifecycleUpdate {
+        switch observation {
+        case .active, .contextCompaction:
+            if isRunning {
+                pendingTransition = nil
+                return makeUpdate(observation, trailingRefreshAnchor: nil)
+            }
+
+            if var pending = pendingTransition,
+               pending.kind == .activation,
+               date > pending.lastSampleAt,
+               date.timeIntervalSince(pending.lastSampleAt) <= maximumActivationSampleGap {
+                pending.lastSampleAt = date
+                pending.sampleCount += 1
+                pendingTransition = pending
+            } else {
+                pendingTransition = PendingTransition(
+                    kind: .activation,
+                    startedAt: date,
+                    lastSampleAt: date,
+                    sampleCount: 1
+                )
+            }
+
+            if let pendingTransition,
+               pendingTransition.kind == .activation,
+               pendingTransition.sampleCount >= Self.minimumActivationSamples,
+               date.timeIntervalSince(pendingTransition.startedAt)
+                    >= Self.activationConfirmationInterval {
+                isRunning = true
+                self.pendingTransition = nil
+            }
+
+            return makeUpdate(observation, trailingRefreshAnchor: nil)
+
+        case .hardTerminal:
+            let trailingRefreshAnchor: Date?
+            if isRunning {
+                if let pendingTransition,
+                   pendingTransition.kind == .ambiguousIdle {
+                    trailingRefreshAnchor = pendingTransition.startedAt
+                } else {
+                    trailingRefreshAnchor = date
+                }
+            } else {
+                trailingRefreshAnchor = nil
+            }
+            pendingTransition = nil
+            isRunning = false
+            return makeUpdate(
+                observation,
+                trailingRefreshAnchor: trailingRefreshAnchor
+            )
+
+        case .ambiguousIdle:
+            guard isRunning else {
+                pendingTransition = nil
+                return makeUpdate(observation, trailingRefreshAnchor: nil)
+            }
+
+            let trailingRefreshAnchor: Date
+            if var pending = pendingTransition,
+               pending.kind == .ambiguousIdle {
+                trailingRefreshAnchor = pending.startedAt
+                // The grace window is elapsed-time based. A delayed sample
+                // still confirms that the raw state remained idle for the
+                // whole observed interval; no fixed sample count is used.
+                pending.lastSampleAt = max(pending.lastSampleAt, date)
+                pendingTransition = pending
+            } else {
+                trailingRefreshAnchor = date
+                pendingTransition = PendingTransition(
+                    kind: .ambiguousIdle,
+                    startedAt: date,
+                    lastSampleAt: date,
+                    sampleCount: 1
+                )
+            }
+
+            if let pendingTransition,
+               pendingTransition.kind == .ambiguousIdle,
+               date.timeIntervalSince(pendingTransition.startedAt)
+                    >= Self.ambiguousIdleGraceInterval {
+                isRunning = false
+                self.pendingTransition = nil
+            }
+            return makeUpdate(
+                observation,
+                trailingRefreshAnchor: trailingRefreshAnchor
+            )
+        }
+    }
+
+    private func makeUpdate(
+        _ observation: ActivityMonitorObservation,
+        trailingRefreshAnchor: Date?
+    ) -> ActivityLifecycleUpdate {
+        ActivityLifecycleUpdate(
+            taskRunning: isRunning,
+            observation: observation,
+            trailingRefreshAnchor: trailingRefreshAnchor
+        )
+    }
+
+    /// A provider/client switch invalidates an unconfirmed candidate without
+    /// changing its already committed lifecycle state.
+    mutating func clearPendingTransition() {
+        pendingTransition = nil
+    }
+
+    /// Reset all lifecycle state at a monitor stop/restart boundary.
+    @discardableResult
+    mutating func reset() -> Bool {
+        let wasRunning = isRunning
+        isRunning = false
+        pendingTransition = nil
+        return wasRunning
+    }
+
+    private var maximumActivationSampleGap: TimeInterval {
+        // Permit the supported 0.25/0.5/1.0 second polling choices while
+        // preventing a stale candidate from combining unrelated samples.
+        max(1, expectedSampleInterval * 2.5)
+    }
+}
+
 struct ActivityCoordinatorActions {
     let activeClient: () -> AssistantClient
     let claudeProcessAvailable: () -> Bool
@@ -7,6 +321,31 @@ struct ActivityCoordinatorActions {
     let setActiveClient: (AssistantClient) -> Void
     let setCodexTaskRunning: (Bool) -> Void
     let setClaudeTaskRunning: (Bool) -> Void
+    let resetActivityRefreshState: () -> Void
+    let observeCodexActivity: (ActivityLifecycleUpdate) -> Void
+    let observeClaudeActivity: (ActivityLifecycleUpdate) -> Void
+
+    init(
+        activeClient: @escaping () -> AssistantClient,
+        claudeProcessAvailable: @escaping () -> Bool,
+        setClaudeProcessAvailable: @escaping (Bool) -> Void,
+        setActiveClient: @escaping (AssistantClient) -> Void,
+        setCodexTaskRunning: @escaping (Bool) -> Void,
+        setClaudeTaskRunning: @escaping (Bool) -> Void,
+        resetActivityRefreshState: @escaping () -> Void = {},
+        observeCodexActivity: @escaping (ActivityLifecycleUpdate) -> Void = { _ in },
+        observeClaudeActivity: @escaping (ActivityLifecycleUpdate) -> Void = { _ in }
+    ) {
+        self.activeClient = activeClient
+        self.claudeProcessAvailable = claudeProcessAvailable
+        self.setClaudeProcessAvailable = setClaudeProcessAvailable
+        self.setActiveClient = setActiveClient
+        self.setCodexTaskRunning = setCodexTaskRunning
+        self.setClaudeTaskRunning = setClaudeTaskRunning
+        self.resetActivityRefreshState = resetActivityRefreshState
+        self.observeCodexActivity = observeCodexActivity
+        self.observeClaudeActivity = observeClaudeActivity
+    }
 }
 
 /// Owns activity polling, frontmost-app observation, and the two accepted
@@ -21,6 +360,10 @@ final class ActivityCoordinator {
     private var workspaceObserver: NSObjectProtocol?
     private var isCheckInFlight = false
     private var isStarted = false
+    private var lifecycleGeneration: UInt64 = 0
+    private var lastSampledClient: AssistantClient?
+    private var codexLifecycle = ActivityLifecycleStateMachine()
+    private var claudeLifecycle = ActivityLifecycleStateMachine()
 
     private(set) var startCount = 0
 
@@ -39,6 +382,9 @@ final class ActivityCoordinator {
     func start(interval: TimeInterval) {
         guard !isStarted else { return }
         isStarted = true
+        lifecycleGeneration &+= 1
+        codexLifecycle.updateSampleInterval(interval)
+        claudeLifecycle.updateSampleInterval(interval)
         startCount += 1
         workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -50,10 +396,13 @@ final class ActivityCoordinator {
 
     func updateInterval(_ interval: TimeInterval) {
         guard isStarted else { return }
+        codexLifecycle.updateSampleInterval(interval)
+        claudeLifecycle.updateSampleInterval(interval)
         configureTimer(interval: interval)
     }
 
     func stop() {
+        let wasStarted = isStarted
         pollTimer?.invalidate()
         pollTimer = nil
         if let workspaceObserver {
@@ -62,9 +411,21 @@ final class ActivityCoordinator {
         }
         isStarted = false
         isCheckInFlight = false
+        lifecycleGeneration &+= 1
+        lastSampledClient = nil
+        let codexWasRunning = codexLifecycle.reset()
+        let claudeWasRunning = claudeLifecycle.reset()
+        if wasStarted {
+            actions.resetActivityRefreshState()
+            if codexWasRunning { actions.setCodexTaskRunning(false) }
+            if claudeWasRunning { actions.setClaudeTaskRunning(false) }
+        }
     }
 
-    func pollNow() { refreshActivity() }
+    func pollNow() {
+        guard isStarted else { return }
+        refreshActivity()
+    }
 
     private func configureTimer(interval: TimeInterval) {
         pollTimer?.invalidate()
@@ -89,32 +450,46 @@ final class ActivityCoordinator {
     }
 
     private func refreshActivity() {
+        guard isStarted else { return }
         handleFrontmostApplicationChangeWithoutRefresh()
         guard !isCheckInFlight else { return }
         let frontmost = NSWorkspace.shared.frontmostApplication
         let frontmostIsCodex = Self.isCodexApplication(frontmost)
         let frontmostIsTerminal = Self.isTerminalApplication(frontmost)
         let clientBeforeCheck = actions.activeClient()
+        let sampledClient: AssistantClient = frontmostIsCodex
+            ? .codex
+            : frontmostIsTerminal
+                ? .claude
+                : clientBeforeCheck
+        if sampledClient != lastSampledClient {
+            codexLifecycle.clearPendingTransition()
+            claudeLifecycle.clearPendingTransition()
+            lastSampledClient = sampledClient
+        }
+        let generation = lifecycleGeneration
         isCheckInFlight = true
         queue.async { [weak self] in
             guard let self else { return }
-            var codexRunning: Bool?
-            var claudeStatus: (processRunning: Bool, taskRunning: Bool)?
+            var codexObservation: ActivityMonitorObservation?
+            var claudeStatus: (processRunning: Bool, observation: ActivityMonitorObservation)?
             if frontmostIsCodex {
-                codexRunning = self.codexMonitor.isTaskRunning()
+                codexObservation = self.codexMonitor.activityObservation()
             } else if frontmostIsTerminal {
-                let status = self.claudeMonitor.status()
+                let status = self.claudeMonitor.activityStatus()
                 claudeStatus = status
                 if !status.processRunning {
-                    codexRunning = self.codexMonitor.isTaskRunning()
+                    codexObservation = self.codexMonitor.activityObservation()
                 }
             } else if clientBeforeCheck == .codex {
-                codexRunning = self.codexMonitor.isTaskRunning()
+                codexObservation = self.codexMonitor.activityObservation()
             } else {
-                claudeStatus = self.claudeMonitor.status()
+                claudeStatus = self.claudeMonitor.activityStatus()
             }
+            let sampledAt = Date()
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                guard self.isStarted, self.lifecycleGeneration == generation else { return }
                 self.isCheckInFlight = false
                 if let claudeStatus {
                     if self.actions.claudeProcessAvailable() != claudeStatus.processRunning {
@@ -128,8 +503,16 @@ final class ActivityCoordinator {
                           claudeStatus?.processRunning == true {
                     self.actions.setActiveClient(.claude)
                 }
-                if let codexRunning { self.actions.setCodexTaskRunning(codexRunning) }
-                if let claudeStatus { self.actions.setClaudeTaskRunning(claudeStatus.taskRunning) }
+                if let codexObservation {
+                    let update = self.codexLifecycle.observeUpdate(codexObservation, at: sampledAt)
+                    self.actions.observeCodexActivity(update)
+                    self.actions.setCodexTaskRunning(update.taskRunning)
+                }
+                if let claudeStatus {
+                    let update = self.claudeLifecycle.observeUpdate(claudeStatus.observation, at: sampledAt)
+                    self.actions.observeClaudeActivity(update)
+                    self.actions.setClaudeTaskRunning(update.taskRunning)
+                }
             }
         }
     }
