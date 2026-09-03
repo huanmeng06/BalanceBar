@@ -1686,6 +1686,33 @@ final class AppDelegateCompositionTests: XCTestCase {
         coordinator.stop()
     }
 
+    @MainActor
+    func testActivityCoordinatorResetsRefreshStateAtEachStartedStopBoundary() {
+        var resetCount = 0
+        let coordinator = ActivityCoordinator(
+            actions: ActivityCoordinatorActions(
+                activeClient: { .codex },
+                claudeProcessAvailable: { false },
+                setClaudeProcessAvailable: { _ in },
+                setActiveClient: { _ in },
+                setCodexTaskRunning: { _ in },
+                setClaudeTaskRunning: { _ in },
+                resetActivityRefreshState: { resetCount += 1 }
+            )
+        )
+
+        coordinator.stop()
+        XCTAssertEqual(resetCount, 0)
+        coordinator.start(interval: 60)
+        coordinator.stop()
+        XCTAssertEqual(resetCount, 1)
+        coordinator.stop()
+        XCTAssertEqual(resetCount, 1)
+        coordinator.start(interval: 60)
+        coordinator.stop()
+        XCTAssertEqual(resetCount, 2)
+    }
+
     func testActivityLifecycleRequiresDistinctSamplesAndHalfSecondActivationHold() {
         var machine = ActivityLifecycleStateMachine()
         let start = Date(timeIntervalSince1970: 5_000)
@@ -1798,6 +1825,395 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(machine.reset())
         XCTAssertFalse(machine.isRunning)
         XCTAssertFalse(machine.observe(.ambiguousIdle, at: start.addingTimeInterval(11)))
+    }
+
+    func testActivityLifecycleUpdateSeparatesNormalActiveFromRefreshSuppressedEvidence() {
+        var lifecycle = ActivityRefreshLifecycle()
+        let start = Date(timeIntervalSince1970: 12_000)
+
+        lifecycle.apply(
+            ActivityLifecycleUpdate(
+                taskRunning: true,
+                observation: .active,
+                trailingRefreshAnchor: nil
+            )
+        )
+        XCTAssertEqual(lifecycle.phase, .normalActive)
+        XCTAssertNil(lifecycle.trailingRefreshAnchor)
+
+        lifecycle.apply(
+            ActivityLifecycleUpdate(
+                taskRunning: true,
+                observation: .contextCompaction,
+                trailingRefreshAnchor: nil
+            )
+        )
+        XCTAssertEqual(lifecycle.phase, .suspended)
+        XCTAssertNil(lifecycle.trailingRefreshAnchor)
+
+        lifecycle.apply(
+            ActivityLifecycleUpdate(
+                taskRunning: true,
+                observation: .active,
+                trailingRefreshAnchor: nil
+            )
+        )
+        XCTAssertEqual(lifecycle.phase, .normalActive)
+        XCTAssertTrue(
+            lifecycle.consumeImmediateResume(),
+            "the first normal activity after compaction must be eligible for an immediate refresh"
+        )
+        XCTAssertFalse(lifecycle.consumeImmediateResume())
+
+        lifecycle.apply(
+            ActivityLifecycleUpdate(
+                taskRunning: true,
+                observation: .ambiguousIdle,
+                trailingRefreshAnchor: start
+            )
+        )
+        XCTAssertEqual(lifecycle.phase, .suspended)
+        XCTAssertEqual(lifecycle.trailingRefreshAnchor, start)
+
+        lifecycle.apply(
+            ActivityLifecycleUpdate(
+                taskRunning: true,
+                observation: .ambiguousIdle,
+                trailingRefreshAnchor: start.addingTimeInterval(5)
+            )
+        )
+        XCTAssertEqual(
+            lifecycle.trailingRefreshAnchor,
+            start,
+            "repeated ambiguous samples must not move the trailing anchor forward"
+        )
+    }
+
+    func testActivityLifecycleUpdateKeepsGraceAndTrailingWindowsOverlapping() {
+        var taskLifecycle = ActivityLifecycleStateMachine()
+        var refreshLifecycle = ActivityRefreshLifecycle()
+        let start = Date(timeIntervalSince1970: 13_000)
+
+        XCTAssertFalse(taskLifecycle.observe(.active, at: start))
+        XCTAssertTrue(taskLifecycle.observe(.active, at: start.addingTimeInterval(0.5)))
+
+        let firstIdle = taskLifecycle.observeUpdate(
+            .ambiguousIdle,
+            at: start.addingTimeInterval(1)
+        )
+        XCTAssertTrue(firstIdle.taskRunning)
+        refreshLifecycle.apply(firstIdle)
+        XCTAssertEqual(
+            refreshLifecycle.trailingRefreshDeadline(duration: 12),
+            start.addingTimeInterval(13)
+        )
+
+        let beforeGraceEnds = taskLifecycle.observeUpdate(
+            .ambiguousIdle,
+            at: start.addingTimeInterval(10.99)
+        )
+        XCTAssertTrue(beforeGraceEnds.taskRunning)
+        refreshLifecycle.apply(beforeGraceEnds)
+
+        let graceEnds = taskLifecycle.observeUpdate(
+            .ambiguousIdle,
+            at: start.addingTimeInterval(11)
+        )
+        XCTAssertFalse(graceEnds.taskRunning)
+        XCTAssertEqual(
+            graceEnds.trailingRefreshAnchor,
+            start.addingTimeInterval(1)
+        )
+        refreshLifecycle.apply(graceEnds)
+        XCTAssertEqual(
+            refreshLifecycle.trailingRefreshDeadline(duration: 12),
+            start.addingTimeInterval(13),
+            "formal idle must retain the first ambiguous-idle anchor rather than add another twelve seconds"
+        )
+    }
+
+    func testActivityLifecycleUpdateDirectTerminalStartsTrailingAtTerminalTime() {
+        var taskLifecycle = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 14_000)
+
+        XCTAssertFalse(taskLifecycle.observe(.active, at: start))
+        XCTAssertTrue(taskLifecycle.observe(.active, at: start.addingTimeInterval(0.5)))
+        let terminal = taskLifecycle.observeUpdate(
+            .hardTerminal,
+            at: start.addingTimeInterval(2)
+        )
+
+        XCTAssertFalse(terminal.taskRunning)
+        XCTAssertEqual(terminal.trailingRefreshAnchor, start.addingTimeInterval(2))
+    }
+
+    func testActivityLifecycleUpdateCompactionTerminalUsesExistingAmbiguousAnchor() {
+        var taskLifecycle = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 15_000)
+
+        XCTAssertFalse(taskLifecycle.observe(.active, at: start))
+        XCTAssertTrue(taskLifecycle.observe(.active, at: start.addingTimeInterval(0.5)))
+        let ambiguous = taskLifecycle.observeUpdate(
+            .ambiguousIdle,
+            at: start.addingTimeInterval(1)
+        )
+        XCTAssertTrue(ambiguous.taskRunning)
+        let terminal = taskLifecycle.observeUpdate(
+            .hardTerminal,
+            at: start.addingTimeInterval(6)
+        )
+
+        XCTAssertFalse(terminal.taskRunning)
+        XCTAssertEqual(
+            terminal.trailingRefreshAnchor,
+            start.addingTimeInterval(1),
+            "a hard terminal after grace has started must retain the original trailing anchor"
+        )
+    }
+
+    func testActivityRefreshPolicyKeepsNormalActiveCadenceSeparateFromSuppressedPhases() {
+        let now = Date(timeIntervalSince1970: 16_000)
+        let lastRefresh = now.addingTimeInterval(-1)
+
+        XCTAssertTrue(
+            ActivityRefreshPolicy.shouldRefreshUsage(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: .normalActive,
+                inTrailingWindow: false
+            )
+        )
+        XCTAssertFalse(
+            ActivityRefreshPolicy.shouldIssueRefresh(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: .normalActive,
+                inTrailingWindow: false,
+                now: now,
+                lastRefresh: lastRefresh,
+                refreshInterval: 3,
+                resumed: false
+            ),
+            "a normal active sample inside the existing cadence must not force another refresh"
+        )
+        XCTAssertFalse(
+            ActivityRefreshPolicy.shouldRefreshUsage(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: .suspended,
+                inTrailingWindow: false
+            ),
+            "compaction or ambiguous idle must not authorize normal active refresh"
+        )
+        XCTAssertTrue(
+            ActivityRefreshPolicy.shouldRefreshUsage(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: .suspended,
+                inTrailingWindow: true
+            ),
+            "an unexpired trailing window may still perform its own catch-up refresh"
+        )
+        XCTAssertTrue(
+            ActivityRefreshPolicy.shouldIssueRefresh(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: .normalActive,
+                inTrailingWindow: false,
+                now: now,
+                lastRefresh: now.addingTimeInterval(-0.1),
+                refreshInterval: 3,
+                resumed: true
+            ),
+            "the first normal activity after suppression must refresh promptly"
+        )
+        XCTAssertTrue(
+            ActivityRefreshPolicy.shouldIssueRefresh(
+                taskRunning: false,
+                wasTaskRunning: true,
+                phase: .inactive,
+                inTrailingWindow: true,
+                now: now,
+                lastRefresh: lastRefresh,
+                refreshInterval: 3,
+                resumed: false
+            ),
+            "a hard/formal end should still issue the final activity refresh"
+        )
+    }
+
+    func testActivityRefreshLifecyclePausesCompactionAndRecoversAfterAmbiguousIdle() {
+        var taskLifecycle = ActivityLifecycleStateMachine()
+        var refreshLifecycle = ActivityRefreshLifecycle()
+        let start = Date(timeIntervalSince1970: 17_000)
+
+        refreshLifecycle.apply(taskLifecycle.observeUpdate(.active, at: start))
+        let active = taskLifecycle.observeUpdate(
+            .active,
+            at: start.addingTimeInterval(0.5)
+        )
+        XCTAssertTrue(active.taskRunning)
+        refreshLifecycle.apply(active)
+        XCTAssertEqual(refreshLifecycle.phase, .normalActive)
+        XCTAssertTrue(
+            ActivityRefreshPolicy.shouldIssueRefresh(
+                taskRunning: active.taskRunning,
+                wasTaskRunning: false,
+                phase: refreshLifecycle.phase,
+                inTrailingWindow: false,
+                now: start.addingTimeInterval(0.5),
+                lastRefresh: nil,
+                refreshInterval: 3,
+                resumed: false
+            )
+        )
+
+        let compaction = taskLifecycle.observeUpdate(
+            .contextCompaction,
+            at: start.addingTimeInterval(60)
+        )
+        XCTAssertTrue(compaction.taskRunning)
+        refreshLifecycle.apply(compaction)
+        XCTAssertEqual(refreshLifecycle.phase, .suspended)
+        XCTAssertFalse(
+            ActivityRefreshPolicy.shouldIssueRefresh(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: refreshLifecycle.phase,
+                inTrailingWindow: false,
+                now: start.addingTimeInterval(120),
+                lastRefresh: start.addingTimeInterval(119.9),
+                refreshInterval: 3,
+                resumed: false
+            ),
+            "a long compaction pause must not keep the normal three-second refresh loop alive"
+        )
+
+        let resumedFromCompaction = taskLifecycle.observeUpdate(
+            .active,
+            at: start.addingTimeInterval(121)
+        )
+        refreshLifecycle.apply(resumedFromCompaction)
+        XCTAssertTrue(resumedFromCompaction.taskRunning)
+        XCTAssertEqual(refreshLifecycle.phase, .normalActive)
+        XCTAssertTrue(refreshLifecycle.consumeImmediateResume())
+
+        let ambiguous = taskLifecycle.observeUpdate(
+            .ambiguousIdle,
+            at: start.addingTimeInterval(122)
+        )
+        refreshLifecycle.apply(ambiguous)
+        XCTAssertTrue(ambiguous.taskRunning)
+        XCTAssertEqual(refreshLifecycle.phase, .suspended)
+        XCTAssertFalse(
+            ActivityRefreshPolicy.shouldRefreshUsage(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: refreshLifecycle.phase,
+                inTrailingWindow: false
+            )
+        )
+
+        let activeAgain = taskLifecycle.observeUpdate(
+            .active,
+            at: start.addingTimeInterval(127)
+        )
+        refreshLifecycle.apply(activeAgain)
+        XCTAssertTrue(activeAgain.taskRunning)
+        XCTAssertEqual(refreshLifecycle.phase, .normalActive)
+        XCTAssertNil(refreshLifecycle.trailingRefreshAnchor)
+        XCTAssertTrue(
+            refreshLifecycle.consumeImmediateResume(),
+            "normal activity after either suppression phase must resume refresh promptly"
+        )
+    }
+
+    func testActivityRefreshLifecycleEndsCompactionWithTrailingWithoutNormalResume() {
+        var taskLifecycle = ActivityLifecycleStateMachine()
+        var refreshLifecycle = ActivityRefreshLifecycle()
+        let start = Date(timeIntervalSince1970: 18_000)
+
+        _ = taskLifecycle.observe(.active, at: start)
+        XCTAssertTrue(taskLifecycle.observe(.active, at: start.addingTimeInterval(0.5)))
+        let compaction = taskLifecycle.observeUpdate(
+            .contextCompaction,
+            at: start.addingTimeInterval(1)
+        )
+        refreshLifecycle.apply(compaction)
+        XCTAssertEqual(refreshLifecycle.phase, .suspended)
+
+        let terminalAt = start.addingTimeInterval(4)
+        let terminal = taskLifecycle.observeUpdate(.hardTerminal, at: terminalAt)
+        refreshLifecycle.apply(terminal)
+
+        XCTAssertFalse(terminal.taskRunning)
+        XCTAssertEqual(refreshLifecycle.phase, .inactive)
+        XCTAssertEqual(refreshLifecycle.trailingRefreshAnchor, terminalAt)
+        XCTAssertFalse(
+            ActivityRefreshPolicy.shouldRefreshUsage(
+                taskRunning: true,
+                wasTaskRunning: true,
+                phase: refreshLifecycle.phase,
+                inTrailingWindow: false
+            ),
+            "a hard terminal after compaction must never re-enter normal active refresh"
+        )
+        XCTAssertTrue(
+            ActivityRefreshPolicy.shouldIssueRefresh(
+                taskRunning: false,
+                wasTaskRunning: true,
+                phase: refreshLifecycle.phase,
+                inTrailingWindow: true,
+                now: terminalAt,
+                lastRefresh: terminalAt.addingTimeInterval(-1),
+                refreshInterval: 3,
+                resumed: false
+            )
+        )
+    }
+
+    func testActivityRefreshLifecyclesRemainIndependentAcrossClients() {
+        var codex = ActivityRefreshLifecycle()
+        var claude = ActivityRefreshLifecycle()
+
+        let activeUpdate = ActivityLifecycleUpdate(
+            taskRunning: true,
+            observation: .active,
+            trailingRefreshAnchor: nil
+        )
+        codex.apply(activeUpdate)
+        claude.apply(activeUpdate)
+
+        codex.apply(
+            ActivityLifecycleUpdate(
+                taskRunning: true,
+                observation: .contextCompaction,
+                trailingRefreshAnchor: nil
+            )
+        )
+        XCTAssertEqual(codex.phase, .suspended)
+        XCTAssertEqual(claude.phase, .normalActive)
+
+        codex.apply(
+            ActivityLifecycleUpdate(
+                taskRunning: true,
+                observation: .ambiguousIdle,
+                trailingRefreshAnchor: Date(timeIntervalSince1970: 19_000)
+            )
+        )
+        claude.apply(activeUpdate)
+        XCTAssertEqual(codex.phase, .suspended)
+        XCTAssertEqual(claude.phase, .normalActive)
+        XCTAssertNil(claude.trailingRefreshAnchor)
+        XCTAssertFalse(
+            claude.consumeImmediateResume(),
+            "an unrelated Codex suspension must not mark Claude for an immediate refresh"
+        )
+
+        codex.apply(activeUpdate)
+        XCTAssertEqual(codex.phase, .normalActive)
+        XCTAssertNil(codex.trailingRefreshAnchor)
+        XCTAssertTrue(codex.consumeImmediateResume())
     }
 
     private func balanceBarSource(file: StaticString = #filePath) throws -> String {
