@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "暫無日誌";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "選單列空間不足，BalanceBar 暫時不可見；請關閉或移除部分選單列圖示後重試。";
 "dashboard.menu.bar.page.open_settings" = "開啟設定";
+"dashboard.menu.bar.page.runtime_only_warning" = "目前已啟用「僅在執行時顯示」，任務結束後的隱藏延遲已到期，因此選單列圖示暫時隱藏。";
+"dashboard.menu.bar.page.set_now" = "立即設定";
 "dashboard.menu.bar.page.preview" = "預覽";
 "dashboard.menu.bar.page.current_layout" = "目前版面";
 "dashboard.menu.bar.page.quota_and_reset" = "配額與重設";

@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "Aucun journal pour le moment";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "L’espace de la barre des menus est plein ; BalanceBar est donc temporairement masqué. Masquez ou supprimez certaines icônes de la barre des menus, puis réessayez.";
 "dashboard.menu.bar.page.open_settings" = "Ouvrir les réglages";
+"dashboard.menu.bar.page.runtime_only_warning" = "« Uniquement pendant l’exécution » est activé et le délai de masquage après la tâche est écoulé ; l’icône de la barre des menus est donc temporairement masquée.";
+"dashboard.menu.bar.page.set_now" = "Configurer maintenant";
 "dashboard.menu.bar.page.preview" = "Aperçu";
 "dashboard.menu.bar.page.current_layout" = "Disposition actuelle";
 "dashboard.menu.bar.page.quota_and_reset" = "Quota et réinitialisation";

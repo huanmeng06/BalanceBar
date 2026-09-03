@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "ログはまだありません";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "メニューバーの空き容量が不足しているためBalanceBarは一時的に非表示です。ほかのメニューバーアイコンを隠すか削除してから再試行してください。";
 "dashboard.menu.bar.page.open_settings" = "設定を開く";
+"dashboard.menu.bar.page.runtime_only_warning" = "「実行中のみ表示」が有効で、タスク終了後の非表示までの時間が経過したため、メニューバーアイコンは一時的に非表示です。";
+"dashboard.menu.bar.page.set_now" = "今すぐ設定";
 "dashboard.menu.bar.page.preview" = "プレビュー";
 "dashboard.menu.bar.page.current_layout" = "現在のレイアウト";
 "dashboard.menu.bar.page.quota_and_reset" = "クォータとリセット";

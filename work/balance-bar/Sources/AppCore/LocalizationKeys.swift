@@ -279,6 +279,8 @@
     case keyDashboardLogsPageNoLogsYet = "dashboard.logs.page.no_logs_yet"
     case keyDashboardMenuBarPageMenuBarSpaceIsFullSoBalancebarIsTemporarilyHiddenHideOrRemoveSomeMenuBarIconsAndTryAgain = "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again"
     case keyDashboardMenuBarPageOpenSettings = "dashboard.menu.bar.page.open_settings"
+    case keyDashboardMenuBarPageRuntimeOnlyWarning = "dashboard.menu.bar.page.runtime_only_warning"
+    case keyDashboardMenuBarPageSetNow = "dashboard.menu.bar.page.set_now"
     case keyDashboardMenuBarPagePreview = "dashboard.menu.bar.page.preview"
     case keyDashboardMenuBarPageCurrentLayout = "dashboard.menu.bar.page.current_layout"
     case keyDashboardMenuBarPageTheMenuBarUpdatesWithProviderDataInRealTime = "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time"
