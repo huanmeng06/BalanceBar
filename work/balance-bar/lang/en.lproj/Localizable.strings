@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "No logs yet";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "Menu bar space is full, so BalanceBar is temporarily hidden; hide or remove some menu bar icons and try again.";
 "dashboard.menu.bar.page.open_settings" = "Open Settings";
+"dashboard.menu.bar.page.runtime_only_warning" = "Only While Running is enabled and the post-task hide delay has elapsed, so the menu bar icon is temporarily hidden.";
+"dashboard.menu.bar.page.set_now" = "Set Now";
 "dashboard.menu.bar.page.preview" = "Preview";
 "dashboard.menu.bar.page.current_layout" = "Current Layout";
 "dashboard.menu.bar.page.quota_and_reset" = "Quota & Reset";

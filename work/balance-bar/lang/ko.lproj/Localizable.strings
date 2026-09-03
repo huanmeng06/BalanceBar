@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "아직 로그가 없습니다";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "메뉴 막대 공간이 부족하여 BalanceBar가 일시적으로 숨겨졌습니다; 일부 메뉴 막대 아이콘을 숨기거나 제거한 후 다시 시도하세요.";
 "dashboard.menu.bar.page.open_settings" = "설정 열기";
+"dashboard.menu.bar.page.runtime_only_warning" = "실행 중에만 표시가 활성화되어 작업 종료 후 숨김 지연 시간이 지나 메뉴 막대 아이콘이 일시적으로 숨겨졌습니다.";
+"dashboard.menu.bar.page.set_now" = "지금 설정";
 "dashboard.menu.bar.page.preview" = "미리보기";
 "dashboard.menu.bar.page.current_layout" = "현재 레이아웃";
 "dashboard.menu.bar.page.quota_and_reset" = "할당량 및 재설정";

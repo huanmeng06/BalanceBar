@@ -277,6 +277,8 @@
 "dashboard.logs.page.no_logs_yet" = "Ainda não há logs";
 "dashboard.menu.bar.page.menu_bar_space_is_full_so_balancebar_is_temporarily_hidden_hide_or_remove_some_menu_bar_icons_and_try_again" = "O espaço da barra de menus está cheio, então o BalanceBar foi ocultado temporariamente; oculte ou remova alguns ícones da barra de menus e tente novamente.";
 "dashboard.menu.bar.page.open_settings" = "Abrir configurações";
+"dashboard.menu.bar.page.runtime_only_warning" = "Somente durante a execução está ativado e o atraso para ocultar após a tarefa terminou; o ícone da barra de menus está temporariamente oculto.";
+"dashboard.menu.bar.page.set_now" = "Configurar agora";
 "dashboard.menu.bar.page.preview" = "Pré-visualização";
 "dashboard.menu.bar.page.current_layout" = "Disposição atual";
 "dashboard.menu.bar.page.quota_and_reset" = "Cota e redefinição";
