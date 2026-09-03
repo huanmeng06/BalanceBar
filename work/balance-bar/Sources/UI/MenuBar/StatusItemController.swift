@@ -1634,8 +1634,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// custom view hierarchy to re-snapshot. Opt-in via
     /// `defaults write <domain> menuBarBitmapContent -bool YES` + relaunch.
     private let usesBitmapContent = UserDefaults.standard.object(forKey: "menuBarBitmapContent") as? Bool ?? false
-    private let bitmapRenderContainer = NSView(frame: NSRect(x: 0, y: 0, width: 56, height: 22))
+    private let bitmapRenderContainer = MenuBarBitmapRenderView(
+        frame: NSRect(x: 0, y: 0, width: 56, height: 22)
+    )
     private var cachedMenuBarTextBitmap: NSImage?
+    private var menuBarBitmapImagePlacement: MenuBarBitmapImagePlacement?
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
     private var isMenuBarContentStackConfigured = false
@@ -1809,6 +1812,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.onFrameImageChanged = nil
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
+        cachedMenuBarTextBitmap = nil
+        menuBarBitmapImagePlacement = nil
         menuBarContentStack.removeFromSuperview()
         statusMenu.delegate = nil
         statusMenu.removeAllItems()
@@ -2589,11 +2594,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 let automaticTextYOffset = MenuBarLayout.singleLinePrimaryAutomaticYOffset(
                     fontSize: settings.fontSize
                 )
-                let targetY = button.bounds.midY + MenuBarOffsetLayout.yDelta(
-                    visualY: settings.amountOffsetY + automaticTextYOffset,
-                    in: .flippedFrame
+                let coordinateBounds = menuBarContentCoordinateSpace?.bounds ?? button.bounds
+                let verticalCorrection = MenuBarLayout.primaryInkVerticalCorrection(
+                    primaryInk: primaryInk,
+                    coordinateBounds: coordinateBounds,
+                    amountOffsetY: settings.amountOffsetY,
+                    automaticYOffset: automaticTextYOffset
                 )
-                let verticalCorrection = targetY - primaryInk.midY
                 menuBarTextStack.frame = zeroUserTextFrame.offsetBy(
                     dx: 0,
                     dy: verticalCorrection
@@ -2672,15 +2679,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
         let scale = button.window?.backingScaleFactor ?? 2
+        let placement = MenuBarBitmapImageLayout.placement(
+            for: button,
+            canonicalBounds: bitmapRenderContainer.bounds
+        )
+        menuBarBitmapImagePlacement = placement
         guard let full = Self.renderViewToTemplateImage(bitmapRenderContainer, scale: scale) else {
             return
         }
-        button.image = full
+        button.image = Self.placeTemplateImage(full, using: placement) ?? full
         // Cache the icon-free variant so animation frames can composite the
         // rotated icon over static text instead of re-rendering the tree.
         let iconWasHidden = menuBarIconSlot.isHidden
         menuBarIconSlot.isHidden = true
-        cachedMenuBarTextBitmap = Self.renderViewToTemplateImage(bitmapRenderContainer, scale: scale)
+        if let textBitmap = Self.renderViewToTemplateImage(bitmapRenderContainer, scale: scale) {
+            cachedMenuBarTextBitmap = Self.placeTemplateImage(textBitmap, using: placement)
+                ?? textBitmap
+        }
         menuBarIconSlot.isHidden = iconWasHidden
     }
 
@@ -2696,8 +2711,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let bounds = bitmapRenderContainer.bounds
         let composed = NSImage(size: bounds.size)
         composed.isTemplate = true
-        composed.lockFocus()
-        textBitmap.draw(in: NSRect(origin: .zero, size: bounds.size))
+        composed.lockFocusFlipped(true)
+        textBitmap.draw(
+            in: NSRect(origin: .zero, size: bounds.size),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: nil
+        )
         if let iconImage, !menuBarIconSlot.isHidden {
             // menuBarIconView.frame is in its superview's (iconSlot) space;
             // resolve the view's actual position inside the render container
@@ -2708,12 +2730,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 menuBarIconView.bounds,
                 to: bitmapRenderContainer
             )
+            let placement = menuBarBitmapImagePlacement
+                ?? MenuBarBitmapImagePlacement(
+                    canonicalBounds: bounds,
+                    imageDestinationRect: bounds
+                )
+            let imageViewBounds = placement.imageRect(forCanonicalRect: viewBoundsInContainer)
             let iconSize = iconImage.size
             if iconSize.width > 0, iconSize.height > 0,
-               viewBoundsInContainer.width > 0, viewBoundsInContainer.height > 0 {
+               imageViewBounds.width > 0, imageViewBounds.height > 0 {
                 let scaleFactor = min(
-                    viewBoundsInContainer.width / iconSize.width,
-                    viewBoundsInContainer.height / iconSize.height,
+                    imageViewBounds.width / iconSize.width,
+                    imageViewBounds.height / iconSize.height,
                     1
                 )
                 let fittedSize = NSSize(
@@ -2721,25 +2749,60 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     height: iconSize.height * scaleFactor
                 )
                 iconImage.draw(in: NSRect(
-                    x: viewBoundsInContainer.midX - fittedSize.width / 2,
-                    y: viewBoundsInContainer.midY - fittedSize.height / 2,
+                    x: imageViewBounds.midX - fittedSize.width / 2,
+                    y: imageViewBounds.midY - fittedSize.height / 2,
                     width: fittedSize.width,
                     height: fittedSize.height
-                ))
+                ),
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1,
+                respectFlipped: true,
+                hints: nil
+                )
             }
         }
         composed.unlockFocus()
         button.image = composed
     }
 
+    private static func placeTemplateImage(
+        _ image: NSImage,
+        using placement: MenuBarBitmapImagePlacement
+    ) -> NSImage? {
+        guard !placement.isIdentity else { return image }
+        let canvas = NSImage(size: placement.canvasSize)
+        canvas.isTemplate = true
+        canvas.lockFocusFlipped(true)
+        let offset = placement.canonicalToImageOffset
+        image.draw(
+            in: NSRect(
+                x: offset.width,
+                y: offset.height,
+                width: image.size.width,
+                height: image.size.height
+            ),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: nil
+        )
+        canvas.unlockFocus()
+        return canvas
+    }
+
     private static func renderViewToTemplateImage(_ view: NSView, scale: CGFloat) -> NSImage? {
         let bounds = view.bounds
         guard bounds.width > 0, bounds.height > 0 else { return nil }
-        let safeScale = scale > 0 ? scale : 2
+        let pixelDimensions = MenuBarBitmapImageLayout.pixelDimensions(
+            for: bounds.size,
+            scale: scale
+        )
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
-            pixelsWide: max(1, Int((bounds.width * safeScale).rounded())),
-            pixelsHigh: max(1, Int((bounds.height * safeScale).rounded())),
+            pixelsWide: pixelDimensions.width,
+            pixelsHigh: pixelDimensions.height,
             bitsPerSample: 8,
             samplesPerPixel: 4,
             hasAlpha: true,
