@@ -1686,6 +1686,120 @@ final class AppDelegateCompositionTests: XCTestCase {
         coordinator.stop()
     }
 
+    func testActivityLifecycleRequiresDistinctSamplesAndHalfSecondActivationHold() {
+        var machine = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 5_000)
+
+        XCTAssertFalse(machine.observe(.active, at: start))
+        XCTAssertFalse(
+            machine.observe(.active, at: start),
+            "a duplicate sample at the same instant must not count as an independent confirmation"
+        )
+        XCTAssertFalse(
+            machine.observe(.active, at: start.addingTimeInterval(0.25)),
+            "two samples are not enough before the minimum activation hold elapses"
+        )
+        XCTAssertTrue(
+            machine.observe(.active, at: start.addingTimeInterval(0.5)),
+            "a stable active signal should commit after the 0.5 second confirmation window"
+        )
+    }
+
+    func testActivityLifecycleDoesNotJoinSeparatedActivationSamples() {
+        var machine = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 6_000)
+
+        XCTAssertFalse(machine.observe(.active, at: start))
+        XCTAssertFalse(
+            machine.observe(.active, at: start.addingTimeInterval(3)),
+            "a long sample gap must discard the stale activation candidate"
+        )
+        XCTAssertFalse(machine.observe(.ambiguousIdle, at: start.addingTimeInterval(3.25)))
+        XCTAssertFalse(machine.observe(.active, at: start.addingTimeInterval(3.5)))
+        XCTAssertTrue(machine.observe(.active, at: start.addingTimeInterval(4)))
+    }
+
+    func testActivityLifecycleKeepsShortAmbiguousIdlePauseStable() {
+        var machine = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 7_000)
+
+        XCTAssertFalse(machine.observe(.active, at: start))
+        XCTAssertTrue(machine.observe(.active, at: start.addingTimeInterval(0.5)))
+        XCTAssertTrue(machine.observe(.ambiguousIdle, at: start.addingTimeInterval(1)))
+        XCTAssertTrue(
+            machine.observe(.active, at: start.addingTimeInterval(4)),
+            "activity during the grace window must cancel the pending idle"
+        )
+        XCTAssertTrue(machine.isRunning)
+    }
+
+    func testActivityLifecycleCommitsAmbiguousIdleOnlyAfterTenSeconds() {
+        var machine = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 8_000)
+
+        XCTAssertFalse(machine.observe(.active, at: start))
+        XCTAssertTrue(machine.observe(.active, at: start.addingTimeInterval(0.5)))
+        XCTAssertTrue(machine.observe(.ambiguousIdle, at: start.addingTimeInterval(1)))
+        XCTAssertTrue(
+            machine.observe(.ambiguousIdle, at: start.addingTimeInterval(10.99)),
+            "ambiguous idle must remain provisional before ten seconds"
+        )
+        XCTAssertFalse(
+            machine.observe(.ambiguousIdle, at: start.addingTimeInterval(11)),
+            "ten seconds of ambiguous idle should commit the idle state"
+        )
+    }
+
+    func testActivityLifecycleHardTerminalBypassesIdleGrace() {
+        var machine = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 9_000)
+
+        XCTAssertFalse(machine.observe(.active, at: start))
+        XCTAssertTrue(machine.observe(.active, at: start.addingTimeInterval(0.5)))
+        XCTAssertTrue(machine.observe(.ambiguousIdle, at: start.addingTimeInterval(1)))
+        XCTAssertFalse(
+            machine.observe(.hardTerminal, at: start.addingTimeInterval(1.1)),
+            "explicit completion/failure/cancellation must stop immediately"
+        )
+    }
+
+    func testActivityLifecycleTreatsContextCompactionAsActiveAndSupportsIndependentClients() {
+        var codex = ActivityLifecycleStateMachine()
+        var claude = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 10_000)
+
+        XCTAssertFalse(codex.observe(.active, at: start))
+        XCTAssertFalse(claude.observe(.active, at: start))
+        XCTAssertTrue(codex.observe(.active, at: start.addingTimeInterval(0.5)))
+        XCTAssertTrue(claude.observe(.active, at: start.addingTimeInterval(0.5)))
+
+        XCTAssertTrue(codex.observe(.contextCompaction, at: start.addingTimeInterval(20)))
+        XCTAssertTrue(
+            claude.observe(.ambiguousIdle, at: start.addingTimeInterval(1)),
+            "a Codex compaction/idle candidate must not alter Claude's committed state"
+        )
+        XCTAssertFalse(
+            claude.observe(.hardTerminal, at: start.addingTimeInterval(1.1))
+        )
+        XCTAssertTrue(
+            codex.observe(.ambiguousIdle, at: start.addingTimeInterval(21)),
+            "Claude's terminal must not alter Codex's committed state"
+        )
+    }
+
+    func testActivityLifecycleResetClearsPendingAndCommittedState() {
+        var machine = ActivityLifecycleStateMachine()
+        let start = Date(timeIntervalSince1970: 11_000)
+
+        XCTAssertFalse(machine.observe(.active, at: start))
+        XCTAssertFalse(machine.reset())
+        XCTAssertFalse(machine.observe(.active, at: start.addingTimeInterval(0.5)))
+        XCTAssertTrue(machine.observe(.active, at: start.addingTimeInterval(1)))
+        XCTAssertTrue(machine.reset())
+        XCTAssertFalse(machine.isRunning)
+        XCTAssertFalse(machine.observe(.ambiguousIdle, at: start.addingTimeInterval(11)))
+    }
+
     private func balanceBarSource(file: StaticString = #filePath) throws -> String {
         let testFile = URL(fileURLWithPath: String(describing: file))
         let repositoryRoot = testFile

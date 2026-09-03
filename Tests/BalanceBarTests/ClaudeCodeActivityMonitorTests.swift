@@ -83,6 +83,27 @@ final class ClaudeCodeActivityMonitorTests: XCTestCase {
         XCTAssertFalse(status.taskRunning)
     }
 
+    func testClaudeHardTerminalIsExposedSeparatelyFromAmbiguousIdle() throws {
+        _ = try writeSession([
+            try assistantEvent(stopReason: "end_turn", contentTypes: [])
+        ])
+        XCTAssertEqual(makeMonitor().activityStatus().observation, .hardTerminal)
+
+        let idleDirectory = fixtureDirectory.appendingPathComponent("idle", isDirectory: true)
+        try FileManager.default.createDirectory(at: idleDirectory, withIntermediateDirectories: true)
+        let idleMonitor = ClaudeCodeActivityMonitor(
+            projectsDirectory: idleDirectory,
+            clock: { [weak self] in self?.currentDate ?? Date() },
+            processRunner: { _, _ in
+                ClaudeProcessResult(
+                    standardOutput: Data("101 1 ?? /usr/local/bin/claude claude".utf8),
+                    terminationStatus: 0
+                )
+            }
+        )
+        XCTAssertEqual(idleMonitor.activityStatus().observation, .ambiguousIdle)
+    }
+
     func testExpiredTranscriptIsInactive() throws {
         _ = try writeSession(
             [try assistantEvent(stopReason: nil, contentTypes: [])],
