@@ -101,6 +101,122 @@ final class DashboardComponentsTests: XCTestCase {
         )
     }
 
+    func testSettingsMeasurementCachesIgnoreViewportRelayouts() throws {
+        let rows = (0..<5).map { index in
+            DashboardSettingsComponents.makeSettingsRow(
+                "Stable row \(index)",
+                subtitle: "The content and controls stay unchanged while only the scroll viewport origin moves.",
+                control: NSSwitch()
+            )
+        }
+        var rowsStack: NSStackView?
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Stable measurements",
+            rows: rows,
+            onLayoutCreated: { stack, _, _ in
+                rowsStack = stack
+            }
+        )
+        let page = DashboardSettingsComponents.makeSettingsPage([section])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 260),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+
+        let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
+        let stack = try XCTUnwrap(rowsStack)
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+
+        for offset in [CGFloat(0), 24, 48, 72, 96, 120, 48, 0] {
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: offset))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            // Re-run the document layout to model layout pressure around a
+            // viewport-origin change without changing any row input.
+            stack.needsLayout = true
+            stack.layoutSubtreeIfNeeded()
+            window.layoutIfNeeded()
+        }
+
+        let counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertEqual(counters.rowPreferredHeightMeasurements, 0)
+        XCTAssertEqual(counters.textLineMeasurements, 0)
+        XCTAssertEqual(counters.cardHeightMeasurements, 0)
+    }
+
+    func testSettingsMeasurementCachesInvalidateForWidthTextAndVisibilityChanges() throws {
+        let longSubtitle = "A deliberately long subtitle changes its natural line budget when the row width or text content changes."
+        let subtitle = NSTextField(wrappingLabelWithString: longSubtitle)
+        let row = DashboardSettingsComponents.makeSettingsRow(
+            "Cache invalidation",
+            subtitle: longSubtitle,
+            subtitleLabel: subtitle,
+            control: NSButton(title: "Action", target: nil, action: nil)
+        )
+        var rowsStack: NSStackView?
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Invalidation",
+            rows: [row],
+            onLayoutCreated: { stack, _, _ in
+                rowsStack = stack
+            }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 260),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = section
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+
+        let stack = try XCTUnwrap(rowsStack)
+
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+        window.setContentSize(NSSize(width: 520, height: 260))
+        window.layoutIfNeeded()
+        var counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
+        XCTAssertGreaterThan(counters.textLineMeasurements, 0)
+        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+        subtitle.stringValue = "The subtitle content is now different and must be measured again."
+        subtitle.invalidateIntrinsicContentSize()
+        row.needsLayout = true
+        stack.needsLayout = true
+        window.layoutIfNeeded()
+        counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
+        XCTAssertGreaterThan(counters.textLineMeasurements, 0)
+        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+        let control = try XCTUnwrap(row.subviews.first { $0 is NSButton } as? NSButton)
+        control.title = "A longer action title changes the control fitting width."
+        control.invalidateIntrinsicContentSize()
+        row.needsLayout = true
+        stack.needsLayout = true
+        window.layoutIfNeeded()
+        counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
+        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+        subtitle.isHidden = true
+        row.needsLayout = true
+        stack.needsLayout = true
+        window.layoutIfNeeded()
+        counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
+        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+    }
+
     func testSettingsRowsAdaptToLocalizedSubtitleHeightAcrossWindowWidths() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -1323,6 +1439,10 @@ final class DashboardComponentsTests: XCTestCase {
         root.subviews.flatMap { child in
             ([child].compactMap { $0 as? T }) + descendantViews(of: child, as: type)
         }
+    }
+
+    private func firstDescendant<T: NSView>(of root: NSView, as type: T.Type) -> T? {
+        descendantViews(of: root, as: type).first
     }
 }
 

@@ -1,5 +1,118 @@
 import AppKit
 
+struct DashboardSettingsMeasurementCounters: Equatable {
+    let rowPreferredHeightMeasurements: Int
+    let textLineMeasurements: Int
+    let cardHeightMeasurements: Int
+}
+
+private func dashboardSettingsMetric(_ value: CGFloat) -> Int {
+    guard value.isFinite else { return Int.max }
+    return Int((value * 2).rounded())
+}
+
+private struct DashboardSettingsFontMetric: Hashable {
+    let postscriptName: String
+    let pointSize: Int
+    let symbolicTraits: UInt32
+
+    init(_ font: NSFont?) {
+        let font = font ?? .systemFont(ofSize: NSFont.systemFontSize)
+        postscriptName = font.fontDescriptor.postscriptName ?? ""
+        pointSize = dashboardSettingsMetric(font.pointSize)
+        symbolicTraits = font.fontDescriptor.symbolicTraits.rawValue
+    }
+}
+
+private struct DashboardSettingsTextMetric: Equatable {
+    let text: String
+    let font: DashboardSettingsFontMetric
+    let lineBreakMode: UInt
+    let lineBreakStrategy: UInt
+    let maximumNumberOfLines: Int
+    let usesSingleLineMode: Bool
+    let wraps: Bool
+    let isScrollable: Bool
+    let isHidden: Bool
+
+    init(_ textField: NSTextField?) {
+        guard let textField else {
+            text = ""
+            font = DashboardSettingsFontMetric(nil)
+            lineBreakMode = 0
+            lineBreakStrategy = 0
+            maximumNumberOfLines = 0
+            usesSingleLineMode = false
+            wraps = false
+            isScrollable = false
+            isHidden = true
+            return
+        }
+        text = textField.stringValue
+        font = DashboardSettingsFontMetric(textField.font)
+        lineBreakMode = textField.lineBreakMode.rawValue
+        lineBreakStrategy = textField.lineBreakStrategy.rawValue
+        maximumNumberOfLines = textField.maximumNumberOfLines
+        usesSingleLineMode = textField.usesSingleLineMode
+        wraps = textField.cell?.wraps == true
+        isScrollable = textField.cell?.isScrollable == true
+        isHidden = textField.isHidden
+    }
+}
+
+private struct DashboardSettingsViewMetric: Equatable {
+    let identity: ObjectIdentifier
+    let isHidden: Bool
+    let boundsWidth: Int
+    let boundsHeight: Int
+    let text: DashboardSettingsTextMetric?
+    let children: [DashboardSettingsViewMetric]
+
+    init(_ view: NSView, includesHeight: Bool = true) {
+        identity = ObjectIdentifier(view)
+        isHidden = view.isHidden
+        boundsWidth = dashboardSettingsMetric(view.bounds.width)
+        boundsHeight = includesHeight ? dashboardSettingsMetric(view.bounds.height) : 0
+        if let textField = view as? NSTextField {
+            text = DashboardSettingsTextMetric(textField)
+        } else {
+            text = nil
+        }
+        if let stack = view as? NSStackView {
+            children = stack.arrangedSubviews.map {
+                DashboardSettingsViewMetric($0, includesHeight: includesHeight)
+            }
+        } else {
+            children = []
+        }
+    }
+}
+
+private struct DashboardSettingsRowInput: Equatable {
+    let width: Int
+    let labels: DashboardSettingsViewMetric?
+    let controlIdentity: ObjectIdentifier?
+    let controlIsHidden: Bool
+    let controlBoundsWidth: Int
+    let controlBoundsHeight: Int
+    let forceDedicatedControlRow: Bool
+}
+
+private struct DashboardSettingsTextLineMeasurementKey: Hashable {
+    let text: String
+    let font: DashboardSettingsFontMetric
+    let lineBreakMode: UInt
+    let lineBreakStrategy: UInt
+    let width: Int
+}
+
+private struct DashboardSettingsRowMeasurementKey: Equatable {
+    let input: DashboardSettingsRowInput
+    let placement: DashboardSettingsControlPlacement
+    let controlWidth: Int
+    let controlHeight: Int
+}
+
 protocol DashboardSettingsRowControlLayout: AnyObject {
     func updateAvailableRowWidth(_ width: CGFloat)
     var usesDedicatedRow: Bool { get }
@@ -13,7 +126,12 @@ private enum DashboardSettingsControlPlacement: Equatable {
 }
 
 private final class DashboardSettingsRowView: NSView {
-    var forceDedicatedControlRow = false
+    var forceDedicatedControlRow = false {
+        didSet {
+            guard forceDedicatedControlRow != oldValue else { return }
+            invalidateMeasurementInputs()
+        }
+    }
     let minimumHeight: CGFloat
     let verticalPadding: CGFloat
     weak var labelsView: NSStackView?
@@ -26,6 +144,14 @@ private final class DashboardSettingsRowView: NSView {
     private var controlPlacement: DashboardSettingsControlPlacement = .horizontal
     private var sideBySideControlConstraints: [NSLayoutConstraint] = []
     private var dedicatedControlConstraints: [NSLayoutConstraint] = []
+    private var lastObservedInput: DashboardSettingsRowInput?
+    private var lastPlacementInput: DashboardSettingsRowInput?
+    private var cachedControlFittingSize: NSSize?
+    private var cachedPreferredMeasurement: (key: DashboardSettingsRowMeasurementKey, height: CGFloat)?
+    private var textLineCountCache: [DashboardSettingsTextLineMeasurementKey: Int] = [:]
+    private var textLineCountCacheOrder: [DashboardSettingsTextLineMeasurementKey] = []
+    private var measurementRevisionStorage: UInt = 0
+    private var controlWasNeedingLayout = false
 
     init(
         minimumHeight: CGFloat,
@@ -41,23 +167,53 @@ private final class DashboardSettingsRowView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    var measurementRevision: UInt {
+        _ = observeCurrentInput()
+        return measurementRevisionStorage
+    }
+
     var preferredRowHeight: CGFloat {
         guard let labelsView, bounds.width > 0 else { return minimumHeight }
 
+        let input = observeCurrentInput()
+        let controlSize = currentControlFittingSize()
+        let key = DashboardSettingsRowMeasurementKey(
+            input: input,
+            placement: controlPlacement,
+            controlWidth: dashboardSettingsMetric(controlSize.width),
+            controlHeight: dashboardSettingsMetric(controlSize.height)
+        )
+        if let cachedPreferredMeasurement,
+           cachedPreferredMeasurement.key == key {
+            return cachedPreferredMeasurement.height
+        }
+
+        DashboardSettingsComponents.recordRowPreferredHeightMeasurement()
         labelsView.layoutSubtreeIfNeeded()
         let visibleLabels = labelsView.arrangedSubviews.filter { !$0.isHidden }
         let labelHeight = visibleLabels.reduce(CGFloat(0)) { total, view in
             let height = view.fittingSize.height
             return total + height
         } + max(0, CGFloat(visibleLabels.count - 1)) * labelsView.spacing
-        let controlHeight = controlView?.fittingSize.height ?? 0
+        let controlHeight = controlSize.height
+        let height: CGFloat
         if controlPlacement == .dedicatedRow {
-            return ceil(max(
+            height = ceil(max(
                 minimumHeight,
                 labelHeight + controlHeight + DashboardSettingsComponents.settingsRowContentControlSpacing + verticalPadding * 2
             ))
+        } else {
+            height = ceil(max(minimumHeight, max(labelHeight, controlHeight) + verticalPadding * 2))
         }
-        return ceil(max(minimumHeight, max(labelHeight, controlHeight) + verticalPadding * 2))
+        let finalInput = observeCurrentInput()
+        let finalKey = DashboardSettingsRowMeasurementKey(
+            input: finalInput,
+            placement: controlPlacement,
+            controlWidth: dashboardSettingsMetric(controlSize.width),
+            controlHeight: dashboardSettingsMetric(controlSize.height)
+        )
+        cachedPreferredMeasurement = (finalKey, height)
+        return height
     }
 
     override var intrinsicContentSize: NSSize {
@@ -65,46 +221,58 @@ private final class DashboardSettingsRowView: NSView {
     }
 
     override func layout() {
+        let controlNeedsLayout = controlView?.needsLayout == true
+        if controlNeedsLayout && !controlWasNeedingLayout {
+            lastPlacementInput = nil
+            cachedControlFittingSize = nil
+        }
+        controlWasNeedingLayout = controlNeedsLayout
+
+        let input = observeCurrentInput()
         // Plain composite stacks own their internal alignment (for example a
         // slider with endpoint labels). Leave them on the existing centered
         // path; stacks that explicitly conform to the adaptive contract still
         // receive their normal row-width update below.
         if let controlView,
            !(controlView is NSStackView && !(controlView is DashboardSettingsRowControlLayout)) {
-            let availableContentAndControlWidth = max(0, bounds.width - 40)
-            let adaptiveControl = controlView as? DashboardSettingsRowControlLayout
-            adaptiveControl?.updateAvailableRowWidth(availableContentAndControlWidth)
-            let actionWidth = controlView.fittingSize.width
-            let contentWidthWhenHorizontal = max(
-                0,
-                availableContentAndControlWidth - actionWidth - 20
-            )
-            let readableContentWidth = minimumReadableContentWidth
-            // Keep the controls' own fitting/orientation contract. Ordinary
-            // row controls and explicitly opted-in adaptive controls may move
-            // below the text once the natural text reaches the threshold;
-            // other composite controls keep their existing placement rules.
-            let supportsTextDrivenDedicatedRow = !(controlView is NSStackView) ||
-                adaptiveControl?.allowsTextDrivenDedicatedRow == true
-            // Measure the line budget at the width the labels actually get
-            // while the controls remain beside them. Once that inline text
-            // reaches the threshold, move the controls below the complete
-            // labels; the labels themselves stay uncapped and can use the
-            // newly available width in the dedicated layout.
-            let lineBudgetNeedsDedicatedRow = supportsTextDrivenDedicatedRow &&
-                textNeedsDedicatedRow(at: contentWidthWhenHorizontal)
-            let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < readableContentWidth ||
-                lineBudgetNeedsDedicatedRow
-            let placement: DashboardSettingsControlPlacement
-            if forceDedicatedControlRow || contentNeedsDedicatedRow {
-                placement = .dedicatedRow
-            } else if adaptiveControl?.usesDedicatedRow == true {
-                placement = .verticalBesideContent
-            } else {
-                placement = .horizontal
+            if input != lastPlacementInput {
+                let availableContentAndControlWidth = max(0, bounds.width - 40)
+                let adaptiveControl = controlView as? DashboardSettingsRowControlLayout
+                adaptiveControl?.updateAvailableRowWidth(availableContentAndControlWidth)
+                cachedControlFittingSize = controlView.fittingSize
+                let actionWidth = cachedControlFittingSize?.width ?? 0
+                let contentWidthWhenHorizontal = max(
+                    0,
+                    availableContentAndControlWidth - actionWidth - 20
+                )
+                let readableContentWidth = minimumReadableContentWidth
+                // Keep the controls' own fitting/orientation contract. Ordinary
+                // row controls and explicitly opted-in adaptive controls may move
+                // below the text once the natural text reaches the threshold;
+                // other composite controls keep their existing placement rules.
+                let supportsTextDrivenDedicatedRow = !(controlView is NSStackView) ||
+                    adaptiveControl?.allowsTextDrivenDedicatedRow == true
+                // Measure the line budget at the width the labels actually get
+                // while the controls remain beside them. Once that inline text
+                // reaches the threshold, move the controls below the complete
+                // labels; the labels themselves stay uncapped and can use the
+                // newly available width in the dedicated layout.
+                let lineBudgetNeedsDedicatedRow = supportsTextDrivenDedicatedRow &&
+                    textNeedsDedicatedRow(at: contentWidthWhenHorizontal)
+                let contentNeedsDedicatedRow = contentWidthWhenHorizontal + 0.5 < readableContentWidth ||
+                    lineBudgetNeedsDedicatedRow
+                let placement: DashboardSettingsControlPlacement
+                if forceDedicatedControlRow || contentNeedsDedicatedRow {
+                    placement = .dedicatedRow
+                } else if adaptiveControl?.usesDedicatedRow == true {
+                    placement = .verticalBesideContent
+                } else {
+                    placement = .horizontal
+                }
+                updateControlPlacementIfNeeded(placement)
             }
-            updateControlPlacementIfNeeded(placement)
         }
+        lastPlacementInput = observeCurrentInput()
         super.layout()
         let currentWidth = bounds.width
         let currentHeight = preferredRowHeight
@@ -118,6 +286,46 @@ private final class DashboardSettingsRowView: NSView {
         }
     }
 
+    private func observeCurrentInput() -> DashboardSettingsRowInput {
+        let input = DashboardSettingsRowInput(
+            width: dashboardSettingsMetric(bounds.width),
+            labels: labelsView.map { DashboardSettingsViewMetric($0, includesHeight: false) },
+            controlIdentity: controlView.map(ObjectIdentifier.init),
+            controlIsHidden: controlView?.isHidden == true,
+            controlBoundsWidth: dashboardSettingsMetric(controlView?.bounds.width ?? 0),
+            controlBoundsHeight: dashboardSettingsMetric(controlView?.bounds.height ?? 0),
+            forceDedicatedControlRow: forceDedicatedControlRow
+        )
+        guard input != lastObservedInput else { return input }
+        lastObservedInput = input
+        measurementRevisionStorage &+= 1
+        cachedPreferredMeasurement = nil
+        cachedControlFittingSize = nil
+        lastPlacementInput = nil
+        cardView?.markHeightDirty()
+        return input
+    }
+
+    private func invalidateMeasurementInputs() {
+        lastObservedInput = nil
+        lastPlacementInput = nil
+        cachedControlFittingSize = nil
+        cachedPreferredMeasurement = nil
+        measurementRevisionStorage &+= 1
+        cardView?.markHeightDirty()
+        needsLayout = true
+    }
+
+    private func currentControlFittingSize() -> NSSize {
+        if let cachedControlFittingSize {
+            return cachedControlFittingSize
+        }
+        guard let controlView else { return .zero }
+        let size = controlView.fittingSize
+        cachedControlFittingSize = size
+        return size
+    }
+
     private func textNeedsDedicatedRow(at contentWidth: CGFloat) -> Bool {
         let width = max(1, contentWidth)
         if contentWidth <= 0 {
@@ -126,7 +334,7 @@ private final class DashboardSettingsRowView: NSView {
 
         let titleLineCount: Int
         if let titleTextField, !titleTextField.isHidden {
-            titleLineCount = DashboardSettingsComponents.settingsTextLineCount(
+            titleLineCount = cachedTextLineCount(
                 titleTextField,
                 constrainedTo: titleWidth(at: width)
             )
@@ -135,7 +343,7 @@ private final class DashboardSettingsRowView: NSView {
         }
         let subtitleLineCount: Int
         if let subtitleTextField, !subtitleTextField.isHidden {
-            subtitleLineCount = DashboardSettingsComponents.settingsTextLineCount(
+            subtitleLineCount = cachedTextLineCount(
                 subtitleTextField,
                 constrainedTo: width
             )
@@ -146,6 +354,35 @@ private final class DashboardSettingsRowView: NSView {
         // beside the control; only the fifth line requires a dedicated row.
         return titleLineCount + subtitleLineCount >
             DashboardSettingsComponents.settingsTextLineReflowThreshold
+    }
+
+    private func cachedTextLineCount(
+        _ textField: NSTextField,
+        constrainedTo width: CGFloat
+    ) -> Int {
+        let key = DashboardSettingsTextLineMeasurementKey(
+            text: textField.stringValue,
+            font: DashboardSettingsFontMetric(textField.font),
+            lineBreakMode: textField.lineBreakMode.rawValue,
+            lineBreakStrategy: textField.lineBreakStrategy.rawValue,
+            width: dashboardSettingsMetric(width)
+        )
+        if let cached = textLineCountCache[key] {
+            return cached
+        }
+        let lineCount = DashboardSettingsComponents.settingsTextLineCount(
+            textField,
+            constrainedTo: width
+        )
+        textLineCountCache[key] = lineCount
+        textLineCountCacheOrder.append(key)
+        let cacheLimit = 8
+        if textLineCountCacheOrder.count > cacheLimit,
+           let evicted = textLineCountCacheOrder.first {
+            textLineCountCacheOrder.removeFirst()
+            textLineCountCache.removeValue(forKey: evicted)
+        }
+        return lineCount
     }
 
     private func titleWidth(at contentWidth: CGFloat) -> CGFloat {
@@ -238,7 +475,9 @@ private final class DashboardSettingsRowView: NSView {
         case .dedicatedRow:
             NSLayoutConstraint.activate(dedicatedControlConstraints)
         }
+        cachedPreferredMeasurement = nil
         invalidateIntrinsicContentSize()
+        cardView?.markHeightDirty()
         needsLayout = true
     }
 }
@@ -339,31 +578,56 @@ private final class DashboardSettingsCardView: NSView {
     var rowHeight: ((NSView) -> CGFloat?)?
     // A custom provider may own a row's measured height (for example the
     // fixed-height Status Links editor) while the other rows remain adaptive.
-    var automaticallyUpdatesHeight = true
+    var automaticallyUpdatesHeight = true {
+        didSet {
+            guard automaticallyUpdatesHeight != oldValue else { return }
+            if automaticallyUpdatesHeight {
+                markHeightDirty()
+            }
+        }
+    }
     private var isUpdatingHeight = false
+    private var isHeightDirty = true
+    private var lastHeightSignature: DashboardSettingsCardHeightSignature?
+
+    private struct DashboardSettingsCardHeightSignature: Equatable {
+        struct Row: Equatable {
+            let identity: ObjectIdentifier
+            let isHidden: Bool
+            let width: Int
+            let height: Int
+            let adaptiveMeasurementRevision: UInt?
+            let customHeight: Int?
+        }
+
+        let rows: [Row]
+        let separatorsHidden: [Bool]
+    }
 
     override var intrinsicContentSize: NSSize {
-        guard let rowsStack, let heightConstraint else {
+        guard let heightConstraint else {
             return NSSize(width: NSView.noIntrinsicMetric, height: 1)
         }
-        guard automaticallyUpdatesHeight else {
-            return NSSize(width: NSView.noIntrinsicMetric, height: heightConstraint.constant)
-        }
-        return NSSize(
-            width: NSView.noIntrinsicMetric,
-            height: DashboardSettingsComponents.settingsCardHeight(
-                rowsStack: rowsStack,
-                separators: separators,
-                rowHeight: rowHeight
-            )
-        )
+        // The height constraint is the card's cheap, already-synchronized
+        // geometry cache. Do not rebuild every row's fitting size from an
+        // intrinsic-size getter; layout updates this constraint only after a
+        // row width/content/visibility revision.
+        return NSSize(width: NSView.noIntrinsicMetric, height: heightConstraint.constant)
     }
 
     override func layout() {
         super.layout()
         guard automaticallyUpdatesHeight, !isUpdatingHeight else { return }
-        rowsStack?.layoutSubtreeIfNeeded()
         updateHeightIfNeeded()
+    }
+
+    func markHeightDirty() {
+        guard automaticallyUpdatesHeight else { return }
+        isHeightDirty = true
+        needsLayout = true
+        rowsStack?.needsLayout = true
+        invalidateIntrinsicContentSize()
+        superview?.needsLayout = true
     }
 
     func updateHeightIfNeeded() {
@@ -371,17 +635,51 @@ private final class DashboardSettingsCardView: NSView {
               !isUpdatingHeight,
               let rowsStack,
               let heightConstraint else { return }
-        let requiredHeight = DashboardSettingsComponents.settingsCardHeight(
+        let currentSignature = heightSignature(rowsStack: rowsStack)
+        guard isHeightDirty || currentSignature != lastHeightSignature else { return }
+
+        isUpdatingHeight = true
+        rowsStack.layoutSubtreeIfNeeded()
+        let requiredHeight = DashboardSettingsComponents.measuredSettingsCardHeight(
             rowsStack: rowsStack,
             separators: separators,
             rowHeight: rowHeight
         )
-        guard abs(heightConstraint.constant - requiredHeight) > 0.5 else { return }
-        isUpdatingHeight = true
-        heightConstraint.constant = requiredHeight
-        invalidateIntrinsicContentSize()
+        let finalSignature = heightSignature(rowsStack: rowsStack)
+        lastHeightSignature = finalSignature
+        isHeightDirty = false
+        let heightChanged = abs(heightConstraint.constant - requiredHeight) > 0.5
+        if heightChanged {
+            heightConstraint.constant = requiredHeight
+            invalidateIntrinsicContentSize()
+        }
         isUpdatingHeight = false
-        superview?.needsLayout = true
+        if heightChanged {
+            superview?.needsLayout = true
+        }
+    }
+
+    private func heightSignature(
+        rowsStack: NSStackView
+    ) -> DashboardSettingsCardHeightSignature {
+        let rows = rowsStack.arrangedSubviews.map { row in
+            let customHeight = rowHeight?(row).map {
+                dashboardSettingsMetric(max(1, $0))
+            }
+            let adaptiveMeasurementRevision = (row as? DashboardSettingsRowView)?.measurementRevision
+            return DashboardSettingsCardHeightSignature.Row(
+                identity: ObjectIdentifier(row),
+                isHidden: row.isHidden,
+                width: dashboardSettingsMetric(row.bounds.width),
+                height: dashboardSettingsMetric(row.bounds.height),
+                adaptiveMeasurementRevision: adaptiveMeasurementRevision,
+                customHeight: customHeight
+            )
+        }
+        return DashboardSettingsCardHeightSignature(
+            rows: rows,
+            separatorsHidden: separators.map(\.isHidden)
+        )
     }
 }
 
@@ -395,6 +693,57 @@ enum DashboardSettingsComponents {
     static let settingsTextLineReflowThreshold = 4
     static let settingsTitleMaximumNumberOfLines = 0
     static let settingsSubtitleMaximumNumberOfLines = 0
+
+    private static var measurementCounters = DashboardSettingsMeasurementCounters(
+        rowPreferredHeightMeasurements: 0,
+        textLineMeasurements: 0,
+        cardHeightMeasurements: 0
+    )
+
+    static var measurementCountersForTesting: DashboardSettingsMeasurementCounters {
+        measurementCounters
+    }
+
+    static func resetMeasurementCountersForTesting() {
+        measurementCounters = DashboardSettingsMeasurementCounters(
+            rowPreferredHeightMeasurements: 0,
+            textLineMeasurements: 0,
+            cardHeightMeasurements: 0
+        )
+    }
+
+    fileprivate static func recordRowPreferredHeightMeasurement() {
+        measurementCounters = DashboardSettingsMeasurementCounters(
+            rowPreferredHeightMeasurements: measurementCounters.rowPreferredHeightMeasurements + 1,
+            textLineMeasurements: measurementCounters.textLineMeasurements,
+            cardHeightMeasurements: measurementCounters.cardHeightMeasurements
+        )
+    }
+
+    fileprivate static func recordTextLineMeasurement() {
+        measurementCounters = DashboardSettingsMeasurementCounters(
+            rowPreferredHeightMeasurements: measurementCounters.rowPreferredHeightMeasurements,
+            textLineMeasurements: measurementCounters.textLineMeasurements + 1,
+            cardHeightMeasurements: measurementCounters.cardHeightMeasurements
+        )
+    }
+
+    fileprivate static func measuredSettingsCardHeight(
+        rowsStack: NSStackView,
+        separators: [NSView],
+        rowHeight: ((NSView) -> CGFloat?)? = nil
+    ) -> CGFloat {
+        measurementCounters = DashboardSettingsMeasurementCounters(
+            rowPreferredHeightMeasurements: measurementCounters.rowPreferredHeightMeasurements,
+            textLineMeasurements: measurementCounters.textLineMeasurements,
+            cardHeightMeasurements: measurementCounters.cardHeightMeasurements + 1
+        )
+        return calculateSettingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators,
+            rowHeight: rowHeight
+        )
+    }
 
     /// CJK UI copy is naturally breakable between characters. Word wrapping
     /// treats a run without spaces as one large word, which leaves an entire
@@ -435,6 +784,7 @@ enum DashboardSettingsComponents {
     ) -> Int {
         guard width > 0, !textField.stringValue.isEmpty else { return 0 }
 
+        recordTextLineMeasurement()
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = textField.lineBreakMode
         if #available(macOS 10.15, *) {
@@ -1040,6 +1390,18 @@ enum DashboardSettingsComponents {
     }
 
     static func settingsCardHeight(
+        rowsStack: NSStackView,
+        separators: [NSView],
+        rowHeight: ((NSView) -> CGFloat?)? = nil
+    ) -> CGFloat {
+        calculateSettingsCardHeight(
+            rowsStack: rowsStack,
+            separators: separators,
+            rowHeight: rowHeight
+        )
+    }
+
+    private static func calculateSettingsCardHeight(
         rowsStack: NSStackView,
         separators: [NSView],
         rowHeight: ((NSView) -> CGFloat?)? = nil
