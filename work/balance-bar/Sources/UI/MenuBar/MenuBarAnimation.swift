@@ -230,13 +230,25 @@ final class RotatingTemplateImageView: PassthroughImageView {
 
 enum ClaudeThinkingAnimationTiming {
     static let frameCount = 9
+    /// The SVG's center frame is the fully opened starburst.  A compositor
+    /// consumer that reads the layer model state must see this canonical
+    /// resting frame rather than the animation's first (minimal) frame.
+    static let restingFrameIndex = 4
     static let frameDuration: TimeInterval = 0.09
     static let defaultFrameDuration = frameDuration
     static let duration: TimeInterval = frameDuration * Double(frameCount)
 
+    static func translationValue(frameIndex: Int, frameHeight: CGFloat) -> CGFloat {
+        -frameHeight * CGFloat(frameIndex)
+    }
+
     static func translationValues(frameHeight: CGFloat) -> [NSNumber] {
         (0..<frameCount).map { index in
-            NSNumber(value: -Double(frameHeight) * Double(index))
+            NSNumber(
+                value: Double(
+                    translationValue(frameIndex: index, frameHeight: frameHeight)
+                )
+            )
         }
     }
 }
@@ -298,7 +310,7 @@ enum ClaudeThinkingSprite {
         return sprite
     }
 
-    private static func makeFrames(from animatedSVG: String) -> [NSImage]? {
+    static func makeFrames(from animatedSVG: String) -> [NSImage]? {
         guard
             let animationRegex = try? NSRegularExpression(
                 pattern: #"<animateTransform\b[^>]*/>"#

@@ -300,6 +300,10 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
 
     var spriteRasterizationCount: Int { contentsRasterizationCount }
 
+    var modelTranslationYForTesting: CGFloat {
+        spriteLayer.affineTransform().ty
+    }
+
     var thinkingAnimationForTesting: CAKeyframeAnimation? {
         spriteLayer.animation(forKey: Self.thinkingAnimationKey) as? CAKeyframeAnimation
     }
@@ -418,6 +422,7 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
     /// `phase` is used only when a host is recreated at a visual boundary.
     func installThinkingAnimation(phase: Double = 0) {
         guard !hasThinkingAnimation, spriteLayer.contents != nil else { return }
+        applyRestingModelTransform()
         let normalizedPhase = phase.truncatingRemainder(dividingBy: 1)
             .wrappedPositiveRemainder
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.y")
@@ -442,6 +447,19 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
         CATransaction.setDisableActions(true)
         spriteLayer.removeAnimation(forKey: Self.thinkingAnimationKey)
         spriteLayer.transform = CATransform3DIdentity
+        CATransaction.commit()
+    }
+
+    private func applyRestingModelTransform() {
+        let restingTranslation = ClaudeThinkingAnimationTiming.translationValue(
+            frameIndex: ClaudeThinkingAnimationTiming.restingFrameIndex,
+            frameHeight: bounds.height
+        )
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        spriteLayer.setAffineTransform(
+            CGAffineTransform(translationX: 0, y: restingTranslation)
+        )
         CATransaction.commit()
     }
 
