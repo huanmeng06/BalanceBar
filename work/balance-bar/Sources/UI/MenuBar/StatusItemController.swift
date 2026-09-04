@@ -2015,6 +2015,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
         let animationStateChanged: (Bool) -> Void
+        let claudeAnimationStateChanged: (Bool, NSImage?, NSImage?) -> Void
         let animationFallbackChanged: (Bool) -> Void
         let visibilityChanged: (StatusItemVisibility) -> Void
 
@@ -2032,6 +2033,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             iconChanged: @escaping (NSImage?) -> Void,
             frameImageChanged: @escaping (NSImage?) -> Void = { _ in },
             animationStateChanged: @escaping (Bool) -> Void = { _ in },
+            claudeAnimationStateChanged: @escaping (Bool, NSImage?, NSImage?) -> Void = { _, _, _ in },
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
         ) {
@@ -2048,6 +2050,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.iconChanged = iconChanged
             self.frameImageChanged = frameImageChanged
             self.animationStateChanged = animationStateChanged
+            self.claudeAnimationStateChanged = claudeAnimationStateChanged
             self.animationFallbackChanged = animationFallbackChanged
             self.visibilityChanged = visibilityChanged
         }
@@ -2230,6 +2233,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var codexAnimationFallbackActive = false
     private var nativeCodexAnimatedIconHost: MenuBarNativeAnimatedIconHostView?
     private var nativeCodexAnimationIsActive = false
+    private var claudeThinkingAnimatedIconHost: MenuBarClaudeAnimatedIconHostView?
+    private var claudeThinkingAnimationIsActive = false
     /// Test-only seam for exercising the documented efficient-mode fallback;
     /// no product path enables it.
     private var forceNativeCodexAnimationFailureForTesting = false
@@ -2240,7 +2245,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var isMenuBarContentStackConfigured = false
     private var codexIconImage: NSImage?
     private var claudeIconImage: NSImage?
-    private var claudeThinkingAnimator: ClaudeThinkingAnimator?
+    private var claudeThinkingSpriteImage: NSImage?
     private var snapshot = Snapshot.placeholder
     private var refreshDate: Date?
     private var menuInput = MenuInput(
@@ -2360,8 +2365,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         nativeCodexAnimatedIconHost
     }
 
+    var claudeThinkingAnimationHostForTesting: MenuBarClaudeAnimatedIconHostView? {
+        claudeThinkingAnimatedIconHost
+    }
+
     var nativeCodexAnimationIsActiveForTesting: Bool {
         nativeCodexAnimationIsActive
+    }
+
+    var claudeThinkingAnimationIsActiveForTesting: Bool {
+        claudeThinkingAnimationIsActive
     }
 
     var preferredCodexAnimationBackendForTesting: MenuBarCodexAnimationBackend {
@@ -2400,6 +2413,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             image,
             prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
         )
+    }
+
+    /// Supplies deterministic Claude assets for controller-level compositor
+    /// tests without depending on the application bundle.
+    func setClaudeAnimationAssetsForTesting(
+        staticImage: NSImage,
+        spriteImage: NSImage
+    ) {
+        claudeIconImage = staticImage
+        claudeThinkingSpriteImage = spriteImage
+        menuBarIconView.setSourceImage(staticImage, prepareAnimationFrames: false)
     }
 
     func advanceCodexAnimationFrameForTesting(_ frameIndex: Int) {
@@ -2532,6 +2556,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         deactivateNativeCodexAnimation()
         setCodexAnimationFallbackActive(false)
         codexAnimationBackend = preferredCodexAnimationBackend
+        deactivateClaudeThinkingAnimation()
         statusItemVisibilityStateMachine.reset()
         menuBarIconDisplayStateMachine.reset()
         publishStatusItemVisibility()
@@ -2544,7 +2569,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.onFrameImageChanged = nil
         menuBarIconView.onAnimationFrameIndexChanged = nil
         menuBarIconView.stopRotating()
-        claudeThinkingAnimator?.stop()
         invalidateBitmapContentCache()
         menuBarContentStack.removeFromSuperview()
         statusMenu.delegate = nil
@@ -2743,12 +2767,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
         refreshNativeCodexIconAppearance()
+        refreshClaudeThinkingIconAppearance()
     }
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = false
         refreshNativeCodexIconAppearance()
+        refreshClaudeThinkingIconAppearance()
         guard statusMenuNeedsRebuild else { return }
         statusMenuNeedsRebuild = false
         DispatchQueue.main.async { [weak self] in
@@ -2801,6 +2827,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    private func refreshClaudeThinkingIconAppearance() {
+        guard claudeThinkingAnimationIsActive else { return }
+        guard synchronizeClaudeThinkingAnimationHost() else {
+            deactivateClaudeThinkingAnimation()
+            restoreStaticMenuBarBitmap()
+            return
+        }
+    }
+
     private func configureStatusItem() {
         guard let statusItem, let button = statusItem.button else { return }
         statusItemVisibilityStateMachine.reset()
@@ -2831,10 +2866,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 forResource: "ClaudeThinking",
                 withExtension: "svg"
             ) {
-                claudeThinkingAnimator = ClaudeThinkingAnimator(
-                    imageView: menuBarIconView,
-                    staticImage: icon,
-                    animatedSVGURL: thinkingURL
+                claudeThinkingSpriteImage = ClaudeThinkingSprite.make(
+                    from: thinkingURL,
+                    outputSize: icon.size
                 )
             }
         }
@@ -2861,11 +2895,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menuBarIconView.onFrameImageChanged = { [weak self] image in
             guard let self else { return }
-            if self.activeClient != .codex {
-                // Claude keeps its independent nine-frame animator and
-                // existing bitmap composition behavior.
-                self.composeMenuBarContentBitmap(iconImage: image)
-            }
             self.actions.frameImageChanged(image)
         }
         actions.iconChanged(menuBarIconView.image)
@@ -3081,6 +3110,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // replaces the source status item.  The retained host is reattached
         // by the next layout boundary, preserving its layer-local phase.
         detachNativeCodexAnimationHostForStatusItemReplacement()
+        detachClaudeThinkingAnimationHostForStatusItemReplacement()
         removeStatusItemWindowObservation()
         NSStatusBar.system.removeStatusItem(item)
         let replacement = NSStatusBar.system.statusItem(withLength: desiredLength)
@@ -3093,7 +3123,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updateActivityIcon() {
         switch activeClient {
         case .codex:
-            claudeThinkingAnimator?.stop()
+            deactivateClaudeThinkingAnimation()
             let shouldAnimate = MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isCodexTaskRunning,
                 preferenceEnabled: animationEnabled,
@@ -3132,12 +3162,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 if !menuBarIconView.isRotating {
                     guard installStableCodexAnimationImage(at: 0) else {
                         menuBarIconView.stopRotating()
-                        restoreCodexStaticBitmap()
+                        restoreStaticMenuBarBitmap()
                         return
                     }
                 } else if !ensureStableCodexAnimationFrameBuffer() {
                     menuBarIconView.stopRotating()
-                    restoreCodexStaticBitmap()
+                    restoreStaticMenuBarBitmap()
                     return
                 }
                 menuBarIconView.startRotating()
@@ -3146,17 +3176,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             stopCodexAnimationImplementation()
             codexAnimationBackend = preferredCodexAnimationBackend
             setCodexAnimationFallbackActive(false)
-            if claudeThinkingAnimator?.isAnimating != true, let claudeIconImage {
-                menuBarIconView.setSourceImage(claudeIconImage)
+            if let claudeIconImage,
+               menuBarIconView.sourceImageForRendering !== claudeIconImage {
+                menuBarIconView.setSourceImage(
+                    claudeIconImage,
+                    prepareAnimationFrames: false
+                )
             }
             if MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isClaudeTaskRunning,
                 preferenceEnabled: animationEnabled,
                 reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             ) {
-                claudeThinkingAnimator?.start()
+                guard synchronizeClaudeThinkingAnimationHost() else {
+                    deactivateClaudeThinkingAnimation()
+                    restoreStaticMenuBarBitmap()
+                    return
+                }
             } else {
-                claudeThinkingAnimator?.stop()
+                deactivateClaudeThinkingAnimation()
+                restoreStaticMenuBarBitmap()
             }
         }
     }
@@ -3164,7 +3203,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func stopCodexAnimationImplementation() {
         menuBarIconView.stopRotating()
         deactivateNativeCodexAnimation()
-        restoreCodexStaticBitmap()
+        restoreStaticMenuBarBitmap()
     }
 
     private func setCodexAnimationFallbackActive(_ active: Bool) {
@@ -3185,7 +3224,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.setSourceImage(codexIconImage, prepareAnimationFrames: true)
         guard installStableCodexAnimationImage(at: 0) else {
             menuBarIconView.stopRotating()
-            restoreCodexStaticBitmap()
+            restoreStaticMenuBarBitmap()
             return
         }
         menuBarIconView.startRotating()
@@ -3586,6 +3625,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             && shouldPrepareCodexAnimationFrames
     }
 
+    private var shouldPrepareClaudeThinkingAnimation: Bool {
+        activeClient == .claude
+            && isClaudeTaskRunning
+            && animationEnabled
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            && !menuBarIconSlot.isHidden
+            && !menuBarIconView.isHidden
+            && claudeThinkingSpriteImage != nil
+    }
+
     /// Materializes one mutable image representation from the finite source
     /// frame set. This may compose and rasterize each frame, but only during a
     /// bounded visual-cache rebuild; no timer callback reaches this method.
@@ -3662,7 +3711,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         stableCodexAnimationRedrawRequestCountForTesting += 1
     }
 
-    private func restoreCodexStaticBitmap() {
+    private func restoreStaticMenuBarBitmap() {
         guard let button = statusItem?.button,
               let staticImage = cachedStaticMenuBarContentBitmap else {
             return
@@ -3736,6 +3785,79 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return true
     }
 
+    /// Synchronizes the retained Claude sprite host at a bounded visual
+    /// boundary. The real status button keeps only the text bitmap; the host
+    /// owns the single sprite texture and its compositor-local animation.
+    @discardableResult
+    private func synchronizeClaudeThinkingAnimationHost() -> Bool {
+        precondition(
+            Thread.isMainThread,
+            "Claude animation must be synchronized on the main thread"
+        )
+        guard shouldPrepareClaudeThinkingAnimation,
+              let button = statusItem?.button,
+              let textBitmap = cachedMenuBarTextBitmap,
+              let iconDrawRect = cachedMenuBarIconDrawRect,
+              let placement = menuBarBitmapImagePlacement,
+              let claudeThinkingSpriteImage,
+              let claudeIconImage else {
+            return false
+        }
+
+        let localIconRect = placement.buttonLocalRect(
+            forImageCanvasRect: iconDrawRect
+        )
+        guard localIconRect.width > 0, localIconRect.height > 0 else {
+            return false
+        }
+
+        if button.image !== textBitmap {
+            // One boundary assignment replaces the complete static bitmap
+            // with its text-only variant; the host supplies the icon pixels.
+            button.image = textBitmap
+        }
+
+        let host = claudeThinkingAnimatedIconHost ?? {
+            let newHost = MenuBarClaudeAnimatedIconHostView(frame: localIconRect)
+            claudeThinkingAnimatedIconHost = newHost
+            return newHost
+        }()
+        if host.superview !== button {
+            host.removeFromSuperview()
+            button.addSubview(host, positioned: .above, relativeTo: nil)
+        }
+
+        let scale = button.window?.backingScaleFactor ?? 2
+        host.updateGeometry(frame: localIconRect, contentsScale: scale)
+        let frameSize = NSSize(
+            width: claudeThinkingSpriteImage.size.width,
+            height: claudeThinkingSpriteImage.size.height
+                / CGFloat(MenuBarClaudeAnimatedIconHostView.thinkingFrameCount)
+        )
+        guard host.updateContents(
+            spriteImage: claudeThinkingSpriteImage,
+            frameSize: frameSize,
+            appearance: button.effectiveAppearance,
+            contentsScale: scale,
+            highlighted: button.isHighlighted || button.cell?.isHighlighted == true
+        ) else {
+            host.removeThinkingAnimation()
+            host.isHidden = true
+            host.removeFromSuperview()
+            return false
+        }
+        host.isHidden = false
+        // Existing animation is deliberately retained across geometry,
+        // appearance, backing-scale, and status-item reattachment changes.
+        host.installThinkingAnimation()
+        publishClaudeThinkingAnimationStateIfNeeded(
+            true,
+            iconImage: claudeIconImage,
+            spriteImage: claudeThinkingSpriteImage
+        )
+        return true
+    }
+
     private func deactivateNativeCodexAnimation() {
         nativeCodexAnimatedIconHost?.removeRotationAnimation()
         nativeCodexAnimatedIconHost?.isHidden = true
@@ -3750,10 +3872,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         nativeCodexAnimatedIconHost?.removeFromSuperview()
     }
 
+    private func deactivateClaudeThinkingAnimation() {
+        claudeThinkingAnimatedIconHost?.removeThinkingAnimation()
+        claudeThinkingAnimatedIconHost?.isHidden = true
+        claudeThinkingAnimatedIconHost?.removeFromSuperview()
+        publishClaudeThinkingAnimationStateIfNeeded(
+            false,
+            iconImage: claudeIconImage,
+            spriteImage: claudeThinkingSpriteImage
+        )
+    }
+
+    /// Detaches only the Claude host during AppKit status-item replacement.
+    /// Its layer animation remains installed so reattachment preserves phase.
+    private func detachClaudeThinkingAnimationHostForStatusItemReplacement() {
+        claudeThinkingAnimatedIconHost?.removeFromSuperview()
+    }
+
     private func publishNativeCodexAnimationStateIfNeeded(_ active: Bool) {
         guard nativeCodexAnimationIsActive != active else { return }
         nativeCodexAnimationIsActive = active
         actions.animationStateChanged(active)
+    }
+
+    private func publishClaudeThinkingAnimationStateIfNeeded(
+        _ active: Bool,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        guard claudeThinkingAnimationIsActive != active else { return }
+        claudeThinkingAnimationIsActive = active
+        actions.claudeAnimationStateChanged(active, iconImage, spriteImage)
     }
 
     private func makeMenuBarBitmapAnimationVisualSignature(
@@ -3882,23 +4031,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
            signature.matchesStaticContent(of: cachedSignature),
            cachedMenuBarTextBitmap != nil,
            cachedStaticMenuBarContentBitmap != nil {
-            if codexAnimationBackend == .nativeCoreAnimation {
+            if activeClient == .codex, codexAnimationBackend == .nativeCoreAnimation {
                 if shouldUseNativeCodexAnimation {
                     _ = synchronizeNativeCodexAnimationHost()
                 } else {
                     deactivateNativeCodexAnimation()
-                    restoreCodexStaticBitmap()
+                    restoreStaticMenuBarBitmap()
                 }
-            } else if shouldUseStableCodexAnimation,
+            } else if activeClient == .codex,
+                      shouldUseStableCodexAnimation,
                       stableCodexAnimationFrameBuffer.image == nil {
                 _ = installStableCodexAnimationImage(
                     at: menuBarIconView.currentAnimationFrameIndex
                 )
+            } else if activeClient == .claude {
+                if shouldPrepareClaudeThinkingAnimation {
+                    _ = synchronizeClaudeThinkingAnimationHost()
+                } else {
+                    deactivateClaudeThinkingAnimation()
+                    restoreStaticMenuBarBitmap()
+                }
             }
             return
         }
 
-        let displayedImage = menuBarIconView.image
         let sourceImage = menuBarIconView.sourceImageForRendering
         let iconWasHidden = menuBarIconSlot.isHidden
         menuBarIconSlot.isHidden = true
@@ -3951,34 +4107,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarBitmapImagePlacement = placement
         cachedMenuBarIconDrawRect = iconDrawRect
 
-        if shouldUseNativeCodexAnimation {
+        if activeClient == .codex, shouldUseNativeCodexAnimation {
             if !synchronizeNativeCodexAnimationHost() {
                 activateTemporaryStableBitmapFallback()
             }
-        } else if codexAnimationBackend == .nativeCoreAnimation {
+        } else if activeClient == .codex, codexAnimationBackend == .nativeCoreAnimation {
             deactivateNativeCodexAnimation()
             button.image = staticImage
-        } else if shouldUseStableCodexAnimation {
+        } else if activeClient == .codex, shouldUseStableCodexAnimation {
             if !installStableCodexAnimationImage(
                 at: menuBarIconView.currentAnimationFrameIndex
             ) {
                 menuBarIconView.stopRotating()
                 button.image = staticImage
             }
-        } else if activeClient == .claude,
-                  claudeThinkingAnimator?.isAnimating == true,
-                  let displayedImage,
-                  let iconDrawRect {
-            // Preserve Claude's independent animation while sharing the
-            // already-rendered text base. This is a refresh-time composition,
-            // never the Codex steady-state timer path.
-            button.image = Self.makeCompleteMenuBarBitmap(
-                textBitmap: textBitmap,
-                iconImage: displayedImage,
-                iconDrawRect: iconDrawRect,
-                canvasSize: placement.canvasSize
-            ) ?? staticImage
+        } else if activeClient == .claude, shouldPrepareClaudeThinkingAnimation {
+            if !synchronizeClaudeThinkingAnimationHost() {
+                deactivateClaudeThinkingAnimation()
+                button.image = staticImage
+            }
         } else {
+            deactivateClaudeThinkingAnimation()
             button.image = staticImage
         }
     }
@@ -4044,72 +4193,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             width: fittedSize.width,
             height: fittedSize.height
         )
-    }
-
-    /// Composites a Claude animation frame over the cached text bitmap. The
-    /// Codex callback never reaches this method; its complete frame pixels are
-    /// copied into the stable bitmap backing instead.
-    private func composeMenuBarContentBitmap(iconImage: NSImage?) {
-        guard let button = statusItem?.button,
-              let textBitmap = cachedMenuBarTextBitmap else {
-            return
-        }
-        let bounds = bitmapRenderContainer.bounds
-        let composed = NSImage(size: bounds.size)
-        composed.isTemplate = true
-        composed.lockFocusFlipped(true)
-        textBitmap.draw(
-            in: NSRect(origin: .zero, size: bounds.size),
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1,
-            respectFlipped: true,
-            hints: nil
-        )
-        if let iconImage, !menuBarIconSlot.isHidden {
-            // menuBarIconView.frame is in its superview's (iconSlot) space;
-            // resolve the view's actual position inside the render container
-            // before drawing, and center-fit like NSImageView's
-            // scaleProportionallyDown so the rotating frame lands exactly
-            // where the static render placed the icon.
-            let viewBoundsInContainer = menuBarIconView.convert(
-                menuBarIconView.bounds,
-                to: bitmapRenderContainer
-            )
-            let placement = menuBarBitmapImagePlacement
-                ?? MenuBarBitmapImagePlacement(
-                    canonicalBounds: bounds,
-                    imageDestinationRect: bounds
-                )
-            let imageViewBounds = placement.imageRect(forCanonicalRect: viewBoundsInContainer)
-            let iconSize = iconImage.size
-            if iconSize.width > 0, iconSize.height > 0,
-               imageViewBounds.width > 0, imageViewBounds.height > 0 {
-                let scaleFactor = min(
-                    imageViewBounds.width / iconSize.width,
-                    imageViewBounds.height / iconSize.height,
-                    1
-                )
-                let fittedSize = NSSize(
-                    width: iconSize.width * scaleFactor,
-                    height: iconSize.height * scaleFactor
-                )
-                iconImage.draw(in: NSRect(
-                    x: imageViewBounds.midX - fittedSize.width / 2,
-                    y: imageViewBounds.midY - fittedSize.height / 2,
-                    width: fittedSize.width,
-                    height: fittedSize.height
-                ),
-                from: .zero,
-                operation: .sourceOver,
-                fraction: 1,
-                respectFlipped: true,
-                hints: nil
-                )
-            }
-        }
-        composed.unlockFocus()
-        button.image = composed
     }
 
     private static func placeTemplateImage(
