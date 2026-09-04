@@ -13,6 +13,22 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNil(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
     }
 
+    @MainActor
+    func testStatusItemContentIsAlwaysRenderedFromTheOffscreenBitmapTree() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+
+        XCTAssertTrue(controller.menuBarContentIsOffscreenForTesting)
+        XCTAssertNotNil(controller.menuBarButtonImageForTesting)
+    }
+
     func testCodexAnimationCachePrecomposesFiniteFramesAndReusesSteadyStateLookups() {
         let sourceFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
             NSImage(size: NSSize(width: 16, height: 16))
@@ -204,15 +220,10 @@ final class StatusItemControllerTests: XCTestCase {
             sourceFrames: sourceFrames,
             sourceProviderIdentity: "another-provider"
         )
-        let changedMode = makeVisualSignature(
-            sourceFrames: sourceFrames,
-            usesBitmapContent: false
-        )
         XCTAssertNotEqual(base, changedText)
         XCTAssertNotEqual(base, changedGeometry)
         XCTAssertNotEqual(base, changedAppearance)
         XCTAssertNotEqual(base, changedProvider)
-        XCTAssertNotEqual(base, changedMode)
         let replacementFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
             NSImage(size: NSSize(width: 16, height: 16))
         }
@@ -240,7 +251,7 @@ final class StatusItemControllerTests: XCTestCase {
             Date(timeIntervalSince1970: 1_700_000_000)
         )
         let input = makeMenuInput()
-        let settings = makeSettings(usesBitmapContent: true)
+        let settings = makeSettings()
 
         controller.start(
             snapshot: snapshot,
@@ -387,39 +398,6 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testTraditionalControllerDoesNotUseBitmapAnimationCache() {
-        let controller = makeController()
-        defer { controller.teardown() }
-        let snapshot = Snapshot.balance(
-            "Provider",
-            80,
-            "USD",
-            nil,
-            Date(timeIntervalSince1970: 1_700_000_000)
-        )
-        controller.start(
-            snapshot: snapshot,
-            refreshDate: snapshot.date,
-            menuInput: makeMenuInput(),
-            settings: makeSettings(usesBitmapContent: false)
-        )
-        controller.updateActivity(
-            activeClient: .codex,
-            codexTaskRunning: true,
-            claudeTaskRunning: false,
-            animationEnabled: true
-        )
-        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 0)
-        XCTAssertEqual(controller.codexAnimationCacheBuildCountForTesting, 0)
-        controller.updateActivity(
-            activeClient: .codex,
-            codexTaskRunning: false,
-            claudeTaskRunning: false,
-            animationEnabled: true
-        )
-    }
-
-    @MainActor
     func testRuntimeDisplayPolicyPublishesAndClearsItsWarningImmediately() {
         var visibilityTransitions: [StatusItemVisibility] = []
         let controller = StatusItemController(
@@ -521,7 +499,7 @@ final class StatusItemControllerTests: XCTestCase {
             Date(timeIntervalSince1970: 1_700_000_000)
         )
         let input = makeMenuInput()
-        let settings = makeSettings(usesBitmapContent: true)
+        let settings = makeSettings()
 
         controller.start(
             snapshot: snapshot,
@@ -613,7 +591,7 @@ final class StatusItemControllerTests: XCTestCase {
             nil,
             Date(timeIntervalSince1970: 1_700_000_000)
         )
-        let settings = makeSettings(usesBitmapContent: true)
+        let settings = makeSettings()
         controller.start(
             snapshot: snapshot,
             refreshDate: snapshot.date,
@@ -691,7 +669,7 @@ final class StatusItemControllerTests: XCTestCase {
             snapshot: snapshot,
             refreshDate: snapshot.date,
             menuInput: makeMenuInput(),
-            settings: makeSettings(usesBitmapContent: true)
+            settings: makeSettings()
         )
         let icon = makeSolidImage(size: NSSize(width: 16, height: 16), red: 0.2, green: 0.4, blue: 0.8)
         icon.isTemplate = true
@@ -780,14 +758,13 @@ final class StatusItemControllerTests: XCTestCase {
         )
     }
 
-    private func makeSettings(usesBitmapContent: Bool) -> StatusItemController.MenuBarSettings {
+    private func makeSettings() -> StatusItemController.MenuBarSettings {
         StatusItemController.MenuBarSettings(
             showIcon: true,
             showAmount: true,
             showReset: true,
             horizontalPadding: 6,
-            keepMenuOpenAfterRefresh: true,
-            usesBitmapContent: usesBitmapContent
+            keepMenuOpenAfterRefresh: true
         )
     }
 
@@ -796,8 +773,7 @@ final class StatusItemControllerTests: XCTestCase {
         sourceFrames: [NSImage],
         contentFrame: NSRect = NSRect(x: 0, y: 0, width: 56, height: 22),
         appearance: String = "aqua",
-        sourceProviderIdentity: String = "provider",
-        usesBitmapContent: Bool = true
+        sourceProviderIdentity: String = "provider"
     ) -> MenuBarBitmapAnimationVisualSignature {
         MenuBarBitmapAnimationVisualSignature(
             primaryText: primaryText,
@@ -848,8 +824,7 @@ final class StatusItemControllerTests: XCTestCase {
             widthAdjustment: 0,
             showReset: true,
             buttonImagePosition: 1,
-            buttonImageScaling: 2,
-            usesBitmapContent: usesBitmapContent
+            buttonImageScaling: 2
         )
     }
 }

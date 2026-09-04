@@ -708,10 +708,81 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testTaskAnimationTitleAndSubtitleAreLocalizedAcrossAllLanguages() {
+        let expected: [AppLanguage: (title: String, subtitle: String)] = [
+            .simplifiedChinese: (
+                "任务运行时图标动画",
+                "任务运行时在菜单栏播放图标动画；若设备性能较弱，可关闭以减少资源占用"
+            ),
+            .traditionalChineseTaiwan: (
+                "任務執行時圖示動畫",
+                "任務執行時在選單列播放圖示動畫；若裝置效能較弱，可以關閉以減少資源用量"
+            ),
+            .traditionalChineseHongKong: (
+                "任務執行時圖示動畫",
+                "任務執行時在選單列播放圖示動畫；若裝置效能較弱，可以關閉以減少資源用量"
+            ),
+            .japanese: (
+                "タスク実行時のアイコンアニメーション",
+                "タスク実行中にメニューバーでアイコンをアニメーション表示します；デバイスの性能が低い場合は、オフにしてリソース使用量を減らせます"
+            ),
+            .english: (
+                "Task Icon Animation While Running",
+                "Play the icon animation in the menu bar while a task runs; turn it off to reduce resource use on lower-performance devices"
+            ),
+            .korean: (
+                "작업 실행 중 아이콘 애니메이션",
+                "작업 실행 중 메뉴 막대에서 아이콘 애니메이션을 재생합니다; 기기 성능이 낮다면 끄면 리소스 사용량을 줄일 수 있습니다"
+            ),
+            .spanish: (
+                "Animación del icono durante la tarea",
+                "Reproduce la animación del icono en la barra de menús mientras se ejecuta una tarea; desactívala para reducir el uso de recursos en dispositivos de menor rendimiento"
+            ),
+            .german: (
+                "Symbolanimation während der Aufgabe",
+                "Gibt die Symbolanimation während einer Aufgabe in der Menüleiste wieder; auf leistungsschwächeren Geräten kann sie deaktiviert werden, um Ressourcen zu sparen"
+            ),
+            .french: (
+                "Animation de l’icône pendant une tâche",
+                "Anime l’icône dans la barre des menus pendant une tâche ; désactivez-la pour réduire l’utilisation des ressources sur les appareils moins performants"
+            ),
+            .portuguese: (
+                "Animação do ícone durante a tarefa",
+                "Reproduz a animação do ícone na barra de menus enquanto uma tarefa é executada; desative-a para reduzir a utilização de recursos em dispositivos com menor desempenho"
+            ),
+            .russian: (
+                "Анимация значка во время выполнения задачи",
+                "Воспроизводит анимацию значка в строке меню во время выполнения задачи; на устройствах с низкой производительностью её можно отключить, чтобы снизить использование ресурсов"
+            ),
+            .italian: (
+                "Animazione dell’icona durante l’attività",
+                "Riproduce l’animazione dell’icona nella barra dei menu durante un’attività; disattivala per ridurre l’uso delle risorse sui dispositivi meno potenti"
+            )
+        ]
+
+        for language in allLanguages {
+            let expectedCopy = expected[language]!
+            XCTAssertEqual(
+                tr(
+                    .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning,
+                    language: language
+                ),
+                expectedCopy.title
+            )
+            XCTAssertEqual(
+                tr(
+                    .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription,
+                    language: language
+                ),
+                expectedCopy.subtitle
+            )
+        }
+    }
+
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 472)
+        XCTAssertEqual(expectedKeys.count, 470)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

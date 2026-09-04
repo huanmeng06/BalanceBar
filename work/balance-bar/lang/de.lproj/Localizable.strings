@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "Neu laden";
 "dashboard.advanced.page.show_in_finder" = "Im Finder anzeigen";
 "dashboard.advanced.page.diagnostics" = "Diagnose";
-"dashboard.advanced.page.rendering" = "Rendering";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "Traditionelles Rendering der Menüleiste";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "Bei Aktivierung wird das traditionelle Rendering verwendet. Die Darstellung kann sich geringfügig verbessern, aber der Ressourcenverbrauch kann steigen.";
 "dashboard.advanced.page.debug_log" = "Debug-Protokoll";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Zeichnet Laufzeitstatus und Fehler auf";
 "dashboard.advanced.page.enter_port_manually" = "Port manuell eingeben";
@@ -316,7 +313,8 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "Leistung";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Synchronisiert";
 "dashboard.menu.bar.page.animation_mode_fallback" = "Die Animation kann im Modus „Leistung“ derzeit nicht korrekt wiedergegeben werden; daher wird vorübergehend der Modus „Synchronisiert“ verwendet";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Menüleistensymbol während einer Aufgabe animieren";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Symbolanimation während der Aufgabe";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Gibt die Symbolanimation während einer Aufgabe in der Menüleiste wieder; auf leistungsschwächeren Geräten kann sie deaktiviert werden, um Ressourcen zu sparen";
 "dashboard.menu.bar.page.display_items" = "Angezeigte Inhalte";
 "dashboard.menu.bar.page.agent_icon" = "Aufgabenstatussymbol";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "Zeigt den Status der aktuellen Aufgabe";

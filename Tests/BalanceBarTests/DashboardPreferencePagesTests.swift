@@ -2253,20 +2253,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String)] = [
-            (.simplifiedChinese, "任务运行时播放菜单栏图标动画"),
-            (.english, "Animate the menu bar icon while a task runs"),
-            (.traditionalChineseTaiwan, "任務執行時播放選單列圖示動畫"),
-            (.traditionalChineseHongKong, "任務執行時播放選單列圖示動畫"),
-            (.japanese, "タスク実行中にメニューバーアイコンをアニメーション"),
-            (.korean, "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
-            (.spanish, "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
-            (.german, "Menüleistensymbol während einer Aufgabe animieren"),
-            (.french, "Animer l’icône de la barre des menus pendant une tâche")
-        ]
+        let cases = AppLanguage.allCases.filter { $0 != .system }
 
-        for (language, animationRowTitle) in cases {
+        for language in cases {
             AppLanguage.selected = language
+            let animationRowTitle = tr(
+                .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning,
+                language: language
+            )
+            let animationRowSubtitle = tr(
+                .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription,
+                language: language
+            )
             let suiteName = "DashboardPreferencePagesTests.CodexActivityAnimation.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
             defaults.removePersistentDomain(forName: suiteName)
@@ -2320,6 +2318,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 "the legacy mixed display-content heading is no longer shown in \(language)"
             )
             XCTAssertEqual(labelStrings.filter { $0 == animationRowTitle }.count, 1)
+            XCTAssertEqual(labelStrings.filter { $0 == animationRowSubtitle }.count, 1)
 
             let animationSwitches = descendants(of: menuBarPage)
                 .compactMap { $0 as? NSSwitch }
@@ -2355,6 +2354,74 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             defaults.removePersistentDomain(forName: suiteName)
         }
+    }
+
+    func testAnimationModeVisibilityFollowsTaskAnimationToggle() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.AnimationVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        func refreshPage() {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        relay.onToggle = { identifier, enabled in
+            guard identifier == "animateCodexActivity" else { return }
+            preferences.animateCodexActivity = enabled
+            refreshPage()
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let animationSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "animateCodexActivity" }
+        )
+        let animationModeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+        )
+        let animationModeRow = try XCTUnwrap(animationModeControl.superview)
+        XCTAssertFalse(animationModeRow.isHidden)
+        XCTAssertTrue(animationModeControl.isEnabled)
+
+        animationSwitch.state = .off
+        relay.toggle(animationSwitch)
+        XCTAssertFalse(preferences.animateCodexActivity)
+        XCTAssertTrue(animationModeRow.isHidden)
+        XCTAssertFalse(animationModeControl.isEnabled)
+
+        animationSwitch.state = .on
+        relay.toggle(animationSwitch)
+        XCTAssertTrue(preferences.animateCodexActivity)
+        XCTAssertFalse(animationModeRow.isHidden)
+        XCTAssertTrue(animationModeControl.isEnabled)
     }
 
     func testMenuBarQuotaRowsFollowVisibilityDependenciesAndRequestedOrder() throws {
@@ -4907,7 +4974,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
-    func testTraditionalRenderingSettingIsLocalizedDefaultsOffAndPersistsInverseBitmapValue() throws {
+    func testAdvancedPageContainsOnlyActiveSettingsSections() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
@@ -4919,11 +4986,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer { defaults.removePersistentDomain(forName: suiteName) }
 
             let preferences = AppPreferences(defaults: defaults)
-            let relay = DashboardPreferencePageRelay()
-            relay.onToggle = { identifier, enabled in
-                guard identifier == AppPreferences.menuBarTraditionalRenderingKey else { return }
-                preferences.menuBarTraditionalRendering = enabled
-            }
             let page = DashboardAdvancedPage().make(.init(
                 preferences: preferences,
                 mode: OpenCodexDashboardMode(automaticDetection: true, manualPort: nil),
@@ -4932,36 +4994,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     runtimeCandidate: nil
                 ),
                 runtimeCandidate: nil,
-                relay: relay,
+                relay: DashboardPreferencePageRelay(),
                 logViewer: NSView(),
                 onModeChanged: { _ in },
                 onClamp: {}
             ))
 
             let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-            XCTAssertTrue(labels.contains {
-                $0.stringValue == tr(.keyDashboardAdvancedPageRendering, language: language)
-            })
-            XCTAssertTrue(labels.contains {
-                $0.stringValue == tr(.keyDashboardAdvancedPageTraditionalMenuBarRendering, language: language)
-            })
-            XCTAssertTrue(labels.contains {
-                $0.stringValue == tr(.keyDashboardAdvancedPageTraditionalMenuBarRenderingDescription, language: language)
-            })
-
-            let renderingSwitch = try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? NSSwitch }
-                    .first { $0.identifier?.rawValue == AppPreferences.menuBarTraditionalRenderingKey }
+            let labelStrings = labels.map(\.stringValue)
+            XCTAssertEqual(
+                labelStrings.filter {
+                    $0 == tr(.keyDashboardAdvancedPageOpencodex, language: language)
+                }.count,
+                1
             )
-            XCTAssertEqual(renderingSwitch.state, .off)
-            XCTAssertTrue(preferences.menuBarBitmapContent)
-            XCTAssertFalse(preferences.menuBarTraditionalRendering)
-
-            renderingSwitch.state = .on
-            relay.toggle(renderingSwitch)
-            XCTAssertTrue(preferences.menuBarTraditionalRendering)
-            XCTAssertFalse(preferences.menuBarBitmapContent)
+            XCTAssertEqual(
+                labelStrings.filter {
+                    $0 == tr(.keyDashboardAdvancedPageDiagnostics, language: language)
+                }.count,
+                1
+            )
         }
     }
 

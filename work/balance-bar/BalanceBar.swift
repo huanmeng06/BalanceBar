@@ -694,8 +694,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             quotaResetDisplayMode: menuBarQuotaResetDisplayMode,
             autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
-            quotaProgressColorConfiguration: preferences.quotaProgressColorConfiguration,
-            usesBitmapContent: preferences.menuBarBitmapContent
+            quotaProgressColorConfiguration: preferences.quotaProgressColorConfiguration
         )
     }
 
@@ -1030,9 +1029,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             keepMenuOpenAfterRefresh = enabled
         case AppPreferences.silentLaunchKey:
             preferences.silentLaunch = enabled
-        case AppPreferences.menuBarTraditionalRenderingKey:
-            preferences.menuBarTraditionalRendering = enabled
-            updateStatusItem(for: snapshot)
         case "animateCodexActivity":
             animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)

@@ -1156,6 +1156,7 @@ final class DashboardMenuBarPage {
         self.taskStatusIconRow = taskStatusIconRow
         let animationRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning),
+            subtitle: tr(.keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription),
             control: animationToggle
         )
         self.animationRow = animationRow
@@ -1995,6 +1996,7 @@ final class DashboardMenuBarPage {
         iconDisplayModeRow?.isHidden = !showDependentRows
         iconDisplayDelayRow?.isHidden = !showDelay
         animationModeRow?.isHidden = !showAnimationMode
+        animationModeControl?.isEnabled = showAnimationMode
         animationFallbackWarningRow?.isHidden = !showFallbackWarning
         animationFallbackWarningLabel?.stringValue = Self.animationFallbackWarningText()
 

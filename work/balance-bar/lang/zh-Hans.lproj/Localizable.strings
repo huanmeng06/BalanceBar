@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "重新加载";
 "dashboard.advanced.page.show_in_finder" = "在 Finder 中显示";
 "dashboard.advanced.page.diagnostics" = "诊断";
-"dashboard.advanced.page.rendering" = "渲染";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "传统菜单栏渲染";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "开启后使用传统渲染，显示效果略有提升，但可能增加性能占用。";
 "dashboard.advanced.page.debug_log" = "调试日志";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "记录运行状态与错误";
 "dashboard.advanced.page.enter_port_manually" = "手动输入端口号";
@@ -316,7 +313,8 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "性能";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "同步";
 "dashboard.menu.bar.page.animation_mode_fallback" = "性能模式当前无法正常播放动画，已临时切换到同步模式";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务运行时播放菜单栏图标动画";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务运行时图标动画";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "任务运行时在菜单栏播放图标动画；若设备性能较弱，可关闭以减少资源占用";
 "dashboard.menu.bar.page.display_items" = "显示内容";
 "dashboard.menu.bar.page.agent_icon" = "任务状态图标";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "显示当前任务运行状态";

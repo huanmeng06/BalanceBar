@@ -1,19 +1,19 @@
 # Issue #300 — Native status-item animation performance plan
 
-This is an engineering record for Issue #300. It does not enable a renderer,
-change the version, alter monitoring semantics, or authorize a merge/release.
+This is an engineering record for Issue #300. It does not change the version,
+alter monitoring semantics, or authorize a merge/release.
 
 ## Production direction
 
 The production path remains the native AppKit status item:
 
 ```text
-NSStatusItem → NSStatusBarButton → native AppKit menu-bar rendering
+NSStatusItem → NSStatusBarButton → one bitmap-backed menu-bar content image
 ```
 
-The live custom-view hierarchy remains an explicit traditional fallback. The
-bitmap-backed path introduced by #284 remains the default because it avoids the
-macOS 26 replicant resnapshot loop caused by attaching a live custom hierarchy
+The custom content hierarchy is retained only in an offscreen render container
+that produces the button image. The button never carries that hierarchy, which
+avoids the macOS 26 replicant resnapshot loop caused by attaching custom views
 to the status item.
 
 ## Rendering evolution
@@ -33,7 +33,7 @@ representation and requests a display. The frame tick does not assign a new
 `button.image`, allocate a final image, lock focus, compose the menu-bar
 content, or call the offscreen view renderer. Rebuilds happen only at semantic
 or visual invalidation boundaries such as text, geometry, icon, appearance,
-font, provider, or rendering-mode changes.
+font, provider, or animation-backend changes.
 
 The controller now materializes the raw buffers directly from one complete
 frame at a time. Complete frame images are therefore temporary rebuild inputs,
@@ -44,24 +44,23 @@ not a second long-lived cache beside the raw buffers.
 Issue #300 now exposes two user-facing Codex animation modes:
 
 ```text
-高效       → BalanceBar-owned icon layer + Core Animation
+性能       → BalanceBar-owned icon layer + Core Animation
 同步       → D0 stable bitmap + native timer-backed pixel updates
 ```
 
 Both modes use the same fixed visual contract: 36 discrete states over a
-1.2-second clockwise revolution. Efficient is the default and pauses the
+1.2-second clockwise revolution. Performance is the default and pauses the
 animation on non-active displays; Synchronized is an explicit resource
 trade-off that keeps all displays in sync. The persisted user preference is
 separate from the internal backend enum and invalid/missing values resolve to
-Efficient.
+Performance.
 
 When efficient setup fails for a running task, the controller temporarily uses
 the synchronized backend without changing the saved preference and exposes a
 localized warning in the Menu Bar settings page. The next task starts a fresh
 efficient-mode attempt.
 
-Claude's existing animator and the traditional rendering path retain their
-existing behavior.
+Claude's existing bitmap-backed animator retains its existing behavior.
 
 ## Dashboard handling
 
@@ -80,11 +79,11 @@ native status-item renderer.
 
 ## E renderer experiment
 
-The independent Core Animation overlay renderer is intentionally separate from
+The independent Core Animation overlay experiment is intentionally separate from
 the production native implementation. Its history is preserved in Draft PR
 [#302](https://github.com/huanmeng06/BalanceBar/pull/302) and branch
-`experiment/issue-300-e-overlay`. It is not the current default and has no
-production renderer selector. Any future Beta treatment requires a separate
+`experiment/issue-300-e-overlay`. It is not the current production pipeline.
+Any future Beta treatment requires a separate
 Issue and PR.
 
 ## Scope and validation boundary

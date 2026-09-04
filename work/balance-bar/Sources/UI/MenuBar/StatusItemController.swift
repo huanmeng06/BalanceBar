@@ -1535,7 +1535,6 @@ struct MenuBarBitmapAnimationVisualSignature: Equatable {
     let buttonImageScaling: Int
     let iconViewImageScaling: Int
     let iconViewImageAlignment: Int
-    let usesBitmapContent: Bool
 
     init(
         primaryText: String = "",
@@ -1584,8 +1583,7 @@ struct MenuBarBitmapAnimationVisualSignature: Equatable {
         buttonImagePosition: Int = 0,
         buttonImageScaling: Int = 0,
         iconViewImageScaling: Int = 0,
-        iconViewImageAlignment: Int = 0,
-        usesBitmapContent: Bool = true
+        iconViewImageAlignment: Int = 0
     ) {
         self.primaryText = primaryText
         self.secondaryText = secondaryText
@@ -1631,12 +1629,11 @@ struct MenuBarBitmapAnimationVisualSignature: Equatable {
         self.buttonImageScaling = buttonImageScaling
         self.iconViewImageScaling = iconViewImageScaling
         self.iconViewImageAlignment = iconViewImageAlignment
-        self.usesBitmapContent = usesBitmapContent
     }
 
     /// Source frame identities are animation-state inputs, not inputs to the
     /// one-time text/layout render. Keeping this comparison separate prevents
-    /// a renderer transition from causing a second full offscreen composition
+    /// a backend transition from causing a second full offscreen composition
     /// on the next ordinary update.
     func matchesStaticContent(of other: Self) -> Bool {
         var lhs = self
@@ -2072,13 +2069,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let quotaWindowPreference: OfficialQuotaWindowPreference
         /// Shared logical AppKit point size for both official rows and the
         /// single-line third-party amount. The secondary row is derived from
-        /// the default 13:10 ratio in the renderer.
+        /// the default 13:10 ratio in the bitmap layout.
         var fontSize: CGFloat
         let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
         let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
-        let usesBitmapContent: Bool
 
         init(
             showIcon: Bool,
@@ -2098,8 +2094,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
             autoSwitchLunaReserve: Bool = false,
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
-            quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
-            usesBitmapContent: Bool = AppPreferences.menuBarBitmapContentDefault
+            quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -2118,7 +2113,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.autoSwitchLunaReserve = autoSwitchLunaReserve
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
-            self.usesBitmapContent = usesBitmapContent
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -2216,12 +2210,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
     private let menuBarContentStack = MenuBarContentView()
-    /// The bitmap-backed content mode keeps the content view tree offscreen as
-    /// a layout/render engine while the button displays one template bitmap,
-    /// so macOS 26's replicant machinery has no custom view hierarchy to
-    /// re-snapshot. It is the default; the Advanced > Rendering switch can
-    /// opt into the traditional live-view path.
-    private var usesBitmapContent = false
+    /// The content view tree is kept offscreen as a layout/render engine while
+    /// the button displays one template bitmap, so macOS 26's replicant
+    /// machinery has no custom view hierarchy to re-snapshot.
     private let bitmapRenderContainer = MenuBarBitmapRenderView(
         frame: NSRect(x: 0, y: 0, width: 56, height: 22)
     )
@@ -2247,7 +2238,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
     private var isMenuBarContentStackConfigured = false
-    private var lastMenuBarIconFrameDiagnostic: String?
     private var codexIconImage: NSImage?
     private var claudeIconImage: NSImage?
     private var claudeThinkingAnimator: ClaudeThinkingAnimator?
@@ -2396,6 +2386,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var menuBarButtonImageForTesting: NSImage? { statusItem?.button?.image }
 
+    var menuBarContentIsOffscreenForTesting: Bool {
+        guard let button = statusItem?.button else { return false }
+        return menuBarContentStack.superview === bitmapRenderContainer
+            && !button.subviews.contains { $0 === menuBarContentStack }
+    }
+
     /// Supplies a deterministic source for controller-level bitmap cache tests;
     /// production always supplies the bundled Codex asset during setup.
     func setCodexIconForTesting(_ image: NSImage) {
@@ -2403,7 +2399,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.setSourceImage(
             image,
             prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
-                || !usesBitmapContent
         )
     }
 
@@ -2493,7 +2488,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func refreshBitmapContentAfterExternalVisualChange() {
-        guard usesBitmapContent, statusItem != nil else { return }
+        guard statusItem != nil else { return }
         invalidateBitmapContentCache()
         layoutStatusItem(for: snapshot)
     }
@@ -2505,9 +2500,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings
     ) {
         lifecycleGeneration += 1
-        let isNewStatusItem = statusItem == nil
-        if isNewStatusItem {
-            usesBitmapContent = settings.usesBitmapContent
+        if statusItem == nil {
             menuBarIconDisplayStateMachine.reset()
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
@@ -2546,7 +2539,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
-        lastMenuBarIconFrameDiagnostic = nil
         lastMenuBarGeometry = nil
         menuBarIconView.onSourceImageChanged = nil
         menuBarIconView.onFrameImageChanged = nil
@@ -2569,7 +2561,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput: MenuInput,
         settings: MenuBarSettings
     ) {
-        let bitmapContentModeChanged = usesBitmapContent != settings.usesBitmapContent
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
@@ -2577,13 +2568,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.refreshDate = refreshDate
         self.menuInput = menuInput
         self.settings = settings
-        if bitmapContentModeChanged {
-            if !settings.usesBitmapContent {
-                deactivateNativeCodexAnimation()
-            }
-            usesBitmapContent = settings.usesBitmapContent
-            configureMenuBarContentPresentation()
-        }
         if iconDisplayModeChanged {
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
@@ -2599,11 +2583,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         applyMenuBarIconDisplayPolicy()
         layoutStatusItem(for: snapshot)
-        if bitmapContentModeChanged || taskIconVisibilityChanged {
-            // Reconcile the selected renderer only after the new content
-            // coordinate space and its cache have been established. This also
-            // guarantees that turning off the parent task-icon switch stops
-            // either backend immediately.
+        if taskIconVisibilityChanged {
+            // Reconcile the animation after the new content geometry is
+            // established so turning off the parent task-icon switch stops
+            // the active backend immediately.
             updateActivityIcon()
         }
         rebuildOrDeferMenu()
@@ -2672,9 +2655,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 officialTextYOffset: lastMenuBarOfficialTextYOffset
             )
         }
-        if usesBitmapContent {
-            refreshMenuBarContentBitmap()
-        }
+        refreshMenuBarContentBitmap()
     }
 
     func updateMenu(input: MenuInput) {
@@ -2733,9 +2714,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // The source-image callback normally performs this layout. Keep a
             // direct refresh for missing optional assets so changing clients
             // can never leave a cache keyed to the previous client.
-            if usesBitmapContent {
-                layoutStatusItem(for: snapshot)
-            }
+            layoutStatusItem(for: snapshot)
         }
         menuBarIconDisplayStateMachine.ingest(
             mode: settings.iconDisplayMode,
@@ -2841,7 +2820,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             menuBarIconView.setSourceImage(
                 icon,
                 prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
-                    || !usesBitmapContent
             )
         }
         if let iconURL = Bundle.main.url(forResource: "Claude", withExtension: "svg"),
@@ -2871,32 +2849,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                   let frame = self.menuBarIconView.animationFrame(at: frameIndex) else {
                 return
             }
-            if self.usesBitmapContent, self.activeClient == .codex {
-                // Native CA owns the Codex running state in the experiment;
-                // a defensive return here prevents a stray legacy timer from
-                // ever reaching native status-item pixels.
-                guard self.codexAnimationBackend == .stableBitmap else {
-                    return
-                }
-                self.applyStableCodexAnimationFrame(frameIndex)
-                // Dashboard preview animation is a separate consumer. It
-                // receives the icon-only frame without mutating the detached
-                // real status-item image view.
-                self.actions.frameImageChanged(frame)
-            } else {
-                // Traditional rendering keeps the original image-view path;
-                // Claude's animator also enters this path directly.
-                self.menuBarIconView.displayImage(frame)
+            guard self.activeClient == .codex,
+                  self.codexAnimationBackend == .stableBitmap else {
+                return
             }
+            self.applyStableCodexAnimationFrame(frameIndex)
+            // Dashboard preview animation is a separate consumer. It
+            // receives the icon-only frame without mutating the detached
+            // real status-item image view.
+            self.actions.frameImageChanged(frame)
         }
         menuBarIconView.onFrameImageChanged = { [weak self] image in
             guard let self else { return }
-            if self.usesBitmapContent {
-                if self.activeClient != .codex {
-                    // Claude keeps its independent nine-frame animator and
-                    // existing bitmap composition behavior for now.
-                    self.composeMenuBarContentBitmap(iconImage: image)
-                }
+            if self.activeClient != .codex {
+                // Claude keeps its independent nine-frame animator and
+                // existing bitmap composition behavior.
+                self.composeMenuBarContentBitmap(iconImage: image)
             }
             self.actions.frameImageChanged(image)
         }
@@ -2909,7 +2877,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
         configureMenuBarContentStackIfNeeded()
-        configureMenuBarContentPresentation()
+        configureBitmapMenuBarContent()
         layoutStatusItem(for: snapshot)
         SwitchLog.write(
             "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
@@ -3132,24 +3100,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             )
 
-            // Traditional rendering remains the existing compatibility path.
-            // The product mode applies to the bitmap-backed renderer, where G
-            // and D0 are the two supported Codex implementations.
-            guard usesBitmapContent else {
-                setCodexAnimationFallbackActive(false)
-                codexAnimationBackend = preferredCodexAnimationBackend
-                deactivateNativeCodexAnimation()
-                if !menuBarIconView.isRotating, let codexIconImage {
-                    menuBarIconView.setSourceImage(codexIconImage, prepareAnimationFrames: true)
-                }
-                if shouldAnimate {
-                    menuBarIconView.startRotating()
-                } else {
-                    menuBarIconView.stopRotating()
-                }
-                return
-            }
-
             guard shouldAnimate, settings.showIcon else {
                 stopCodexAnimationImplementation()
                 codexAnimationBackend = preferredCodexAnimationBackend
@@ -3214,9 +3164,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func stopCodexAnimationImplementation() {
         menuBarIconView.stopRotating()
         deactivateNativeCodexAnimation()
-        if usesBitmapContent {
-            restoreCodexStaticBitmap()
-        }
+        restoreCodexStaticBitmap()
     }
 
     private func setCodexAnimationFallbackActive(_ active: Bool) {
@@ -3278,53 +3226,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
     }
 
-    /// Switches the live content tree between the classic button hierarchy and
-    /// the offscreen bitmap root. The same method is used at initial setup and
-    /// when the Advanced settings switch changes, so both paths clean up the
-    /// previous attachment before laying out the new coordinate space.
-    private func configureMenuBarContentPresentation() {
+    /// Installs the offscreen content tree used to produce the button bitmap.
+    private func configureBitmapMenuBarContent() {
         guard let button = statusItem?.button else { return }
         menuBarContentStack.removeFromSuperview()
         invalidateBitmapContentCache()
         button.image = Self.placeholderButtonImage
 
-        if usesBitmapContent {
-            bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
-            bitmapRenderContainer.addSubview(menuBarContentStack)
-            button.imagePosition = .imageOnly
-            button.imageScaling = .scaleNone
-        } else {
-            button.addSubview(menuBarContentStack)
-            button.imagePosition = .imageOnly
-            button.imageScaling = .scaleProportionallyDown
-        }
-    }
-
-    private func logMenuBarIconFrames(
-        snapshot: Snapshot,
-        button: NSStatusBarButton,
-        hasSecondary: Bool,
-        iconYOffset: CGFloat
-    ) {
-        guard !usesBitmapContent else { return }
-        guard settings.showIcon else { return }
-        let kind: String
-        switch snapshot.kind {
-        case .placeholder: kind = "placeholder"
-        case .official: kind = "official"
-        case .balance: kind = "balance"
-        case .openCodex: kind = "open-codex"
-        case .error: kind = "error"
-        }
-        let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
-        let slotInButton = menuBarIconSlot.convert(menuBarIconSlot.bounds, to: button)
-        let iconInButton = menuBarIconView.convert(menuBarIconView.bounds, to: button)
-        let iconInWindow = menuBarIconView.convert(menuBarIconView.bounds, to: nil)
-        let iconInScreen = button.window?.convertToScreen(iconInWindow)
-        let diagnostic = "menu bar icon frames; kind=\(kind); show_amount=\(settings.showAmount); has_secondary=\(hasSecondary); offset=\(DashboardLogging.number(iconYOffset)); flipped=button:\(button.isFlipped),stack:\(menuBarContentStack.isFlipped),slot:\(menuBarIconSlot.isFlipped),icon:\(menuBarIconView.isFlipped); button=\(DashboardLogging.rect(button.bounds)); stack_local=\(DashboardLogging.rect(menuBarContentStack.frame)); stack_button=\(DashboardLogging.rect(stackInButton)); slot_local=\(DashboardLogging.rect(menuBarIconSlot.frame)); slot_button=\(DashboardLogging.rect(slotInButton)); icon_local=\(DashboardLogging.rect(menuBarIconView.frame)); icon_button=\(DashboardLogging.rect(iconInButton)); icon_window=\(DashboardLogging.rect(iconInWindow)); icon_screen=\(iconInScreen.map { DashboardLogging.rect($0) } ?? "none"); center_button=\(DashboardLogging.number(iconInButton.midY)); center_window=\(DashboardLogging.number(iconInWindow.midY))"
-        guard diagnostic != lastMenuBarIconFrameDiagnostic else { return }
-        lastMenuBarIconFrameDiagnostic = diagnostic
-        SwitchLog.write(diagnostic, level: .debug, category: "ui.geometry")
+        bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
+        bitmapRenderContainer.addSubview(menuBarContentStack)
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
     }
 
     private func layoutStatusItem(for snapshot: Snapshot) {
@@ -3447,17 +3359,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             effectiveSnapshot: effectiveSnapshot,
             officialTextYOffset: officialTextYOffset
         )
-        if usesBitmapContent {
-            // Frames are final here; snapshot the offscreen tree into the
-            // button image so the real button carries no live view hierarchy.
-            refreshMenuBarContentBitmap()
-        }
-        logMenuBarIconFrames(
-            snapshot: effectiveSnapshot,
-            button: button,
-            hasSecondary: hasSecondary,
-            iconYOffset: iconYOffset
-        )
+        // Frames are final here; snapshot the offscreen tree into the button
+        // image so the real button carries no live view hierarchy.
+        refreshMenuBarContentBitmap()
         if button.toolTip != effectiveSnapshot.menuBarToolTip {
             button.toolTip = effectiveSnapshot.menuBarToolTip
         }
@@ -3628,14 +3532,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The view whose coordinate space the content frames live in: the status
-    /// button in the classic path, the offscreen render container in bitmap
-    /// mode. Both share a (0,0)-origin bounds of the same size.
+    /// The offscreen render container is the sole coordinate space for the
+    /// content tree. Its bounds share the button's (0,0)-origin footprint.
     private var menuBarContentCoordinateSpace: NSView? {
-        if usesBitmapContent {
-            return bitmapRenderContainer.bounds.width > 0 ? bitmapRenderContainer : nil
-        }
-        return statusItem?.button
+        bitmapRenderContainer.bounds.width > 0 ? bitmapRenderContainer : nil
     }
 
     private func menuBarPrimaryInkBounds(in coordinateSpace: NSView?) -> NSRect? {
@@ -3669,8 +3569,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private var shouldPrepareCodexAnimationFrames: Bool {
-        usesBitmapContent
-            && activeClient == .codex
+        activeClient == .codex
             && isCodexTaskRunning
             && animationEnabled
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -3942,8 +3841,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             buttonImagePosition: Int(button.imagePosition.rawValue),
             buttonImageScaling: Int(button.imageScaling.rawValue),
             iconViewImageScaling: Int(menuBarIconView.imageScaling.rawValue),
-            iconViewImageAlignment: Int(menuBarIconView.imageAlignment.rawValue),
-            usesBitmapContent: usesBitmapContent
+            iconViewImageAlignment: Int(menuBarIconView.imageAlignment.rawValue)
         )
     }
 
@@ -3962,8 +3860,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// animation frame from that base. The visual signature is evaluated
     /// before any rasterization so a repeated `update(...)` is a no-op.
     private func refreshMenuBarContentBitmap() {
-        guard usesBitmapContent,
-              let button = statusItem?.button,
+        guard let button = statusItem?.button,
               bitmapRenderContainer.bounds.width > 0,
               bitmapRenderContainer.bounds.height > 0 else {
             return
@@ -4153,8 +4050,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Codex callback never reaches this method; its complete frame pixels are
     /// copied into the stable bitmap backing instead.
     private func composeMenuBarContentBitmap(iconImage: NSImage?) {
-        guard usesBitmapContent,
-              let button = statusItem?.button,
+        guard let button = statusItem?.button,
               let textBitmap = cachedMenuBarTextBitmap else {
             return
         }

@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "Volver a cargar";
 "dashboard.advanced.page.show_in_finder" = "Mostrar en Finder";
 "dashboard.advanced.page.diagnostics" = "Diagnóstico";
-"dashboard.advanced.page.rendering" = "Renderizado";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "Renderizado tradicional de la barra de menús";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "Al activarlo, se usa el renderizado tradicional. La calidad visual puede mejorar ligeramente, pero puede aumentar el uso de recursos del sistema.";
 "dashboard.advanced.page.debug_log" = "Registro de depuración";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Registra el estado y los errores en tiempo de ejecución";
 "dashboard.advanced.page.enter_port_manually" = "Introducir el puerto manualmente";
@@ -316,7 +313,8 @@
 "dashboard.menu.bar.page.animation_mode_efficient" = "Rendimiento";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizado";
 "dashboard.menu.bar.page.animation_mode_fallback" = "El modo Rendimiento no puede reproducir la animación correctamente en este momento, por lo que se está usando temporalmente el modo Sincronizado";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Anima el icono de la barra de menús mientras se ejecuta una tarea";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animación del icono durante la tarea";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Reproduce la animación del icono en la barra de menús mientras se ejecuta una tarea; desactívala para reducir el uso de recursos en dispositivos de menor rendimiento";
 "dashboard.menu.bar.page.display_items" = "Contenido mostrado";
 "dashboard.menu.bar.page.agent_icon" = "Icono del estado de la tarea";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "Muestra el estado de la tarea actual";
