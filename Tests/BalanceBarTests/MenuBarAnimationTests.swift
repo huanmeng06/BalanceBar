@@ -212,6 +212,8 @@ final class MenuBarAnimationTests: XCTestCase {
             ),
             encoding: .utf8
         )
+        XCTAssertTrue(statusItemSource.contains("NSWindow.didChangeBackingPropertiesNotification"))
+        XCTAssertTrue(statusItemSource.contains("NSWorkspace.accessibilityDisplayOptionsDidChangeNotification"))
 
         let frameStart = try XCTUnwrap(animationSource.range(of: "private func advanceRotation()"))
         let frameEnd = try XCTUnwrap(
@@ -327,6 +329,7 @@ final class MenuBarAnimationTests: XCTestCase {
             menuBarPageSource[pagePreviewStart.lowerBound..<pagePreviewEnd.lowerBound]
         )
         XCTAssertTrue(pagePreviewPath.contains("previewIcon.image = image"))
+        XCTAssertTrue(pagePreviewPath.contains("previewIcon.image !== image"))
         XCTAssertFalse(pagePreviewPath.contains("layoutSubtreeIfNeeded"))
     }
 }

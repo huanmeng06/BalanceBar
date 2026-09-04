@@ -219,6 +219,20 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNotEqual(base, changedProvider)
         XCTAssertNotEqual(base, changedMode)
         XCTAssertNotEqual(base, changedFrameRate)
+        XCTAssertTrue(
+            base.matchesStaticContent(of: changedFrameRate),
+            "changing only the backend cadence must not invalidate static menu-bar content"
+        )
+
+        let replacementFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
+            NSImage(size: NSSize(width: 16, height: 16))
+        }
+        var changedSourceFrames = base
+        changedSourceFrames.sourceFrameIdentities = replacementFrames.map(ObjectIdentifier.init)
+        XCTAssertTrue(
+            base.matchesStaticContent(of: changedSourceFrames),
+            "animation frame identities must not invalidate static menu-bar content"
+        )
     }
 
     @MainActor
@@ -478,6 +492,31 @@ final class StatusItemControllerTests: XCTestCase {
         )
         XCTAssertFalse(fifteenImage === thirtyImage)
         XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        let fifteenCompositionCountAfterSwitch =
+            controller.codexAnimationFrameCompositionCountForTesting
+        let fifteenRebuildCountAfterSwitch = controller.stableCodexAnimationRebuildCountForTesting
+        let fifteenAssignmentCountAfterSwitch =
+            controller.stableCodexAnimationImageAssignmentCountForTesting
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: input,
+            settings: settings
+        )
+        XCTAssertEqual(
+            controller.codexAnimationFrameCompositionCountForTesting,
+            fifteenCompositionCountAfterSwitch,
+            "an ordinary update after an FPS switch must reuse the new stable buffer"
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationRebuildCountForTesting,
+            fifteenRebuildCountAfterSwitch
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationImageAssignmentCountForTesting,
+            fifteenAssignmentCountAfterSwitch
+        )
 
         let fifteenCompositionCount = controller.codexAnimationFrameCompositionCountForTesting
         let fifteenAssignmentCount = controller.stableCodexAnimationImageAssignmentCountForTesting

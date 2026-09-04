@@ -623,6 +623,7 @@ final class DashboardMenuBarPage {
     /// full settings-page refresh performed by refresh(...).
     func updatePreviewIcon(_ image: NSImage?) {
         guard isBuilt else { return }
+        guard previewIcon.image !== image else { return }
         previewIcon.image = image
     }
 

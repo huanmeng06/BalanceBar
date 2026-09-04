@@ -1519,7 +1519,7 @@ struct MenuBarBitmapAnimationVisualSignature: Equatable {
     let sourceImageIdentity: ObjectIdentifier?
     let sourceImageSize: NSSize
     let sourceImageIsTemplate: Bool
-    let sourceFrameIdentities: [ObjectIdentifier]
+    var sourceFrameIdentities: [ObjectIdentifier]
     let sourceProviderIdentity: String
     let activeClient: AssistantClient
     let effectiveSnapshot: MenuBarBitmapAnimationSnapshotSignature
@@ -1535,7 +1535,7 @@ struct MenuBarBitmapAnimationVisualSignature: Equatable {
     let buttonImageScaling: Int
     let iconViewImageScaling: Int
     let iconViewImageAlignment: Int
-    let animationFrameRate: MenuBarAnimationFrameRate
+    var animationFrameRate: MenuBarAnimationFrameRate
     let usesBitmapContent: Bool
 
     init(
@@ -1635,6 +1635,21 @@ struct MenuBarBitmapAnimationVisualSignature: Equatable {
         self.iconViewImageAlignment = iconViewImageAlignment
         self.animationFrameRate = animationFrameRate
         self.usesBitmapContent = usesBitmapContent
+    }
+
+    /// The static text/icon bitmap does not change when only the animation
+    /// cadence changes. Source frame identities are likewise animation-state
+    /// inputs, not inputs to the one-time text/layout render. Keeping this
+    /// comparison separate prevents a 15↔30 backend switch from causing a
+    /// second full offscreen composition on the next ordinary update.
+    func matchesStaticContent(of other: Self) -> Bool {
+        var lhs = self
+        var rhs = other
+        lhs.sourceFrameIdentities = []
+        rhs.sourceFrameIdentities = []
+        lhs.animationFrameRate = .defaultValue
+        rhs.animationFrameRate = .defaultValue
+        return lhs == rhs
     }
 }
 
@@ -2268,6 +2283,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private weak var observedStatusItemWindow: NSWindow?
     private var statusItemWindowObservers: [NSObjectProtocol] = []
     private var screenParametersObserver: NSObjectProtocol?
+    private var accessibilityDisplayOptionsObserver: NSObjectProtocol?
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var iconImage: NSImage? { menuBarIconView.image }
@@ -2402,12 +2418,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 reanchor: false
             )
         }
+        accessibilityDisplayOptionsObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.statusItem != nil else { return }
+            // Reduce Motion is a runtime animation policy. Reconcile it at
+            // the notification boundary so an already-running timer cannot
+            // outlive the user's accessibility preference.
+            self.updateActivityIcon()
+        }
     }
 
     deinit {
         removeStatusItemWindowObservation()
         if let screenParametersObserver {
             NotificationCenter.default.removeObserver(screenParametersObserver)
+        }
+        if let accessibilityDisplayOptionsObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(
+                accessibilityDisplayOptionsObserver
+            )
         }
     }
 
@@ -2853,7 +2885,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSWindow.didChangeOcclusionStateNotification,
             NSWindow.didMoveNotification,
             NSWindow.didResizeNotification,
-            NSWindow.didChangeScreenNotification
+            NSWindow.didChangeScreenNotification,
+            NSWindow.didChangeBackingPropertiesNotification
         ]
         statusItemWindowObservers = notifications.map { notificationName in
             NotificationCenter.default.addObserver(
@@ -2862,6 +2895,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 queue: .main
             ) { [weak self] _ in
                 guard let self, self.statusItem != nil else { return }
+                if notificationName == NSWindow.didChangeBackingPropertiesNotification {
+                    // The raw bitmap dimensions and color-space-sensitive
+                    // backing must be rebuilt once at this public lifecycle
+                    // boundary. This is not a timer/polling path.
+                    self.refreshBitmapContentAfterExternalVisualChange()
+                }
                 self.scheduleStatusItemAttachmentCheck(
                     reason: "window-\(notificationName.rawValue)",
                     reanchor: false
@@ -3496,19 +3535,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func ensureStableCodexAnimationFrameBuffer() -> Bool {
         precondition(Thread.isMainThread, "Codex bitmap cache must be rebuilt on the main thread")
         guard shouldPrepareCodexAnimationFrames,
-              let signature = cachedMenuBarContentVisualSignature,
+              let cachedSignature = cachedMenuBarContentVisualSignature,
               let textBitmap = cachedMenuBarTextBitmap,
               let iconDrawRect = cachedMenuBarIconDrawRect,
               let placement = menuBarBitmapImagePlacement,
+              let button = statusItem?.button,
               let codexIconImage,
               let sourceImage = menuBarIconView.sourceImageForRendering,
               sourceImage === codexIconImage else {
             return false
         }
+        let currentSignature = makeMenuBarBitmapAnimationVisualSignature(
+            button: button,
+            placement: placement,
+            scale: button.window?.backingScaleFactor ?? 2
+        )
+        guard currentSignature.matchesStaticContent(of: cachedSignature) else {
+            return false
+        }
         let sourceFrames = menuBarIconView.animationFrames
         guard !sourceFrames.isEmpty else { return false }
         return stableCodexAnimationFrameBuffer.rebuildIfNeeded(
-            signature: signature,
+            signature: currentSignature,
             sourceFrames: sourceFrames
         ) { frame in
             Self.makeCompleteMenuBarBitmap(
@@ -3691,7 +3739,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             scale: scale
         )
 
-        if signature == cachedMenuBarContentVisualSignature,
+        if let cachedSignature = cachedMenuBarContentVisualSignature,
+           signature.matchesStaticContent(of: cachedSignature),
            cachedMenuBarTextBitmap != nil,
            cachedStaticMenuBarContentBitmap != nil {
             if shouldUseStableCodexAnimation,
