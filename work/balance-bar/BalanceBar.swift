@@ -694,14 +694,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func updateStatusItem(for snapshot: Snapshot) {
+    private func updateStatusItem(
+        for snapshot: Snapshot,
+        refreshDashboard: Bool = true
+    ) {
         statusItemController.update(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
             menuInput: makeStatusItemMenuInput(),
             settings: makeStatusItemSettings()
         )
-        refreshDashboardMenuBarPage()
+        if refreshDashboard {
+            refreshDashboardMenuBarPage()
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -1737,7 +1742,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
-            self.updateStatusItem(for: next)
+            // `updateDashboard` below refreshes the mounted Menu Bar page as
+            // part of the same render transaction. Avoid refreshing it once
+            // here and immediately again through `refreshMountedPage`.
+            self.updateStatusItem(for: next, refreshDashboard: false)
             let refreshDate = self.refreshDate(for: next)
             self.updateDashboard(for: next, refreshDate: refreshDate)
         }

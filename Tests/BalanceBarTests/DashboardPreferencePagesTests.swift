@@ -4088,6 +4088,116 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(controller.previewAnimationIsAnimatingForTesting)
     }
 
+    func testMenuBarRefreshSkipsEquivalentInputsAndUpdatesOnlyDirtyRegions() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarRefreshSignature.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let iconImage = NSImage(size: NSSize(width: 16, height: 16))
+        let initial = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1)
+        )
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: initial,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+        controller.refresh(
+            snapshot: initial,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            statusItemVisibility: .visible
+        )
+
+        let settledApplyCount = controller.refreshApplyCountForTesting
+        let settledPreviewCount = controller.previewRefreshCountForTesting
+        let settledSettingsCount = controller.settingsRefreshCountForTesting
+        let settledWarningCount = controller.warningRefreshCountForTesting
+        let settledPreviewCardLayouts = controller.previewCardLayoutCountForTesting
+        let settledQuotaCardLayouts = controller.quotaCardLayoutCountForTesting
+        let settledIconTaskCardLayouts = controller.iconTaskCardLayoutCountForTesting
+
+        let sameVisibleContent = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 2)
+        )
+        for _ in 0..<100 {
+            controller.refresh(
+                snapshot: sameVisibleContent,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: iconImage,
+                statusItemVisibility: .visible
+            )
+        }
+
+        XCTAssertEqual(controller.refreshApplyCountForTesting, settledApplyCount)
+        XCTAssertEqual(controller.refreshSkipCountForTesting, 100)
+        XCTAssertEqual(controller.previewRefreshCountForTesting, settledPreviewCount)
+        XCTAssertEqual(controller.settingsRefreshCountForTesting, settledSettingsCount)
+        XCTAssertEqual(controller.warningRefreshCountForTesting, settledWarningCount)
+        XCTAssertEqual(controller.previewCardLayoutCountForTesting, settledPreviewCardLayouts)
+        XCTAssertEqual(controller.quotaCardLayoutCountForTesting, settledQuotaCardLayouts)
+        XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, settledIconTaskCardLayouts)
+
+        let changedAmount = Snapshot.balance(
+            "Provider",
+            79,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 3)
+        )
+        controller.refresh(
+            snapshot: changedAmount,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            statusItemVisibility: .visible
+        )
+
+        XCTAssertEqual(controller.previewRefreshCountForTesting, settledPreviewCount + 1)
+        XCTAssertEqual(controller.settingsRefreshCountForTesting, settledSettingsCount)
+        XCTAssertEqual(controller.warningRefreshCountForTesting, settledWarningCount)
+        XCTAssertEqual(controller.quotaCardLayoutCountForTesting, settledQuotaCardLayouts)
+        XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, settledIconTaskCardLayouts)
+
+        controller.refresh(
+            snapshot: changedAmount,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            statusItemVisibility: .hiddenByMenuBarSpace
+        )
+
+        XCTAssertEqual(controller.previewRefreshCountForTesting, settledPreviewCount + 1)
+        XCTAssertEqual(controller.settingsRefreshCountForTesting, settledSettingsCount)
+        XCTAssertEqual(controller.warningRefreshCountForTesting, settledWarningCount + 1)
+        XCTAssertEqual(controller.previewCardLayoutCountForTesting, settledPreviewCardLayouts + 1)
+        XCTAssertEqual(controller.quotaCardLayoutCountForTesting, settledQuotaCardLayouts)
+        XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, settledIconTaskCardLayouts)
+    }
+
     func testMenuBarWidthOnlyRefreshUpdatesSummaryWithoutFightingSlider() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

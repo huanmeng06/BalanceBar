@@ -45,6 +45,39 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
     }
 
+    func testRenderRefreshesMountedDashboardOnlyOncePerSnapshot() throws {
+        let source = try balanceBarSource()
+        let updateStart = try XCTUnwrap(
+            source.range(of: "private func updateStatusItem(")
+        )
+        let updateEnd = try XCTUnwrap(
+            source.range(
+                of: "func applicationDidFinishLaunching",
+                range: updateStart.upperBound..<source.endIndex
+            )
+        )
+        let updatePath = String(source[updateStart.lowerBound..<updateEnd.lowerBound])
+        XCTAssertTrue(updatePath.contains("refreshDashboard: Bool = true"))
+        XCTAssertTrue(updatePath.contains("if refreshDashboard"))
+
+        let renderStart = try XCTUnwrap(source.range(of: "private func render(_ next: Snapshot)"))
+        let renderEnd = try XCTUnwrap(
+            source.range(
+                of: "private func refreshDate(for snapshot: Snapshot)",
+                range: renderStart.upperBound..<source.endIndex
+            )
+        )
+        let renderPath = String(source[renderStart.lowerBound..<renderEnd.lowerBound])
+        XCTAssertTrue(
+            renderPath.contains("updateStatusItem(for: next, refreshDashboard: false)")
+        )
+        XCTAssertEqual(
+            renderPath.components(separatedBy: "updateDashboard(for: next").count - 1,
+            1
+        )
+        XCTAssertFalse(renderPath.contains("refreshDashboardMenuBarPage()"))
+    }
+
     func testAvailableStateIsTheOnlySourceOfTheStatusMenuBadgePresentation() throws {
         let source = try balanceBarSource()
         let propertyStart = try XCTUnwrap(source.range(of: "private var showsAvailableUpdateBadge: Bool"))

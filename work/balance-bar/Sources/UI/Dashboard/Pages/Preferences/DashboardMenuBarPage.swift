@@ -476,6 +476,62 @@ final class DashboardMenuBarPage {
         let control: NSPopUpButton
     }
 
+    private struct WarningRefreshSignature: Equatable {
+        let hiddenByMenuBarSpace: Bool
+        let hiddenByRuntimePolicy: Bool
+        let language: String
+    }
+
+    private struct SettingsRefreshSignature: Equatable {
+        let language: String
+        let showIcon: Bool
+        let showAmount: Bool
+        let showReset: Bool
+        let fontSizePreset: String
+        let iconOffsetY: Double
+        let amountOffsetY: Double
+        let quotaWindowPreference: String
+        let quotaResetDisplayMode: String
+        let autoSwitchLunaReserve: Bool
+        let lunaReserveResetTimeMode: String
+        let iconDisplayMode: String
+        let iconDisplayDelay: String
+        let widthAdjustment: Double
+        let horizontalPadding: CGFloat
+        let synchronizeWidthSlider: Bool
+    }
+
+    private struct IconTaskVisibilitySignature: Equatable {
+        let showIcon: Bool
+        let showDelay: Bool
+    }
+
+    private struct PreviewRefreshSignature: Equatable {
+        let presentation: Presentation
+        let showIcon: Bool
+        let showAmount: Bool
+        let fontSizePreset: String
+        let iconOffsetX: Double
+        let iconOffsetY: Double
+        let amountOffsetX: Double
+        let amountOffsetY: Double
+        let horizontalPadding: CGFloat
+        let iconImageIdentity: ObjectIdentifier?
+        let iconImageSize: NSSize
+        let iconImageIsTemplate: Bool
+        let animationActive: Bool
+        let previewBackgroundBounds: NSRect
+        let previewIconBounds: NSRect
+        let backingScale: CGFloat
+        let appearance: String
+    }
+
+    private struct RefreshSignature: Equatable {
+        let warning: WarningRefreshSignature
+        let settings: SettingsRefreshSignature
+        let preview: PreviewRefreshSignature
+    }
+
     private let previewIcon = PassthroughImageView()
     private let previewIconSlot = NSView()
     /// E's Dashboard preview uses its own BalanceBar-owned layer. The
@@ -542,6 +598,21 @@ final class DashboardMenuBarPage {
     private var iconTaskStatusSeparators: [NSView] = []
     private var fontSizePresetTrackingObserver: NSObjectProtocol?
     private var transientWidthAdjustment: Double?
+    private var lastRefreshSignature: RefreshSignature?
+    private var lastWarningRefreshSignature: WarningRefreshSignature?
+    private var lastSettingsRefreshSignature: SettingsRefreshSignature?
+    private var lastPreviewRefreshSignature: PreviewRefreshSignature?
+    private var lastQuotaVisibilitySignature: [Bool]?
+    private var lastIconTaskVisibilitySignature: IconTaskVisibilitySignature?
+    private(set) var refreshCallCountForTesting = 0
+    private(set) var refreshApplyCountForTesting = 0
+    private(set) var refreshSkipCountForTesting = 0
+    private(set) var warningRefreshCountForTesting = 0
+    private(set) var settingsRefreshCountForTesting = 0
+    private(set) var previewRefreshCountForTesting = 0
+    private(set) var previewCardLayoutCountForTesting = 0
+    private(set) var quotaCardLayoutCountForTesting = 0
+    private(set) var iconTaskCardLayoutCountForTesting = 0
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
     private let pageActionTarget = DashboardMenuBarPageActionTarget()
@@ -555,7 +626,17 @@ final class DashboardMenuBarPage {
         removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
         stopPreviewAnimation()
+        resetRefreshSignatures()
         pageActionTarget.onRevealIconDisplayModeSetting = nil
+    }
+
+    private func resetRefreshSignatures() {
+        lastRefreshSignature = nil
+        lastWarningRefreshSignature = nil
+        lastSettingsRefreshSignature = nil
+        lastPreviewRefreshSignature = nil
+        lastQuotaVisibilitySignature = nil
+        lastIconTaskVisibilitySignature = nil
     }
 
     /// Updates only the preview bitmap. Animation frames must not repeat the
@@ -633,6 +714,7 @@ final class DashboardMenuBarPage {
     }
 
     func make(_ input: Input) -> NSView {
+        resetRefreshSignatures()
         pageActionTarget.onRevealIconDisplayModeSetting = { [weak self] in
             self?.revealIconDisplayModeSetting()
         }
@@ -1165,20 +1247,12 @@ final class DashboardMenuBarPage {
         menuBarAnimationActive: Bool = false
     ) {
         guard isBuilt else { return }
-        updatePreviewWarnings(statusItemVisibility)
-        previewIconSlot.isHidden = !preferences.showMenuBarIcon
-        previewText.isHidden = !preferences.showMenuBarAmount
-        iconSwitch?.isEnabled = preferences.showMenuBarAmount
-        amountSwitch?.isEnabled = preferences.showMenuBarIcon
-        let fontSizePreset = preferences.menuBarFontSizePreset
-        let fontSize = fontSizePreset.primarySize
-        let secondaryFontSize = fontSizePreset.secondarySize
-        previewPrimary.font = MenuBarLayout.primaryFont(
-            size: CGFloat(fontSize)
-        )
-        previewSecondary.font = MenuBarLayout.secondaryFont(
-            size: CGFloat(secondaryFontSize)
-        )
+        refreshCallCountForTesting += 1
+
+        // Resolve the visible snapshot once. Fetch dates and other non-rendered
+        // metadata are deliberately absent from the signatures below, so a
+        // periodic provider refresh with identical visible content is a cheap
+        // no-op for the mounted Dashboard page.
         let presentation = Self.presentation(
             for: snapshot,
             showAmount: preferences.showMenuBarAmount,
@@ -1187,34 +1261,95 @@ final class DashboardMenuBarPage {
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             resolving: menuBarSnapshot
         )
-        MenuBarLayout.applyPrimaryText(presentation.primary, to: previewPrimary)
-        previewSecondary.stringValue = presentation.secondary
-        let hasSecondary = presentation.hasSecondary
-        let geometry = MenuBarLayout.geometry(
-            primarySize: previewPrimary.intrinsicContentSize,
-            secondarySize: previewSecondary.intrinsicContentSize,
+        let widthAdjustment = transientWidthAdjustment
+            ?? preferences.menuBarStatusItemWidthAdjustment
+        let warningSignature = WarningRefreshSignature(
+            hiddenByMenuBarSpace: statusItemVisibility.isHiddenByMenuBarSpace,
+            hiddenByRuntimePolicy: statusItemVisibility.isHiddenByRuntimePolicy,
+            language: AppLanguage.resolved.rawValue
+        )
+        let settingsSignature = SettingsRefreshSignature(
+            language: AppLanguage.resolved.rawValue,
             showIcon: preferences.showMenuBarIcon,
             showAmount: preferences.showMenuBarAmount,
-            hasSecondary: hasSecondary,
-            isBalance: presentation.isBalance
+            showReset: preferences.showMenuBarReset,
+            fontSizePreset: preferences.menuBarFontSizePreset.rawValue,
+            iconOffsetY: preferences.menuBarIconOffsetY,
+            amountOffsetY: preferences.menuBarAmountOffsetY,
+            quotaWindowPreference: preferences.menuBarQuotaWindowPreference.rawValue,
+            quotaResetDisplayMode: preferences.menuBarQuotaResetDisplayMode.rawValue,
+            autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
+            lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode.rawValue,
+            iconDisplayMode: preferences.menuBarIconDisplayMode.rawValue,
+            iconDisplayDelay: preferences.menuBarIconDisplayDelay.rawValue,
+            widthAdjustment: widthAdjustment,
+            horizontalPadding: preferences.menuBarHorizontalPadding,
+            synchronizeWidthSlider: transientWidthAdjustment == nil
         )
-        MenuBarLayout.applyTextLayout(
-            container: previewText,
-            primary: previewPrimary,
-            secondary: previewSecondary,
-            geometry: geometry,
+        let previewSignature = PreviewRefreshSignature(
+            presentation: presentation,
+            showIcon: preferences.showMenuBarIcon,
             showAmount: preferences.showMenuBarAmount,
-            hasSecondary: hasSecondary
+            fontSizePreset: preferences.menuBarFontSizePreset.rawValue,
+            iconOffsetX: preferences.menuBarIconOffsetX,
+            iconOffsetY: preferences.menuBarIconOffsetY,
+            amountOffsetX: preferences.menuBarAmountOffsetX,
+            amountOffsetY: preferences.menuBarAmountOffsetY,
+            horizontalPadding: preferences.menuBarHorizontalPadding,
+            iconImageIdentity: iconImage.map(ObjectIdentifier.init),
+            iconImageSize: iconImage?.size ?? .zero,
+            iconImageIsTemplate: iconImage?.isTemplate ?? false,
+            animationActive: menuBarAnimationActive,
+            previewBackgroundBounds: resolvedPreviewBackgroundBounds(fallbackWidth: 0),
+            previewIconBounds: previewIcon.bounds,
+            backingScale: max(previewIcon.window?.backingScaleFactor ?? 2, 1),
+            appearance: previewIcon.effectiveAppearance.name.rawValue
         )
-        textWidthConstraint?.constant = geometry.textWidth
-        let shouldAnimatePreview = menuBarAnimationActive && preferences.showMenuBarIcon
-        if !shouldAnimatePreview {
-            previewIcon.image = iconImage
+        let refreshSignature = RefreshSignature(
+            warning: warningSignature,
+            settings: settingsSignature,
+            preview: previewSignature
+        )
+        guard refreshSignature != lastRefreshSignature else {
+            refreshSkipCountForTesting += 1
+            return
         }
-        previewIcon.contentTintColor = .labelColor
-        let iconOffsetX = preferences.menuBarIconOffsetX
+
+        if warningSignature != lastWarningRefreshSignature {
+            updatePreviewWarnings(statusItemVisibility)
+            lastWarningRefreshSignature = warningSignature
+            warningRefreshCountForTesting += 1
+        }
+        if settingsSignature != lastSettingsRefreshSignature {
+            refreshSettingsControls(
+                preferences: preferences,
+                widthAdjustment: widthAdjustment,
+                synchronizeWidthSlider: transientWidthAdjustment == nil
+            )
+            lastSettingsRefreshSignature = settingsSignature
+            settingsRefreshCountForTesting += 1
+        }
+        if previewSignature != lastPreviewRefreshSignature {
+            refreshPreview(
+                presentation: presentation,
+                preferences: preferences,
+                iconImage: iconImage,
+                menuBarAnimationActive: menuBarAnimationActive
+            )
+            lastPreviewRefreshSignature = previewSignature
+            previewRefreshCountForTesting += 1
+        }
+
+        lastRefreshSignature = refreshSignature
+        refreshApplyCountForTesting += 1
+    }
+
+    private func refreshSettingsControls(
+        preferences: AppPreferences,
+        widthAdjustment: Double,
+        synchronizeWidthSlider: Bool
+    ) {
         let iconOffsetY = preferences.menuBarIconOffsetY
-        let amountOffsetX = preferences.menuBarAmountOffsetX
         let amountOffsetY = preferences.menuBarAmountOffsetY
         DashboardSettingsComponents.updateSubtitleLabel(
             iconOffsetSummaryLabel,
@@ -1224,10 +1359,16 @@ final class DashboardMenuBarPage {
             amountOffsetSummaryLabel,
             with: Self.amountOffsetSummarySubtitle(y: amountOffsetY)
         )
-        iconOffsetSlider?.doubleValue = iconOffsetY
-        amountOffsetSlider?.doubleValue = amountOffsetY
+        if iconOffsetSlider?.doubleValue != iconOffsetY {
+            iconOffsetSlider?.doubleValue = iconOffsetY
+        }
+        if amountOffsetSlider?.doubleValue != amountOffsetY {
+            amountOffsetSlider?.doubleValue = amountOffsetY
+        }
         iconOffsetSlider?.isEnabled = preferences.showMenuBarIcon
         amountOffsetSlider?.isEnabled = preferences.showMenuBarAmount
+
+        let fontSizePreset = preferences.menuBarFontSizePreset
         if let fontSizePresetControl {
             if fontSizePresetControl.indexOfSelectedItem != fontSizePreset.segmentIndex {
                 fontSizePresetControl.selectItem(at: fontSizePreset.segmentIndex)
@@ -1238,6 +1379,7 @@ final class DashboardMenuBarPage {
             )
         }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
+
         updateQuotaVisibility(
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
@@ -1283,9 +1425,12 @@ final class DashboardMenuBarPage {
             }
             quotaResetDisplayModeControl.synchronizeTitleAndSelectedItem()
         }
-        autoSwitchLunaReserveSwitch?.state = preferences.menuBarAutoSwitchLunaReserve
+        let autoSwitchState: NSControl.StateValue = preferences.menuBarAutoSwitchLunaReserve
             ? .on
             : .off
+        if autoSwitchLunaReserveSwitch?.state != autoSwitchState {
+            autoSwitchLunaReserveSwitch?.state = autoSwitchState
+        }
         if let lunaReserveResetTimeModeControl,
            let selectedIndex = LunaReserveResetTimeMode.allCases.firstIndex(
                of: preferences.menuBarLunaReserveResetTimeMode
@@ -1295,17 +1440,72 @@ final class DashboardMenuBarPage {
             }
             lunaReserveResetTimeModeControl.synchronizeTitleAndSelectedItem()
         }
-        let widthAdjustment = transientWidthAdjustment
-            ?? preferences.menuBarStatusItemWidthAdjustment
         applyWidthAdjustment(
             widthAdjustment,
             horizontalPadding: preferences.menuBarHorizontalPadding,
-            synchronizeSlider: transientWidthAdjustment == nil
+            synchronizeSlider: synchronizeWidthSlider
         )
-        let iconVisualX = CGFloat(iconOffsetX)
-        let iconVisualY = CGFloat(iconOffsetY)
-        let amountVisualX = CGFloat(amountOffsetX)
-        let amountVisualY = CGFloat(amountOffsetY)
+    }
+
+    private func refreshPreview(
+        presentation: Presentation,
+        preferences: AppPreferences,
+        iconImage: NSImage?,
+        menuBarAnimationActive: Bool
+    ) {
+        previewIconSlot.isHidden = !preferences.showMenuBarIcon
+        previewText.isHidden = !preferences.showMenuBarAmount
+        iconSwitch?.isEnabled = preferences.showMenuBarAmount
+        amountSwitch?.isEnabled = preferences.showMenuBarIcon
+
+        let fontSizePreset = preferences.menuBarFontSizePreset
+        let fontSize = fontSizePreset.primarySize
+        let primaryFont = MenuBarLayout.primaryFont(size: CGFloat(fontSize))
+        if previewPrimary.font != primaryFont {
+            previewPrimary.font = primaryFont
+        }
+        let secondaryFont = MenuBarLayout.secondaryFont(
+            size: CGFloat(fontSizePreset.secondarySize)
+        )
+        if previewSecondary.font != secondaryFont {
+            previewSecondary.font = secondaryFont
+        }
+        MenuBarLayout.applyPrimaryText(presentation.primary, to: previewPrimary)
+        if previewSecondary.stringValue != presentation.secondary {
+            previewSecondary.stringValue = presentation.secondary
+        }
+
+        let hasSecondary = presentation.hasSecondary
+        let geometry = MenuBarLayout.geometry(
+            primarySize: previewPrimary.intrinsicContentSize,
+            secondarySize: previewSecondary.intrinsicContentSize,
+            showIcon: preferences.showMenuBarIcon,
+            showAmount: preferences.showMenuBarAmount,
+            hasSecondary: hasSecondary,
+            isBalance: presentation.isBalance
+        )
+        MenuBarLayout.applyTextLayout(
+            container: previewText,
+            primary: previewPrimary,
+            secondary: previewSecondary,
+            geometry: geometry,
+            showAmount: preferences.showMenuBarAmount,
+            hasSecondary: hasSecondary
+        )
+        if textWidthConstraint?.constant != geometry.textWidth {
+            textWidthConstraint?.constant = geometry.textWidth
+        }
+
+        let shouldAnimatePreview = menuBarAnimationActive && preferences.showMenuBarIcon
+        if !shouldAnimatePreview, previewIcon.image !== iconImage {
+            previewIcon.image = iconImage
+        }
+        previewIcon.contentTintColor = .labelColor
+
+        let iconVisualX = CGFloat(preferences.menuBarIconOffsetX)
+        let iconVisualY = CGFloat(preferences.menuBarIconOffsetY)
+        let amountVisualX = CGFloat(preferences.menuBarAmountOffsetX)
+        let amountVisualY = CGFloat(preferences.menuBarAmountOffsetY)
         let officialTextYOffset: CGFloat
         if presentation.isOfficial, preferences.showMenuBarAmount {
             officialTextYOffset = MenuBarLayout.officialTextYOffset(
@@ -1428,7 +1628,9 @@ final class DashboardMenuBarPage {
                     + horizontalCorrection,
                 y: zeroUserTextTranslationY + verticalCorrection
             ))
-        } else if presentation.isBalance, preferences.showMenuBarIcon, preferences.showMenuBarAmount {
+        } else if presentation.isBalance,
+                  preferences.showMenuBarIcon,
+                  preferences.showMenuBarAmount {
             previewIcon.layer?.setAffineTransform(CGAffineTransform(
                 translationX: MenuBarOffsetLayout.xDelta(visualX: iconVisualX)
                     + horizontalCenteringCompensation,
@@ -1441,9 +1643,6 @@ final class DashboardMenuBarPage {
             previewText.layer?.setAffineTransform(CGAffineTransform(
                 translationX: MenuBarOffsetLayout.xDelta(visualX: amountVisualX)
                     + horizontalCenteringCompensation,
-                // User Y offsets use unflipped layer semantics (positive = up)
-                // to match the real menu bar; the built-in single-line baseline
-                // keeps its existing visual unchanged.
                 y: MenuBarOffsetLayout.yDelta(
                     visualY: amountVisualY,
                     in: .unflippedLayer
@@ -1644,6 +1843,7 @@ final class DashboardMenuBarPage {
     private func updatePreviewCardLayout() {
         guard let previewRowsStack,
               let previewCardHeightConstraint else { return }
+        previewCardLayoutCountForTesting += 1
         previewRowsStack.needsLayout = true
         previewCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
             rowsStack: previewRowsStack,
@@ -1705,6 +1905,9 @@ final class DashboardMenuBarPage {
         showReset: Bool,
         autoSwitchLunaReserve: Bool
     ) {
+        let visibilitySignature = [showAmount, showReset, autoSwitchLunaReserve]
+        guard visibilitySignature != lastQuotaVisibilitySignature else { return }
+        lastQuotaVisibilitySignature = visibilitySignature
         resetCountdownRow?.isHidden = !showAmount
         let showResetDetails = showAmount && showReset
         quotaWindowPreferenceRow?.isHidden = !showResetDetails
@@ -1741,6 +1944,7 @@ final class DashboardMenuBarPage {
     private func updateQuotaCardLayout() {
         guard let quotaRowsStack,
               let quotaCardHeightConstraint else { return }
+        quotaCardLayoutCountForTesting += 1
         quotaRowsStack.needsLayout = true
         quotaRowsStack.layoutSubtreeIfNeeded()
         quotaCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
@@ -1758,6 +1962,12 @@ final class DashboardMenuBarPage {
     ) {
         let showDependentRows = showTaskStatusIcon
         let showDelay = showDependentRows && displayMode == .onlyWhileRunning
+        let visibilitySignature = IconTaskVisibilitySignature(
+            showIcon: showDependentRows,
+            showDelay: showDelay
+        )
+        guard visibilitySignature != lastIconTaskVisibilitySignature else { return }
+        lastIconTaskVisibilitySignature = visibilitySignature
         animationRow?.isHidden = !showDependentRows
         iconDisplayModeRow?.isHidden = !showDependentRows
         iconDisplayDelayRow?.isHidden = !showDelay
@@ -1775,6 +1985,7 @@ final class DashboardMenuBarPage {
     private func updateIconTaskStatusCardLayout() {
         guard let iconTaskStatusRowsStack,
               let iconTaskStatusCardHeightConstraint else { return }
+        iconTaskCardLayoutCountForTesting += 1
         iconTaskStatusRowsStack.needsLayout = true
         iconTaskStatusRowsStack.layoutSubtreeIfNeeded()
         iconTaskStatusCardHeightConstraint.constant = DashboardSettingsComponents.settingsCardHeight(
