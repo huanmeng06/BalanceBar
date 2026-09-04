@@ -647,6 +647,28 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testAnimationModeCopyOmitsFullStopsAcrossAllLanguages() {
+        let fullStops = [".", "。", "．"]
+        for language in allLanguages {
+            let description = tr(
+                .keyDashboardMenuBarPageAnimationModeDescription,
+                language: language
+            )
+            let fallback = tr(
+                .keyDashboardMenuBarPageAnimationModeFallback,
+                language: language
+            )
+            XCTAssertFalse(
+                description.contains { fullStops.contains(String($0)) },
+                "animation mode description contains a full stop in \(language.rawValue)"
+            )
+            XCTAssertFalse(
+                fallback.contains { fullStops.contains(String($0)) },
+                "animation mode fallback contains a full stop in \(language.rawValue)"
+            )
+        }
+    }
+
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)

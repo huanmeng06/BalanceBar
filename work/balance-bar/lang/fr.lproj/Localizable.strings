@@ -312,10 +312,10 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Quota d’origine";
 "dashboard.menu.bar.page.animation" = "Mode d’animation";
-"dashboard.menu.bar.page.animation_mode_description" = "Efficace : réduit nettement l’utilisation des ressources système. Avec plusieurs écrans, l’animation est mise en pause sur les écrans inactifs.\nSynchronisé : maintient l’animation synchronisée sur tous les écrans, mais utilise davantage de ressources système.";
+"dashboard.menu.bar.page.animation_mode_description" = "Efficace : réduit nettement l’utilisation des ressources système ; avec plusieurs écrans, l’animation est mise en pause sur les écrans inactifs\nSynchronisé : maintient l’animation synchronisée sur tous les écrans, mais utilise davantage de ressources système";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Efficace";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Synchronisé";
-"dashboard.menu.bar.page.animation_mode_fallback" = "Le mode Efficace ne peut pas afficher correctement l’animation pour le moment. Le mode Synchronisé est utilisé temporairement.";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Le mode Efficace ne peut pas afficher correctement l’animation pour le moment ; le mode Synchronisé est utilisé temporairement";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animer l’icône de la barre des menus pendant une tâche";
 "dashboard.menu.bar.page.display_items" = "Contenu affiché";
 "dashboard.menu.bar.page.agent_icon" = "Icône de l’état de la tâche";

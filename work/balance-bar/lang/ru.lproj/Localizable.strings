@@ -312,10 +312,10 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Исходная квота";
 "dashboard.menu.bar.page.animation" = "Режим анимации";
-"dashboard.menu.bar.page.animation_mode_description" = "Эффективный: значительно снижает использование системных ресурсов. При работе с несколькими дисплеями анимация на неактивных дисплеях приостанавливается.\nСинхронный: синхронизирует анимацию на всех дисплеях, но требует больше системных ресурсов.";
+"dashboard.menu.bar.page.animation_mode_description" = "Эффективный: значительно снижает использование системных ресурсов; при работе с несколькими дисплеями анимация на неактивных дисплеях приостанавливается\nСинхронный: синхронизирует анимацию на всех дисплеях, но требует больше системных ресурсов";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Эффективный";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Синхронный";
-"dashboard.menu.bar.page.animation_mode_fallback" = "Сейчас анимация не может корректно работать в режиме «Эффективный», поэтому временно используется режим «Синхронный».";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Сейчас анимация не может корректно работать в режиме «Эффективный», поэтому временно используется режим «Синхронный»";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Воспроизводить анимацию значка строки меню во время выполнения задачи";
 "dashboard.menu.bar.page.display_items" = "Отображаемое содержимое";
 "dashboard.menu.bar.page.agent_icon" = "Значок статуса задачи";

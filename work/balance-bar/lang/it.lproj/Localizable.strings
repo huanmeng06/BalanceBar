@@ -312,10 +312,10 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Quota originale";
 "dashboard.menu.bar.page.animation" = "Modalità animazione";
-"dashboard.menu.bar.page.animation_mode_description" = "Efficiente: riduce in modo significativo l’uso delle risorse di sistema. Se utilizzi più schermi, l’animazione viene messa in pausa sugli schermi non attivi.\nSincronizzata: mantiene l’animazione sincronizzata su tutti gli schermi, ma usa più risorse di sistema.";
+"dashboard.menu.bar.page.animation_mode_description" = "Efficiente: riduce in modo significativo l’uso delle risorse di sistema; se utilizzi più schermi, l’animazione viene messa in pausa sugli schermi non attivi\nSincronizzata: mantiene l’animazione sincronizzata su tutti gli schermi, ma usa più risorse di sistema";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Efficiente";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizzata";
-"dashboard.menu.bar.page.animation_mode_fallback" = "Al momento l’animazione non può essere riprodotta correttamente in modalità Efficiente, quindi viene usata temporaneamente la modalità Sincronizzata.";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Al momento l’animazione non può essere riprodotta correttamente in modalità Efficiente, quindi viene usata temporaneamente la modalità Sincronizzata";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Riproduci l'animazione dell'icona della barra dei menu durante l'esecuzione di un'attività";
 "dashboard.menu.bar.page.display_items" = "Contenuto visualizzato";
 "dashboard.menu.bar.page.agent_icon" = "Icona dello stato attività";
