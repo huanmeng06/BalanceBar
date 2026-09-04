@@ -82,6 +82,7 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        isHidden = true
         wantsLayer = true
         translatesAutoresizingMaskIntoConstraints = true
         layer?.masksToBounds = false
@@ -94,6 +95,7 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        isHidden = true
         wantsLayer = true
         translatesAutoresizingMaskIntoConstraints = true
         layer?.masksToBounds = false
