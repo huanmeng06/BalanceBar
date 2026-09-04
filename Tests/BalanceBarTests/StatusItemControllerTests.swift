@@ -688,6 +688,207 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testCodexIdleReclaimsSourceAfterClaudeIdleAndRunningRoundTrips() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Claude animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(codexAnimationBackend: .stableBitmap)
+        defer { controller.teardown() }
+
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+
+        let codexIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.2,
+            green: 0.4,
+            blue: 0.8
+        )
+        codexIcon.isTemplate = true
+        let claudeIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.9,
+            green: 0.5,
+            blue: 0.2
+        )
+        claudeIcon.isTemplate = true
+        let claudeSprite = makeSolidImage(
+            size: NSSize(width: 16, height: 144),
+            red: 0.9,
+            green: 0.5,
+            blue: 0.2
+        )
+        claudeSprite.isTemplate = true
+        controller.setCodexIconForTesting(codexIcon)
+        controller.setClaudeAnimationAssetsForTesting(
+            staticImage: claudeIcon,
+            spriteImage: claudeSprite
+        )
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(controller.menuBarSourceImageForTesting === codexIcon)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(controller.menuBarSourceImageForTesting === claudeIcon)
+        XCTAssertFalse(controller.claudeThinkingAnimationIsActiveForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(
+            controller.menuBarSourceImageForTesting === codexIcon,
+            "idle Codex must reclaim source ownership after idle Claude"
+        )
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: false,
+            claudeTaskRunning: true,
+            animationEnabled: true
+        )
+        XCTAssertTrue(controller.menuBarSourceImageForTesting === claudeIcon)
+        XCTAssertTrue(controller.claudeThinkingAnimationIsActiveForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: true,
+            animationEnabled: true
+        )
+        XCTAssertTrue(
+            controller.menuBarSourceImageForTesting === codexIcon,
+            "idle Codex must reclaim source ownership after animated Claude"
+        )
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertFalse(controller.claudeThinkingAnimationIsActiveForTesting)
+        XCTAssertNil(controller.claudeThinkingAnimationHostForTesting?.superview)
+    }
+
+    @MainActor
+    func testCodexRunningThroughClaudeToCodexIdleRestoresSourceForBothBackends() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+
+        for backend in [MenuBarCodexAnimationBackend.stableBitmap, .nativeCoreAnimation] {
+            let controller = makeController(codexAnimationBackend: backend)
+
+            let snapshot = Snapshot.balance(
+                "Provider",
+                80,
+                "USD",
+                nil,
+                Date(timeIntervalSince1970: 1_700_000_000)
+            )
+            controller.start(
+                snapshot: snapshot,
+                refreshDate: snapshot.date,
+                menuInput: makeMenuInput(),
+                settings: makeSettings()
+            )
+
+            let codexIcon = makeSolidImage(
+                size: NSSize(width: 16, height: 16),
+                red: 0.2,
+                green: 0.4,
+                blue: 0.8
+            )
+            codexIcon.isTemplate = true
+            let claudeIcon = makeSolidImage(
+                size: NSSize(width: 16, height: 16),
+                red: 0.9,
+                green: 0.5,
+                blue: 0.2
+            )
+            claudeIcon.isTemplate = true
+            let claudeSprite = makeSolidImage(
+                size: NSSize(width: 16, height: 144),
+                red: 0.9,
+                green: 0.5,
+                blue: 0.2
+            )
+            claudeSprite.isTemplate = true
+            controller.setCodexIconForTesting(codexIcon)
+            controller.setClaudeAnimationAssetsForTesting(
+                staticImage: claudeIcon,
+                spriteImage: claudeSprite
+            )
+
+            controller.updateActivity(
+                activeClient: .codex,
+                codexTaskRunning: true,
+                claudeTaskRunning: false,
+                animationEnabled: true
+            )
+            XCTAssertTrue(controller.menuBarSourceImageForTesting === codexIcon)
+            switch backend {
+            case .stableBitmap:
+                XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+            case .nativeCoreAnimation:
+                XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+                XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+            }
+
+            controller.updateActivity(
+                activeClient: .claude,
+                codexTaskRunning: true,
+                claudeTaskRunning: false,
+                animationEnabled: true
+            )
+            XCTAssertTrue(
+                controller.menuBarSourceImageForTesting === claudeIcon,
+                "Codex to Claude must immediately install Claude source"
+            )
+            XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+            XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+
+            controller.updateActivity(
+                activeClient: .codex,
+                codexTaskRunning: false,
+                claudeTaskRunning: false,
+                animationEnabled: true
+            )
+            XCTAssertTrue(
+                controller.menuBarSourceImageForTesting === codexIcon,
+                "idle Codex must reclaim source ownership after running Codex"
+            )
+            XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+            XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+            XCTAssertFalse(controller.claudeThinkingAnimationIsActiveForTesting)
+
+            controller.teardown()
+        }
+    }
+
+    @MainActor
     func testCodexAnimationModeSwitchIsImmediateAndKeepsExactlyOneBackendActive() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
