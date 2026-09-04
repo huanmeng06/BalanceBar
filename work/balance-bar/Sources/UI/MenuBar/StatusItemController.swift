@@ -2162,7 +2162,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var overlaySynchronizationScheduled = false
     private var bitmapVisualRefreshScheduled = false
-    private var overlayLifecycleSuspended = false
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var iconImage: NSImage? { menuBarIconView.image }
@@ -2209,6 +2208,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var overlayAnimationIsVisibleForTesting: Bool {
         menuBarAnimationOverlay?.isVisible ?? false
+    }
+
+    var overlayAnimationIsAttachedForTesting: Bool {
+        menuBarAnimationOverlay?.isAttached ?? false
     }
 
     var overlayAnimationHasInstalledRotationForTesting: Bool {
@@ -2349,21 +2352,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 self.scheduleOverlaySynchronization()
             },
             workspaceNotificationCenter.addObserver(
-                forName: NSWorkspace.willSleepNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self else { return }
-                self.overlayLifecycleSuspended = true
-                self.synchronizeMenuBarAnimationOverlay()
-            },
-            workspaceNotificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
                 guard let self else { return }
-                self.overlayLifecycleSuspended = false
                 self.scheduleOverlaySynchronization()
                 self.scheduleStatusItemAttachmentCheck(
                     reason: "wake",
@@ -2437,7 +2430,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lifecycleGeneration += 1
         overlaySynchronizationScheduled = false
         bitmapVisualRefreshScheduled = false
-        overlayLifecycleSuspended = false
         let isNewStatusItem = statusItem == nil
         if isNewStatusItem {
             usesBitmapContent = settings.usesBitmapContent
@@ -2470,7 +2462,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lifecycleGeneration += 1
         overlaySynchronizationScheduled = false
         bitmapVisualRefreshScheduled = false
-        overlayLifecycleSuspended = false
         removeStatusItemWindowObservation()
         statusItemVisibilityStateMachine.reset()
         menuBarIconDisplayStateMachine.reset()
@@ -2894,7 +2885,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 queue: .main
             ) { [weak self] _ in
                 guard let self, self.statusItem != nil else { return }
-                self.scheduleOverlaySynchronization()
+                // Parent translation is handled synchronously by AppKit's
+                // child-window relationship. Recomputing and setting the
+                // overlay frame from didMove would reintroduce one-event lag
+                // during Command-drag. Other boundaries may affect local
+                // geometry, scale, or attachment and still reconcile once.
+                if notificationName != NSWindow.didMoveNotification,
+                   notificationName != NSWindow.didChangeOcclusionStateNotification {
+                    self.scheduleOverlaySynchronization()
+                }
                 self.scheduleStatusItemAttachmentCheck(
                     reason: "window-\(notificationName.rawValue)",
                     reanchor: false
@@ -3027,6 +3026,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts += 1
         let desiredLength = max(CGFloat(30), item.length)
         removeStatusItemWindowObservation()
+        menuBarAnimationOverlay?.detachFromParentPreservingAnimation()
         NSStatusBar.system.removeStatusItem(item)
         let replacement = NSStatusBar.system.statusItem(withLength: desiredLength)
         statusItem = replacement
@@ -3151,20 +3151,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             && isOverlayCodexAnimationActive
     }
 
-    /// Uses the already measured bitmap placement and the real status-button
-    /// window to convert the visible icon pixels into screen coordinates.
-    /// There is no independent overlay layout constant to drift from the
-    /// native menu-bar content.
-    private func menuBarAnimationOverlayScreenFrame() -> NSRect? {
+    /// Uses the already measured bitmap placement to express the icon in the
+    /// status-item window's stable local coordinates. Parent translation is
+    /// intentionally excluded so Command-drag and display migration never feed
+    /// an event-delayed screen position back into the child window.
+    private func menuBarAnimationOverlayFrameInStatusWindow() -> NSRect? {
         guard shouldUseOverlayCodexAnimation,
               let button = statusItem?.button,
-              let window = button.window,
+              button.window != nil,
               let placement = menuBarBitmapImagePlacement,
               let iconDrawRect = cachedMenuBarIconDrawRect else {
             return nil
         }
         let iconRectInButton = placement.canonicalRect(forImageRect: iconDrawRect)
-        return window.convertToScreen(button.convert(iconRectInButton, to: nil))
+        return button.convert(iconRectInButton, to: nil)
     }
 
     private func synchronizeMenuBarAnimationOverlay() {
@@ -3174,55 +3174,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         let animationRequested = shouldUseOverlayCodexAnimation
+        let shouldShow = MenuBarAnimationOverlayVisibilityPolicy.shouldShow(
+            animationRequested: animationRequested,
+            statusItemVisible: statusItem?.isVisible ?? false,
+            hiddenByRuntimePolicy: statusItemVisibility.isHiddenByRuntimePolicy,
+            reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
         guard let statusItem,
               let button = statusItem.button,
               let window = button.window else {
             overlay.synchronize(
                 image: codexIconImage,
-                // A status-item replacement temporarily has no button/window.
-                // Keep the requested compositor animation installed, but hide
-                // the overlay until fresh geometry is available.
+                // Auto-hide/full-screen handoff or status-item replacement may
+                // temporarily withdraw button.window. The overlay controller
+                // retains an existing child relationship, but a never-anchored
+                // window remains hidden until AppKit supplies a parent.
                 animationRequested: animationRequested,
-                screenFrame: nil,
+                parentWindow: nil,
+                frameInParent: nil,
                 appearance: nil,
                 backingScale: nil,
-                shouldShow: false
+                shouldShow: shouldShow
             )
             return
         }
 
-        let screenFrame = animationRequested
-            ? menuBarAnimationOverlayScreenFrame()
+        let frameInParent = animationRequested
+            ? menuBarAnimationOverlayFrameInStatusWindow()
             : nil
-        let validGeometry = screenFrame.map {
-            $0.width > 0
-                && $0.height > 0
-                && $0.minX.isFinite
-                && $0.minY.isFinite
-                && $0.maxX.isFinite
-                && $0.maxY.isFinite
-        } ?? false
-        let shouldShow = MenuBarAnimationOverlayVisibilityPolicy.shouldShow(
-            animationRequested: animationRequested,
-            // `.unknown` is deliberately not treated as visible. During
-            // status-item creation/replacement AppKit can expose a button
-            // before its window and space attachment are confirmed; the
-            // overlay must remain hidden until that evidence is authoritative.
-            statusItemVisible: statusItem.isVisible
-                && !button.isHidden
-                && statusItemVisibility == .visible,
-            hiddenByMenuBarSpace: statusItemVisibility.isHiddenByMenuBarSpace,
-            hiddenByRuntimePolicy: statusItemVisibility.isHiddenByRuntimePolicy,
-            statusWindowVisible: window.isVisible,
-            statusWindowOcclusionVisible: window.occlusionState.contains(.visible),
-            validGeometry: validGeometry,
-            reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            lifecycleSuspended: overlayLifecycleSuspended
-        )
         overlay.synchronize(
             image: codexIconImage,
             animationRequested: animationRequested,
-            screenFrame: shouldShow ? screenFrame : nil,
+            parentWindow: window,
+            frameInParent: shouldShow ? frameInParent : nil,
             appearance: button.effectiveAppearance,
             backingScale: window.backingScaleFactor,
             shouldShow: shouldShow

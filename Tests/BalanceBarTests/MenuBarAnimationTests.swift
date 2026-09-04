@@ -74,45 +74,29 @@ final class MenuBarAnimationTests: XCTestCase {
         )
     }
 
-    func testOverlayVisibilityPolicyRequiresEveryIndependentVisibilitySignal() {
+    func testOverlayVisibilityPolicyRequiresLogicalPresentationSignals() {
         XCTAssertTrue(
             MenuBarAnimationOverlayVisibilityPolicy.shouldShow(
                 animationRequested: true,
                 statusItemVisible: true,
-                hiddenByMenuBarSpace: false,
                 hiddenByRuntimePolicy: false,
-                statusWindowVisible: true,
-                statusWindowOcclusionVisible: true,
-                validGeometry: true,
                 reduceMotionEnabled: false
             )
         )
 
-        let invalidCases: [(String, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool)] = [
-            ("animation requested", false, true, false, false, true, true, true, false),
-            ("status item", true, false, false, false, true, true, true, false),
-            ("menu bar space", true, true, true, false, true, true, true, false),
-            ("runtime policy", true, true, false, true, true, true, true, false),
-            ("status window", true, true, false, false, false, true, true, false),
-            ("occlusion", true, true, false, false, true, false, true, false),
-            ("geometry", true, true, false, false, true, true, false, false),
-            ("reduce motion", true, true, false, false, true, true, true, true),
-            ("sleep suspension", true, true, false, false, true, true, true, false)
+        let invalidCases: [(String, Bool, Bool, Bool, Bool)] = [
+            ("animation requested", false, true, false, false),
+            ("status item", true, false, false, false),
+            ("runtime policy", true, true, true, false),
+            ("reduce motion", true, true, false, true)
         ]
-        for (name, requested, statusVisible, hiddenBySpace, hiddenByRuntime,
-             windowVisible, occlusionVisible, validGeometry, reduceMotion) in invalidCases {
-            let suspended = name == "sleep suspension"
+        for (name, requested, statusVisible, hiddenByRuntime, reduceMotion) in invalidCases {
             XCTAssertFalse(
                 MenuBarAnimationOverlayVisibilityPolicy.shouldShow(
                     animationRequested: requested,
                     statusItemVisible: statusVisible,
-                    hiddenByMenuBarSpace: hiddenBySpace,
                     hiddenByRuntimePolicy: hiddenByRuntime,
-                    statusWindowVisible: windowVisible,
-                    statusWindowOcclusionVisible: occlusionVisible,
-                    validGeometry: validGeometry,
-                    reduceMotionEnabled: reduceMotion,
-                    lifecycleSuspended: suspended
+                    reduceMotionEnabled: reduceMotion
                 ),
                 "invalid signal must hide overlay: \(name)"
             )

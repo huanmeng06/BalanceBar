@@ -412,9 +412,13 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testOverlayAnimationUsesIndependentNonActivatingWindowAndCAAnimation() {
+    func testOverlayAnimationUsesNonActivatingChildWindowAndCAAnimation() {
         let overlay = MenuBarAnimationOverlayController()
         defer { overlay.teardown() }
+        let parent = makeOverlayParent(
+            frame: NSRect(x: 100, y: 200, width: 80, height: 22)
+        )
+        defer { parent.orderOut(nil) }
 
         XCTAssertTrue(overlay.ignoresMouseEventsForTesting)
         XCTAssertFalse(overlay.isOpaqueForTesting)
@@ -425,22 +429,36 @@ final class StatusItemControllerTests: XCTestCase {
             overlay.windowLevelForTesting.rawValue,
             NSWindow.Level.statusBar.rawValue
         )
+        XCTAssertFalse(
+            overlay.collectionBehaviorForTesting.contains(.canJoinAllSpaces)
+        )
+        XCTAssertFalse(
+            overlay.collectionBehaviorForTesting.contains(.fullScreenAuxiliary)
+        )
 
         let expectedIconSize = NSSize(width: 16, height: 16)
+        let expectedFrameInParent = NSRect(
+            x: 10,
+            y: 3,
+            width: expectedIconSize.width,
+            height: expectedIconSize.height
+        )
 
         overlay.start(
             image: NSImage(size: expectedIconSize),
-            screenFrame: NSRect(
-                x: 10,
-                y: 20,
-                width: expectedIconSize.width,
-                height: expectedIconSize.height
-            ),
+            parentWindow: parent,
+            frameInParent: expectedFrameInParent,
             appearance: NSAppearance(named: .aqua)
         )
 
         XCTAssertTrue(overlay.isAnimating)
         XCTAssertTrue(overlay.isVisible)
+        XCTAssertTrue(overlay.isAttached)
+        XCTAssertTrue(overlay.parentWindowForTesting === parent)
+        XCTAssertEqual(
+            (parent.childWindows ?? []).filter { $0 === overlay.windowForTesting }.count,
+            1
+        )
         XCTAssertEqual(overlay.iconLayerAnchorPointForTesting, CGPoint(x: 0.5, y: 0.5))
         XCTAssertEqual(
             overlay.iconLayerPositionForTesting,
@@ -479,11 +497,14 @@ final class StatusItemControllerTests: XCTestCase {
         )
 
         overlay.synchronize(
-            screenFrame: NSRect(x: 10, y: 20, width: 16, height: 16),
+            parentWindow: parent,
+            frameInParent: expectedFrameInParent,
             appearance: NSAppearance(named: .aqua),
             shouldShow: false
         )
         XCTAssertFalse(overlay.isVisible)
+        XCTAssertFalse(overlay.isAttached)
+        XCTAssertTrue((parent.childWindows ?? []).isEmpty)
 
         overlay.stop()
         XCTAssertFalse(overlay.isAnimating)
@@ -494,21 +515,32 @@ final class StatusItemControllerTests: XCTestCase {
     func testOverlaySynchronizeIsIdempotentAndRestoresAfterTemporaryHide() throws {
         let overlay = MenuBarAnimationOverlayController()
         defer { overlay.teardown() }
+        let parent = makeOverlayParent(
+            frame: NSRect(x: 90, y: 190, width: 80, height: 22)
+        )
+        defer { parent.orderOut(nil) }
         let image = NSImage(size: NSSize(width: 16, height: 16))
-        let frame = NSRect(x: 100, y: 200, width: 16, height: 16)
+        let frameInParent = NSRect(x: 10, y: 10, width: 16, height: 16)
         let appearance = NSAppearance(named: .aqua)
 
-        overlay.start(image: image, screenFrame: frame, appearance: appearance)
+        overlay.start(
+            image: image,
+            parentWindow: parent,
+            frameInParent: frameInParent,
+            appearance: appearance
+        )
         XCTAssertTrue(overlay.isVisible)
         let initialStarts = overlay.animationStartCount
         let initialGeometrySyncs = overlay.geometrySyncCount
         let initialRasterUpdates = overlay.rasterUpdateCount
         let initialVisibilityMutations = overlay.visibilityMutationCount
+        let initialAttachmentMutations = overlay.attachmentMutationCount
 
         for _ in 0..<100 {
             XCTAssertTrue(
                 overlay.synchronize(
-                    screenFrame: frame,
+                    parentWindow: parent,
+                    frameInParent: frameInParent,
                     appearance: appearance,
                     shouldShow: true
                 )
@@ -518,11 +550,13 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(overlay.geometrySyncCount, initialGeometrySyncs)
         XCTAssertEqual(overlay.rasterUpdateCount, initialRasterUpdates)
         XCTAssertEqual(overlay.visibilityMutationCount, initialVisibilityMutations)
+        XCTAssertEqual(overlay.attachmentMutationCount, initialAttachmentMutations)
 
         let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
         XCTAssertTrue(
             overlay.synchronize(
-                screenFrame: frame,
+                parentWindow: parent,
+                frameInParent: frameInParent,
                 appearance: darkAppearance,
                 shouldShow: true
             )
@@ -532,7 +566,8 @@ final class StatusItemControllerTests: XCTestCase {
         for _ in 0..<100 {
             XCTAssertTrue(
                 overlay.synchronize(
-                    screenFrame: frame,
+                    parentWindow: parent,
+                    frameInParent: frameInParent,
                     appearance: darkAppearance,
                     shouldShow: true
                 )
@@ -540,26 +575,45 @@ final class StatusItemControllerTests: XCTestCase {
         }
         XCTAssertEqual(overlay.rasterUpdateCount, darkRasterUpdates)
 
+        // Transient AppKit unavailability preserves the existing child group
+        // and compositor animation; the parent will order both windows back.
         XCTAssertFalse(
             overlay.synchronize(
-                screenFrame: nil,
+                parentWindow: nil,
+                frameInParent: nil,
+                appearance: darkAppearance,
+                shouldShow: true
+            )
+        )
+        XCTAssertTrue(overlay.isAttached)
+        XCTAssertTrue(overlay.hasInstalledRotationAnimationForTesting)
+        XCTAssertEqual(overlay.visibilityMutationCount, initialVisibilityMutations)
+        XCTAssertEqual(overlay.attachmentMutationCount, initialAttachmentMutations)
+
+        XCTAssertFalse(
+            overlay.synchronize(
+                parentWindow: parent,
+                frameInParent: frameInParent,
                 appearance: darkAppearance,
                 shouldShow: false
             )
         )
         XCTAssertFalse(overlay.isVisible)
+        XCTAssertFalse(overlay.isAttached)
         XCTAssertTrue(overlay.hasInstalledRotationAnimationForTesting)
 
         XCTAssertTrue(
             overlay.synchronize(
-                screenFrame: frame,
+                parentWindow: parent,
+                frameInParent: frameInParent,
                 appearance: darkAppearance,
                 shouldShow: true
             )
         )
         XCTAssertTrue(overlay.isVisible)
+        XCTAssertTrue(overlay.isAttached)
         XCTAssertEqual(overlay.animationStartCount, initialStarts)
-        XCTAssertEqual(overlay.geometrySyncCount, initialGeometrySyncs)
+        XCTAssertEqual(overlay.geometrySyncCount, initialGeometrySyncs + 1)
         XCTAssertEqual(overlay.rasterUpdateCount, darkRasterUpdates)
 
         overlay.stop()
@@ -568,7 +622,8 @@ final class StatusItemControllerTests: XCTestCase {
 
         overlay.start(
             image: image,
-            screenFrame: frame,
+            parentWindow: parent,
+            frameInParent: frameInParent,
             appearance: darkAppearance
         )
         XCTAssertTrue(overlay.isVisible)
@@ -576,6 +631,151 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(overlay.animationStartCount, initialStarts + 1)
         XCTAssertEqual(overlay.rasterUpdateCount, darkRasterUpdates)
         overlay.stop()
+    }
+
+    @MainActor
+    func testOverlayChildWindowTracksParentAndReattachesWithoutAnimationRestart() {
+        let overlay = MenuBarAnimationOverlayController()
+        let firstParent = makeOverlayParent(
+            frame: NSRect(x: 100, y: 200, width: 80, height: 22)
+        )
+        let secondParent = makeOverlayParent(
+            frame: NSRect(x: 500, y: 600, width: 80, height: 22)
+        )
+        defer {
+            overlay.teardown()
+            firstParent.orderOut(nil)
+            secondParent.orderOut(nil)
+        }
+
+        let image = NSImage(size: NSSize(width: 16, height: 16))
+        let frameInParent = NSRect(x: 10, y: 3, width: 16, height: 16)
+        overlay.start(
+            image: image,
+            parentWindow: firstParent,
+            frameInParent: frameInParent,
+            appearance: NSAppearance(named: .aqua)
+        )
+        let starts = overlay.animationStartCount
+        let geometrySyncs = overlay.geometrySyncCount
+        let attachmentMutations = overlay.attachmentMutationCount
+        let initialChildFrame = overlay.windowFrameForTesting
+
+        firstParent.orderOut(nil)
+        XCTAssertFalse(overlay.isVisible)
+        XCTAssertTrue(overlay.isAttached)
+        XCTAssertTrue(overlay.hasInstalledRotationAnimationForTesting)
+        firstParent.orderFront(nil)
+        XCTAssertTrue(overlay.isVisible)
+        XCTAssertTrue(overlay.isAttached)
+        XCTAssertEqual(overlay.animationStartCount, starts)
+
+        firstParent.setFrameOrigin(NSPoint(x: 240, y: 320))
+        XCTAssertEqual(
+            overlay.windowFrameForTesting,
+            initialChildFrame.offsetBy(dx: 140, dy: 120)
+        )
+        XCTAssertEqual(overlay.geometrySyncCount, geometrySyncs)
+        XCTAssertEqual(overlay.attachmentMutationCount, attachmentMutations)
+        XCTAssertEqual(overlay.animationStartCount, starts)
+
+        for _ in 0..<100 {
+            XCTAssertTrue(
+                overlay.synchronize(
+                    parentWindow: firstParent,
+                    frameInParent: frameInParent,
+                    appearance: NSAppearance(named: .aqua),
+                    shouldShow: true
+                )
+            )
+        }
+        XCTAssertEqual(overlay.geometrySyncCount, geometrySyncs)
+        XCTAssertEqual(overlay.attachmentMutationCount, attachmentMutations)
+        XCTAssertEqual(overlay.animationStartCount, starts)
+
+        XCTAssertTrue(
+            overlay.synchronize(
+                parentWindow: secondParent,
+                frameInParent: frameInParent,
+                appearance: NSAppearance(named: .aqua),
+                shouldShow: true
+            )
+        )
+        XCTAssertFalse((firstParent.childWindows ?? []).contains { $0 === overlay.windowForTesting })
+        XCTAssertTrue(overlay.parentWindowForTesting === secondParent)
+        XCTAssertEqual(
+            (secondParent.childWindows ?? []).filter { $0 === overlay.windowForTesting }.count,
+            1
+        )
+        XCTAssertEqual(overlay.animationStartCount, starts)
+        XCTAssertEqual(overlay.attachmentMutationCount, attachmentMutations + 2)
+
+        overlay.teardown()
+        XCTAssertNil(overlay.parentWindowForTesting)
+        XCTAssertTrue((secondParent.childWindows ?? []).isEmpty)
+    }
+
+    @MainActor
+    func testOverlayBackingScaleChangeRebuildsOnceWithoutAnimationRestart() throws {
+        let overlay = MenuBarAnimationOverlayController()
+        let parent = makeOverlayParent(
+            frame: NSRect(x: 100, y: 200, width: 80, height: 22)
+        )
+        defer {
+            overlay.teardown()
+            parent.orderOut(nil)
+        }
+        let image = NSImage(size: NSSize(width: 16, height: 16))
+        let frameInParent = NSRect(x: 10, y: 3, width: 16, height: 16)
+        let appearance = try XCTUnwrap(NSAppearance(named: .aqua))
+
+        XCTAssertTrue(
+            overlay.synchronize(
+                image: image,
+                animationRequested: true,
+                parentWindow: parent,
+                frameInParent: frameInParent,
+                appearance: appearance,
+                backingScale: 2,
+                shouldShow: true
+            )
+        )
+        let starts = overlay.animationStartCount
+        let rasters = overlay.rasterUpdateCount
+        let geometrySyncs = overlay.geometrySyncCount
+
+        XCTAssertTrue(
+            overlay.synchronize(
+                image: nil,
+                animationRequested: true,
+                parentWindow: parent,
+                frameInParent: frameInParent,
+                appearance: appearance,
+                backingScale: 1,
+                shouldShow: true
+            )
+        )
+        XCTAssertEqual(overlay.iconLayerContentsScaleForTesting, 1)
+        XCTAssertEqual(overlay.rasterUpdateCount, rasters + 1)
+        XCTAssertEqual(overlay.geometrySyncCount, geometrySyncs + 1)
+        XCTAssertEqual(overlay.animationStartCount, starts)
+
+        for _ in 0..<100 {
+            XCTAssertTrue(
+                overlay.synchronize(
+                    image: nil,
+                    animationRequested: true,
+                    parentWindow: parent,
+                    frameInParent: frameInParent,
+                    appearance: appearance,
+                    backingScale: 1,
+                    shouldShow: true
+                )
+            )
+        }
+        XCTAssertEqual(overlay.rasterUpdateCount, rasters + 1)
+        XCTAssertEqual(overlay.geometrySyncCount, geometrySyncs + 1)
+        XCTAssertEqual(overlay.animationStartCount, starts)
     }
 
     @MainActor
@@ -624,13 +824,14 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(controller.animationRenderingModeForTesting, .overlayCoreAnimation)
         XCTAssertTrue(controller.overlayCodexAnimationIsActiveForTesting)
         XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
-        // A headless XCTest status item has no confirmed visible window. The
-        // E lifecycle contract must not put an unanchored overlay on screen.
-        XCTAssertFalse(controller.overlayAnimationIsVisibleForTesting)
-        XCTAssertFalse(controller.overlayAnimationHasInstalledRotationForTesting)
+        // The production StatusItemController path binds the overlay directly
+        // to the AppKit-created status-item window; transient occlusion state
+        // is no longer required to establish that safe anchor.
+        XCTAssertTrue(controller.overlayAnimationIsAttachedForTesting)
+        XCTAssertTrue(controller.overlayAnimationHasInstalledRotationForTesting)
+        XCTAssertEqual(controller.overlayAnimationStartCountForTesting, 1)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 0)
-        XCTAssertEqual(controller.overlayAnimationStartCountForTesting, 0)
         XCTAssertEqual(animationStateChanges, [true])
 
         controller.update(
@@ -651,6 +852,8 @@ final class StatusItemControllerTests: XCTestCase {
         )
         XCTAssertFalse(controller.overlayCodexAnimationIsActiveForTesting)
         XCTAssertFalse(controller.overlayAnimationIsAnimatingForTesting)
+        XCTAssertFalse(controller.overlayAnimationIsAttachedForTesting)
+        XCTAssertFalse(controller.overlayAnimationHasInstalledRotationForTesting)
         XCTAssertFalse(controller.menuBarButtonImageForTesting === nativeImage)
         XCTAssertEqual(animationStateChanges, [true, false])
     }
@@ -685,9 +888,10 @@ final class StatusItemControllerTests: XCTestCase {
         )
 
         let animationStarts = controller.overlayAnimationStartCountForTesting
-        XCTAssertEqual(animationStarts, 0)
+        XCTAssertEqual(animationStarts, 1)
         XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
-        XCTAssertFalse(controller.overlayAnimationIsVisibleForTesting)
+        XCTAssertTrue(controller.overlayAnimationIsAttachedForTesting)
+        XCTAssertTrue(controller.overlayAnimationHasInstalledRotationForTesting)
 
         controller.updateFontSize(10.4)
 
@@ -792,6 +996,19 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(controller.isVisible)
         XCTAssertFalse(controller.statusItemVisibility.isHiddenByRuntimePolicy)
         XCTAssertEqual(visibilityTransitions.last, .unknown)
+    }
+
+    @MainActor
+    private func makeOverlayParent(frame: NSRect) -> NSWindow {
+        let window = NSWindow(
+            contentRect: frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.orderFront(nil)
+        return window
     }
 
     private func makeSolidImage(

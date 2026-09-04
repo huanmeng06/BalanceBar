@@ -36,30 +36,21 @@ enum MenuBarActivityAnimationPolicy {
     }
 }
 
-/// Centralizes the visibility contract for the E overlay. Callers may request
-/// animation while the status item is temporarily unavailable; visibility is
-/// granted only when every independent piece of evidence is valid.
+/// Centralizes the logical presentation contract for the E overlay. Transient
+/// window ordering and screen migration are deliberately absent: once the
+/// overlay is attached as a child of the status-item window, AppKit owns those
+/// parts of the lifecycle together with the native item.
 struct MenuBarAnimationOverlayVisibilityPolicy {
     static func shouldShow(
         animationRequested: Bool,
         statusItemVisible: Bool,
-        hiddenByMenuBarSpace: Bool,
         hiddenByRuntimePolicy: Bool,
-        statusWindowVisible: Bool,
-        statusWindowOcclusionVisible: Bool,
-        validGeometry: Bool,
-        reduceMotionEnabled: Bool,
-        lifecycleSuspended: Bool = false
+        reduceMotionEnabled: Bool
     ) -> Bool {
         animationRequested
             && statusItemVisible
-            && !hiddenByMenuBarSpace
             && !hiddenByRuntimePolicy
-            && statusWindowVisible
-            && statusWindowOcclusionVisible
-            && validGeometry
             && !reduceMotionEnabled
-            && !lifecycleSuspended
     }
 }
 
@@ -98,9 +89,10 @@ struct MenuBarAnimationOverlayIconRaster {
 }
 
 /// Presents the Codex icon above the native status item without mutating the
-/// status button during the animation. Geometry and appearance are updated by
-/// the controller at state/layout boundaries; the rotation itself is owned by
-/// the independent window's Core Animation layer.
+/// status button during the animation. The transparent overlay remains its own
+/// window and CALayer rendering surface, but is attached to the status-item
+/// window as a public AppKit child. AppKit therefore moves and orders both
+/// windows as one lifecycle unit while Core Animation owns the rotation.
 final class MenuBarAnimationOverlayController {
     private static let rotationAnimationKey = "balancebar.menu-bar-overlay.rotation"
     private static let rotationDuration: CFTimeInterval = 1.2
@@ -119,7 +111,8 @@ final class MenuBarAnimationOverlayController {
     private var renderedAppearanceName: NSAppearance.Name?
     private var renderedIconSize: NSSize = .zero
     private var renderedContentsScale: CGFloat = 0
-    private var appliedWindowFrame: NSRect?
+    private var appliedFrameInParent: NSRect?
+    private var appliedFrameScale: CGFloat = 0
     private var appliedRootBounds: NSRect = .zero
     private var appliedBackingScale: CGFloat = 0
     private var appliedVisibility = false
@@ -130,9 +123,11 @@ final class MenuBarAnimationOverlayController {
     private(set) var appearanceUpdateCount = 0
     private(set) var rasterUpdateCount = 0
     private(set) var visibilityMutationCount = 0
+    private(set) var attachmentMutationCount = 0
 
     var isAnimating: Bool { animationRequested }
     var isVisible: Bool { window.isVisible }
+    var isAttached: Bool { window.parent != nil }
 
     var ignoresMouseEventsForTesting: Bool { window.ignoresMouseEvents }
     var isOpaqueForTesting: Bool { window.isOpaque }
@@ -140,6 +135,9 @@ final class MenuBarAnimationOverlayController {
     var canBecomeKeyForTesting: Bool { window.canBecomeKey }
     var canBecomeMainForTesting: Bool { window.canBecomeMain }
     var windowLevelForTesting: NSWindow.Level { window.level }
+    var collectionBehaviorForTesting: NSWindow.CollectionBehavior {
+        window.collectionBehavior
+    }
     var animationKeysForTesting: [String] { iconLayer.animationKeys() ?? [] }
     var rootLayerAnimationKeysForTesting: [String] { rootLayer.animationKeys() ?? [] }
     var rootViewBoundsForTesting: NSRect { rootView.bounds }
@@ -165,6 +163,10 @@ final class MenuBarAnimationOverlayController {
         iconLayer.animation(forKey: Self.rotationAnimationKey) != nil
     }
     var iconLayerContentsScaleForTesting: CGFloat { iconLayer.contentsScale }
+    var parentWindowForTesting: NSWindow? { window.parent }
+    var windowForTesting: NSWindow { window }
+    var windowFrameForTesting: NSRect { window.frame }
+    var frameInParentForTesting: NSRect? { appliedFrameInParent }
 
     init() {
         let window = MenuBarAnimationOverlayWindow(
@@ -197,8 +199,6 @@ final class MenuBarAnimationOverlayController {
         window.ignoresMouseEvents = true
         window.level = .statusBar
         window.collectionBehavior = [
-            .canJoinAllSpaces,
-            .fullScreenAuxiliary,
             .ignoresCycle,
             .transient
         ]
@@ -214,13 +214,15 @@ final class MenuBarAnimationOverlayController {
 
     func start(
         image: NSImage,
-        screenFrame: NSRect?,
+        parentWindow: NSWindow?,
+        frameInParent: NSRect?,
         appearance: NSAppearance?
     ) {
         _ = synchronize(
             image: image,
             animationRequested: true,
-            screenFrame: screenFrame,
+            parentWindow: parentWindow,
+            frameInParent: frameInParent,
             appearance: appearance,
             backingScale: nil,
             shouldShow: true
@@ -229,29 +231,31 @@ final class MenuBarAnimationOverlayController {
 
     @discardableResult
     func synchronize(
-        screenFrame: NSRect?,
+        parentWindow: NSWindow?,
+        frameInParent: NSRect?,
         appearance: NSAppearance?,
         shouldShow: Bool
     ) -> Bool {
         synchronize(
             image: nil,
             animationRequested: animationRequested,
-            screenFrame: screenFrame,
+            parentWindow: parentWindow,
+            frameInParent: frameInParent,
             appearance: appearance,
             backingScale: nil,
             shouldShow: shouldShow
         )
     }
 
-    /// Applies one complete desired state. The caller may keep the animation
-    /// requested while geometry or visibility evidence is temporarily invalid;
-    /// in that case the window is hidden but an already-installed CA animation
-    /// is retained for a seamless restore.
+    /// Applies one complete desired state. If AppKit temporarily withdraws the
+    /// button window or geometry, an existing child attachment and CA animation
+    /// are retained; a never-anchored overlay remains hidden fail-closed.
     @discardableResult
     func synchronize(
         image: NSImage?,
         animationRequested: Bool,
-        screenFrame: NSRect?,
+        parentWindow: NSWindow?,
+        frameInParent: NSRect?,
         appearance: NSAppearance?,
         backingScale: CGFloat?,
         shouldShow: Bool
@@ -272,26 +276,42 @@ final class MenuBarAnimationOverlayController {
             return false
         }
 
-        let resolvedScale = max(
-            backingScale ?? window.screen?.backingScaleFactor
-                ?? NSScreen.main?.backingScaleFactor
-                ?? 2,
-            1
-        )
-        let validGeometry = screenFrame.map(Self.isValidGeometry) ?? false
-        guard shouldShow, validGeometry, let screenFrame else {
+        guard shouldShow else {
             hideWindowIfNeeded()
             return false
         }
 
-        let alignedFrame = Self.pixelAligned(screenFrame, scale: resolvedScale)
-        guard Self.isValidGeometry(alignedFrame) else {
-            hideWindowIfNeeded()
+        let validGeometry = frameInParent.map(Self.isValidGeometry) ?? false
+        guard let parentWindow, validGeometry, let frameInParent else {
+            // Full-screen, auto-hide, and display handoff can temporarily make
+            // button.window or its geometry unavailable. Preserve an existing
+            // child relationship and CA animation so AppKit can restore both
+            // windows atomically. A genuinely lost parent is hidden fail-closed.
+            if window.parent == nil {
+                hideWindowIfNeeded()
+            }
             return false
         }
-        if appliedWindowFrame != alignedFrame || window.frame != alignedFrame {
+
+        let resolvedScale = max(backingScale ?? parentWindow.backingScaleFactor, 1)
+        let parentChanged = window.parent !== parentWindow
+        if parentChanged {
+            detachFromParentIfNeeded()
+        }
+        if parentChanged
+            || appliedFrameInParent != frameInParent
+            || appliedFrameScale != resolvedScale {
+            let alignedFrame = Self.pixelAligned(
+                parentWindow.convertToScreen(frameInParent),
+                scale: resolvedScale
+            )
+            guard Self.isValidGeometry(alignedFrame) else {
+                hideWindowIfNeeded()
+                return false
+            }
             window.setFrame(alignedFrame, display: false)
-            appliedWindowFrame = alignedFrame
+            appliedFrameInParent = frameInParent
+            appliedFrameScale = resolvedScale
             geometrySyncCount += 1
         }
 
@@ -299,22 +319,22 @@ final class MenuBarAnimationOverlayController {
         update(appearance: appearance, contentsScale: resolvedScale)
         installRotationAnimationIfNeeded()
 
-        if !window.isVisible {
-            // `orderFrontRegardless` does not make the non-key window active;
-            // the window class also rejects key/main status defensively.
-            window.orderFrontRegardless()
+        if parentChanged || window.parent == nil {
+            parentWindow.addChildWindow(window, ordered: .above)
+            attachmentMutationCount += 1
+        }
+        if !appliedVisibility {
             appliedVisibility = true
             visibilityMutationCount += 1
-        } else if !appliedVisibility {
-            appliedVisibility = true
         }
-        return true
+        return window.parent === parentWindow
     }
 
     func stop() {
         guard animationRequested
                 || iconLayer.animation(forKey: Self.rotationAnimationKey) != nil
-                || window.isVisible else { return }
+                || window.isVisible
+                || window.parent != nil else { return }
         let wasAnimating = animationRequested
         animationRequested = false
         if iconLayer.animation(forKey: Self.rotationAnimationKey) != nil {
@@ -337,6 +357,12 @@ final class MenuBarAnimationOverlayController {
     func teardown() {
         stop()
         window.orderOut(nil)
+    }
+
+    /// Used only when the native status item is deliberately replaced. Normal
+    /// auto-hide/full-screen/screen transitions retain the child relationship.
+    func detachFromParentPreservingAnimation() {
+        hideWindowIfNeeded()
     }
 
     private func update(
@@ -367,12 +393,22 @@ final class MenuBarAnimationOverlayController {
     }
 
     private func hideWindowIfNeeded() {
-        guard window.isVisible || appliedVisibility else { return }
+        let hadPresentation = window.parent != nil || window.isVisible || appliedVisibility
+        detachFromParentIfNeeded()
         if window.isVisible {
             window.orderOut(nil)
         }
+        guard hadPresentation else { return }
         appliedVisibility = false
         visibilityMutationCount += 1
+    }
+
+    private func detachFromParentIfNeeded() {
+        guard let parent = window.parent else { return }
+        parent.removeChildWindow(window)
+        attachmentMutationCount += 1
+        appliedFrameInParent = nil
+        appliedFrameScale = 0
     }
 
     private func layoutLayersIfNeeded(backingScale: CGFloat) {
