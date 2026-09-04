@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "Reload";
 "dashboard.advanced.page.show_in_finder" = "Show in Finder";
 "dashboard.advanced.page.diagnostics" = "Diagnostics";
-"dashboard.advanced.page.rendering" = "Rendering";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "Traditional Menu Bar Rendering";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "Uses traditional rendering when enabled. Visual quality may improve slightly, but it may use more system resources.";
 "dashboard.advanced.page.debug_log" = "Debug Log";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Records runtime status and errors";
 "dashboard.advanced.page.enter_port_manually" = "Enter Port Manually";
@@ -282,7 +279,7 @@
 "dashboard.menu.bar.page.preview" = "Preview";
 "dashboard.menu.bar.page.current_layout" = "Current Layout";
 "dashboard.menu.bar.page.quota_and_reset" = "Quota & Reset";
-"dashboard.menu.bar.page.icon_and_task_status" = "Icon & Task Status";
+"dashboard.menu.bar.page.icon_and_task_status" = "Icon & Animation";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "The menu bar updates with Provider data in real time";
 "dashboard.menu.bar.page.icon_display_mode" = "Menu Bar Icon Display";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Choose to always show the icon, or only while a task is running";
@@ -311,8 +308,13 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "After entering 🌙 %1$@, choose whether to keep showing the original quota's reset time or 🌙 %1$@'s.";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Original Quota";
-"dashboard.menu.bar.page.animation" = "Animation";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animate the menu bar icon while a task runs";
+"dashboard.menu.bar.page.animation" = "Animation Mode";
+"dashboard.menu.bar.page.animation_mode_description" = "Performance: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nSynchronized: Keeps animation in sync across all displays, but uses more resources";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Performance";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "Synchronized";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Performance mode can't play the animation correctly right now, so Synchronized mode is being used temporarily";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Task Icon Animation While Running";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Play the icon animation in the menu bar while a task runs; turn it off to reduce resource use on lower-performance devices";
 "dashboard.menu.bar.page.display_items" = "Display content";
 "dashboard.menu.bar.page.agent_icon" = "Task status icon";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "Shows the current task status";

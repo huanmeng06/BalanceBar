@@ -1427,6 +1427,570 @@ struct MenuBarIconDisplayStateMachine {
     }
 }
 
+/// Stable value representation for a view transform. The final bitmap cache
+/// is keyed by the transforms that were actually applied to the offscreen
+/// content, not just by the user preferences that usually produce them.
+struct MenuBarBitmapAnimationTransformSignature: Equatable {
+    let a: CGFloat
+    let b: CGFloat
+    let c: CGFloat
+    let d: CGFloat
+    let tx: CGFloat
+    let ty: CGFloat
+
+    init(_ transform: CGAffineTransform = .identity) {
+        a = transform.a
+        b = transform.b
+        c = transform.c
+        d = transform.d
+        tx = transform.tx
+        ty = transform.ty
+    }
+}
+
+/// The portion of the effective menu-bar snapshot that can affect the
+/// displayed bitmap. Fetch timestamps and other non-rendered metadata are
+/// deliberately excluded so a periodic update with identical visible text
+/// can reuse the existing frame set.
+struct MenuBarBitmapAnimationSnapshotSignature: Equatable {
+    let kind: String
+    let provider: String
+    let amount: Double?
+    let unit: String?
+    let message: String?
+    let primaryText: String
+    let secondaryText: String
+    let selectedQuotaWindowKind: Int?
+    let usesLunaReserve: Bool
+
+    init(
+        kind: String = "",
+        provider: String = "",
+        amount: Double? = nil,
+        unit: String? = nil,
+        message: String? = nil,
+        primaryText: String = "",
+        secondaryText: String = "",
+        selectedQuotaWindowKind: Int? = nil,
+        usesLunaReserve: Bool = false
+    ) {
+        self.kind = kind
+        self.provider = provider
+        self.amount = amount
+        self.unit = unit
+        self.message = message
+        self.primaryText = primaryText
+        self.secondaryText = secondaryText
+        self.selectedQuotaWindowKind = selectedQuotaWindowKind
+        self.usesLunaReserve = usesLunaReserve
+    }
+}
+
+/// Every input that can change a button-ready Codex animation frame belongs in
+/// this signature. Keeping it as a value type makes the cache lifecycle
+/// explicit and lets unchanged `update(...)` calls short-circuit before any
+/// bitmap rendering work is performed.
+struct MenuBarBitmapAnimationVisualSignature: Equatable {
+    let primaryText: String
+    let secondaryText: String
+    let primaryFont: String
+    let secondaryFont: String
+    let contentFrame: NSRect
+    let iconSlotFrame: NSRect
+    let iconFrame: NSRect
+    let textFrame: NSRect
+    let contentBounds: NSRect
+    let iconSlotBounds: NSRect
+    let iconBounds: NSRect
+    let textBounds: NSRect
+    let contentTransform: MenuBarBitmapAnimationTransformSignature
+    let iconSlotTransform: MenuBarBitmapAnimationTransformSignature
+    let iconTransform: MenuBarBitmapAnimationTransformSignature
+    let textTransform: MenuBarBitmapAnimationTransformSignature
+    let bitmapBounds: NSRect
+    let bitmapFrame: NSRect
+    let buttonBounds: NSRect
+    let placement: MenuBarBitmapImagePlacement
+    let backingScale: CGFloat
+    let iconVisible: Bool
+    let textVisible: Bool
+    let primaryVisible: Bool
+    let secondaryVisible: Bool
+    let sourceImageIdentity: ObjectIdentifier?
+    let sourceImageSize: NSSize
+    let sourceImageIsTemplate: Bool
+    var sourceFrameIdentities: [ObjectIdentifier]
+    let sourceProviderIdentity: String
+    let activeClient: AssistantClient
+    let effectiveSnapshot: MenuBarBitmapAnimationSnapshotSignature
+    let appearance: String
+    let iconOffsetX: CGFloat
+    let iconOffsetY: CGFloat
+    let amountOffsetX: CGFloat
+    let amountOffsetY: CGFloat
+    let horizontalPadding: CGFloat
+    let widthAdjustment: CGFloat
+    let showReset: Bool
+    let buttonImagePosition: Int
+    let buttonImageScaling: Int
+    let iconViewImageScaling: Int
+    let iconViewImageAlignment: Int
+
+    init(
+        primaryText: String = "",
+        secondaryText: String = "",
+        primaryFont: String = "",
+        secondaryFont: String = "",
+        contentFrame: NSRect = .zero,
+        iconSlotFrame: NSRect = .zero,
+        iconFrame: NSRect = .zero,
+        textFrame: NSRect = .zero,
+        contentBounds: NSRect = .zero,
+        iconSlotBounds: NSRect = .zero,
+        iconBounds: NSRect = .zero,
+        textBounds: NSRect = .zero,
+        contentTransform: MenuBarBitmapAnimationTransformSignature = .init(),
+        iconSlotTransform: MenuBarBitmapAnimationTransformSignature = .init(),
+        iconTransform: MenuBarBitmapAnimationTransformSignature = .init(),
+        textTransform: MenuBarBitmapAnimationTransformSignature = .init(),
+        bitmapBounds: NSRect = .zero,
+        bitmapFrame: NSRect = .zero,
+        buttonBounds: NSRect = .zero,
+        placement: MenuBarBitmapImagePlacement = MenuBarBitmapImagePlacement(
+            canonicalBounds: .zero,
+            imageDestinationRect: .zero
+        ),
+        backingScale: CGFloat = 0,
+        iconVisible: Bool = false,
+        textVisible: Bool = false,
+        primaryVisible: Bool = false,
+        secondaryVisible: Bool = false,
+        sourceImageIdentity: ObjectIdentifier? = nil,
+        sourceImageSize: NSSize = .zero,
+        sourceImageIsTemplate: Bool = false,
+        sourceFrameIdentities: [ObjectIdentifier] = [],
+        sourceProviderIdentity: String = "",
+        activeClient: AssistantClient = .codex,
+        effectiveSnapshot: MenuBarBitmapAnimationSnapshotSignature = .init(),
+        appearance: String = "",
+        iconOffsetX: CGFloat = 0,
+        iconOffsetY: CGFloat = 0,
+        amountOffsetX: CGFloat = 0,
+        amountOffsetY: CGFloat = 0,
+        horizontalPadding: CGFloat = 0,
+        widthAdjustment: CGFloat = 0,
+        showReset: Bool = false,
+        buttonImagePosition: Int = 0,
+        buttonImageScaling: Int = 0,
+        iconViewImageScaling: Int = 0,
+        iconViewImageAlignment: Int = 0
+    ) {
+        self.primaryText = primaryText
+        self.secondaryText = secondaryText
+        self.primaryFont = primaryFont
+        self.secondaryFont = secondaryFont
+        self.contentFrame = contentFrame
+        self.iconSlotFrame = iconSlotFrame
+        self.iconFrame = iconFrame
+        self.textFrame = textFrame
+        self.contentBounds = contentBounds
+        self.iconSlotBounds = iconSlotBounds
+        self.iconBounds = iconBounds
+        self.textBounds = textBounds
+        self.contentTransform = contentTransform
+        self.iconSlotTransform = iconSlotTransform
+        self.iconTransform = iconTransform
+        self.textTransform = textTransform
+        self.bitmapBounds = bitmapBounds
+        self.bitmapFrame = bitmapFrame
+        self.buttonBounds = buttonBounds
+        self.placement = placement
+        self.backingScale = backingScale
+        self.iconVisible = iconVisible
+        self.textVisible = textVisible
+        self.primaryVisible = primaryVisible
+        self.secondaryVisible = secondaryVisible
+        self.sourceImageIdentity = sourceImageIdentity
+        self.sourceImageSize = sourceImageSize
+        self.sourceImageIsTemplate = sourceImageIsTemplate
+        self.sourceFrameIdentities = sourceFrameIdentities
+        self.sourceProviderIdentity = sourceProviderIdentity
+        self.activeClient = activeClient
+        self.effectiveSnapshot = effectiveSnapshot
+        self.appearance = appearance
+        self.iconOffsetX = iconOffsetX
+        self.iconOffsetY = iconOffsetY
+        self.amountOffsetX = amountOffsetX
+        self.amountOffsetY = amountOffsetY
+        self.horizontalPadding = horizontalPadding
+        self.widthAdjustment = widthAdjustment
+        self.showReset = showReset
+        self.buttonImagePosition = buttonImagePosition
+        self.buttonImageScaling = buttonImageScaling
+        self.iconViewImageScaling = iconViewImageScaling
+        self.iconViewImageAlignment = iconViewImageAlignment
+    }
+
+    /// Source frame identities are animation-state inputs, not inputs to the
+    /// one-time text/layout render. Keeping this comparison separate prevents
+    /// a backend transition from causing a second full offscreen composition
+    /// on the next ordinary update.
+    func matchesStaticContent(of other: Self) -> Bool {
+        var lhs = self
+        var rhs = other
+        lhs.sourceFrameIdentities = []
+        rhs.sourceFrameIdentities = []
+        return lhs == rhs
+    }
+}
+
+/// Owns the finite set of complete button images for one visual state. The
+/// cache has no timer and no semantic state; it only maps an animation source
+/// frame identity to the already-composed final image.
+struct MenuBarBitmapAnimationFrameCache {
+    private(set) var images: [NSImage] = []
+    private(set) var sourceFrameIdentities: [ObjectIdentifier] = []
+    private(set) var signature: MenuBarBitmapAnimationVisualSignature?
+    private(set) var rebuildCount = 0
+    private(set) var compositionCount = 0
+
+    var count: Int { images.count }
+
+    func isValid(
+        for signature: MenuBarBitmapAnimationVisualSignature,
+        sourceFrames: [NSImage]
+    ) -> Bool {
+        self.signature == signature
+            && images.count == sourceFrames.count
+            && sourceFrameIdentities == sourceFrames.map(ObjectIdentifier.init)
+    }
+
+    func image(forSourceFrame sourceFrame: NSImage?) -> NSImage? {
+        guard let sourceFrame,
+              let index = sourceFrameIdentities.firstIndex(of: ObjectIdentifier(sourceFrame)) else {
+            return nil
+        }
+        return images[index]
+    }
+
+    @discardableResult
+    mutating func rebuildIfNeeded(
+        signature: MenuBarBitmapAnimationVisualSignature,
+        sourceFrames: [NSImage],
+        compose: (NSImage) -> NSImage?
+    ) -> Bool {
+        guard !sourceFrames.isEmpty else {
+            invalidate()
+            return false
+        }
+        guard !isValid(for: signature, sourceFrames: sourceFrames) else {
+            return true
+        }
+
+        var nextImages: [NSImage] = []
+        nextImages.reserveCapacity(sourceFrames.count)
+        for sourceFrame in sourceFrames {
+            compositionCount += 1
+            guard let image = compose(sourceFrame) else {
+                invalidate()
+                return false
+            }
+            nextImages.append(image)
+        }
+        images = nextImages
+        sourceFrameIdentities = sourceFrames.map(ObjectIdentifier.init)
+        self.signature = signature
+        rebuildCount += 1
+        return true
+    }
+
+    mutating func invalidate() {
+        images.removeAll(keepingCapacity: false)
+        sourceFrameIdentities.removeAll(keepingCapacity: false)
+        signature = nil
+    }
+}
+
+/// Holds one stable NSImage and a mutable bitmap representation for Codex
+/// bitmap animation. Complete frames are materialized into raw pixel buffers
+/// once per visual rebuild; animation ticks only copy one buffer into the
+/// already-installed representation and request a redraw on the button. The
+/// controller-facing rebuild path composes one frame at a time, so complete
+/// `NSImage` frames are not retained alongside the raw buffers.
+struct MenuBarStableBitmapAnimationFrameBuffer {
+    private(set) var image: NSImage?
+    private(set) var backing: NSBitmapImageRep?
+    private(set) var signature: MenuBarBitmapAnimationVisualSignature?
+    private(set) var sourceFrameIdentities: [ObjectIdentifier] = []
+    private(set) var completeFrameIdentities: [ObjectIdentifier] = []
+    private var framePixelBuffers: [Data] = []
+    private(set) var rebuildCount = 0
+    private(set) var compositionCount = 0
+    private(set) var pixelCopyCount = 0
+
+    var count: Int { framePixelBuffers.count }
+
+    var backingPixelDataForTesting: Data? {
+        guard let backing,
+              let bitmapData = backing.bitmapData else {
+            return nil
+        }
+        return Data(bytes: bitmapData, count: backing.bytesPerRow * backing.pixelsHigh)
+    }
+
+    func isValid(
+        for signature: MenuBarBitmapAnimationVisualSignature,
+        sourceFrames: [NSImage],
+        completeFrames: [NSImage]
+    ) -> Bool {
+        self.signature == signature
+            && image != nil
+            && backing != nil
+            && framePixelBuffers.count == sourceFrames.count
+            && sourceFrameIdentities == sourceFrames.map(ObjectIdentifier.init)
+            && completeFrameIdentities == completeFrames.map(ObjectIdentifier.init)
+    }
+
+    func isValid(
+        for signature: MenuBarBitmapAnimationVisualSignature,
+        sourceFrames: [NSImage]
+    ) -> Bool {
+        self.signature == signature
+            && image != nil
+            && backing != nil
+            && framePixelBuffers.count == sourceFrames.count
+            && sourceFrameIdentities == sourceFrames.map(ObjectIdentifier.init)
+    }
+
+    @discardableResult
+    mutating func rebuildIfNeeded(
+        signature: MenuBarBitmapAnimationVisualSignature,
+        sourceFrames: [NSImage],
+        completeFrames: [NSImage]
+    ) -> Bool {
+        guard !sourceFrames.isEmpty,
+              sourceFrames.count == completeFrames.count,
+              let firstFrame = completeFrames.first,
+              firstFrame.size.width > 0,
+              firstFrame.size.height > 0 else {
+            invalidate()
+            return false
+        }
+        guard !isValid(
+            for: signature,
+            sourceFrames: sourceFrames,
+            completeFrames: completeFrames
+        ) else {
+            return true
+        }
+
+        let pixelDimensions = MenuBarBitmapImageLayout.pixelDimensions(
+            for: firstFrame.size,
+            scale: signature.backingScale
+        )
+        guard let nextBacking = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelDimensions.width,
+            pixelsHigh: pixelDimensions.height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            invalidate()
+            return false
+        }
+        nextBacking.size = firstFrame.size
+
+        var nextPixelBuffers: [Data] = []
+        nextPixelBuffers.reserveCapacity(completeFrames.count)
+        for frame in completeFrames {
+            guard frame.size == firstFrame.size,
+                  let bytes = Self.rasterize(frame, into: nextBacking) else {
+                invalidate()
+                return false
+            }
+            nextPixelBuffers.append(bytes)
+        }
+
+        let nextImage = NSImage(size: firstFrame.size)
+        nextImage.addRepresentation(nextBacking)
+        nextImage.isTemplate = true
+        // The backing is intentionally mutated in place. Avoid an NSImage
+        // offscreen cache that could continue presenting an old pixel copy.
+        nextImage.cacheMode = .never
+
+        image = nextImage
+        backing = nextBacking
+        self.signature = signature
+        sourceFrameIdentities = sourceFrames.map(ObjectIdentifier.init)
+        completeFrameIdentities = completeFrames.map(ObjectIdentifier.init)
+        framePixelBuffers = nextPixelBuffers
+        rebuildCount += 1
+        return true
+    }
+
+    /// Rebuilds directly from the source frames without retaining the
+    /// complete button images. The closure is invoked only during a visual
+    /// invalidation and its result is rasterized before the next result is
+    /// requested, keeping the long-lived representation to raw pixel buffers
+    /// plus one stable image.
+    @discardableResult
+    mutating func rebuildIfNeeded(
+        signature: MenuBarBitmapAnimationVisualSignature,
+        sourceFrames: [NSImage],
+        compose: (NSImage) -> NSImage?
+    ) -> Bool {
+        guard !sourceFrames.isEmpty else {
+            invalidate()
+            return false
+        }
+        guard !isValid(for: signature, sourceFrames: sourceFrames) else {
+            return true
+        }
+
+        var nextBacking: NSBitmapImageRep?
+        var nextPixelBuffers: [Data] = []
+        nextPixelBuffers.reserveCapacity(sourceFrames.count)
+
+        for sourceFrame in sourceFrames {
+            compositionCount += 1
+            guard let completeFrame = compose(sourceFrame),
+                  completeFrame.size.width > 0,
+                  completeFrame.size.height > 0 else {
+                invalidate()
+                return false
+            }
+
+            if nextBacking == nil {
+                let pixelDimensions = MenuBarBitmapImageLayout.pixelDimensions(
+                    for: completeFrame.size,
+                    scale: signature.backingScale
+                )
+                guard let backing = Self.makeBacking(
+                    pixelDimensions: pixelDimensions,
+                    size: completeFrame.size
+                ) else {
+                    invalidate()
+                    return false
+                }
+                nextBacking = backing
+            }
+
+            guard let backing = nextBacking,
+                  completeFrame.size == backing.size,
+                  let bytes = Self.rasterize(completeFrame, into: backing) else {
+                invalidate()
+                return false
+            }
+            nextPixelBuffers.append(bytes)
+        }
+
+        guard let nextBacking else {
+            invalidate()
+            return false
+        }
+        let firstFrameSize = nextBacking.size
+        let nextImage = NSImage(size: firstFrameSize)
+        nextImage.addRepresentation(nextBacking)
+        nextImage.isTemplate = true
+        // The backing is intentionally mutated in place. Avoid an NSImage
+        // offscreen cache that could continue presenting an old pixel copy.
+        nextImage.cacheMode = .never
+
+        image = nextImage
+        backing = nextBacking
+        self.signature = signature
+        sourceFrameIdentities = sourceFrames.map(ObjectIdentifier.init)
+        completeFrameIdentities.removeAll(keepingCapacity: false)
+        framePixelBuffers = nextPixelBuffers
+        rebuildCount += 1
+        return true
+    }
+
+    @discardableResult
+    mutating func apply(frameIndex: Int) -> Bool {
+        guard framePixelBuffers.indices.contains(frameIndex),
+              let backing,
+              let destination = backing.bitmapData else {
+            return false
+        }
+        let source = framePixelBuffers[frameIndex]
+        let byteCount = backing.bytesPerRow * backing.pixelsHigh
+        guard byteCount > 0, source.count == byteCount else {
+            return false
+        }
+        var didCopy = false
+        source.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            memcpy(destination, baseAddress, byteCount)
+            didCopy = true
+        }
+        guard didCopy else { return false }
+        pixelCopyCount += 1
+        return true
+    }
+
+    mutating func invalidate() {
+        image = nil
+        backing = nil
+        signature = nil
+        sourceFrameIdentities.removeAll(keepingCapacity: false)
+        completeFrameIdentities.removeAll(keepingCapacity: false)
+        framePixelBuffers.removeAll(keepingCapacity: false)
+    }
+
+    private static func rasterize(
+        _ image: NSImage,
+        into backing: NSBitmapImageRep
+    ) -> Data? {
+        guard let bitmapData = backing.bitmapData,
+              let context = NSGraphicsContext(bitmapImageRep: backing) else {
+            return nil
+        }
+        let byteCount = backing.bytesPerRow * backing.pixelsHigh
+        memset(bitmapData, 0, byteCount)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(
+            in: NSRect(origin: .zero, size: backing.size),
+            from: .zero,
+            operation: .copy,
+            fraction: 1,
+            respectFlipped: true,
+            hints: nil
+        )
+        context.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+        return Data(bytes: bitmapData, count: byteCount)
+    }
+
+    private static func makeBacking(
+        pixelDimensions: (width: Int, height: Int),
+        size: NSSize
+    ) -> NSBitmapImageRep? {
+        guard let backing = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelDimensions.width,
+            pixelsHigh: pixelDimensions.height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return nil
+        }
+        backing.size = size
+        return backing
+    }
+}
+
 final class StatusItemController: NSObject, NSMenuDelegate {
     /// macOS renders status items whose button carries no image with a
     /// greyed-out, translucent appearance on displays that do not own
@@ -1450,6 +2014,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let openStatusLink: (URL) -> Void
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
+        let animationStateChanged: (Bool) -> Void
+        let animationFallbackChanged: (Bool) -> Void
         let visibilityChanged: (StatusItemVisibility) -> Void
 
         init(
@@ -1465,6 +2031,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             openStatusLink: @escaping (URL) -> Void,
             iconChanged: @escaping (NSImage?) -> Void,
             frameImageChanged: @escaping (NSImage?) -> Void = { _ in },
+            animationStateChanged: @escaping (Bool) -> Void = { _ in },
+            animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
         ) {
             self.manualRefresh = manualRefresh
@@ -1479,6 +2047,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.openStatusLink = openStatusLink
             self.iconChanged = iconChanged
             self.frameImageChanged = frameImageChanged
+            self.animationStateChanged = animationStateChanged
+            self.animationFallbackChanged = animationFallbackChanged
             self.visibilityChanged = visibilityChanged
         }
     }
@@ -1499,13 +2069,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let quotaWindowPreference: OfficialQuotaWindowPreference
         /// Shared logical AppKit point size for both official rows and the
         /// single-line third-party amount. The secondary row is derived from
-        /// the default 13:10 ratio in the renderer.
+        /// the default 13:10 ratio in the bitmap layout.
         var fontSize: CGFloat
         let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
         let quotaProgressColorConfiguration: QuotaProgressColorConfiguration
-        let usesBitmapContent: Bool
 
         init(
             showIcon: Bool,
@@ -1525,8 +2094,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
             autoSwitchLunaReserve: Bool = false,
             lunaReserveResetTimeMode: LunaReserveResetTimeMode = .defaultValue,
-            quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default,
-            usesBitmapContent: Bool = AppPreferences.menuBarBitmapContentDefault
+            quotaProgressColorConfiguration: QuotaProgressColorConfiguration = .default
         ) {
             self.showIcon = showIcon
             self.showAmount = showAmount
@@ -1545,7 +2113,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.autoSwitchLunaReserve = autoSwitchLunaReserve
             self.lunaReserveResetTimeMode = lunaReserveResetTimeMode
             self.quotaProgressColorConfiguration = quotaProgressColorConfiguration.normalized()
-            self.usesBitmapContent = usesBitmapContent
             self.fontSize = CGFloat(
                 AppPreferences.normalizedMenuBarFontSize(
                     Double(fontSize),
@@ -1639,25 +2206,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
-    private let menuBarIconView = RotatingTemplateImageView()
+    private let menuBarIconView: RotatingTemplateImageView
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
     private let menuBarContentStack = MenuBarContentView()
-    /// The bitmap-backed content mode keeps the content view tree offscreen as
-    /// a layout/render engine while the button displays one template bitmap,
-    /// so macOS 26's replicant machinery has no custom view hierarchy to
-    /// re-snapshot. It is the default; the Advanced > Rendering switch can
-    /// opt into the traditional live-view path.
-    private var usesBitmapContent = false
+    /// The content view tree is kept offscreen as a layout/render engine while
+    /// the button displays one template bitmap, so macOS 26's replicant
+    /// machinery has no custom view hierarchy to re-snapshot.
     private let bitmapRenderContainer = MenuBarBitmapRenderView(
         frame: NSRect(x: 0, y: 0, width: 56, height: 22)
     )
     private var cachedMenuBarTextBitmap: NSImage?
+    private var cachedStaticMenuBarContentBitmap: NSImage?
+    private var cachedMenuBarContentVisualSignature: MenuBarBitmapAnimationVisualSignature?
     private var menuBarBitmapImagePlacement: MenuBarBitmapImagePlacement?
+    private var cachedMenuBarIconDrawRect: NSRect?
+    private var stableCodexAnimationFrameBuffer = MenuBarStableBitmapAnimationFrameBuffer()
+    /// The backend currently running. `preferredCodexAnimationBackend` stays
+    /// independent so a temporary efficient-mode fallback never overwrites
+    /// the user's saved preference.
+    private var codexAnimationBackend: MenuBarCodexAnimationBackend
+    private var preferredCodexAnimationBackend: MenuBarCodexAnimationBackend
+    private var codexAnimationFallbackActive = false
+    private var nativeCodexAnimatedIconHost: MenuBarNativeAnimatedIconHostView?
+    private var nativeCodexAnimationIsActive = false
+    /// Test-only seam for exercising the documented efficient-mode fallback;
+    /// no product path enables it.
+    private var forceNativeCodexAnimationFailureForTesting = false
+    private(set) var stableCodexAnimationImageAssignmentCountForTesting = 0
+    private(set) var stableCodexAnimationRedrawRequestCountForTesting = 0
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
     private let menuBarSecondaryLabel = PassthroughTextField(labelWithString: "")
     private var isMenuBarContentStackConfigured = false
-    private var lastMenuBarIconFrameDiagnostic: String?
     private var codexIconImage: NSImage?
     private var claudeIconImage: NSImage?
     private var claudeThinkingAnimator: ClaudeThinkingAnimator?
@@ -1703,6 +2283,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private weak var observedStatusItemWindow: NSWindow?
     private var statusItemWindowObservers: [NSObjectProtocol] = []
     private var screenParametersObserver: NSObjectProtocol?
+    private var accessibilityDisplayOptionsObserver: NSObjectProtocol?
 
     var isVisible: Bool { statusItem?.isVisible ?? false }
     var iconImage: NSImage? { menuBarIconView.image }
@@ -1731,6 +2312,101 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var menuBarSecondaryTextForTesting: String { menuBarSecondaryLabel.stringValue }
 
+    // Rendering-cache diagnostics keep the production seam read-only while
+    // allowing focused tests to prove finite precomposition and stable-buffer
+    // reuse. The legacy "cache" names remain as test compatibility aliases;
+    // production state is owned by stableCodexAnimationFrameBuffer.
+    var codexAnimationCacheFrameCountForTesting: Int {
+        stableCodexAnimationFrameBuffer.count
+    }
+
+    var codexAnimationCacheBuildCountForTesting: Int {
+        stableCodexAnimationFrameBuffer.rebuildCount
+    }
+
+    var codexAnimationFrameCompositionCountForTesting: Int {
+        stableCodexAnimationFrameBuffer.compositionCount
+    }
+
+    var stableCodexAnimationImageForTesting: NSImage? {
+        stableCodexAnimationFrameBuffer.image
+    }
+
+    var stableCodexAnimationFrameCountForTesting: Int {
+        stableCodexAnimationFrameBuffer.count
+    }
+
+    var stableCodexAnimationRebuildCountForTesting: Int {
+        stableCodexAnimationFrameBuffer.rebuildCount
+    }
+
+    var stableCodexAnimationPixelCopyCountForTesting: Int {
+        stableCodexAnimationFrameBuffer.pixelCopyCount
+    }
+
+    var stableCodexAnimationBackingPixelDataForTesting: Data? {
+        stableCodexAnimationFrameBuffer.backingPixelDataForTesting
+    }
+
+    var nativeCodexAnimationIsRotatingForTesting: Bool {
+        menuBarIconView.isRotating
+    }
+
+    var codexAnimationBackendForTesting: MenuBarCodexAnimationBackend {
+        codexAnimationBackend
+    }
+
+    var nativeCodexAnimationHostForTesting: MenuBarNativeAnimatedIconHostView? {
+        nativeCodexAnimatedIconHost
+    }
+
+    var nativeCodexAnimationIsActiveForTesting: Bool {
+        nativeCodexAnimationIsActive
+    }
+
+    var preferredCodexAnimationBackendForTesting: MenuBarCodexAnimationBackend {
+        preferredCodexAnimationBackend
+    }
+
+    var effectiveCodexAnimationBackendForTesting: MenuBarCodexAnimationBackend {
+        codexAnimationBackend
+    }
+
+    var codexAnimationFallbackActiveForTesting: Bool {
+        codexAnimationFallbackActive
+    }
+
+    var nativeCodexAnimationInstallCountForTesting: Int {
+        nativeCodexAnimatedIconHost?.rotationAnimationInstallCount ?? 0
+    }
+
+    var nativeCodexAnimationContentsRasterizationCountForTesting: Int {
+        nativeCodexAnimatedIconHost?.contentsRasterizationCount ?? 0
+    }
+
+    var menuBarButtonImageForTesting: NSImage? { statusItem?.button?.image }
+
+    var menuBarContentIsOffscreenForTesting: Bool {
+        guard let button = statusItem?.button else { return false }
+        return menuBarContentStack.superview === bitmapRenderContainer
+            && !button.subviews.contains { $0 === menuBarContentStack }
+    }
+
+    /// Supplies a deterministic source for controller-level bitmap cache tests;
+    /// production always supplies the bundled Codex asset during setup.
+    func setCodexIconForTesting(_ image: NSImage) {
+        codexIconImage = image
+        menuBarIconView.setSourceImage(
+            image,
+            prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
+        )
+    }
+
+    func advanceCodexAnimationFrameForTesting(_ frameIndex: Int) {
+        guard codexAnimationBackend == .stableBitmap else { return }
+        applyStableCodexAnimationFrame(frameIndex)
+    }
+
     // Exposes the controller's actual menu for headless production-path tests.
     // The application still owns and renders this same NSMenu instance.
     var menuItemsForTesting: [NSMenuItem] { statusMenu.items }
@@ -1754,19 +2430,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return "status_visible=\(isVisible); menu_bound=\(statusItem?.menu === statusMenu); menu_items=\(statusMenu.items.count); button_window=\(statusWindow != nil)"
     }
 
-    init(actions: Actions) {
+    init(
+        actions: Actions,
+        codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
+        forceNativeCodexAnimationFailureForTesting: Bool = false
+    ) {
         self.actions = actions
+        self.preferredCodexAnimationBackend = codexAnimationBackend
+        self.codexAnimationBackend = codexAnimationBackend
+        self.forceNativeCodexAnimationFailureForTesting = forceNativeCodexAnimationFailureForTesting
+        self.menuBarIconView = RotatingTemplateImageView(
+            frame: .zero
+        )
         super.init()
+        bitmapRenderContainer.onEffectiveAppearanceChanged = { [weak self] in
+            self?.handleBitmapEffectiveAppearanceChanged()
+        }
         screenParametersObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             guard let self, self.statusItem != nil else { return }
+            self.refreshBitmapContentAfterExternalVisualChange()
             self.scheduleStatusItemAttachmentCheck(
                 reason: "screen-parameters",
                 reanchor: false
             )
+        }
+        accessibilityDisplayOptionsObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.statusItem != nil else { return }
+            // Reduce Motion is a runtime animation policy. Reconcile it at
+            // the notification boundary so an already-running timer cannot
+            // outlive the user's accessibility preference.
+            self.updateActivityIcon()
         }
     }
 
@@ -1775,6 +2476,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let screenParametersObserver {
             NotificationCenter.default.removeObserver(screenParametersObserver)
         }
+        if let accessibilityDisplayOptionsObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(
+                accessibilityDisplayOptionsObserver
+            )
+        }
+    }
+
+    private func handleBitmapEffectiveAppearanceChanged() {
+        refreshBitmapContentAfterExternalVisualChange()
+    }
+
+    private func refreshBitmapContentAfterExternalVisualChange() {
+        guard statusItem != nil else { return }
+        invalidateBitmapContentCache()
+        layoutStatusItem(for: snapshot)
     }
 
     func start(
@@ -1784,9 +2500,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings
     ) {
         lifecycleGeneration += 1
-        let isNewStatusItem = statusItem == nil
-        if isNewStatusItem {
-            usesBitmapContent = settings.usesBitmapContent
+        if statusItem == nil {
             menuBarIconDisplayStateMachine.reset()
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
@@ -1815,6 +2529,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func teardown() {
         lifecycleGeneration += 1
         removeStatusItemWindowObservation()
+        deactivateNativeCodexAnimation()
+        setCodexAnimationFallbackActive(false)
+        codexAnimationBackend = preferredCodexAnimationBackend
         statusItemVisibilityStateMachine.reset()
         menuBarIconDisplayStateMachine.reset()
         publishStatusItemVisibility()
@@ -1822,14 +2539,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItemReanchorAttempts = 0
         statusMenuNeedsRebuild = false
         isStatusMenuTracking = false
-        lastMenuBarIconFrameDiagnostic = nil
         lastMenuBarGeometry = nil
         menuBarIconView.onSourceImageChanged = nil
         menuBarIconView.onFrameImageChanged = nil
+        menuBarIconView.onAnimationFrameIndexChanged = nil
         menuBarIconView.stopRotating()
         claudeThinkingAnimator?.stop()
-        cachedMenuBarTextBitmap = nil
-        menuBarBitmapImagePlacement = nil
+        invalidateBitmapContentCache()
         menuBarContentStack.removeFromSuperview()
         statusMenu.delegate = nil
         statusMenu.removeAllItems()
@@ -1845,17 +2561,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuInput: MenuInput,
         settings: MenuBarSettings
     ) {
-        let bitmapContentModeChanged = usesBitmapContent != settings.usesBitmapContent
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
+        let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
         self.settings = settings
-        if bitmapContentModeChanged {
-            usesBitmapContent = settings.usesBitmapContent
-            configureMenuBarContentPresentation()
-        }
         if iconDisplayModeChanged {
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
@@ -1871,6 +2583,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         applyMenuBarIconDisplayPolicy()
         layoutStatusItem(for: snapshot)
+        if taskIconVisibilityChanged {
+            // Reconcile the animation after the new content geometry is
+            // established so turning off the parent task-icon switch stops
+            // the active backend immediately.
+            updateActivityIcon()
+        }
         rebuildOrDeferMenu()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
@@ -1937,9 +2655,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 officialTextYOffset: lastMenuBarOfficialTextYOffset
             )
         }
-        if usesBitmapContent {
-            refreshMenuBarContentBitmap()
-        }
+        refreshMenuBarContentBitmap()
     }
 
     func updateMenu(input: MenuInput) {
@@ -1985,11 +2701,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         claudeTaskRunning: Bool,
         animationEnabled: Bool
     ) {
+        let activeClientChanged = self.activeClient != activeClient
         self.activeClient = activeClient
         self.isCodexTaskRunning = codexTaskRunning
         self.isClaudeTaskRunning = claudeTaskRunning
         self.animationEnabled = animationEnabled
+        if activeClientChanged {
+            stableCodexAnimationFrameBuffer.invalidate()
+        }
         updateActivityIcon()
+        if activeClientChanged {
+            // The source-image callback normally performs this layout. Keep a
+            // direct refresh for missing optional assets so changing clients
+            // can never leave a cache keyed to the previous client.
+            layoutStatusItem(for: snapshot)
+        }
         menuBarIconDisplayStateMachine.ingest(
             mode: settings.iconDisplayMode,
             displayDelay: settings.iconDisplayDelay,
@@ -2016,16 +2742,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = true
+        refreshNativeCodexIconAppearance()
     }
 
     func menuDidClose(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
         isStatusMenuTracking = false
+        refreshNativeCodexIconAppearance()
         guard statusMenuNeedsRebuild else { return }
         statusMenuNeedsRebuild = false
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.isStatusMenuTracking else { return }
             self.rebuildStatusMenu()
+        }
+    }
+
+    /// Applies the user's Codex animation-mode choice immediately. The
+    /// selected backend is an effective runtime value; a failed efficient
+    /// setup may temporarily replace it with the stable bitmap backend while
+    /// `preferredCodexAnimationBackend` remains unchanged.
+    func setCodexAnimationBackend(_ backend: MenuBarCodexAnimationBackend) {
+        precondition(Thread.isMainThread, "Codex animation mode must be changed on the main thread")
+        guard preferredCodexAnimationBackend != backend
+            || codexAnimationBackend != backend
+            || codexAnimationFallbackActive else {
+            return
+        }
+
+        // The setting belongs to Codex. If Claude is currently active, keep
+        // its independent animator and image path untouched; the selected
+        // Codex backend will be applied the next time Codex becomes active.
+        if activeClient == .codex {
+            stopCodexAnimationImplementation()
+        }
+        preferredCodexAnimationBackend = backend
+        codexAnimationBackend = backend
+        setCodexAnimationFallbackActive(false)
+        if activeClient == .codex {
+            updateActivityIcon()
         }
     }
 
@@ -2035,6 +2789,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             statusMenuNeedsRebuild = true
         } else {
             rebuildStatusMenu()
+        }
+    }
+
+    private func refreshNativeCodexIconAppearance() {
+        guard codexAnimationBackend == .nativeCoreAnimation,
+              nativeCodexAnimationIsActive else { return }
+        guard synchronizeNativeCodexAnimationHost() else {
+            activateTemporaryStableBitmapFallback()
+            return
         }
     }
 
@@ -2054,7 +2817,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             icon.size = NSSize(width: 16, height: 16)
             icon.isTemplate = true
             codexIconImage = icon
-            menuBarIconView.setSourceImage(icon)
+            menuBarIconView.setSourceImage(
+                icon,
+                prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
+            )
         }
         if let iconURL = Bundle.main.url(forResource: "Claude", withExtension: "svg"),
            let icon = NSImage(contentsOf: iconURL) {
@@ -2074,12 +2840,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         menuBarIconView.onSourceImageChanged = { [weak self] image in
             guard let self else { return }
+            self.invalidateBitmapContentCache()
             self.layoutStatusItem(for: self.snapshot)
             self.actions.iconChanged(image)
         }
+        menuBarIconView.onAnimationFrameIndexChanged = { [weak self] frameIndex in
+            guard let self,
+                  let frame = self.menuBarIconView.animationFrame(at: frameIndex) else {
+                return
+            }
+            guard self.activeClient == .codex,
+                  self.codexAnimationBackend == .stableBitmap else {
+                return
+            }
+            self.applyStableCodexAnimationFrame(frameIndex)
+            // Dashboard preview animation is a separate consumer. It
+            // receives the icon-only frame without mutating the detached
+            // real status-item image view.
+            self.actions.frameImageChanged(frame)
+        }
         menuBarIconView.onFrameImageChanged = { [weak self] image in
             guard let self else { return }
-            if self.usesBitmapContent {
+            if self.activeClient != .codex {
+                // Claude keeps its independent nine-frame animator and
+                // existing bitmap composition behavior.
                 self.composeMenuBarContentBitmap(iconImage: image)
             }
             self.actions.frameImageChanged(image)
@@ -2093,7 +2877,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarSecondaryLabel.textColor = .labelColor
         menuBarSecondaryLabel.lineBreakMode = .byClipping
         configureMenuBarContentStackIfNeeded()
-        configureMenuBarContentPresentation()
+        configureBitmapMenuBarContent()
         layoutStatusItem(for: snapshot)
         SwitchLog.write(
             "status item configured; visible=\(statusItem.isVisible); length=\(statusItem.length)",
@@ -2150,7 +2934,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSWindow.didChangeOcclusionStateNotification,
             NSWindow.didMoveNotification,
             NSWindow.didResizeNotification,
-            NSWindow.didChangeScreenNotification
+            NSWindow.didChangeScreenNotification,
+            NSWindow.didChangeBackingPropertiesNotification
         ]
         statusItemWindowObservers = notifications.map { notificationName in
             NotificationCenter.default.addObserver(
@@ -2159,6 +2944,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 queue: .main
             ) { [weak self] _ in
                 guard let self, self.statusItem != nil else { return }
+                if notificationName == NSWindow.didChangeBackingPropertiesNotification {
+                    // The raw bitmap dimensions and color-space-sensitive
+                    // backing must be rebuilt once at this public lifecycle
+                    // boundary. This is not a timer/polling path.
+                    self.refreshBitmapContentAfterExternalVisualChange()
+                }
                 self.scheduleStatusItemAttachmentCheck(
                     reason: "window-\(notificationName.rawValue)",
                     reanchor: false
@@ -2286,6 +3077,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         statusItemReanchorAttempts += 1
         let desiredLength = max(CGFloat(30), item.length)
+        // Keep an active native-CA host's layer animation alive while AppKit
+        // replaces the source status item.  The retained host is reattached
+        // by the next layout boundary, preserving its layer-local phase.
+        detachNativeCodexAnimationHostForStatusItemReplacement()
         removeStatusItemWindowObservation()
         NSStatusBar.system.removeStatusItem(item)
         let replacement = NSStatusBar.system.statusItem(withLength: desiredLength)
@@ -2299,23 +3094,58 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch activeClient {
         case .codex:
             claudeThinkingAnimator?.stop()
-            // While the rotation is feeding frames, re-assigning the static
-            // source would clobber the current frame for one tick and dirty
-            // the view; the rotation frames already derive from this source.
-            if !menuBarIconView.isRotating, let codexIconImage {
-                menuBarIconView.setSourceImage(codexIconImage)
-            }
-            if MenuBarActivityAnimationPolicy.shouldAnimate(
+            let shouldAnimate = MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isCodexTaskRunning,
                 preferenceEnabled: animationEnabled,
                 reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            ) {
-                menuBarIconView.startRotating()
-            } else {
+            )
+
+            guard shouldAnimate, settings.showIcon else {
+                stopCodexAnimationImplementation()
+                codexAnimationBackend = preferredCodexAnimationBackend
+                setCodexAnimationFallbackActive(false)
+                return
+            }
+
+            switch codexAnimationBackend {
+            case .nativeCoreAnimation:
                 menuBarIconView.stopRotating()
+                if let codexIconImage,
+                   menuBarIconView.sourceImageForRendering !== codexIconImage {
+                    menuBarIconView.setSourceImage(
+                        codexIconImage,
+                        prepareAnimationFrames: false
+                    )
+                }
+                guard synchronizeNativeCodexAnimationHost() else {
+                    activateTemporaryStableBitmapFallback()
+                    return
+                }
+            case .stableBitmap:
+                deactivateNativeCodexAnimation()
+                if let codexIconImage {
+                    menuBarIconView.setSourceImage(
+                        codexIconImage,
+                        prepareAnimationFrames: true
+                    )
+                }
+                if !menuBarIconView.isRotating {
+                    guard installStableCodexAnimationImage(at: 0) else {
+                        menuBarIconView.stopRotating()
+                        restoreCodexStaticBitmap()
+                        return
+                    }
+                } else if !ensureStableCodexAnimationFrameBuffer() {
+                    menuBarIconView.stopRotating()
+                    restoreCodexStaticBitmap()
+                    return
+                }
+                menuBarIconView.startRotating()
             }
         case .claude:
-            menuBarIconView.stopRotating()
+            stopCodexAnimationImplementation()
+            codexAnimationBackend = preferredCodexAnimationBackend
+            setCodexAnimationFallbackActive(false)
             if claudeThinkingAnimator?.isAnimating != true, let claudeIconImage {
                 menuBarIconView.setSourceImage(claudeIconImage)
             }
@@ -2329,6 +3159,36 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 claudeThinkingAnimator?.stop()
             }
         }
+    }
+
+    private func stopCodexAnimationImplementation() {
+        menuBarIconView.stopRotating()
+        deactivateNativeCodexAnimation()
+        restoreCodexStaticBitmap()
+    }
+
+    private func setCodexAnimationFallbackActive(_ active: Bool) {
+        guard codexAnimationFallbackActive != active else { return }
+        codexAnimationFallbackActive = active
+        actions.animationFallbackChanged(active)
+    }
+
+    private func activateTemporaryStableBitmapFallback() {
+        // This is intentionally a one-way transition for the current task.
+        // It prevents a failed G setup from bouncing between backends on every
+        // ordinary snapshot update; a new task or explicit mode selection
+        // starts a fresh G attempt.
+        deactivateNativeCodexAnimation()
+        codexAnimationBackend = .stableBitmap
+        setCodexAnimationFallbackActive(true)
+        guard let codexIconImage else { return }
+        menuBarIconView.setSourceImage(codexIconImage, prepareAnimationFrames: true)
+        guard installStableCodexAnimationImage(at: 0) else {
+            menuBarIconView.stopRotating()
+            restoreCodexStaticBitmap()
+            return
+        }
+        menuBarIconView.startRotating()
     }
 
     private func applyMenuBarIconDisplayPolicy() {
@@ -2366,54 +3226,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarContentStack.translatesAutoresizingMaskIntoConstraints = true
     }
 
-    /// Switches the live content tree between the classic button hierarchy and
-    /// the offscreen bitmap root. The same method is used at initial setup and
-    /// when the Advanced settings switch changes, so both paths clean up the
-    /// previous attachment before laying out the new coordinate space.
-    private func configureMenuBarContentPresentation() {
+    /// Installs the offscreen content tree used to produce the button bitmap.
+    private func configureBitmapMenuBarContent() {
         guard let button = statusItem?.button else { return }
         menuBarContentStack.removeFromSuperview()
-        cachedMenuBarTextBitmap = nil
-        menuBarBitmapImagePlacement = nil
+        invalidateBitmapContentCache()
         button.image = Self.placeholderButtonImage
 
-        if usesBitmapContent {
-            bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
-            bitmapRenderContainer.addSubview(menuBarContentStack)
-            button.imagePosition = .imageOnly
-            button.imageScaling = .scaleNone
-        } else {
-            button.addSubview(menuBarContentStack)
-            button.imagePosition = .imageOnly
-            button.imageScaling = .scaleProportionallyDown
-        }
-    }
-
-    private func logMenuBarIconFrames(
-        snapshot: Snapshot,
-        button: NSStatusBarButton,
-        hasSecondary: Bool,
-        iconYOffset: CGFloat
-    ) {
-        guard !usesBitmapContent else { return }
-        guard settings.showIcon else { return }
-        let kind: String
-        switch snapshot.kind {
-        case .placeholder: kind = "placeholder"
-        case .official: kind = "official"
-        case .balance: kind = "balance"
-        case .openCodex: kind = "open-codex"
-        case .error: kind = "error"
-        }
-        let stackInButton = menuBarContentStack.convert(menuBarContentStack.bounds, to: button)
-        let slotInButton = menuBarIconSlot.convert(menuBarIconSlot.bounds, to: button)
-        let iconInButton = menuBarIconView.convert(menuBarIconView.bounds, to: button)
-        let iconInWindow = menuBarIconView.convert(menuBarIconView.bounds, to: nil)
-        let iconInScreen = button.window?.convertToScreen(iconInWindow)
-        let diagnostic = "menu bar icon frames; kind=\(kind); show_amount=\(settings.showAmount); has_secondary=\(hasSecondary); offset=\(DashboardLogging.number(iconYOffset)); flipped=button:\(button.isFlipped),stack:\(menuBarContentStack.isFlipped),slot:\(menuBarIconSlot.isFlipped),icon:\(menuBarIconView.isFlipped); button=\(DashboardLogging.rect(button.bounds)); stack_local=\(DashboardLogging.rect(menuBarContentStack.frame)); stack_button=\(DashboardLogging.rect(stackInButton)); slot_local=\(DashboardLogging.rect(menuBarIconSlot.frame)); slot_button=\(DashboardLogging.rect(slotInButton)); icon_local=\(DashboardLogging.rect(menuBarIconView.frame)); icon_button=\(DashboardLogging.rect(iconInButton)); icon_window=\(DashboardLogging.rect(iconInWindow)); icon_screen=\(iconInScreen.map { DashboardLogging.rect($0) } ?? "none"); center_button=\(DashboardLogging.number(iconInButton.midY)); center_window=\(DashboardLogging.number(iconInWindow.midY))"
-        guard diagnostic != lastMenuBarIconFrameDiagnostic else { return }
-        lastMenuBarIconFrameDiagnostic = diagnostic
-        SwitchLog.write(diagnostic, level: .debug, category: "ui.geometry")
+        bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
+        bitmapRenderContainer.addSubview(menuBarContentStack)
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
     }
 
     private func layoutStatusItem(for snapshot: Snapshot) {
@@ -2536,17 +3359,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             effectiveSnapshot: effectiveSnapshot,
             officialTextYOffset: officialTextYOffset
         )
-        if usesBitmapContent {
-            // Frames are final here; snapshot the offscreen tree into the
-            // button image so the real button carries no live view hierarchy.
-            refreshMenuBarContentBitmap()
-        }
-        logMenuBarIconFrames(
-            snapshot: effectiveSnapshot,
-            button: button,
-            hasSecondary: hasSecondary,
-            iconYOffset: iconYOffset
-        )
+        // Frames are final here; snapshot the offscreen tree into the button
+        // image so the real button carries no live view hierarchy.
+        refreshMenuBarContentBitmap()
         if button.toolTip != effectiveSnapshot.menuBarToolTip {
             button.toolTip = effectiveSnapshot.menuBarToolTip
         }
@@ -2717,14 +3532,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The view whose coordinate space the content frames live in: the status
-    /// button in the classic path, the offscreen render container in bitmap
-    /// mode. Both share a (0,0)-origin bounds of the same size.
+    /// The offscreen render container is the sole coordinate space for the
+    /// content tree. Its bounds share the button's (0,0)-origin footprint.
     private var menuBarContentCoordinateSpace: NSView? {
-        if usesBitmapContent {
-            return bitmapRenderContainer.bounds.width > 0 ? bitmapRenderContainer : nil
-        }
-        return statusItem?.button
+        bitmapRenderContainer.bounds.width > 0 ? bitmapRenderContainer : nil
     }
 
     private func menuBarPrimaryInkBounds(in coordinateSpace: NSView?) -> NSRect? {
@@ -2745,44 +3556,501 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return menuBarPrimaryLabel.convert(localBounds, to: coordinateSpace)
     }
 
-    /// Renders the offscreen content tree into a template bitmap and displays
-    /// it as the button image. Template masking makes the bitmap monochrome
-    /// and appearance-adaptive; only the alpha shape carries the visuals.
-    private func refreshMenuBarContentBitmap() {
-        guard usesBitmapContent,
+    private func invalidateBitmapContentCache(setPlaceholder: Bool = false) {
+        cachedMenuBarTextBitmap = nil
+        cachedStaticMenuBarContentBitmap = nil
+        cachedMenuBarContentVisualSignature = nil
+        menuBarBitmapImagePlacement = nil
+        cachedMenuBarIconDrawRect = nil
+        stableCodexAnimationFrameBuffer.invalidate()
+        if setPlaceholder {
+            statusItem?.button?.image = Self.placeholderButtonImage
+        }
+    }
+
+    private var shouldPrepareCodexAnimationFrames: Bool {
+        activeClient == .codex
+            && isCodexTaskRunning
+            && animationEnabled
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            && !menuBarIconSlot.isHidden
+            && !menuBarIconView.isHidden
+    }
+
+    private var shouldUseStableCodexAnimation: Bool {
+        shouldPrepareCodexAnimationFrames && menuBarIconView.isRotating
+    }
+
+    private var shouldUseNativeCodexAnimation: Bool {
+        codexAnimationBackend == .nativeCoreAnimation
+            && shouldPrepareCodexAnimationFrames
+    }
+
+    /// Materializes one mutable image representation from the finite source
+    /// frame set. This may compose and rasterize each frame, but only during a
+    /// bounded visual-cache rebuild; no timer callback reaches this method.
+    @discardableResult
+    private func ensureStableCodexAnimationFrameBuffer() -> Bool {
+        precondition(Thread.isMainThread, "Codex bitmap cache must be rebuilt on the main thread")
+        guard shouldPrepareCodexAnimationFrames,
+              let cachedSignature = cachedMenuBarContentVisualSignature,
+              let textBitmap = cachedMenuBarTextBitmap,
+              let iconDrawRect = cachedMenuBarIconDrawRect,
+              let placement = menuBarBitmapImagePlacement,
               let button = statusItem?.button,
+              let codexIconImage,
+              let sourceImage = menuBarIconView.sourceImageForRendering,
+              sourceImage === codexIconImage else {
+            return false
+        }
+        let currentSignature = makeMenuBarBitmapAnimationVisualSignature(
+            button: button,
+            placement: placement,
+            scale: button.window?.backingScaleFactor ?? 2
+        )
+        guard currentSignature.matchesStaticContent(of: cachedSignature) else {
+            return false
+        }
+        let sourceFrames = menuBarIconView.animationFrames
+        guard !sourceFrames.isEmpty else { return false }
+        return stableCodexAnimationFrameBuffer.rebuildIfNeeded(
+            signature: currentSignature,
+            sourceFrames: sourceFrames
+        ) { frame in
+            Self.makeCompleteMenuBarBitmap(
+                textBitmap: textBitmap,
+                iconImage: frame,
+                iconDrawRect: iconDrawRect,
+                canvasSize: placement.canvasSize
+            )
+        }
+    }
+
+    /// Installs the stable image at an animation boundary (start or a real
+    /// visual invalidation). Once installed, frame callbacks must use
+    /// applyStableCodexAnimationFrame(_:) so they never assign button.image.
+    @discardableResult
+    private func installStableCodexAnimationImage(at frameIndex: Int) -> Bool {
+        precondition(Thread.isMainThread, "Codex bitmap image must be installed on the main thread")
+        guard ensureStableCodexAnimationFrameBuffer(),
+              let button = statusItem?.button,
+              let image = stableCodexAnimationFrameBuffer.image,
+              stableCodexAnimationFrameBuffer.apply(frameIndex: frameIndex) else {
+            return false
+        }
+        if button.image !== image {
+            button.image = image
+            stableCodexAnimationImageAssignmentCountForTesting += 1
+        }
+        button.needsDisplay = true
+        stableCodexAnimationRedrawRequestCountForTesting += 1
+        return true
+    }
+
+    /// Copies prebuilt pixels into the already-installed image. This is the
+    /// only Codex bitmap work performed by the animation timer path.
+    private func applyStableCodexAnimationFrame(_ frameIndex: Int) {
+        precondition(Thread.isMainThread, "Codex bitmap pixels must be copied on the main thread")
+        guard shouldUseStableCodexAnimation,
+              let button = statusItem?.button,
+              let image = stableCodexAnimationFrameBuffer.image,
+              button.image === image,
+              stableCodexAnimationFrameBuffer.apply(frameIndex: frameIndex) else {
+            return
+        }
+        button.needsDisplay = true
+        stableCodexAnimationRedrawRequestCountForTesting += 1
+    }
+
+    private func restoreCodexStaticBitmap() {
+        guard let button = statusItem?.button,
+              let staticImage = cachedStaticMenuBarContentBitmap else {
+            return
+        }
+        if button.image !== staticImage {
+            button.image = staticImage
+        }
+    }
+
+    /// Synchronizes the BalanceBar-owned icon host at a bounded visual
+    /// boundary.  The static text bitmap is installed first, then the host's
+    /// local geometry and one-time contents are prepared, and only then is the
+    /// compositor animation installed.
+    @discardableResult
+    private func synchronizeNativeCodexAnimationHost() -> Bool {
+        precondition(Thread.isMainThread, "Native Codex animation must be synchronized on the main thread")
+        if forceNativeCodexAnimationFailureForTesting {
+            return false
+        }
+        guard codexAnimationBackend == .nativeCoreAnimation,
+              shouldPrepareCodexAnimationFrames,
+              let button = statusItem?.button,
+              let textBitmap = cachedMenuBarTextBitmap,
+              let iconDrawRect = cachedMenuBarIconDrawRect,
+              let placement = menuBarBitmapImagePlacement,
+              let codexIconImage else {
+            return false
+        }
+
+        let localIconRect = placement.buttonLocalRect(
+            forImageCanvasRect: iconDrawRect
+        )
+        guard localIconRect.width > 0, localIconRect.height > 0 else {
+            return false
+        }
+
+        if button.image !== textBitmap {
+            // One boundary assignment replaces the complete static bitmap
+            // with its text-only variant; the host supplies the icon pixels.
+            button.image = textBitmap
+        }
+
+        let host = nativeCodexAnimatedIconHost ?? {
+            let newHost = MenuBarNativeAnimatedIconHostView(frame: localIconRect)
+            nativeCodexAnimatedIconHost = newHost
+            return newHost
+        }()
+        if host.superview !== button {
+            host.removeFromSuperview()
+            button.addSubview(host, positioned: .above, relativeTo: nil)
+        }
+
+        let scale = button.window?.backingScaleFactor ?? 2
+        host.updateGeometry(frame: localIconRect, contentsScale: scale)
+        guard host.updateContents(
+            sourceImage: codexIconImage,
+            appearance: button.effectiveAppearance,
+            contentsScale: scale,
+            highlighted: button.isHighlighted || button.cell?.isHighlighted == true
+        ) else {
+            host.removeRotationAnimation()
+            host.isHidden = true
+            host.removeFromSuperview()
+            return false
+        }
+        host.isHidden = false
+        // Existing animation is deliberately retained across geometry,
+        // appearance, backing-scale, and status-item reattachment changes.
+        host.installRotationAnimation()
+        publishNativeCodexAnimationStateIfNeeded(true)
+        return true
+    }
+
+    private func deactivateNativeCodexAnimation() {
+        nativeCodexAnimatedIconHost?.removeRotationAnimation()
+        nativeCodexAnimatedIconHost?.isHidden = true
+        nativeCodexAnimatedIconHost?.removeFromSuperview()
+        publishNativeCodexAnimationStateIfNeeded(false)
+    }
+
+    /// Detaches only the view during an AppKit status-item replacement.  The
+    /// layer animation stays installed on the retained host, so reattachment
+    /// continues at the layer-local compositor phase without a restart.
+    private func detachNativeCodexAnimationHostForStatusItemReplacement() {
+        nativeCodexAnimatedIconHost?.removeFromSuperview()
+    }
+
+    private func publishNativeCodexAnimationStateIfNeeded(_ active: Bool) {
+        guard nativeCodexAnimationIsActive != active else { return }
+        nativeCodexAnimationIsActive = active
+        actions.animationStateChanged(active)
+    }
+
+    private func makeMenuBarBitmapAnimationVisualSignature(
+        button: NSStatusBarButton,
+        placement: MenuBarBitmapImagePlacement,
+        scale: CGFloat
+    ) -> MenuBarBitmapAnimationVisualSignature {
+        let canonicalFrame: (NSView) -> NSRect = { view in
+            view.convert(view.bounds, to: self.bitmapRenderContainer)
+        }
+        let sourceImage = menuBarIconView.sourceImageForRendering
+        let effectiveSnapshot = lastMenuBarEffectiveSnapshot
+        let snapshotKind: String
+        switch effectiveSnapshot.kind {
+        case .placeholder: snapshotKind = "placeholder"
+        case .official: snapshotKind = "official"
+        case .balance: snapshotKind = "balance"
+        case .openCodex: snapshotKind = "openCodex"
+        case .error: snapshotKind = "error"
+        }
+        let effectiveSnapshotSignature = MenuBarBitmapAnimationSnapshotSignature(
+            kind: snapshotKind,
+            provider: effectiveSnapshot.provider,
+            amount: effectiveSnapshot.amount,
+            unit: effectiveSnapshot.unit,
+            message: effectiveSnapshot.message,
+            primaryText: menuBarPrimaryLabel.stringValue,
+            secondaryText: menuBarSecondaryLabel.stringValue,
+            selectedQuotaWindowKind: effectiveSnapshot.selectedOfficialQuotaWindowKind?.rawValue,
+            usesLunaReserve: effectiveSnapshot.menuBarUsesLunaReserve
+        )
+        let iconVisible = !menuBarIconSlot.isHidden && !menuBarIconView.isHidden
+        let textVisible = !menuBarTextStack.isHidden && !menuBarContentStack.isHidden
+        let providerIdentity = menuInput.choices.first(where: \.isCurrent)?.id
+            ?? effectiveSnapshot.provider
+        return MenuBarBitmapAnimationVisualSignature(
+            primaryText: menuBarPrimaryLabel.stringValue,
+            secondaryText: menuBarSecondaryLabel.stringValue,
+            primaryFont: Self.bitmapFontSignature(menuBarPrimaryLabel.font),
+            secondaryFont: Self.bitmapFontSignature(menuBarSecondaryLabel.font),
+            contentFrame: canonicalFrame(menuBarContentStack),
+            iconSlotFrame: canonicalFrame(menuBarIconSlot),
+            iconFrame: canonicalFrame(menuBarIconView),
+            textFrame: canonicalFrame(menuBarTextStack),
+            contentBounds: menuBarContentStack.bounds,
+            iconSlotBounds: menuBarIconSlot.bounds,
+            iconBounds: menuBarIconView.bounds,
+            textBounds: menuBarTextStack.bounds,
+            contentTransform: MenuBarBitmapAnimationTransformSignature(
+                menuBarContentStack.layer?.affineTransform() ?? .identity
+            ),
+            iconSlotTransform: MenuBarBitmapAnimationTransformSignature(
+                menuBarIconSlot.layer?.affineTransform() ?? .identity
+            ),
+            iconTransform: MenuBarBitmapAnimationTransformSignature(
+                menuBarIconView.layer?.affineTransform() ?? .identity
+            ),
+            textTransform: MenuBarBitmapAnimationTransformSignature(
+                menuBarTextStack.layer?.affineTransform() ?? .identity
+            ),
+            bitmapBounds: bitmapRenderContainer.bounds,
+            bitmapFrame: bitmapRenderContainer.frame,
+            buttonBounds: button.bounds,
+            placement: placement,
+            backingScale: scale,
+            iconVisible: iconVisible,
+            textVisible: textVisible,
+            primaryVisible: textVisible && !menuBarPrimaryLabel.isHidden,
+            secondaryVisible: textVisible && !menuBarSecondaryLabel.isHidden,
+            sourceImageIdentity: sourceImage.map(ObjectIdentifier.init),
+            sourceImageSize: sourceImage?.size ?? .zero,
+            sourceImageIsTemplate: sourceImage?.isTemplate ?? false,
+            sourceFrameIdentities: menuBarIconView.animationFrames.map(ObjectIdentifier.init),
+            sourceProviderIdentity: providerIdentity,
+            activeClient: activeClient,
+            effectiveSnapshot: effectiveSnapshotSignature,
+            appearance: Self.bitmapAppearanceSignature(button.effectiveAppearance),
+            iconOffsetX: settings.iconOffsetX,
+            iconOffsetY: settings.iconOffsetY,
+            amountOffsetX: settings.amountOffsetX,
+            amountOffsetY: settings.amountOffsetY,
+            horizontalPadding: settings.horizontalPadding,
+            widthAdjustment: settings.widthAdjustment,
+            showReset: settings.showReset,
+            buttonImagePosition: Int(button.imagePosition.rawValue),
+            buttonImageScaling: Int(button.imageScaling.rawValue),
+            iconViewImageScaling: Int(menuBarIconView.imageScaling.rawValue),
+            iconViewImageAlignment: Int(menuBarIconView.imageAlignment.rawValue)
+        )
+    }
+
+    private static func bitmapFontSignature(_ font: NSFont?) -> String {
+        guard let font else { return "none" }
+        return "\(font.fontName)|\(font.pointSize)|\(font.fontDescriptor.symbolicTraits.rawValue)"
+    }
+
+    private static func bitmapAppearanceSignature(_ appearance: NSAppearance) -> String {
+        let bestMatch = appearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "none"
+        return "\(appearance.name.rawValue)|\(bestMatch)"
+    }
+
+    /// Renders the offscreen text/visual base once, then creates the static
+    /// image and (when Codex animation is active) every complete button-ready
+    /// animation frame from that base. The visual signature is evaluated
+    /// before any rasterization so a repeated `update(...)` is a no-op.
+    private func refreshMenuBarContentBitmap() {
+        guard let button = statusItem?.button,
               bitmapRenderContainer.bounds.width > 0,
               bitmapRenderContainer.bounds.height > 0 else {
             return
         }
+
         bitmapRenderContainer.frame = NSRect(origin: .zero, size: button.bounds.size)
         let scale = button.window?.backingScaleFactor ?? 2
         let placement = MenuBarBitmapImageLayout.placement(
             for: button,
             canonicalBounds: bitmapRenderContainer.bounds
         )
-        menuBarBitmapImagePlacement = placement
-        guard let full = Self.renderViewToTemplateImage(bitmapRenderContainer, scale: scale) else {
+        let signature = makeMenuBarBitmapAnimationVisualSignature(
+            button: button,
+            placement: placement,
+            scale: scale
+        )
+
+        if let cachedSignature = cachedMenuBarContentVisualSignature,
+           signature.matchesStaticContent(of: cachedSignature),
+           cachedMenuBarTextBitmap != nil,
+           cachedStaticMenuBarContentBitmap != nil {
+            if codexAnimationBackend == .nativeCoreAnimation {
+                if shouldUseNativeCodexAnimation {
+                    _ = synchronizeNativeCodexAnimationHost()
+                } else {
+                    deactivateNativeCodexAnimation()
+                    restoreCodexStaticBitmap()
+                }
+            } else if shouldUseStableCodexAnimation,
+                      stableCodexAnimationFrameBuffer.image == nil {
+                _ = installStableCodexAnimationImage(
+                    at: menuBarIconView.currentAnimationFrameIndex
+                )
+            }
             return
         }
-        button.image = Self.placeTemplateImage(full, using: placement) ?? full
-        // Cache the icon-free variant so animation frames can composite the
-        // rotated icon over static text instead of re-rendering the tree.
+
+        let displayedImage = menuBarIconView.image
+        let sourceImage = menuBarIconView.sourceImageForRendering
         let iconWasHidden = menuBarIconSlot.isHidden
         menuBarIconSlot.isHidden = true
-        if let textBitmap = Self.renderViewToTemplateImage(bitmapRenderContainer, scale: scale) {
-            cachedMenuBarTextBitmap = Self.placeTemplateImage(textBitmap, using: placement)
-                ?? textBitmap
-        }
+        let renderedTextBitmap = Self.renderViewToTemplateImage(
+            bitmapRenderContainer,
+            scale: scale
+        )
         menuBarIconSlot.isHidden = iconWasHidden
+
+        guard let renderedTextBitmap else {
+            invalidateBitmapContentCache(setPlaceholder: true)
+            return
+        }
+        let textBitmap = Self.placeTemplateImage(renderedTextBitmap, using: placement)
+            ?? renderedTextBitmap
+        let iconViewBounds = menuBarIconView.convert(
+            menuBarIconView.bounds,
+            to: bitmapRenderContainer
+        )
+        let imageViewBounds = placement.imageRect(forCanonicalRect: iconViewBounds)
+        let iconDrawRect: NSRect?
+        if !iconWasHidden {
+            iconDrawRect = Self.fittedIconDrawRect(
+                for: sourceImage,
+                in: imageViewBounds
+            )
+        } else {
+            iconDrawRect = nil
+        }
+
+        let staticImage: NSImage?
+        if let sourceImage, let iconDrawRect {
+            staticImage = Self.makeCompleteMenuBarBitmap(
+                textBitmap: textBitmap,
+                iconImage: sourceImage,
+                iconDrawRect: iconDrawRect,
+                canvasSize: placement.canvasSize
+            )
+        } else {
+            staticImage = textBitmap
+        }
+        guard let staticImage else {
+            invalidateBitmapContentCache(setPlaceholder: true)
+            return
+        }
+
+        cachedMenuBarTextBitmap = textBitmap
+        cachedStaticMenuBarContentBitmap = staticImage
+        cachedMenuBarContentVisualSignature = signature
+        menuBarBitmapImagePlacement = placement
+        cachedMenuBarIconDrawRect = iconDrawRect
+
+        if shouldUseNativeCodexAnimation {
+            if !synchronizeNativeCodexAnimationHost() {
+                activateTemporaryStableBitmapFallback()
+            }
+        } else if codexAnimationBackend == .nativeCoreAnimation {
+            deactivateNativeCodexAnimation()
+            button.image = staticImage
+        } else if shouldUseStableCodexAnimation {
+            if !installStableCodexAnimationImage(
+                at: menuBarIconView.currentAnimationFrameIndex
+            ) {
+                menuBarIconView.stopRotating()
+                button.image = staticImage
+            }
+        } else if activeClient == .claude,
+                  claudeThinkingAnimator?.isAnimating == true,
+                  let displayedImage,
+                  let iconDrawRect {
+            // Preserve Claude's independent animation while sharing the
+            // already-rendered text base. This is a refresh-time composition,
+            // never the Codex steady-state timer path.
+            button.image = Self.makeCompleteMenuBarBitmap(
+                textBitmap: textBitmap,
+                iconImage: displayedImage,
+                iconDrawRect: iconDrawRect,
+                canvasSize: placement.canvasSize
+            ) ?? staticImage
+        } else {
+            button.image = staticImage
+        }
     }
 
-    /// Composites one animation frame over the cached text bitmap. The
-    /// rotation frames and the text bitmap are all template content, so the
-    /// composed image is again a monochrome appearance-adaptive mask.
+    /// Builds one complete button-ready bitmap. `iconDrawRect` is resolved at
+    /// cache-build time, so callers on the animation tick only select an image
+    /// and assign it to the status button.
+    private static func makeCompleteMenuBarBitmap(
+        textBitmap: NSImage,
+        iconImage: NSImage?,
+        iconDrawRect: NSRect?,
+        canvasSize: NSSize
+    ) -> NSImage? {
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return nil }
+        let composed = NSImage(size: canvasSize)
+        composed.isTemplate = true
+        composed.lockFocusFlipped(true)
+        defer { composed.unlockFocus() }
+        textBitmap.draw(
+            in: NSRect(origin: .zero, size: canvasSize),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: nil
+        )
+        if let iconImage, let iconDrawRect {
+            iconImage.draw(
+                in: iconDrawRect,
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1,
+                respectFlipped: true,
+                hints: nil
+            )
+        }
+        return composed
+    }
+
+    private static func fittedIconDrawRect(
+        for iconImage: NSImage?,
+        in imageViewBounds: NSRect
+    ) -> NSRect? {
+        guard let iconImage,
+              iconImage.size.width > 0,
+              iconImage.size.height > 0,
+              imageViewBounds.width > 0,
+              imageViewBounds.height > 0 else {
+            return nil
+        }
+        let scaleFactor = min(
+            imageViewBounds.width / iconImage.size.width,
+            imageViewBounds.height / iconImage.size.height,
+            1
+        )
+        let fittedSize = NSSize(
+            width: iconImage.size.width * scaleFactor,
+            height: iconImage.size.height * scaleFactor
+        )
+        return NSRect(
+            x: imageViewBounds.midX - fittedSize.width / 2,
+            y: imageViewBounds.midY - fittedSize.height / 2,
+            width: fittedSize.width,
+            height: fittedSize.height
+        )
+    }
+
+    /// Composites a Claude animation frame over the cached text bitmap. The
+    /// Codex callback never reaches this method; its complete frame pixels are
+    /// copied into the stable bitmap backing instead.
     private func composeMenuBarContentBitmap(iconImage: NSImage?) {
-        guard usesBitmapContent,
-              let button = statusItem?.button,
+        guard let button = statusItem?.button,
               let textBitmap = cachedMenuBarTextBitmap else {
             return
         }

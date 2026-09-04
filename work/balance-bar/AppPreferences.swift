@@ -124,6 +124,16 @@ enum MenuBarIconDisplayDelay: String, CaseIterable, Equatable {
     }
 }
 
+/// The user-facing choice for Codex task-icon animation.  This is deliberately
+/// separate from the renderer/backend enum so implementation changes never
+/// become part of the persisted preferences contract.
+enum MenuBarAnimationMode: String, CaseIterable, Equatable {
+    case efficient
+    case synchronized
+
+    static let defaultValue: Self = .efficient
+}
+
 enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
     case large
     case medium
@@ -182,12 +192,6 @@ final class AppPreferences {
     static let showOpenCodexMenuKey = "showOpenCodexMenu"
     static let openCodexDashboardPortOverrideKey = "openCodexDashboardPortOverride"
     static let openCodexDashboardAutomaticDetectionKey = "openCodexDashboardAutomaticDetection"
-    static let menuBarBitmapContentKey = "menuBarBitmapContent"
-    static let menuBarBitmapContentDefault = true
-    /// UI identifier for the opt-in traditional menu-bar rendering switch.
-    /// The persisted value remains `menuBarBitmapContent` for compatibility
-    /// with the original developer-facing bitmap switch.
-    static let menuBarTraditionalRenderingKey = "menuBarTraditionalRendering"
     static let balanceDisplayThresholdKey = "balanceDisplayThreshold"
     static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"
     static let menuBarQuotaWindowPreferenceDefault: OfficialQuotaWindowPreference = .defaultValue
@@ -205,6 +209,8 @@ final class AppPreferences {
     static let menuBarIconDisplayModeDefault: MenuBarIconDisplayMode = .defaultValue
     static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"
     static let menuBarIconDisplayDelayDefault: MenuBarIconDisplayDelay = .defaultValue
+    static let menuBarAnimationModeKey = "menuBarAnimationMode"
+    static let menuBarAnimationModeDefault: MenuBarAnimationMode = .defaultValue
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -345,6 +351,18 @@ final class AppPreferences {
             defaults.set(newValue.rawValue, forKey: Self.menuBarIconDisplayDelayKey)
         }
     }
+    var menuBarAnimationMode: MenuBarAnimationMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarAnimationModeKey),
+                  let mode = MenuBarAnimationMode(rawValue: rawValue) else {
+                return Self.menuBarAnimationModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarAnimationModeKey)
+        }
+    }
     var updateChannel: UpdateChannel {
         get {
             guard let rawValue = defaults.string(forKey: Self.updateChannelKey),
@@ -397,19 +415,6 @@ final class AppPreferences {
     }
     var sortProvidersAlphabetically: Bool { get { defaults.bool(forKey: "sortProvidersAlphabetically") } set { defaults.set(newValue, forKey: "sortProvidersAlphabetically") } }
     var menuBarHorizontalPadding: CGFloat { get { CGFloat(positiveDouble("menuBarHorizontalPadding", default: 10)) } set { defaults.set(Double(newValue), forKey: "menuBarHorizontalPadding") } }
-
-    /// Bitmap-backed menu-bar content is the default. The public settings
-    /// switch is expressed as `menuBarTraditionalRendering`, so its enabled
-    /// state is the inverse of this persisted compatibility value.
-    var menuBarBitmapContent: Bool {
-        get { bool(Self.menuBarBitmapContentKey, default: Self.menuBarBitmapContentDefault) }
-        set { defaults.set(newValue, forKey: Self.menuBarBitmapContentKey) }
-    }
-
-    var menuBarTraditionalRendering: Bool {
-        get { !menuBarBitmapContent }
-        set { menuBarBitmapContent = !newValue }
-    }
 
     /// Fine-tune offsets are stored in points with 0.1pt resolution and are
     /// clamped to the safe range on both read and write.

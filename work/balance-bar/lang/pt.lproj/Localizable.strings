@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "Recarregar";
 "dashboard.advanced.page.show_in_finder" = "Mostrar no Finder";
 "dashboard.advanced.page.diagnostics" = "Diagnóstico";
-"dashboard.advanced.page.rendering" = "Renderização";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "Renderização tradicional da barra de menus";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "Quando ativada, usa a renderização tradicional. A qualidade visual pode melhorar ligeiramente, mas o uso de recursos do sistema pode aumentar.";
 "dashboard.advanced.page.debug_log" = "Log de depuração";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Registra o estado de execução e os erros";
 "dashboard.advanced.page.enter_port_manually" = "Inserir porta manualmente";
@@ -282,7 +279,7 @@
 "dashboard.menu.bar.page.preview" = "Pré-visualização";
 "dashboard.menu.bar.page.current_layout" = "Disposição atual";
 "dashboard.menu.bar.page.quota_and_reset" = "Cota e redefinição";
-"dashboard.menu.bar.page.icon_and_task_status" = "Ícone e status da tarefa";
+"dashboard.menu.bar.page.icon_and_task_status" = "Ícone e animação";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "A barra de menus é atualizada com dados do provedor em tempo real";
 "dashboard.menu.bar.page.icon_display_mode" = "Exibição do ícone na barra de menus";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Escolha se o ícone deve ser sempre exibido ou somente durante a execução de uma tarefa";
@@ -311,8 +308,13 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Após entrar na 🌙 %1$@, escolha se deseja continuar mostrando o horário de redefinição da cota original ou o da 🌙 %1$@.";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Cota original";
-"dashboard.menu.bar.page.animation" = "Animação";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animar o ícone da barra de menus enquanto uma tarefa é executada";
+"dashboard.menu.bar.page.animation" = "Modo de animação";
+"dashboard.menu.bar.page.animation_mode_description" = "Desempenho: reduz significativamente a utilização de recursos do sistema; ao utilizar vários monitores, a animação é pausada e acende nos monitores que não estão ativos\nSincronizado: mantém a animação sincronizada em todos os monitores, mas utiliza mais recursos do sistema";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Desempenho";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizado";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Neste momento, o modo Desempenho não consegue reproduzir corretamente a animação, por isso o modo Sincronizado está a ser utilizado temporariamente";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animação do ícone durante a tarefa";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Reproduz a animação do ícone na barra de menus enquanto uma tarefa é executada; desative-a para reduzir a utilização de recursos em dispositivos com menor desempenho";
 "dashboard.menu.bar.page.display_items" = "Conteúdo exibido";
 "dashboard.menu.bar.page.agent_icon" = "Ícone de status da tarefa";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "Mostra o status da tarefa atual";

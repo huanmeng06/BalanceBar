@@ -8,6 +8,14 @@ struct MenuBarAnimationState: Equatable {
         frameIndex = 0
     }
 
+    mutating func setFrameIndex(_ index: Int, frameCount: Int) {
+        guard frameCount > 0 else {
+            reset()
+            return
+        }
+        frameIndex = ((index % frameCount) + frameCount) % frameCount
+    }
+
     mutating func advance(frameCount: Int) -> Int? {
         guard frameCount > 0 else {
             reset()
@@ -15,6 +23,34 @@ struct MenuBarAnimationState: Equatable {
         }
         frameIndex = (frameIndex + 1) % frameCount
         return frameIndex
+    }
+}
+
+/// Product animation timing is fixed at 36 discrete states over one 1.2 s
+/// revolution (30 Hz).  There is intentionally no user-selectable cadence:
+/// both the efficient and synchronized Codex modes share the same visual
+/// contract.
+enum MenuBarAnimationTiming {
+    static let frameCount = 36
+    static let rotationDuration: TimeInterval = 1.2
+    static let frameInterval = rotationDuration / Double(frameCount)
+}
+
+/// Selects the Codex animation implementation used by a status-item
+/// controller.  The native Core Animation case is intentionally injectable so
+/// the stacked Issue #300 experiment can be exercised without deleting the D0
+/// bitmap backend or changing the production candidate branch.
+enum MenuBarCodexAnimationBackend: Equatable {
+    case stableBitmap
+    case nativeCoreAnimation
+
+    init(mode: MenuBarAnimationMode) {
+        switch mode {
+        case .efficient:
+            self = .nativeCoreAnimation
+        case .synchronized:
+            self = .stableBitmap
+        }
     }
 }
 
@@ -37,14 +73,12 @@ enum MenuBarActivityAnimationPolicy {
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
-    /// 36 frames over a 1.2 s rotation = exactly 30 fps, keeping the original
-    /// 10°-per-frame step granularity. Frame swaps are the only way the macOS
-    /// 26 status-item replicant snapshot can show motion (it renders model
-    /// state via renderInContext, so render-server-side animations are
-    /// invisible), so this animation necessarily invalidates per frame.
-    static let frameCount = 36
-    static let rotationDuration: TimeInterval = 1.2
-    static let rotationFrameInterval = rotationDuration / Double(frameCount)
+    /// D0 uses 36 discrete frames over a 1.2 s rotation = 30 fps. The native
+    /// Core Animation backend uses the same visual timing without entering
+    /// this timer path.
+    static let frameCount = MenuBarAnimationTiming.frameCount
+    static let rotationDuration: TimeInterval = MenuBarAnimationTiming.rotationDuration
+    static let rotationFrameInterval = MenuBarAnimationTiming.frameInterval
     private var sourceImage: NSImage?
     private var rotationFrames: [NSImage] = []
     private var rotationTimer: Timer?
@@ -55,12 +89,50 @@ final class RotatingTemplateImageView: PassthroughImageView {
     /// Called after the displayed bitmap changes. Consumers must only mirror
     /// the bitmap; this is intentionally separate from semantic state work.
     var onFrameImageChanged: ((NSImage?) -> Void)?
+    /// Called with the discrete frame index before the image view is mutated.
+    /// Bitmap-backed Codex animation uses this seam to update a stable image
+    /// backing without changing this detached view's image every tick.
+    var onAnimationFrameIndexChanged: ((Int) -> Void)?
     var isRotating: Bool { rotationTimer != nil }
+    var currentAnimationFrameIndex: Int { animationState.frameIndex }
 
-    func setSourceImage(_ image: NSImage) {
+    /// The already-rasterized frames for the current semantic source. The
+    /// controller uses these to build complete button-ready bitmaps when the
+    /// content changes, rather than composing one on every timer tick.
+    var animationFrames: [NSImage] { rotationFrames }
+
+    var sourceImageForRendering: NSImage? { sourceImage }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    func animationFrameIndex(for image: NSImage?) -> Int? {
+        guard let image else { return nil }
+        return rotationFrames.firstIndex { $0 === image }
+    }
+
+    func animationFrame(at index: Int) -> NSImage? {
+        guard rotationFrames.indices.contains(index) else { return nil }
+        return rotationFrames[index]
+    }
+
+    func setSourceImage(
+        _ image: NSImage,
+        prepareAnimationFrames: Bool = true
+    ) {
         let sourceChanged = sourceImage !== image
-        if sourceChanged {
-            rotationFrames = Self.makeRotationFrames(from: image)
+        let framePreparationChanged = prepareAnimationFrames
+            ? rotationFrames.count != Self.frameCount
+            : !rotationFrames.isEmpty
+        if sourceChanged || framePreparationChanged {
+            rotationFrames = prepareAnimationFrames
+                ? Self.makeRotationFrames(from: image)
+                : []
         }
         sourceImage = image
         if self.image !== image {
@@ -87,12 +159,17 @@ final class RotatingTemplateImageView: PassthroughImageView {
     func startRotating() {
         guard rotationTimer == nil, !rotationFrames.isEmpty else { return }
         animationState.reset()
-        let timer = Timer(timeInterval: Self.rotationFrameInterval, repeats: true) { [weak self] _ in
+        installRotationTimer()
+    }
+
+    private func installRotationTimer() {
+        guard rotationTimer == nil, !rotationFrames.isEmpty else { return }
+        let runningTimer = Timer(timeInterval: Self.rotationFrameInterval, repeats: true) { [weak self] _ in
             self?.advanceRotation()
         }
-        timer.tolerance = 0.002
-        rotationTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
+        runningTimer.tolerance = 0.002
+        rotationTimer = runningTimer
+        RunLoop.main.add(runningTimer, forMode: .common)
     }
 
     func stopRotating() {
@@ -107,12 +184,18 @@ final class RotatingTemplateImageView: PassthroughImageView {
             return
         }
         let frame = rotationFrames[frameIndex]
-        displayImage(frame)
+        if let onAnimationFrameIndexChanged {
+            onAnimationFrameIndexChanged(frameIndex)
+        } else {
+            displayImage(frame)
+        }
     }
 
-    private static func makeRotationFrames(from sourceImage: NSImage) -> [NSImage] {
-        (0..<frameCount).map { index in
-            let angle = -(2 * .pi * CGFloat(index) / CGFloat(frameCount))
+    private static func makeRotationFrames(
+        from sourceImage: NSImage
+    ) -> [NSImage] {
+        (0..<Self.frameCount).map { index in
+            let angle = -(2 * .pi * CGFloat(index) / CGFloat(Self.frameCount))
             let frame = NSImage(size: sourceImage.size, flipped: false) { rect in
                 NSGraphicsContext.current?.imageInterpolation = .high
                 let transform = NSAffineTransform()

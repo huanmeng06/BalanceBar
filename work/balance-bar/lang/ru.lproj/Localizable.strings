@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "Перезагрузить";
 "dashboard.advanced.page.show_in_finder" = "Показать в Finder";
 "dashboard.advanced.page.diagnostics" = "Диагностика";
-"dashboard.advanced.page.rendering" = "Рендеринг";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "Традиционный рендеринг строки меню";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "При включении используется традиционный рендеринг. Качество отображения может немного улучшиться, но потребление системных ресурсов может возрасти.";
 "dashboard.advanced.page.debug_log" = "Журнал отладки";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "Записывает состояние выполнения и ошибки";
 "dashboard.advanced.page.enter_port_manually" = "Ввести порт вручную";
@@ -282,7 +279,7 @@
 "dashboard.menu.bar.page.preview" = "Предпросмотр";
 "dashboard.menu.bar.page.current_layout" = "Текущий макет";
 "dashboard.menu.bar.page.quota_and_reset" = "Квота и сброс";
-"dashboard.menu.bar.page.icon_and_task_status" = "Значок и состояние задачи";
+"dashboard.menu.bar.page.icon_and_task_status" = "Значок и анимация";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "Строка меню обновляется данными провайдера в реальном времени";
 "dashboard.menu.bar.page.icon_display_mode" = "Отображение значка в строке меню";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Выберите, показывать ли значок всегда или только во время выполнения задачи";
@@ -311,8 +308,13 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "После входа в 🌙 %1$@ выберите, продолжать ли показывать время сброса исходной квоты или квоты 🌙 %1$@.";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Исходная квота";
-"dashboard.menu.bar.page.animation" = "Анимация";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Воспроизводить анимацию значка строки меню во время выполнения задачи";
+"dashboard.menu.bar.page.animation" = "Режим анимации";
+"dashboard.menu.bar.page.animation_mode_description" = "Производительность: значительно снижает использование системных ресурсов; при работе с несколькими дисплеями анимация на неактивных дисплеях приостанавливается и загорается\nСинхронный: синхронизирует анимацию на всех дисплеях, но требует больше системных ресурсов";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Производительность";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "Синхронный";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Сейчас анимация не может корректно работать в режиме «Производительность», поэтому временно используется режим «Синхронный»";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Анимация значка во время выполнения задачи";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "Воспроизводит анимацию значка в строке меню во время выполнения задачи; на устройствах с низкой производительностью её можно отключить, чтобы снизить использование ресурсов";
 "dashboard.menu.bar.page.display_items" = "Отображаемое содержимое";
 "dashboard.menu.bar.page.agent_icon" = "Значок статуса задачи";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "Показывает состояние текущей задачи";

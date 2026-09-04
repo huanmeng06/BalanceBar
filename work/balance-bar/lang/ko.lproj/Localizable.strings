@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "다시 불러오기";
 "dashboard.advanced.page.show_in_finder" = "Finder에서 보기";
 "dashboard.advanced.page.diagnostics" = "진단";
-"dashboard.advanced.page.rendering" = "렌더링";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "기존 메뉴 막대 렌더링";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "활성화하면 기존 렌더링을 사용합니다. 표시 품질이 약간 향상될 수 있지만 시스템 리소스를 더 사용할 수 있습니다.";
 "dashboard.advanced.page.debug_log" = "디버그 로그";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "실행 중 상태와 오류 기록";
 "dashboard.advanced.page.enter_port_manually" = "포트를 수동으로 입력";
@@ -282,7 +279,7 @@
 "dashboard.menu.bar.page.preview" = "미리보기";
 "dashboard.menu.bar.page.current_layout" = "현재 레이아웃";
 "dashboard.menu.bar.page.quota_and_reset" = "할당량 및 재설정";
-"dashboard.menu.bar.page.icon_and_task_status" = "아이콘 및 작업 상태";
+"dashboard.menu.bar.page.icon_and_task_status" = "아이콘 및 애니메이션";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "메뉴 막대가 서비스 제공자 데이터에 따라 실시간으로 업데이트됩니다";
 "dashboard.menu.bar.page.icon_display_mode" = "메뉴 막대 아이콘 표시";
 "dashboard.menu.bar.page.icon_display_mode_description" = "아이콘을 항상 표시하거나 작업 실행 중에만 표시하도록 선택";
@@ -311,8 +308,13 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "🌙 %1$@에 진입한 후 원래 할당량의 재설정 시간과 🌙 %1$@의 재설정 시간 중 어느 것을 표시할지 선택합니다";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "원래 할당량";
-"dashboard.menu.bar.page.animation" = "애니메이션";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "작업 실행 중 메뉴 막대 아이콘 애니메이션";
+"dashboard.menu.bar.page.animation" = "애니메이션 모드";
+"dashboard.menu.bar.page.animation_mode_description" = "성능: 시스템 리소스 사용량을 크게 줄입니다; 여러 디스플레이를 사용할 때 현재 활성화되지 않은 디스플레이에서는 애니메이션이 일시 정지되고 켜집니다\n동기화: 모든 디스플레이에서 애니메이션을 동기화하지만 시스템 리소스를 더 사용합니다";
+"dashboard.menu.bar.page.animation_mode_efficient" = "성능";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "동기화";
+"dashboard.menu.bar.page.animation_mode_fallback" = "현재 성능 모드에서 애니메이션을 정상적으로 재생할 수 없어 일시적으로 동기화 모드를 사용하고 있습니다";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "작업 실행 중 아이콘 애니메이션";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "작업 실행 중 메뉴 막대에서 아이콘 애니메이션을 재생합니다; 기기 성능이 낮다면 끄면 리소스 사용량을 줄일 수 있습니다";
 "dashboard.menu.bar.page.display_items" = "표시 내용";
 "dashboard.menu.bar.page.agent_icon" = "작업 상태 아이콘";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "현재 작업 상태 표시";

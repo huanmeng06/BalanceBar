@@ -56,34 +56,6 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.sortProvidersAlphabetically)
     }
 
-    func testMenuBarRenderingDefaultsToBitmapAndTraditionalSwitchUsesInverseStorage() {
-        let (preferences, defaults, suite) = makePreferences()
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        XCTAssertTrue(preferences.menuBarBitmapContent)
-        XCTAssertFalse(preferences.menuBarTraditionalRendering)
-        XCTAssertNil(defaults.object(forKey: AppPreferences.menuBarBitmapContentKey))
-
-        preferences.menuBarTraditionalRendering = true
-        XCTAssertTrue(preferences.menuBarTraditionalRendering)
-        XCTAssertFalse(preferences.menuBarBitmapContent)
-        XCTAssertEqual(
-            defaults.object(forKey: AppPreferences.menuBarBitmapContentKey) as? Bool,
-            false
-        )
-
-        preferences.menuBarTraditionalRendering = false
-        XCTAssertFalse(preferences.menuBarTraditionalRendering)
-        XCTAssertTrue(preferences.menuBarBitmapContent)
-        XCTAssertEqual(
-            defaults.object(forKey: AppPreferences.menuBarBitmapContentKey) as? Bool,
-            true
-        )
-
-        defaults.set(false, forKey: AppPreferences.menuBarBitmapContentKey)
-        XCTAssertTrue(preferences.menuBarTraditionalRendering)
-    }
-
     func testSilentLaunchDefaultsOffAndRoundTripsThroughUserDefaults() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -269,6 +241,28 @@ final class AppPreferencesTests: XCTestCase {
             MenuBarIconDisplayDelay.allCases.map(\.duration),
             [0, 10, 30, 60, 120, 180]
         )
+    }
+
+    func testMenuBarAnimationModeDefaultsToEfficientAndPersistsAcrossReload() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+        XCTAssertNil(defaults.string(forKey: AppPreferences.menuBarAnimationModeKey))
+
+        preferences.menuBarAnimationMode = .synchronized
+        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBarAnimationModeKey),
+            MenuBarAnimationMode.synchronized.rawValue
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarAnimationMode,
+            .synchronized
+        )
+
+        defaults.set("unsupported", forKey: AppPreferences.menuBarAnimationModeKey)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
     }
 
     func testNumericPreferencesDefaultsBoundsAndRoundTrips() {

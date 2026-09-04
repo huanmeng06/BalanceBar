@@ -30,6 +30,56 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(source.contains("BalanceBarApplicationCoordinator"))
     }
 
+    func testRenderDoesNotRefreshTheMountedDashboardTwiceForOneSnapshot() throws {
+        let source = try balanceBarSource()
+        let updateStart = try XCTUnwrap(source.range(of: "private func updateStatusItem("))
+        let updateEnd = try XCTUnwrap(
+            source.range(
+                of: "func applicationDidFinishLaunching",
+                range: updateStart.upperBound..<source.endIndex
+            )
+        )
+        let updatePath = String(source[updateStart.lowerBound..<updateEnd.lowerBound])
+        XCTAssertTrue(updatePath.contains("refreshDashboard: Bool = true"))
+        XCTAssertTrue(updatePath.contains("if refreshDashboard"))
+
+        let renderStart = try XCTUnwrap(source.range(of: "private func render(_ next: Snapshot)"))
+        let renderEnd = try XCTUnwrap(
+            source.range(
+                of: "private func refreshDate(for snapshot: Snapshot)",
+                range: renderStart.upperBound..<source.endIndex
+            )
+        )
+        let renderPath = String(source[renderStart.lowerBound..<renderEnd.lowerBound])
+        XCTAssertTrue(
+            renderPath.contains("updateStatusItem(for: next, refreshDashboard: false)")
+        )
+        XCTAssertEqual(
+            renderPath.components(separatedBy: "updateDashboard(for: next").count - 1,
+            1
+        )
+        XCTAssertFalse(renderPath.contains("refreshDashboardMenuBarPage()"))
+    }
+
+    func testAnimationToggleRefreshesDashboardVisibilityAfterUpdatingTheRuntimeState() throws {
+        let source = try balanceBarSource()
+        let toggleStart = try XCTUnwrap(source.range(of: "case \"animateCodexActivity\":"))
+        let toggleEnd = try XCTUnwrap(
+            source.range(
+                of: "case \"openCodexAutomaticDetection\":",
+                range: toggleStart.upperBound..<source.endIndex
+            )
+        )
+        let togglePath = String(source[toggleStart.lowerBound..<toggleEnd.lowerBound])
+
+        XCTAssertTrue(togglePath.contains("animateCodexActivity = enabled"))
+        XCTAssertTrue(togglePath.contains("setCodexTaskRunning(isCodexTaskRunning, force: true)"))
+        XCTAssertTrue(
+            togglePath.contains("refreshDashboardMenuBarPage()"),
+            "the animation toggle must refresh the mounted Dashboard page so dependent rows update"
+        )
+    }
+
     func testAutomaticUpdateStateRefreshDoesNotPresentReleaseNotes() throws {
         let source = try balanceBarSource()
         let handlerStart = try XCTUnwrap(source.range(of: "self.updateService.onStateChange"))

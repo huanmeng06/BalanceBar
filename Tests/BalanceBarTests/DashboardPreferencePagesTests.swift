@@ -842,6 +842,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .first { $0.identifier?.rawValue == "animateCodexActivity" }
             )
             let animationRow = try XCTUnwrap(animationSwitch.superview)
+            let animationModePopup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+            )
+            let animationModeRow = try XCTUnwrap(animationModePopup.superview)
             XCTAssertTrue(
                 delayRow.isHidden,
                 "the delay selector is hidden while Always Visible is selected in (language)"
@@ -849,27 +855,30 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let iconTaskStatusRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
             let iconRows = iconTaskStatusRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
             XCTAssertTrue(
-                zip(iconRows, [taskStatusRow, animationRow, modeRow, delayRow])
+                zip(iconRows, [taskStatusRow, modeRow, delayRow, animationRow, animationModeRow])
                     .allSatisfy { $0.0 === $0.1 },
-                "icon/task rows follow task status, animation, display mode, delay order in (language)"
+                "icon/task rows follow task status, display mode, delay, animation, mode order in (language)"
             )
             let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-            XCTAssertEqual(iconTaskStatusSeparators.count, 3)
+            XCTAssertEqual(iconTaskStatusSeparators.count, 5)
             XCTAssertFalse(
                 iconTaskStatusSeparators[0].isHidden,
-                "the divider between task status and animation is visible in (language)"
+                "the divider after task status is visible in (language)"
             )
             XCTAssertFalse(
                 iconTaskStatusSeparators[1].isHidden,
-                "the divider between animation and display mode is visible in (language)"
+                "the divider after display mode bridges the hidden delay row in (language)"
             )
             XCTAssertTrue(
                 iconTaskStatusSeparators[2].isHidden,
-                "the divider after display mode is collapsed with hidden delay in (language)"
+                "the divider inside the hidden delay row is collapsed in (language)"
             )
+            XCTAssertFalse(iconTaskStatusSeparators[3].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[4].isHidden)
             XCTAssertFalse(taskStatusRow.isHidden)
             XCTAssertFalse(animationRow.isHidden)
             XCTAssertFalse(modeRow.isHidden)
+            XCTAssertFalse(animationModeRow.isHidden)
             if language == .simplifiedChinese {
                 XCTAssertEqual(
                     modeRow.frame.height,
@@ -931,7 +940,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 "changing to Only While Running reveals the delay selector immediately in (language)"
             )
             XCTAssertTrue(
-                iconTaskStatusSeparators.allSatisfy { !$0.isHidden },
+                iconTaskStatusSeparators.dropLast().allSatisfy { !$0.isHidden },
                 "all display dividers are visible with the delay selector in (language)"
             )
 
@@ -962,16 +971,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(delayRow.isHidden, "switching back hides the delay selector in (language)")
             XCTAssertFalse(
                 iconTaskStatusSeparators[0].isHidden,
-                "the divider between task status and animation remains visible after switching back in (language)"
+                "the divider after task status remains visible after switching back in (language)"
             )
             XCTAssertFalse(
                 iconTaskStatusSeparators[1].isHidden,
-                "the divider between animation and display mode remains visible after switching back in (language)"
+                "the divider after display mode remains visible after switching back in (language)"
             )
             XCTAssertTrue(
                 iconTaskStatusSeparators[2].isHidden,
-                "the divider after display mode is collapsed after switching back in (language)"
+                "the hidden delay row remains collapsed after switching back in (language)"
             )
+            XCTAssertFalse(iconTaskStatusSeparators[3].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[4].isHidden)
 
             relay.onToggle = { identifier, enabled in
                 guard identifier == "showMenuBarIcon" else { return }
@@ -2242,20 +2253,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
-        let cases: [(AppLanguage, String)] = [
-            (.simplifiedChinese, "任务运行时播放菜单栏图标动画"),
-            (.english, "Animate the menu bar icon while a task runs"),
-            (.traditionalChineseTaiwan, "任務執行時播放選單列圖示動畫"),
-            (.traditionalChineseHongKong, "任務執行時播放選單列圖示動畫"),
-            (.japanese, "タスク実行中にメニューバーアイコンをアニメーション"),
-            (.korean, "작업 실행 중 메뉴 막대 아이콘 애니메이션"),
-            (.spanish, "Anima el icono de la barra de menús mientras se ejecuta una tarea"),
-            (.german, "Menüleistensymbol während einer Aufgabe animieren"),
-            (.french, "Animer l’icône de la barre des menus pendant une tâche")
-        ]
+        let cases = AppLanguage.allCases.filter { $0 != .system }
 
-        for (language, animationRowTitle) in cases {
+        for language in cases {
             AppLanguage.selected = language
+            let animationRowTitle = tr(
+                .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning,
+                language: language
+            )
+            let animationRowSubtitle = tr(
+                .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription,
+                language: language
+            )
             let suiteName = "DashboardPreferencePagesTests.CodexActivityAnimation.\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suiteName)!
             defaults.removePersistentDomain(forName: suiteName)
@@ -2296,9 +2305,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(quotaRowIndices, quotaRowIndices.sorted())
             let iconRowTitles = [
                 tr(.keyDashboardMenuBarPageAgentIcon, language: language),
-                animationRowTitle,
                 tr(.keyDashboardMenuBarPageIconDisplayMode, language: language),
-                tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language)
+                tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language),
+                animationRowTitle,
+                tr(.keyDashboardMenuBarPageAnimation, language: language)
             ]
             let iconRowIndices = iconRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
             XCTAssertEqual(iconRowIndices.count, iconRowTitles.count)
@@ -2307,11 +2317,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 labelStrings.contains(tr(.keyDashboardMenuBarPageDisplayItems, language: language)),
                 "the legacy mixed display-content heading is no longer shown in \(language)"
             )
-            XCTAssertFalse(
-                labelStrings.contains(tr(.keyDashboardMenuBarPageAnimation, language: language)),
-                "animation is a row under Icon & Task Status, not a separate section in \(language)"
-            )
             XCTAssertEqual(labelStrings.filter { $0 == animationRowTitle }.count, 1)
+            XCTAssertEqual(labelStrings.filter { $0 == animationRowSubtitle }.count, 1)
 
             let animationSwitches = descendants(of: menuBarPage)
                 .compactMap { $0 as? NSSwitch }
@@ -2347,6 +2354,74 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             defaults.removePersistentDomain(forName: suiteName)
         }
+    }
+
+    func testAnimationModeVisibilityFollowsTaskAnimationToggle() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.AnimationVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        func refreshPage() {
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        relay.onToggle = { identifier, enabled in
+            guard identifier == "animateCodexActivity" else { return }
+            preferences.animateCodexActivity = enabled
+            refreshPage()
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let animationSwitch = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == "animateCodexActivity" }
+        )
+        let animationModeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+        )
+        let animationModeRow = try XCTUnwrap(animationModeControl.superview)
+        XCTAssertFalse(animationModeRow.isHidden)
+        XCTAssertTrue(animationModeControl.isEnabled)
+
+        animationSwitch.state = .off
+        relay.toggle(animationSwitch)
+        XCTAssertFalse(preferences.animateCodexActivity)
+        XCTAssertTrue(animationModeRow.isHidden)
+        XCTAssertFalse(animationModeControl.isEnabled)
+
+        animationSwitch.state = .on
+        relay.toggle(animationSwitch)
+        XCTAssertTrue(preferences.animateCodexActivity)
+        XCTAssertFalse(animationModeRow.isHidden)
+        XCTAssertTrue(animationModeControl.isEnabled)
     }
 
     func testMenuBarQuotaRowsFollowVisibilityDependenciesAndRequestedOrder() throws {
@@ -2991,6 +3066,86 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ).state,
             .off
         )
+    }
+
+    func testAnimationModeSelectorDefaultsToEfficientAndControlsFallbackWarning() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.AnimationMode.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        relay.onMenuBarAnimationModeChanged = { mode in
+            preferences.menuBarAnimationMode = mode
+        }
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let modeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+        )
+        XCTAssertEqual(modeControl.indexOfSelectedItem, 0)
+        XCTAssertEqual(
+            modeControl.itemArray.compactMap { $0.representedObject as? String },
+            MenuBarAnimationMode.allCases.map(\.rawValue)
+        )
+        XCTAssertEqual(
+            modeControl.itemTitles,
+            [
+                tr(.keyDashboardMenuBarPageAnimationModeEfficient),
+                tr(.keyDashboardMenuBarPageAnimationModeSynchronized)
+            ]
+        )
+        XCTAssertEqual(
+            tr(.keyDashboardMenuBarPageAnimationModeDescription),
+            "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\n同步：所有显示器上的动画保持同步，但资源占用更高"
+        )
+
+        modeControl.selectItem(at: 1)
+        relay.menuBarAnimationMode(modeControl)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+
+        let warningRow = try XCTUnwrap(
+            descendant(
+                withIdentifier: DashboardMenuBarPage.animationFallbackWarningIdentifier + "Row",
+                in: page
+            )
+        )
+        controller.updateAnimationFallback(
+            active: true,
+            showTaskStatusIcon: true,
+            displayMode: .alwaysVisible,
+            animationEnabled: true,
+            animationMode: .efficient
+        )
+        XCTAssertFalse(warningRow.isHidden)
+        XCTAssertTrue(
+            descendants(of: warningRow)
+                .compactMap { $0 as? NSTextField }
+                .contains { $0.stringValue == tr(.keyDashboardMenuBarPageAnimationModeFallback) }
+        )
+
+        controller.updateAnimationFallback(
+            active: false,
+            showTaskStatusIcon: true,
+            displayMode: .alwaysVisible,
+            animationEnabled: true,
+            animationMode: .efficient
+        )
+        XCTAssertTrue(warningRow.isHidden)
     }
 
     func testRelayRoutesOffsetAdjustAndResetOnce() {
@@ -4106,6 +4261,143 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(slider.doubleValue, 7.4, accuracy: 0.001)
     }
 
+    func testMenuBarRefreshSkipsEquivalentVisibleInputsBeforeAppKitMeasurement() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarRefreshSignature.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let initial = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1)
+        )
+        let iconImage = NSImage(size: NSSize(width: 16, height: 16))
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: initial,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+        controller.refresh(
+            snapshot: initial,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            statusItemVisibility: .visible
+        )
+
+        let applied = controller.refreshApplyCountForTesting
+        let warningRefreshes = controller.warningRefreshCountForTesting
+        let settingsRefreshes = controller.settingsRefreshCountForTesting
+        let previewRefreshes = controller.previewRefreshCountForTesting
+        let previewLayouts = controller.previewCardLayoutCountForTesting
+        let quotaLayouts = controller.quotaCardLayoutCountForTesting
+        let iconTaskLayouts = controller.iconTaskCardLayoutCountForTesting
+        for offset in 0..<100 {
+            controller.refresh(
+                snapshot: Snapshot.balance(
+                    "Provider",
+                    80,
+                    "USD",
+                    nil,
+                    Date(timeIntervalSince1970: TimeInterval(offset + 2))
+                ),
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: iconImage,
+                statusItemVisibility: .visible
+            )
+        }
+
+        XCTAssertEqual(controller.refreshApplyCountForTesting, applied)
+        XCTAssertEqual(controller.refreshSkipCountForTesting, 100)
+        XCTAssertEqual(controller.warningRefreshCountForTesting, warningRefreshes)
+        XCTAssertEqual(controller.settingsRefreshCountForTesting, settingsRefreshes)
+        XCTAssertEqual(controller.previewRefreshCountForTesting, previewRefreshes)
+        XCTAssertEqual(controller.previewCardLayoutCountForTesting, previewLayouts)
+        XCTAssertEqual(controller.quotaCardLayoutCountForTesting, quotaLayouts)
+        XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, iconTaskLayouts)
+
+        controller.refresh(
+            snapshot: Snapshot.balance(
+                "Provider",
+                79,
+                "USD",
+                nil,
+                Date(timeIntervalSince1970: 200)
+            ),
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            statusItemVisibility: .visible
+        )
+        XCTAssertEqual(controller.refreshApplyCountForTesting, applied + 1)
+        XCTAssertEqual(controller.settingsRefreshCountForTesting, settingsRefreshes)
+        XCTAssertEqual(controller.previewRefreshCountForTesting, previewRefreshes + 1)
+        XCTAssertEqual(controller.previewCardLayoutCountForTesting, previewLayouts)
+        XCTAssertEqual(controller.quotaCardLayoutCountForTesting, quotaLayouts)
+        XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, iconTaskLayouts)
+    }
+
+    func testMenuBarPreviewNativeAnimationUsesSeparateVisibleCAHost() throws {
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPreviewCA.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let icon = NSImage(size: NSSize(width: 16, height: 16))
+        icon.isTemplate = true
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .balance(
+                "Provider",
+                80,
+                "USD",
+                nil,
+                Date(timeIntervalSince1970: 1)
+            ),
+            menuBarSnapshot: { $0 },
+            iconImage: icon,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+
+        controller.updatePreviewAnimation(active: true, iconImage: icon)
+        let host = controller.previewAnimationHostForTesting
+        XCTAssertTrue(host.superview != nil)
+        XCTAssertFalse(host.isHidden)
+        XCTAssertNotNil(host.rotationAnimationForTesting)
+        XCTAssertEqual(host.iconLayer.anchorPoint, CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(host.iconLayer.bounds.size, host.bounds.size)
+        XCTAssertEqual(
+            host.iconLayer.position,
+            CGPoint(x: host.bounds.midX, y: host.bounds.midY)
+        )
+
+        controller.updatePreviewAnimation(active: false, iconImage: icon)
+        XCTAssertTrue(host.isHidden)
+        XCTAssertNil(host.rotationAnimationForTesting)
+    }
+
     func testMenuBarTypographyAndPositionLabelsLocalizeAcrossSupportedLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -4682,7 +4974,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
     }
 
-    func testTraditionalRenderingSettingIsLocalizedDefaultsOffAndPersistsInverseBitmapValue() throws {
+    func testAdvancedPageContainsOnlyActiveSettingsSections() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
 
@@ -4694,11 +4986,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             defer { defaults.removePersistentDomain(forName: suiteName) }
 
             let preferences = AppPreferences(defaults: defaults)
-            let relay = DashboardPreferencePageRelay()
-            relay.onToggle = { identifier, enabled in
-                guard identifier == AppPreferences.menuBarTraditionalRenderingKey else { return }
-                preferences.menuBarTraditionalRendering = enabled
-            }
             let page = DashboardAdvancedPage().make(.init(
                 preferences: preferences,
                 mode: OpenCodexDashboardMode(automaticDetection: true, manualPort: nil),
@@ -4707,36 +4994,26 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     runtimeCandidate: nil
                 ),
                 runtimeCandidate: nil,
-                relay: relay,
+                relay: DashboardPreferencePageRelay(),
                 logViewer: NSView(),
                 onModeChanged: { _ in },
                 onClamp: {}
             ))
 
             let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-            XCTAssertTrue(labels.contains {
-                $0.stringValue == tr(.keyDashboardAdvancedPageRendering, language: language)
-            })
-            XCTAssertTrue(labels.contains {
-                $0.stringValue == tr(.keyDashboardAdvancedPageTraditionalMenuBarRendering, language: language)
-            })
-            XCTAssertTrue(labels.contains {
-                $0.stringValue == tr(.keyDashboardAdvancedPageTraditionalMenuBarRenderingDescription, language: language)
-            })
-
-            let renderingSwitch = try XCTUnwrap(
-                descendants(of: page)
-                    .compactMap { $0 as? NSSwitch }
-                    .first { $0.identifier?.rawValue == AppPreferences.menuBarTraditionalRenderingKey }
+            let labelStrings = labels.map(\.stringValue)
+            XCTAssertEqual(
+                labelStrings.filter {
+                    $0 == tr(.keyDashboardAdvancedPageOpencodex, language: language)
+                }.count,
+                1
             )
-            XCTAssertEqual(renderingSwitch.state, .off)
-            XCTAssertTrue(preferences.menuBarBitmapContent)
-            XCTAssertFalse(preferences.menuBarTraditionalRendering)
-
-            renderingSwitch.state = .on
-            relay.toggle(renderingSwitch)
-            XCTAssertTrue(preferences.menuBarTraditionalRendering)
-            XCTAssertFalse(preferences.menuBarBitmapContent)
+            XCTAssertEqual(
+                labelStrings.filter {
+                    $0 == tr(.keyDashboardAdvancedPageDiagnostics, language: language)
+                }.count,
+                1
+            )
         }
     }
 

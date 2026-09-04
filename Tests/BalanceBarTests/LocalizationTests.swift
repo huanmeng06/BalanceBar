@@ -647,10 +647,142 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testAnimationModeCopyOmitsFullStopsAcrossAllLanguages() {
+        let fullStops = [".", "。", "．"]
+        for language in allLanguages {
+            let description = tr(
+                .keyDashboardMenuBarPageAnimationModeDescription,
+                language: language
+            )
+            let fallback = tr(
+                .keyDashboardMenuBarPageAnimationModeFallback,
+                language: language
+            )
+            XCTAssertFalse(
+                description.contains { fullStops.contains(String($0)) },
+                "animation mode description contains a full stop in \(language.rawValue)"
+            )
+            XCTAssertFalse(
+                fallback.contains { fullStops.contains(String($0)) },
+                "animation mode fallback contains a full stop in \(language.rawValue)"
+            )
+        }
+    }
+
+    func testAnimationModeUsesPerformanceNameInEveryBundledLanguage() {
+        let expectedNames: [AppLanguage: String] = [
+            .simplifiedChinese: "性能",
+            .traditionalChineseTaiwan: "效能",
+            .traditionalChineseHongKong: "效能",
+            .japanese: "パフォーマンス",
+            .english: "Performance",
+            .korean: "성능",
+            .spanish: "Rendimiento",
+            .german: "Leistung",
+            .french: "Performances",
+            .portuguese: "Desempenho",
+            .russian: "Производительность",
+            .italian: "Prestazioni"
+        ]
+
+        for language in allLanguages {
+            let name = tr(
+                .keyDashboardMenuBarPageAnimationModeEfficient,
+                language: language
+            )
+            XCTAssertEqual(name, expectedNames[language])
+            XCTAssertTrue(
+                tr(
+                    .keyDashboardMenuBarPageAnimationModeDescription,
+                    language: language
+                ).contains(name),
+                "animation mode description must use the renamed mode in \(language.rawValue)"
+            )
+            XCTAssertTrue(
+                tr(
+                    .keyDashboardMenuBarPageAnimationModeFallback,
+                    language: language
+                ).contains(name),
+                "animation mode fallback must use the renamed mode in \(language.rawValue)"
+            )
+        }
+    }
+
+    func testTaskAnimationTitleAndSubtitleAreLocalizedAcrossAllLanguages() {
+        let expected: [AppLanguage: (title: String, subtitle: String)] = [
+            .simplifiedChinese: (
+                "任务运行时图标动画",
+                "任务运行时在菜单栏播放图标动画；若设备性能较弱，可关闭以减少资源占用"
+            ),
+            .traditionalChineseTaiwan: (
+                "任務執行時圖示動畫",
+                "任務執行時在選單列播放圖示動畫；若裝置效能較弱，可以關閉以減少資源用量"
+            ),
+            .traditionalChineseHongKong: (
+                "任務執行時圖示動畫",
+                "任務執行時在選單列播放圖示動畫；若裝置效能較弱，可以關閉以減少資源用量"
+            ),
+            .japanese: (
+                "タスク実行時のアイコンアニメーション",
+                "タスク実行中にメニューバーでアイコンをアニメーション表示します；デバイスの性能が低い場合は、オフにしてリソース使用量を減らせます"
+            ),
+            .english: (
+                "Task Icon Animation While Running",
+                "Play the icon animation in the menu bar while a task runs; turn it off to reduce resource use on lower-performance devices"
+            ),
+            .korean: (
+                "작업 실행 중 아이콘 애니메이션",
+                "작업 실행 중 메뉴 막대에서 아이콘 애니메이션을 재생합니다; 기기 성능이 낮다면 끄면 리소스 사용량을 줄일 수 있습니다"
+            ),
+            .spanish: (
+                "Animación del icono durante la tarea",
+                "Reproduce la animación del icono en la barra de menús mientras se ejecuta una tarea; desactívala para reducir el uso de recursos en dispositivos de menor rendimiento"
+            ),
+            .german: (
+                "Symbolanimation während der Aufgabe",
+                "Gibt die Symbolanimation während einer Aufgabe in der Menüleiste wieder; auf leistungsschwächeren Geräten kann sie deaktiviert werden, um Ressourcen zu sparen"
+            ),
+            .french: (
+                "Animation de l’icône pendant une tâche",
+                "Anime l’icône dans la barre des menus pendant une tâche ; désactivez-la pour réduire l’utilisation des ressources sur les appareils moins performants"
+            ),
+            .portuguese: (
+                "Animação do ícone durante a tarefa",
+                "Reproduz a animação do ícone na barra de menus enquanto uma tarefa é executada; desative-a para reduzir a utilização de recursos em dispositivos com menor desempenho"
+            ),
+            .russian: (
+                "Анимация значка во время выполнения задачи",
+                "Воспроизводит анимацию значка в строке меню во время выполнения задачи; на устройствах с низкой производительностью её можно отключить, чтобы снизить использование ресурсов"
+            ),
+            .italian: (
+                "Animazione dell’icona durante l’attività",
+                "Riproduce l’animazione dell’icona nella barra dei menu durante un’attività; disattivala per ridurre l’uso delle risorse sui dispositivi meno potenti"
+            )
+        ]
+
+        for language in allLanguages {
+            let expectedCopy = expected[language]!
+            XCTAssertEqual(
+                tr(
+                    .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunning,
+                    language: language
+                ),
+                expectedCopy.title
+            )
+            XCTAssertEqual(
+                tr(
+                    .keyDashboardMenuBarPagePlayTheIconAnimationWhileATaskIsRunningDescription,
+                    language: language
+                ),
+                expectedCopy.subtitle
+            )
+        }
+    }
+
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 468)
+        XCTAssertEqual(expectedKeys.count, 470)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -1855,18 +1987,18 @@ final class LocalizationTests: XCTestCase {
 
     func testDashboardTaskOrientedSectionTitlesAreLocalizedAcrossAllLanguages() {
         let expected: [AppLanguage: (quotaAndReset: String, iconAndTaskStatus: String, layout: String, menuBehavior: String, statusLinks: String, iconDisplayMode: String)] = [
-            .simplifiedChinese: ("额度与重置", "图标与任务状态", "布局", "菜单行为", "状态链接", "菜单栏图标显示"),
-            .traditionalChineseTaiwan: ("配額與重設", "圖示與任務狀態", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
-            .traditionalChineseHongKong: ("配額與重設", "圖示與任務狀態", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
-            .japanese: ("クォータとリセット", "アイコンとタスクの状態", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーアイコンの表示"),
-            .english: ("Quota & Reset", "Icon & Task Status", "Layout", "Menu behavior", "Status Links", "Menu Bar Icon Display"),
-            .korean: ("할당량 및 재설정", "아이콘 및 작업 상태", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
-            .spanish: ("Cuota y reinicio", "Icono y estado de la tarea", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
-            .german: ("Kontingent und Zurücksetzung", "Symbol und Aufgabenstatus", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüleistensymbols"),
-            .french: ("Quota et réinitialisation", "Icône et état de la tâche", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus"),
-            .portuguese: ("Cota e redefinição", "Ícone e status da tarefa", "Layout", "Comportamento do menu", "Links de status", "Exibição do ícone na barra de menus"),
-            .russian: ("Квота и сброс", "Значок и состояние задачи", "Макет", "Поведение меню", "Ссылки статуса", "Отображение значка в строке меню"),
-            .italian: ("Quota e ripristino", "Icona e stato dell'attività", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione dell'icona nella barra dei menu")
+            .simplifiedChinese: ("额度与重置", "图标与动画", "布局", "菜单行为", "状态链接", "菜单栏图标显示"),
+            .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
+            .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
+            .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーアイコンの表示"),
+            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Menu behavior", "Status Links", "Menu Bar Icon Display"),
+            .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
+            .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
+            .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüleistensymbols"),
+            .french: ("Quota et réinitialisation", "Icône et animation", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus"),
+            .portuguese: ("Cota e redefinição", "Ícone e animação", "Layout", "Comportamento do menu", "Links de status", "Exibição do ícone na barra de menus"),
+            .russian: ("Квота и сброс", "Значок и анимация", "Макет", "Поведение меню", "Ссылки статуса", "Отображение значка в строке меню"),
+            .italian: ("Quota e ripristino", "Icona e animazione", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione dell'icona nella barra dei menu")
         ]
 
         for language in allLanguages {

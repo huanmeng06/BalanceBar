@@ -1603,75 +1603,37 @@ final class MenuBarGeometryTests: XCTestCase {
         )
     }
 
-    func testClassicAndBitmapMenuBarCoordinateSpacesPreserveInkAndIconY() throws {
-        let scenarios: [
-            (name: String, primary: String, secondary: String?, isBalance: Bool)
-        ] = [
-            ("official-single-line", "48%", nil, false),
-            ("third-party-single-line", "USD 123,456.78", nil, true),
-            ("official-two-line", "48%", "Reset in 2h", false)
-        ]
-        let userOffsets: [CGFloat] = [0, 2, -2]
-        let buttonSize = NSSize(width: 180, height: 24)
+    func testNativeIconHostRectInvertsImageCanvasPlacementWithoutScaleDrift() {
+        let placement = MenuBarBitmapImagePlacement(
+            canonicalBounds: NSRect(x: 0, y: 0, width: 100, height: 24),
+            imageDestinationRect: NSRect(x: 4, y: 2, width: 100, height: 24)
+        )
+        let imageCanvasIcon = NSRect(x: 10, y: 3, width: 16, height: 16)
 
-        for scenario in scenarios {
-            for preset in MenuBarFontSizePreset.allCases {
-                for showIcon in [false, true] {
-                    for amountOffsetY in userOffsets {
-                        let classicRoot = NSStatusBarButton(
-                            frame: NSRect(origin: .zero, size: buttonSize)
-                        )
-                        let bitmapRoot = MenuBarBitmapRenderView(
-                            frame: NSRect(origin: .zero, size: buttonSize)
-                        )
-                        let classic = try renderMenuBarComponents(
-                            in: classicRoot,
-                            primaryText: scenario.primary,
-                            secondaryText: scenario.secondary,
-                            fontSize: CGFloat(preset.primarySize),
-                            showIcon: showIcon,
-                            isBalance: scenario.isBalance,
-                            amountOffsetY: amountOffsetY
-                        )
-                        let bitmap = try renderMenuBarComponents(
-                            in: bitmapRoot,
-                            primaryText: scenario.primary,
-                            secondaryText: scenario.secondary,
-                            fontSize: CGFloat(preset.primarySize),
-                            showIcon: showIcon,
-                            isBalance: scenario.isBalance,
-                            amountOffsetY: amountOffsetY
-                        )
-                        let context = "\(scenario.name)/\(preset.rawValue)/icon=\(showIcon)/offset=\(amountOffsetY)"
+        XCTAssertEqual(
+            placement.buttonLocalRect(forImageCanvasRect: imageCanvasIcon),
+            NSRect(x: 14, y: 5, width: 16, height: 16)
+        )
+        XCTAssertEqual(
+            placement.imageRect(
+                forCanonicalRect: placement.buttonLocalRect(
+                    forImageCanvasRect: imageCanvasIcon
+                )
+            ),
+            imageCanvasIcon
+        )
 
-                        XCTAssertEqual(
-                            classic.primaryInk.midY,
-                            bitmap.primaryInk.midY,
-                            accuracy: 0.25,
-                            "primary ink Y drifted in \(context)"
-                        )
-                        if showIcon {
-                            let classicIcon = try XCTUnwrap(classic.iconFrame)
-                            let bitmapIcon = try XCTUnwrap(bitmap.iconFrame)
-                            XCTAssertEqual(
-                                classicIcon.midY,
-                                bitmapIcon.midY,
-                                accuracy: 0.25,
-                                "icon Y drifted in \(context)"
-                            )
-                            XCTAssertEqual(
-                                classic.primaryInk.midY - classicIcon.midY,
-                                bitmap.primaryInk.midY - bitmapIcon.midY,
-                                accuracy: 0.25,
-                                "icon/text relative Y drifted in \(context)"
-                            )
-                        } else {
-                            XCTAssertNil(classic.iconFrame)
-                            XCTAssertNil(bitmap.iconFrame)
-                        }
-                    }
-                }
-            }
+        // Backing scale changes the raster canvas, not the logical local
+        // rect or its flipped-coordinate interpretation.
+        for scale in [1, 2, 3] {
+            _ = MenuBarBitmapImageLayout.pixelDimensions(
+                for: placement.canvasSize,
+                scale: CGFloat(scale)
+            )
+            XCTAssertEqual(
+                placement.buttonLocalRect(forImageCanvasRect: imageCanvasIcon),
+                NSRect(x: 14, y: 5, width: 16, height: 16)
+            )
         }
     }
 

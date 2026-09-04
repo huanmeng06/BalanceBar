@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "重新加载";
 "dashboard.advanced.page.show_in_finder" = "在 Finder 中显示";
 "dashboard.advanced.page.diagnostics" = "诊断";
-"dashboard.advanced.page.rendering" = "渲染";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "传统菜单栏渲染";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "开启后使用传统渲染，显示效果略有提升，但可能增加性能占用。";
 "dashboard.advanced.page.debug_log" = "调试日志";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "记录运行状态与错误";
 "dashboard.advanced.page.enter_port_manually" = "手动输入端口号";
@@ -282,7 +279,7 @@
 "dashboard.menu.bar.page.preview" = "预览";
 "dashboard.menu.bar.page.current_layout" = "当前布局";
 "dashboard.menu.bar.page.quota_and_reset" = "额度与重置";
-"dashboard.menu.bar.page.icon_and_task_status" = "图标与任务状态";
+"dashboard.menu.bar.page.icon_and_task_status" = "图标与动画";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "菜单栏会随服务商数据实时更新";
 "dashboard.menu.bar.page.icon_display_mode" = "菜单栏图标显示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "选择始终显示图标，或仅在任务运行时显示";
@@ -311,8 +308,13 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "进入 🌙 %1$@ 后，选择继续显示原额度或 🌙 %1$@ 的重置时间";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "原额度";
-"dashboard.menu.bar.page.animation" = "动画";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务运行时播放菜单栏图标动画";
+"dashboard.menu.bar.page.animation" = "动画渲染模式";
+"dashboard.menu.bar.page.animation_mode_description" = "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\n同步：所有显示器上的动画保持同步，但资源占用更高";
+"dashboard.menu.bar.page.animation_mode_efficient" = "性能";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "同步";
+"dashboard.menu.bar.page.animation_mode_fallback" = "性能模式当前无法正常播放动画，已临时切换到同步模式";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务运行时图标动画";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "任务运行时在菜单栏播放图标动画；若设备性能较弱，可关闭以减少资源占用";
 "dashboard.menu.bar.page.display_items" = "显示内容";
 "dashboard.menu.bar.page.agent_icon" = "任务状态图标";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "显示当前任务运行状态";

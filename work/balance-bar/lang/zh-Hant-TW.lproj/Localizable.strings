@@ -164,9 +164,6 @@
 "dashboard.advanced.page.reload" = "重新載入";
 "dashboard.advanced.page.show_in_finder" = "在 Finder 中顯示";
 "dashboard.advanced.page.diagnostics" = "診斷";
-"dashboard.advanced.page.rendering" = "渲染";
-"dashboard.advanced.page.traditional_menu_bar_rendering" = "傳統選單列渲染";
-"dashboard.advanced.page.traditional_menu_bar_rendering_description" = "開啟後使用傳統渲染，顯示效果略有提升，但可能增加效能佔用。";
 "dashboard.advanced.page.debug_log" = "偵錯日誌";
 "dashboard.advanced.page.records_runtime_status_and_errors" = "記錄執行狀態與錯誤";
 "dashboard.advanced.page.enter_port_manually" = "手動輸入連接埠號";
@@ -282,7 +279,7 @@
 "dashboard.menu.bar.page.preview" = "預覽";
 "dashboard.menu.bar.page.current_layout" = "目前版面";
 "dashboard.menu.bar.page.quota_and_reset" = "配額與重設";
-"dashboard.menu.bar.page.icon_and_task_status" = "圖示與任務狀態";
+"dashboard.menu.bar.page.icon_and_task_status" = "圖示與動畫";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "選單列會隨服務商資料即時更新";
 "dashboard.menu.bar.page.icon_display_mode" = "選單列圖示顯示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "選擇始終顯示圖示，或僅在任務執行時顯示";
@@ -311,8 +308,13 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "進入 🌙 %1$@ 後，選擇繼續顯示原額度或 🌙 %1$@ 的重設時間";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "原額度";
-"dashboard.menu.bar.page.animation" = "動畫";
-"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任務執行時播放選單列圖示動畫";
+"dashboard.menu.bar.page.animation" = "動畫模式";
+"dashboard.menu.bar.page.animation_mode_description" = "效能：大幅降低系統資源用量；使用多部顯示器時，非目前使用中的顯示器會暫停動畫並亮起\n同步：讓所有顯示器上的動畫保持同步，但會使用較多系統資源";
+"dashboard.menu.bar.page.animation_mode_efficient" = "效能";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "同步";
+"dashboard.menu.bar.page.animation_mode_fallback" = "目前無法在「效能」模式下正常播放動畫，已暫時改用「同步」模式";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任務執行時圖示動畫";
+"dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running_description" = "任務執行時在選單列播放圖示動畫；若裝置效能較弱，可以關閉以減少資源用量";
 "dashboard.menu.bar.page.display_items" = "顯示內容";
 "dashboard.menu.bar.page.agent_icon" = "任務狀態圖示";
 "dashboard.menu.bar.page.shows_the_current_task_status" = "顯示目前任務執行狀態";
