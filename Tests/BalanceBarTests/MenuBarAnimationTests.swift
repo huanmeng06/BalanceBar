@@ -45,6 +45,88 @@ final class MenuBarAnimationTests: XCTestCase {
         )
     }
 
+    func testSynchronizedCodexFramesAdvanceClockwiseThroughOneThirtySixStateRevolution() throws {
+        XCTAssertEqual(
+            MenuBarCodexAnimationBackend(mode: .synchronized),
+            .stableBitmap,
+            "D0 must continue to use the pre-rendered bitmap frame path"
+        )
+        XCTAssertEqual(RotatingTemplateImageView.frameCount, 36)
+        XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.2, accuracy: 0.000_001)
+        XCTAssertEqual(
+            Double(RotatingTemplateImageView.frameCount)
+                / RotatingTemplateImageView.rotationDuration,
+            30,
+            accuracy: 0.000_001
+        )
+
+        let imageView = RotatingTemplateImageView(
+            frame: NSRect(x: 0, y: 0, width: 128, height: 128)
+        )
+        let sourceImage = makeClockwiseDirectionProbeImage()
+        imageView.setSourceImage(sourceImage)
+
+        let frames = imageView.animationFrames
+        XCTAssertEqual(frames.count, RotatingTemplateImageView.frameCount)
+        let markerCentroids = try frames.map(markerCentroid(in:))
+        let center = CGPoint(
+            x: sourceImage.size.width / 2,
+            y: sourceImage.size.height / 2
+        )
+        // NSBitmapImageRep exposes rows from the top while AppKit's unflipped
+        // drawing context rotates in a bottom-origin coordinate system.
+        let vectors = markerCentroids.map {
+            CGPoint(x: $0.x - center.x, y: center.y - $0.y)
+        }
+
+        let firstVector = try XCTUnwrap(vectors.first)
+        let secondVector = try XCTUnwrap(vectors.dropFirst().first)
+        let firstToSecondCrossProduct = Double(
+            firstVector.x * secondVector.y - firstVector.y * secondVector.x
+        )
+        XCTAssertLessThan(
+            firstToSecondCrossProduct,
+            0,
+            "the second generated D0 state must move clockwise from the first state"
+        )
+
+        let expectedClockwiseStep = 2 * Double.pi / Double(RotatingTemplateImageView.frameCount)
+        let angles = vectors.map { vector in
+            atan2(Double(vector.y), Double(vector.x))
+        }
+        var revolution = 0.0
+        for index in angles.indices {
+            let nextIndex = (index + 1) % angles.count
+            let step = clockwiseAngularDelta(
+                from: angles[index],
+                to: angles[nextIndex]
+            )
+            XCTAssertEqual(
+                step,
+                expectedClockwiseStep,
+                accuracy: 0.08,
+                "D0 frame \(index) must advance clockwise by one of 36 equal states"
+            )
+            revolution += step
+        }
+        XCTAssertEqual(
+            revolution,
+            2 * Double.pi,
+            accuracy: 0.16,
+            "the 36-state D0 sequence must close after one clockwise revolution"
+        )
+
+        var state = MenuBarAnimationState()
+        let sequence = (0..<RotatingTemplateImageView.frameCount).compactMap { _ in
+            state.advance(frameCount: RotatingTemplateImageView.frameCount)
+        }
+        XCTAssertEqual(
+            sequence,
+            Array(1..<RotatingTemplateImageView.frameCount) + [0],
+            "the synchronized frame state must visit all 36 states and wrap to zero"
+        )
+    }
+
     func testNativeCoreAnimationHostUsesDiscreteCenterPivotContract() throws {
         let host = MenuBarNativeAnimatedIconHostView(
             frame: NSRect(x: 7, y: 11, width: 16, height: 16)
@@ -236,6 +318,58 @@ final class MenuBarAnimationTests: XCTestCase {
         imageView.setSourceImage(nextSource)
         XCTAssertEqual(sourceChanges.count, 2)
         XCTAssertTrue(imageView.image === nextSource)
+    }
+
+    private func makeClockwiseDirectionProbeImage() -> NSImage {
+        let size = NSSize(width: 128, height: 128)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.clear.setFill()
+            rect.fill()
+            NSColor.red.setFill()
+            NSBezierPath(
+                ovalIn: NSRect(x: 88, y: 54, width: 20, height: 20)
+            ).fill()
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    private func markerCentroid(in image: NSImage) throws -> CGPoint {
+        let data = try XCTUnwrap(image.tiffRepresentation)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: data))
+        var totalX = 0.0
+        var totalY = 0.0
+        var sampleCount = 0.0
+
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?
+                    .usingColorSpace(.deviceRGB),
+                    color.redComponent > 0.55,
+                    color.greenComponent < 0.25,
+                    color.blueComponent < 0.25,
+                    color.alphaComponent > 0.25
+                else {
+                    continue
+                }
+                totalX += Double(x)
+                totalY += Double(y)
+                sampleCount += 1
+            }
+        }
+
+        XCTAssertGreaterThan(sampleCount, 0, "the direction probe marker must be present")
+        return CGPoint(
+            x: totalX / sampleCount,
+            y: totalY / sampleCount
+        )
+    }
+
+    private func clockwiseAngularDelta(from: Double, to: Double) -> Double {
+        let fullTurn = 2 * Double.pi
+        let rawDelta = (from - to).truncatingRemainder(dividingBy: fullTurn)
+        return rawDelta >= 0 ? rawDelta : rawDelta + fullTurn
     }
 
     func testStartingTheSameRotationTwiceKeepsOneLifecycleAndStoppingIsIdempotent() {
