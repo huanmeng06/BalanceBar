@@ -669,6 +669,45 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testAnimationModeUsesPerformanceNameInEveryBundledLanguage() {
+        let expectedNames: [AppLanguage: String] = [
+            .simplifiedChinese: "性能",
+            .traditionalChineseTaiwan: "效能",
+            .traditionalChineseHongKong: "效能",
+            .japanese: "パフォーマンス",
+            .english: "Performance",
+            .korean: "성능",
+            .spanish: "Rendimiento",
+            .german: "Leistung",
+            .french: "Performances",
+            .portuguese: "Desempenho",
+            .russian: "Производительность",
+            .italian: "Prestazioni"
+        ]
+
+        for language in allLanguages {
+            let name = tr(
+                .keyDashboardMenuBarPageAnimationModeEfficient,
+                language: language
+            )
+            XCTAssertEqual(name, expectedNames[language])
+            XCTAssertTrue(
+                tr(
+                    .keyDashboardMenuBarPageAnimationModeDescription,
+                    language: language
+                ).contains(name),
+                "animation mode description must use the renamed mode in \(language.rawValue)"
+            )
+            XCTAssertTrue(
+                tr(
+                    .keyDashboardMenuBarPageAnimationModeFallback,
+                    language: language
+                ).contains(name),
+                "animation mode fallback must use the renamed mode in \(language.rawValue)"
+            )
+        }
+    }
+
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)

@@ -312,10 +312,10 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Ursprüngliches Kontingent";
 "dashboard.menu.bar.page.animation" = "Animationsmodus";
-"dashboard.menu.bar.page.animation_mode_description" = "Effizient: Reduziert die Nutzung von Systemressourcen deutlich; bei mehreren Displays wird die Animation auf nicht aktiven Displays angehalten und leuchtet auf\nSynchronisiert: Hält die Animation auf allen Displays synchron, benötigt aber mehr Systemressourcen";
-"dashboard.menu.bar.page.animation_mode_efficient" = "Effizient";
+"dashboard.menu.bar.page.animation_mode_description" = "Leistung: Reduziert die Nutzung von Systemressourcen deutlich; bei mehreren Displays wird die Animation auf nicht aktiven Displays angehalten und leuchtet auf\nSynchronisiert: Hält die Animation auf allen Displays synchron, benötigt aber mehr Systemressourcen";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Leistung";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Synchronisiert";
-"dashboard.menu.bar.page.animation_mode_fallback" = "Die Animation kann im Modus „Effizient“ derzeit nicht korrekt wiedergegeben werden; daher wird vorübergehend der Modus „Synchronisiert“ verwendet";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Die Animation kann im Modus „Leistung“ derzeit nicht korrekt wiedergegeben werden; daher wird vorübergehend der Modus „Synchronisiert“ verwendet";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Menüleistensymbol während einer Aufgabe animieren";
 "dashboard.menu.bar.page.display_items" = "Angezeigte Inhalte";
 "dashboard.menu.bar.page.agent_icon" = "Aufgabenstatussymbol";

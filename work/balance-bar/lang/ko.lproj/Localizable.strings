@@ -312,10 +312,10 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "원래 할당량";
 "dashboard.menu.bar.page.animation" = "애니메이션 모드";
-"dashboard.menu.bar.page.animation_mode_description" = "고효율: 시스템 리소스 사용량을 크게 줄입니다; 여러 디스플레이를 사용할 때 현재 활성화되지 않은 디스플레이에서는 애니메이션이 일시 정지되고 켜집니다\n동기화: 모든 디스플레이에서 애니메이션을 동기화하지만 시스템 리소스를 더 사용합니다";
-"dashboard.menu.bar.page.animation_mode_efficient" = "고효율";
+"dashboard.menu.bar.page.animation_mode_description" = "성능: 시스템 리소스 사용량을 크게 줄입니다; 여러 디스플레이를 사용할 때 현재 활성화되지 않은 디스플레이에서는 애니메이션이 일시 정지되고 켜집니다\n동기화: 모든 디스플레이에서 애니메이션을 동기화하지만 시스템 리소스를 더 사용합니다";
+"dashboard.menu.bar.page.animation_mode_efficient" = "성능";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "동기화";
-"dashboard.menu.bar.page.animation_mode_fallback" = "현재 고효율 모드에서 애니메이션을 정상적으로 재생할 수 없어 일시적으로 동기화 모드를 사용하고 있습니다";
+"dashboard.menu.bar.page.animation_mode_fallback" = "현재 성능 모드에서 애니메이션을 정상적으로 재생할 수 없어 일시적으로 동기화 모드를 사용하고 있습니다";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "작업 실행 중 메뉴 막대 아이콘 애니메이션";
 "dashboard.menu.bar.page.display_items" = "표시 내용";
 "dashboard.menu.bar.page.agent_icon" = "작업 상태 아이콘";

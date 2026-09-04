@@ -312,10 +312,10 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Cuota original";
 "dashboard.menu.bar.page.animation" = "Modo de animación";
-"dashboard.menu.bar.page.animation_mode_description" = "Eficiente: reduce considerablemente el uso de recursos del sistema; al usar varias pantallas, la animación se pausa y se ilumina en las pantallas que no estén activas\nSincronizado: mantiene la animación sincronizada en todas las pantallas, pero usa más recursos del sistema";
-"dashboard.menu.bar.page.animation_mode_efficient" = "Eficiente";
+"dashboard.menu.bar.page.animation_mode_description" = "Rendimiento: reduce considerablemente el uso de recursos del sistema; al usar varias pantallas, la animación se pausa y se ilumina en las pantallas que no estén activas\nSincronizado: mantiene la animación sincronizada en todas las pantallas, pero usa más recursos del sistema";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Rendimiento";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizado";
-"dashboard.menu.bar.page.animation_mode_fallback" = "El modo Eficiente no puede reproducir la animación correctamente en este momento, por lo que se está usando temporalmente el modo Sincronizado";
+"dashboard.menu.bar.page.animation_mode_fallback" = "El modo Rendimiento no puede reproducir la animación correctamente en este momento, por lo que se está usando temporalmente el modo Sincronizado";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Anima el icono de la barra de menús mientras se ejecuta una tarea";
 "dashboard.menu.bar.page.display_items" = "Contenido mostrado";
 "dashboard.menu.bar.page.agent_icon" = "Icono del estado de la tarea";

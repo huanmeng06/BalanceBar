@@ -312,10 +312,10 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "原配額";
 "dashboard.menu.bar.page.animation" = "動畫模式";
-"dashboard.menu.bar.page.animation_mode_description" = "高效：大幅降低系統資源用量；使用多個顯示器時，非目前使用中的顯示器會暫停動畫並亮起\n同步：讓所有顯示器上的動畫保持同步，但會使用較多系統資源";
-"dashboard.menu.bar.page.animation_mode_efficient" = "高效";
+"dashboard.menu.bar.page.animation_mode_description" = "效能：大幅降低系統資源用量；使用多個顯示器時，非目前使用中的顯示器會暫停動畫並亮起\n同步：讓所有顯示器上的動畫保持同步，但會使用較多系統資源";
+"dashboard.menu.bar.page.animation_mode_efficient" = "效能";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "同步";
-"dashboard.menu.bar.page.animation_mode_fallback" = "目前無法在「高效」模式下正常播放動畫，已暫時改用「同步」模式";
+"dashboard.menu.bar.page.animation_mode_fallback" = "目前無法在「效能」模式下正常播放動畫，已暫時改用「同步」模式";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任務執行時播放選單列圖示動畫";
 "dashboard.menu.bar.page.display_items" = "顯示內容";
 "dashboard.menu.bar.page.agent_icon" = "任務狀態圖示";

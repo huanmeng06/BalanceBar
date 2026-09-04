@@ -3044,7 +3044,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         )
         XCTAssertEqual(
             tr(.keyDashboardMenuBarPageAnimationModeDescription),
-            "高效：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\n同步：所有显示器上的动画保持同步，但资源占用更高"
+            "性能：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停并亮起\n同步：所有显示器上的动画保持同步，但资源占用更高"
         )
 
         modeControl.selectItem(at: 1)
