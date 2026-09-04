@@ -1032,6 +1032,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         case "animateCodexActivity":
             animateCodexActivity = enabled
             setCodexTaskRunning(isCodexTaskRunning, force: true)
+            refreshDashboardMenuBarPage()
         case "openCodexAutomaticDetection":
             dashboardComposition.handleAutomaticDetection(enabled)
         default:
