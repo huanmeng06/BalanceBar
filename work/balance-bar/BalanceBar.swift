@@ -596,6 +596,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         iconImage: self.statusItemController?.iconImage
                     )
                 },
+                claudeAnimationStateChanged: { [weak self] active, iconImage, spriteImage in
+                    self?.dashboardComposition.updateClaudeMenuBarPreviewAnimation(
+                        active: active,
+                        iconImage: iconImage,
+                        spriteImage: spriteImage
+                    )
+                },
                 animationFallbackChanged: { [weak self] active in
                     self?.dashboardComposition.updateMenuBarAnimationFallback(active: active)
                 },

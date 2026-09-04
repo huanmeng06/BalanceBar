@@ -4398,6 +4398,56 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertNil(host.rotationAnimationForTesting)
     }
 
+    func testMenuBarPreviewClaudeAnimationUsesSeparateSpriteCAHost() throws {
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPreviewClaudeCA.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let icon = NSImage(size: NSSize(width: 16, height: 16))
+        icon.isTemplate = true
+        let sprite = NSImage(size: NSSize(width: 16, height: 144))
+        sprite.isTemplate = true
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .balance(
+                "Provider",
+                80,
+                "USD",
+                nil,
+                Date(timeIntervalSince1970: 1)
+            ),
+            menuBarSnapshot: { $0 },
+            iconImage: icon,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+
+        controller.updatePreviewAnimation(
+            kind: .claudeThinking,
+            iconImage: icon,
+            spriteImage: sprite
+        )
+        let host = controller.previewClaudeAnimationHostForTesting
+        XCTAssertTrue(host.superview != nil)
+        XCTAssertFalse(host.isHidden)
+        XCTAssertNotNil(host.thinkingAnimationForTesting)
+        XCTAssertEqual(host.spriteLayer.bounds.size.height, host.bounds.height * 9, accuracy: 0.001)
+
+        controller.updatePreviewAnimation(
+            kind: .none,
+            iconImage: icon,
+            spriteImage: nil
+        )
+        XCTAssertTrue(host.isHidden)
+        XCTAssertNil(host.thinkingAnimationForTesting)
+    }
+
     func testMenuBarTypographyAndPositionLabelsLocalizeAcrossSupportedLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

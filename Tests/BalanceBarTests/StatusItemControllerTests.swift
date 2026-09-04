@@ -577,6 +577,117 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testClaudeThinkingLifecycleUsesOneOwnedSpriteHostWithoutBitmapTicks() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Claude animation is disabled by the system reduce-motion setting"
+        )
+        var animationTransitions: [(Bool, NSImage?, NSImage?)] = []
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in },
+                claudeAnimationStateChanged: { active, iconImage, spriteImage in
+                    animationTransitions.append((active, iconImage, spriteImage))
+                }
+            )
+        )
+        defer { controller.teardown() }
+
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        let staticIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.9,
+            green: 0.5,
+            blue: 0.2
+        )
+        staticIcon.isTemplate = true
+        let sprite = makeSolidImage(
+            size: NSSize(width: 16, height: 144),
+            red: 0.9,
+            green: 0.5,
+            blue: 0.2
+        )
+        sprite.isTemplate = true
+        controller.setClaudeAnimationAssetsForTesting(
+            staticImage: staticIcon,
+            spriteImage: sprite
+        )
+        let staticBitmap = try XCTUnwrap(controller.menuBarButtonImageForTesting)
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: false,
+            claudeTaskRunning: true,
+            animationEnabled: true
+        )
+
+        let host = try XCTUnwrap(controller.claudeThinkingAnimationHostForTesting)
+        XCTAssertTrue(controller.claudeThinkingAnimationIsActiveForTesting)
+        XCTAssertTrue(host.superview != nil)
+        XCTAssertFalse(host.isHidden)
+        XCTAssertNotNil(host.thinkingAnimationForTesting)
+        XCTAssertTrue(controller.menuBarButtonImageForTesting !== staticBitmap)
+        XCTAssertEqual(animationTransitions.count, 1)
+        XCTAssertTrue(animationTransitions[0].0)
+        XCTAssertTrue(animationTransitions[0].1 === staticIcon)
+        XCTAssertTrue(animationTransitions[0].2 === sprite)
+
+        let installCount = host.thinkingAnimationInstallCount
+        let rasterizationCount = host.spriteRasterizationCount
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        XCTAssertEqual(host.thinkingAnimationInstallCount, installCount)
+        XCTAssertEqual(host.spriteRasterizationCount, rasterizationCount)
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertFalse(controller.claudeThinkingAnimationIsActiveForTesting)
+        XCTAssertTrue(host.isHidden)
+        XCTAssertNil(host.thinkingAnimationForTesting)
+        XCTAssertEqual(animationTransitions.count, 2)
+        XCTAssertFalse(animationTransitions[1].0)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertTrue(host.isHidden)
+        XCTAssertNil(host.superview)
+    }
+
+    @MainActor
     func testCodexAnimationModeSwitchIsImmediateAndKeepsExactlyOneBackendActive() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,

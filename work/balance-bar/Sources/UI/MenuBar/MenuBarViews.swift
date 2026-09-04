@@ -267,6 +267,275 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
     }
 }
 
+/// A BalanceBar-owned clipped sprite host for Claude's nine-frame thinking
+/// animation. The status button carries only the static text bitmap while the
+/// sprite layer owns the discrete Core Animation translation.
+final class MenuBarClaudeAnimatedIconHostView: NSView {
+    static let thinkingAnimationKey = "balancebar.claudeThinking"
+    static let thinkingFrameCount = ClaudeThinkingAnimationTiming.frameCount
+    static let thinkingFrameDuration = ClaudeThinkingAnimationTiming.frameDuration
+    static let thinkingDuration = ClaudeThinkingAnimationTiming.duration
+
+    /// The viewport layer is clipped to one icon-sized frame. The sprite
+    /// layer is positioned at its lower-left origin so negative Y translations
+    /// expose successive frames without changing the viewport geometry.
+    let iconLayer = CALayer()
+    let spriteLayer = CALayer()
+
+    private(set) var thinkingAnimationInstallCount = 0
+    private(set) var contentsRasterizationCount = 0
+    private var configuredSpriteImage: NSImage?
+    private var configuredFrameSize = NSSize.zero
+    private var configuredAppearanceKey: String?
+    private var configuredHighlightState = false
+    private var configuredContentsScale: CGFloat = 0
+    private var configuredContentsSize = NSSize.zero
+
+    override var isFlipped: Bool { true }
+    override var intrinsicContentSize: NSSize { .zero }
+
+    var hasThinkingAnimation: Bool {
+        spriteLayer.animation(forKey: Self.thinkingAnimationKey) != nil
+    }
+
+    var spriteRasterizationCount: Int { contentsRasterizationCount }
+
+    var thinkingAnimationForTesting: CAKeyframeAnimation? {
+        spriteLayer.animation(forKey: Self.thinkingAnimationKey) as? CAKeyframeAnimation
+    }
+
+    var currentThinkingPhaseForTesting: Double? {
+        guard let animation = thinkingAnimationForTesting,
+              animation.duration > 0 else {
+            return nil
+        }
+        let localNow = spriteLayer.convertTime(CACurrentMediaTime(), from: nil)
+        let elapsed = localNow - animation.beginTime
+        let remainder = elapsed.truncatingRemainder(dividingBy: animation.duration)
+        return (remainder < 0 ? remainder + animation.duration : remainder)
+            / animation.duration
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureLayers()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureLayers()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func updateGeometry(frame: NSRect, contentsScale: CGFloat) {
+        let shouldPreserveAnimation = hasThinkingAnimation && bounds.size != frame.size
+        let preservedPhase = shouldPreserveAnimation
+            ? currentThinkingPhaseForTesting ?? 0
+            : 0
+        if shouldPreserveAnimation {
+            removeThinkingAnimation()
+        }
+        if self.frame != frame {
+            self.frame = frame
+        }
+        updateLayerGeometry(contentsScale: contentsScale)
+        if shouldPreserveAnimation {
+            installThinkingAnimation(phase: preservedPhase)
+        }
+    }
+
+    /// Rasterizes the complete sprite for the current visual inputs and
+    /// installs it as one layer texture. Repeated calls with the same source,
+    /// appearance, highlight, scale, and viewport are no-ops.
+    @discardableResult
+    func updateContents(
+        spriteImage: NSImage,
+        frameSize: NSSize,
+        appearance: NSAppearance,
+        contentsScale: CGFloat,
+        highlighted: Bool = false
+    ) -> Bool {
+        let safeScale = contentsScale > 0 ? contentsScale : 2
+        let appearanceKey = Self.appearanceKey(for: appearance)
+        let viewportSize = bounds.size
+        guard
+            frameSize.width > 0,
+            frameSize.height > 0,
+            viewportSize.width > 0,
+            viewportSize.height > 0
+        else {
+            return false
+        }
+
+        let needsRasterization = configuredSpriteImage !== spriteImage
+            || configuredFrameSize != frameSize
+            || configuredAppearanceKey != appearanceKey
+            || configuredHighlightState != highlighted
+            || configuredContentsScale != safeScale
+            || configuredContentsSize != viewportSize
+            || spriteLayer.contents == nil
+        guard needsRasterization else { return true }
+
+        let spriteSize = NSSize(
+            width: viewportSize.width,
+            height: viewportSize.height * CGFloat(Self.thinkingFrameCount)
+        )
+        guard let contents = Self.renderContents(
+            spriteImage: spriteImage,
+            size: spriteSize,
+            appearance: appearance,
+            scale: safeScale,
+            highlighted: highlighted
+        ) else {
+            removeThinkingAnimation()
+            spriteLayer.contents = nil
+            configuredSpriteImage = nil
+            configuredFrameSize = .zero
+            configuredAppearanceKey = nil
+            configuredHighlightState = false
+            configuredContentsScale = 0
+            configuredContentsSize = .zero
+            return false
+        }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        spriteLayer.contents = contents
+        spriteLayer.contentsScale = safeScale
+        CATransaction.commit()
+        configuredSpriteImage = spriteImage
+        configuredFrameSize = frameSize
+        configuredAppearanceKey = appearanceKey
+        configuredHighlightState = highlighted
+        configuredContentsScale = safeScale
+        configuredContentsSize = viewportSize
+        contentsRasterizationCount += 1
+        return true
+    }
+
+    /// Installs the fixed nine-frame, 810 ms discrete sprite translation.
+    /// `phase` is used only when a host is recreated at a visual boundary.
+    func installThinkingAnimation(phase: Double = 0) {
+        guard !hasThinkingAnimation, spriteLayer.contents != nil else { return }
+        let normalizedPhase = phase.truncatingRemainder(dividingBy: 1)
+            .wrappedPositiveRemainder
+        let animation = CAKeyframeAnimation(keyPath: "transform.translation.y")
+        animation.values = ClaudeThinkingAnimationTiming.translationValues(
+            frameHeight: bounds.height
+        )
+        animation.keyTimes = (0..<Self.thinkingFrameCount).map { index in
+            NSNumber(value: Double(index) / Double(Self.thinkingFrameCount))
+        }
+        animation.duration = Self.thinkingDuration
+        animation.repeatCount = .infinity
+        animation.calculationMode = .discrete
+        animation.beginTime = spriteLayer.convertTime(CACurrentMediaTime(), from: nil)
+            - normalizedPhase * Self.thinkingDuration
+        animation.isRemovedOnCompletion = false
+        spriteLayer.add(animation, forKey: Self.thinkingAnimationKey)
+        thinkingAnimationInstallCount += 1
+    }
+
+    func removeThinkingAnimation() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        spriteLayer.removeAnimation(forKey: Self.thinkingAnimationKey)
+        spriteLayer.transform = CATransform3DIdentity
+        CATransaction.commit()
+    }
+
+    private func configureLayers() {
+        isHidden = true
+        wantsLayer = true
+        translatesAutoresizingMaskIntoConstraints = true
+        layer?.masksToBounds = false
+        layer?.shadowOpacity = 0
+        iconLayer.masksToBounds = true
+        iconLayer.isGeometryFlipped = false
+        spriteLayer.masksToBounds = false
+        spriteLayer.isGeometryFlipped = false
+        spriteLayer.contentsGravity = .resize
+        iconLayer.addSublayer(spriteLayer)
+        layer?.addSublayer(iconLayer)
+        updateLayerGeometry(contentsScale: 2)
+    }
+
+    private func updateLayerGeometry(contentsScale: CGFloat) {
+        let safeScale = contentsScale > 0 ? contentsScale : 2
+        let viewportSize = bounds.size
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        iconLayer.bounds = CGRect(origin: .zero, size: viewportSize)
+        iconLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        iconLayer.contentsScale = safeScale
+        spriteLayer.anchorPoint = CGPoint.zero
+        spriteLayer.bounds = CGRect(
+            x: 0,
+            y: 0,
+            width: viewportSize.width,
+            height: viewportSize.height * CGFloat(Self.thinkingFrameCount)
+        )
+        spriteLayer.position = .zero
+        spriteLayer.contentsScale = safeScale
+        CATransaction.commit()
+    }
+
+    private static func appearanceKey(for appearance: NSAppearance) -> String {
+        let bestMatch = appearance.bestMatch(from: [.aqua, .darkAqua])?.rawValue ?? "none"
+        return "\(appearance.name.rawValue)|\(bestMatch)"
+    }
+
+    private static func renderContents(
+        spriteImage: NSImage,
+        size: NSSize,
+        appearance: NSAppearance,
+        scale: CGFloat,
+        highlighted: Bool
+    ) -> CGImage? {
+        let pixelDimensions = MenuBarBitmapImageLayout.pixelDimensions(
+            for: size,
+            scale: scale
+        )
+        guard
+            size.width > 0,
+            size.height > 0,
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: pixelDimensions.width,
+                pixelsHigh: pixelDimensions.height,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+        else {
+            return nil
+        }
+        rep.size = size
+        let imageView = NSImageView(frame: NSRect(origin: .zero, size: size))
+        imageView.appearance = appearance
+        imageView.image = spriteImage
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.imageAlignment = .alignCenter
+        imageView.contentTintColor = highlighted
+            ? .selectedMenuItemTextColor
+            : .labelColor
+        imageView.wantsLayer = true
+        imageView.layoutSubtreeIfNeeded()
+        imageView.cacheDisplay(in: imageView.bounds, to: rep)
+        return rep.cgImage
+    }
+
+    deinit {
+        removeThinkingAnimation()
+    }
+}
+
 private extension Double {
     var wrappedPositiveRemainder: Double {
         let remainder = truncatingRemainder(dividingBy: 1)

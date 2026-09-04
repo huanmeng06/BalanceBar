@@ -73,8 +73,9 @@ final class DashboardCompositionController {
     private let actions: DashboardCompositionActions
     private let launchAtLoginController: LaunchAtLoginController
     private let launchWithChatGPTController: LaunchWithChatGPTController
-    private var menuBarPreviewAnimationActive = false
+    private var menuBarPreviewAnimationKind: MenuBarCompositorAnimationKind = .none
     private var menuBarPreviewAnimationIconImage: NSImage?
+    private var menuBarPreviewAnimationSpriteImage: NSImage?
     private var menuBarAnimationFallbackActive = false
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
@@ -203,8 +204,9 @@ final class DashboardCompositionController {
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
-            animationActive: menuBarPreviewAnimationActive,
             animationIconImage: menuBarPreviewAnimationIconImage,
+            animationKind: menuBarPreviewAnimationKind,
+            animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive
         )
     }
@@ -229,14 +231,40 @@ final class DashboardCompositionController {
     /// closed.  A later page creation receives the current state in its input;
     /// a visible page only performs a lightweight host/layer update here.
     func updateMenuBarPreviewAnimation(active: Bool, iconImage: NSImage?) {
-        menuBarPreviewAnimationActive = active
+        menuBarPreviewAnimationKind = active ? .codexRotation : .none
         if let iconImage {
             menuBarPreviewAnimationIconImage = iconImage
         }
+        menuBarPreviewAnimationSpriteImage = nil
         guard window?.isVisible == true, section == .menuBar else { return }
         dashboardPreferencePages.updateMenuBarPreviewAnimation(
-            active: active,
-            iconImage: iconImage ?? menuBarPreviewAnimationIconImage
+            kind: menuBarPreviewAnimationKind,
+            iconImage: iconImage ?? menuBarPreviewAnimationIconImage,
+            spriteImage: nil
+        )
+    }
+
+    func updateClaudeMenuBarPreviewAnimation(
+        active: Bool,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        menuBarPreviewAnimationKind = active ? .claudeThinking : .none
+        if let iconImage {
+            menuBarPreviewAnimationIconImage = iconImage
+        }
+        if active {
+            if let spriteImage {
+                menuBarPreviewAnimationSpriteImage = spriteImage
+            }
+        } else {
+            menuBarPreviewAnimationSpriteImage = nil
+        }
+        guard window?.isVisible == true, section == .menuBar else { return }
+        dashboardPreferencePages.updateMenuBarPreviewAnimation(
+            kind: menuBarPreviewAnimationKind,
+            iconImage: iconImage ?? menuBarPreviewAnimationIconImage,
+            spriteImage: spriteImage ?? menuBarPreviewAnimationSpriteImage
         )
     }
 
@@ -348,8 +376,9 @@ final class DashboardCompositionController {
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
-            animationActive: menuBarPreviewAnimationActive,
             animationIconImage: menuBarPreviewAnimationIconImage,
+            animationKind: menuBarPreviewAnimationKind,
+            animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive,
             currentOpenCodexResolution: state.currentOpenCodexResolution(),
             runtimeCandidate: state.runtimeCandidate(),

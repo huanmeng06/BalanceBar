@@ -54,6 +54,18 @@ enum MenuBarCodexAnimationBackend: Equatable {
     }
 }
 
+/// Identifies the compositor primitive that a Dashboard preview must install.
+/// It is intentionally separate from the Codex preference because Claude has
+/// one fixed thinking animation and does not expose a second user-selectable
+/// mode.
+enum MenuBarCompositorAnimationKind: Equatable {
+    case none
+    case codexRotation
+    case claudeThinking
+
+    var isActive: Bool { self != .none }
+}
+
 enum MenuBarActivityAnimationPolicy {
     static func shouldAnimate(taskRunning: Bool, preferenceEnabled: Bool) -> Bool {
         shouldAnimate(
@@ -216,85 +228,74 @@ final class RotatingTemplateImageView: PassthroughImageView {
     }
 }
 
-final class ClaudeThinkingAnimator {
+enum ClaudeThinkingAnimationTiming {
     static let frameCount = 9
-    static let defaultFrameDuration: TimeInterval = 0.09
+    static let frameDuration: TimeInterval = 0.09
+    static let defaultFrameDuration = frameDuration
+    static let duration: TimeInterval = frameDuration * Double(frameCount)
 
-    private weak var imageView: RotatingTemplateImageView?
-    private let staticImage: NSImage
-    private let frames: [NSImage]
-    private let frameDuration: TimeInterval
-    private let outputSize: NSSize
-    private var timer: Timer?
-    private var animationState = MenuBarAnimationState()
+    static func translationValues(frameHeight: CGFloat) -> [NSNumber] {
+        (0..<frameCount).map { index in
+            NSNumber(value: -Double(frameHeight) * Double(index))
+        }
+    }
+}
 
-    init?(
-        imageView: RotatingTemplateImageView,
-        staticImage: NSImage,
-        animatedSVGURL: URL,
-        frameDuration: TimeInterval = ClaudeThinkingAnimator.defaultFrameDuration,
+/// Builds the Claude thinking sprite once at a visual invalidation boundary.
+/// The returned image contains the same nine discrete SVG view-box frames that
+/// the old animator displayed, stacked from the first frame at the bottom to
+/// the last frame at the top for a Core Animation Y translation.
+enum ClaudeThinkingSprite {
+    static func make(
+        from animatedSVGURL: URL,
         outputSize: NSSize = NSSize(width: 16, height: 16)
-    ) {
+    ) -> NSImage? {
         guard
             let svg = try? String(contentsOf: animatedSVGURL, encoding: .utf8),
-            let frames = Self.makeFrames(from: svg),
-            frames.count == Self.frameCount
+            let frames = makeFrames(from: svg)
         else {
             return nil
         }
-        self.imageView = imageView
-        self.staticImage = staticImage
-        self.frames = frames.map { source in
-            let output = NSImage(size: outputSize, flipped: false) { rect in
-                source.draw(
-                    in: rect.insetBy(dx: 0.3, dy: 0.3),
+        return makeSprite(from: frames, outputSize: outputSize)
+    }
+
+    static func makeSprite(
+        from frames: [NSImage],
+        outputSize: NSSize = NSSize(width: 16, height: 16)
+    ) -> NSImage? {
+        guard
+            frames.count == ClaudeThinkingAnimationTiming.frameCount,
+            outputSize.width > 0,
+            outputSize.height > 0
+        else {
+            return nil
+        }
+
+        let spriteSize = NSSize(
+            width: outputSize.width,
+            height: outputSize.height * CGFloat(ClaudeThinkingAnimationTiming.frameCount)
+        )
+        let sprite = NSImage(size: spriteSize, flipped: false) { _ in
+            for (index, frame) in frames.enumerated() {
+                let destination = NSRect(
+                    x: 0,
+                    y: outputSize.height * CGFloat(index),
+                    width: outputSize.width,
+                    height: outputSize.height
+                ).insetBy(dx: 0.3, dy: 0.3)
+                frame.draw(
+                    in: destination,
                     from: .zero,
                     operation: .sourceOver,
                     fraction: 1,
                     respectFlipped: true,
                     hints: [.interpolation: NSImageInterpolation.high]
                 )
-                return true
             }
-            output.isTemplate = true
-            output.size = outputSize
-            return output
+            return true
         }
-        self.frameDuration = frameDuration
-        self.outputSize = outputSize
-    }
-
-    var isAnimating: Bool { timer != nil }
-
-    func start() {
-        guard timer == nil else { return }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-            stop()
-            return
-        }
-        animationState.reset()
-        render(animationState.frameIndex)
-        let timer = Timer(timeInterval: frameDuration, repeats: true) { [weak self] _ in
-            guard let self,
-                  let frameIndex = self.animationState.advance(frameCount: self.frames.count)
-            else { return }
-            self.render(frameIndex)
-        }
-        self.timer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    func stop() {
-        guard timer != nil else { return }
-        timer?.invalidate()
-        timer = nil
-        animationState.reset()
-        imageView?.setSourceImage(staticImage)
-        imageView?.restoreSourceImage()
-    }
-
-    private func render(_ index: Int) {
-        imageView?.displayImage(frames[min(max(index, 0), frames.count - 1)])
+        sprite.isTemplate = true
+        return sprite
     }
 
     private static func makeFrames(from animatedSVG: String) -> [NSImage]? {
@@ -314,7 +315,7 @@ final class ClaudeThinkingAnimator {
             range: fullRange,
             withTemplate: ""
         )
-        return (0..<9).compactMap { index in
+        return (0..<ClaudeThinkingAnimationTiming.frameCount).compactMap { index in
             let range = NSRange(staticSVG.startIndex..., in: staticSVG)
             let frameSVG = viewBoxRegex.stringByReplacingMatches(
                 in: staticSVG,
@@ -330,9 +331,5 @@ final class ClaudeThinkingAnimator {
             image.size = NSSize(width: 100, height: 100)
             return image
         }
-    }
-
-    deinit {
-        timer?.invalidate()
     }
 }

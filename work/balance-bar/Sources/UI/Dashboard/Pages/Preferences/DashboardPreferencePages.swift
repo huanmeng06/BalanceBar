@@ -99,6 +99,8 @@ final class DashboardPreferencePages {
         iconImage: NSImage?,
         animationActive: Bool = false,
         animationIconImage: NSImage? = nil,
+        animationKind: MenuBarCompositorAnimationKind? = nil,
+        animationSpriteImage: NSImage? = nil,
         animationFallbackActive: Bool = false,
         currentOpenCodexResolution: OpenCodexDashboardResolution?,
         runtimeCandidate: OpenCodexEndpointCandidate?,
@@ -124,6 +126,8 @@ final class DashboardPreferencePages {
                 statusItemVisibility: statusItemVisibility,
                 animationActive: animationActive,
                 animationIconImage: animationIconImage,
+                animationKind: animationKind,
+                animationSpriteImage: animationSpriteImage,
                 animationFallbackActive: animationFallbackActive
             ))
         case .menu:
@@ -162,6 +166,8 @@ final class DashboardPreferencePages {
         iconImage: NSImage?,
         animationActive: Bool = false,
         animationIconImage: NSImage? = nil,
+        animationKind: MenuBarCompositorAnimationKind? = nil,
+        animationSpriteImage: NSImage? = nil,
         animationFallbackActive: Bool = false
     ) {
         menuBarPage.refresh(
@@ -172,6 +178,8 @@ final class DashboardPreferencePages {
             statusItemVisibility: statusItemVisibility,
             animationActive: animationActive,
             animationIconImage: animationIconImage,
+            animationKind: animationKind,
+            animationSpriteImage: animationSpriteImage,
             animationFallbackActive: animationFallbackActive
         )
     }
@@ -185,7 +193,23 @@ final class DashboardPreferencePages {
     }
 
     func updateMenuBarPreviewAnimation(active: Bool, iconImage: NSImage?) {
-        menuBarPage.updatePreviewAnimation(active: active, iconImage: iconImage)
+        menuBarPage.updatePreviewAnimation(
+            kind: active ? .codexRotation : .none,
+            iconImage: iconImage,
+            spriteImage: nil
+        )
+    }
+
+    func updateMenuBarPreviewAnimation(
+        kind: MenuBarCompositorAnimationKind,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        menuBarPage.updatePreviewAnimation(
+            kind: kind,
+            iconImage: iconImage,
+            spriteImage: spriteImage
+        )
     }
 
     func updateMenuBarAnimationFallback(active: Bool) {

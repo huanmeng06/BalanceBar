@@ -459,6 +459,8 @@ final class DashboardMenuBarPage {
         let iconImage: NSImage?
         let animationActive: Bool
         let animationIconImage: NSImage?
+        let animationKind: MenuBarCompositorAnimationKind
+        let animationSpriteImage: NSImage?
         let animationFallbackActive: Bool
         let relay: DashboardPreferencePageRelay
 
@@ -471,6 +473,8 @@ final class DashboardMenuBarPage {
             statusItemVisibility: StatusItemVisibility = .unknown,
             animationActive: Bool = false,
             animationIconImage: NSImage? = nil,
+            animationKind: MenuBarCompositorAnimationKind? = nil,
+            animationSpriteImage: NSImage? = nil,
             animationFallbackActive: Bool = false
         ) {
             self.preferences = preferences
@@ -480,6 +484,8 @@ final class DashboardMenuBarPage {
             self.iconImage = iconImage
             self.animationActive = animationActive
             self.animationIconImage = animationIconImage
+            self.animationKind = animationKind ?? (animationActive ? .codexRotation : .none)
+            self.animationSpriteImage = animationSpriteImage
             self.animationFallbackActive = animationFallbackActive
             self.relay = relay
         }
@@ -547,6 +553,10 @@ final class DashboardMenuBarPage {
         let backingScale: CGFloat
         let appearance: String
         let animationActive: Bool
+        let animationKind: MenuBarCompositorAnimationKind
+        let animationSpriteImageIdentity: ObjectIdentifier?
+        let animationSpriteImageSize: NSSize
+        let animationSpriteImageIsTemplate: Bool
         let animationFallbackActive: Bool
     }
 
@@ -559,6 +569,7 @@ final class DashboardMenuBarPage {
     private let previewIcon = PassthroughImageView()
     private let previewIconSlot = NSView()
     private let previewAnimatedIconHost = MenuBarNativeAnimatedIconHostView(frame: .zero)
+    private let previewClaudeAnimatedIconHost = MenuBarClaudeAnimatedIconHostView(frame: .zero)
     private let previewText = MenuBarTextView()
     private let previewPrimary = NSTextField(labelWithString: "…")
     private let previewSecondary = NSTextField(labelWithString: "")
@@ -633,8 +644,10 @@ final class DashboardMenuBarPage {
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
     private var previewAnimationActive = false
+    private var previewAnimationKind: MenuBarCompositorAnimationKind = .none
     private var animationFallbackActive = false
     private var lastPreviewIconImage: NSImage?
+    private var lastPreviewSpriteImage: NSImage?
     private let pageActionTarget = DashboardMenuBarPageActionTarget()
 
     deinit {
@@ -646,10 +659,15 @@ final class DashboardMenuBarPage {
         removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
         previewAnimationActive = false
+        previewAnimationKind = .none
         animationFallbackActive = false
         previewAnimatedIconHost.removeRotationAnimation()
         previewAnimatedIconHost.isHidden = true
         previewAnimatedIconHost.removeFromSuperview()
+        previewClaudeAnimatedIconHost.removeThinkingAnimation()
+        previewClaudeAnimatedIconHost.isHidden = true
+        previewClaudeAnimatedIconHost.removeFromSuperview()
+        lastPreviewSpriteImage = nil
         resetRefreshSignatures()
         pageActionTarget.onRevealIconDisplayModeSetting = nil
     }
@@ -669,33 +687,48 @@ final class DashboardMenuBarPage {
         previewAnimatedIconHost
     }
 
+    var previewClaudeAnimationHostForTesting: MenuBarClaudeAnimatedIconHostView {
+        previewClaudeAnimatedIconHost
+    }
+
     func updatePreviewIcon(_ image: NSImage?) {
         guard isBuilt else { return }
-        guard !previewAnimationActive else { return }
+        guard previewAnimationKind == .none else { return }
         lastPreviewIconImage = image
         guard previewIcon.image !== image else { return }
         previewIcon.image = image
     }
 
-    /// Mirrors the native status-item animation state into the already-visible
-    /// Dashboard preview without using the legacy frame callback.  The preview
-    /// owns a separate in-window CA host and is never used to drive native
-    /// status-item pixels.
-    func updatePreviewAnimation(active: Bool, iconImage: NSImage?) {
-        previewAnimationActive = active
+    /// Mirrors the native status-item compositor state into the already-visible
+    /// Dashboard preview. Each animation kind owns a separate in-window host;
+    /// no preview frame callback is needed.
+    func updatePreviewAnimation(
+        kind: MenuBarCompositorAnimationKind,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        previewAnimationKind = kind
+        previewAnimationActive = kind != .none
         if let iconImage {
             lastPreviewIconImage = iconImage
+        }
+        if let spriteImage {
+            lastPreviewSpriteImage = spriteImage
+        } else if kind != .claudeThinking {
+            lastPreviewSpriteImage = nil
         }
         guard isBuilt else { return }
 
         let staticImage = lastPreviewIconImage
-        guard active,
+        guard kind != .none,
               !previewIconSlot.isHidden,
               let iconImage = iconImage ?? staticImage,
               previewIcon.bounds.width > 0,
               previewIcon.bounds.height > 0 else {
             previewAnimatedIconHost.removeRotationAnimation()
             previewAnimatedIconHost.isHidden = true
+            previewClaudeAnimatedIconHost.removeThinkingAnimation()
+            previewClaudeAnimatedIconHost.isHidden = true
             if previewIcon.image !== staticImage {
                 previewIcon.image = staticImage
             }
@@ -704,28 +737,80 @@ final class DashboardMenuBarPage {
 
         previewIcon.image = nil
         let scale = max(previewIcon.window?.backingScaleFactor ?? 2, 1)
-        previewAnimatedIconHost.updateGeometry(
-            frame: previewIcon.frame,
-            contentsScale: scale
-        )
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        previewAnimatedIconHost.layer?.setAffineTransform(
-            previewIcon.layer?.affineTransform() ?? .identity
-        )
-        CATransaction.commit()
-        guard previewAnimatedIconHost.updateContents(
-            sourceImage: iconImage,
-            appearance: previewIcon.effectiveAppearance,
-            contentsScale: scale
-        ) else {
+        switch kind {
+        case .codexRotation:
+            previewClaudeAnimatedIconHost.removeThinkingAnimation()
+            previewClaudeAnimatedIconHost.isHidden = true
+            previewAnimatedIconHost.updateGeometry(
+                frame: previewIcon.frame,
+                contentsScale: scale
+            )
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            previewAnimatedIconHost.layer?.setAffineTransform(
+                previewIcon.layer?.affineTransform() ?? .identity
+            )
+            CATransaction.commit()
+            guard previewAnimatedIconHost.updateContents(
+                sourceImage: iconImage,
+                appearance: previewIcon.effectiveAppearance,
+                contentsScale: scale
+            ) else {
+                previewAnimatedIconHost.removeRotationAnimation()
+                previewAnimatedIconHost.isHidden = true
+                previewIcon.image = staticImage
+                return
+            }
+            previewAnimatedIconHost.isHidden = false
+            previewAnimatedIconHost.installRotationAnimation()
+        case .claudeThinking:
             previewAnimatedIconHost.removeRotationAnimation()
             previewAnimatedIconHost.isHidden = true
-            previewIcon.image = staticImage
-            return
+            guard let spriteImage = spriteImage ?? lastPreviewSpriteImage else {
+                previewClaudeAnimatedIconHost.removeThinkingAnimation()
+                previewClaudeAnimatedIconHost.isHidden = true
+                previewIcon.image = staticImage
+                return
+            }
+            previewClaudeAnimatedIconHost.updateGeometry(
+                frame: previewIcon.frame,
+                contentsScale: scale
+            )
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            previewClaudeAnimatedIconHost.layer?.setAffineTransform(
+                previewIcon.layer?.affineTransform() ?? .identity
+            )
+            CATransaction.commit()
+            let frameSize = NSSize(
+                width: spriteImage.size.width,
+                height: spriteImage.size.height
+                    / CGFloat(MenuBarClaudeAnimatedIconHostView.thinkingFrameCount)
+            )
+            guard previewClaudeAnimatedIconHost.updateContents(
+                spriteImage: spriteImage,
+                frameSize: frameSize,
+                appearance: previewIcon.effectiveAppearance,
+                contentsScale: scale
+            ) else {
+                previewClaudeAnimatedIconHost.removeThinkingAnimation()
+                previewClaudeAnimatedIconHost.isHidden = true
+                previewIcon.image = staticImage
+                return
+            }
+            previewClaudeAnimatedIconHost.isHidden = false
+            previewClaudeAnimatedIconHost.installThinkingAnimation()
+        case .none:
+            break
         }
-        previewAnimatedIconHost.isHidden = false
-        previewAnimatedIconHost.installRotationAnimation()
+    }
+
+    func updatePreviewAnimation(active: Bool, iconImage: NSImage?) {
+        updatePreviewAnimation(
+            kind: active ? .codexRotation : .none,
+            iconImage: iconImage,
+            spriteImage: nil
+        )
     }
 
     /// Fallback is a semantic state transition, not an animation frame. Keep
@@ -789,12 +874,17 @@ final class DashboardMenuBarPage {
 
     func make(_ input: Input) -> NSView {
         resetRefreshSignatures()
-        previewAnimationActive = input.animationActive
+        previewAnimationActive = input.animationKind != .none
+        previewAnimationKind = input.animationKind
         animationFallbackActive = input.animationFallbackActive
         lastPreviewIconImage = input.animationIconImage ?? input.iconImage
+        lastPreviewSpriteImage = input.animationSpriteImage
         previewAnimatedIconHost.removeFromSuperview()
         previewAnimatedIconHost.removeRotationAnimation()
         previewAnimatedIconHost.isHidden = true
+        previewClaudeAnimatedIconHost.removeFromSuperview()
+        previewClaudeAnimatedIconHost.removeThinkingAnimation()
+        previewClaudeAnimatedIconHost.isHidden = true
         pageActionTarget.onRevealIconDisplayModeSetting = { [weak self] in
             self?.revealIconDisplayModeSetting()
         }
@@ -870,6 +960,8 @@ final class DashboardMenuBarPage {
         ])
         previewAnimatedIconHost.isHidden = true
         previewIconSlot.addSubview(previewAnimatedIconHost)
+        previewClaudeAnimatedIconHost.isHidden = true
+        previewIconSlot.addSubview(previewClaudeAnimatedIconHost)
         let previewRow = NSStackView(views: [previewIconSlot, previewText])
         previewRow.orientation = .horizontal
         previewRow.alignment = .centerY
@@ -1342,6 +1434,8 @@ final class DashboardMenuBarPage {
             statusItemVisibility: input.statusItemVisibility,
             animationActive: input.animationActive,
             animationIconImage: input.animationIconImage,
+            animationKind: input.animationKind,
+            animationSpriteImage: input.animationSpriteImage,
             animationFallbackActive: input.animationFallbackActive
         )
         return DashboardSettingsComponents.makeSettingsPage([
@@ -1360,6 +1454,8 @@ final class DashboardMenuBarPage {
         statusItemVisibility: StatusItemVisibility = .unknown,
         animationActive: Bool = false,
         animationIconImage: NSImage? = nil,
+        animationKind: MenuBarCompositorAnimationKind? = nil,
+        animationSpriteImage: NSImage? = nil,
         animationFallbackActive: Bool = false
     ) {
         guard isBuilt else { return }
@@ -1417,7 +1513,11 @@ final class DashboardMenuBarPage {
             previewIconBounds: previewIcon.bounds,
             backingScale: max(previewIcon.window?.backingScaleFactor ?? 2, 1),
             appearance: previewIcon.effectiveAppearance.name.rawValue,
-            animationActive: animationActive,
+            animationActive: animationKind?.isActive ?? animationActive,
+            animationKind: animationKind ?? (animationActive ? .codexRotation : .none),
+            animationSpriteImageIdentity: animationSpriteImage.map(ObjectIdentifier.init),
+            animationSpriteImageSize: animationSpriteImage?.size ?? .zero,
+            animationSpriteImageIsTemplate: animationSpriteImage?.isTemplate ?? false,
             animationFallbackActive: animationFallbackActive
         )
         let refreshSignature = RefreshSignature(
@@ -1443,8 +1543,10 @@ final class DashboardMenuBarPage {
             menuBarSnapshot: menuBarSnapshot,
             iconImage: iconImage,
             statusItemVisibility: statusItemVisibility,
-            animationActive: animationActive,
-            animationIconImage: animationIconImage
+            animationActive: animationKind?.isActive ?? animationActive,
+            animationIconImage: animationIconImage,
+            animationKind: animationKind ?? (animationActive ? .codexRotation : .none),
+            animationSpriteImage: animationSpriteImage
         )
         lastRefreshSignature = refreshSignature
         lastWarningRefreshSignature = warningSignature
@@ -1460,7 +1562,9 @@ final class DashboardMenuBarPage {
         iconImage: NSImage?,
         statusItemVisibility: StatusItemVisibility = .unknown,
         animationActive: Bool,
-        animationIconImage: NSImage?
+        animationIconImage: NSImage?,
+        animationKind: MenuBarCompositorAnimationKind,
+        animationSpriteImage: NSImage?
     ) {
         guard isBuilt else { return }
         updatePreviewWarnings(statusItemVisibility)
@@ -1515,10 +1619,11 @@ final class DashboardMenuBarPage {
         if textWidthConstraint?.constant != geometry.textWidth {
             textWidthConstraint?.constant = geometry.textWidth
         }
-        let displayedPreviewIcon = animationActive
-            ? iconImage
-            : (animationIconImage ?? iconImage)
+        let displayedPreviewIcon = animationIconImage ?? iconImage
         lastPreviewIconImage = displayedPreviewIcon
+        if let animationSpriteImage {
+            lastPreviewSpriteImage = animationSpriteImage
+        }
         if previewIcon.image !== displayedPreviewIcon {
             previewIcon.image = displayedPreviewIcon
         }
@@ -1800,8 +1905,9 @@ final class DashboardMenuBarPage {
             ))
         }
         updatePreviewAnimation(
-            active: animationActive,
-            iconImage: animationIconImage ?? iconImage
+            kind: animationKind,
+            iconImage: animationIconImage ?? iconImage,
+            spriteImage: animationSpriteImage
         )
     }
 

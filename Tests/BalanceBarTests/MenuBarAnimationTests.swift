@@ -232,15 +232,147 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertFalse(hostSource.contains("setNeedsDisplay"))
     }
 
+    func testClaudeCoreAnimationHostUsesDiscreteSpriteTranslationContract() throws {
+        let host = MenuBarClaudeAnimatedIconHostView(
+            frame: NSRect(x: 7, y: 11, width: 16, height: 16)
+        )
+        host.updateGeometry(
+            frame: NSRect(x: 19, y: 23, width: 18, height: 18),
+            contentsScale: 2
+        )
+
+        XCTAssertEqual(host.iconLayer.anchorPoint, CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(host.iconLayer.bounds, NSRect(x: 0, y: 0, width: 18, height: 18))
+        XCTAssertEqual(
+            host.iconLayer.position,
+            CGPoint(x: host.bounds.midX, y: host.bounds.midY)
+        )
+        XCTAssertEqual(host.spriteLayer.bounds.size, NSSize(width: 18, height: 162))
+        XCTAssertEqual(host.spriteLayer.position, .zero)
+
+        let sprite = NSImage(size: NSSize(width: 16, height: 144), flipped: false) { rect in
+            NSColor.systemOrange.setFill()
+            rect.fill()
+            return true
+        }
+        sprite.isTemplate = true
+        XCTAssertTrue(
+            host.updateContents(
+                spriteImage: sprite,
+                frameSize: NSSize(width: 16, height: 16),
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: 2
+            )
+        )
+        let rasterizationCount = host.spriteRasterizationCount
+        XCTAssertTrue(
+            host.updateContents(
+                spriteImage: sprite,
+                frameSize: NSSize(width: 16, height: 16),
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: 2
+            )
+        )
+        XCTAssertEqual(
+            host.spriteRasterizationCount,
+            rasterizationCount,
+            "steady-state synchronization must not rerasterize the sprite"
+        )
+
+        host.installThinkingAnimation()
+        let animation = try XCTUnwrap(host.thinkingAnimationForTesting)
+        XCTAssertEqual(animation.keyPath, "transform.translation.y")
+        let values = try XCTUnwrap(animation.values as? [NSNumber])
+        XCTAssertEqual(values.map(\.doubleValue), [0, -18, -36, -54, -72, -90, -108, -126, -144])
+        XCTAssertEqual(animation.duration, 0.81, accuracy: 0.000_001)
+        XCTAssertEqual(animation.calculationMode, .discrete)
+        XCTAssertEqual(animation.repeatCount, Float.infinity)
+        XCTAssertEqual(values.count, 9)
+        XCTAssertEqual(animation.keyTimes?.count, 9)
+        let firstKeyTime = try XCTUnwrap(animation.keyTimes?.first)
+        let lastKeyTime = try XCTUnwrap(animation.keyTimes?.last)
+        XCTAssertEqual(firstKeyTime.doubleValue, 0, accuracy: 0.000_001)
+        XCTAssertEqual(lastKeyTime.doubleValue, 8.0 / 9.0, accuracy: 0.000_001)
+        XCTAssertEqual(host.thinkingAnimationInstallCount, 1)
+
+        host.installThinkingAnimation()
+        XCTAssertEqual(host.thinkingAnimationInstallCount, 1)
+        host.removeThinkingAnimation()
+        host.removeThinkingAnimation()
+        XCTAssertNil(host.thinkingAnimationForTesting)
+    }
+
+    func testClaudeCoreAnimationHostHasNoPerFrameSchedulerOrAppKitRedrawPath() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let viewsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "work/balance-bar/Sources/UI/MenuBar/MenuBarViews.swift"
+            ),
+            encoding: .utf8
+        )
+        let hostStart = try XCTUnwrap(
+            viewsSource.range(of: "final class MenuBarClaudeAnimatedIconHostView")
+        )
+        let hostEnd = try XCTUnwrap(
+            viewsSource.range(
+                of: "private extension Double",
+                range: hostStart.upperBound..<viewsSource.endIndex
+            )
+        )
+        let hostSource = String(viewsSource[hostStart.lowerBound..<hostEnd.lowerBound])
+        XCTAssertFalse(hostSource.contains("Timer"))
+        XCTAssertFalse(hostSource.contains("CADisplayLink"))
+        XCTAssertFalse(hostSource.contains("DispatchSourceTimer"))
+        XCTAssertFalse(hostSource.contains("needsDisplay"))
+        XCTAssertFalse(hostSource.contains("setNeedsDisplay"))
+    }
+
     func testClaudeAnimationKeepsItsDiscreteFrameCountAndTempo() {
-        XCTAssertEqual(ClaudeThinkingAnimator.frameCount, 9)
-        XCTAssertEqual(ClaudeThinkingAnimator.defaultFrameDuration, 0.09, accuracy: 0.000_001)
+        XCTAssertEqual(ClaudeThinkingAnimationTiming.frameCount, 9)
+        XCTAssertEqual(
+            ClaudeThinkingAnimationTiming.frameDuration,
+            0.09,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            ClaudeThinkingAnimationTiming.duration,
+            0.81,
+            accuracy: 0.000_001
+        )
 
         var state = MenuBarAnimationState()
-        let sequence = (0..<ClaudeThinkingAnimator.frameCount).compactMap { _ in
-            state.advance(frameCount: ClaudeThinkingAnimator.frameCount)
+        let sequence = (0..<ClaudeThinkingAnimationTiming.frameCount).compactMap { _ in
+            state.advance(frameCount: ClaudeThinkingAnimationTiming.frameCount)
         }
-        XCTAssertEqual(sequence, Array(1..<ClaudeThinkingAnimator.frameCount) + [0])
+        XCTAssertEqual(sequence, Array(1..<ClaudeThinkingAnimationTiming.frameCount) + [0])
+        XCTAssertEqual(
+            ClaudeThinkingAnimationTiming.translationValues(frameHeight: 16).map(\.doubleValue),
+            [0, -16, -32, -48, -64, -80, -96, -112, -128]
+        )
+    }
+
+    func testClaudeThinkingSpriteBuilderPreservesTheBundledNineFrameStrip() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = repositoryRoot.appendingPathComponent(
+            "work/balance-bar/ClaudeThinking.svg"
+        )
+
+        let sprite = try XCTUnwrap(
+            ClaudeThinkingSprite.make(
+                from: sourceURL,
+                outputSize: NSSize(width: 16, height: 16)
+            )
+        )
+        XCTAssertEqual(sprite.size, NSSize(width: 16, height: 144))
+        XCTAssertTrue(sprite.isTemplate)
     }
 
     func testAnimationPolicyHonorsPreferenceAndSystemReduceMotion() {
@@ -462,8 +594,13 @@ final class MenuBarAnimationTests: XCTestCase {
             statusItemSource[frameCallbackStart.lowerBound..<frameCallbackEnd.upperBound]
         )
         XCTAssertFalse(frameCallbackPath.contains("applyCachedCodexAnimationFrame"))
-        XCTAssertTrue(frameCallbackPath.contains("activeClient != .codex"))
-        XCTAssertTrue(frameCallbackPath.contains("composeMenuBarContentBitmap"))
+        XCTAssertTrue(frameCallbackPath.contains("actions.frameImageChanged(image)"))
+        XCTAssertFalse(frameCallbackPath.contains("composeMenuBarContentBitmap"))
+
+        XCTAssertFalse(animationSource.contains("ClaudeThinkingAnimator"))
+        XCTAssertTrue(statusItemSource.contains("MenuBarClaudeAnimatedIconHostView"))
+        XCTAssertTrue(statusItemSource.contains("synchronizeClaudeThinkingAnimationHost"))
+        XCTAssertTrue(statusItemSource.contains("claudeAnimationStateChanged"))
 
         let indexCallbackStart = try XCTUnwrap(
             statusItemSource.range(of: "menuBarIconView.onAnimationFrameIndexChanged = {")
