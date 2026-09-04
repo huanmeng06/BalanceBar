@@ -148,6 +148,111 @@ final class DashboardComponentsTests: XCTestCase {
         XCTAssertEqual(counters.cardHeightMeasurements, 0)
     }
 
+    func testSettingsRenderingInstrumentationTracksViewportActivity() throws {
+        let rows = (0..<12).map { index in
+            DashboardSettingsComponents.makeSettingsRow(
+                "Rendering probe \(index)",
+                subtitle: "Scrolling changes the clip origin without changing any row content.",
+                control: NSSwitch()
+            )
+        }
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Rendering",
+            rows: rows
+        )
+        let page = DashboardSettingsComponents.makeSettingsPage([section])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 260),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        defer { window.orderOut(nil) }
+
+        let previousEnabled = DashboardSettingsComponents.renderingInstrumentationEnabledForTesting
+        defer {
+            DashboardSettingsComponents.renderingInstrumentationEnabledForTesting = previousEnabled
+            DashboardSettingsComponents.resetRenderingCountersForTesting()
+        }
+        DashboardSettingsComponents.renderingInstrumentationEnabledForTesting = true
+        DashboardSettingsComponents.resetRenderingCountersForTesting()
+        window.contentView = page
+        window.orderFrontRegardless()
+        window.layoutIfNeeded()
+
+        let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
+        for offset in [CGFloat(0), 24, 48, 0] {
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: offset))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            window.displayIfNeeded()
+        }
+
+        let counters = DashboardSettingsComponents.renderingCountersForTesting
+        XCTAssertGreaterThan(counters.clipBoundsChanges, 0)
+        // Headless xctest does not guarantee a backing-store display pass;
+        // draw/updateLayer counters are intentionally validated by the local
+        // Instruments run described in the Issue handoff.
+    }
+
+    func testSettingsWidthSweepReusesRegimeAndRecomputesAtBreakpoint() throws {
+        let row = DashboardSettingsComponents.makeSettingsRow(
+            "Stable width",
+            subtitle: "A short stable summary stays on one line during this width sweep.",
+            control: NSSwitch()
+        )
+        var rowsStack: NSStackView?
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Width regime",
+            rows: [row],
+            onLayoutCreated: { stack, _, _ in
+                rowsStack = stack
+            }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 300),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = section
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+        let stack = try XCTUnwrap(rowsStack)
+        let wideHeight = row.frame.height
+
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+        for width in stride(from: CGFloat(760), through: 700, by: -2) {
+            window.setContentSize(NSSize(width: width, height: 300))
+            stack.needsLayout = true
+            window.layoutIfNeeded()
+        }
+        var counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertLessThanOrEqual(counters.rowPreferredHeightMeasurements, 1)
+        XCTAssertLessThanOrEqual(counters.textLineMeasurements, 4)
+        XCTAssertLessThanOrEqual(counters.controlFittingMeasurements, 1)
+        XCTAssertLessThanOrEqual(counters.cardHeightMeasurements, 1)
+        XCTAssertEqual(row.frame.height, wideHeight, accuracy: 0.5)
+
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+        window.setContentSize(NSSize(width: 280, height: 300))
+        stack.needsLayout = true
+        window.layoutIfNeeded()
+        counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertGreaterThan(row.frame.height, wideHeight)
+        XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
+        XCTAssertGreaterThan(counters.textLineMeasurements, 0)
+        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+
+        DashboardSettingsComponents.resetMeasurementCountersForTesting()
+        window.setContentSize(NSSize(width: 760, height: 300))
+        stack.needsLayout = true
+        window.layoutIfNeeded()
+        counters = DashboardSettingsComponents.measurementCountersForTesting
+        XCTAssertEqual(row.frame.height, wideHeight, accuracy: 0.5)
+        XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
+        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+    }
+
     func testSettingsMeasurementCachesInvalidateForWidthTextAndVisibilityChanges() throws {
         let longSubtitle = "A deliberately long subtitle changes its natural line budget when the row width or text content changes."
         let subtitle = NSTextField(wrappingLabelWithString: longSubtitle)
@@ -176,25 +281,22 @@ final class DashboardComponentsTests: XCTestCase {
         window.layoutIfNeeded()
 
         let stack = try XCTUnwrap(rowsStack)
+        let initialHeight = row.frame.height
 
         DashboardSettingsComponents.resetMeasurementCountersForTesting()
-        window.setContentSize(NSSize(width: 520, height: 260))
+        subtitle.stringValue = String(
+            repeating: "The subtitle content is now substantially longer and must be measured again. ",
+            count: 4
+        )
+        subtitle.invalidateIntrinsicContentSize()
+        row.needsLayout = true
+        stack.needsLayout = true
         window.layoutIfNeeded()
         var counters = DashboardSettingsComponents.measurementCountersForTesting
         XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
         XCTAssertGreaterThan(counters.textLineMeasurements, 0)
         XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
-
-        DashboardSettingsComponents.resetMeasurementCountersForTesting()
-        subtitle.stringValue = "The subtitle content is now different and must be measured again."
-        subtitle.invalidateIntrinsicContentSize()
-        row.needsLayout = true
-        stack.needsLayout = true
-        window.layoutIfNeeded()
-        counters = DashboardSettingsComponents.measurementCountersForTesting
-        XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
-        XCTAssertGreaterThan(counters.textLineMeasurements, 0)
-        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+        XCTAssertGreaterThan(row.frame.height, initialHeight)
 
         DashboardSettingsComponents.resetMeasurementCountersForTesting()
         let control = try XCTUnwrap(row.subviews.first { $0 is NSButton } as? NSButton)
@@ -205,7 +307,7 @@ final class DashboardComponentsTests: XCTestCase {
         window.layoutIfNeeded()
         counters = DashboardSettingsComponents.measurementCountersForTesting
         XCTAssertGreaterThan(counters.rowPreferredHeightMeasurements, 0)
-        XCTAssertGreaterThan(counters.cardHeightMeasurements, 0)
+        XCTAssertEqual(counters.cardHeightMeasurements, 0)
 
         DashboardSettingsComponents.resetMeasurementCountersForTesting()
         subtitle.isHidden = true

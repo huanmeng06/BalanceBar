@@ -192,6 +192,7 @@ struct DashboardUpdatePresentation: Equatable {
 /// controls retain their existing style, targets, and dimensions.
 final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRowControlLayout {
     private var availableRowWidth: CGFloat = .greatestFiniteMagnitude
+    private var cachedHorizontalFittingWidth: CGFloat?
     private(set) var usesDedicatedRow = false
     var allowsTextDrivenDedicatedRow = false
 
@@ -204,6 +205,9 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
     }
 
     private var horizontalFittingWidth: CGFloat {
+        if let cachedHorizontalFittingWidth {
+            return cachedHorizontalFittingWidth
+        }
         let visibleButtons = arrangedSubviews.filter { !$0.isHidden }
         let buttonWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
             max(total, view.fittingSize.width)
@@ -211,7 +215,14 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         let totalWidth = visibleButtons.reduce(CGFloat(0)) { total, view in
             total + view.fittingSize.width
         }
-        return max(buttonWidth, totalWidth + max(0, CGFloat(visibleButtons.count - 1)) * spacing) + 1
+        let width = max(buttonWidth, totalWidth + max(0, CGFloat(visibleButtons.count - 1)) * spacing) + 1
+        cachedHorizontalFittingWidth = width
+        return width
+    }
+
+    override func invalidateIntrinsicContentSize() {
+        cachedHorizontalFittingWidth = nil
+        super.invalidateIntrinsicContentSize()
     }
 
     override func layout() {
@@ -260,8 +271,8 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         // intrinsic sizes without invalidating this custom stack's cached row
         // width. Propagate the invalidation so the existing trailing anchor is
         // remeasured before the next window layout pass.
-        updateOrientationIfNeeded()
         invalidateIntrinsicContentSize()
+        updateOrientationIfNeeded()
         needsLayout = true
         superview?.needsLayout = true
         superview?.superview?.needsLayout = true
