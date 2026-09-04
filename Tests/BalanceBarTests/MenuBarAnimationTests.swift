@@ -87,6 +87,19 @@ final class MenuBarAnimationTests: XCTestCase {
                 reduceMotionEnabled: false
             )
         )
+        XCTAssertFalse(
+            MenuBarAnimationOverlayVisibilityPolicy.shouldShow(
+                animationRequested: true,
+                statusItemVisible: true,
+                hiddenByMenuBarSpace: false,
+                hiddenByRuntimePolicy: false,
+                statusWindowVisible: true,
+                statusWindowOcclusionVisible: true,
+                validGeometry: true,
+                reduceMotionEnabled: false,
+                menuBarActuallyVisible: false
+            )
+        )
 
         let invalidCases: [(String, Bool, Bool, Bool, Bool, Bool, Bool, Bool, Bool)] = [
             ("animation requested", false, true, false, false, true, true, true, false),
@@ -117,6 +130,125 @@ final class MenuBarAnimationTests: XCTestCase {
                 "invalid signal must hide overlay: \(name)"
             )
         }
+    }
+
+    func testOverlayTransitionWatchIsSingleUseAndStopsWhenStableOrTimedOut() {
+        let start = Date(timeIntervalSince1970: 10_000)
+        let transitioning = MenuBarAnimationOverlayTransitionObservation(
+            menuBarVisible: true,
+            statusItemVisible: true,
+            statusWindowVisible: true,
+            statusWindowOcclusionVisible: false,
+            validGeometry: true,
+            overlayVisible: false,
+            statusVisibilityStableHidden: false
+        )
+        var watch = MenuBarAnimationOverlayTransitionWatch()
+
+        XCTAssertTrue(watch.begin(at: start))
+        XCTAssertFalse(watch.begin(at: start.addingTimeInterval(0.01)))
+        XCTAssertTrue(
+            watch.observe(
+                transitioning,
+                at: start.addingTimeInterval(0.05)
+            )
+        )
+        XCTAssertFalse(
+            watch.observe(
+                transitioning,
+                at: start.addingTimeInterval(
+                    MenuBarAnimationOverlayTransitionWatch.timeout
+                )
+            )
+        )
+        XCTAssertFalse(watch.isActive)
+
+        XCTAssertTrue(
+            watch.begin(
+                at: start,
+                initialObservation: transitioning
+            )
+        )
+        let stablyHidden = MenuBarAnimationOverlayTransitionObservation(
+            menuBarVisible: true,
+            statusItemVisible: true,
+            statusWindowVisible: false,
+            statusWindowOcclusionVisible: false,
+            validGeometry: false,
+            overlayVisible: false,
+            statusVisibilityStableHidden: true
+        )
+        XCTAssertTrue(
+            watch.observe(
+                stablyHidden,
+                at: start.addingTimeInterval(0.05)
+            )
+        )
+        XCTAssertTrue(
+            watch.observe(
+                stablyHidden,
+                at: start.addingTimeInterval(0.10)
+            )
+        )
+        XCTAssertFalse(
+            watch.observe(
+                stablyHidden,
+                at: start.addingTimeInterval(
+                    MenuBarAnimationOverlayTransitionWatch.timeout
+                )
+            )
+        )
+
+        let visibleBeforeTransition = MenuBarAnimationOverlayTransitionObservation(
+            menuBarVisible: true,
+            statusItemVisible: true,
+            statusWindowVisible: true,
+            statusWindowOcclusionVisible: true,
+            validGeometry: true,
+            overlayVisible: true,
+            statusVisibilityStableHidden: false
+        )
+        XCTAssertTrue(
+            watch.begin(
+                at: start,
+                initialObservation: visibleBeforeTransition
+            )
+        )
+        XCTAssertTrue(
+            watch.observe(
+                stablyHidden,
+                at: start.addingTimeInterval(0.05)
+            )
+        )
+        XCTAssertFalse(
+            watch.observe(
+                stablyHidden,
+                at: start.addingTimeInterval(0.10)
+            )
+        )
+        XCTAssertFalse(watch.isActive)
+
+        XCTAssertTrue(watch.begin(at: start))
+        let menuBarHidden = MenuBarAnimationOverlayTransitionObservation(
+            menuBarVisible: false,
+            statusItemVisible: true,
+            statusWindowVisible: true,
+            statusWindowOcclusionVisible: true,
+            validGeometry: true,
+            overlayVisible: false,
+            statusVisibilityStableHidden: false
+        )
+        XCTAssertFalse(
+            watch.observe(
+                menuBarHidden,
+                at: start.addingTimeInterval(0.05)
+            )
+        )
+        XCTAssertFalse(watch.isActive)
+
+        XCTAssertTrue(watch.begin(at: start))
+        watch.stop()
+        XCTAssertFalse(watch.isActive)
     }
 
     func testOverlayIconRasterKeepsLogicalAndPixelGeometryCentered() throws {
