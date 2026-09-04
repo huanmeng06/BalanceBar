@@ -4,6 +4,11 @@ import XCTest
 
 final class MenuBarAnimationTests: XCTestCase {
     func testCodexAnimationKeepsItsDiscreteFrameCountDurationAndOrder() {
+        XCTAssertEqual(MenuBarAnimationFrameRate.defaultValue, .fps30)
+        XCTAssertEqual(
+            RotatingTemplateImageView.frameCount,
+            MenuBarAnimationFrameRate.fps30.frameCount
+        )
         XCTAssertEqual(RotatingTemplateImageView.frameCount, 36)
         XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.2, accuracy: 0.000_001)
         XCTAssertEqual(
@@ -24,6 +29,36 @@ final class MenuBarAnimationTests: XCTestCase {
         }
         XCTAssertEqual(sequence, Array(1..<RotatingTemplateImageView.frameCount) + [0])
         XCTAssertEqual(state.frameIndex, 0)
+    }
+
+    func testCodexBackendDerivesBothSupportedCadencesFromOneCycleDuration() {
+        XCTAssertEqual(MenuBarAnimationFrameRate.allCases, [.fps15, .fps30])
+        XCTAssertEqual(MenuBarAnimationFrameRate.rotationDuration, 1.2, accuracy: 0.000_001)
+
+        XCTAssertEqual(MenuBarAnimationFrameRate.fps15.frameCount, 18)
+        XCTAssertEqual(MenuBarAnimationFrameRate.fps30.frameCount, 36)
+        XCTAssertEqual(
+            MenuBarAnimationFrameRate.fps15.frameInterval,
+            1.2 / 18,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            MenuBarAnimationFrameRate.fps30.frameInterval,
+            1.2 / 36,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            Double(MenuBarAnimationFrameRate.fps15.frameCount)
+                / MenuBarAnimationFrameRate.rotationDuration,
+            15,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            Double(MenuBarAnimationFrameRate.fps30.frameCount)
+                / MenuBarAnimationFrameRate.rotationDuration,
+            30,
+            accuracy: 0.000_001
+        )
     }
 
     func testClaudeAnimationKeepsItsDiscreteFrameCountAndTempo() {
@@ -129,6 +164,36 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertFalse(imageView.isRotating)
     }
 
+    func testChangingCadenceRebuildsOnlyTheFrameSetAndKeepsOneRunningLifecycle() {
+        let imageView = RotatingTemplateImageView(
+            frame: NSRect(x: 0, y: 0, width: 16, height: 16),
+            frameRate: .fps15
+        )
+        imageView.setSourceImage(NSImage(size: NSSize(width: 16, height: 16)))
+        XCTAssertEqual(imageView.frameRate, .fps15)
+        XCTAssertEqual(imageView.animationFrames.count, 18)
+
+        imageView.startRotating()
+        XCTAssertTrue(imageView.isRotating)
+        XCTAssertEqual(imageView.currentAnimationFrameIndex, 0)
+
+        imageView.setFrameRate(.fps30)
+        XCTAssertEqual(imageView.frameRate, .fps30)
+        XCTAssertEqual(imageView.animationFrames.count, 36)
+        XCTAssertTrue(imageView.isRotating)
+        XCTAssertEqual(imageView.currentAnimationFrameIndex, 0)
+
+        imageView.startRotating()
+        XCTAssertTrue(imageView.isRotating)
+        imageView.setFrameRate(.fps15)
+        XCTAssertEqual(imageView.frameRate, .fps15)
+        XCTAssertEqual(imageView.animationFrames.count, 18)
+        XCTAssertTrue(imageView.isRotating)
+
+        imageView.stopRotating()
+        XCTAssertFalse(imageView.isRotating)
+    }
+
     func testStatusItemWiringKeepsLayoutAndDashboardRefreshOnSourcePathOnly() throws {
         let testFile = URL(fileURLWithPath: #filePath)
         let repositoryRoot = testFile
@@ -219,6 +284,8 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         XCTAssertTrue(indexCallbackPath.contains("applyStableCodexAnimationFrame"))
         XCTAssertTrue(indexCallbackPath.contains("actions.frameImageChanged(frame)"))
+        XCTAssertFalse(indexCallbackPath.contains("button.image"))
+        XCTAssertFalse(indexCallbackPath.contains("composeMenuBarContentBitmap"))
 
         let compositionSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(

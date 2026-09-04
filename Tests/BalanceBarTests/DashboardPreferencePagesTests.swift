@@ -4106,6 +4106,98 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(slider.doubleValue, 7.4, accuracy: 0.001)
     }
 
+    func testMenuBarRefreshSkipsEquivalentVisibleInputsBeforeAppKitMeasurement() {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarRefreshSignature.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let initial = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1)
+        )
+        let iconImage = NSImage(size: NSSize(width: 16, height: 16))
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: initial,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+        controller.refresh(
+            snapshot: initial,
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            statusItemVisibility: .visible
+        )
+
+        let applied = controller.refreshApplyCountForTesting
+        let warningRefreshes = controller.warningRefreshCountForTesting
+        let settingsRefreshes = controller.settingsRefreshCountForTesting
+        let previewRefreshes = controller.previewRefreshCountForTesting
+        let previewLayouts = controller.previewCardLayoutCountForTesting
+        let quotaLayouts = controller.quotaCardLayoutCountForTesting
+        let iconTaskLayouts = controller.iconTaskCardLayoutCountForTesting
+        for offset in 0..<100 {
+            controller.refresh(
+                snapshot: Snapshot.balance(
+                    "Provider",
+                    80,
+                    "USD",
+                    nil,
+                    Date(timeIntervalSince1970: TimeInterval(offset + 2))
+                ),
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: iconImage,
+                statusItemVisibility: .visible
+            )
+        }
+
+        XCTAssertEqual(controller.refreshApplyCountForTesting, applied)
+        XCTAssertEqual(controller.refreshSkipCountForTesting, 100)
+        XCTAssertEqual(controller.warningRefreshCountForTesting, warningRefreshes)
+        XCTAssertEqual(controller.settingsRefreshCountForTesting, settingsRefreshes)
+        XCTAssertEqual(controller.previewRefreshCountForTesting, previewRefreshes)
+        XCTAssertEqual(controller.previewCardLayoutCountForTesting, previewLayouts)
+        XCTAssertEqual(controller.quotaCardLayoutCountForTesting, quotaLayouts)
+        XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, iconTaskLayouts)
+
+        controller.refresh(
+            snapshot: Snapshot.balance(
+                "Provider",
+                79,
+                "USD",
+                nil,
+                Date(timeIntervalSince1970: 200)
+            ),
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: iconImage,
+            statusItemVisibility: .visible
+        )
+        XCTAssertEqual(controller.refreshApplyCountForTesting, applied + 1)
+        XCTAssertEqual(controller.settingsRefreshCountForTesting, settingsRefreshes)
+        XCTAssertEqual(controller.previewRefreshCountForTesting, previewRefreshes + 1)
+        XCTAssertEqual(controller.previewCardLayoutCountForTesting, previewLayouts)
+        XCTAssertEqual(controller.quotaCardLayoutCountForTesting, quotaLayouts)
+        XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, iconTaskLayouts)
+    }
+
     func testMenuBarTypographyAndPositionLabelsLocalizeAcrossSupportedLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

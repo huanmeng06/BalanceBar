@@ -688,14 +688,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func updateStatusItem(for snapshot: Snapshot) {
+    private func updateStatusItem(for snapshot: Snapshot, refreshDashboard: Bool = true) {
         statusItemController.update(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
             menuInput: makeStatusItemMenuInput(),
             settings: makeStatusItemSettings()
         )
-        refreshDashboardMenuBarPage()
+        if refreshDashboard {
+            refreshDashboardMenuBarPage()
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -965,7 +967,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return
             }
             showMenuBarIcon = enabled
-            updateStatusItem(for: snapshot)
+            updateStatusItem(for: snapshot, refreshDashboard: false)
             refreshDashboardMenuBarPage()
         case "showMenuBarAmount":
             if !enabled && !showMenuBarIcon {
@@ -973,18 +975,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return
             }
             showMenuBarAmount = enabled
-            updateStatusItem(for: snapshot)
+            updateStatusItem(for: snapshot, refreshDashboard: false)
             refreshDashboardMenuBarPage()
         case "showMenuBarReset":
             showMenuBarReset = enabled
-            updateStatusItem(for: snapshot)
+            updateStatusItem(for: snapshot, refreshDashboard: false)
             refreshDashboardMenuBarPage()
         case AppPreferences.menuLunaReserveHideExhaustedQuotaKey:
             preferences.menuLunaReserveHideExhaustedQuota = enabled
             refreshStatusItemMenuInput()
         case AppPreferences.menuBarAutoSwitchLunaReserveKey:
             preferences.menuBarAutoSwitchLunaReserve = enabled
-            updateStatusItem(for: snapshot)
+            updateStatusItem(for: snapshot, refreshDashboard: false)
             refreshDashboardMenuBarPage()
         case "showQuickSwitchMenu":
             showQuickSwitchMenu = enabled
@@ -1068,7 +1070,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
 
     private func handleQuotaProgressColorConfigurationChanged(_ configuration: QuotaProgressColorConfiguration) {
         preferences.quotaProgressColorConfiguration = configuration
-        updateStatusItem(for: snapshot)
+        updateStatusItem(for: snapshot, refreshDashboard: false)
         updateDashboard(for: snapshot, refreshDate: refreshDate(for: snapshot))
     }
 
@@ -1124,7 +1126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             "preference changed; key=\(AppPreferences.menuBarLunaReserveResetTimeModeKey); value=\(mode.rawValue)",
             category: "configuration"
         )
-        updateStatusItem(for: snapshot)
+        updateStatusItem(for: snapshot, refreshDashboard: false)
         refreshDashboardMenuBarPage()
     }
 
@@ -1731,7 +1733,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
-            self.updateStatusItem(for: next)
+            self.updateStatusItem(for: next, refreshDashboard: false)
             let refreshDate = self.refreshDate(for: next)
             self.updateDashboard(for: next, refreshDate: refreshDate)
         }

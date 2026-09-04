@@ -8,6 +8,14 @@ struct MenuBarAnimationState: Equatable {
         frameIndex = 0
     }
 
+    mutating func setFrameIndex(_ index: Int, frameCount: Int) {
+        guard frameCount > 0 else {
+            reset()
+            return
+        }
+        frameIndex = ((index % frameCount) + frameCount) % frameCount
+    }
+
     mutating func advance(frameCount: Int) -> Int? {
         guard frameCount > 0 else {
             reset()
@@ -15,6 +23,29 @@ struct MenuBarAnimationState: Equatable {
         }
         frameIndex = (frameIndex + 1) % frameCount
         return frameIndex
+    }
+}
+
+/// Supported animation cadences for the native status-item renderer. The
+/// duration is the single source of truth for frame count and timer interval,
+/// so changing cadence never leaves the renderer with mismatched timing and
+/// frame data. This is intentionally a typed backend value rather than a
+/// boolean so additional cadences can be added without changing the API shape.
+enum MenuBarAnimationFrameRate: Int, CaseIterable, Equatable {
+    case fps15 = 15
+    case fps30 = 30
+
+    static let defaultValue: Self = .fps30
+    static let rotationDuration: TimeInterval = 1.2
+
+    var framesPerSecond: Double { Double(rawValue) }
+
+    var frameCount: Int {
+        Int((Self.rotationDuration * framesPerSecond).rounded())
+    }
+
+    var frameInterval: TimeInterval {
+        Self.rotationDuration / Double(frameCount)
     }
 }
 
@@ -37,14 +68,16 @@ enum MenuBarActivityAnimationPolicy {
 }
 
 final class RotatingTemplateImageView: PassthroughImageView {
-    /// 36 discrete frames over a 1.2 s rotation = 30 fps. Pixel updates
+    /// The default is 36 discrete frames over a 1.2 s rotation = 30 fps. Pixel updates
     /// are the only way the macOS 26 status-item replicant snapshot can show
     /// motion (it renders model state via renderInContext, so render-server-
-    /// side animations are invisible), so this animation intentionally keeps a
-    /// fixed, bounded update cadence.
-    static let frameCount = 36
-    static let rotationDuration: TimeInterval = 1.2
-    static let rotationFrameInterval = rotationDuration / Double(frameCount)
+    /// side animations are invisible), so this animation intentionally keeps
+    /// a fixed, bounded update cadence.
+    static let defaultFrameRate = MenuBarAnimationFrameRate.defaultValue
+    static let frameCount = defaultFrameRate.frameCount
+    static let rotationDuration: TimeInterval = MenuBarAnimationFrameRate.rotationDuration
+    static let rotationFrameInterval = defaultFrameRate.frameInterval
+    private(set) var frameRate: MenuBarAnimationFrameRate
     private var sourceImage: NSImage?
     private var rotationFrames: [NSImage] = []
     private var rotationTimer: Timer?
@@ -69,6 +102,21 @@ final class RotatingTemplateImageView: PassthroughImageView {
 
     var sourceImageForRendering: NSImage? { sourceImage }
 
+    init(frame frameRect: NSRect, frameRate: MenuBarAnimationFrameRate = .defaultValue) {
+        self.frameRate = frameRate
+        super.init(frame: frameRect)
+    }
+
+    override init(frame frameRect: NSRect) {
+        self.frameRate = .defaultValue
+        super.init(frame: frameRect)
+    }
+
+    required init?(coder: NSCoder) {
+        self.frameRate = .defaultValue
+        super.init(coder: coder)
+    }
+
     func animationFrameIndex(for image: NSImage?) -> Int? {
         guard let image else { return nil }
         return rotationFrames.firstIndex { $0 === image }
@@ -82,7 +130,7 @@ final class RotatingTemplateImageView: PassthroughImageView {
     func setSourceImage(_ image: NSImage) {
         let sourceChanged = sourceImage !== image
         if sourceChanged {
-            rotationFrames = Self.makeRotationFrames(from: image)
+            rotationFrames = Self.makeRotationFrames(from: image, frameRate: frameRate)
         }
         sourceImage = image
         if self.image !== image {
@@ -92,6 +140,36 @@ final class RotatingTemplateImageView: PassthroughImageView {
         }
         if sourceChanged {
             onSourceImageChanged?(image)
+        }
+    }
+
+    /// Changes the backend cadence without creating a second timer. When the
+    /// animation is already running, retain its normalized phase and install
+    /// exactly one replacement timer using the new interval.
+    func setFrameRate(_ frameRate: MenuBarAnimationFrameRate) {
+        guard self.frameRate != frameRate else { return }
+
+        let wasRotating = rotationTimer != nil
+        let oldFrameCount = rotationFrames.count
+        let normalizedPhase = oldFrameCount > 0
+            ? Double(animationState.frameIndex) / Double(oldFrameCount)
+            : 0
+
+        rotationTimer?.invalidate()
+        rotationTimer = nil
+        self.frameRate = frameRate
+        if let sourceImage {
+            rotationFrames = Self.makeRotationFrames(from: sourceImage, frameRate: frameRate)
+        } else {
+            rotationFrames.removeAll(keepingCapacity: false)
+        }
+        animationState.setFrameIndex(
+            Int((normalizedPhase * Double(frameRate.frameCount)).rounded()),
+            frameCount: rotationFrames.count
+        )
+
+        if wasRotating {
+            installRotationTimer()
         }
     }
 
@@ -109,12 +187,17 @@ final class RotatingTemplateImageView: PassthroughImageView {
     func startRotating() {
         guard rotationTimer == nil, !rotationFrames.isEmpty else { return }
         animationState.reset()
-        let timer = Timer(timeInterval: Self.rotationFrameInterval, repeats: true) { [weak self] _ in
+        installRotationTimer()
+    }
+
+    private func installRotationTimer() {
+        guard rotationTimer == nil, !rotationFrames.isEmpty else { return }
+        let runningTimer = Timer(timeInterval: frameRate.frameInterval, repeats: true) { [weak self] _ in
             self?.advanceRotation()
         }
-        timer.tolerance = 0.002
-        rotationTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
+        runningTimer.tolerance = 0.002
+        rotationTimer = runningTimer
+        RunLoop.main.add(runningTimer, forMode: .common)
     }
 
     func stopRotating() {
@@ -136,9 +219,12 @@ final class RotatingTemplateImageView: PassthroughImageView {
         }
     }
 
-    private static func makeRotationFrames(from sourceImage: NSImage) -> [NSImage] {
-        (0..<frameCount).map { index in
-            let angle = -(2 * .pi * CGFloat(index) / CGFloat(frameCount))
+    private static func makeRotationFrames(
+        from sourceImage: NSImage,
+        frameRate: MenuBarAnimationFrameRate
+    ) -> [NSImage] {
+        (0..<frameRate.frameCount).map { index in
+            let angle = -(2 * .pi * CGFloat(index) / CGFloat(frameRate.frameCount))
             let frame = NSImage(size: sourceImage.size, flipped: false) { rect in
                 NSGraphicsContext.current?.imageInterpolation = .high
                 let transform = NSAffineTransform()

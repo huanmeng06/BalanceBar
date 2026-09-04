@@ -208,12 +208,17 @@ final class StatusItemControllerTests: XCTestCase {
             sourceFrames: sourceFrames,
             usesBitmapContent: false
         )
+        let changedFrameRate = makeVisualSignature(
+            sourceFrames: sourceFrames,
+            animationFrameRate: .fps15
+        )
 
         XCTAssertNotEqual(base, changedText)
         XCTAssertNotEqual(base, changedGeometry)
         XCTAssertNotEqual(base, changedAppearance)
         XCTAssertNotEqual(base, changedProvider)
         XCTAssertNotEqual(base, changedMode)
+        XCTAssertNotEqual(base, changedFrameRate)
     }
 
     @MainActor
@@ -412,6 +417,104 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testBitmapControllerSwitchesBetweenSupportedCadencesWithoutRestartingTheTimer() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(animationFrameRate: .fps30)
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let input = makeMenuInput()
+        let settings = makeSettings(usesBitmapContent: true)
+
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: input,
+            settings: settings
+        )
+        controller.setCodexIconForTesting(
+            NSImage(size: NSSize(width: 16, height: 16))
+        )
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+
+        let thirtyImage = try XCTUnwrap(controller.stableCodexAnimationImageForTesting)
+        let thirtyCompositionCount = controller.codexAnimationFrameCompositionCountForTesting
+        let thirtyRebuildCount = controller.stableCodexAnimationRebuildCountForTesting
+        let thirtyAssignmentCount = controller.stableCodexAnimationImageAssignmentCountForTesting
+        XCTAssertEqual(controller.animationFrameRateForTesting, .fps30)
+        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 36)
+        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        controller.setAnimationFrameRate(.fps15)
+
+        let fifteenImage = try XCTUnwrap(controller.stableCodexAnimationImageForTesting)
+        XCTAssertEqual(controller.animationFrameRateForTesting, .fps15)
+        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 18)
+        XCTAssertEqual(controller.stableCodexAnimationFrameCountForTesting, 18)
+        XCTAssertEqual(
+            controller.codexAnimationFrameCompositionCountForTesting,
+            thirtyCompositionCount + 18
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationRebuildCountForTesting,
+            thirtyRebuildCount + 1
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationImageAssignmentCountForTesting,
+            thirtyAssignmentCount + 1
+        )
+        XCTAssertFalse(fifteenImage === thirtyImage)
+        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        let fifteenCompositionCount = controller.codexAnimationFrameCompositionCountForTesting
+        let fifteenAssignmentCount = controller.stableCodexAnimationImageAssignmentCountForTesting
+        for tick in 0..<100 {
+            controller.advanceCodexAnimationFrameForTesting(tick % 18)
+            XCTAssertTrue(controller.menuBarButtonImageForTesting === fifteenImage)
+        }
+        XCTAssertEqual(
+            controller.codexAnimationFrameCompositionCountForTesting,
+            fifteenCompositionCount,
+            "15 fps steady-state ticks must not compose complete bitmaps"
+        )
+        XCTAssertEqual(
+            controller.stableCodexAnimationImageAssignmentCountForTesting,
+            fifteenAssignmentCount,
+            "15 fps steady-state ticks must not assign button.image"
+        )
+
+        controller.setAnimationFrameRate(.fps30)
+        XCTAssertEqual(controller.animationFrameRateForTesting, .fps30)
+        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 36)
+        XCTAssertEqual(controller.stableCodexAnimationFrameCountForTesting, 36)
+        XCTAssertEqual(
+            controller.codexAnimationFrameCompositionCountForTesting,
+            fifteenCompositionCount + 36
+        )
+        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+    }
+
+    @MainActor
     func testRuntimeDisplayPolicyPublishesAndClearsItsWarningImmediately() {
         var visibilityTransitions: [StatusItemVisibility] = []
         let controller = StatusItemController(
@@ -513,7 +616,9 @@ final class StatusItemControllerTests: XCTestCase {
         }
     }
 
-    private func makeController() -> StatusItemController {
+    private func makeController(
+        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue
+    ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: {},
@@ -527,7 +632,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openProviderWebsite: {},
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
-            )
+            ),
+            animationFrameRate: animationFrameRate
         )
     }
 
@@ -566,6 +672,7 @@ final class StatusItemControllerTests: XCTestCase {
         contentFrame: NSRect = NSRect(x: 0, y: 0, width: 56, height: 22),
         appearance: String = "aqua",
         sourceProviderIdentity: String = "provider",
+        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue,
         usesBitmapContent: Bool = true
     ) -> MenuBarBitmapAnimationVisualSignature {
         MenuBarBitmapAnimationVisualSignature(
@@ -618,6 +725,7 @@ final class StatusItemControllerTests: XCTestCase {
             showReset: true,
             buttonImagePosition: 1,
             buttonImageScaling: 2,
+            animationFrameRate: animationFrameRate,
             usesBitmapContent: usesBitmapContent
         )
     }
