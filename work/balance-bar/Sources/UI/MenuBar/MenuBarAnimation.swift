@@ -49,6 +49,15 @@ enum MenuBarAnimationFrameRate: Int, CaseIterable, Equatable {
     }
 }
 
+/// Selects the Codex animation implementation used by a status-item
+/// controller.  The native Core Animation case is intentionally injectable so
+/// the stacked Issue #300 experiment can be exercised without deleting the D0
+/// bitmap backend or changing the production candidate branch.
+enum MenuBarCodexAnimationBackend: Equatable {
+    case stableBitmap
+    case nativeCoreAnimation
+}
+
 enum MenuBarActivityAnimationPolicy {
     static func shouldAnimate(taskRunning: Bool, preferenceEnabled: Bool) -> Bool {
         shouldAnimate(
@@ -127,10 +136,15 @@ final class RotatingTemplateImageView: PassthroughImageView {
         return rotationFrames[index]
     }
 
-    func setSourceImage(_ image: NSImage) {
+    func setSourceImage(
+        _ image: NSImage,
+        prepareAnimationFrames: Bool = true
+    ) {
         let sourceChanged = sourceImage !== image
         if sourceChanged {
-            rotationFrames = Self.makeRotationFrames(from: image, frameRate: frameRate)
+            rotationFrames = prepareAnimationFrames
+                ? Self.makeRotationFrames(from: image, frameRate: frameRate)
+                : []
         }
         sourceImage = image
         if self.image !== image {

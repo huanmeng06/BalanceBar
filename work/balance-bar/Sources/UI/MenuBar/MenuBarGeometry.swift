@@ -151,6 +151,18 @@ struct MenuBarBitmapImagePlacement: Equatable {
             dy: canonicalToImageOffset.height
         )
     }
+
+    /// Converts a cached image-canvas rect back to the local coordinates of
+    /// the live status button.  Both the bitmap render root and
+    /// `NSStatusBarButton` use the same flipped, logical-point coordinate
+    /// system, so the inverse is a pure translation; backing scale belongs to
+    /// rasterization and must not be multiplied into this point-space rect.
+    func buttonLocalRect(forImageCanvasRect rect: NSRect) -> NSRect {
+        rect.offsetBy(
+            dx: -canonicalToImageOffset.width,
+            dy: -canonicalToImageOffset.height
+        )
+    }
 }
 
 enum MenuBarBitmapImageLayout {

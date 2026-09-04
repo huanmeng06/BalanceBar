@@ -72,6 +72,8 @@ final class DashboardCompositionController {
     private let actions: DashboardCompositionActions
     private let launchAtLoginController: LaunchAtLoginController
     private let launchWithChatGPTController: LaunchWithChatGPTController
+    private var menuBarPreviewAnimationActive = false
+    private var menuBarPreviewAnimationIconImage: NSImage?
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
             onRefresh: actions.onManualRefresh,
@@ -197,7 +199,9 @@ final class DashboardCompositionController {
             snapshot: snapshot,
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
-            iconImage: state.iconImage()
+            iconImage: state.iconImage(),
+            animationActive: menuBarPreviewAnimationActive,
+            animationIconImage: menuBarPreviewAnimationIconImage
         )
     }
 
@@ -212,6 +216,21 @@ final class DashboardCompositionController {
     func updateMenuBarPreviewIcon(_ image: NSImage?) {
         guard window?.isVisible == true, section == .menuBar else { return }
         dashboardPreferencePages.updateMenuBarPreviewIcon(image)
+    }
+
+    /// Stores the native CA animation state even while the Dashboard is
+    /// closed.  A later page creation receives the current state in its input;
+    /// a visible page only performs a lightweight host/layer update here.
+    func updateMenuBarPreviewAnimation(active: Bool, iconImage: NSImage?) {
+        menuBarPreviewAnimationActive = active
+        if let iconImage {
+            menuBarPreviewAnimationIconImage = iconImage
+        }
+        guard window?.isVisible == true, section == .menuBar else { return }
+        dashboardPreferencePages.updateMenuBarPreviewAnimation(
+            active: active,
+            iconImage: iconImage ?? menuBarPreviewAnimationIconImage
+        )
     }
 
     func refreshMenuBarWidthAdjustment(
@@ -316,6 +335,8 @@ final class DashboardCompositionController {
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
+            animationActive: menuBarPreviewAnimationActive,
+            animationIconImage: menuBarPreviewAnimationIconImage,
             currentOpenCodexResolution: state.currentOpenCodexResolution(),
             runtimeCandidate: state.runtimeCandidate(),
             updateState: state.updateState()

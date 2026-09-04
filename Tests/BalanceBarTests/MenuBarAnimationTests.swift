@@ -61,6 +61,104 @@ final class MenuBarAnimationTests: XCTestCase {
         )
     }
 
+    func testNativeCoreAnimationHostUsesDiscreteCenterPivotContract() throws {
+        let host = MenuBarNativeAnimatedIconHostView(
+            frame: NSRect(x: 7, y: 11, width: 16, height: 16)
+        )
+        host.updateGeometry(
+            frame: NSRect(x: 19, y: 23, width: 18, height: 18),
+            contentsScale: 2
+        )
+
+        XCTAssertEqual(host.iconLayer.anchorPoint, CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(host.iconLayer.bounds, NSRect(x: 0, y: 0, width: 18, height: 18))
+        XCTAssertEqual(
+            host.iconLayer.position,
+            CGPoint(x: host.bounds.midX, y: host.bounds.midY)
+        )
+        XCTAssertEqual(host.iconLayer.contentsScale, 2)
+
+        let sourceImage = NSImage(size: NSSize(width: 16, height: 16))
+        sourceImage.isTemplate = true
+        XCTAssertTrue(
+            host.updateContents(
+                sourceImage: sourceImage,
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: 2
+            )
+        )
+        let rasterizationCount = host.contentsRasterizationCount
+        XCTAssertTrue(
+            host.updateContents(
+                sourceImage: sourceImage,
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: 2
+            )
+        )
+        XCTAssertEqual(
+            host.contentsRasterizationCount,
+            rasterizationCount,
+            "steady-state synchronization must not rerasterize the icon"
+        )
+
+        host.installRotationAnimation()
+        let animation = try XCTUnwrap(host.rotationAnimationForTesting)
+        XCTAssertEqual(animation.keyPath, "transform.rotation.z")
+        XCTAssertEqual(animation.duration, 1.2, accuracy: 0.000_001)
+        XCTAssertEqual(animation.calculationMode, .discrete)
+        XCTAssertEqual(animation.repeatCount, Float.infinity)
+        XCTAssertEqual(animation.values?.count, 36)
+        XCTAssertEqual(animation.keyTimes?.count, 36)
+        let firstKeyTime = try XCTUnwrap(animation.keyTimes?.first)
+        let lastKeyTime = try XCTUnwrap(animation.keyTimes?.last)
+        XCTAssertEqual(firstKeyTime.doubleValue, 0, accuracy: 0.000_001)
+        XCTAssertEqual(
+            lastKeyTime.doubleValue,
+            35.0 / 36.0,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(host.rotationAnimationInstallCount, 1)
+
+        host.installRotationAnimation()
+        XCTAssertEqual(
+            host.rotationAnimationInstallCount,
+            1,
+            "repeated synchronization must not install a second CA animation"
+        )
+        host.removeRotationAnimation()
+        host.removeRotationAnimation()
+        XCTAssertNil(host.rotationAnimationForTesting)
+    }
+
+    func testNativeCoreAnimationHostHasNoPerFrameSchedulerOrAppKitRedrawPath() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let viewsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "work/balance-bar/Sources/UI/MenuBar/MenuBarViews.swift"
+            ),
+            encoding: .utf8
+        )
+        let hostStart = try XCTUnwrap(
+            viewsSource.range(of: "final class MenuBarNativeAnimatedIconHostView")
+        )
+        let hostEnd = try XCTUnwrap(
+            viewsSource.range(
+                of: "final class MenuBarTextView",
+                range: hostStart.upperBound..<viewsSource.endIndex
+            )
+        )
+        let hostSource = String(viewsSource[hostStart.lowerBound..<hostEnd.lowerBound])
+        XCTAssertFalse(hostSource.contains("Timer"))
+        XCTAssertFalse(hostSource.contains("CADisplayLink"))
+        XCTAssertFalse(hostSource.contains("DispatchSourceTimer"))
+        XCTAssertFalse(hostSource.contains("needsDisplay"))
+        XCTAssertFalse(hostSource.contains("setNeedsDisplay"))
+    }
+
     func testClaudeAnimationKeepsItsDiscreteFrameCountAndTempo() {
         XCTAssertEqual(ClaudeThinkingAnimator.frameCount, 9)
         XCTAssertEqual(ClaudeThinkingAnimator.defaultFrameDuration, 0.09, accuracy: 0.000_001)

@@ -637,6 +637,101 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(visibilityTransitions.last, .unknown)
     }
 
+    @MainActor
+    func testNativeCoreAnimationCodexLifecycleUsesOneOwnedHostWithoutBitmapTicks() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(
+            codexAnimationBackend: .nativeCoreAnimation
+        )
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let input = makeMenuInput()
+        let settings = makeSettings(usesBitmapContent: true)
+
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: input,
+            settings: settings
+        )
+        let icon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.2,
+            green: 0.4,
+            blue: 0.8
+        )
+        icon.isTemplate = true
+        controller.setCodexIconForTesting(icon)
+        let staticImage = try XCTUnwrap(controller.menuBarButtonImageForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+
+        let host = try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        XCTAssertEqual(
+            controller.codexAnimationBackendForTesting,
+            .nativeCoreAnimation
+        )
+        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertTrue(host.superview != nil)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertEqual(host.iconLayer.anchorPoint, CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(host.iconLayer.bounds.size, host.bounds.size)
+        XCTAssertEqual(
+            host.iconLayer.position,
+            CGPoint(x: host.bounds.midX, y: host.bounds.midY)
+        )
+        XCTAssertNotNil(host.rotationAnimationForTesting)
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting !== staticImage,
+            "running CA presentation must use the cached text-only bitmap"
+        )
+
+        let installCount = host.rotationAnimationInstallCount
+        let rasterizationCount = host.contentsRasterizationCount
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: input,
+            settings: settings
+        )
+        XCTAssertEqual(host.rotationAnimationInstallCount, installCount)
+        XCTAssertEqual(host.contentsRasterizationCount, rasterizationCount)
+
+        // This seam represents a legacy timer callback.  Native CA must leave
+        // it unable to copy pixels or request a native redraw.
+        let pixelCopies = controller.stableCodexAnimationPixelCopyCountForTesting
+        let redraws = controller.stableCodexAnimationRedrawRequestCountForTesting
+        controller.advanceCodexAnimationFrameForTesting(7)
+        XCTAssertEqual(controller.stableCodexAnimationPixelCopyCountForTesting, pixelCopies)
+        XCTAssertEqual(controller.stableCodexAnimationRedrawRequestCountForTesting, redraws)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertNil(host.superview)
+        XCTAssertTrue(host.isHidden)
+        XCTAssertNil(host.rotationAnimationForTesting)
+        XCTAssertTrue(controller.menuBarButtonImageForTesting === staticImage)
+    }
+
     private func makeSolidImage(
         size: NSSize,
         red: CGFloat,
@@ -656,7 +751,8 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     private func makeController(
-        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue
+        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue,
+        codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -672,7 +768,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
             ),
-            animationFrameRate: animationFrameRate
+            animationFrameRate: animationFrameRate,
+            codexAnimationBackend: codexAnimationBackend
         )
     }
 

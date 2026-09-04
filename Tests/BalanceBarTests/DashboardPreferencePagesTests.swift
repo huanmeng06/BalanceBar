@@ -4198,6 +4198,51 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertEqual(controller.iconTaskCardLayoutCountForTesting, iconTaskLayouts)
     }
 
+    func testMenuBarPreviewNativeAnimationUsesSeparateVisibleCAHost() throws {
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPreviewCA.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let icon = NSImage(size: NSSize(width: 16, height: 16))
+        icon.isTemplate = true
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .balance(
+                "Provider",
+                80,
+                "USD",
+                nil,
+                Date(timeIntervalSince1970: 1)
+            ),
+            menuBarSnapshot: { $0 },
+            iconImage: icon,
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+
+        controller.updatePreviewAnimation(active: true, iconImage: icon)
+        let host = controller.previewAnimationHostForTesting
+        XCTAssertTrue(host.superview != nil)
+        XCTAssertFalse(host.isHidden)
+        XCTAssertNotNil(host.rotationAnimationForTesting)
+        XCTAssertEqual(host.iconLayer.anchorPoint, CGPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(host.iconLayer.bounds.size, host.bounds.size)
+        XCTAssertEqual(
+            host.iconLayer.position,
+            CGPoint(x: host.bounds.midX, y: host.bounds.midY)
+        )
+
+        controller.updatePreviewAnimation(active: false, iconImage: icon)
+        XCTAssertTrue(host.isHidden)
+        XCTAssertNil(host.rotationAnimationForTesting)
+    }
+
     func testMenuBarTypographyAndPositionLabelsLocalizeAcrossSupportedLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

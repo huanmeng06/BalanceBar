@@ -2023,6 +2023,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let openStatusLink: (URL) -> Void
         let iconChanged: (NSImage?) -> Void
         let frameImageChanged: (NSImage?) -> Void
+        let animationStateChanged: (Bool) -> Void
         let visibilityChanged: (StatusItemVisibility) -> Void
 
         init(
@@ -2038,6 +2039,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             openStatusLink: @escaping (URL) -> Void,
             iconChanged: @escaping (NSImage?) -> Void,
             frameImageChanged: @escaping (NSImage?) -> Void = { _ in },
+            animationStateChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
         ) {
             self.manualRefresh = manualRefresh
@@ -2052,6 +2054,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.openStatusLink = openStatusLink
             self.iconChanged = iconChanged
             self.frameImageChanged = frameImageChanged
+            self.animationStateChanged = animationStateChanged
             self.visibilityChanged = visibilityChanged
         }
     }
@@ -2231,6 +2234,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var menuBarBitmapImagePlacement: MenuBarBitmapImagePlacement?
     private var cachedMenuBarIconDrawRect: NSRect?
     private var stableCodexAnimationFrameBuffer = MenuBarStableBitmapAnimationFrameBuffer()
+    private let codexAnimationBackend: MenuBarCodexAnimationBackend
+    private var nativeCodexAnimatedIconHost: MenuBarNativeAnimatedIconHostView?
+    private var nativeCodexAnimationIsActive = false
     private(set) var stableCodexAnimationImageAssignmentCountForTesting = 0
     private(set) var stableCodexAnimationRedrawRequestCountForTesting = 0
     private let menuBarPrimaryLabel = PassthroughTextField(labelWithString: "…")
@@ -2356,16 +2362,41 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.isRotating
     }
 
+    var codexAnimationBackendForTesting: MenuBarCodexAnimationBackend {
+        codexAnimationBackend
+    }
+
+    var nativeCodexAnimationHostForTesting: MenuBarNativeAnimatedIconHostView? {
+        nativeCodexAnimatedIconHost
+    }
+
+    var nativeCodexAnimationIsActiveForTesting: Bool {
+        nativeCodexAnimationIsActive
+    }
+
+    var nativeCodexAnimationInstallCountForTesting: Int {
+        nativeCodexAnimatedIconHost?.rotationAnimationInstallCount ?? 0
+    }
+
+    var nativeCodexAnimationContentsRasterizationCountForTesting: Int {
+        nativeCodexAnimatedIconHost?.contentsRasterizationCount ?? 0
+    }
+
     var menuBarButtonImageForTesting: NSImage? { statusItem?.button?.image }
 
     /// Supplies a deterministic source for controller-level bitmap cache tests;
     /// production always supplies the bundled Codex asset during setup.
     func setCodexIconForTesting(_ image: NSImage) {
         codexIconImage = image
-        menuBarIconView.setSourceImage(image)
+        menuBarIconView.setSourceImage(
+            image,
+            prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
+                || !usesBitmapContent
+        )
     }
 
     func advanceCodexAnimationFrameForTesting(_ frameIndex: Int) {
+        guard codexAnimationBackend == .stableBitmap else { return }
         applyStableCodexAnimationFrame(frameIndex)
     }
 
@@ -2394,10 +2425,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     init(
         actions: Actions,
-        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue
+        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue,
+        codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap
     ) {
         self.actions = actions
         self.animationFrameRate = animationFrameRate
+        self.codexAnimationBackend = codexAnimationBackend
         self.menuBarIconView = RotatingTemplateImageView(
             frame: .zero,
             frameRate: animationFrameRate
@@ -2491,6 +2524,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func teardown() {
         lifecycleGeneration += 1
         removeStatusItemWindowObservation()
+        deactivateNativeCodexAnimation()
         statusItemVisibilityStateMachine.reset()
         menuBarIconDisplayStateMachine.reset()
         publishStatusItemVisibility()
@@ -2529,6 +2563,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.menuInput = menuInput
         self.settings = settings
         if bitmapContentModeChanged {
+            if !settings.usesBitmapContent {
+                deactivateNativeCodexAnimation()
+            }
             usesBitmapContent = settings.usesBitmapContent
             configureMenuBarContentPresentation()
         }
@@ -2547,6 +2584,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         applyMenuBarIconDisplayPolicy()
         layoutStatusItem(for: snapshot)
+        if bitmapContentModeChanged {
+            // Reconcile the selected renderer only after the new content
+            // coordinate space and its cache have been established.
+            updateActivityIcon()
+        }
         rebuildOrDeferMenu()
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
@@ -2580,6 +2622,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// intact.
     func setAnimationFrameRate(_ frameRate: MenuBarAnimationFrameRate) {
         precondition(Thread.isMainThread, "Animation frame rate must be changed on the main thread")
+        // Native CA has a fixed 36-state/1.2-second contract.  The cadence
+        // mutator remains available for the D0 backend and tests, but must not
+        // restart or reshape the experiment's compositor animation.
+        guard codexAnimationBackend != .nativeCoreAnimation else { return }
         guard animationFrameRate != frameRate else { return }
 
         let wasRotating = menuBarIconView.isRotating
@@ -2767,7 +2813,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             icon.size = NSSize(width: 16, height: 16)
             icon.isTemplate = true
             codexIconImage = icon
-            menuBarIconView.setSourceImage(icon)
+            menuBarIconView.setSourceImage(
+                icon,
+                prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
+                    || !usesBitmapContent
+            )
         }
         if let iconURL = Bundle.main.url(forResource: "Claude", withExtension: "svg"),
            let icon = NSImage(contentsOf: iconURL) {
@@ -2797,6 +2847,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 return
             }
             if self.usesBitmapContent, self.activeClient == .codex {
+                // Native CA owns the Codex running state in the experiment;
+                // a defensive return here prevents a stray legacy timer from
+                // ever reaching native status-item pixels.
+                guard self.codexAnimationBackend == .stableBitmap else {
+                    return
+                }
                 self.applyStableCodexAnimationFrame(frameIndex)
                 // Dashboard preview animation is a separate consumer. It
                 // receives the icon-only frame without mutating the detached
@@ -3028,6 +3084,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         statusItemReanchorAttempts += 1
         let desiredLength = max(CGFloat(30), item.length)
+        // Keep an active native-CA host's layer animation alive while AppKit
+        // replaces the source status item.  The retained host is reattached
+        // by the next layout boundary, preserving its layer-local phase.
+        detachNativeCodexAnimationHostForStatusItemReplacement()
         removeStatusItemWindowObservation()
         NSStatusBar.system.removeStatusItem(item)
         let replacement = NSStatusBar.system.statusItem(withLength: desiredLength)
@@ -3041,11 +3101,41 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch activeClient {
         case .codex:
             claudeThinkingAnimator?.stop()
+            if codexAnimationBackend == .nativeCoreAnimation, usesBitmapContent {
+                menuBarIconView.stopRotating()
+                if let codexIconImage,
+                   menuBarIconView.sourceImageForRendering !== codexIconImage {
+                    menuBarIconView.setSourceImage(
+                        codexIconImage,
+                        prepareAnimationFrames: false
+                    )
+                }
+                let shouldAnimate = MenuBarActivityAnimationPolicy.shouldAnimate(
+                    taskRunning: isCodexTaskRunning,
+                    preferenceEnabled: animationEnabled,
+                    reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                )
+                if shouldAnimate {
+                    guard synchronizeNativeCodexAnimationHost() else {
+                        deactivateNativeCodexAnimation()
+                        restoreCodexStaticBitmap()
+                        return
+                    }
+                } else {
+                    deactivateNativeCodexAnimation()
+                    restoreCodexStaticBitmap()
+                }
+                return
+            }
+            deactivateNativeCodexAnimation()
             // While the rotation is feeding frames, re-assigning the static
             // source would clobber the current frame for one tick and dirty
             // the view; the rotation frames already derive from this source.
             if !menuBarIconView.isRotating, let codexIconImage {
-                menuBarIconView.setSourceImage(codexIconImage)
+                menuBarIconView.setSourceImage(
+                    codexIconImage,
+                    prepareAnimationFrames: true
+                )
             }
             if MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isCodexTaskRunning,
@@ -3073,6 +3163,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
             }
         case .claude:
+            deactivateNativeCodexAnimation()
             menuBarIconView.stopRotating()
             if claudeThinkingAnimator?.isAnimating != true, let claudeIconImage {
                 menuBarIconView.setSourceImage(claudeIconImage)
@@ -3528,6 +3619,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         shouldPrepareCodexAnimationFrames && menuBarIconView.isRotating
     }
 
+    private var shouldUseNativeCodexAnimation: Bool {
+        codexAnimationBackend == .nativeCoreAnimation
+            && shouldPrepareCodexAnimationFrames
+    }
+
     /// Materializes one mutable image representation from the finite source
     /// frame set. This may compose and rasterize each frame, but only during a
     /// bounded visual-cache rebuild; no timer callback reaches this method.
@@ -3612,6 +3708,88 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if button.image !== staticImage {
             button.image = staticImage
         }
+    }
+
+    /// Synchronizes the BalanceBar-owned icon host at a bounded visual
+    /// boundary.  The static text bitmap is installed first, then the host's
+    /// local geometry and one-time contents are prepared, and only then is the
+    /// compositor animation installed.
+    @discardableResult
+    private func synchronizeNativeCodexAnimationHost() -> Bool {
+        precondition(Thread.isMainThread, "Native Codex animation must be synchronized on the main thread")
+        guard codexAnimationBackend == .nativeCoreAnimation,
+              shouldPrepareCodexAnimationFrames,
+              let button = statusItem?.button,
+              let textBitmap = cachedMenuBarTextBitmap,
+              let iconDrawRect = cachedMenuBarIconDrawRect,
+              let placement = menuBarBitmapImagePlacement,
+              let codexIconImage else {
+            return false
+        }
+
+        let localIconRect = placement.buttonLocalRect(
+            forImageCanvasRect: iconDrawRect
+        )
+        guard localIconRect.width > 0, localIconRect.height > 0 else {
+            return false
+        }
+
+        if button.image !== textBitmap {
+            // One boundary assignment replaces the complete static bitmap
+            // with its text-only variant; the host supplies the icon pixels.
+            button.image = textBitmap
+        }
+
+        let host = nativeCodexAnimatedIconHost ?? {
+            let newHost = MenuBarNativeAnimatedIconHostView(frame: localIconRect)
+            nativeCodexAnimatedIconHost = newHost
+            return newHost
+        }()
+        if host.superview !== button {
+            host.removeFromSuperview()
+            button.addSubview(host, positioned: .above, relativeTo: nil)
+        }
+
+        let scale = button.window?.backingScaleFactor ?? 2
+        host.updateGeometry(frame: localIconRect, contentsScale: scale)
+        guard host.updateContents(
+            sourceImage: codexIconImage,
+            appearance: button.effectiveAppearance,
+            contentsScale: scale
+        ) else {
+            host.removeRotationAnimation()
+            host.isHidden = true
+            host.removeFromSuperview()
+            return false
+        }
+        host.isHidden = false
+        // Existing animation is deliberately retained across geometry,
+        // appearance, backing-scale, and status-item reattachment changes.
+        host.installRotationAnimation()
+        publishNativeCodexAnimationStateIfNeeded(true)
+        return true
+    }
+
+    private func deactivateNativeCodexAnimation() {
+        guard codexAnimationBackend == .nativeCoreAnimation else { return }
+        nativeCodexAnimatedIconHost?.removeRotationAnimation()
+        nativeCodexAnimatedIconHost?.isHidden = true
+        nativeCodexAnimatedIconHost?.removeFromSuperview()
+        publishNativeCodexAnimationStateIfNeeded(false)
+    }
+
+    /// Detaches only the view during an AppKit status-item replacement.  The
+    /// layer animation stays installed on the retained host, so reattachment
+    /// continues at the layer-local compositor phase without a restart.
+    private func detachNativeCodexAnimationHostForStatusItemReplacement() {
+        guard codexAnimationBackend == .nativeCoreAnimation else { return }
+        nativeCodexAnimatedIconHost?.removeFromSuperview()
+    }
+
+    private func publishNativeCodexAnimationStateIfNeeded(_ active: Bool) {
+        guard nativeCodexAnimationIsActive != active else { return }
+        nativeCodexAnimationIsActive = active
+        actions.animationStateChanged(active)
     }
 
     private func makeMenuBarBitmapAnimationVisualSignature(
@@ -3743,8 +3921,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
            signature.matchesStaticContent(of: cachedSignature),
            cachedMenuBarTextBitmap != nil,
            cachedStaticMenuBarContentBitmap != nil {
-            if shouldUseStableCodexAnimation,
-               stableCodexAnimationFrameBuffer.image == nil {
+            if codexAnimationBackend == .nativeCoreAnimation {
+                if shouldUseNativeCodexAnimation {
+                    _ = synchronizeNativeCodexAnimationHost()
+                } else {
+                    deactivateNativeCodexAnimation()
+                    restoreCodexStaticBitmap()
+                }
+            } else if shouldUseStableCodexAnimation,
+                      stableCodexAnimationFrameBuffer.image == nil {
                 _ = installStableCodexAnimationImage(
                     at: menuBarIconView.currentAnimationFrameIndex
                 )
@@ -3805,7 +3990,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarBitmapImagePlacement = placement
         cachedMenuBarIconDrawRect = iconDrawRect
 
-        if shouldUseStableCodexAnimation {
+        if shouldUseNativeCodexAnimation {
+            if !synchronizeNativeCodexAnimationHost() {
+                deactivateNativeCodexAnimation()
+                button.image = staticImage
+            }
+        } else if codexAnimationBackend == .nativeCoreAnimation {
+            deactivateNativeCodexAnimation()
+            button.image = staticImage
+        } else if shouldUseStableCodexAnimation {
             if !installStableCodexAnimationImage(
                 at: menuBarIconView.currentAnimationFrameIndex
             ) {

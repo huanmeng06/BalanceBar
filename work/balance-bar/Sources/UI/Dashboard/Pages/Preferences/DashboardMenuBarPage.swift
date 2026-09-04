@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 /// Pure delay/interval policy for long-press auto-repeat of the fine-tune
 /// direction buttons. Press-and-hold starts stepping after `initialDelay`,
@@ -442,6 +443,8 @@ final class DashboardMenuBarPage {
         let menuBarSnapshot: (Snapshot) -> Snapshot
         let statusItemVisibility: StatusItemVisibility
         let iconImage: NSImage?
+        let animationActive: Bool
+        let animationIconImage: NSImage?
         let relay: DashboardPreferencePageRelay
 
         init(
@@ -450,13 +453,17 @@ final class DashboardMenuBarPage {
             menuBarSnapshot: @escaping (Snapshot) -> Snapshot,
             iconImage: NSImage?,
             relay: DashboardPreferencePageRelay,
-            statusItemVisibility: StatusItemVisibility = .unknown
+            statusItemVisibility: StatusItemVisibility = .unknown,
+            animationActive: Bool = false,
+            animationIconImage: NSImage? = nil
         ) {
             self.preferences = preferences
             self.snapshot = snapshot
             self.menuBarSnapshot = menuBarSnapshot
             self.statusItemVisibility = statusItemVisibility
             self.iconImage = iconImage
+            self.animationActive = animationActive
+            self.animationIconImage = animationIconImage
             self.relay = relay
         }
     }
@@ -518,6 +525,7 @@ final class DashboardMenuBarPage {
         let previewIconBounds: NSRect
         let backingScale: CGFloat
         let appearance: String
+        let animationActive: Bool
     }
 
     private struct RefreshSignature: Equatable {
@@ -528,6 +536,7 @@ final class DashboardMenuBarPage {
 
     private let previewIcon = PassthroughImageView()
     private let previewIconSlot = NSView()
+    private let previewAnimatedIconHost = MenuBarNativeAnimatedIconHostView(frame: .zero)
     private let previewText = MenuBarTextView()
     private let previewPrimary = NSTextField(labelWithString: "…")
     private let previewSecondary = NSTextField(labelWithString: "")
@@ -596,6 +605,8 @@ final class DashboardMenuBarPage {
     private(set) var iconTaskCardLayoutCountForTesting = 0
     private let chromeInset: CGFloat = 10
     private var isBuilt = false
+    private var previewAnimationActive = false
+    private var lastPreviewIconImage: NSImage?
     private let pageActionTarget = DashboardMenuBarPageActionTarget()
 
     deinit {
@@ -606,6 +617,10 @@ final class DashboardMenuBarPage {
     func teardown() {
         removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
+        previewAnimationActive = false
+        previewAnimatedIconHost.removeRotationAnimation()
+        previewAnimatedIconHost.isHidden = true
+        previewAnimatedIconHost.removeFromSuperview()
         resetRefreshSignatures()
         pageActionTarget.onRevealIconDisplayModeSetting = nil
     }
@@ -621,10 +636,67 @@ final class DashboardMenuBarPage {
 
     /// Updates only the preview bitmap. Animation frames must not repeat the
     /// full settings-page refresh performed by refresh(...).
+    var previewAnimationHostForTesting: MenuBarNativeAnimatedIconHostView {
+        previewAnimatedIconHost
+    }
+
     func updatePreviewIcon(_ image: NSImage?) {
         guard isBuilt else { return }
+        guard !previewAnimationActive else { return }
+        lastPreviewIconImage = image
         guard previewIcon.image !== image else { return }
         previewIcon.image = image
+    }
+
+    /// Mirrors the native status-item animation state into the already-visible
+    /// Dashboard preview without using the legacy frame callback.  The preview
+    /// owns a separate in-window CA host and is never used to drive native
+    /// status-item pixels.
+    func updatePreviewAnimation(active: Bool, iconImage: NSImage?) {
+        previewAnimationActive = active
+        if let iconImage {
+            lastPreviewIconImage = iconImage
+        }
+        guard isBuilt else { return }
+
+        let staticImage = lastPreviewIconImage
+        guard active,
+              !previewIconSlot.isHidden,
+              let iconImage = iconImage ?? staticImage,
+              previewIcon.bounds.width > 0,
+              previewIcon.bounds.height > 0 else {
+            previewAnimatedIconHost.removeRotationAnimation()
+            previewAnimatedIconHost.isHidden = true
+            if previewIcon.image !== staticImage {
+                previewIcon.image = staticImage
+            }
+            return
+        }
+
+        previewIcon.image = nil
+        let scale = max(previewIcon.window?.backingScaleFactor ?? 2, 1)
+        previewAnimatedIconHost.updateGeometry(
+            frame: previewIcon.frame,
+            contentsScale: scale
+        )
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        previewAnimatedIconHost.layer?.setAffineTransform(
+            previewIcon.layer?.affineTransform() ?? .identity
+        )
+        CATransaction.commit()
+        guard previewAnimatedIconHost.updateContents(
+            sourceImage: iconImage,
+            appearance: previewIcon.effectiveAppearance,
+            contentsScale: scale
+        ) else {
+            previewAnimatedIconHost.removeRotationAnimation()
+            previewAnimatedIconHost.isHidden = true
+            previewIcon.image = staticImage
+            return
+        }
+        previewAnimatedIconHost.isHidden = false
+        previewAnimatedIconHost.installRotationAnimation()
     }
 
     private static func makeWarningRow(
@@ -668,6 +740,11 @@ final class DashboardMenuBarPage {
 
     func make(_ input: Input) -> NSView {
         resetRefreshSignatures()
+        previewAnimationActive = input.animationActive
+        lastPreviewIconImage = input.animationIconImage ?? input.iconImage
+        previewAnimatedIconHost.removeFromSuperview()
+        previewAnimatedIconHost.removeRotationAnimation()
+        previewAnimatedIconHost.isHidden = true
         pageActionTarget.onRevealIconDisplayModeSetting = { [weak self] in
             self?.revealIconDisplayModeSetting()
         }
@@ -741,6 +818,8 @@ final class DashboardMenuBarPage {
             previewIcon.centerXAnchor.constraint(equalTo: previewIconSlot.centerXAnchor),
             previewIcon.centerYAnchor.constraint(equalTo: previewIconSlot.centerYAnchor)
         ])
+        previewAnimatedIconHost.isHidden = true
+        previewIconSlot.addSubview(previewAnimatedIconHost)
         let previewRow = NSStackView(views: [previewIconSlot, previewText])
         previewRow.orientation = .horizontal
         previewRow.alignment = .centerY
@@ -1174,7 +1253,9 @@ final class DashboardMenuBarPage {
             preferences: input.preferences,
             menuBarSnapshot: input.menuBarSnapshot,
             iconImage: input.iconImage,
-            statusItemVisibility: input.statusItemVisibility
+            statusItemVisibility: input.statusItemVisibility,
+            animationActive: input.animationActive,
+            animationIconImage: input.animationIconImage
         )
         return DashboardSettingsComponents.makeSettingsPage([
             previewSection,
@@ -1189,7 +1270,9 @@ final class DashboardMenuBarPage {
         preferences: AppPreferences,
         menuBarSnapshot: (Snapshot) -> Snapshot,
         iconImage: NSImage?,
-        statusItemVisibility: StatusItemVisibility = .unknown
+        statusItemVisibility: StatusItemVisibility = .unknown,
+        animationActive: Bool = false,
+        animationIconImage: NSImage? = nil
     ) {
         guard isBuilt else { return }
         refreshCallCountForTesting += 1
@@ -1243,7 +1326,8 @@ final class DashboardMenuBarPage {
             previewBackgroundBounds: resolvedPreviewBackgroundBounds(fallbackWidth: 0),
             previewIconBounds: previewIcon.bounds,
             backingScale: max(previewIcon.window?.backingScaleFactor ?? 2, 1),
-            appearance: previewIcon.effectiveAppearance.name.rawValue
+            appearance: previewIcon.effectiveAppearance.name.rawValue,
+            animationActive: animationActive
         )
         let refreshSignature = RefreshSignature(
             warning: warningSignature,
@@ -1267,7 +1351,9 @@ final class DashboardMenuBarPage {
             preferences: preferences,
             menuBarSnapshot: menuBarSnapshot,
             iconImage: iconImage,
-            statusItemVisibility: statusItemVisibility
+            statusItemVisibility: statusItemVisibility,
+            animationActive: animationActive,
+            animationIconImage: animationIconImage
         )
         lastRefreshSignature = refreshSignature
         lastWarningRefreshSignature = warningSignature
@@ -1281,7 +1367,9 @@ final class DashboardMenuBarPage {
         preferences: AppPreferences,
         menuBarSnapshot: (Snapshot) -> Snapshot,
         iconImage: NSImage?,
-        statusItemVisibility: StatusItemVisibility = .unknown
+        statusItemVisibility: StatusItemVisibility = .unknown,
+        animationActive: Bool,
+        animationIconImage: NSImage?
     ) {
         guard isBuilt else { return }
         updatePreviewWarnings(statusItemVisibility)
@@ -1336,6 +1424,7 @@ final class DashboardMenuBarPage {
         if textWidthConstraint?.constant != geometry.textWidth {
             textWidthConstraint?.constant = geometry.textWidth
         }
+        lastPreviewIconImage = animationIconImage ?? iconImage
         if previewIcon.image !== iconImage {
             previewIcon.image = iconImage
         }
@@ -1604,6 +1693,10 @@ final class DashboardMenuBarPage {
                 )
             ))
         }
+        updatePreviewAnimation(
+            active: animationActive,
+            iconImage: animationIconImage ?? iconImage
+        )
     }
 
     private func updatePreviewWarnings(_ statusItemVisibility: StatusItemVisibility) {

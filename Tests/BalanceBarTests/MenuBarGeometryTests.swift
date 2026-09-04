@@ -1603,6 +1603,40 @@ final class MenuBarGeometryTests: XCTestCase {
         )
     }
 
+    func testNativeIconHostRectInvertsImageCanvasPlacementWithoutScaleDrift() {
+        let placement = MenuBarBitmapImagePlacement(
+            canonicalBounds: NSRect(x: 0, y: 0, width: 100, height: 24),
+            imageDestinationRect: NSRect(x: 4, y: 2, width: 100, height: 24)
+        )
+        let imageCanvasIcon = NSRect(x: 10, y: 3, width: 16, height: 16)
+
+        XCTAssertEqual(
+            placement.buttonLocalRect(forImageCanvasRect: imageCanvasIcon),
+            NSRect(x: 14, y: 5, width: 16, height: 16)
+        )
+        XCTAssertEqual(
+            placement.imageRect(
+                forCanonicalRect: placement.buttonLocalRect(
+                    forImageCanvasRect: imageCanvasIcon
+                )
+            ),
+            imageCanvasIcon
+        )
+
+        // Backing scale changes the raster canvas, not the logical local
+        // rect or its flipped-coordinate interpretation.
+        for scale in [1, 2, 3] {
+            _ = MenuBarBitmapImageLayout.pixelDimensions(
+                for: placement.canvasSize,
+                scale: CGFloat(scale)
+            )
+            XCTAssertEqual(
+                placement.buttonLocalRect(forImageCanvasRect: imageCanvasIcon),
+                NSRect(x: 14, y: 5, width: 16, height: 16)
+            )
+        }
+    }
+
     func testClassicAndBitmapMenuBarCoordinateSpacesPreserveInkAndIconY() throws {
         let scenarios: [
             (name: String, primary: String, secondary: String?, isBalance: Bool)

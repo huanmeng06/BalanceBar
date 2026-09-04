@@ -582,11 +582,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 frameImageChanged: { [weak self] image in
                     self?.dashboardComposition.updateMenuBarPreviewIcon(image)
                 },
+                animationStateChanged: { [weak self] active in
+                    guard let self else { return }
+                    self.dashboardComposition.updateMenuBarPreviewAnimation(
+                        active: active,
+                        iconImage: self.statusItemController?.iconImage
+                    )
+                },
                 visibilityChanged: { [weak self] _ in
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
                 }
-            )
+            ),
+            codexAnimationBackend: .nativeCoreAnimation
         )
     }
 
