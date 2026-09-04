@@ -39,8 +39,16 @@ final class MenuBarBitmapRenderView: NSView {
 /// rotates.  The view never schedules work for animation frames.
 final class MenuBarNativeAnimatedIconHostView: NSView {
     static let rotationAnimationKey = "balancebar.nativeCodexRotation"
-    static let rotationFrameCount = MenuBarAnimationFrameRate.fps30.frameCount
-    static let rotationDuration = MenuBarAnimationFrameRate.rotationDuration
+    static let rotationFrameCount = MenuBarAnimationTiming.frameCount
+    static let rotationDuration = MenuBarAnimationTiming.rotationDuration
+
+    /// CALayer's positive Z rotation advances clockwise in the menu-bar's
+    /// screen presentation. Keeping the values in one helper makes the visual
+    /// direction an explicit contract shared by the real item and Dashboard
+    /// preview.
+    static let clockwiseRotationValues: [NSNumber] = (0..<rotationFrameCount).map {
+        NSNumber(value: 2 * Double.pi * Double($0) / Double(rotationFrameCount))
+    }
 
     /// This is the only layer that receives the rotation animation.  It is a
     /// sublayer created and retained by BalanceBar, never the AppKit-managed
@@ -51,6 +59,7 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
     private(set) var contentsRasterizationCount = 0
     private var configuredSourceImage: NSImage?
     private var configuredAppearanceKey: String?
+    private var configuredHighlightState = false
     private var configuredContentsScale: CGFloat = 0
     private var configuredContentsSize: NSSize = .zero
 
@@ -126,13 +135,15 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
     func updateContents(
         sourceImage: NSImage,
         appearance: NSAppearance,
-        contentsScale: CGFloat
+        contentsScale: CGFloat,
+        highlighted: Bool = false
     ) -> Bool {
         let safeScale = contentsScale > 0 ? contentsScale : 2
         let appearanceKey = Self.appearanceKey(for: appearance)
         let size = bounds.size
         let needsRasterization = configuredSourceImage !== sourceImage
             || configuredAppearanceKey != appearanceKey
+            || configuredHighlightState != highlighted
             || configuredContentsScale != safeScale
             || configuredContentsSize != size
             || iconLayer.contents == nil
@@ -142,11 +153,13 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
             sourceImage: sourceImage,
             size: size,
             appearance: appearance,
-            scale: safeScale
+            scale: safeScale,
+            highlighted: highlighted
         ) else {
             iconLayer.contents = nil
             configuredSourceImage = nil
             configuredAppearanceKey = nil
+            configuredHighlightState = false
             configuredContentsScale = 0
             configuredContentsSize = .zero
             return false
@@ -159,6 +172,7 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         CATransaction.commit()
         configuredSourceImage = sourceImage
         configuredAppearanceKey = appearanceKey
+        configuredHighlightState = highlighted
         configuredContentsScale = safeScale
         configuredContentsSize = size
         contentsRasterizationCount += 1
@@ -173,9 +187,7 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         let normalizedPhase = phase.truncatingRemainder(dividingBy: 1)
             .wrappedPositiveRemainder
         let animation = CAKeyframeAnimation(keyPath: "transform.rotation.z")
-        animation.values = (0..<Self.rotationFrameCount).map { index in
-            NSNumber(value: -2 * Double.pi * Double(index) / Double(Self.rotationFrameCount))
-        }
+        animation.values = Self.clockwiseRotationValues
         animation.keyTimes = (0..<Self.rotationFrameCount).map { index in
             NSNumber(value: Double(index) / Double(Self.rotationFrameCount))
         }
@@ -217,7 +229,8 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         sourceImage: NSImage,
         size: NSSize,
         appearance: NSAppearance,
-        scale: CGFloat
+        scale: CGFloat,
+        highlighted: Bool
     ) -> CGImage? {
         guard size.width > 0, size.height > 0 else { return nil }
         let pixelDimensions = MenuBarBitmapImageLayout.pixelDimensions(
@@ -244,7 +257,9 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         imageView.image = sourceImage
         imageView.imageScaling = .scaleProportionallyDown
         imageView.imageAlignment = .alignCenter
-        imageView.contentTintColor = .labelColor
+        imageView.contentTintColor = highlighted
+            ? .selectedMenuItemTextColor
+            : .labelColor
         imageView.wantsLayer = true
         imageView.layoutSubtreeIfNeeded()
         imageView.cacheDisplay(in: imageView.bounds, to: rep)

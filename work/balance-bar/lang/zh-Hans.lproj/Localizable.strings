@@ -282,7 +282,7 @@
 "dashboard.menu.bar.page.preview" = "预览";
 "dashboard.menu.bar.page.current_layout" = "当前布局";
 "dashboard.menu.bar.page.quota_and_reset" = "额度与重置";
-"dashboard.menu.bar.page.icon_and_task_status" = "图标与任务状态";
+"dashboard.menu.bar.page.icon_and_task_status" = "图标与动画";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "菜单栏会随服务商数据实时更新";
 "dashboard.menu.bar.page.icon_display_mode" = "菜单栏图标显示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "选择始终显示图标，或仅在任务运行时显示";
@@ -311,7 +311,11 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "进入 🌙 %1$@ 后，选择继续显示原额度或 🌙 %1$@ 的重置时间";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "原额度";
-"dashboard.menu.bar.page.animation" = "动画";
+"dashboard.menu.bar.page.animation" = "动画渲染模式";
+"dashboard.menu.bar.page.animation_mode_description" = "高效：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停。\n同步：所有显示器上的动画保持同步，但资源占用更高。";
+"dashboard.menu.bar.page.animation_mode_efficient" = "高效";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "同步";
+"dashboard.menu.bar.page.animation_mode_fallback" = "高效模式当前无法正常播放动画，已临时切换到同步模式。";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "任务运行时播放菜单栏图标动画";
 "dashboard.menu.bar.page.display_items" = "显示内容";
 "dashboard.menu.bar.page.agent_icon" = "任务状态图标";

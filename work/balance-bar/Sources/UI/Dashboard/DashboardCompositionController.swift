@@ -45,6 +45,7 @@ struct DashboardCompositionActions {
     let onMenuBarFontSizePreset: (MenuBarFontSizePreset) -> Void
     let onMenuBarIconDisplayModeChanged: (MenuBarIconDisplayMode) -> Void
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
+    let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
@@ -74,6 +75,7 @@ final class DashboardCompositionController {
     private let launchWithChatGPTController: LaunchWithChatGPTController
     private var menuBarPreviewAnimationActive = false
     private var menuBarPreviewAnimationIconImage: NSImage?
+    private var menuBarAnimationFallbackActive = false
     private lazy var dashboardProviderPages = DashboardProviderPageCoordinator(
         actions: DashboardProviderPageActions(
             onRefresh: actions.onManualRefresh,
@@ -103,6 +105,7 @@ final class DashboardCompositionController {
             onMenuBarFontSizePreset: actions.onMenuBarFontSizePreset,
             onMenuBarIconDisplayModeChanged: actions.onMenuBarIconDisplayModeChanged,
             onMenuBarIconDisplayDelayChanged: actions.onMenuBarIconDisplayDelayChanged,
+            onMenuBarAnimationModeChanged: actions.onMenuBarAnimationModeChanged,
             onMenuBarQuotaWindowPreferenceChanged: actions.onMenuBarQuotaWindowPreferenceChanged,
             onMenuBarQuotaResetDisplayModeChanged: actions.onMenuBarQuotaResetDisplayModeChanged,
             onMenuBarLunaReserveResetTimeModeChanged: actions.onMenuBarLunaReserveResetTimeModeChanged,
@@ -201,7 +204,8 @@ final class DashboardCompositionController {
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
             animationActive: menuBarPreviewAnimationActive,
-            animationIconImage: menuBarPreviewAnimationIconImage
+            animationIconImage: menuBarPreviewAnimationIconImage,
+            animationFallbackActive: menuBarAnimationFallbackActive
         )
     }
 
@@ -214,6 +218,9 @@ final class DashboardCompositionController {
     /// This must stay separate from refreshMenuBarPage so animation frames do
     /// not rebuild the Dashboard page or recalculate its layout.
     func updateMenuBarPreviewIcon(_ image: NSImage?) {
+        if let image {
+            menuBarPreviewAnimationIconImage = image
+        }
         guard window?.isVisible == true, section == .menuBar else { return }
         dashboardPreferencePages.updateMenuBarPreviewIcon(image)
     }
@@ -231,6 +238,12 @@ final class DashboardCompositionController {
             active: active,
             iconImage: iconImage ?? menuBarPreviewAnimationIconImage
         )
+    }
+
+    func updateMenuBarAnimationFallback(active: Bool) {
+        menuBarAnimationFallbackActive = active
+        guard window?.isVisible == true, section == .menuBar else { return }
+        dashboardPreferencePages.updateMenuBarAnimationFallback(active: active)
     }
 
     func refreshMenuBarWidthAdjustment(
@@ -337,6 +350,7 @@ final class DashboardCompositionController {
             iconImage: state.iconImage(),
             animationActive: menuBarPreviewAnimationActive,
             animationIconImage: menuBarPreviewAnimationIconImage,
+            animationFallbackActive: menuBarAnimationFallbackActive,
             currentOpenCodexResolution: state.currentOpenCodexResolution(),
             runtimeCandidate: state.runtimeCandidate(),
             updateState: state.updateState()

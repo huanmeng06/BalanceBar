@@ -282,7 +282,7 @@
 "dashboard.menu.bar.page.preview" = "Anteprima";
 "dashboard.menu.bar.page.current_layout" = "Disposizione corrente";
 "dashboard.menu.bar.page.quota_and_reset" = "Quota e ripristino";
-"dashboard.menu.bar.page.icon_and_task_status" = "Icona e stato dell'attività";
+"dashboard.menu.bar.page.icon_and_task_status" = "Icona e animazione";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "La barra dei menu si aggiorna con i dati del provider in tempo reale";
 "dashboard.menu.bar.page.icon_display_mode" = "Visualizzazione dell'icona nella barra dei menu";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Scegli se mostrare sempre l'icona o solo durante l'esecuzione di un'attività";
@@ -311,7 +311,11 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Dopo aver attivato 🌙 %1$@, scegli se continuare a mostrare l'orario di ripristino della quota originale o quello di 🌙 %1$@.";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Quota originale";
-"dashboard.menu.bar.page.animation" = "Animazione";
+"dashboard.menu.bar.page.animation" = "Modalità animazione";
+"dashboard.menu.bar.page.animation_mode_description" = "Efficiente: riduce in modo significativo l’uso delle risorse di sistema. Se utilizzi più schermi, l’animazione viene messa in pausa sugli schermi non attivi.\nSincronizzata: mantiene l’animazione sincronizzata su tutti gli schermi, ma usa più risorse di sistema.";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Efficiente";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizzata";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Al momento l’animazione non può essere riprodotta correttamente in modalità Efficiente, quindi viene usata temporaneamente la modalità Sincronizzata.";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Riproduci l'animazione dell'icona della barra dei menu durante l'esecuzione di un'attività";
 "dashboard.menu.bar.page.display_items" = "Contenuto visualizzato";
 "dashboard.menu.bar.page.agent_icon" = "Icona dello stato attività";

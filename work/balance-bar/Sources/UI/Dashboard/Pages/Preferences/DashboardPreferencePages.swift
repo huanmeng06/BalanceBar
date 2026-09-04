@@ -16,6 +16,7 @@ struct DashboardPreferencePageActions {
     let onMenuBarFontSizePreset: (MenuBarFontSizePreset) -> Void
     let onMenuBarIconDisplayModeChanged: (MenuBarIconDisplayMode) -> Void
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
+    let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
     let onMenuBarQuotaWindowPreferenceChanged: (OfficialQuotaWindowPreference) -> Void
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
@@ -71,6 +72,7 @@ final class DashboardPreferencePages {
         relay.onMenuBarFontSizePreset = actions.onMenuBarFontSizePreset
         relay.onMenuBarIconDisplayModeChanged = actions.onMenuBarIconDisplayModeChanged
         relay.onMenuBarIconDisplayDelayChanged = actions.onMenuBarIconDisplayDelayChanged
+        relay.onMenuBarAnimationModeChanged = actions.onMenuBarAnimationModeChanged
         relay.onMenuBarQuotaWindowPreferenceChanged = actions.onMenuBarQuotaWindowPreferenceChanged
         relay.onMenuBarQuotaResetDisplayModeChanged = actions.onMenuBarQuotaResetDisplayModeChanged
         relay.onMenuBarLunaReserveResetTimeModeChanged = actions.onMenuBarLunaReserveResetTimeModeChanged
@@ -97,6 +99,7 @@ final class DashboardPreferencePages {
         iconImage: NSImage?,
         animationActive: Bool = false,
         animationIconImage: NSImage? = nil,
+        animationFallbackActive: Bool = false,
         currentOpenCodexResolution: OpenCodexDashboardResolution?,
         runtimeCandidate: OpenCodexEndpointCandidate?,
         updateState: UpdateCheckState
@@ -120,7 +123,8 @@ final class DashboardPreferencePages {
                 relay: relay,
                 statusItemVisibility: statusItemVisibility,
                 animationActive: animationActive,
-                animationIconImage: animationIconImage
+                animationIconImage: animationIconImage,
+                animationFallbackActive: animationFallbackActive
             ))
         case .menu:
             return menuPage.make(.init(
@@ -157,7 +161,8 @@ final class DashboardPreferencePages {
         statusItemVisibility: StatusItemVisibility,
         iconImage: NSImage?,
         animationActive: Bool = false,
-        animationIconImage: NSImage? = nil
+        animationIconImage: NSImage? = nil,
+        animationFallbackActive: Bool = false
     ) {
         menuBarPage.refresh(
             snapshot: snapshot,
@@ -166,7 +171,8 @@ final class DashboardPreferencePages {
             iconImage: iconImage,
             statusItemVisibility: statusItemVisibility,
             animationActive: animationActive,
-            animationIconImage: animationIconImage
+            animationIconImage: animationIconImage,
+            animationFallbackActive: animationFallbackActive
         )
     }
 
@@ -180,6 +186,16 @@ final class DashboardPreferencePages {
 
     func updateMenuBarPreviewAnimation(active: Bool, iconImage: NSImage?) {
         menuBarPage.updatePreviewAnimation(active: active, iconImage: iconImage)
+    }
+
+    func updateMenuBarAnimationFallback(active: Bool) {
+        menuBarPage.updateAnimationFallback(
+            active: active,
+            showTaskStatusIcon: preferences.showMenuBarIcon,
+            displayMode: preferences.menuBarIconDisplayMode,
+            animationEnabled: preferences.animateCodexActivity,
+            animationMode: preferences.menuBarAnimationMode
+        )
     }
 
     func refreshMenuBarWidthAdjustment(

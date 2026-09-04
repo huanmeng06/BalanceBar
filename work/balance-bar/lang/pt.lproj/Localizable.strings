@@ -282,7 +282,7 @@
 "dashboard.menu.bar.page.preview" = "Pré-visualização";
 "dashboard.menu.bar.page.current_layout" = "Disposição atual";
 "dashboard.menu.bar.page.quota_and_reset" = "Cota e redefinição";
-"dashboard.menu.bar.page.icon_and_task_status" = "Ícone e status da tarefa";
+"dashboard.menu.bar.page.icon_and_task_status" = "Ícone e animação";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "A barra de menus é atualizada com dados do provedor em tempo real";
 "dashboard.menu.bar.page.icon_display_mode" = "Exibição do ícone na barra de menus";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Escolha se o ícone deve ser sempre exibido ou somente durante a execução de uma tarefa";
@@ -311,7 +311,11 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Após entrar na 🌙 %1$@, escolha se deseja continuar mostrando o horário de redefinição da cota original ou o da 🌙 %1$@.";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Cota original";
-"dashboard.menu.bar.page.animation" = "Animação";
+"dashboard.menu.bar.page.animation" = "Modo de animação";
+"dashboard.menu.bar.page.animation_mode_description" = "Eficiente: reduz significativamente a utilização de recursos do sistema. Ao utilizar vários monitores, a animação é pausada nos monitores que não estão ativos.\nSincronizado: mantém a animação sincronizada em todos os monitores, mas utiliza mais recursos do sistema.";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Eficiente";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "Sincronizado";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Neste momento, o modo Eficiente não consegue reproduzir corretamente a animação, por isso o modo Sincronizado está a ser utilizado temporariamente.";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Animar o ícone da barra de menus enquanto uma tarefa é executada";
 "dashboard.menu.bar.page.display_items" = "Conteúdo exibido";
 "dashboard.menu.bar.page.agent_icon" = "Ícone de status da tarefa";

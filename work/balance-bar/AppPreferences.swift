@@ -124,6 +124,16 @@ enum MenuBarIconDisplayDelay: String, CaseIterable, Equatable {
     }
 }
 
+/// The user-facing choice for Codex task-icon animation.  This is deliberately
+/// separate from the renderer/backend enum so implementation changes never
+/// become part of the persisted preferences contract.
+enum MenuBarAnimationMode: String, CaseIterable, Equatable {
+    case efficient
+    case synchronized
+
+    static let defaultValue: Self = .efficient
+}
+
 enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
     case large
     case medium
@@ -205,6 +215,8 @@ final class AppPreferences {
     static let menuBarIconDisplayModeDefault: MenuBarIconDisplayMode = .defaultValue
     static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"
     static let menuBarIconDisplayDelayDefault: MenuBarIconDisplayDelay = .defaultValue
+    static let menuBarAnimationModeKey = "menuBarAnimationMode"
+    static let menuBarAnimationModeDefault: MenuBarAnimationMode = .defaultValue
     static let defaultBalanceDisplayThreshold = 0.10
     static let minimumBalanceDisplayThreshold = 0.01
     static let validOpenCodexDashboardPortRange = 1...65535
@@ -343,6 +355,18 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuBarIconDisplayDelayKey)
+        }
+    }
+    var menuBarAnimationMode: MenuBarAnimationMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBarAnimationModeKey),
+                  let mode = MenuBarAnimationMode(rawValue: rawValue) else {
+                return Self.menuBarAnimationModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarAnimationModeKey)
         }
     }
     var updateChannel: UpdateChannel {

@@ -650,7 +650,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 468)
+        XCTAssertEqual(expectedKeys.count, 472)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {
@@ -1855,18 +1855,18 @@ final class LocalizationTests: XCTestCase {
 
     func testDashboardTaskOrientedSectionTitlesAreLocalizedAcrossAllLanguages() {
         let expected: [AppLanguage: (quotaAndReset: String, iconAndTaskStatus: String, layout: String, menuBehavior: String, statusLinks: String, iconDisplayMode: String)] = [
-            .simplifiedChinese: ("额度与重置", "图标与任务状态", "布局", "菜单行为", "状态链接", "菜单栏图标显示"),
-            .traditionalChineseTaiwan: ("配額與重設", "圖示與任務狀態", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
-            .traditionalChineseHongKong: ("配額與重設", "圖示與任務狀態", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
-            .japanese: ("クォータとリセット", "アイコンとタスクの状態", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーアイコンの表示"),
-            .english: ("Quota & Reset", "Icon & Task Status", "Layout", "Menu behavior", "Status Links", "Menu Bar Icon Display"),
-            .korean: ("할당량 및 재설정", "아이콘 및 작업 상태", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
-            .spanish: ("Cuota y reinicio", "Icono y estado de la tarea", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
-            .german: ("Kontingent und Zurücksetzung", "Symbol und Aufgabenstatus", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüleistensymbols"),
-            .french: ("Quota et réinitialisation", "Icône et état de la tâche", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus"),
-            .portuguese: ("Cota e redefinição", "Ícone e status da tarefa", "Layout", "Comportamento do menu", "Links de status", "Exibição do ícone na barra de menus"),
-            .russian: ("Квота и сброс", "Значок и состояние задачи", "Макет", "Поведение меню", "Ссылки статуса", "Отображение значка в строке меню"),
-            .italian: ("Quota e ripristino", "Icona e stato dell'attività", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione dell'icona nella barra dei menu")
+            .simplifiedChinese: ("额度与重置", "图标与动画", "布局", "菜单行为", "状态链接", "菜单栏图标显示"),
+            .traditionalChineseTaiwan: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
+            .traditionalChineseHongKong: ("配額與重設", "圖示與動畫", "版面", "選單行為", "狀態連結", "選單列圖示顯示"),
+            .japanese: ("クォータとリセット", "アイコンとアニメーション", "レイアウト", "メニューの動作", "ステータスリンク", "メニューバーアイコンの表示"),
+            .english: ("Quota & Reset", "Icon & Animation", "Layout", "Menu behavior", "Status Links", "Menu Bar Icon Display"),
+            .korean: ("할당량 및 재설정", "아이콘 및 애니메이션", "레이아웃", "메뉴 동작", "상태 링크", "메뉴 막대 아이콘 표시"),
+            .spanish: ("Cuota y reinicio", "Icono y animación", "Diseño", "Comportamiento del menú", "Enlaces de estado", "Mostrar el icono de la barra de menús"),
+            .german: ("Kontingent und Zurücksetzung", "Symbol und Animation", "Layout", "Menüverhalten", "Statuslinks", "Anzeige des Menüleistensymbols"),
+            .french: ("Quota et réinitialisation", "Icône et animation", "Disposition", "Comportement du menu", "Liens d’état", "Affichage de l’icône de la barre des menus"),
+            .portuguese: ("Cota e redefinição", "Ícone e animação", "Layout", "Comportamento do menu", "Links de status", "Exibição do ícone na barra de menus"),
+            .russian: ("Квота и сброс", "Значок и анимация", "Макет", "Поведение меню", "Ссылки статуса", "Отображение значка в строке меню"),
+            .italian: ("Quota e ripristino", "Icona e animazione", "Disposizione", "Comportamento del menu", "Collegamenti di stato", "Visualizzazione dell'icona nella barra dei menu")
         ]
 
         for language in allLanguages {

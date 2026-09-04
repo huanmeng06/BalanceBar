@@ -271,6 +271,28 @@ final class AppPreferencesTests: XCTestCase {
         )
     }
 
+    func testMenuBarAnimationModeDefaultsToEfficientAndPersistsAcrossReload() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+        XCTAssertNil(defaults.string(forKey: AppPreferences.menuBarAnimationModeKey))
+
+        preferences.menuBarAnimationMode = .synchronized
+        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBarAnimationModeKey),
+            MenuBarAnimationMode.synchronized.rawValue
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBarAnimationMode,
+            .synchronized
+        )
+
+        defaults.set("unsupported", forKey: AppPreferences.menuBarAnimationModeKey)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .efficient)
+    }
+
     func testNumericPreferencesDefaultsBoundsAndRoundTrips() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

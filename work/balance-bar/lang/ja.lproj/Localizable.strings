@@ -282,7 +282,7 @@
 "dashboard.menu.bar.page.preview" = "プレビュー";
 "dashboard.menu.bar.page.current_layout" = "現在のレイアウト";
 "dashboard.menu.bar.page.quota_and_reset" = "クォータとリセット";
-"dashboard.menu.bar.page.icon_and_task_status" = "アイコンとタスクの状態";
+"dashboard.menu.bar.page.icon_and_task_status" = "アイコンとアニメーション";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "サービスプロバイダーのデータをメニューバーにリアルタイム表示";
 "dashboard.menu.bar.page.icon_display_mode" = "メニューバーアイコンの表示";
 "dashboard.menu.bar.page.icon_display_mode_description" = "アイコンを常に表示するか、タスク実行中のみ表示するかを選択";
@@ -311,7 +311,11 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "🌙 %1$@ に入った後、元のクォータのリセット時刻と 🌙 %1$@ のリセット時刻のどちらを表示するか選択";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "元のクォータ";
-"dashboard.menu.bar.page.animation" = "アニメーション";
+"dashboard.menu.bar.page.animation" = "アニメーションモード";
+"dashboard.menu.bar.page.animation_mode_description" = "高効率：システムリソースの使用量を大幅に抑えます。複数のディスプレイを使用している場合、アクティブでないディスプレイではアニメーションが一時停止します。\n同期：すべてのディスプレイでアニメーションを同期しますが、システムリソースの使用量が増えます。";
+"dashboard.menu.bar.page.animation_mode_efficient" = "高効率";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "同期";
+"dashboard.menu.bar.page.animation_mode_fallback" = "現在、高効率モードではアニメーションを正しく再生できないため、一時的に同期モードを使用しています。";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "タスク実行中にメニューバーアイコンをアニメーション";
 "dashboard.menu.bar.page.display_items" = "表示内容";
 "dashboard.menu.bar.page.agent_icon" = "タスク状態アイコン";

@@ -208,22 +208,11 @@ final class StatusItemControllerTests: XCTestCase {
             sourceFrames: sourceFrames,
             usesBitmapContent: false
         )
-        let changedFrameRate = makeVisualSignature(
-            sourceFrames: sourceFrames,
-            animationFrameRate: .fps15
-        )
-
         XCTAssertNotEqual(base, changedText)
         XCTAssertNotEqual(base, changedGeometry)
         XCTAssertNotEqual(base, changedAppearance)
         XCTAssertNotEqual(base, changedProvider)
         XCTAssertNotEqual(base, changedMode)
-        XCTAssertNotEqual(base, changedFrameRate)
-        XCTAssertTrue(
-            base.matchesStaticContent(of: changedFrameRate),
-            "changing only the backend cadence must not invalidate static menu-bar content"
-        )
-
         let replacementFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
             NSImage(size: NSSize(width: 16, height: 16))
         }
@@ -431,129 +420,6 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testBitmapControllerSwitchesBetweenSupportedCadencesWithoutRestartingTheTimer() throws {
-        try XCTSkipUnless(
-            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            "Codex animation is disabled by the system reduce-motion setting"
-        )
-        let controller = makeController(animationFrameRate: .fps30)
-        defer { controller.teardown() }
-        let snapshot = Snapshot.balance(
-            "Provider",
-            80,
-            "USD",
-            nil,
-            Date(timeIntervalSince1970: 1_700_000_000)
-        )
-        let input = makeMenuInput()
-        let settings = makeSettings(usesBitmapContent: true)
-
-        controller.start(
-            snapshot: snapshot,
-            refreshDate: snapshot.date,
-            menuInput: input,
-            settings: settings
-        )
-        controller.setCodexIconForTesting(
-            NSImage(size: NSSize(width: 16, height: 16))
-        )
-        controller.updateActivity(
-            activeClient: .codex,
-            codexTaskRunning: true,
-            claudeTaskRunning: false,
-            animationEnabled: true
-        )
-
-        let thirtyImage = try XCTUnwrap(controller.stableCodexAnimationImageForTesting)
-        let thirtyCompositionCount = controller.codexAnimationFrameCompositionCountForTesting
-        let thirtyRebuildCount = controller.stableCodexAnimationRebuildCountForTesting
-        let thirtyAssignmentCount = controller.stableCodexAnimationImageAssignmentCountForTesting
-        XCTAssertEqual(controller.animationFrameRateForTesting, .fps30)
-        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 36)
-        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
-
-        controller.setAnimationFrameRate(.fps15)
-
-        let fifteenImage = try XCTUnwrap(controller.stableCodexAnimationImageForTesting)
-        XCTAssertEqual(controller.animationFrameRateForTesting, .fps15)
-        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 18)
-        XCTAssertEqual(controller.stableCodexAnimationFrameCountForTesting, 18)
-        XCTAssertEqual(
-            controller.codexAnimationFrameCompositionCountForTesting,
-            thirtyCompositionCount + 18
-        )
-        XCTAssertEqual(
-            controller.stableCodexAnimationRebuildCountForTesting,
-            thirtyRebuildCount + 1
-        )
-        XCTAssertEqual(
-            controller.stableCodexAnimationImageAssignmentCountForTesting,
-            thirtyAssignmentCount + 1
-        )
-        XCTAssertFalse(fifteenImage === thirtyImage)
-        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
-
-        let fifteenCompositionCountAfterSwitch =
-            controller.codexAnimationFrameCompositionCountForTesting
-        let fifteenRebuildCountAfterSwitch = controller.stableCodexAnimationRebuildCountForTesting
-        let fifteenAssignmentCountAfterSwitch =
-            controller.stableCodexAnimationImageAssignmentCountForTesting
-        controller.update(
-            snapshot: snapshot,
-            refreshDate: snapshot.date,
-            menuInput: input,
-            settings: settings
-        )
-        XCTAssertEqual(
-            controller.codexAnimationFrameCompositionCountForTesting,
-            fifteenCompositionCountAfterSwitch,
-            "an ordinary update after an FPS switch must reuse the new stable buffer"
-        )
-        XCTAssertEqual(
-            controller.stableCodexAnimationRebuildCountForTesting,
-            fifteenRebuildCountAfterSwitch
-        )
-        XCTAssertEqual(
-            controller.stableCodexAnimationImageAssignmentCountForTesting,
-            fifteenAssignmentCountAfterSwitch
-        )
-
-        let fifteenCompositionCount = controller.codexAnimationFrameCompositionCountForTesting
-        let fifteenAssignmentCount = controller.stableCodexAnimationImageAssignmentCountForTesting
-        for tick in 0..<100 {
-            controller.advanceCodexAnimationFrameForTesting(tick % 18)
-            XCTAssertTrue(controller.menuBarButtonImageForTesting === fifteenImage)
-        }
-        XCTAssertEqual(
-            controller.codexAnimationFrameCompositionCountForTesting,
-            fifteenCompositionCount,
-            "15 fps steady-state ticks must not compose complete bitmaps"
-        )
-        XCTAssertEqual(
-            controller.stableCodexAnimationImageAssignmentCountForTesting,
-            fifteenAssignmentCount,
-            "15 fps steady-state ticks must not assign button.image"
-        )
-
-        controller.setAnimationFrameRate(.fps30)
-        XCTAssertEqual(controller.animationFrameRateForTesting, .fps30)
-        XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 36)
-        XCTAssertEqual(controller.stableCodexAnimationFrameCountForTesting, 36)
-        XCTAssertEqual(
-            controller.codexAnimationFrameCompositionCountForTesting,
-            fifteenCompositionCount + 36
-        )
-        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
-
-        controller.updateActivity(
-            activeClient: .codex,
-            codexTaskRunning: false,
-            claudeTaskRunning: false,
-            animationEnabled: true
-        )
-    }
-
-    @MainActor
     func testRuntimeDisplayPolicyPublishesAndClearsItsWarningImmediately() {
         var visibilityTransitions: [StatusItemVisibility] = []
         let controller = StatusItemController(
@@ -732,6 +598,129 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(controller.menuBarButtonImageForTesting === staticImage)
     }
 
+    @MainActor
+    func testCodexAnimationModeSwitchIsImmediateAndKeepsExactlyOneBackendActive() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(codexAnimationBackend: .nativeCoreAnimation)
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let settings = makeSettings(usesBitmapContent: true)
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: settings
+        )
+        let icon = makeSolidImage(size: NSSize(width: 16, height: 16), red: 0.2, green: 0.4, blue: 0.8)
+        icon.isTemplate = true
+        controller.setCodexIconForTesting(icon)
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        let host = try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
+        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        controller.setCodexAnimationBackend(.stableBitmap)
+        XCTAssertEqual(controller.preferredCodexAnimationBackendForTesting, .stableBitmap)
+        XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .stableBitmap)
+        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertNil(host.superview)
+        XCTAssertNil(host.rotationAnimationForTesting)
+        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertEqual(controller.stableCodexAnimationFrameCountForTesting, 36)
+
+        controller.setCodexAnimationBackend(.nativeCoreAnimation)
+        XCTAssertEqual(controller.preferredCodexAnimationBackendForTesting, .nativeCoreAnimation)
+        XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
+        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertTrue(
+            controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting != nil
+        )
+        XCTAssertFalse(controller.codexAnimationFallbackActiveForTesting)
+    }
+
+    @MainActor
+    func testEfficientModeFailureFallsBackTemporarilyWithoutChangingPreference() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+        var fallbackTransitions: [Bool] = []
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in },
+                animationFallbackChanged: { fallbackTransitions.append($0) }
+            ),
+            codexAnimationBackend: .nativeCoreAnimation,
+            forceNativeCodexAnimationFailureForTesting: true
+        )
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: makeMenuInput(),
+            settings: makeSettings(usesBitmapContent: true)
+        )
+        let icon = makeSolidImage(size: NSSize(width: 16, height: 16), red: 0.2, green: 0.4, blue: 0.8)
+        icon.isTemplate = true
+        controller.setCodexIconForTesting(icon)
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+
+        XCTAssertEqual(controller.preferredCodexAnimationBackendForTesting, .nativeCoreAnimation)
+        XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .stableBitmap)
+        XCTAssertTrue(controller.codexAnimationFallbackActiveForTesting)
+        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertEqual(fallbackTransitions, [true])
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
+        XCTAssertFalse(controller.codexAnimationFallbackActiveForTesting)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertEqual(fallbackTransitions, [true, false])
+    }
+
     private func makeSolidImage(
         size: NSSize,
         red: CGFloat,
@@ -751,8 +740,8 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     private func makeController(
-        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue,
-        codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap
+        codexAnimationBackend: MenuBarCodexAnimationBackend = .stableBitmap,
+        forceNativeCodexAnimationFailureForTesting: Bool = false
     ) -> StatusItemController {
         StatusItemController(
             actions: StatusItemController.Actions(
@@ -768,8 +757,8 @@ final class StatusItemControllerTests: XCTestCase {
                 openStatusLink: { _ in },
                 iconChanged: { _ in }
             ),
-            animationFrameRate: animationFrameRate,
-            codexAnimationBackend: codexAnimationBackend
+            codexAnimationBackend: codexAnimationBackend,
+            forceNativeCodexAnimationFailureForTesting: forceNativeCodexAnimationFailureForTesting
         )
     }
 
@@ -808,7 +797,6 @@ final class StatusItemControllerTests: XCTestCase {
         contentFrame: NSRect = NSRect(x: 0, y: 0, width: 56, height: 22),
         appearance: String = "aqua",
         sourceProviderIdentity: String = "provider",
-        animationFrameRate: MenuBarAnimationFrameRate = .defaultValue,
         usesBitmapContent: Bool = true
     ) -> MenuBarBitmapAnimationVisualSignature {
         MenuBarBitmapAnimationVisualSignature(
@@ -861,7 +849,6 @@ final class StatusItemControllerTests: XCTestCase {
             showReset: true,
             buttonImagePosition: 1,
             buttonImageScaling: 2,
-            animationFrameRate: animationFrameRate,
             usesBitmapContent: usesBitmapContent
         )
     }

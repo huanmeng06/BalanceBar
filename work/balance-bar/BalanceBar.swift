@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -247,6 +247,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             },
             onMenuBarIconDisplayDelayChanged: { [weak self] delay in
                 self?.handleDashboardMenuBarIconDisplayDelayChanged(delay)
+            },
+            onMenuBarAnimationModeChanged: { [weak self] mode in
+                self?.handleDashboardMenuBarAnimationModeChanged(mode)
             },
             onMenuBarQuotaWindowPreferenceChanged: { [weak self] preference in
                 self?.handleDashboardQuotaWindowPreferenceChanged(preference)
@@ -348,6 +351,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var showMenuBarIcon: Bool { get { preferences.showMenuBarIcon } set { preferences.showMenuBarIcon = newValue } }
     private var showMenuBarAmount: Bool { get { preferences.showMenuBarAmount } set { preferences.showMenuBarAmount = newValue } }
     private var animateCodexActivity: Bool { get { preferences.animateCodexActivity } set { preferences.animateCodexActivity = newValue } }
+    private var menuBarAnimationMode: MenuBarAnimationMode {
+        get { preferences.menuBarAnimationMode }
+        set { preferences.menuBarAnimationMode = newValue }
+    }
     private var activityPollInterval: TimeInterval { get { preferences.activityPollInterval } set { preferences.activityPollInterval = newValue } }
     private var codexUsageRefreshInterval: TimeInterval { get { preferences.codexUsageRefreshInterval } set { preferences.codexUsageRefreshInterval = newValue } }
     private var postCodexRefreshDuration: TimeInterval { get { preferences.postCodexRefreshDuration } set { preferences.postCodexRefreshDuration = newValue } }
@@ -589,12 +596,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         iconImage: self.statusItemController?.iconImage
                     )
                 },
+                animationFallbackChanged: { [weak self] active in
+                    self?.dashboardComposition.updateMenuBarAnimationFallback(active: active)
+                },
                 visibilityChanged: { [weak self] _ in
                     guard let self else { return }
                     self.dashboardComposition.refreshMenuBarPage(snapshot: self.snapshot)
                 }
             ),
-            codexAnimationBackend: .nativeCoreAnimation
+            codexAnimationBackend: MenuBarCodexAnimationBackend(
+                mode: preferences.menuBarAnimationMode
+            )
         )
     }
 
@@ -1113,6 +1125,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             category: "configuration"
         )
         updateStatusItem(for: snapshot)
+    }
+
+    private func handleDashboardMenuBarAnimationModeChanged(
+        _ mode: MenuBarAnimationMode
+    ) {
+        menuBarAnimationMode = mode
+        SwitchLog.write(
+            "preference changed; key=\(AppPreferences.menuBarAnimationModeKey); value=\(mode.rawValue)",
+            category: "configuration"
+        )
+        statusItemController.setCodexAnimationBackend(
+            MenuBarCodexAnimationBackend(mode: mode)
+        )
+        refreshDashboardMenuBarPage()
     }
 
     private func handleDashboardQuotaResetDisplayModeChanged(

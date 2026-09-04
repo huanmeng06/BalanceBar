@@ -842,6 +842,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
                     .first { $0.identifier?.rawValue == "animateCodexActivity" }
             )
             let animationRow = try XCTUnwrap(animationSwitch.superview)
+            let animationModePopup = try XCTUnwrap(
+                descendants(of: page)
+                    .compactMap { $0 as? NSPopUpButton }
+                    .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+            )
+            let animationModeRow = try XCTUnwrap(animationModePopup.superview)
             XCTAssertTrue(
                 delayRow.isHidden,
                 "the delay selector is hidden while Always Visible is selected in (language)"
@@ -849,27 +855,30 @@ final class DashboardPreferencePagesTests: XCTestCase {
             let iconTaskStatusRowsStack = try XCTUnwrap(delayRow.superview as? NSStackView)
             let iconRows = iconTaskStatusRowsStack.arrangedSubviews.filter { !($0 is NSBox) }
             XCTAssertTrue(
-                zip(iconRows, [taskStatusRow, animationRow, modeRow, delayRow])
+                zip(iconRows, [taskStatusRow, modeRow, delayRow, animationRow, animationModeRow])
                     .allSatisfy { $0.0 === $0.1 },
-                "icon/task rows follow task status, animation, display mode, delay order in (language)"
+                "icon/task rows follow task status, display mode, delay, animation, mode order in (language)"
             )
             let iconTaskStatusSeparators = iconTaskStatusRowsStack.arrangedSubviews.compactMap { $0 as? NSBox }
-            XCTAssertEqual(iconTaskStatusSeparators.count, 3)
+            XCTAssertEqual(iconTaskStatusSeparators.count, 5)
             XCTAssertFalse(
                 iconTaskStatusSeparators[0].isHidden,
-                "the divider between task status and animation is visible in (language)"
+                "the divider after task status is visible in (language)"
             )
             XCTAssertFalse(
                 iconTaskStatusSeparators[1].isHidden,
-                "the divider between animation and display mode is visible in (language)"
+                "the divider after display mode bridges the hidden delay row in (language)"
             )
             XCTAssertTrue(
                 iconTaskStatusSeparators[2].isHidden,
-                "the divider after display mode is collapsed with hidden delay in (language)"
+                "the divider inside the hidden delay row is collapsed in (language)"
             )
+            XCTAssertFalse(iconTaskStatusSeparators[3].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[4].isHidden)
             XCTAssertFalse(taskStatusRow.isHidden)
             XCTAssertFalse(animationRow.isHidden)
             XCTAssertFalse(modeRow.isHidden)
+            XCTAssertFalse(animationModeRow.isHidden)
             if language == .simplifiedChinese {
                 XCTAssertEqual(
                     modeRow.frame.height,
@@ -931,7 +940,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 "changing to Only While Running reveals the delay selector immediately in (language)"
             )
             XCTAssertTrue(
-                iconTaskStatusSeparators.allSatisfy { !$0.isHidden },
+                iconTaskStatusSeparators.dropLast().allSatisfy { !$0.isHidden },
                 "all display dividers are visible with the delay selector in (language)"
             )
 
@@ -962,16 +971,18 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertTrue(delayRow.isHidden, "switching back hides the delay selector in (language)")
             XCTAssertFalse(
                 iconTaskStatusSeparators[0].isHidden,
-                "the divider between task status and animation remains visible after switching back in (language)"
+                "the divider after task status remains visible after switching back in (language)"
             )
             XCTAssertFalse(
                 iconTaskStatusSeparators[1].isHidden,
-                "the divider between animation and display mode remains visible after switching back in (language)"
+                "the divider after display mode remains visible after switching back in (language)"
             )
             XCTAssertTrue(
                 iconTaskStatusSeparators[2].isHidden,
-                "the divider after display mode is collapsed after switching back in (language)"
+                "the hidden delay row remains collapsed after switching back in (language)"
             )
+            XCTAssertFalse(iconTaskStatusSeparators[3].isHidden)
+            XCTAssertTrue(iconTaskStatusSeparators[4].isHidden)
 
             relay.onToggle = { identifier, enabled in
                 guard identifier == "showMenuBarIcon" else { return }
@@ -2296,9 +2307,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertEqual(quotaRowIndices, quotaRowIndices.sorted())
             let iconRowTitles = [
                 tr(.keyDashboardMenuBarPageAgentIcon, language: language),
-                animationRowTitle,
                 tr(.keyDashboardMenuBarPageIconDisplayMode, language: language),
-                tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language)
+                tr(.keyDashboardMenuBarPageIconDisplayDelay, language: language),
+                animationRowTitle,
+                tr(.keyDashboardMenuBarPageAnimation, language: language)
             ]
             let iconRowIndices = iconRowTitles.compactMap { labelStrings.firstIndex(of: $0) }
             XCTAssertEqual(iconRowIndices.count, iconRowTitles.count)
@@ -2306,10 +2318,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             XCTAssertFalse(
                 labelStrings.contains(tr(.keyDashboardMenuBarPageDisplayItems, language: language)),
                 "the legacy mixed display-content heading is no longer shown in \(language)"
-            )
-            XCTAssertFalse(
-                labelStrings.contains(tr(.keyDashboardMenuBarPageAnimation, language: language)),
-                "animation is a row under Icon & Task Status, not a separate section in \(language)"
             )
             XCTAssertEqual(labelStrings.filter { $0 == animationRowTitle }.count, 1)
 
@@ -2991,6 +2999,86 @@ final class DashboardPreferencePagesTests: XCTestCase {
             ).state,
             .off
         )
+    }
+
+    func testAnimationModeSelectorDefaultsToEfficientAndControlsFallbackWarning() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let suiteName = "DashboardPreferencePagesTests.AnimationMode.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        let relay = DashboardPreferencePageRelay()
+        relay.onMenuBarAnimationModeChanged = { mode in
+            preferences.menuBarAnimationMode = mode
+        }
+        let controller = DashboardMenuBarPage()
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let modeControl = try XCTUnwrap(
+            descendants(of: page)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.animationModeIdentifier }
+        )
+        XCTAssertEqual(modeControl.indexOfSelectedItem, 0)
+        XCTAssertEqual(
+            modeControl.itemArray.compactMap { $0.representedObject as? String },
+            MenuBarAnimationMode.allCases.map(\.rawValue)
+        )
+        XCTAssertEqual(
+            modeControl.itemTitles,
+            [
+                tr(.keyDashboardMenuBarPageAnimationModeEfficient),
+                tr(.keyDashboardMenuBarPageAnimationModeSynchronized)
+            ]
+        )
+        XCTAssertEqual(
+            tr(.keyDashboardMenuBarPageAnimationModeDescription),
+            "高效：显著降低资源占用；多显示器使用时，非当前显示器上的动画将暂停。\n同步：所有显示器上的动画保持同步，但资源占用更高。"
+        )
+
+        modeControl.selectItem(at: 1)
+        relay.menuBarAnimationMode(modeControl)
+        XCTAssertEqual(preferences.menuBarAnimationMode, .synchronized)
+
+        let warningRow = try XCTUnwrap(
+            descendant(
+                withIdentifier: DashboardMenuBarPage.animationFallbackWarningIdentifier + "Row",
+                in: page
+            )
+        )
+        controller.updateAnimationFallback(
+            active: true,
+            showTaskStatusIcon: true,
+            displayMode: .alwaysVisible,
+            animationEnabled: true,
+            animationMode: .efficient
+        )
+        XCTAssertFalse(warningRow.isHidden)
+        XCTAssertTrue(
+            descendants(of: warningRow)
+                .compactMap { $0 as? NSTextField }
+                .contains { $0.stringValue == tr(.keyDashboardMenuBarPageAnimationModeFallback) }
+        )
+
+        controller.updateAnimationFallback(
+            active: false,
+            showTaskStatusIcon: true,
+            displayMode: .alwaysVisible,
+            animationEnabled: true,
+            animationMode: .efficient
+        )
+        XCTAssertTrue(warningRow.isHidden)
     }
 
     func testRelayRoutesOffsetAdjustAndResetOnce() {

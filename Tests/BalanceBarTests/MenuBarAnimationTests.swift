@@ -4,11 +4,7 @@ import XCTest
 
 final class MenuBarAnimationTests: XCTestCase {
     func testCodexAnimationKeepsItsDiscreteFrameCountDurationAndOrder() {
-        XCTAssertEqual(MenuBarAnimationFrameRate.defaultValue, .fps30)
-        XCTAssertEqual(
-            RotatingTemplateImageView.frameCount,
-            MenuBarAnimationFrameRate.fps30.frameCount
-        )
+        XCTAssertEqual(RotatingTemplateImageView.frameCount, MenuBarAnimationTiming.frameCount)
         XCTAssertEqual(RotatingTemplateImageView.frameCount, 36)
         XCTAssertEqual(RotatingTemplateImageView.rotationDuration, 1.2, accuracy: 0.000_001)
         XCTAssertEqual(
@@ -31,33 +27,21 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(state.frameIndex, 0)
     }
 
-    func testCodexBackendDerivesBothSupportedCadencesFromOneCycleDuration() {
-        XCTAssertEqual(MenuBarAnimationFrameRate.allCases, [.fps15, .fps30])
-        XCTAssertEqual(MenuBarAnimationFrameRate.rotationDuration, 1.2, accuracy: 0.000_001)
-
-        XCTAssertEqual(MenuBarAnimationFrameRate.fps15.frameCount, 18)
-        XCTAssertEqual(MenuBarAnimationFrameRate.fps30.frameCount, 36)
+    func testCodexBackendsShareTheFixedThirtyHertzTimingContract() {
+        XCTAssertEqual(MenuBarAnimationTiming.frameCount, 36)
+        XCTAssertEqual(MenuBarAnimationTiming.rotationDuration, 1.2, accuracy: 0.000_001)
         XCTAssertEqual(
-            MenuBarAnimationFrameRate.fps15.frameInterval,
-            1.2 / 18,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            MenuBarAnimationFrameRate.fps30.frameInterval,
-            1.2 / 36,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            Double(MenuBarAnimationFrameRate.fps15.frameCount)
-                / MenuBarAnimationFrameRate.rotationDuration,
-            15,
-            accuracy: 0.000_001
-        )
-        XCTAssertEqual(
-            Double(MenuBarAnimationFrameRate.fps30.frameCount)
-                / MenuBarAnimationFrameRate.rotationDuration,
+            Double(MenuBarAnimationTiming.frameCount) / MenuBarAnimationTiming.rotationDuration,
             30,
             accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            MenuBarCodexAnimationBackend(mode: .efficient),
+            .nativeCoreAnimation
+        )
+        XCTAssertEqual(
+            MenuBarCodexAnimationBackend(mode: .synchronized),
+            .stableBitmap
         )
     }
 
@@ -104,6 +88,13 @@ final class MenuBarAnimationTests: XCTestCase {
         host.installRotationAnimation()
         let animation = try XCTUnwrap(host.rotationAnimationForTesting)
         XCTAssertEqual(animation.keyPath, "transform.rotation.z")
+        let values = try XCTUnwrap(animation.values as? [NSNumber])
+        XCTAssertEqual(values[0].doubleValue, 0, accuracy: 0.000_001)
+        XCTAssertGreaterThan(
+            values[1].doubleValue,
+            0,
+            "positive layer rotation is the clockwise screen-space direction"
+        )
         XCTAssertEqual(animation.duration, 1.2, accuracy: 0.000_001)
         XCTAssertEqual(animation.calculationMode, .discrete)
         XCTAssertEqual(animation.repeatCount, Float.infinity)
@@ -258,36 +249,6 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(imageView.isRotating)
 
         imageView.stopRotating()
-        imageView.stopRotating()
-        XCTAssertFalse(imageView.isRotating)
-    }
-
-    func testChangingCadenceRebuildsOnlyTheFrameSetAndKeepsOneRunningLifecycle() {
-        let imageView = RotatingTemplateImageView(
-            frame: NSRect(x: 0, y: 0, width: 16, height: 16),
-            frameRate: .fps15
-        )
-        imageView.setSourceImage(NSImage(size: NSSize(width: 16, height: 16)))
-        XCTAssertEqual(imageView.frameRate, .fps15)
-        XCTAssertEqual(imageView.animationFrames.count, 18)
-
-        imageView.startRotating()
-        XCTAssertTrue(imageView.isRotating)
-        XCTAssertEqual(imageView.currentAnimationFrameIndex, 0)
-
-        imageView.setFrameRate(.fps30)
-        XCTAssertEqual(imageView.frameRate, .fps30)
-        XCTAssertEqual(imageView.animationFrames.count, 36)
-        XCTAssertTrue(imageView.isRotating)
-        XCTAssertEqual(imageView.currentAnimationFrameIndex, 0)
-
-        imageView.startRotating()
-        XCTAssertTrue(imageView.isRotating)
-        imageView.setFrameRate(.fps15)
-        XCTAssertEqual(imageView.frameRate, .fps15)
-        XCTAssertEqual(imageView.animationFrames.count, 18)
-        XCTAssertTrue(imageView.isRotating)
-
         imageView.stopRotating()
         XCTAssertFalse(imageView.isRotating)
     }

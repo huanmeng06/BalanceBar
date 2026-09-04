@@ -39,22 +39,26 @@ The controller now materializes the raw buffers directly from one complete
 frame at a time. Complete frame images are therefore temporary rebuild inputs,
 not a second long-lived cache beside the raw buffers.
 
-## Animation frame-rate backend
+## Product animation modes
 
-`MenuBarAnimationFrameRate` is the typed backend abstraction. It currently
-supports `.fps15` and `.fps30`, with a shared rotation duration of `1.2`
-seconds:
+Issue #300 now exposes two user-facing Codex animation modes:
 
 ```text
-15 FPS → 18 frames → 1.2 / 18 seconds per frame
-30 FPS → 36 frames → 1.2 / 36 seconds per frame
+高效       → BalanceBar-owned icon layer + Core Animation
+同步       → D0 stable bitmap + native timer-backed pixel updates
 ```
 
-The default is `.fps30`. There is no settings UI or user-facing selector in
-this change. Switching the backend rate rebuilds the corresponding finite raw
-pixel buffer and preserves the normalized animation phase when the timer is
-already running. It never creates a second timer or reuses a buffer with the
-wrong frame count.
+Both modes use the same fixed visual contract: 36 discrete states over a
+1.2-second clockwise revolution. Efficient is the default and pauses the
+animation on non-active displays; Synchronized is an explicit resource
+trade-off that keeps all displays in sync. The persisted user preference is
+separate from the internal backend enum and invalid/missing values resolve to
+Efficient.
+
+When efficient setup fails for a running task, the controller temporarily uses
+the synchronized backend without changing the saved preference and exposes a
+localized warning in the Menu Bar settings page. The next task starts a fresh
+efficient-mode attempt.
 
 Claude's existing animator and the traditional rendering path retain their
 existing behavior.
@@ -85,9 +89,9 @@ Issue and PR.
 
 ## Scope and validation boundary
 
-Issue #288 activity lifecycle, provider/network polling, Codex frame semantics,
-and Claude behavior are outside this plan. Automated tests can verify stable
-image identity, bounded composition, cache invalidation, frame-rate switching,
-and Dashboard refresh idempotence. Runtime CPU/sample and visual behavior on
-real menu bars, displays, Spaces, and appearance changes still require
-maintainer manual validation before this Draft PR can be accepted.
+Issue #288 activity lifecycle, provider/network polling, and Claude behavior
+are outside this plan. Automated tests can verify stable image identity,
+bounded composition, fixed timing, backend switching, fallback state, and
+Dashboard refresh idempotence. Runtime CPU/sample and visual behavior on real
+menu bars, displays, Spaces, and appearance changes still require maintainer
+manual validation before this Draft PR can be accepted.

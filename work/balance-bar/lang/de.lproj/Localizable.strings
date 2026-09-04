@@ -282,7 +282,7 @@
 "dashboard.menu.bar.page.preview" = "Vorschau";
 "dashboard.menu.bar.page.current_layout" = "Aktuelles Layout";
 "dashboard.menu.bar.page.quota_and_reset" = "Kontingent und Zurücksetzung";
-"dashboard.menu.bar.page.icon_and_task_status" = "Symbol und Aufgabenstatus";
+"dashboard.menu.bar.page.icon_and_task_status" = "Symbol und Animation";
 "dashboard.menu.bar.page.the_menu_bar_updates_with_provider_data_in_real_time" = "Die Menüleiste wird in Echtzeit mit Anbieterdaten aktualisiert";
 "dashboard.menu.bar.page.icon_display_mode" = "Anzeige des Menüleistensymbols";
 "dashboard.menu.bar.page.icon_display_mode_description" = "Wählen Sie, ob das Symbol immer oder nur während einer laufenden Aufgabe angezeigt wird";
@@ -311,7 +311,11 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_description" = "Nach dem Wechsel zu 🌙 %1$@ auswählen, ob die Rücksetzzeit des ursprünglichen Kontingents oder von 🌙 %1$@ angezeigt wird";
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Ursprüngliches Kontingent";
-"dashboard.menu.bar.page.animation" = "Animation";
+"dashboard.menu.bar.page.animation" = "Animationsmodus";
+"dashboard.menu.bar.page.animation_mode_description" = "Effizient: Reduziert die Nutzung von Systemressourcen deutlich. Bei mehreren Displays wird die Animation auf nicht aktiven Displays angehalten.\nSynchronisiert: Hält die Animation auf allen Displays synchron, benötigt aber mehr Systemressourcen.";
+"dashboard.menu.bar.page.animation_mode_efficient" = "Effizient";
+"dashboard.menu.bar.page.animation_mode_synchronized" = "Synchronisiert";
+"dashboard.menu.bar.page.animation_mode_fallback" = "Die Animation kann im Modus „Effizient“ derzeit nicht korrekt wiedergegeben werden. Daher wird vorübergehend der Modus „Synchronisiert“ verwendet.";
 "dashboard.menu.bar.page.play_the_icon_animation_while_a_task_is_running" = "Menüleistensymbol während einer Aufgabe animieren";
 "dashboard.menu.bar.page.display_items" = "Angezeigte Inhalte";
 "dashboard.menu.bar.page.agent_icon" = "Aufgabenstatussymbol";
