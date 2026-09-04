@@ -36,6 +36,33 @@ enum MenuBarActivityAnimationPolicy {
     }
 }
 
+/// Centralizes the visibility contract for the E overlay. Callers may request
+/// animation while the status item is temporarily unavailable; visibility is
+/// granted only when every independent piece of evidence is valid.
+struct MenuBarAnimationOverlayVisibilityPolicy {
+    static func shouldShow(
+        animationRequested: Bool,
+        statusItemVisible: Bool,
+        hiddenByMenuBarSpace: Bool,
+        hiddenByRuntimePolicy: Bool,
+        statusWindowVisible: Bool,
+        statusWindowOcclusionVisible: Bool,
+        validGeometry: Bool,
+        reduceMotionEnabled: Bool,
+        lifecycleSuspended: Bool = false
+    ) -> Bool {
+        animationRequested
+            && statusItemVisible
+            && !hiddenByMenuBarSpace
+            && !hiddenByRuntimePolicy
+            && statusWindowVisible
+            && statusWindowOcclusionVisible
+            && validGeometry
+            && !reduceMotionEnabled
+            && !lifecycleSuspended
+    }
+}
+
 /// Rendering choices for the Codex activity icon. The overlay case is an
 /// intentionally isolated experiment; normal builds keep the native cached
 /// frame path unless the build explicitly opts into the experiment.
@@ -92,11 +119,17 @@ final class MenuBarAnimationOverlayController {
     private var renderedAppearanceName: NSAppearance.Name?
     private var renderedIconSize: NSSize = .zero
     private var renderedContentsScale: CGFloat = 0
+    private var appliedWindowFrame: NSRect?
+    private var appliedRootBounds: NSRect = .zero
+    private var appliedBackingScale: CGFloat = 0
+    private var appliedVisibility = false
 
     private(set) var animationStartCount = 0
     private(set) var animationStopCount = 0
     private(set) var geometrySyncCount = 0
     private(set) var appearanceUpdateCount = 0
+    private(set) var rasterUpdateCount = 0
+    private(set) var visibilityMutationCount = 0
 
     var isAnimating: Bool { animationRequested }
     var isVisible: Bool { window.isVisible }
@@ -124,11 +157,14 @@ final class MenuBarAnimationOverlayController {
         let image = contents as! CGImage
         return NSSize(width: image.width, height: image.height)
     }
-    var iconLayerContentsScaleForTesting: CGFloat { iconLayer.contentsScale }
     var iconLayerContentsRectForTesting: CGRect { iconLayer.contentsRect }
     var iconLayerContentsGravityForTesting: CALayerContentsGravity {
         iconLayer.contentsGravity
     }
+    var hasInstalledRotationAnimationForTesting: Bool {
+        iconLayer.animation(forKey: Self.rotationAnimationKey) != nil
+    }
+    var iconLayerContentsScaleForTesting: CGFloat { iconLayer.contentsScale }
 
     init() {
         let window = MenuBarAnimationOverlayWindow(
@@ -181,29 +217,14 @@ final class MenuBarAnimationOverlayController {
         screenFrame: NSRect?,
         appearance: NSAppearance?
     ) {
-        animationRequested = true
-        sourceImage = image
-        guard synchronize(
+        _ = synchronize(
+            image: image,
+            animationRequested: true,
             screenFrame: screenFrame,
             appearance: appearance,
+            backingScale: nil,
             shouldShow: true
-        ) else {
-            return
-        }
-
-        // The window frame, root-layer layout, icon contents, and appearance
-        // are all stable before this is submitted to Core Animation.
-        if iconLayer.animation(forKey: Self.rotationAnimationKey) == nil {
-            let animation = CABasicAnimation(keyPath: "transform.rotation.z")
-            animation.fromValue = 0.0
-            animation.toValue = -Double.pi * 2
-            animation.duration = Self.rotationDuration
-            animation.repeatCount = .greatestFiniteMagnitude
-            animation.timingFunction = CAMediaTimingFunction(name: .linear)
-            animation.isRemovedOnCompletion = false
-            iconLayer.add(animation, forKey: Self.rotationAnimationKey)
-            animationStartCount += 1
-        }
+        )
     }
 
     @discardableResult
@@ -212,45 +233,94 @@ final class MenuBarAnimationOverlayController {
         appearance: NSAppearance?,
         shouldShow: Bool
     ) -> Bool {
-        guard animationRequested,
-              shouldShow,
-              let screenFrame,
-              screenFrame.width > 0,
-              screenFrame.height > 0 else {
-            if window.isVisible {
-                window.orderOut(nil)
-            }
+        synchronize(
+            image: nil,
+            animationRequested: animationRequested,
+            screenFrame: screenFrame,
+            appearance: appearance,
+            backingScale: nil,
+            shouldShow: shouldShow
+        )
+    }
+
+    /// Applies one complete desired state. The caller may keep the animation
+    /// requested while geometry or visibility evidence is temporarily invalid;
+    /// in that case the window is hidden but an already-installed CA animation
+    /// is retained for a seamless restore.
+    @discardableResult
+    func synchronize(
+        image: NSImage?,
+        animationRequested: Bool,
+        screenFrame: NSRect?,
+        appearance: NSAppearance?,
+        backingScale: CGFloat?,
+        shouldShow: Bool
+    ) -> Bool {
+        if let image, sourceImage !== image {
+            sourceImage = image
+            renderedSourceImageIdentity = nil
+            renderedAppearanceName = nil
+            renderedIconSize = .zero
+            renderedContentsScale = 0
+        } else if sourceImage == nil {
+            sourceImage = image
+        }
+
+        self.animationRequested = animationRequested
+        guard animationRequested, sourceImage != nil else {
+            stop()
             return false
         }
 
-        let alignedFrame = Self.pixelAligned(
-            screenFrame,
-            scale: window.screen?.backingScaleFactor
+        let resolvedScale = max(
+            backingScale ?? window.screen?.backingScaleFactor
                 ?? NSScreen.main?.backingScaleFactor
-                ?? 2
+                ?? 2,
+            1
         )
-        if window.frame != alignedFrame {
+        let validGeometry = screenFrame.map(Self.isValidGeometry) ?? false
+        guard shouldShow, validGeometry, let screenFrame else {
+            hideWindowIfNeeded()
+            return false
+        }
+
+        let alignedFrame = Self.pixelAligned(screenFrame, scale: resolvedScale)
+        guard Self.isValidGeometry(alignedFrame) else {
+            hideWindowIfNeeded()
+            return false
+        }
+        if appliedWindowFrame != alignedFrame || window.frame != alignedFrame {
             window.setFrame(alignedFrame, display: false)
+            appliedWindowFrame = alignedFrame
             geometrySyncCount += 1
         }
-        layoutLayers()
-        update(appearance: appearance)
+
+        layoutLayersIfNeeded(backingScale: resolvedScale)
+        update(appearance: appearance, contentsScale: resolvedScale)
+        installRotationAnimationIfNeeded()
+
         if !window.isVisible {
             // `orderFrontRegardless` does not make the non-key window active;
             // the window class also rejects key/main status defensively.
             window.orderFrontRegardless()
+            appliedVisibility = true
+            visibilityMutationCount += 1
+        } else if !appliedVisibility {
+            appliedVisibility = true
         }
         return true
     }
 
     func stop() {
-        guard animationRequested || window.isVisible else { return }
+        guard animationRequested
+                || iconLayer.animation(forKey: Self.rotationAnimationKey) != nil
+                || window.isVisible else { return }
         let wasAnimating = animationRequested
         animationRequested = false
-        iconLayer.removeAnimation(forKey: Self.rotationAnimationKey)
-        if window.isVisible {
-            window.orderOut(nil)
+        if iconLayer.animation(forKey: Self.rotationAnimationKey) != nil {
+            iconLayer.removeAnimation(forKey: Self.rotationAnimationKey)
         }
+        hideWindowIfNeeded()
         animationStopCount += 1
 #if BALANCEBAR_EXPERIMENTAL_OVERLAY
         if wasAnimating {
@@ -269,34 +339,68 @@ final class MenuBarAnimationOverlayController {
         window.orderOut(nil)
     }
 
-    private func update(appearance: NSAppearance? = nil) {
+    private func update(
+        appearance: NSAppearance? = nil,
+        contentsScale: CGFloat? = nil
+    ) {
         if let appearance,
            window.appearance?.name != appearance.name {
             window.appearance = appearance
             appearanceUpdateCount += 1
         }
-        updateIconContentsIfNeeded()
+        updateIconContentsIfNeeded(contentsScale: contentsScale)
     }
 
-    private func layoutLayers() {
+    private func installRotationAnimationIfNeeded() {
+        guard iconLayer.animation(forKey: Self.rotationAnimationKey) == nil else {
+            return
+        }
+        let animation = CABasicAnimation(keyPath: "transform.rotation.z")
+        animation.fromValue = 0.0
+        animation.toValue = -Double.pi * 2
+        animation.duration = Self.rotationDuration
+        animation.repeatCount = .greatestFiniteMagnitude
+        animation.timingFunction = CAMediaTimingFunction(name: .linear)
+        animation.isRemovedOnCompletion = false
+        iconLayer.add(animation, forKey: Self.rotationAnimationKey)
+        animationStartCount += 1
+    }
+
+    private func hideWindowIfNeeded() {
+        guard window.isVisible || appliedVisibility else { return }
+        if window.isVisible {
+            window.orderOut(nil)
+        }
+        appliedVisibility = false
+        visibilityMutationCount += 1
+    }
+
+    private func layoutLayersIfNeeded(backingScale: CGFloat) {
+        let rootBounds = rootView.bounds.width > 0 && rootView.bounds.height > 0
+            ? rootView.bounds
+            : NSRect(origin: .zero, size: window.frame.size)
+        guard appliedRootBounds != rootBounds || appliedBackingScale != backingScale else {
+            return
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        let rootBounds = rootView.bounds
         iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         iconLayer.bounds = NSRect(origin: .zero, size: rootBounds.size)
         iconLayer.position = CGPoint(
             x: rootBounds.midX,
             y: rootBounds.midY
         )
-        iconLayer.contentsScale = max(window.backingScaleFactor, 1)
+        iconLayer.contentsScale = backingScale
         CATransaction.commit()
+        appliedRootBounds = rootBounds
+        appliedBackingScale = backingScale
     }
 
     /// Converts the template NSImage into one appearance-resolved CGImage at
     /// a layout boundary. The raster's pixel dimensions explicitly match its
     /// logical layer size and contentsScale, so CALayer does not need to
     /// select an NSImage representation or perform an additional aspect fit.
-    private func updateIconContentsIfNeeded() {
+    private func updateIconContentsIfNeeded(contentsScale: CGFloat? = nil) {
         guard let sourceImage,
               iconLayer.bounds.width > 0,
               iconLayer.bounds.height > 0 else {
@@ -306,11 +410,14 @@ final class MenuBarAnimationOverlayController {
         let appearance = window.effectiveAppearance
         let sourceIdentity = ObjectIdentifier(sourceImage)
         let iconSize = iconLayer.bounds.size
-        let contentsScale = max(window.backingScaleFactor, 1)
+        let resolvedContentsScale = max(
+            contentsScale ?? window.backingScaleFactor,
+            1
+        )
         guard renderedSourceImageIdentity != sourceIdentity
                 || renderedAppearanceName != appearance.name
                 || renderedIconSize != iconSize
-                || renderedContentsScale != contentsScale
+                || renderedContentsScale != resolvedContentsScale
                 || iconLayer.contents == nil else {
             return
         }
@@ -318,7 +425,7 @@ final class MenuBarAnimationOverlayController {
         guard let raster = Self.makeTintedLayerRaster(
             from: sourceImage,
             size: iconSize,
-            scale: contentsScale,
+            scale: resolvedContentsScale,
             appearance: appearance
         ) else {
             iconLayer.contents = nil
@@ -336,6 +443,7 @@ final class MenuBarAnimationOverlayController {
         renderedAppearanceName = appearance.name
         renderedIconSize = raster.logicalSize
         renderedContentsScale = raster.contentsScale
+        rasterUpdateCount += 1
     }
 
     static func makeTintedLayerRaster(
@@ -422,6 +530,15 @@ final class MenuBarAnimationOverlayController {
             width: aligned(frame.width),
             height: aligned(frame.height)
         )
+    }
+
+    private static func isValidGeometry(_ frame: NSRect) -> Bool {
+        frame.width > 0
+            && frame.height > 0
+            && frame.minX.isFinite
+            && frame.minY.isFinite
+            && frame.maxX.isFinite
+            && frame.maxY.isFinite
     }
 }
 

@@ -491,6 +491,94 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testOverlaySynchronizeIsIdempotentAndRestoresAfterTemporaryHide() throws {
+        let overlay = MenuBarAnimationOverlayController()
+        defer { overlay.teardown() }
+        let image = NSImage(size: NSSize(width: 16, height: 16))
+        let frame = NSRect(x: 100, y: 200, width: 16, height: 16)
+        let appearance = NSAppearance(named: .aqua)
+
+        overlay.start(image: image, screenFrame: frame, appearance: appearance)
+        XCTAssertTrue(overlay.isVisible)
+        let initialStarts = overlay.animationStartCount
+        let initialGeometrySyncs = overlay.geometrySyncCount
+        let initialRasterUpdates = overlay.rasterUpdateCount
+        let initialVisibilityMutations = overlay.visibilityMutationCount
+
+        for _ in 0..<100 {
+            XCTAssertTrue(
+                overlay.synchronize(
+                    screenFrame: frame,
+                    appearance: appearance,
+                    shouldShow: true
+                )
+            )
+        }
+        XCTAssertEqual(overlay.animationStartCount, initialStarts)
+        XCTAssertEqual(overlay.geometrySyncCount, initialGeometrySyncs)
+        XCTAssertEqual(overlay.rasterUpdateCount, initialRasterUpdates)
+        XCTAssertEqual(overlay.visibilityMutationCount, initialVisibilityMutations)
+
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        XCTAssertTrue(
+            overlay.synchronize(
+                screenFrame: frame,
+                appearance: darkAppearance,
+                shouldShow: true
+            )
+        )
+        let darkRasterUpdates = overlay.rasterUpdateCount
+        XCTAssertEqual(darkRasterUpdates, initialRasterUpdates + 1)
+        for _ in 0..<100 {
+            XCTAssertTrue(
+                overlay.synchronize(
+                    screenFrame: frame,
+                    appearance: darkAppearance,
+                    shouldShow: true
+                )
+            )
+        }
+        XCTAssertEqual(overlay.rasterUpdateCount, darkRasterUpdates)
+
+        XCTAssertFalse(
+            overlay.synchronize(
+                screenFrame: nil,
+                appearance: darkAppearance,
+                shouldShow: false
+            )
+        )
+        XCTAssertFalse(overlay.isVisible)
+        XCTAssertTrue(overlay.hasInstalledRotationAnimationForTesting)
+
+        XCTAssertTrue(
+            overlay.synchronize(
+                screenFrame: frame,
+                appearance: darkAppearance,
+                shouldShow: true
+            )
+        )
+        XCTAssertTrue(overlay.isVisible)
+        XCTAssertEqual(overlay.animationStartCount, initialStarts)
+        XCTAssertEqual(overlay.geometrySyncCount, initialGeometrySyncs)
+        XCTAssertEqual(overlay.rasterUpdateCount, darkRasterUpdates)
+
+        overlay.stop()
+        XCTAssertFalse(overlay.hasInstalledRotationAnimationForTesting)
+        XCTAssertFalse(overlay.isAnimating)
+
+        overlay.start(
+            image: image,
+            screenFrame: frame,
+            appearance: darkAppearance
+        )
+        XCTAssertTrue(overlay.isVisible)
+        XCTAssertTrue(overlay.hasInstalledRotationAnimationForTesting)
+        XCTAssertEqual(overlay.animationStartCount, initialStarts + 1)
+        XCTAssertEqual(overlay.rasterUpdateCount, darkRasterUpdates)
+        overlay.stop()
+    }
+
+    @MainActor
     func testOverlayCodexAnimationKeepsNativeStatusImageStaticAndSkipsNativeFrameCache() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
@@ -536,9 +624,13 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(controller.animationRenderingModeForTesting, .overlayCoreAnimation)
         XCTAssertTrue(controller.overlayCodexAnimationIsActiveForTesting)
         XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
+        // A headless XCTest status item has no confirmed visible window. The
+        // E lifecycle contract must not put an unanchored overlay on screen.
+        XCTAssertFalse(controller.overlayAnimationIsVisibleForTesting)
+        XCTAssertFalse(controller.overlayAnimationHasInstalledRotationForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertEqual(controller.codexAnimationCacheFrameCountForTesting, 0)
-        XCTAssertEqual(controller.overlayAnimationStartCountForTesting, 1)
+        XCTAssertEqual(controller.overlayAnimationStartCountForTesting, 0)
         XCTAssertEqual(animationStateChanges, [true])
 
         controller.update(
@@ -564,7 +656,7 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testFontSizeRefreshKeepsOverlayAnimationPhaseAndSettlesOnce() throws {
+    func testFontSizeRefreshKeepsOverlayRequestAndSettlesOnceWhenUnanchored() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             "Overlay Codex animation is disabled by the system reduce-motion setting"
@@ -593,8 +685,9 @@ final class StatusItemControllerTests: XCTestCase {
         )
 
         let animationStarts = controller.overlayAnimationStartCountForTesting
-        XCTAssertEqual(animationStarts, 1)
+        XCTAssertEqual(animationStarts, 0)
         XCTAssertTrue(controller.overlayAnimationIsAnimatingForTesting)
+        XCTAssertFalse(controller.overlayAnimationIsVisibleForTesting)
 
         controller.updateFontSize(10.4)
 
