@@ -49,7 +49,6 @@ struct MenuBarAnimationOverlayVisibilityPolicy {
         statusWindowOcclusionVisible: Bool,
         validGeometry: Bool,
         reduceMotionEnabled: Bool,
-        menuBarActuallyVisible: Bool = true,
         lifecycleSuspended: Bool = false
     ) -> Bool {
         animationRequested
@@ -60,91 +59,7 @@ struct MenuBarAnimationOverlayVisibilityPolicy {
             && statusWindowOcclusionVisible
             && validGeometry
             && !reduceMotionEnabled
-            && menuBarActuallyVisible
             && !lifecycleSuspended
-    }
-}
-
-/// A short-lived transition watcher is driven by AppKit lifecycle events. It
-/// is intentionally a value type so its stop conditions remain deterministic
-/// and testable without creating a real run-loop timer in XCTest.
-struct MenuBarAnimationOverlayTransitionObservation: Equatable {
-    let menuBarVisible: Bool
-    let statusItemVisible: Bool
-    let statusWindowVisible: Bool
-    let statusWindowOcclusionVisible: Bool
-    let validGeometry: Bool
-    let overlayVisible: Bool
-    let statusVisibilityStableHidden: Bool
-}
-
-struct MenuBarAnimationOverlayTransitionWatch {
-    static let cadence: TimeInterval = 0.05
-    static let timeout: TimeInterval = 0.75
-    static let stableSampleCount = 2
-
-    private(set) var isActive = false
-    private var deadline: Date?
-    private var lastObservation: MenuBarAnimationOverlayTransitionObservation?
-    private var stableSampleCount = 0
-    private var initialOverlayVisible: Bool?
-
-    @discardableResult
-    mutating func begin(
-        at date: Date,
-        initialObservation: MenuBarAnimationOverlayTransitionObservation? = nil
-    ) -> Bool {
-        guard !isActive else { return false }
-        isActive = true
-        deadline = date.addingTimeInterval(Self.timeout)
-        lastObservation = nil
-        stableSampleCount = 0
-        initialOverlayVisible = initialObservation?.overlayVisible
-        return true
-    }
-
-    @discardableResult
-    mutating func observe(
-        _ observation: MenuBarAnimationOverlayTransitionObservation,
-        at date: Date
-    ) -> Bool {
-        guard isActive else { return false }
-        if lastObservation == observation {
-            stableSampleCount += 1
-        } else {
-            lastObservation = observation
-            stableSampleCount = 1
-        }
-
-        let hiddenByMenuBar = !observation.menuBarVisible
-            && !observation.overlayVisible
-        let startedWhileOverlayWasHidden = initialOverlayVisible == false
-        let shownWithValidState = startedWhileOverlayWasHidden
-            && observation.menuBarVisible
-            && observation.overlayVisible
-        // A previously published hidden-by-space state can remain stale while
-        // the menu bar is animating back in. Do not terminate a watcher that
-        // began with a hidden overlay merely because that old state repeats;
-        // wait for fresh visible evidence or the bounded timeout. For a
-        // watcher that began with a visible overlay, repeated hidden evidence
-        // is enough to finish the hide transition.
-        let staleHiddenStateCanEndWatch = initialOverlayVisible != false
-            && observation.statusVisibilityStableHidden
-        let stablyUnavailable = stableSampleCount >= Self.stableSampleCount
-            && (!observation.statusItemVisible || staleHiddenStateCanEndWatch)
-        let timedOut = deadline.map { date >= $0 } ?? true
-        if hiddenByMenuBar || shownWithValidState || stablyUnavailable || timedOut {
-            stop()
-        }
-        return isActive
-    }
-
-    mutating func stop() {
-        isActive = false
-        deadline = nil
-        lastObservation = nil
-        stableSampleCount = 0
-        initialOverlayVisible = nil
     }
 }
 
