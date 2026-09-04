@@ -312,7 +312,7 @@
 "dashboard.menu.bar.page.luna_reserve_reset_time_luna_reserve" = "🌙 %1$@";
 "dashboard.menu.bar.page.luna_reserve_reset_time_original_quota" = "Original Quota";
 "dashboard.menu.bar.page.animation" = "Animation Mode";
-"dashboard.menu.bar.page.animation_mode_description" = "Efficient: Significantly reduces resource use; when using multiple displays, animation pauses on displays that aren't active\nSynchronized: Keeps animation in sync across all displays, but uses more resources";
+"dashboard.menu.bar.page.animation_mode_description" = "Efficient: Significantly reduces resource use; when using multiple displays, animation pauses and lights up on displays that aren't active\nSynchronized: Keeps animation in sync across all displays, but uses more resources";
 "dashboard.menu.bar.page.animation_mode_efficient" = "Efficient";
 "dashboard.menu.bar.page.animation_mode_synchronized" = "Synchronized";
 "dashboard.menu.bar.page.animation_mode_fallback" = "Efficient mode can't play the animation correctly right now, so Synchronized mode is being used temporarily";
