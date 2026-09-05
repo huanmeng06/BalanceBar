@@ -239,6 +239,13 @@ final class GrokActivityMonitor {
             || arguments.contains("/grok-macos-")
     }
 
+    private struct ActiveSessionRow {
+        let sessionID: String
+        let cwd: String
+        let openedAt: Date?
+        let updatesURL: URL
+    }
+
     private func combinedSessionObservation(
         now: Date
     ) -> (
@@ -246,17 +253,19 @@ final class GrokActivityMonitor {
         identityActivityAt: Date?,
         trueTurnEvidence: Bool
     ) {
-        let parents = activeSessionUpdateURLs()
-        guard !parents.isEmpty else {
+        let listed = activeSessionRows()
+        guard !listed.isEmpty else {
             return (.hardTerminal, nil, false)
         }
 
         var anyInProgress = false
         var identityActivityAt: Date?
         var trueTurnEvidence = false
+        var listedIDsByCWD: [String: Set<String>] = [:]
 
-        for parentURL in parents {
-            let related = relatedSessionSignals(for: parentURL, now: now)
+        for row in listed {
+            listedIDsByCWD[row.cwd, default: []].insert(row.sessionID)
+            let related = relatedSessionSignals(for: row.updatesURL, now: now)
             for signal in related {
                 trueTurnEvidence = trueTurnEvidence || signal.trueTurnEvidence
                 if signal.kind == .inProgress {
@@ -272,32 +281,155 @@ final class GrokActivityMonitor {
             }
         }
 
+        if !anyInProgress {
+            let earliestLiveOpenedAt = listed.compactMap(\.openedAt).min()
+            cwdGroupScan: for (cwd, listedIDs) in listedIDsByCWD {
+                for sibling in siblingSessionDirectories(cwd: cwd, excluding: listedIDs) {
+                    let siblingProgress = unlistedSiblingProgress(
+                        sessionDirectory: sibling,
+                        now: now,
+                        earliestLiveOpenedAt: earliestLiveOpenedAt
+                    )
+                    if siblingProgress.inProgress {
+                        anyInProgress = true
+                        trueTurnEvidence = trueTurnEvidence || siblingProgress.trueTurnEvidence
+                        break cwdGroupScan
+                    }
+                }
+            }
+        }
+
         return (anyInProgress ? .active : .hardTerminal, identityActivityAt, trueTurnEvidence)
     }
 
-    private func activeSessionUpdateURLs() -> [URL] {
+    private func activeSessionRows() -> [ActiveSessionRow] {
         let activeSessionsURL = grokDirectory.appendingPathComponent("active_sessions.json")
         guard let data = try? Data(contentsOf: activeSessionsURL),
               let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             return []
         }
 
-        var urls: [URL] = []
+        var listed: [ActiveSessionRow] = []
         var seen: Set<String> = []
         for row in rows {
             let sessionID = row["session_id"] as? String
             let cwd = row["cwd"] as? String
             guard let sessionID, let cwd else { continue }
-            let updatesURL = grokDirectory
-                .appendingPathComponent("sessions", isDirectory: true)
-                .appendingPathComponent(Self.encodeSessionDirectoryName(cwd), isDirectory: true)
-                .appendingPathComponent(sessionID, isDirectory: true)
-                .appendingPathComponent("updates.jsonl")
+            let updatesURL = sessionUpdatesURL(sessionID: sessionID, cwd: cwd)
             let path = updatesURL.standardizedFileURL.path
             guard seen.insert(path).inserted else { continue }
-            urls.append(updatesURL)
+            listed.append(
+                ActiveSessionRow(
+                    sessionID: sessionID,
+                    cwd: cwd,
+                    openedAt: Self.parseOpenedAt(row["opened_at"]),
+                    updatesURL: updatesURL
+                )
+            )
         }
-        return urls
+        return listed
+    }
+
+    private func sessionUpdatesURL(sessionID: String, cwd: String) -> URL {
+        grokDirectory
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(Self.encodeSessionDirectoryName(cwd), isDirectory: true)
+            .appendingPathComponent(sessionID, isDirectory: true)
+            .appendingPathComponent("updates.jsonl")
+    }
+
+    /// Direct children of one cwd group. Does not walk `~/.grok/sessions`.
+    private func siblingSessionDirectories(cwd: String, excluding listedIDs: Set<String>) -> [URL] {
+        let groupDirectory = grokDirectory
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(Self.encodeSessionDirectoryName(cwd), isDirectory: true)
+        guard FileManager.default.fileExists(atPath: groupDirectory.path) else {
+            return []
+        }
+        let children = (try? FileManager.default.contentsOfDirectory(
+            at: groupDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return children.filter { url in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(
+                atPath: url.path,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue else {
+                return false
+            }
+            return !listedIDs.contains(url.lastPathComponent)
+        }
+    }
+
+    /// Unlisted siblings keep running when child work is unfinished, or when
+    /// the last in-progress activity is not earlier than live `opened_at`.
+    private func unlistedSiblingProgress(
+        sessionDirectory: URL,
+        now: Date,
+        earliestLiveOpenedAt: Date?
+    ) -> (inProgress: Bool, trueTurnEvidence: Bool) {
+        let updatesURL = sessionDirectory.appendingPathComponent("updates.jsonl")
+        let related = relatedSessionSignals(for: updatesURL, now: now)
+        let parent = related.first ?? .neverStarted
+        let unfinishedChild = related.dropFirst().contains { $0.kind == .inProgress }
+        if unfinishedChild {
+            return (true, related.contains { $0.trueTurnEvidence })
+        }
+        guard parent.kind == .inProgress else {
+            return (false, false)
+        }
+        guard let earliestLiveOpenedAt else {
+            return (false, false)
+        }
+        let recency = siblingRecencyDate(
+            parent: parent,
+            sessionDirectory: sessionDirectory,
+            updatesURL: updatesURL
+        )
+        guard let recency, recency >= earliestLiveOpenedAt else {
+            return (false, false)
+        }
+        return (true, parent.trueTurnEvidence)
+    }
+
+    private func siblingRecencyDate(
+        parent: SessionSignal,
+        sessionDirectory: URL,
+        updatesURL: URL
+    ) -> Date? {
+        var candidates: [Date] = []
+        if let lastActivityAt = parent.lastActivityAt {
+            candidates.append(lastActivityAt)
+        }
+        if let identity = fileIdentity(atPath: updatesURL.path) {
+            candidates.append(Date(timeIntervalSince1970: identity.modifiedAt))
+        }
+        let metaURL = sessionDirectory.appendingPathComponent("meta.json")
+        if let identity = fileIdentity(atPath: metaURL.path) {
+            candidates.append(Date(timeIntervalSince1970: identity.modifiedAt))
+        }
+        return candidates.max()
+    }
+
+    private static func parseOpenedAt(_ value: Any?) -> Date? {
+        if let timestamp = value as? Double {
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        if let timestamp = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(timestamp))
+        }
+        guard let string = value as? String, !string.isEmpty else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string)
     }
 
     private func relatedSessionSignals(
@@ -428,11 +560,7 @@ final class GrokActivityMonitor {
         guard let sessionID, !sessionID.isEmpty, let cwd, !cwd.isEmpty else {
             return nil
         }
-        return grokDirectory
-            .appendingPathComponent("sessions", isDirectory: true)
-            .appendingPathComponent(Self.encodeSessionDirectoryName(cwd), isDirectory: true)
-            .appendingPathComponent(sessionID, isDirectory: true)
-            .appendingPathComponent("updates.jsonl")
+        return sessionUpdatesURL(sessionID: sessionID, cwd: cwd)
     }
 
     private func strongerSignal(_ lhs: SessionSignal, _ rhs: SessionSignal) -> SessionSignal {
