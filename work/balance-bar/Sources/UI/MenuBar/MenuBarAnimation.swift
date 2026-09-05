@@ -148,8 +148,65 @@ enum MenuBarCompositorAnimationKind: Equatable {
     case none
     case codexRotation
     case claudeThinking
+    case grokThinking
 
     var isActive: Bool { self != .none }
+}
+
+/// Discrete vertical-sprite timing shared by Claude and Grok compositor hosts.
+struct MenuBarSpriteAnimationTiming: Equatable {
+    let frameCount: Int
+    let restingFrameIndex: Int
+    let frameDurations: [TimeInterval]
+    let animationKey: String
+
+    var duration: TimeInterval {
+        frameDurations.reduce(0, +)
+    }
+
+    var keyTimes: [NSNumber] {
+        let total = duration
+        guard frameCount > 0, frameDurations.count == frameCount, total > 0 else {
+            return (0..<max(frameCount, 0)).map { index in
+                NSNumber(value: Double(index) / Double(max(frameCount, 1)))
+            }
+        }
+        var elapsed: TimeInterval = 0
+        return (0..<frameCount).map { index in
+            let value = elapsed / total
+            elapsed += frameDurations[index]
+            return NSNumber(value: value)
+        }
+    }
+
+    func translationValue(frameIndex: Int, frameHeight: CGFloat) -> CGFloat {
+        -frameHeight * CGFloat(frameIndex)
+    }
+
+    func translationValues(frameHeight: CGFloat) -> [NSNumber] {
+        (0..<frameCount).map { index in
+            NSNumber(
+                value: Double(translationValue(frameIndex: index, frameHeight: frameHeight))
+            )
+        }
+    }
+
+    static let claude = MenuBarSpriteAnimationTiming(
+        frameCount: ClaudeThinkingAnimationTiming.frameCount,
+        restingFrameIndex: ClaudeThinkingAnimationTiming.restingFrameIndex,
+        frameDurations: Array(
+            repeating: ClaudeThinkingAnimationTiming.frameDuration,
+            count: ClaudeThinkingAnimationTiming.frameCount
+        ),
+        animationKey: "balancebar.claudeThinking"
+    )
+
+    static let grok = MenuBarSpriteAnimationTiming(
+        frameCount: GrokThinkingAnimationTiming.frameCount,
+        restingFrameIndex: GrokThinkingAnimationTiming.restingFrameIndex,
+        frameDurations: GrokThinkingAnimationTiming.frameDurations,
+        animationKey: "balancebar.grokThinking"
+    )
 }
 
 enum MenuBarActivityAnimationPolicy {
@@ -361,39 +418,11 @@ enum ClaudeThinkingSprite {
         from frames: [NSImage],
         outputSize: NSSize = NSSize(width: 16, height: 16)
     ) -> NSImage? {
-        guard
-            frames.count == ClaudeThinkingAnimationTiming.frameCount,
-            outputSize.width > 0,
-            outputSize.height > 0
-        else {
-            return nil
-        }
-
-        let spriteSize = NSSize(
-            width: outputSize.width,
-            height: outputSize.height * CGFloat(ClaudeThinkingAnimationTiming.frameCount)
+        MenuBarThinkingSprite.makeSprite(
+            from: frames,
+            outputSize: outputSize,
+            expectedFrameCount: ClaudeThinkingAnimationTiming.frameCount
         )
-        let sprite = NSImage(size: spriteSize, flipped: false) { _ in
-            for (index, frame) in frames.enumerated() {
-                let destination = NSRect(
-                    x: 0,
-                    y: outputSize.height * CGFloat(index),
-                    width: outputSize.width,
-                    height: outputSize.height
-                ).insetBy(dx: 0.3, dy: 0.3)
-                frame.draw(
-                    in: destination,
-                    from: .zero,
-                    operation: .sourceOver,
-                    fraction: 1,
-                    respectFlipped: true,
-                    hints: [.interpolation: NSImageInterpolation.high]
-                )
-            }
-            return true
-        }
-        sprite.isTemplate = true
-        return sprite
     }
 
     static func makeFrames(from animatedSVG: String) -> [NSImage]? {
@@ -429,5 +458,199 @@ enum ClaudeThinkingSprite {
             image.size = NSSize(width: 100, height: 100)
             return image
         }
+    }
+}
+
+enum MenuBarThinkingSprite {
+    static func makeSprite(
+        from frames: [NSImage],
+        outputSize: NSSize = NSSize(width: 16, height: 16),
+        expectedFrameCount: Int? = nil
+    ) -> NSImage? {
+        let frameCount = expectedFrameCount ?? frames.count
+        guard
+            frameCount > 0,
+            frames.count == frameCount,
+            outputSize.width > 0,
+            outputSize.height > 0
+        else {
+            return nil
+        }
+
+        let spriteSize = NSSize(
+            width: outputSize.width,
+            height: outputSize.height * CGFloat(frameCount)
+        )
+        let sprite = NSImage(size: spriteSize, flipped: false) { _ in
+            for (index, frame) in frames.enumerated() {
+                let destination = NSRect(
+                    x: 0,
+                    y: outputSize.height * CGFloat(index),
+                    width: outputSize.width,
+                    height: outputSize.height
+                ).insetBy(dx: 0.3, dy: 0.3)
+                frame.draw(
+                    in: destination,
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1,
+                    respectFlipped: true,
+                    hints: [.interpolation: NSImageInterpolation.high]
+                )
+            }
+            return true
+        }
+        sprite.isTemplate = true
+        return sprite
+    }
+}
+
+/// GIF89a coalesced-frame timing for the bundled Grok thinking sprite.
+/// AppKit reports 23 frames: most 0.08 s, frame 11 ≈ 0.48 s, last ≈ 0.24 s.
+enum GrokThinkingAnimationTiming {
+    static let frameCount = 23
+    static let restingFrameIndex = 0
+    static let frameDurations: [TimeInterval] = {
+        var durations = Array(repeating: 0.08, count: frameCount)
+        durations[11] = 0.48
+        durations[22] = 0.24
+        return durations
+    }()
+    static let duration: TimeInterval = frameDurations.reduce(0, +)
+
+    static func translationValue(frameIndex: Int, frameHeight: CGFloat) -> CGFloat {
+        MenuBarSpriteAnimationTiming.grok.translationValue(
+            frameIndex: frameIndex,
+            frameHeight: frameHeight
+        )
+    }
+
+    static func translationValues(frameHeight: CGFloat) -> [NSNumber] {
+        MenuBarSpriteAnimationTiming.grok.translationValues(frameHeight: frameHeight)
+    }
+}
+
+/// Loads the committed Grok thinking sprite, or rebuilds it from the source GIF.
+enum GrokThinkingSprite {
+    static func make(
+        fromPNG pngURL: URL,
+        outputSize: NSSize = NSSize(width: 16, height: 16)
+    ) -> NSImage? {
+        guard let image = NSImage(contentsOf: pngURL) else { return nil }
+        image.size = NSSize(
+            width: outputSize.width,
+            height: outputSize.height * CGFloat(GrokThinkingAnimationTiming.frameCount)
+        )
+        image.isTemplate = true
+        return image
+    }
+
+    static func make(
+        fromGIF gifURL: URL,
+        outputSize: NSSize = NSSize(width: 16, height: 16)
+    ) -> NSImage? {
+        guard let frames = makeFrames(fromGIF: gifURL)?.frames else { return nil }
+        return MenuBarThinkingSprite.makeSprite(
+            from: frames,
+            outputSize: outputSize,
+            expectedFrameCount: GrokThinkingAnimationTiming.frameCount
+        )
+    }
+
+    static func makeFrames(
+        fromGIF gifURL: URL
+    ) -> (frames: [NSImage], durations: [TimeInterval])? {
+        guard
+            let data = try? Data(contentsOf: gifURL),
+            let image = NSImage(data: data),
+            let gifRep = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
+            let frameCount = gifRep.value(forProperty: .frameCount) as? Int,
+            frameCount > 1
+        else {
+            return nil
+        }
+
+        var frames: [NSImage] = []
+        var durations: [TimeInterval] = []
+        frames.reserveCapacity(frameCount)
+        durations.reserveCapacity(frameCount)
+        for index in 0..<frameCount {
+            gifRep.setProperty(.currentFrame, withValue: index)
+            let duration = gifRep.value(forProperty: .currentFrameDuration) as? TimeInterval ?? 0.08
+            // Copy pixels now. A lazy NSImage over this shared GIF rep would
+            // replay whichever currentFrame is last when the handler runs.
+            let snapshotSize = gifRep.size
+            guard let snapshotRep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: max(1, Int(snapshotSize.width.rounded())),
+                pixelsHigh: max(1, Int(snapshotSize.height.rounded())),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            ) else {
+                return nil
+            }
+            snapshotRep.size = snapshotSize
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: snapshotRep)
+            gifRep.draw(in: NSRect(origin: .zero, size: snapshotSize))
+            NSGraphicsContext.restoreGraphicsState()
+            let snapshot = NSImage(size: snapshotSize)
+            snapshot.addRepresentation(snapshotRep)
+            frames.append(makeTemplateFrame(snapshot))
+            durations.append(duration)
+        }
+        return (frames, durations)
+    }
+
+    private static func makeTemplateFrame(_ image: NSImage) -> NSImage {
+        let size = image.size
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: max(1, Int(size.width.rounded())),
+            pixelsHigh: max(1, Int(size.height.rounded())),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return image
+        }
+        representation.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: representation)
+        image.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: .zero,
+            operation: .copy,
+            fraction: 1
+        )
+        NSGraphicsContext.restoreGraphicsState()
+        for y in 0..<representation.pixelsHigh {
+            for x in 0..<representation.pixelsWide {
+                guard let color = representation.colorAt(x: x, y: y)?
+                    .usingColorSpace(.deviceRGB) else { continue }
+                let luminance = 0.2126 * color.redComponent
+                    + 0.7152 * color.greenComponent
+                    + 0.0722 * color.blueComponent
+                let alpha = luminance < 0.04 ? 0 : min(1, luminance)
+                representation.setColor(
+                    NSColor(deviceRed: 1, green: 1, blue: 1, alpha: alpha),
+                    atX: x,
+                    y: y
+                )
+            }
+        }
+        let templated = NSImage(size: size)
+        templated.addRepresentation(representation)
+        templated.isTemplate = true
+        return templated
     }
 }

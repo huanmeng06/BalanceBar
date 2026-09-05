@@ -204,6 +204,36 @@ private let emptyJSONKey = BalanceQuery.make(
 require(emptyJSONKey != nil, "empty JSON credential falls through to TOML")
 require(emptyJSONKey?.apiKey == "tokenshop-sanitized-bearer", "TOML token is used after an empty JSON credential")
 
+// 9. Grok Build / grokbuild tokenshop stores the credential as TOML api_key.
+let grokbuildConfig = """
+[model."grok-4-fixture"]
+base_url = "https://tokenshop.example.test"
+api_key = "grokbuild-sanitized-key"
+"""
+private let grokbuildQuery = BalanceQuery.make(
+    settingsText: settingsJSON(config: grokbuildConfig),
+    metaText: usageMetaJSON(code: "fetch({ url: \"{{baseUrl}}/v1/usage\", headers: { Authorization: \"Bearer {{apiKey}}\" } })"),
+    websiteText: nil,
+    appType: "grokbuild"
+)
+require(grokbuildQuery != nil, "grokbuild TOML api_key yields a query")
+require(grokbuildQuery?.apiKey == "grokbuild-sanitized-key", "grokbuild TOML api_key is used as the credential")
+require(grokbuildQuery?.url == "https://tokenshop.example.test/v1/usage", "grokbuild endpoint follows the usage script path")
+require(
+    BalanceQuery.make(
+        settingsText: settingsJSON(config: """
+        [experimental]
+        experimental_bearer_token = "tokenshop-sanitized-bearer"
+        api_key = "grokbuild-sanitized-key"
+        base_url = "https://tokenshop.example.test"
+        """),
+        metaText: usageMetaJSON(code: usageCode),
+        websiteText: nil,
+        appType: "codex"
+    )?.apiKey == "tokenshop-sanitized-bearer",
+    "experimental_bearer_token still wins when both TOML keys exist"
+)
+
 // Stable failure categories are produced at the exact parsing stage.
 private let invalidSettings = resolve(
     settingsText: "{not-json",

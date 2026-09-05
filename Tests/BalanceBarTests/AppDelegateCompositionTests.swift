@@ -21,6 +21,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(appDelegateSource.contains("DispatchSource"))
         XCTAssertFalse(appDelegateSource.contains("CodexActivityMonitor"))
         XCTAssertFalse(appDelegateSource.contains("ClaudeCodeActivityMonitor"))
+        XCTAssertFalse(appDelegateSource.contains("GrokActivityMonitor"))
         XCTAssertFalse(appDelegateSource.contains("fetchBalance"))
         XCTAssertFalse(appDelegateSource.contains("fetchQuota"))
         XCTAssertFalse(appDelegateSource.contains("makeDashboardPage"))
@@ -130,6 +131,7 @@ final class AppDelegateCompositionTests: XCTestCase {
         let activity = try XCTUnwrap(sources["ActivityCoordinator.swift"])
         XCTAssertTrue(activity.contains("CodexActivityMonitor"))
         XCTAssertTrue(activity.contains("ClaudeCodeActivityMonitor"))
+        XCTAssertTrue(activity.contains("GrokActivityMonitor"))
         XCTAssertTrue(activity.contains("NSWorkspace"))
 
         let watcher = try XCTUnwrap(sources["CCSwitchDatabaseWatcher.swift"])

@@ -325,9 +325,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private var activeClient: AssistantClient = .codex
     private var isCodexTaskRunning = false
     private var isClaudeTaskRunning = false
+    private var isGrokTaskRunning = false
     private var isClaudeProcessAvailable = false
+    private var isGrokProcessAvailable = false
     private var codexActivityRefreshLifecycle = ActivityRefreshLifecycle()
     private var claudeActivityRefreshLifecycle = ActivityRefreshLifecycle()
+    private var grokActivityRefreshLifecycle = ActivityRefreshLifecycle()
     private var lifecycle = ApplicationLifecycleState()
     private var lastCodexUsageRefresh: Date?
     private var postCodexRefreshDeadline: Date?
@@ -537,6 +540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             actions: ActivityCoordinatorActions(
                 activeClient: { [weak self] in self?.activeClient ?? .codex },
                 claudeProcessAvailable: { [weak self] in self?.isClaudeProcessAvailable ?? false },
+                grokProcessAvailable: { [weak self] in self?.isGrokProcessAvailable ?? false },
                 setClaudeProcessAvailable: { [weak self] available in
                     guard let self else { return }
                     if self.isClaudeProcessAvailable != available {
@@ -544,12 +548,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         SwitchLog.write("claude process availability changed; running=\(available)")
                     }
                 },
+                setGrokProcessAvailable: { [weak self] available in
+                    guard let self else { return }
+                    if self.isGrokProcessAvailable != available {
+                        self.isGrokProcessAvailable = available
+                        SwitchLog.write("grok process availability changed; running=\(available)")
+                    }
+                },
                 setActiveClient: { [weak self] client in self?.setActiveClient(client) },
                 setCodexTaskRunning: { [weak self] running in self?.setCodexTaskRunning(running) },
                 setClaudeTaskRunning: { [weak self] running in self?.setClaudeTaskRunning(running) },
+                setGrokTaskRunning: { [weak self] running in self?.setGrokTaskRunning(running) },
                 resetActivityRefreshState: { [weak self] in self?.resetActivityRefreshState() },
                 observeCodexActivity: { [weak self] update in self?.observeCodexActivity(update) },
-                observeClaudeActivity: { [weak self] update in self?.observeClaudeActivity(update) }
+                observeClaudeActivity: { [weak self] update in self?.observeClaudeActivity(update) },
+                observeGrokActivity: { [weak self] update in self?.observeGrokActivity(update) }
             )
         )
         statusItemController = StatusItemController(
@@ -598,6 +611,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 },
                 claudeAnimationStateChanged: { [weak self] active, iconImage, spriteImage in
                     self?.dashboardComposition.updateClaudeMenuBarPreviewAnimation(
+                        active: active,
+                        iconImage: iconImage,
+                        spriteImage: spriteImage
+                    )
+                },
+                grokAnimationStateChanged: { [weak self] active, iconImage, spriteImage in
+                    self?.dashboardComposition.updateGrokMenuBarPreviewAnimation(
                         active: active,
                         iconImage: iconImage,
                         spriteImage: spriteImage
@@ -710,6 +730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             activeClient: activeClient,
             codexTaskRunning: isCodexTaskRunning,
             claudeTaskRunning: isClaudeTaskRunning,
+            grokTaskRunning: isGrokTaskRunning,
             animationEnabled: animateCodexActivity
         )
     }
@@ -836,6 +857,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     private func switchProvider(_ providerID: String) {
+        guard activeClient != .grok else { return }
         let appType = activeClient.appType
         let providerName = ccSwitchRepository.loadChoices(appType: appType)
             .first(where: { $0.id == providerID })?.name ?? providerID
@@ -1204,9 +1226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             codexUsageRefreshInterval = value
         case "postCodexRefreshDuration":
             postCodexRefreshDuration = value
-            let lifecycle = activeClient == .codex
-                ? codexActivityRefreshLifecycle
-                : claudeActivityRefreshLifecycle
+            let lifecycle = activityRefreshLifecycle(for: activeClient)
             if let anchor = lifecycle.trailingRefreshAnchor {
                 postCodexRefreshDeadline = value > 0
                     ? anchor.addingTimeInterval(value)
@@ -1446,8 +1466,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     private func resetActivityRefreshState() {
         codexActivityRefreshLifecycle.reset()
         claudeActivityRefreshLifecycle.reset()
+        grokActivityRefreshLifecycle.reset()
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
+    }
+
+    private func activityRefreshLifecycle(for client: AssistantClient) -> ActivityRefreshLifecycle {
+        switch client {
+        case .codex:
+            return codexActivityRefreshLifecycle
+        case .claude:
+            return claudeActivityRefreshLifecycle
+        case .grok:
+            return grokActivityRefreshLifecycle
+        }
     }
 
     private func observeCodexActivity(_ update: ActivityLifecycleUpdate) {
@@ -1462,6 +1494,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         reconcileActivityRefreshWindow(for: .claude, observation: update.observation)
     }
 
+    private func observeGrokActivity(_ update: ActivityLifecycleUpdate) {
+        grokActivityRefreshLifecycle.apply(update)
+        guard activeClient == .grok else { return }
+        reconcileActivityRefreshWindow(for: .grok, observation: update.observation)
+    }
+
     private func reconcileActivityRefreshWindow(
         for client: AssistantClient,
         observation: ActivityMonitorObservation
@@ -1473,9 +1511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             // refresh-suspended until normal activity appears again.
             postCodexRefreshDeadline = nil
         case .ambiguousIdle, .hardTerminal:
-            let lifecycle = client == .codex
-                ? codexActivityRefreshLifecycle
-                : claudeActivityRefreshLifecycle
+            let lifecycle = activityRefreshLifecycle(for: client)
             guard let anchor = lifecycle.trailingRefreshAnchor else { return }
             establishPostCodexRefreshWindow(from: anchor)
         }
@@ -1536,18 +1572,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         updateStatusItemActivity()
     }
 
+    private func setGrokTaskRunning(_ running: Bool, force: Bool = false) {
+        let wasRunning = isGrokTaskRunning
+        let stateChanged = running != wasRunning
+        isGrokTaskRunning = running
+        if stateChanged {
+            SwitchLog.write("task state changed; client=grok; running=\(running)")
+        }
+        if activeClient == .grok {
+            updateActiveUsageRefresh(
+                running: running,
+                wasRunning: wasRunning,
+                client: .grok
+            )
+        }
+        guard force || stateChanged else { return }
+        updateStatusItemActivity()
+    }
+
     private func updateActiveUsageRefresh(
         running: Bool,
         wasRunning: Bool,
         client: AssistantClient
     ) {
         let now = Date()
-        let lifecycle = client == .codex
-            ? codexActivityRefreshLifecycle
-            : claudeActivityRefreshLifecycle
-        let resumed = client == .codex
-            ? codexActivityRefreshLifecycle.consumeImmediateResume()
-            : claudeActivityRefreshLifecycle.consumeImmediateResume()
+        let lifecycle = activityRefreshLifecycle(for: client)
+        let resumed: Bool
+        switch client {
+        case .codex:
+            resumed = codexActivityRefreshLifecycle.consumeImmediateResume()
+        case .claude:
+            resumed = claudeActivityRefreshLifecycle.consumeImmediateResume()
+        case .grok:
+            resumed = grokActivityRefreshLifecycle.consumeImmediateResume()
+        }
         let inTrailingWindow = postCodexRefreshDeadline.map { now < $0 } ?? false
         let shouldRefreshUsage = ActivityRefreshPolicy.shouldRefreshUsage(
             taskRunning: running,
@@ -1572,10 +1630,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             lastCodexUsageRefresh = nil
             postCodexRefreshDeadline = nil
             if !inTrailingWindow {
-                if client == .codex {
+                switch client {
+                case .codex:
                     codexActivityRefreshLifecycle.clearTrailingRefreshAnchor()
-                } else {
+                case .claude:
                     claudeActivityRefreshLifecycle.clearTrailingRefreshAnchor()
+                case .grok:
+                    grokActivityRefreshLifecycle.clearTrailingRefreshAnchor()
                 }
             }
         }
@@ -1595,9 +1656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         openCodexSwitchInFlight = false
         lastCodexUsageRefresh = nil
         postCodexRefreshDeadline = nil
-        let lifecycle = activeClient == .codex
-            ? codexActivityRefreshLifecycle
-            : claudeActivityRefreshLifecycle
+        let lifecycle = activityRefreshLifecycle(for: activeClient)
         if let anchor = lifecycle.trailingRefreshAnchor {
             establishPostCodexRefreshWindow(from: anchor)
         }
@@ -1606,12 +1665,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
+        let currentProvider = ccSwitchRepository.loadCurrent(appType: client.appType)
         if let cached = clientSnapshots[client],
-           ccSwitchRepository.loadCurrent(appType: client.appType)?.id == cached.providerID {
+           currentProvider?.id == cached.providerID {
             lastProviderID = cached.providerID
             render(cached.snapshot)
         }
-        refresh(reason: .clientChanged)
+        if client != .grok || currentProvider != nil {
+            refresh(reason: .clientChanged)
+        }
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
         if dashboardIsVisible {
             showDashboardSection(dashboardSection)

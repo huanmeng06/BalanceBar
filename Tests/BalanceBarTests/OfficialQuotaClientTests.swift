@@ -348,7 +348,7 @@ final class OfficialQuotaClientTests: XCTestCase {
 
     func testMissingCredentialsCompletesWithoutStartingTransport() throws {
         let client = makeClient()
-        for clientName in [AssistantClient.codex, .claude] {
+        for clientName in [AssistantClient.codex, .claude, .grok] {
             let providerID = "missing-\(clientName.rawValue)-provider"
             let result = try waitForResult(client, clientName: clientName, providerID: providerID)
 

@@ -287,6 +287,10 @@ final class CCSwitchRepository {
         let preserveOfficialAuth = appSettings["preserveCodexOfficialAuthOnSwitch"] as? Bool ?? false
         let unifyHistory = appSettings["unifyCodexSessionHistory"] as? Bool ?? true
 
+        if appType != "codex", appType != "claude" {
+            throw switchError(tr(.keyCCSwitchRepositoryProviderDoesNotExist))
+        }
+
         if !proxyTakeoverIsActive(appType: appType, database: database) {
             if appType == "claude" {
                 guard
@@ -365,7 +369,11 @@ final class CCSwitchRepository {
         }
         committed = true
 
-        appSettings[appType == "claude" ? "currentProviderClaude" : "currentProviderCodex"] = providerID
+        if appType == "claude" {
+            appSettings["currentProviderClaude"] = providerID
+        } else if appType == "codex" {
+            appSettings["currentProviderCodex"] = providerID
+        }
         let settingsData = try JSONSerialization.data(withJSONObject: appSettings, options: [.prettyPrinted, .sortedKeys])
         try settingsData.write(to: appSettingsURL, options: .atomic)
     }

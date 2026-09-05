@@ -303,6 +303,8 @@ final class OfficialQuotaClient {
         case .claude:
             accessToken = credentialReader.claudeAccessToken()
             url = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+        case .grok:
+            return nil
         }
         guard let accessToken, !accessToken.isEmpty else { return nil }
 

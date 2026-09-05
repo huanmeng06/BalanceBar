@@ -289,6 +289,7 @@ struct BalanceQuery {
     private static func tomlBearerToken(in config: String?) -> String? {
         guard let config else { return nil }
         return capture("(?m)^\\s*experimental_bearer_token\\s*=\\s*\\\"([^\\\"]+)\\\"", in: config)
+            ?? capture("(?m)^\\s*api_key\\s*=\\s*\\\"([^\\\"]+)\\\"", in: config)
     }
 
     private static func boolValue(_ value: Any?) -> Bool? {

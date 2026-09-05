@@ -249,7 +249,34 @@ final class DashboardCompositionController {
         iconImage: NSImage?,
         spriteImage: NSImage?
     ) {
-        menuBarPreviewAnimationKind = active ? .claudeThinking : .none
+        updateSpriteMenuBarPreviewAnimation(
+            kind: .claudeThinking,
+            active: active,
+            iconImage: iconImage,
+            spriteImage: spriteImage
+        )
+    }
+
+    func updateGrokMenuBarPreviewAnimation(
+        active: Bool,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        updateSpriteMenuBarPreviewAnimation(
+            kind: .grokThinking,
+            active: active,
+            iconImage: iconImage,
+            spriteImage: spriteImage
+        )
+    }
+
+    private func updateSpriteMenuBarPreviewAnimation(
+        kind: MenuBarCompositorAnimationKind,
+        active: Bool,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        menuBarPreviewAnimationKind = active ? kind : .none
         if let iconImage {
             menuBarPreviewAnimationIconImage = iconImage
         }

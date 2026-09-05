@@ -314,68 +314,168 @@ struct ActivityLifecycleStateMachine {
     }
 }
 
+enum ActivityFrontmostKind: Equatable {
+    case codex
+    case terminal
+    case other
+}
+
+enum ActivityClientSelection {
+    /// Chooses the menu-bar client from frontmost-app evidence and terminal
+    /// process presence. Background Grok/Claude processes never steal Codex.
+    static func client(
+        frontmost: ActivityFrontmostKind,
+        current: AssistantClient,
+        grokProcessRunning: Bool,
+        claudeProcessRunning: Bool,
+        frontmostTTY: String? = nil,
+        grokTTYs: Set<String> = [],
+        claudeTTYs: Set<String> = []
+    ) -> AssistantClient {
+        switch frontmost {
+        case .codex:
+            return .codex
+        case .other:
+            return current
+        case .terminal:
+            switch (grokProcessRunning, claudeProcessRunning) {
+            case (true, false):
+                return .grok
+            case (false, true):
+                return .claude
+            case (false, false):
+                return .codex
+            case (true, true):
+                return preferredTerminalClient(
+                    current: current,
+                    frontmostTTY: frontmostTTY,
+                    grokTTYs: grokTTYs,
+                    claudeTTYs: claudeTTYs
+                )
+            }
+        }
+    }
+
+    /// Cached identity is safe only when a single CLI is alive. Both CLIs
+    /// share one terminal app, so tab switches need a TTY sample.
+    static func immediateTerminalClient(
+        grokProcessRunning: Bool,
+        claudeProcessRunning: Bool
+    ) -> AssistantClient? {
+        switch (grokProcessRunning, claudeProcessRunning) {
+        case (true, false):
+            return .grok
+        case (false, true):
+            return .claude
+        default:
+            return nil
+        }
+    }
+
+    /// When both CLIs are alive, a unique focused TTY wins. Otherwise keep
+    /// the current identity. Observation / subagent evidence never selects
+    /// the client; it only rotates while identity is already Grok.
+    static func preferredTerminalClient(
+        current: AssistantClient,
+        frontmostTTY: String? = nil,
+        grokTTYs: Set<String> = [],
+        claudeTTYs: Set<String> = []
+    ) -> AssistantClient {
+        if let tty = TerminalCLIProcessRecord.normalizeTTY(frontmostTTY) {
+            let grokMatch = grokTTYs.contains(tty)
+            let claudeMatch = claudeTTYs.contains(tty)
+            if grokMatch != claudeMatch {
+                return grokMatch ? .grok : .claude
+            }
+        }
+        if current == .grok || current == .claude {
+            return current
+        }
+        return .claude
+    }
+}
+
 struct ActivityCoordinatorActions {
     let activeClient: () -> AssistantClient
     let claudeProcessAvailable: () -> Bool
+    let grokProcessAvailable: () -> Bool
     let setClaudeProcessAvailable: (Bool) -> Void
+    let setGrokProcessAvailable: (Bool) -> Void
     let setActiveClient: (AssistantClient) -> Void
     let setCodexTaskRunning: (Bool) -> Void
     let setClaudeTaskRunning: (Bool) -> Void
+    let setGrokTaskRunning: (Bool) -> Void
     let resetActivityRefreshState: () -> Void
     let observeCodexActivity: (ActivityLifecycleUpdate) -> Void
     let observeClaudeActivity: (ActivityLifecycleUpdate) -> Void
+    let observeGrokActivity: (ActivityLifecycleUpdate) -> Void
 
     init(
         activeClient: @escaping () -> AssistantClient,
         claudeProcessAvailable: @escaping () -> Bool,
+        grokProcessAvailable: @escaping () -> Bool = { false },
         setClaudeProcessAvailable: @escaping (Bool) -> Void,
+        setGrokProcessAvailable: @escaping (Bool) -> Void = { _ in },
         setActiveClient: @escaping (AssistantClient) -> Void,
         setCodexTaskRunning: @escaping (Bool) -> Void,
         setClaudeTaskRunning: @escaping (Bool) -> Void,
+        setGrokTaskRunning: @escaping (Bool) -> Void = { _ in },
         resetActivityRefreshState: @escaping () -> Void = {},
         observeCodexActivity: @escaping (ActivityLifecycleUpdate) -> Void = { _ in },
-        observeClaudeActivity: @escaping (ActivityLifecycleUpdate) -> Void = { _ in }
+        observeClaudeActivity: @escaping (ActivityLifecycleUpdate) -> Void = { _ in },
+        observeGrokActivity: @escaping (ActivityLifecycleUpdate) -> Void = { _ in }
     ) {
         self.activeClient = activeClient
         self.claudeProcessAvailable = claudeProcessAvailable
+        self.grokProcessAvailable = grokProcessAvailable
         self.setClaudeProcessAvailable = setClaudeProcessAvailable
+        self.setGrokProcessAvailable = setGrokProcessAvailable
         self.setActiveClient = setActiveClient
         self.setCodexTaskRunning = setCodexTaskRunning
         self.setClaudeTaskRunning = setClaudeTaskRunning
+        self.setGrokTaskRunning = setGrokTaskRunning
         self.resetActivityRefreshState = resetActivityRefreshState
         self.observeCodexActivity = observeCodexActivity
         self.observeClaudeActivity = observeClaudeActivity
+        self.observeGrokActivity = observeGrokActivity
     }
 }
 
-/// Owns activity polling, frontmost-app observation, and the two accepted
+/// Owns activity polling, frontmost-app observation, and the accepted
 /// activity monitors. It emits values; refresh/render policy remains in the
 /// application composition root.
 final class ActivityCoordinator {
     private let codexMonitor: CodexActivityMonitor
     private let claudeMonitor: ClaudeCodeActivityMonitor
+    private let grokMonitor: GrokActivityMonitor
     private let queue: DispatchQueue
+    private let activityQueue: DispatchQueue
     private let actions: ActivityCoordinatorActions
     private var pollTimer: Timer?
     private var workspaceObserver: NSObjectProtocol?
-    private var isCheckInFlight = false
+    private var isIdentityInFlight = false
+    private var isActivityInFlight = false
     private var isStarted = false
     private var lifecycleGeneration: UInt64 = 0
     private var lastSampledClient: AssistantClient?
     private var codexLifecycle = ActivityLifecycleStateMachine()
     private var claudeLifecycle = ActivityLifecycleStateMachine()
+    private var grokLifecycle = ActivityLifecycleStateMachine()
 
     private(set) var startCount = 0
 
     init(
         codexMonitor: CodexActivityMonitor = CodexActivityMonitor(),
         claudeMonitor: ClaudeCodeActivityMonitor = ClaudeCodeActivityMonitor(),
+        grokMonitor: GrokActivityMonitor = GrokActivityMonitor(),
         queue: DispatchQueue = DispatchQueue(label: "local.balancebar.activity-monitor", qos: .utility),
         actions: ActivityCoordinatorActions
     ) {
         self.codexMonitor = codexMonitor
         self.claudeMonitor = claudeMonitor
+        self.grokMonitor = grokMonitor
         self.queue = queue
+        self.activityQueue = DispatchQueue(label: "\(queue.label).session", qos: .utility)
         self.actions = actions
     }
 
@@ -385,6 +485,7 @@ final class ActivityCoordinator {
         lifecycleGeneration &+= 1
         codexLifecycle.updateSampleInterval(interval)
         claudeLifecycle.updateSampleInterval(interval)
+        grokLifecycle.updateSampleInterval(interval)
         startCount += 1
         workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -398,6 +499,7 @@ final class ActivityCoordinator {
         guard isStarted else { return }
         codexLifecycle.updateSampleInterval(interval)
         claudeLifecycle.updateSampleInterval(interval)
+        grokLifecycle.updateSampleInterval(interval)
         configureTimer(interval: interval)
     }
 
@@ -410,15 +512,19 @@ final class ActivityCoordinator {
             self.workspaceObserver = nil
         }
         isStarted = false
-        isCheckInFlight = false
+        isIdentityInFlight = false
+        isActivityInFlight = false
         lifecycleGeneration &+= 1
         lastSampledClient = nil
+        TerminalFrontmostTTY.discardLatch()
         let codexWasRunning = codexLifecycle.reset()
         let claudeWasRunning = claudeLifecycle.reset()
+        let grokWasRunning = grokLifecycle.reset()
         if wasStarted {
             actions.resetActivityRefreshState()
             if codexWasRunning { actions.setCodexTaskRunning(false) }
             if claudeWasRunning { actions.setClaudeTaskRunning(false) }
+            if grokWasRunning { actions.setGrokTaskRunning(false) }
         }
     }
 
@@ -437,12 +543,19 @@ final class ActivityCoordinator {
     }
 
     private func handleFrontmostApplicationChange() {
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        if Self.isCodexApplication(frontmost) {
+        let frontmostKind = Self.frontmostKind(NSWorkspace.shared.frontmostApplication)
+        switch frontmostKind {
+        case .codex:
+            TerminalFrontmostTTY.discardLatch()
             actions.setActiveClient(.codex)
-        } else if Self.isTerminalApplication(frontmost) {
-            if actions.claudeProcessAvailable() {
-                actions.setActiveClient(.claude)
+        case .other:
+            TerminalFrontmostTTY.discardLatch()
+        case .terminal:
+            if let client = ActivityClientSelection.immediateTerminalClient(
+                grokProcessRunning: actions.grokProcessAvailable(),
+                claudeProcessRunning: actions.claudeProcessAvailable()
+            ) {
+                actions.setActiveClient(client)
             } else {
                 refreshActivity()
             }
@@ -451,80 +564,196 @@ final class ActivityCoordinator {
 
     private func refreshActivity() {
         guard isStarted else { return }
-        handleFrontmostApplicationChangeWithoutRefresh()
-        guard !isCheckInFlight else { return }
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        let frontmostIsCodex = Self.isCodexApplication(frontmost)
-        let frontmostIsTerminal = Self.isTerminalApplication(frontmost)
+        applyCachedFrontmostClient()
+        let application = NSWorkspace.shared.frontmostApplication
+        let frontmostKind = Self.frontmostKind(application)
         let clientBeforeCheck = actions.activeClient()
-        let sampledClient: AssistantClient = frontmostIsCodex
-            ? .codex
-            : frontmostIsTerminal
-                ? .claude
-                : clientBeforeCheck
+        let sampledClient = ActivityClientSelection.client(
+            frontmost: frontmostKind,
+            current: clientBeforeCheck,
+            grokProcessRunning: actions.grokProcessAvailable(),
+            claudeProcessRunning: actions.claudeProcessAvailable()
+        )
         if sampledClient != lastSampledClient {
             codexLifecycle.clearPendingTransition()
             claudeLifecycle.clearPendingTransition()
+            grokLifecycle.clearPendingTransition()
             lastSampledClient = sampledClient
         }
         let generation = lifecycleGeneration
-        isCheckInFlight = true
-        queue.async { [weak self] in
-            guard let self else { return }
-            var codexObservation: ActivityMonitorObservation?
-            var claudeStatus: (processRunning: Bool, observation: ActivityMonitorObservation)?
-            if frontmostIsCodex {
-                codexObservation = self.codexMonitor.activityObservation()
-            } else if frontmostIsTerminal {
-                let status = self.claudeMonitor.activityStatus()
-                claudeStatus = status
-                if !status.processRunning {
-                    codexObservation = self.codexMonitor.activityObservation()
-                }
-            } else if clientBeforeCheck == .codex {
-                codexObservation = self.codexMonitor.activityObservation()
-            } else {
-                claudeStatus = self.claudeMonitor.activityStatus()
+        if !isIdentityInFlight {
+            isIdentityInFlight = true
+            queue.async { [weak self] in
+                self?.refreshIdentity(
+                    generation: generation,
+                    frontmostKind: frontmostKind,
+                    application: application
+                )
             }
-            let sampledAt = Date()
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                guard self.isStarted, self.lifecycleGeneration == generation else { return }
-                self.isCheckInFlight = false
-                if let claudeStatus {
-                    if self.actions.claudeProcessAvailable() != claudeStatus.processRunning {
-                        self.actions.setClaudeProcessAvailable(claudeStatus.processRunning)
-                    }
-                }
-                let currentFrontmost = NSWorkspace.shared.frontmostApplication
-                if Self.isCodexApplication(currentFrontmost) {
-                    self.actions.setActiveClient(.codex)
-                } else if Self.isTerminalApplication(currentFrontmost),
-                          claudeStatus?.processRunning == true {
-                    self.actions.setActiveClient(.claude)
-                }
-                if let codexObservation {
-                    let update = self.codexLifecycle.observeUpdate(codexObservation, at: sampledAt)
-                    self.actions.observeCodexActivity(update)
-                    self.actions.setCodexTaskRunning(update.taskRunning)
-                }
-                if let claudeStatus {
-                    let update = self.claudeLifecycle.observeUpdate(claudeStatus.observation, at: sampledAt)
-                    self.actions.observeClaudeActivity(update)
-                    self.actions.setClaudeTaskRunning(update.taskRunning)
-                }
+        }
+        if !isActivityInFlight {
+            isActivityInFlight = true
+            activityQueue.async { [weak self] in
+                self?.refreshTaskActivity(
+                    generation: generation,
+                    frontmostKind: frontmostKind,
+                    clientBeforeCheck: clientBeforeCheck
+                )
             }
         }
     }
 
-    private func handleFrontmostApplicationChangeWithoutRefresh() {
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        if Self.isCodexApplication(frontmost) {
-            actions.setActiveClient(.codex)
-        } else if Self.isTerminalApplication(frontmost),
-                  actions.claudeProcessAvailable() {
-            actions.setActiveClient(.claude)
+    private func refreshIdentity(
+        generation: UInt64,
+        frontmostKind: ActivityFrontmostKind,
+        application: NSRunningApplication?
+    ) {
+        var grokPresence: (running: Bool, ttys: [String])?
+        var claudePresence: (running: Bool, ttys: [String])?
+        var frontmostTTY: String?
+        var grokTTYs = Set<String>()
+        var claudeTTYs = Set<String>()
+
+        if frontmostKind == .terminal {
+            let grok = grokMonitor.processPresence()
+            let claude = claudeMonitor.processPresence()
+            grokPresence = grok
+            claudePresence = claude
+            grokTTYs = Set(grok.ttys)
+            claudeTTYs = Set(claude.ttys)
+            if grok.running && claude.running {
+                let resolved = TerminalFrontmostTTY.resolve(
+                    application: application,
+                    grokTTYs: grokTTYs,
+                    claudeTTYs: claudeTTYs,
+                    loadSnapshot: { TerminalCLIProcessSnapshot.load() }
+                )
+                frontmostTTY = resolved.tty
+                if let snapshot = resolved.snapshot {
+                    grokTTYs = snapshot.grokTTYs
+                    claudeTTYs = snapshot.claudeTTYs
+                }
+            }
         }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.isStarted, self.lifecycleGeneration == generation else { return }
+            self.isIdentityInFlight = false
+            if let grokPresence,
+               self.actions.grokProcessAvailable() != grokPresence.running {
+                self.actions.setGrokProcessAvailable(grokPresence.running)
+            }
+            if let claudePresence,
+               self.actions.claudeProcessAvailable() != claudePresence.running {
+                self.actions.setClaudeProcessAvailable(claudePresence.running)
+            }
+            let currentFrontmost = Self.frontmostKind(NSWorkspace.shared.frontmostApplication)
+            if currentFrontmost != .terminal {
+                TerminalFrontmostTTY.discardLatch()
+            }
+            let grokRunning = grokPresence?.running ?? self.actions.grokProcessAvailable()
+            let claudeRunning = claudePresence?.running ?? self.actions.claudeProcessAvailable()
+            let selected = ActivityClientSelection.client(
+                frontmost: currentFrontmost,
+                current: self.actions.activeClient(),
+                grokProcessRunning: grokRunning,
+                claudeProcessRunning: claudeRunning,
+                frontmostTTY: currentFrontmost == .terminal ? frontmostTTY : nil,
+                grokTTYs: grokTTYs,
+                claudeTTYs: claudeTTYs
+            )
+            self.actions.setActiveClient(selected)
+            if selected != self.lastSampledClient {
+                self.codexLifecycle.clearPendingTransition()
+                self.claudeLifecycle.clearPendingTransition()
+                self.grokLifecycle.clearPendingTransition()
+                self.lastSampledClient = selected
+            }
+        }
+    }
+
+    private func refreshTaskActivity(
+        generation: UInt64,
+        frontmostKind: ActivityFrontmostKind,
+        clientBeforeCheck: AssistantClient
+    ) {
+        var codexObservation: ActivityMonitorObservation?
+        var claudeStatus: ClaudeActivityStatus?
+        var grokStatus: GrokActivityStatus?
+        switch frontmostKind {
+        case .codex:
+            codexObservation = codexMonitor.activityObservation()
+        case .terminal:
+            grokStatus = grokMonitor.activityStatus()
+            claudeStatus = claudeMonitor.activityStatus()
+            if grokStatus?.processRunning != true,
+               claudeStatus?.processRunning != true {
+                codexObservation = codexMonitor.activityObservation()
+            }
+        case .other:
+            switch clientBeforeCheck {
+            case .codex:
+                codexObservation = codexMonitor.activityObservation()
+            case .claude:
+                claudeStatus = claudeMonitor.activityStatus()
+            case .grok:
+                grokStatus = grokMonitor.activityStatus()
+            }
+        }
+        let sampledAt = Date()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.isStarted, self.lifecycleGeneration == generation else { return }
+            self.isActivityInFlight = false
+            if let claudeStatus,
+               self.actions.claudeProcessAvailable() != claudeStatus.processRunning {
+                self.actions.setClaudeProcessAvailable(claudeStatus.processRunning)
+            }
+            if let grokStatus,
+               self.actions.grokProcessAvailable() != grokStatus.processRunning {
+                self.actions.setGrokProcessAvailable(grokStatus.processRunning)
+            }
+            if let codexObservation {
+                let update = self.codexLifecycle.observeUpdate(codexObservation, at: sampledAt)
+                self.actions.observeCodexActivity(update)
+                self.actions.setCodexTaskRunning(update.taskRunning)
+            }
+            if let claudeStatus {
+                let update = self.claudeLifecycle.observeUpdate(claudeStatus.observation, at: sampledAt)
+                self.actions.observeClaudeActivity(update)
+                self.actions.setClaudeTaskRunning(update.taskRunning)
+            }
+            if let grokStatus {
+                let update = self.grokLifecycle.observeUpdate(grokStatus.observation, at: sampledAt)
+                self.actions.observeGrokActivity(update)
+                self.actions.setGrokTaskRunning(update.taskRunning)
+            }
+        }
+    }
+
+    private func applyCachedFrontmostClient() {
+        let frontmostKind = Self.frontmostKind(NSWorkspace.shared.frontmostApplication)
+        switch frontmostKind {
+        case .codex:
+            TerminalFrontmostTTY.discardLatch()
+            actions.setActiveClient(.codex)
+        case .other:
+            TerminalFrontmostTTY.discardLatch()
+        case .terminal:
+            if let client = ActivityClientSelection.immediateTerminalClient(
+                grokProcessRunning: actions.grokProcessAvailable(),
+                claudeProcessRunning: actions.claudeProcessAvailable()
+            ) {
+                actions.setActiveClient(client)
+            }
+        }
+    }
+
+    static func frontmostKind(_ application: NSRunningApplication?) -> ActivityFrontmostKind {
+        if isCodexApplication(application) { return .codex }
+        if isTerminalApplication(application) { return .terminal }
+        return .other
     }
 
     private static func isCodexApplication(_ application: NSRunningApplication?) -> Bool {

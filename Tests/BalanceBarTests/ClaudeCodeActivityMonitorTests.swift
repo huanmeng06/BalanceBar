@@ -33,6 +33,26 @@ final class ClaudeCodeActivityMonitorTests: XCTestCase {
         XCTAssertFalse(status.taskRunning)
     }
 
+    func testProcessStatusExposesTTYFromPS() {
+        let status = makeMonitor(
+            processOutput: "101 1 ttys002 /usr/local/bin/claude claude"
+        ).activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.ttys, ["ttys002"])
+        XCTAssertFalse(status.trueTurnEvidence)
+    }
+
+    func testProcessPresenceDoesNotRequireSessionScan() {
+        let monitor = makeMonitor(
+            processOutput: "101 1 ttys002 /usr/local/bin/claude claude"
+        )
+        let presence = monitor.processPresence()
+        XCTAssertTrue(presence.running)
+        XCTAssertEqual(presence.ttys, ["ttys002"])
+        XCTAssertEqual(monitor.status().processRunning, true)
+        XCTAssertFalse(monitor.status().taskRunning)
+    }
+
     func testProcessAbsenceDoesNotReadProjects() {
         let monitor = makeMonitor(processOutput: "101 1 ?? /usr/bin/python worker.py")
 
@@ -62,13 +82,17 @@ final class ClaudeCodeActivityMonitorTests: XCTestCase {
             try assistantEvent(stopReason: nil, contentTypes: ["thinking"])
         ], filename: "thinking.jsonl")
         let thinkingMonitor = makeMonitor()
-        XCTAssertTrue(thinkingMonitor.status().taskRunning, thinkingURL.path)
+        let thinkingStatus = thinkingMonitor.activityStatus()
+        XCTAssertTrue(thinkingStatus.observation.legacyIsTaskRunning, thinkingURL.path)
+        XCTAssertTrue(thinkingStatus.trueTurnEvidence)
 
         let toolUseURL = try writeSession([
             try assistantEvent(stopReason: "tool_use", contentTypes: [])
         ], filename: "tool-use.jsonl", modifiedAt: currentDate)
         let toolUseMonitor = makeMonitor()
-        XCTAssertTrue(toolUseMonitor.status().taskRunning, toolUseURL.path)
+        let toolStatus = toolUseMonitor.activityStatus()
+        XCTAssertTrue(toolStatus.observation.legacyIsTaskRunning, toolUseURL.path)
+        XCTAssertTrue(toolStatus.trueTurnEvidence)
     }
 
     func testToolResultOnlyAfterCompletedAssistantDoesNotRestartTask() throws {
@@ -110,7 +134,19 @@ final class ClaudeCodeActivityMonitorTests: XCTestCase {
             modifiedAt: currentDate.addingTimeInterval(-16)
         )
 
-        XCTAssertFalse(makeMonitor().status().taskRunning)
+        let status = makeMonitor().activityStatus()
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
+    }
+
+    func testRecentWriteWithoutThinkingIsNotTrueTurnEvidence() throws {
+        _ = try writeSession(
+            [try assistantEvent(stopReason: nil, contentTypes: [])],
+            modifiedAt: currentDate
+        )
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
     }
 
     func testDamagedTranscriptIsInactive() throws {

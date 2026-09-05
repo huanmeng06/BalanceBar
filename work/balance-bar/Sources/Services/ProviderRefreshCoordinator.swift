@@ -217,7 +217,10 @@ final class ProviderRefreshCoordinator {
         switched: Bool
     ) {
         guard let query = current.query else {
-            guard current.isOfficial else {
+            guard current.isOfficial, client == .codex else {
+                if current.isOfficial {
+                    return
+                }
                 let failure = current.queryFailure ?? .unknown
                 let reason = failure.userVisibleReason(
                     language: AppLanguage.resolved
@@ -256,7 +259,7 @@ final class ProviderRefreshCoordinator {
             guard let self, let current = self.repository.loadCurrent(appType: client.appType) else { return }
             if let query = current.query {
                 self.fetchBalance(providerID: current.id, providerName: current.name, query: query, client: client)
-            } else if current.isOfficial, client != .claude {
+            } else if current.isOfficial, client == .codex {
                 self.fetchOfficialQuota(providerID: current.id, providerName: current.name, client: client)
             }
         }
@@ -275,7 +278,7 @@ final class ProviderRefreshCoordinator {
                    source.openCodexCandidate != nil,
                    self.actions.isOpenCodexConfirmed(source.id) { continue }
                 if source.isOfficial {
-                    if client == .claude { continue }
+                    if client != .codex { continue }
                     self.officialQuotaClient.fetchQuota(
                         client: client,
                         providerID: source.id,
