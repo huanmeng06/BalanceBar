@@ -1803,6 +1803,41 @@ final class DashboardMenuBarPage {
             active: animationActive,
             iconImage: animationIconImage ?? iconImage
         )
+        invalidateSettingsRowMetricsAfterRefresh()
+    }
+
+    private func invalidateSettingsRowMetricsAfterRefresh() {
+        let contentViews: [NSView?] = [
+            iconOffsetSummaryLabel,
+            amountOffsetSummaryLabel,
+            widthAdjustmentSummaryLabel,
+            overflowWarningLabel,
+            runtimeOnlyWarningLabel,
+            animationFallbackWarningLabel
+        ]
+        contentViews.forEach {
+            DashboardSettingsComponents.invalidateSettingsRowContent(containing: $0)
+        }
+
+        let controlViews: [NSView?] = [
+            iconSwitch,
+            amountSwitch,
+            animationSwitch,
+            iconOffsetSlider,
+            amountOffsetSlider,
+            widthAdjustmentSlider,
+            fontSizePresetControl,
+            quotaWindowPreferenceControl,
+            iconDisplayModeControl,
+            iconDisplayDelayControl,
+            animationModeControl,
+            quotaResetDisplayModeControl,
+            autoSwitchLunaReserveSwitch,
+            lunaReserveResetTimeModeControl
+        ]
+        controlViews.forEach {
+            DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: $0)
+        }
     }
 
     private func updatePreviewWarnings(_ statusItemVisibility: StatusItemVisibility) {

@@ -152,21 +152,40 @@ final class DashboardScrollClampingTests: XCTestCase {
         let page = DashboardSettingsComponents.makeSettingsPage([section])
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 516, height: 160),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.contentView = page
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 516, height: 160))
+        window.contentView = host
+        page.frame = host.bounds
+        page.autoresizingMask = [.width, .height]
+        host.addSubview(page)
+        window.setContentSize(NSSize(width: 516, height: 160))
+        host.setFrameSize(NSSize(width: 516, height: 160))
+        page.frame = host.bounds
         defer { window.orderOut(nil) }
 
         let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
         window.layoutIfNeeded()
+        host.setFrameSize(NSSize(width: 516, height: 160))
+        page.frame = host.bounds
+        page.needsLayout = true
+        page.layoutSubtreeIfNeeded()
+        scrollView.documentView?.needsLayout = true
         scrollView.layoutSubtreeIfNeeded()
         let narrowDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
         let narrowRowHeight = row.frame.height
 
         window.setContentSize(NSSize(width: 740, height: 160))
+        host.setFrameSize(NSSize(width: 740, height: 160))
+        page.frame = host.bounds
         window.layoutIfNeeded()
+        host.setFrameSize(NSSize(width: 740, height: 160))
+        page.frame = host.bounds
+        page.needsLayout = true
+        page.layoutSubtreeIfNeeded()
+        scrollView.documentView?.needsLayout = true
         scrollView.layoutSubtreeIfNeeded()
         let wideDocumentHeight = try XCTUnwrap(scrollView.documentView).bounds.height
 
@@ -176,7 +195,14 @@ final class DashboardScrollClampingTests: XCTestCase {
         XCTAssertEqual(documentOffset(scrollView), 0, accuracy: 1)
 
         window.setContentSize(NSSize(width: 516, height: 160))
+        host.setFrameSize(NSSize(width: 516, height: 160))
+        page.frame = host.bounds
         window.layoutIfNeeded()
+        host.setFrameSize(NSSize(width: 516, height: 160))
+        page.frame = host.bounds
+        page.needsLayout = true
+        page.layoutSubtreeIfNeeded()
+        scrollView.documentView?.needsLayout = true
         scrollView.layoutSubtreeIfNeeded()
         XCTAssertEqual(row.frame.height, narrowRowHeight, accuracy: 0.5)
         XCTAssertEqual(scrollView.documentView!.bounds.height, narrowDocumentHeight, accuracy: 0.5)
@@ -281,13 +307,24 @@ final class DashboardScrollClampingTests: XCTestCase {
         let page = DashboardSettingsComponents.makeSettingsPage([section])
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: viewportHeight),
-            styleMask: [.titled],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.contentView = page
-        window.layoutIfNeeded()
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: viewportHeight))
+        window.contentView = host
+        page.frame = host.bounds
+        page.autoresizingMask = [.width, .height]
+        host.addSubview(page)
+        window.setContentSize(NSSize(width: 480, height: viewportHeight))
+        host.setFrameSize(NSSize(width: 480, height: viewportHeight))
+        page.frame = host.bounds
+        host.setFrameSize(NSSize(width: 480, height: viewportHeight))
+        page.frame = host.bounds
+        page.needsLayout = true
+        page.layoutSubtreeIfNeeded()
         let scrollView = try XCTUnwrap(firstDescendant(of: page, as: NSScrollView.self))
+        scrollView.documentView?.needsLayout = true
         scrollView.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.02))
         return (window, scrollView)

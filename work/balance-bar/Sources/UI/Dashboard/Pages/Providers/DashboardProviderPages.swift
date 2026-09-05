@@ -221,6 +221,9 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             amountLabel.stringValue = "—"
             resetLabel.stringValue = tr(.keyDashboardProviderPagesThisProviderIsNoLongerAvailable)
             updateActionState(for: nil)
+            DashboardSettingsComponents.invalidateSettingsRowContent(containing: resetLabel)
+            DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: amountLabel)
+            DashboardSettingsComponents.invalidateSettingsRowContent(containing: syncSubtitleLabel)
             return true
         }
         providerLabel.stringValue = choice.name
@@ -231,6 +234,10 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             ? input.snapshot.overviewReset(refreshDate: input.refreshDate, formatter: Self.timeFormatter)
             : tr(.keyDashboardProviderPagesSelectThisProviderToDisplayDetailedResetInformation2)
         updateActionState(for: choice)
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: resetLabel)
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: amountLabel)
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: syncSubtitleLabel)
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: actionButton)
         return true
     }
 
@@ -244,6 +251,8 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             actionButton.target = nil
             actionButton.action = nil
             actionButton.identifier = nil
+            DashboardSettingsComponents.invalidateSettingsRowContent(containing: syncSubtitleLabel)
+            DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: actionButton)
             return
         }
         statusLabel.stringValue = choice.isCurrent
@@ -266,6 +275,8 @@ private final class DashboardProviderDetailPage: DashboardProviderMountedPage {
             actionButton.identifier = NSUserInterfaceItemIdentifier(choice.id)
             actionButton.toolTip = choice.name
         }
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: syncSubtitleLabel)
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: actionButton)
     }
 
     func teardown() {

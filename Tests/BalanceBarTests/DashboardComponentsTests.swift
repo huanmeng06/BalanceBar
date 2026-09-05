@@ -289,6 +289,7 @@ final class DashboardComponentsTests: XCTestCase {
             count: 4
         )
         subtitle.invalidateIntrinsicContentSize()
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: subtitle)
         row.needsLayout = true
         stack.needsLayout = true
         window.layoutIfNeeded()
@@ -302,6 +303,7 @@ final class DashboardComponentsTests: XCTestCase {
         let control = try XCTUnwrap(row.subviews.first { $0 is NSButton } as? NSButton)
         control.title = "A longer action title changes the control fitting width."
         control.invalidateIntrinsicContentSize()
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: control)
         row.needsLayout = true
         stack.needsLayout = true
         window.layoutIfNeeded()
@@ -311,6 +313,7 @@ final class DashboardComponentsTests: XCTestCase {
 
         DashboardSettingsComponents.resetMeasurementCountersForTesting()
         subtitle.isHidden = true
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: subtitle)
         row.needsLayout = true
         stack.needsLayout = true
         window.layoutIfNeeded()

@@ -2052,12 +2052,23 @@ final class DashboardPreferencePagesTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
-        window.contentView = page
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 740, height: 520))
+        window.contentView = host
+        page.frame = host.bounds
+        page.autoresizingMask = [.width, .height]
+        host.addSubview(page)
+        window.setContentSize(NSSize(width: 740, height: 520))
+        host.setFrameSize(NSSize(width: 740, height: 520))
+        page.frame = host.bounds
         defer {
             window.contentView = nil
             window.orderOut(nil)
         }
         window.layoutIfNeeded()
+        window.setContentSize(NSSize(width: 740, height: 520))
+        host.setFrameSize(NSSize(width: 740, height: 520))
+        page.frame = host.bounds
+        page.needsLayout = true
         page.layoutSubtreeIfNeeded()
 
         let runtimeButton = try XCTUnwrap(

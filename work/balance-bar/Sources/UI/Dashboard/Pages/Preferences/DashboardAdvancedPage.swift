@@ -285,6 +285,7 @@ final class DashboardAdvancedPage: NSObject, NSTextFieldDelegate {
         }
         if let canOpen { openButton?.isEnabled = canOpen }
         portStatusLabel?.stringValue = tr(.keyDashboardAdvancedPageCurrentPortValue2, arguments: [String(describing: resolution.port)])
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: portStatusLabel)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {

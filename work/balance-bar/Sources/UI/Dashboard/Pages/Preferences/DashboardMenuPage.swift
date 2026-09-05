@@ -329,10 +329,12 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
 
         guard let normalized = Self.parseBalanceDisplayThreshold(field.stringValue) else {
             field.stringValue = Self.formattedBalanceDisplayThreshold(balanceDisplayThresholdValue)
+            DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: field)
             return
         }
 
         field.stringValue = Self.formattedBalanceDisplayThreshold(normalized)
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: field)
         guard abs(normalized - balanceDisplayThresholdValue) > 0.000001 else { return }
         balanceDisplayThresholdValue = normalized
         onBalanceDisplayThresholdChanged?(normalized)
@@ -350,6 +352,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayThresholdField?.stringValue = Self.formattedBalanceDisplayThreshold(
             balanceDisplayThresholdValue
         )
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: balanceDisplayThresholdField)
         if let lunaReserveDisplayModeControl,
            let selectedIndex = LunaReserveDisplayMode.allCases.firstIndex(
                of: preferences.menuLunaReserveDisplayMode
@@ -358,6 +361,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 lunaReserveDisplayModeControl.selectItem(at: selectedIndex)
             }
             lunaReserveDisplayModeControl.synchronizeTitleAndSelectedItem()
+            DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: lunaReserveDisplayModeControl)
         }
         lunaReserveHideExhaustedQuotaSwitch?.state = preferences.menuLunaReserveHideExhaustedQuota
             ? .on
@@ -369,6 +373,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         statusSubtitleLabel?.stringValue = visible
             ? tr(.keyDashboardMenuPageShowCustomizableServiceStatusLinks2)
             : tr(.keyDashboardMenuPageShowStatusLinksInTheMenuBar2)
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: statusSubtitleLabel)
         statusLinksEditor?.setVisible(visible, animated: animated)
         statusLinksSeparators.forEach { $0.isHidden = !visible }
         updateStatusLinksLayout()

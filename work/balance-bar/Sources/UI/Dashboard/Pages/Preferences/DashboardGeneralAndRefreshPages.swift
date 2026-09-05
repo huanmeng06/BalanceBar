@@ -272,6 +272,7 @@ final class DashboardAdaptiveControlsStackView: NSStackView, DashboardSettingsRo
         // width. Propagate the invalidation so the existing trailing anchor is
         // remeasured before the next window layout pass.
         invalidateIntrinsicContentSize()
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: self)
         updateOrientationIfNeeded()
         needsLayout = true
         superview?.needsLayout = true
@@ -654,6 +655,7 @@ final class DashboardGeneralPage {
         }
         subtitle.stringValue = launchAtLoginSubtitle(for: state)
         subtitle.invalidateIntrinsicContentSize()
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: subtitle)
     }
 
     private func apply(
@@ -673,6 +675,8 @@ final class DashboardGeneralPage {
         openSettingsButton.isHidden = state.notice == .none
         subtitle.stringValue = launchWithChatGPTSubtitle(for: state)
         subtitle.invalidateIntrinsicContentSize()
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: subtitle)
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: openSettingsButton)
     }
 
     private func apply(
@@ -684,6 +688,8 @@ final class DashboardGeneralPage {
         button.isEnabled = presentation.buttonEnabled
         button.tag = presentation.performsInstall ? 1 : 0
         subtitle.stringValue = presentation.subtitle
+        DashboardSettingsComponents.invalidateSettingsRowContent(containing: subtitle)
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: button)
     }
 
     private func apply(
@@ -693,6 +699,7 @@ final class DashboardGeneralPage {
         guard let button else { return }
         button.isHidden = !presentation.showsReleaseNotesButton
         button.isEnabled = presentation.showsReleaseNotesButton
+        DashboardSettingsComponents.invalidateSettingsRowControlMetrics(containing: button)
     }
 }
 
