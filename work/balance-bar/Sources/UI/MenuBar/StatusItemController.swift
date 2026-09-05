@@ -2233,6 +2233,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var codexAnimationFallbackActive = false
     private var nativeCodexAnimatedIconHost: MenuBarNativeAnimatedIconHostView?
     private var nativeCodexAnimationIsActive = false
+    private var nativeCodexSourceIconMask: CAShapeLayer?
+    private weak var nativeCodexSourceIconMaskOwnerButton: NSStatusBarButton?
+    private var nativeCodexSourceIconPreviousMask: CALayer?
     private var claudeThinkingAnimatedIconHost: MenuBarClaudeAnimatedIconHostView?
     private var claudeThinkingAnimationIsActive = false
     /// Test-only seam for exercising the documented efficient-mode fallback;
@@ -2369,6 +2372,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         nativeCodexAnimatedIconHost
     }
 
+    var nativeCodexSourceIconMaskForTesting: CAShapeLayer? {
+        nativeCodexSourceIconMask
+    }
+
     var claudeThinkingAnimationHostForTesting: MenuBarClaudeAnimatedIconHostView? {
         claudeThinkingAnimatedIconHost
     }
@@ -2402,6 +2409,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     var menuBarButtonImageForTesting: NSImage? { statusItem?.button?.image }
+
+    var cachedStaticMenuBarContentBitmapForTesting: NSImage? {
+        cachedStaticMenuBarContentBitmap
+    }
+
+    var cachedMenuBarTextBitmapForTesting: NSImage? {
+        cachedMenuBarTextBitmap
+    }
 
     var menuBarContentIsOffscreenForTesting: Bool {
         guard let button = statusItem?.button else { return false }
@@ -3609,6 +3624,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func invalidateBitmapContentCache(setPlaceholder: Bool = false) {
+        clearNativeCodexSourceIconCutout()
         cachedMenuBarTextBitmap = nil
         cachedStaticMenuBarContentBitmap = nil
         cachedMenuBarContentVisualSignature = nil
@@ -3735,9 +3751,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Synchronizes the BalanceBar-owned icon host at a bounded visual
-    /// boundary.  The static text bitmap is installed first, then the host's
-    /// local geometry and one-time contents are prepared, and only then is the
-    /// compositor animation installed.
+    /// boundary. The canonical static GPT+text bitmap stays on the native
+    /// button so inactive-display replicants keep a visible icon. The host
+    /// then overlays compositor rotation on the current source presentation.
     @discardableResult
     private func synchronizeNativeCodexAnimationHost() -> Bool {
         precondition(Thread.isMainThread, "Native Codex animation must be synchronized on the main thread")
@@ -3747,7 +3763,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard codexAnimationBackend == .nativeCoreAnimation,
               shouldPrepareCodexAnimationFrames,
               let button = statusItem?.button,
-              let textBitmap = cachedMenuBarTextBitmap,
+              let staticImage = cachedStaticMenuBarContentBitmap,
               let iconDrawRect = cachedMenuBarIconDrawRect,
               let placement = menuBarBitmapImagePlacement,
               let codexIconImage else {
@@ -3761,10 +3777,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return false
         }
 
-        if button.image !== textBitmap {
-            // One boundary assignment replaces the complete static bitmap
-            // with its text-only variant; the host supplies the icon pixels.
-            button.image = textBitmap
+        if button.image !== staticImage {
+            // Replicants snapshot this native image. Keep the complete static
+            // GPT+text bitmap; the CA host is source-local and is not copied
+            // to inactive displays.
+            button.image = staticImage
         }
 
         let host = nativeCodexAnimatedIconHost ?? {
@@ -3772,13 +3789,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             nativeCodexAnimatedIconHost = newHost
             return newHost
         }()
-        if host.superview !== button {
-            host.removeFromSuperview()
-            button.addSubview(host, positioned: .above, relativeTo: nil)
+        let hostFrame = attachNativeCodexAnimationHost(
+            host,
+            button: button,
+            localIconRect: localIconRect
+        )
+        if host.superview !== nil, host.superview !== button {
+            guard applyNativeCodexSourceIconCutout(
+                button: button,
+                localIconRect: localIconRect
+            ) else {
+                deactivateNativeCodexAnimation()
+                return false
+            }
+        } else {
+            clearNativeCodexSourceIconCutout()
         }
 
         let scale = button.window?.backingScaleFactor ?? 2
-        host.updateGeometry(frame: localIconRect, contentsScale: scale)
+        host.updateGeometry(frame: hostFrame, contentsScale: scale)
         guard host.updateContents(
             sourceImage: codexIconImage,
             appearance: button.effectiveAppearance,
@@ -3788,6 +3817,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             host.removeRotationAnimation()
             host.isHidden = true
             host.removeFromSuperview()
+            clearNativeCodexSourceIconCutout()
             return false
         }
         host.isHidden = false
@@ -3796,6 +3826,140 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         host.installRotationAnimation()
         publishNativeCodexAnimationStateIfNeeded(true)
         return true
+    }
+
+    /// Places the transparent rotating host beside the status button so a
+    /// source-local icon cutout can hide the static GPT without clipping the
+    /// overlay. Falls back to a button child if AppKit has not installed a
+    /// container yet.
+    @discardableResult
+    private func attachNativeCodexAnimationHost(
+        _ host: MenuBarNativeAnimatedIconHostView,
+        button: NSStatusBarButton,
+        localIconRect: NSRect
+    ) -> NSRect {
+        if let container = button.superview {
+            if host.superview !== container {
+                host.removeFromSuperview()
+                container.addSubview(host, positioned: .above, relativeTo: button)
+            }
+            return button.convert(localIconRect, to: container)
+        }
+        if host.superview !== button {
+            host.removeFromSuperview()
+            button.addSubview(host, positioned: .above, relativeTo: nil)
+        }
+        return localIconRect
+    }
+
+    /// Hides only the source button's static GPT by masking the icon rect.
+    /// The canonical `button.image` is left unchanged for inactive replicants.
+    @discardableResult
+    private func applyNativeCodexSourceIconCutout(
+        button: NSStatusBarButton,
+        localIconRect: NSRect
+    ) -> Bool {
+        guard localIconRect.width > 0, localIconRect.height > 0 else {
+            return false
+        }
+        button.wantsLayer = true
+        guard let buttonLayer = button.layer,
+              let iconRect = Self.nativeCodexIconRectInLayerCoordinates(
+                  button: button,
+                  buttonLayer: buttonLayer,
+                  localIconRect: localIconRect
+              ) else {
+            return false
+        }
+
+        let mask: CAShapeLayer
+        if let existingMask = nativeCodexSourceIconMask,
+           nativeCodexSourceIconMaskOwnerButton === button {
+            mask = existingMask
+        } else {
+            clearNativeCodexSourceIconCutout()
+            let newMask = CAShapeLayer()
+            nativeCodexSourceIconMask = newMask
+            nativeCodexSourceIconMaskOwnerButton = button
+            nativeCodexSourceIconPreviousMask = buttonLayer.mask
+            mask = newMask
+        }
+
+        if let currentMask = buttonLayer.mask,
+           currentMask !== mask,
+           currentMask !== nativeCodexSourceIconPreviousMask {
+            return false
+        }
+
+        let maskBounds = CGRect(origin: .zero, size: buttonLayer.bounds.size)
+        let path = CGMutablePath()
+        path.addRect(maskBounds)
+        path.addRect(iconRect)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.frame = buttonLayer.bounds
+        mask.path = path
+        mask.fillRule = .evenOdd
+        mask.fillColor = NSColor.black.cgColor
+        mask.isGeometryFlipped = buttonLayer.isGeometryFlipped
+        if buttonLayer.mask !== mask {
+            buttonLayer.mask = mask
+        }
+        CATransaction.commit()
+        return buttonLayer.mask === mask
+    }
+
+    private static func nativeCodexIconRectInLayerCoordinates(
+        button: NSStatusBarButton,
+        buttonLayer: CALayer,
+        localIconRect: NSRect
+    ) -> CGRect? {
+        let viewBounds = button.bounds
+        let layerBounds = buttonLayer.bounds
+        guard viewBounds.width > 0,
+              viewBounds.height > 0,
+              layerBounds.width > 0,
+              layerBounds.height > 0 else {
+            return nil
+        }
+        let clippedIconRect = localIconRect.intersection(viewBounds)
+        guard !clippedIconRect.isNull,
+              clippedIconRect.width > 0,
+              clippedIconRect.height > 0 else {
+            return nil
+        }
+
+        let xScale = layerBounds.width / viewBounds.width
+        let yScale = layerBounds.height / viewBounds.height
+        let x = (clippedIconRect.minX - viewBounds.minX) * xScale
+        let yInViewCoordinates: CGFloat
+        if button.isFlipped == buttonLayer.isGeometryFlipped {
+            yInViewCoordinates = clippedIconRect.minY - viewBounds.minY
+        } else {
+            yInViewCoordinates = viewBounds.maxY - clippedIconRect.maxY
+        }
+        let rect = CGRect(
+            x: x,
+            y: yInViewCoordinates * yScale,
+            width: clippedIconRect.width * xScale,
+            height: clippedIconRect.height * yScale
+        )
+        let maskBounds = CGRect(origin: .zero, size: layerBounds.size)
+        guard maskBounds.contains(rect) else { return nil }
+        return rect
+    }
+
+    private func clearNativeCodexSourceIconCutout() {
+        if let mask = nativeCodexSourceIconMask,
+           let ownerButton = nativeCodexSourceIconMaskOwnerButton,
+           let buttonLayer = ownerButton.layer,
+           buttonLayer.mask === mask {
+            buttonLayer.mask = nativeCodexSourceIconPreviousMask
+        }
+        nativeCodexSourceIconMask = nil
+        nativeCodexSourceIconMaskOwnerButton = nil
+        nativeCodexSourceIconPreviousMask = nil
     }
 
     /// Synchronizes the retained Claude sprite host at a bounded visual
@@ -3872,6 +4036,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func deactivateNativeCodexAnimation() {
+        clearNativeCodexSourceIconCutout()
         nativeCodexAnimatedIconHost?.removeRotationAnimation()
         nativeCodexAnimatedIconHost?.isHidden = true
         nativeCodexAnimatedIconHost?.removeFromSuperview()
@@ -3882,6 +4047,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// layer animation stays installed on the retained host, so reattachment
     /// continues at the layer-local compositor phase without a restart.
     private func detachNativeCodexAnimationHostForStatusItemReplacement() {
+        clearNativeCodexSourceIconCutout()
         nativeCodexAnimatedIconHost?.removeFromSuperview()
     }
 
@@ -4168,14 +4334,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hints: nil
         )
         if let iconImage, let iconDrawRect {
-            iconImage.draw(
-                in: iconDrawRect,
-                from: .zero,
-                operation: .sourceOver,
-                fraction: 1,
-                respectFlipped: true,
-                hints: nil
-            )
+            MenuBarTemplateIconEmphasis.draw(iconImage, in: iconDrawRect)
         }
         return composed
     }

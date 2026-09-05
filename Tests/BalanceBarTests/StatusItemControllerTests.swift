@@ -539,9 +539,20 @@ final class StatusItemControllerTests: XCTestCase {
             CGPoint(x: host.bounds.midX, y: host.bounds.midY)
         )
         XCTAssertNotNil(host.rotationAnimationForTesting)
+        XCTAssertTrue(host.subviews.isEmpty)
+        try assertSourceIconCutoutIfHostIsSibling(controller, host: host)
         XCTAssertTrue(
-            controller.menuBarButtonImageForTesting !== staticImage,
-            "running CA presentation must use the cached text-only bitmap"
+            controller.menuBarButtonImageForTesting === staticImage,
+            "running CA presentation must keep the canonical static GPT+text bitmap"
+        )
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting
+                === controller.cachedStaticMenuBarContentBitmapForTesting
+        )
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting
+                !== controller.cachedMenuBarTextBitmapForTesting,
+            "Performance/G must not replace the native image with the text-only bitmap"
         )
 
         let installCount = host.rotationAnimationInstallCount
@@ -573,7 +584,159 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNil(host.superview)
         XCTAssertTrue(host.isHidden)
         XCTAssertNil(host.rotationAnimationForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
         XCTAssertTrue(controller.menuBarButtonImageForTesting === staticImage)
+    }
+
+    @MainActor
+    func testNativeCoreAnimationKeepsCanonicalStaticImageAcrossHostLifecycle() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(
+            codexAnimationBackend: .nativeCoreAnimation
+        )
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let input = makeMenuInput()
+        let settings = makeSettings()
+
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: input,
+            settings: settings
+        )
+        let icon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.2,
+            green: 0.4,
+            blue: 0.8
+        )
+        icon.isTemplate = true
+        controller.setCodexIconForTesting(icon)
+
+        func assertCanonicalStaticNativeImage(
+            _ message: String,
+            file: StaticString = #filePath,
+            line: UInt = #line
+        ) throws {
+            let buttonImage = try XCTUnwrap(
+                controller.menuBarButtonImageForTesting,
+                file: file,
+                line: line
+            )
+            let staticImage = try XCTUnwrap(
+                controller.cachedStaticMenuBarContentBitmapForTesting,
+                file: file,
+                line: line
+            )
+            let textBitmap = try XCTUnwrap(
+                controller.cachedMenuBarTextBitmapForTesting,
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                buttonImage === staticImage,
+                message,
+                file: file,
+                line: line
+            )
+            XCTAssertTrue(
+                buttonImage !== textBitmap,
+                "native image must not be the text-only bitmap: \(message)",
+                file: file,
+                line: line
+            )
+        }
+
+        try assertCanonicalStaticNativeImage("idle native image is the complete static bitmap")
+        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        try assertCanonicalStaticNativeImage(
+            "running Performance/G must keep the complete static GPT+text bitmap"
+        )
+        let host = try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertTrue(host.superview != nil)
+        XCTAssertFalse(host.isHidden)
+        XCTAssertNotNil(host.rotationAnimationForTesting)
+        XCTAssertTrue(host.subviews.isEmpty)
+        try assertSourceIconCutoutIfHostIsSibling(controller, host: host)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        let installCount = host.rotationAnimationInstallCount
+        let rasterizationCount = host.contentsRasterizationCount
+        let runningStaticImage = controller.cachedStaticMenuBarContentBitmapForTesting
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: input,
+            settings: settings
+        )
+        try assertCanonicalStaticNativeImage(
+            "snapshot updates must not replace the canonical static native image"
+        )
+        XCTAssertTrue(controller.menuBarButtonImageForTesting === runningStaticImage)
+        XCTAssertEqual(host.rotationAnimationInstallCount, installCount)
+        XCTAssertEqual(host.contentsRasterizationCount, rasterizationCount)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        try assertCanonicalStaticNativeImage("stopped Performance/G restores the static native image")
+        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertNil(host.superview)
+        XCTAssertTrue(host.isHidden)
+        XCTAssertNil(host.rotationAnimationForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        try assertCanonicalStaticNativeImage(
+            "restarting Performance/G must still keep the complete static native image"
+        )
+        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertTrue(controller.nativeCodexAnimationHostForTesting?.superview != nil)
+        XCTAssertNotNil(
+            controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting
+        )
+
+        controller.setCodexAnimationBackend(.stableBitmap)
+        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertNil(controller.nativeCodexAnimationHostForTesting?.superview)
+        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+
+        controller.setCodexAnimationBackend(.nativeCoreAnimation)
+        try assertCanonicalStaticNativeImage(
+            "returning to Performance/G must restore the complete static native image"
+        )
+        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertTrue(controller.nativeCodexAnimationHostForTesting?.superview != nil)
+        XCTAssertNotNil(
+            controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting
+        )
     }
 
     @MainActor
@@ -1009,6 +1172,32 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(controller.codexAnimationFallbackActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertEqual(fallbackTransitions, [true, false])
+    }
+
+    private func assertSourceIconCutoutIfHostIsSibling(
+        _ controller: StatusItemController,
+        host: MenuBarNativeAnimatedIconHostView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertNotNil(host.superview, "running native host must be attached", file: file, line: line)
+        if host.superview is NSStatusBarButton {
+            XCTAssertNil(
+                controller.nativeCodexSourceIconMaskForTesting,
+                "a button-child host cannot use the source icon cutout",
+                file: file,
+                line: line
+            )
+            return
+        }
+        let mask = try XCTUnwrap(
+            controller.nativeCodexSourceIconMaskForTesting,
+            "a sibling host must clip the source static GPT",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(mask.fillRule, .evenOdd, file: file, line: line)
+        XCTAssertNotNil(mask.path, file: file, line: line)
     }
 
     private func makeSolidImage(

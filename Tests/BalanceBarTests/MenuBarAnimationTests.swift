@@ -27,6 +27,42 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(state.frameIndex, 0)
     }
 
+    func testTemplateIconEmphasisRaisesMidtoneCoverageWithoutFillingTransparentPixels() throws {
+        let size = NSSize(width: 16, height: 16)
+        let faint = NSImage(size: size, flipped: true) { rect in
+            NSColor.black.withAlphaComponent(0.5).setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 3, dy: 3)).fill()
+            return true
+        }
+        faint.isTemplate = true
+
+        let strengthened = try XCTUnwrap(
+            MenuBarTemplateIconEmphasis.strengthenedTemplateImage(
+                faint,
+                drawingSize: size,
+                scale: 2
+            )
+        )
+        XCTAssertTrue(strengthened.isTemplate)
+        XCTAssertEqual(strengthened.size, size)
+
+        let originalAlpha = meanVisibleAlpha(of: faint, size: size)
+        let boostedAlpha = meanVisibleAlpha(of: strengthened, size: size)
+        XCTAssertGreaterThan(
+            boostedAlpha,
+            originalAlpha + 0.05,
+            "inactive-display GPT marks must gain coverage, not an opaque backdrop"
+        )
+        XCTAssertLessThan(boostedAlpha, 1, "transparent holes in the GPT silhouette must remain")
+        XCTAssertEqual(meanAlpha(of: faint, size: size, onlyZero: true), 0, accuracy: 0.001)
+        XCTAssertEqual(
+            meanAlpha(of: strengthened, size: size, onlyZero: true),
+            0,
+            accuracy: 0.001,
+            "emphasis must not paint the empty template background"
+        )
+    }
+
     func testCodexBackendsShareTheFixedThirtyHertzTimingContract() {
         XCTAssertEqual(MenuBarAnimationTiming.frameCount, 36)
         XCTAssertEqual(MenuBarAnimationTiming.rotationDuration, 1.2, accuracy: 0.000_001)
@@ -143,6 +179,7 @@ final class MenuBarAnimationTests: XCTestCase {
             CGPoint(x: host.bounds.midX, y: host.bounds.midY)
         )
         XCTAssertEqual(host.iconLayer.contentsScale, 2)
+        XCTAssertTrue(host.subviews.isEmpty)
 
         let sourceImage = NSImage(size: NSSize(width: 16, height: 16))
         sourceImage.isTemplate = true
@@ -220,7 +257,7 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         let hostEnd = try XCTUnwrap(
             viewsSource.range(
-                of: "final class MenuBarTextView",
+                of: "final class MenuBarClaudeAnimatedIconHostView",
                 range: hostStart.upperBound..<viewsSource.endIndex
             )
         )
@@ -230,6 +267,8 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertFalse(hostSource.contains("DispatchSourceTimer"))
         XCTAssertFalse(hostSource.contains("needsDisplay"))
         XCTAssertFalse(hostSource.contains("setNeedsDisplay"))
+        XCTAssertFalse(hostSource.contains("NSVisualEffectView"))
+        XCTAssertFalse(hostSource.contains("backgroundColor"))
     }
 
     func testClaudeCoreAnimationHostUsesDiscreteSpriteTranslationContract() throws {
@@ -598,6 +637,69 @@ final class MenuBarAnimationTests: XCTestCase {
         let fullTurn = 2 * Double.pi
         let rawDelta = (from - to).truncatingRemainder(dividingBy: fullTurn)
         return rawDelta >= 0 ? rawDelta : rawDelta + fullTurn
+    }
+
+    private func meanVisibleAlpha(of image: NSImage, size: NSSize) -> CGFloat {
+        meanAlpha(of: image, size: size, includeTransparent: false)
+    }
+
+    private func meanAlpha(
+        of image: NSImage,
+        size: NSSize,
+        onlyZero: Bool = false
+    ) -> CGFloat {
+        meanAlpha(of: image, size: size, includeTransparent: true, onlyZero: onlyZero)
+    }
+
+    private func meanAlpha(
+        of image: NSImage,
+        size: NSSize,
+        includeTransparent: Bool,
+        onlyZero: Bool = false
+    ) -> CGFloat {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(size.width * 2),
+            pixelsHigh: Int(size.height * 2),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        )!
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: .zero,
+            operation: .copy,
+            fraction: 1
+        )
+        NSGraphicsContext.restoreGraphicsState()
+
+        var total: CGFloat = 0
+        var count: CGFloat = 0
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                let alpha = CGFloat(rep.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+                if onlyZero {
+                    if alpha < 0.02 {
+                        total += alpha
+                        count += 1
+                    }
+                    continue
+                }
+                if !includeTransparent && alpha < 0.02 {
+                    continue
+                }
+                total += alpha
+                count += 1
+            }
+        }
+        return count == 0 ? 0 : total / count
     }
 
     func testStartingTheSameRotationTwiceKeepsOneLifecycleAndStoppingIsIdempotent() {
