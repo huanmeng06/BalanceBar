@@ -81,6 +81,80 @@ final class ActivityCoordinatorTests: XCTestCase {
         )
     }
 
+    func testBothProcessesPreferCurrentlyActiveClaudeEvenIfGrokFilesAreNewer() {
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .grok,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                grokLastActivityAt: Date(timeIntervalSince1970: 50),
+                claudeLastActivityAt: Date(timeIntervalSince1970: 10),
+                grokObservation: .hardTerminal,
+                claudeObservation: .active
+            ),
+            .claude
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                grokLastActivityAt: Date(timeIntervalSince1970: 50),
+                claudeLastActivityAt: Date(timeIntervalSince1970: 10),
+                grokObservation: .ambiguousIdle,
+                claudeObservation: .active
+            ),
+            .claude
+        )
+    }
+
+    func testWasGrokThenClaudeBecomesActiveSwitchesIdentity() {
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .grok,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                grokLastActivityAt: Date(timeIntervalSince1970: 40),
+                claudeLastActivityAt: Date(timeIntervalSince1970: 41),
+                grokObservation: .hardTerminal,
+                claudeObservation: .active
+            ),
+            .claude
+        )
+    }
+
+    func testActiveGrokIsNotBlindlyReplacedByIdleClaude() {
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .claude,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                grokLastActivityAt: Date(timeIntervalSince1970: 10),
+                claudeLastActivityAt: Date(timeIntervalSince1970: 50),
+                grokObservation: .active,
+                claudeObservation: .hardTerminal
+            ),
+            .grok
+        )
+    }
+
+    func testCodexFrontmostIsNotStolenByBackgroundGrokOrClaude() {
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .codex,
+                current: .codex,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                grokLastActivityAt: Date(timeIntervalSince1970: 80),
+                claudeLastActivityAt: Date(timeIntervalSince1970: 90),
+                grokObservation: .active,
+                claudeObservation: .active
+            ),
+            .codex
+        )
+    }
+
     func testIndistinguishableBothProcessesKeepCurrentTerminalClient() {
         XCTAssertEqual(
             ActivityClientSelection.client(

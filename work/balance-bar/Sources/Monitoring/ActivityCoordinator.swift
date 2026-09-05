@@ -329,7 +329,9 @@ enum ActivityClientSelection {
         grokProcessRunning: Bool,
         claudeProcessRunning: Bool,
         grokLastActivityAt: Date?,
-        claudeLastActivityAt: Date?
+        claudeLastActivityAt: Date?,
+        grokObservation: ActivityMonitorObservation? = nil,
+        claudeObservation: ActivityMonitorObservation? = nil
     ) -> AssistantClient {
         switch frontmost {
         case .codex:
@@ -348,17 +350,28 @@ enum ActivityClientSelection {
                 return preferredTerminalClient(
                     current: current,
                     grokLastActivityAt: grokLastActivityAt,
-                    claudeLastActivityAt: claudeLastActivityAt
+                    claudeLastActivityAt: claudeLastActivityAt,
+                    grokObservation: grokObservation,
+                    claudeObservation: claudeObservation
                 )
             }
         }
     }
 
+    /// When both CLIs are alive, prefer the one that currently looks in-use.
+    /// An idle Grok session whose files keep changing must not pin the icon.
     static func preferredTerminalClient(
         current: AssistantClient,
         grokLastActivityAt: Date?,
-        claudeLastActivityAt: Date?
+        claudeLastActivityAt: Date?,
+        grokObservation: ActivityMonitorObservation? = nil,
+        claudeObservation: ActivityMonitorObservation? = nil
     ) -> AssistantClient {
+        let grokActive = grokObservation?.isActiveEvidence == true
+        let claudeActive = claudeObservation?.isActiveEvidence == true
+        if grokActive != claudeActive {
+            return grokActive ? .grok : .claude
+        }
         switch (grokLastActivityAt, claudeLastActivityAt) {
         case let (grok?, claude?):
             if grok > claude { return .grok }
@@ -530,10 +543,9 @@ final class ActivityCoordinator {
             let grok = actions.grokProcessAvailable()
             let claude = actions.claudeProcessAvailable()
             if grok && claude {
-                let current = actions.activeClient()
-                if current == .grok || current == .claude {
-                    return
-                }
+                // Both CLIs can live in the same terminal app, so a tab
+                // change may not change the frontmost bundle. Resample
+                // instead of freezing the last Grok/Claude identity.
                 refreshActivity()
             } else if grok {
                 actions.setActiveClient(.grok)
@@ -614,7 +626,9 @@ final class ActivityCoordinator {
                     claudeProcessRunning: claudeStatus?.processRunning
                         ?? self.actions.claudeProcessAvailable(),
                     grokLastActivityAt: grokStatus?.lastActivityAt,
-                    claudeLastActivityAt: claudeStatus?.lastActivityAt
+                    claudeLastActivityAt: claudeStatus?.lastActivityAt,
+                    grokObservation: grokStatus?.observation,
+                    claudeObservation: claudeStatus?.observation
                 )
                 self.actions.setActiveClient(selected)
                 if let codexObservation {

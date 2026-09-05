@@ -91,6 +91,95 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertFalse(status.observation.legacyIsTaskRunning)
     }
 
+    func testParentTurnCompletedStillActiveWhenSubagentTranscriptIsActive() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 20),
+                sessionUpdate("subagent_spawned", timestamp: currentDate.timeIntervalSince1970 - 5),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "parent"
+        )
+        try writeSubagentUpdates(
+            parentSessionID: "parent",
+            subagentID: "child",
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 + 1)
+            ],
+            modifiedAt: currentDate.addingTimeInterval(1)
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testParentBackgroundedStillActiveWhenChildSessionFromMetaIsActive() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 30),
+                sessionUpdate("task_backgrounded"),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "parent"
+        )
+        try writeSubagentMeta(
+            parentSessionID: "parent",
+            subagentID: "child-session",
+            childCWD: "/tmp/child-work",
+            status: "running"
+        )
+        try writeSession(
+            updates: [sessionUpdate("tool_call")],
+            cwd: "/tmp/child-work",
+            sessionID: "child-session",
+            modifiedAt: currentDate.addingTimeInterval(2)
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testTurnCompletedWithoutSubagentDoesNotRotate() throws {
+        try writeSession(updates: [
+            sessionUpdate("user_message_chunk"),
+            sessionUpdate("agent_message_chunk"),
+            sessionUpdate("turn_completed")
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.observation.isActiveEvidence)
+    }
+
+    func testMissingProcessDoesNotRotate() {
+        let status = makeMonitor(processOutput: "101 1 ?? /usr/bin/python python grok.py").activityStatus()
+        XCTAssertFalse(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
     func testActiveSessionsJSONSelectsEncodedCWD() throws {
         try writeSession(
             updates: [sessionUpdate("turn_completed")],
@@ -149,6 +238,60 @@ final class GrokActivityMonitorTests: XCTestCase {
     }
 
     @discardableResult
+    private func writeSubagentUpdates(
+        parentSessionID: String,
+        subagentID: String,
+        cwd: String = "/tmp/fixture",
+        updates: [[String: Any]],
+        modifiedAt: Date? = nil
+    ) throws -> URL {
+        let encoded = GrokActivityMonitor.encodeSessionDirectoryName(cwd)
+        let directory = fixtureDirectory
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(encoded, isDirectory: true)
+            .appendingPathComponent(parentSessionID, isDirectory: true)
+            .appendingPathComponent("subagents", isDirectory: true)
+            .appendingPathComponent(subagentID, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let url = directory.appendingPathComponent("updates.jsonl")
+        try writeJSONL(updates, to: url, modifiedAt: modifiedAt)
+        return url
+    }
+
+    private func writeSubagentMeta(
+        parentSessionID: String,
+        subagentID: String,
+        childCWD: String,
+        status: String,
+        cwd: String = "/tmp/fixture"
+    ) throws {
+        let encoded = GrokActivityMonitor.encodeSessionDirectoryName(cwd)
+        let directory = fixtureDirectory
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(encoded, isDirectory: true)
+            .appendingPathComponent(parentSessionID, isDirectory: true)
+            .appendingPathComponent("subagents", isDirectory: true)
+            .appendingPathComponent(subagentID, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let meta: [String: Any] = [
+            "subagent_id": subagentID,
+            "parent_session_id": parentSessionID,
+            "child_session_id": subagentID,
+            "child_cwd": childCWD,
+            "status": status
+        ]
+        try JSONSerialization.data(withJSONObject: meta).write(
+            to: directory.appendingPathComponent("meta.json")
+        )
+    }
+
+    @discardableResult
     private func writeSession(
         updates: [[String: Any]],
         cwd: String = "/tmp/fixture",
@@ -165,6 +308,15 @@ final class GrokActivityMonitorTests: XCTestCase {
             withIntermediateDirectories: true
         )
         let url = sessionDirectory.appendingPathComponent("updates.jsonl")
+        try writeJSONL(updates, to: url, modifiedAt: modifiedAt)
+        return url
+    }
+
+    private func writeJSONL(
+        _ updates: [[String: Any]],
+        to url: URL,
+        modifiedAt: Date?
+    ) throws {
         let lines = try updates.map { object -> String in
             let data = try JSONSerialization.data(withJSONObject: object)
             return String(decoding: data, as: UTF8.self)
@@ -174,7 +326,6 @@ final class GrokActivityMonitorTests: XCTestCase {
             [.modificationDate: modifiedAt ?? currentDate],
             ofItemAtPath: url.path
         )
-        return url
     }
 
     private func writeActiveSessions(_ rows: [[String: Any]]) throws {

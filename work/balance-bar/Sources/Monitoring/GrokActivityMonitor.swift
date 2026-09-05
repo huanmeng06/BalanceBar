@@ -22,7 +22,8 @@ final class GrokActivityMonitor {
         "agent_thought_chunk",
         "tool_call",
         "tool_call_update",
-        "agent_message_chunk"
+        "agent_message_chunk",
+        "subagent_spawned"
     ]
     private static let terminalSessionUpdates: Set<String> = [
         "turn_completed",
@@ -35,7 +36,15 @@ final class GrokActivityMonitor {
         "compaction_checkpoint",
         "auto_compact_completed",
         "retry_state",
-        "task_backgrounded"
+        "task_backgrounded",
+        "subagent_finished"
+    ]
+    private static let finishedSubagentStatuses: Set<String> = [
+        "completed",
+        "failed",
+        "cancelled",
+        "canceled",
+        "finished"
     ]
 
     private struct SessionCache {
@@ -51,6 +60,7 @@ final class GrokActivityMonitor {
         let checkedAt: Date
         let observation: ActivityMonitorObservation
         let lastActivityAt: Date?
+        let lastUserActivityAt: Date?
     }
 
     private let grokDirectory: URL
@@ -93,11 +103,11 @@ final class GrokActivityMonitor {
                 lastActivityAt: nil
             )
         }
-        let observation = transcriptObservation(session.url, now: clock())
+        let combined = combinedTranscriptObservation(sessionURL: session.url, now: clock())
         return GrokActivityStatus(
             processRunning: true,
-            observation: observation.observation,
-            lastActivityAt: observation.lastActivityAt ?? session.lastActivityAt
+            observation: combined.observation,
+            lastActivityAt: combined.identityActivityAt
         )
     }
 
@@ -244,7 +254,6 @@ final class GrokActivityMonitor {
         var latest: (url: URL, date: Date)?
         for case let url as URL in enumerator {
             guard url.lastPathComponent == "updates.jsonl",
-                  !url.path.contains("/subagents/"),
                   let values = try? url.resourceValues(
                     forKeys: [.contentModificationDateKey, .isRegularFileKey]
                   ),
@@ -257,36 +266,152 @@ final class GrokActivityMonitor {
         return latest.map { ($0.url, $0.date) }
     }
 
+    private func combinedTranscriptObservation(
+        sessionURL: URL,
+        now: Date
+    ) -> (observation: ActivityMonitorObservation, identityActivityAt: Date?) {
+        let related = relatedTranscriptURLs(for: sessionURL)
+        var observation: ActivityMonitorObservation?
+        var identityActivityAt: Date?
+        var parentEventActivityAt: Date?
+
+        for url in related {
+            let sample = transcriptObservation(url, now: now)
+            if observation == nil {
+                observation = sample.observation
+                parentEventActivityAt = sample.lastActivityAt
+                identityActivityAt = sample.lastUserActivityAt
+            } else {
+                observation = strongestObservation(observation!, sample.observation)
+            }
+        }
+
+        let resolved = observation ?? .ambiguousIdle
+        if let identityActivityAt {
+            return (resolved, identityActivityAt)
+        }
+        if resolved.isActiveEvidence {
+            // Subagent and other agent writes must not look like the user is
+            // still in Grok when Claude is the CLI actually being used.
+            return (resolved, nil)
+        }
+        return (resolved, parentEventActivityAt)
+    }
+
+    private func relatedTranscriptURLs(for sessionURL: URL) -> [URL] {
+        var urls = [sessionURL]
+        var seen: Set<String> = [sessionURL.standardizedFileURL.path]
+        func appendIfNew(_ url: URL) {
+            let path = url.standardizedFileURL.path
+            guard !seen.contains(path) else { return }
+            seen.insert(path)
+            urls.append(url)
+        }
+
+        let subagentsDirectory = sessionURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("subagents", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: subagentsDirectory.path) else {
+            return urls
+        }
+
+        if let enumerator = FileManager.default.enumerator(
+            at: subagentsDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for case let url as URL in enumerator where url.lastPathComponent == "updates.jsonl" {
+                appendIfNew(url)
+            }
+        }
+
+        let children = (try? FileManager.default.contentsOfDirectory(
+            at: subagentsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        for child in children {
+            let metaURL = child.appendingPathComponent("meta.json")
+            guard let data = try? Data(contentsOf: metaURL),
+                  let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let childURL = childSessionUpdatesURL(from: row) else {
+                continue
+            }
+            appendIfNew(childURL)
+        }
+        return urls
+    }
+
+    private func childSessionUpdatesURL(from meta: [String: Any]) -> URL? {
+        if let status = (meta["status"] as? String)?.lowercased(),
+           Self.finishedSubagentStatuses.contains(status) {
+            return nil
+        }
+        let sessionID = (meta["child_session_id"] as? String)
+            ?? (meta["subagent_id"] as? String)
+        let cwd = meta["child_cwd"] as? String
+        guard let sessionID, !sessionID.isEmpty, let cwd, !cwd.isEmpty else {
+            return nil
+        }
+        return grokDirectory
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(Self.encodeSessionDirectoryName(cwd), isDirectory: true)
+            .appendingPathComponent(sessionID, isDirectory: true)
+            .appendingPathComponent("updates.jsonl")
+    }
+
+    private func strongestObservation(
+        _ lhs: ActivityMonitorObservation,
+        _ rhs: ActivityMonitorObservation
+    ) -> ActivityMonitorObservation {
+        func rank(_ observation: ActivityMonitorObservation) -> Int {
+            switch observation {
+            case .active: return 3
+            case .contextCompaction: return 2
+            case .ambiguousIdle: return 1
+            case .hardTerminal: return 0
+            }
+        }
+        return rank(lhs) >= rank(rhs) ? lhs : rhs
+    }
+
     private func transcriptObservation(
         _ url: URL,
         now: Date
-    ) -> (observation: ActivityMonitorObservation, lastActivityAt: Date?) {
+    ) -> (
+        observation: ActivityMonitorObservation,
+        lastActivityAt: Date?,
+        lastUserActivityAt: Date?
+    ) {
         guard let identity = fileIdentity(atPath: url.path) else {
-            return (.ambiguousIdle, nil)
+            return (.ambiguousIdle, nil, nil)
         }
         if let cached = transcriptCache,
            cached.path == url.path,
            cached.size == identity.size,
            cached.modifiedAt == identity.modifiedAt,
            now.timeIntervalSince(cached.checkedAt) < 0.75 {
-            return (cached.observation, cached.lastActivityAt)
+            return (cached.observation, cached.lastActivityAt, cached.lastUserActivityAt)
         }
         func cache(
             _ observation: ActivityMonitorObservation,
-            lastActivityAt: Date?
-        ) -> (ActivityMonitorObservation, Date?) {
+            lastActivityAt: Date?,
+            lastUserActivityAt: Date?
+        ) -> (ActivityMonitorObservation, Date?, Date?) {
             transcriptCache = TranscriptCache(
                 path: url.path,
                 size: identity.size,
                 modifiedAt: identity.modifiedAt,
                 checkedAt: now,
                 observation: observation,
-                lastActivityAt: lastActivityAt
+                lastActivityAt: lastActivityAt,
+                lastUserActivityAt: lastUserActivityAt
             )
-            return (observation, lastActivityAt)
+            return (observation, lastActivityAt, lastUserActivityAt)
         }
+        let fileDate = Date(timeIntervalSince1970: identity.modifiedAt)
         guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return cache(.ambiguousIdle, lastActivityAt: Date(timeIntervalSince1970: identity.modifiedAt))
+            return cache(.ambiguousIdle, lastActivityAt: fileDate, lastUserActivityAt: nil)
         }
         defer { try? handle.close() }
 
@@ -295,18 +420,20 @@ final class GrokActivityMonitor {
         do {
             try handle.seek(toOffset: offset)
         } catch {
-            return cache(.ambiguousIdle, lastActivityAt: Date(timeIntervalSince1970: identity.modifiedAt))
+            return cache(.ambiguousIdle, lastActivityAt: fileDate, lastUserActivityAt: nil)
         }
         guard let text = String(data: handle.readDataToEndOfFile(), encoding: .utf8) else {
-            return cache(.ambiguousIdle, lastActivityAt: Date(timeIntervalSince1970: identity.modifiedAt))
+            return cache(.ambiguousIdle, lastActivityAt: fileDate, lastUserActivityAt: nil)
         }
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
         if offset > 0, !lines.isEmpty {
             lines.removeFirst()
         }
         let recentWrite = now.timeIntervalSince1970 - identity.modifiedAt < 15
-        let fileDate = Date(timeIntervalSince1970: identity.modifiedAt)
 
+        var observation: ActivityMonitorObservation?
+        var lastActivityAt: Date?
+        var lastUserActivityAt: Date?
         for line in lines.reversed() {
             guard
                 let data = line.data(using: .utf8),
@@ -316,21 +443,36 @@ final class GrokActivityMonitor {
                 continue
             }
             let eventDate = Self.eventDate(from: event) ?? fileDate
-            if Self.activeSessionUpdates.contains(update) {
-                return cache(.active, lastActivityAt: eventDate)
+            if update == "user_message_chunk", lastUserActivityAt == nil {
+                lastUserActivityAt = eventDate
             }
-            if Self.terminalSessionUpdates.contains(update) {
-                return cache(.hardTerminal, lastActivityAt: eventDate)
+            if observation == nil {
+                if Self.activeSessionUpdates.contains(update) {
+                    observation = .active
+                    lastActivityAt = eventDate
+                } else if Self.terminalSessionUpdates.contains(update) {
+                    observation = .hardTerminal
+                    lastActivityAt = eventDate
+                } else if update == "user_message_chunk" {
+                    observation = recentWrite ? .active : .ambiguousIdle
+                    lastActivityAt = eventDate
+                } else if Self.skippedSessionUpdates.contains(update) {
+                    continue
+                } else {
+                    observation = recentWrite ? .active : .ambiguousIdle
+                    lastActivityAt = eventDate
+                }
             }
-            if update == "user_message_chunk" {
-                return cache(recentWrite ? .active : .ambiguousIdle, lastActivityAt: eventDate)
+            if observation != nil, lastUserActivityAt != nil {
+                break
             }
-            if Self.skippedSessionUpdates.contains(update) {
-                continue
-            }
-            return cache(recentWrite ? .active : .ambiguousIdle, lastActivityAt: eventDate)
         }
-        return cache(recentWrite ? .active : .ambiguousIdle, lastActivityAt: fileDate)
+        let resolved = observation ?? (recentWrite ? .active : .ambiguousIdle)
+        return cache(
+            resolved,
+            lastActivityAt: lastActivityAt ?? fileDate,
+            lastUserActivityAt: lastUserActivityAt
+        )
     }
 
     private static func sessionUpdate(from object: [String: Any]) -> String? {
