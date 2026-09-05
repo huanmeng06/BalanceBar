@@ -36,6 +36,92 @@ enum MenuBarAnimationTiming {
     static let frameInterval = rotationDuration / Double(frameCount)
 }
 
+/// Strengthens the Codex template mark used by inactive-display replicants.
+/// macOS dims template status items; the lacy GPT silhouette needs a little
+/// extra coverage to stay readable without an opaque backdrop.
+enum MenuBarTemplateIconEmphasis {
+    static let midtoneAlphaGain: CGFloat = 1.55
+
+    static func draw(_ image: NSImage, in rect: NSRect) {
+        let mark = strengthenedTemplateImage(image, drawingSize: rect.size) ?? image
+        mark.draw(
+            in: rect,
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
+    }
+
+    static func strengthenedTemplateImage(
+        _ image: NSImage,
+        drawingSize: NSSize,
+        scale: CGFloat = 2
+    ) -> NSImage? {
+        guard drawingSize.width > 0, drawingSize.height > 0 else { return nil }
+        let pixelDimensions = MenuBarBitmapImageLayout.pixelDimensions(
+            for: drawingSize,
+            scale: scale
+        )
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelDimensions.width,
+            pixelsHigh: pixelDimensions.height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return nil
+        }
+        rep.size = drawingSize
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(
+            in: NSRect(origin: .zero, size: drawingSize),
+            from: .zero,
+            operation: .copy,
+            fraction: 1,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
+        NSGraphicsContext.restoreGraphicsState()
+        boostTemplateAlpha(in: rep)
+        let strengthened = NSImage(size: drawingSize)
+        strengthened.addRepresentation(rep)
+        strengthened.isTemplate = true
+        return strengthened
+    }
+
+    static func boostTemplateAlpha(in rep: NSBitmapImageRep) {
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                    continue
+                }
+                let alpha = color.alphaComponent
+                guard alpha > 0, alpha < 1 else { continue }
+                let boosted = min(1, alpha * midtoneAlphaGain)
+                rep.setColor(
+                    NSColor(
+                        deviceRed: color.redComponent,
+                        green: color.greenComponent,
+                        blue: color.blueComponent,
+                        alpha: boosted
+                    ),
+                    atX: x,
+                    y: y
+                )
+            }
+        }
+    }
+}
+
 /// Selects the Codex animation implementation used by a status-item
 /// controller.  The native Core Animation case is intentionally injectable so
 /// the stacked Issue #300 experiment can be exercised without deleting the D0

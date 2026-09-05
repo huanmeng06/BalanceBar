@@ -4334,14 +4334,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             hints: nil
         )
         if let iconImage, let iconDrawRect {
-            iconImage.draw(
-                in: iconDrawRect,
-                from: .zero,
-                operation: .sourceOver,
-                fraction: 1,
-                respectFlipped: true,
-                hints: nil
-            )
+            MenuBarTemplateIconEmphasis.draw(iconImage, in: iconDrawRect)
         }
         return composed
     }
