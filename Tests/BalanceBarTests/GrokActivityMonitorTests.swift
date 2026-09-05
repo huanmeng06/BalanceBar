@@ -343,6 +343,188 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertFalse(status.observation.legacyIsTaskRunning)
     }
 
+    func testUnlistedSameCwdSiblingThoughtKeepsRunningWhenListedTurnCompleted() throws {
+        try writeSession(
+            updates: [sessionUpdate("agent_thought_chunk")],
+            sessionID: "sibling-a",
+            registerActive: false
+        )
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 5),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertTrue(status.trueTurnEvidence)
+    }
+
+    func testUnlistedSameCwdSiblingUnfinishedSubagentKeepsRunningWhenListedTurnCompleted() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 20),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "sibling-a",
+            registerActive: false
+        )
+        try writeSubagentMeta(
+            parentSessionID: "sibling-a",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "running"
+        )
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUnlistedSameCwdSiblingActiveWorkflowKeepsRunningWhenListedTurnCompleted() throws {
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "sibling-a",
+            registerActive: false
+        )
+        try writeWorkflowState(
+            sessionID: "sibling-a",
+            runID: "wf_active",
+            status: "active"
+        )
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUnlistedSameCwdSiblingExplicitCompletionIsHardTerminal() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 1),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "sibling-a",
+            registerActive: false
+        )
+        try writeSubagentMeta(
+            parentSessionID: "sibling-a",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "completed"
+        )
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUnlistedStaleInProgressSiblingEarlierThanOpenedAtIsHardTerminal() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)
+            ],
+            sessionID: "sibling-a",
+            modifiedAt: staleDate,
+            registerActive: false
+        )
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUnlistedSiblingInDifferentCwdGroupDoesNotKeepRunning() throws {
+        try writeSession(
+            updates: [sessionUpdate("agent_thought_chunk")],
+            cwd: "/tmp/other-group",
+            sessionID: "sibling-a",
+            registerActive: false
+        )
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
     func testUnfinishedSubagentMetaWithoutTranscriptStaysInProgress() throws {
         try writeSession(
             updates: [
@@ -730,6 +912,12 @@ final class GrokActivityMonitorTests: XCTestCase {
         try data.write(
             to: fixtureDirectory.appendingPathComponent("active_sessions.json")
         )
+    }
+
+    private func iso8601String(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
     }
 
     private func sessionUpdate(_ name: String, timestamp: TimeInterval? = nil) -> [String: Any] {
