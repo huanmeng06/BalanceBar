@@ -540,8 +540,8 @@ final class StatusItemControllerTests: XCTestCase {
         )
         XCTAssertNotNil(host.rotationAnimationForTesting)
         XCTAssertTrue(
-            controller.menuBarButtonImageForTesting !== staticImage,
-            "running CA presentation must use the cached text-only bitmap"
+            controller.menuBarButtonImageForTesting === staticImage,
+            "Probe 1 must keep the canonical full static bitmap on the native button"
         )
 
         let installCount = host.rotationAnimationInstallCount

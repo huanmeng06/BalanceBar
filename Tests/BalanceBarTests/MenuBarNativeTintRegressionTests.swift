@@ -290,7 +290,7 @@ final class MenuBarNativeTintRegressionTests: XCTestCase {
         )
     }
 
-    func testCodexHostIsReadyBeforeTextOnlyImageBoundary() throws {
+    func testNativeCodexProbeRetainsCanonicalStaticImage() throws {
         let testFile = URL(fileURLWithPath: #filePath)
         let repositoryRoot = testFile
             .deletingLastPathComponent()
@@ -312,18 +312,10 @@ final class MenuBarNativeTintRegressionTests: XCTestCase {
             )
         )
         let hostSource = String(source[hostStart.lowerBound..<hostEnd.lowerBound])
-        let hostAttachment = try XCTUnwrap(
-            hostSource.range(of: "button.addSubview(host, positioned: .above, relativeTo: nil)")
-        )
-        let contents = try XCTUnwrap(hostSource.range(of: "host.updateContents("))
-        let visible = try XCTUnwrap(hostSource.range(of: "host.isHidden = false"))
-        let animation = try XCTUnwrap(hostSource.range(of: "host.installRotationAnimation()"))
-        let textBoundary = try XCTUnwrap(hostSource.range(of: "button.image = textBitmap"))
-
-        XCTAssertLessThan(hostAttachment.lowerBound, textBoundary.lowerBound)
-        XCTAssertLessThan(contents.lowerBound, textBoundary.lowerBound)
-        XCTAssertLessThan(visible.lowerBound, textBoundary.lowerBound)
-        XCTAssertLessThan(animation.lowerBound, textBoundary.lowerBound)
+        XCTAssertTrue(hostSource.contains("let staticImage = cachedStaticMenuBarContentBitmap"))
+        XCTAssertTrue(hostSource.contains("button.image = staticImage"))
+        XCTAssertFalse(hostSource.contains("cachedMenuBarTextBitmap"))
+        XCTAssertFalse(hostSource.contains("button.image = textBitmap"))
         XCTAssertFalse(hostSource.contains("selectedMenuItemTextColor"))
     }
 

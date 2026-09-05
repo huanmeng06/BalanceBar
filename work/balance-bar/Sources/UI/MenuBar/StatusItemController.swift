@@ -3735,8 +3735,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Synchronizes the BalanceBar-owned icon host at a bounded visual
-    /// boundary. The host is attached and populated before the text-only
-    /// bitmap boundary, so secondary presentations can capture the icon.
+    /// boundary. Probe 1 deliberately keeps the complete static bitmap on
+    /// the native button so secondary presentations always have the icon;
+    /// the host remains a source-presentation experiment layered above it.
     @discardableResult
     private func synchronizeNativeCodexAnimationHost() -> Bool {
         precondition(Thread.isMainThread, "Native Codex animation must be synchronized on the main thread")
@@ -3746,7 +3747,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard codexAnimationBackend == .nativeCoreAnimation,
               shouldPrepareCodexAnimationFrames,
               let button = statusItem?.button,
-              let textBitmap = cachedMenuBarTextBitmap,
+              let staticImage = cachedStaticMenuBarContentBitmap,
               let iconDrawRect = cachedMenuBarIconDrawRect,
               let placement = menuBarBitmapImagePlacement,
               let codexIconImage else {
@@ -3788,12 +3789,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // appearance, backing-scale, and status-item reattachment changes.
         host.installRotationAnimation()
 
-        // Install the text-only image only after the retained host has a
-        // visible model layer with contents. Setting the status-button image
-        // is an AppKit visual boundary that can cause a secondary replicant
-        // snapshot; the host must already be part of that presentation.
-        if button.image !== textBitmap {
-            button.image = textBitmap
+        // Probe 1 keeps the canonical full bitmap (GPT + text) on the native
+        // button. The secondary presentation therefore has a static GPT even
+        // when AppKit does not replicate this custom host layer. A possible
+        // source-side static-plus-rotating ghost is intentional for Probe 1.
+        if button.image !== staticImage {
+            button.image = staticImage
         }
         publishNativeCodexAnimationStateIfNeeded(true)
         return true
