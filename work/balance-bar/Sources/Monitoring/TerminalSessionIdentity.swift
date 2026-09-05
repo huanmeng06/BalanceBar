@@ -112,7 +112,57 @@ struct TerminalCLIProcessSnapshot: Equatable {
     }
 }
 
+enum TerminalPTYFDActivity {
+    static func ttyName(path: String, rdev: UInt32) -> String? {
+        let normalized = TerminalCLIProcessRecord.normalizeTTY(path)
+        if let normalized, normalized.hasPrefix("ttys") {
+            return normalized
+        }
+        guard let normalized else { return nil }
+        guard normalized == "ptmx" || normalized.hasPrefix("pty") else {
+            return nil
+        }
+        let minor = Int(rdev & 0x00ff_ffff)
+        guard (0..<1000).contains(minor) else { return nil }
+        return String(format: "ttys%03d", minor)
+    }
+
+    /// Tab selection advances the terminal's master pty offset even when the
+    /// slave `/dev/ttys*` times stay frozen until the TUI receives input.
+    static func updatedDates(
+        offsets: [String: Int64],
+        previousOffsets: [String: Int64],
+        previousDates: [String: Date],
+        now: Date
+    ) -> (offsets: [String: Int64], dates: [String: Date]) {
+        var nextOffsets: [String: Int64] = [:]
+        var nextDates: [String: Date] = [:]
+        for (tty, offset) in offsets {
+            nextOffsets[tty] = offset
+            if previousOffsets[tty] != offset {
+                nextDates[tty] = now
+            } else {
+                nextDates[tty] = previousDates[tty] ?? now
+            }
+        }
+        return (nextOffsets, nextDates)
+    }
+}
+
 enum TerminalFrontmostTTY {
+    private static let procPIDListFDs: Int32 = 1
+    private static let procPIDFDVNodePathInfo: Int32 = 2
+    private static let procFDTypeVNode: UInt32 = 1
+    private static let procFDInfoSize = 8
+    private static let vnodeFDInfoWithPathSize = 1200
+    private static let fileOffsetOffset = 8
+    private static let rdevOffset = 140
+    private static let pathOffset = 176
+
+    private static let fdCacheLock = NSLock()
+    private static var previousFDOffsets: [String: Int64] = [:]
+    private static var previousFDDates: [String: Date] = [:]
+
     static func appleScriptSource(bundleIdentifier: String?) -> String? {
         switch (bundleIdentifier ?? "").lowercased() {
         case "com.apple.terminal":
@@ -142,7 +192,8 @@ enum TerminalFrontmostTTY {
         terminalPID: Int32?,
         snapshot: TerminalCLIProcessSnapshot,
         appleScriptTTY: String?,
-        ttyIODate: (String) -> Date?
+        ttyIODate: (String) -> Date?,
+        ttyFDDate: (String) -> Date? = { _ in nil }
     ) -> String? {
         if let selected = TerminalCLIProcessRecord.normalizeTTY(appleScriptTTY) {
             return selected
@@ -155,9 +206,12 @@ enum TerminalFrontmostTTY {
         }
         guard belonging.count > 1 else { return nil }
         return belonging.max { lhs, rhs in
-            let left = lhs.tty.flatMap(ttyIODate) ?? .distantPast
-            let right = rhs.tty.flatMap(ttyIODate) ?? .distantPast
-            return left < right
+            isLessActive(
+                lhsTTY: lhs.tty,
+                rhsTTY: rhs.tty,
+                ttyFDDate: ttyFDDate,
+                ttyIODate: ttyIODate
+            )
         }?.tty
     }
 
@@ -172,12 +226,16 @@ enum TerminalFrontmostTTY {
         application: NSRunningApplication?,
         snapshot: TerminalCLIProcessSnapshot
     ) -> String? {
+        let fdDates = application.map {
+            ptyFDActivityDates(terminalPID: $0.processIdentifier)
+        } ?? [:]
         return resolve(
             bundleIdentifier: application?.bundleIdentifier,
             terminalPID: application.map(\.processIdentifier),
             snapshot: snapshot,
             appleScriptTTY: selectedTTY(application: application),
-            ttyIODate: ioDate(forTTY:)
+            ttyIODate: ioDate(forTTY:),
+            ttyFDDate: { fdDates[$0] }
         )
     }
 
@@ -190,6 +248,110 @@ enum TerminalFrontmostTTY {
         let mtime = TimeInterval(value.st_mtimespec.tv_sec)
             + (TimeInterval(value.st_mtimespec.tv_nsec) / 1_000_000_000)
         return Date(timeIntervalSince1970: max(atime, mtime))
+    }
+
+    static func ptyFDActivityDates(terminalPID: Int32, now: Date = Date()) -> [String: Date] {
+        let sampled = ptyFDOffsets(terminalPID: terminalPID)
+        var keyed: [String: Int64] = [:]
+        keyed.reserveCapacity(sampled.count)
+        for (tty, offset) in sampled {
+            keyed["\(terminalPID):\(tty)"] = offset
+        }
+        fdCacheLock.lock()
+        let updated = TerminalPTYFDActivity.updatedDates(
+            offsets: keyed,
+            previousOffsets: previousFDOffsets,
+            previousDates: previousFDDates,
+            now: now
+        )
+        previousFDOffsets = updated.offsets
+        previousFDDates = updated.dates
+        fdCacheLock.unlock()
+
+        let prefix = "\(terminalPID):"
+        var dates: [String: Date] = [:]
+        for (key, date) in updated.dates {
+            guard key.hasPrefix(prefix) else { continue }
+            dates[String(key.dropFirst(prefix.count))] = date
+        }
+        return dates
+    }
+
+    private static func isLessActive(
+        lhsTTY: String?,
+        rhsTTY: String?,
+        ttyFDDate: (String) -> Date?,
+        ttyIODate: (String) -> Date?
+    ) -> Bool {
+        let leftFD = lhsTTY.flatMap(ttyFDDate)
+        let rightFD = rhsTTY.flatMap(ttyFDDate)
+        switch (leftFD, rightFD) {
+        case let (left?, right?) where left != right:
+            return left < right
+        case (_?, nil):
+            return false
+        case (nil, _?):
+            return true
+        default:
+            break
+        }
+        let leftIO = lhsTTY.flatMap(ttyIODate) ?? .distantPast
+        let rightIO = rhsTTY.flatMap(ttyIODate) ?? .distantPast
+        return leftIO < rightIO
+    }
+
+    private static func ptyFDOffsets(terminalPID: Int32) -> [String: Int64] {
+        var size = proc_pidinfo(terminalPID, procPIDListFDs, 0, nil, 0)
+        guard size > 0 else { return [:] }
+        size = max(size, Int32(procFDInfoSize))
+        let list = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(size),
+            alignment: MemoryLayout<UInt64>.alignment
+        )
+        defer { list.deallocate() }
+        let written = proc_pidinfo(terminalPID, procPIDListFDs, 0, list, size)
+        guard written >= procFDInfoSize else { return [:] }
+
+        let count = Int(written) / procFDInfoSize
+        var result: [String: Int64] = [:]
+        for index in 0..<count {
+            let fd = list.load(fromByteOffset: index * procFDInfoSize, as: Int32.self)
+            let type = list.load(fromByteOffset: index * procFDInfoSize + 4, as: UInt32.self)
+            guard type == procFDTypeVNode else { continue }
+            guard let parsed = vnodePTY(terminalPID: terminalPID, fd: fd) else { continue }
+            result[parsed.tty] = max(result[parsed.tty] ?? .min, parsed.offset)
+        }
+        return result
+    }
+
+    private static func vnodePTY(terminalPID: Int32, fd: Int32) -> (tty: String, offset: Int64)? {
+        var info = [UInt8](repeating: 0, count: vnodeFDInfoWithPathSize)
+        let got = info.withUnsafeMutableBytes { buffer in
+            proc_pidfdinfo(
+                terminalPID,
+                fd,
+                procPIDFDVNodePathInfo,
+                buffer.baseAddress,
+                Int32(vnodeFDInfoWithPathSize)
+            )
+        }
+        guard got >= pathOffset + 1 else { return nil }
+        let offset = info.withUnsafeBytes { buffer in
+            buffer.loadUnaligned(fromByteOffset: fileOffsetOffset, as: Int64.self)
+        }
+        let rdev = info.withUnsafeBytes { buffer in
+            buffer.loadUnaligned(fromByteOffset: rdevOffset, as: UInt32.self)
+        }
+        let path = info.withUnsafeBytes { buffer -> String? in
+            guard let base = buffer.baseAddress?.advanced(by: pathOffset) else {
+                return nil
+            }
+            return String(cString: base.assumingMemoryBound(to: CChar.self))
+        }
+        guard let path, let tty = TerminalPTYFDActivity.ttyName(path: path, rdev: rdev) else {
+            return nil
+        }
+        return (tty, offset)
     }
 
     private static func runAppleScript(_ source: String) -> String? {

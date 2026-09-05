@@ -44,6 +44,11 @@ final class TerminalSessionIdentityTests: XCTestCase {
                 tty == "ttys001"
                     ? Date(timeIntervalSince1970: 50)
                     : Date(timeIntervalSince1970: 10)
+            },
+            ttyFDDate: { tty in
+                tty == "ttys001"
+                    ? Date(timeIntervalSince1970: 90)
+                    : Date(timeIntervalSince1970: 1)
             }
         )
         XCTAssertEqual(tty, "ttys002")
@@ -95,6 +100,78 @@ final class TerminalSessionIdentityTests: XCTestCase {
             }
         )
         XCTAssertEqual(tty, "ttys002")
+    }
+
+    func testTerminalFDActivityBeatsNewerSlaveIODate() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        let tty = TerminalFrontmostTTY.resolve(
+            bundleIdentifier: "com.mitchellh.ghostty",
+            terminalPID: 100,
+            snapshot: snapshot,
+            appleScriptTTY: nil,
+            ttyIODate: { tty in
+                tty == "ttys002"
+                    ? Date(timeIntervalSince1970: 80)
+                    : Date(timeIntervalSince1970: 20)
+            },
+            ttyFDDate: { tty in
+                tty == "ttys001"
+                    ? Date(timeIntervalSince1970: 40)
+                    : Date(timeIntervalSince1970: 10)
+            }
+        )
+        XCTAssertEqual(tty, "ttys001")
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .claude,
+                frontmostTTY: tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs,
+                grokTrueTurnEvidence: false,
+                claudeTrueTurnEvidence: true
+            ),
+            .grok
+        )
+    }
+
+    func testPTYFDOffsetChangeMarksTabSelectionRecency() {
+        let grok = "ttys001"
+        let claude = "ttys002"
+        let t0 = Date(timeIntervalSince1970: 10)
+        let t1 = Date(timeIntervalSince1970: 20)
+        let first = TerminalPTYFDActivity.updatedDates(
+            offsets: [grok: 100, claude: 50],
+            previousOffsets: [:],
+            previousDates: [:],
+            now: t0
+        )
+        XCTAssertEqual(first.dates[grok], t0)
+        XCTAssertEqual(first.dates[claude], t0)
+
+        let afterGrokTabClick = TerminalPTYFDActivity.updatedDates(
+            offsets: [grok: 101, claude: 50],
+            previousOffsets: first.offsets,
+            previousDates: first.dates,
+            now: t1
+        )
+        XCTAssertEqual(afterGrokTabClick.dates[grok], t1)
+        XCTAssertEqual(afterGrokTabClick.dates[claude], t0)
+    }
+
+    func testPTYNameMapsPtmxMinorAndSlavePath() {
+        XCTAssertEqual(
+            TerminalPTYFDActivity.ttyName(path: "/dev/ptmx", rdev: 15 << 24),
+            "ttys000"
+        )
+        XCTAssertEqual(
+            TerminalPTYFDActivity.ttyName(path: "/dev/ptmx", rdev: (15 << 24) | 4),
+            "ttys004"
+        )
+        XCTAssertEqual(
+            TerminalPTYFDActivity.ttyName(path: "/dev/ttys001", rdev: 0),
+            "ttys001"
+        )
+        XCTAssertNil(TerminalPTYFDActivity.ttyName(path: "/dev/null", rdev: 0))
     }
 
     func testAppleScriptSourceExistsOnlyForTerminalAndITerm() {
