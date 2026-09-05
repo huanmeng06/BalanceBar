@@ -143,12 +143,7 @@ final class MenuBarAnimationTests: XCTestCase {
             CGPoint(x: host.bounds.midX, y: host.bounds.midY)
         )
         XCTAssertEqual(host.iconLayer.contentsScale, 2)
-        XCTAssertEqual(host.occlusionView.superview, host)
-        XCTAssertEqual(host.occlusionView.frame, host.bounds)
-        XCTAssertEqual(host.occlusionView.material, .menu)
-        XCTAssertEqual(host.occlusionView.blendingMode, .behindWindow)
-        XCTAssertEqual(host.occlusionView.state, .active)
-        XCTAssertGreaterThan(host.iconLayer.zPosition, host.occlusionView.layer?.zPosition ?? 0)
+        XCTAssertTrue(host.subviews.isEmpty)
 
         let sourceImage = NSImage(size: NSSize(width: 16, height: 16))
         sourceImage.isTemplate = true
@@ -174,10 +169,6 @@ final class MenuBarAnimationTests: XCTestCase {
         )
 
         host.installRotationAnimation()
-        XCTAssertNil(
-            host.occlusionView.layer?.animation(forKey: MenuBarNativeAnimatedIconHostView.rotationAnimationKey),
-            "the source occlusion must stay still while the icon layer rotates"
-        )
         let animation = try XCTUnwrap(host.rotationAnimationForTesting)
         XCTAssertEqual(animation.keyPath, "transform.rotation.z")
         let values = try XCTUnwrap(animation.values as? [NSNumber])
@@ -230,7 +221,7 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         let hostEnd = try XCTUnwrap(
             viewsSource.range(
-                of: "final class MenuBarTextView",
+                of: "final class MenuBarClaudeAnimatedIconHostView",
                 range: hostStart.upperBound..<viewsSource.endIndex
             )
         )
@@ -240,6 +231,8 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertFalse(hostSource.contains("DispatchSourceTimer"))
         XCTAssertFalse(hostSource.contains("needsDisplay"))
         XCTAssertFalse(hostSource.contains("setNeedsDisplay"))
+        XCTAssertFalse(hostSource.contains("NSVisualEffectView"))
+        XCTAssertFalse(hostSource.contains("backgroundColor"))
     }
 
     func testClaudeCoreAnimationHostUsesDiscreteSpriteTranslationContract() throws {

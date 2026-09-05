@@ -33,11 +33,11 @@ final class MenuBarBitmapRenderView: NSView {
 
 /// A BalanceBar-owned layer host for the native Codex animation.
 ///
-/// The host is a non-hit-testing subview of the status button. AppKit keeps
-/// the complete static GPT+text bitmap on the button so inactive-display
-/// replicants stay visible. This view occludes that static GPT on the current
-/// source presentation and owns the separate icon layer that Core Animation
-/// rotates. The view never schedules work for animation frames.
+/// The host is a transparent, non-hit-testing overlay. AppKit keeps the
+/// complete static GPT+text bitmap on the status button so inactive-display
+/// replicants stay visible. This view owns only the icon layer that Core
+/// Animation rotates; it never fills an opaque background. The view never
+/// schedules work for animation frames.
 final class MenuBarNativeAnimatedIconHostView: NSView {
     static let rotationAnimationKey = "balancebar.nativeCodexRotation"
     static let rotationFrameCount = MenuBarAnimationTiming.frameCount
@@ -50,10 +50,6 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
     static let clockwiseRotationValues: [NSNumber] = (0..<rotationFrameCount).map {
         NSNumber(value: 2 * Double.pi * Double($0) / Double(rotationFrameCount))
     }
-
-    /// Covers the static native GPT on the source presentation only. Inactive
-    /// replicants do not receive this view, so they keep the canonical bitmap.
-    let occlusionView = NSVisualEffectView()
 
     /// This is the only layer that receives the rotation animation.  It is a
     /// sublayer created and retained by BalanceBar, never the AppKit-managed
@@ -204,28 +200,14 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         translatesAutoresizingMaskIntoConstraints = true
         layer?.masksToBounds = false
         layer?.shadowOpacity = 0
-
-        occlusionView.translatesAutoresizingMaskIntoConstraints = true
-        occlusionView.autoresizingMask = [.width, .height]
-        occlusionView.wantsLayer = true
-        occlusionView.material = .menu
-        occlusionView.blendingMode = .behindWindow
-        occlusionView.state = .active
-        occlusionView.isEmphasized = false
-        addSubview(occlusionView)
-
         iconLayer.masksToBounds = false
         iconLayer.contentsGravity = .resizeAspect
-        iconLayer.zPosition = 1
         layer?.addSublayer(iconLayer)
         updateLayerGeometry(contentsScale: 2)
     }
 
     private func updateLayerGeometry(contentsScale: CGFloat) {
         let safeScale = contentsScale > 0 ? contentsScale : 2
-        if occlusionView.frame != bounds {
-            occlusionView.frame = bounds
-        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         iconLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)

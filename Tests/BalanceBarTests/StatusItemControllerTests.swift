@@ -539,8 +539,8 @@ final class StatusItemControllerTests: XCTestCase {
             CGPoint(x: host.bounds.midX, y: host.bounds.midY)
         )
         XCTAssertNotNil(host.rotationAnimationForTesting)
-        XCTAssertEqual(host.occlusionView.superview, host)
-        XCTAssertEqual(host.occlusionView.frame, host.bounds)
+        XCTAssertTrue(host.subviews.isEmpty)
+        try assertSourceIconCutoutIfHostIsSibling(controller, host: host)
         XCTAssertTrue(
             controller.menuBarButtonImageForTesting === staticImage,
             "running CA presentation must keep the canonical static GPT+text bitmap"
@@ -584,6 +584,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNil(host.superview)
         XCTAssertTrue(host.isHidden)
         XCTAssertNil(host.rotationAnimationForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
         XCTAssertTrue(controller.menuBarButtonImageForTesting === staticImage)
     }
 
@@ -673,13 +674,8 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(host.superview != nil)
         XCTAssertFalse(host.isHidden)
         XCTAssertNotNil(host.rotationAnimationForTesting)
-        XCTAssertEqual(host.occlusionView.superview, host)
-        XCTAssertEqual(host.occlusionView.frame, host.bounds)
-        XCTAssertNil(
-            host.occlusionView.layer?.animation(
-                forKey: MenuBarNativeAnimatedIconHostView.rotationAnimationKey
-            )
-        )
+        XCTAssertTrue(host.subviews.isEmpty)
+        try assertSourceIconCutoutIfHostIsSibling(controller, host: host)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
 
         let installCount = host.rotationAnimationInstallCount
@@ -709,6 +705,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNil(host.superview)
         XCTAssertTrue(host.isHidden)
         XCTAssertNil(host.rotationAnimationForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
 
         controller.updateActivity(
             activeClient: .codex,
@@ -1175,6 +1172,32 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(controller.codexAnimationFallbackActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertEqual(fallbackTransitions, [true, false])
+    }
+
+    private func assertSourceIconCutoutIfHostIsSibling(
+        _ controller: StatusItemController,
+        host: MenuBarNativeAnimatedIconHostView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertNotNil(host.superview, "running native host must be attached", file: file, line: line)
+        if host.superview is NSStatusBarButton {
+            XCTAssertNil(
+                controller.nativeCodexSourceIconMaskForTesting,
+                "a button-child host cannot use the source icon cutout",
+                file: file,
+                line: line
+            )
+            return
+        }
+        let mask = try XCTUnwrap(
+            controller.nativeCodexSourceIconMaskForTesting,
+            "a sibling host must clip the source static GPT",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(mask.fillRule, .evenOdd, file: file, line: line)
+        XCTAssertNotNil(mask.path, file: file, line: line)
     }
 
     private func makeSolidImage(
