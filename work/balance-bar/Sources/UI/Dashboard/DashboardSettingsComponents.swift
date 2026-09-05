@@ -602,7 +602,7 @@ private final class DashboardSettingsCardView: NSView {
     private var isHeightDirty = true
 
     override var intrinsicContentSize: NSSize {
-        guard let rowsStack, let heightConstraint else {
+        guard rowsStack != nil, let heightConstraint else {
             return NSSize(width: NSView.noIntrinsicMetric, height: 1)
         }
         guard automaticallyUpdatesHeight else {
