@@ -8,6 +8,11 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(AssistantClient.codex.displayName, "Codex")
         XCTAssertEqual(AssistantClient.claude.appType, "claude")
         XCTAssertEqual(AssistantClient.claude.displayName, "Claude Code")
+        XCTAssertEqual(AssistantClient.grok.appType, "grokbuild")
+        XCTAssertEqual(AssistantClient.grok.displayName, "Grok")
+        XCTAssertTrue(AssistantClient.codex.usesRotationAnimation)
+        XCTAssertTrue(AssistantClient.grok.usesRotationAnimation)
+        XCTAssertFalse(AssistantClient.claude.usesRotationAnimation)
 
         let link = StatusLink(title: "Status", url: "https://status.example")
         XCTAssertEqual(link, StatusLink(title: "Status", url: "https://status.example"))

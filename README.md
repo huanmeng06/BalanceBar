@@ -11,8 +11,8 @@ BalanceBar 是一款基于 CC Switch 的原生 macOS 菜单栏工具。它会跟
 ## 功能亮点
 
 - **菜单栏实时余量**：官方账号显示剩余百分比与重置倒计时，第三方供应商显示 API 余额。
-- **Codex 与 Claude Code 联动**：根据前台应用和终端中的 Claude Code 进程自动切换当前客户端及图标。
-- **任务状态提示**：Codex 执行任务时旋转图标；Claude Code 执行任务时播放思考动画。
+- **Codex、Claude Code 与 Grok 联动**：根据前台应用和终端中的 Claude Code / Grok CLI 进程自动切换当前客户端及图标。
+- **任务状态提示**：Codex 或 Grok 执行任务时旋转图标；Claude Code 执行任务时播放思考动画。
 - **跟随 CC Switch**：监听 `~/.cc-switch/cc-switch.db` 的变化，供应商切换后自动刷新，并以定时轮询兜底。
 - **快速切换供应商**：无需离开菜单栏即可查看各供应商余量并切换当前供应商。
 - **OpenCodex 集成**：可自动发现或手动配置本地 OpenCodex 仪表盘，并在菜单中展示、切换精选模型。

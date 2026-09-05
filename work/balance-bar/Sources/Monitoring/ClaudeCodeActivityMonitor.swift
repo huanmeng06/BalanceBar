@@ -12,6 +12,7 @@ final class ClaudeCodeActivityMonitor {
     private struct SessionCache {
         let scannedAt: Date
         let url: URL?
+        let lastActivityAt: Date?
     }
 
     private struct TranscriptCache {
@@ -25,7 +26,7 @@ final class ClaudeCodeActivityMonitor {
     private let projectsDirectory: URL
     private let clock: () -> Date
     private let processRunner: ProcessRunner
-    private var sessionCache = SessionCache(scannedAt: .distantPast, url: nil)
+    private var sessionCache = SessionCache(scannedAt: .distantPast, url: nil, lastActivityAt: nil)
     private var processCache: (checkedAt: Date, running: Bool) = (.distantPast, false)
     private var transcriptCache: TranscriptCache?
 
@@ -48,14 +49,19 @@ final class ClaudeCodeActivityMonitor {
 
     func activityStatus() -> (
         processRunning: Bool,
-        observation: ActivityMonitorObservation
+        observation: ActivityMonitorObservation,
+        lastActivityAt: Date?
     ) {
         let processRunning = isClaudeProcessRunning()
-        guard processRunning else { return (false, .hardTerminal) }
-        guard let sessionURL = latestMainSessionURL() else {
-            return (true, .ambiguousIdle)
+        guard processRunning else { return (false, .hardTerminal, nil) }
+        guard let session = latestMainSession() else {
+            return (true, .ambiguousIdle, nil)
         }
-        return (true, transcriptObservation(sessionURL, now: clock()))
+        return (
+            true,
+            transcriptObservation(session.url, now: clock()),
+            session.lastActivityAt
+        )
     }
 
     private static func runProcess(
@@ -127,17 +133,17 @@ final class ClaudeCodeActivityMonitor {
         return running
     }
 
-    private func latestMainSessionURL() -> URL? {
+    private func latestMainSession() -> (url: URL, lastActivityAt: Date?)? {
         let now = clock()
         if now.timeIntervalSince(sessionCache.scannedAt) < 2 {
-            return sessionCache.url
+            return sessionCache.url.map { ($0, sessionCache.lastActivityAt) }
         }
         guard let enumerator = FileManager.default.enumerator(
             at: projectsDirectory,
             includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
-            sessionCache = SessionCache(scannedAt: now, url: nil)
+            sessionCache = SessionCache(scannedAt: now, url: nil, lastActivityAt: nil)
             return nil
         }
 
@@ -154,8 +160,12 @@ final class ClaudeCodeActivityMonitor {
                 latest = (url, modified)
             }
         }
-        sessionCache = SessionCache(scannedAt: now, url: latest?.url)
-        return latest?.url
+        sessionCache = SessionCache(
+            scannedAt: now,
+            url: latest?.url,
+            lastActivityAt: latest?.date
+        )
+        return latest.map { ($0.url, $0.date) }
     }
 
     private func transcriptObservation(_ url: URL, now: Date) -> ActivityMonitorObservation {

@@ -13,6 +13,7 @@
 		A10000000000000000000022 /* CodexIcon.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* CodexIcon.svg */; };
 		A10000000000000000000023 /* Claude.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Claude.svg */; };
 		A10000000000000000000024 /* ClaudeThinking.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* ClaudeThinking.svg */; };
+		A31800000000000000000008 /* Grok.svg in Resources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000007 /* Grok.svg */; };
 		A100000000000000000000E1 /* GitHub.svg in Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E0 /* GitHub.svg */; };
 		A100000000000000000000E2 /* GitHub.svg in Test Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E0 /* GitHub.svg */; };
 		A10000000000000000000025 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* AppKit.framework */; };
@@ -52,6 +53,9 @@
 		A10000000000000000000079 /* DashboardWindowDragRegionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */; };
 		A1000000000000000000007B /* ClaudeCodeActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */; };
 		A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */; };
+		A31800000000000000000002 /* GrokActivityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000001 /* GrokActivityMonitor.swift */; };
+		A31800000000000000000004 /* GrokActivityMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000003 /* GrokActivityMonitorTests.swift */; };
+		A31800000000000000000006 /* ActivityCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000005 /* ActivityCoordinatorTests.swift */; };
 		A10000000000000000000083 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000080 /* MenuBarViews.swift */; };
 		A10000000000000000000084 /* MenuBarGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000081 /* MenuBarGeometry.swift */; };
 		A10000000000000000000085 /* MenuBarAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000082 /* MenuBarAnimation.swift */; };
@@ -117,6 +121,7 @@
 		A10000000000000000000013 /* CodexIcon.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = CodexIcon.svg; sourceTree = "<group>"; };
 		A10000000000000000000014 /* Claude.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Claude.svg; sourceTree = "<group>"; };
 		A10000000000000000000015 /* ClaudeThinking.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = ClaudeThinking.svg; sourceTree = "<group>"; };
+		A31800000000000000000007 /* Grok.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Grok.svg; sourceTree = "<group>"; };
 		A100000000000000000000E0 /* GitHub.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = GitHub.svg; sourceTree = "<group>"; };
 		A100000000000000000000F2 /* Localizable.strings (en) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000F3 /* Localizable.strings (zh-Hans) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -170,6 +175,9 @@
 		A1000000000000000000007A /* DashboardWindowDragRegionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWindowDragRegionTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeActivityMonitor.swift; sourceTree = "<group>"; };
 		A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCodeActivityMonitorTests.swift; sourceTree = "<group>"; };
+		A31800000000000000000001 /* GrokActivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokActivityMonitor.swift; sourceTree = "<group>"; };
+		A31800000000000000000003 /* GrokActivityMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokActivityMonitorTests.swift; sourceTree = "<group>"; };
+		A31800000000000000000005 /* ActivityCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCoordinatorTests.swift; sourceTree = "<group>"; };
 		A10000000000000000000080 /* MenuBarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViews.swift; sourceTree = "<group>"; };
 		A10000000000000000000081 /* MenuBarGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarGeometry.swift; sourceTree = "<group>"; };
 		A10000000000000000000082 /* MenuBarAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAnimation.swift; sourceTree = "<group>"; };
@@ -288,6 +296,7 @@
 				A10000000000000000000013 /* CodexIcon.svg */,
 				A10000000000000000000014 /* Claude.svg */,
 				A10000000000000000000015 /* ClaudeThinking.svg */,
+				A31800000000000000000007 /* Grok.svg */,
 				A100000000000000000000E0 /* GitHub.svg */,
 				A100000000000000000000F6 /* Localizable.strings */,
 			);
@@ -350,6 +359,8 @@
 				A10000000000000000000073 /* OfficialQuotaClientTests.swift */,
 				A10000000000000000000077 /* CodexActivityMonitorTests.swift */,
 				A1000000000000000000007E /* ClaudeCodeActivityMonitorTests.swift */,
+				A31800000000000000000003 /* GrokActivityMonitorTests.swift */,
+				A31800000000000000000005 /* ActivityCoordinatorTests.swift */,
 				A100000000000000000000C2 /* DashboardPreferencePagesTests.swift */,
 				A100000000000000000000C9 /* DashboardProviderPagesTests.swift */,
 				A100000000000000000000E3 /* ProviderRefreshCoordinatorTests.swift */,
@@ -421,6 +432,7 @@
 				A100000000000000000000D3 /* ActivityCoordinator.swift */,
 				A10000000000000000000076 /* CodexActivityMonitor.swift */,
 				A1000000000000000000007D /* ClaudeCodeActivityMonitor.swift */,
+				A31800000000000000000001 /* GrokActivityMonitor.swift */,
 			);
 			name = Monitoring;
 			path = "Sources/Monitoring";
@@ -654,6 +666,7 @@
 				A10000000000000000000022 /* CodexIcon.svg in Resources */,
 				A10000000000000000000023 /* Claude.svg in Resources */,
 				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
+				A31800000000000000000008 /* Grok.svg in Resources */,
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
 				A100000000000000000000F0 /* Localizable.strings in Resources */,
 			);
@@ -715,6 +728,7 @@
 				A10000000000000000000070 /* OfficialQuotaClient.swift in Sources */,
 				A10000000000000000000074 /* CodexActivityMonitor.swift in Sources */,
 				A1000000000000000000007B /* ClaudeCodeActivityMonitor.swift in Sources */,
+				A31800000000000000000002 /* GrokActivityMonitor.swift in Sources */,
 				A10000000000000000000083 /* MenuBarViews.swift in Sources */,
 				A10000000000000000000084 /* MenuBarGeometry.swift in Sources */,
 				A10000000000000000000085 /* MenuBarAnimation.swift in Sources */,
@@ -788,6 +802,8 @@
 				A10000000000000000000072 /* OfficialQuotaClientTests.swift in Sources */,
 				A10000000000000000000075 /* CodexActivityMonitorTests.swift in Sources */,
 				A1000000000000000000007C /* ClaudeCodeActivityMonitorTests.swift in Sources */,
+				A31800000000000000000004 /* GrokActivityMonitorTests.swift in Sources */,
+				A31800000000000000000006 /* ActivityCoordinatorTests.swift in Sources */,
 				A100000000000000000000C1 /* DashboardPreferencePagesTests.swift in Sources */,
 				A100000000000000000000C8 /* DashboardProviderPagesTests.swift in Sources */,
 				A100000000000000000000E4 /* ProviderRefreshCoordinatorTests.swift in Sources */,
