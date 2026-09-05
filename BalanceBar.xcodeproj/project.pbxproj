@@ -14,6 +14,7 @@
 		A10000000000000000000023 /* Claude.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Claude.svg */; };
 		A10000000000000000000024 /* ClaudeThinking.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* ClaudeThinking.svg */; };
 		A31800000000000000000008 /* Grok.png in Resources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000007 /* Grok.png */; };
+		A3180000000000000000000A /* GrokThinking.png in Resources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000009 /* GrokThinking.png */; };
 		A100000000000000000000E1 /* GitHub.svg in Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E0 /* GitHub.svg */; };
 		A100000000000000000000E2 /* GitHub.svg in Test Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E0 /* GitHub.svg */; };
 		A10000000000000000000025 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* AppKit.framework */; };
@@ -124,6 +125,7 @@
 		A10000000000000000000014 /* Claude.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Claude.svg; sourceTree = "<group>"; };
 		A10000000000000000000015 /* ClaudeThinking.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = ClaudeThinking.svg; sourceTree = "<group>"; };
 		A31800000000000000000007 /* Grok.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Grok.png; sourceTree = "<group>"; };
+		A31800000000000000000009 /* GrokThinking.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = GrokThinking.png; sourceTree = "<group>"; };
 		A100000000000000000000E0 /* GitHub.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = GitHub.svg; sourceTree = "<group>"; };
 		A100000000000000000000F2 /* Localizable.strings (en) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A100000000000000000000F3 /* Localizable.strings (zh-Hans) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = zh-Hans.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -301,6 +303,7 @@
 				A10000000000000000000014 /* Claude.svg */,
 				A10000000000000000000015 /* ClaudeThinking.svg */,
 				A31800000000000000000007 /* Grok.png */,
+				A31800000000000000000009 /* GrokThinking.png */,
 				A100000000000000000000E0 /* GitHub.svg */,
 				A100000000000000000000F6 /* Localizable.strings */,
 			);
@@ -673,6 +676,7 @@
 				A10000000000000000000023 /* Claude.svg in Resources */,
 				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
 				A31800000000000000000008 /* Grok.png in Resources */,
+				A3180000000000000000000A /* GrokThinking.png in Resources */,
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
 				A100000000000000000000F0 /* Localizable.strings in Resources */,
 			);

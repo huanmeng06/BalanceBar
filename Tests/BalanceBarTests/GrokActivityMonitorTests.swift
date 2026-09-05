@@ -216,6 +216,162 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertFalse(status.observation.legacyIsTaskRunning)
     }
 
+    func testOlderInProgressSessionKeepsRunningWhenNewerCompleted() throws {
+        try writeSession(
+            updates: [sessionUpdate("agent_thought_chunk")],
+            sessionID: "older",
+            modifiedAt: currentDate.addingTimeInterval(-30)
+        )
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 10),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "newer",
+            modifiedAt: currentDate
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "older",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ],
+            [
+                "session_id": "newer",
+                "pid": 102,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:01:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUserMessageChunkFromSixtySecondsAgoIsStillRunning() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate(
+                    "user_message_chunk",
+                    timestamp: currentDate.timeIntervalSince1970 - 60
+                )
+            ],
+            modifiedAt: currentDate.addingTimeInterval(-60)
+        )
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testPlanAfterTurnCompletedIsStillRunning() throws {
+        try writeSession(updates: [
+            sessionUpdate("turn_completed", timestamp: currentDate.timeIntervalSince1970 - 2),
+            sessionUpdate("plan")
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testParentAndChildrenExplicitCompletionIsNotRunningEvenIfJustWritten() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 1),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "parent",
+            modifiedAt: currentDate
+        )
+        try writeSubagentMeta(
+            parentSessionID: "parent",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "completed"
+        )
+        try writeSubagentUpdates(
+            parentSessionID: "parent",
+            subagentID: "child",
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 1),
+                sessionUpdate("turn_completed")
+            ],
+            modifiedAt: currentDate
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testProcessGoneIsNotRunningEvenWithInProgressSession() throws {
+        try writeSession(updates: [sessionUpdate("agent_thought_chunk")])
+
+        let status = makeMonitor(
+            processOutput: "101 1 ?? /usr/bin/python python grok.py"
+        ).activityStatus()
+        XCTAssertFalse(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testEmptyActiveSessionsIsIdleEvenIfSessionFilesExist() throws {
+        try writeSession(
+            updates: [sessionUpdate("agent_thought_chunk")],
+            registerActive: false
+        )
+        try writeActiveSessions([])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUnfinishedSubagentMetaWithoutTranscriptStaysInProgress() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 20),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "parent"
+        )
+        try writeSubagentMeta(
+            parentSessionID: "parent",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "running"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
     func testActiveSessionsJSONSelectsEncodedCWD() throws {
         try writeSession(
             updates: [sessionUpdate("turn_completed")],
@@ -332,7 +488,8 @@ final class GrokActivityMonitorTests: XCTestCase {
         updates: [[String: Any]],
         cwd: String = "/tmp/fixture",
         sessionID: String = "session",
-        modifiedAt: Date? = nil
+        modifiedAt: Date? = nil,
+        registerActive: Bool = true
     ) throws -> URL {
         let encoded = GrokActivityMonitor.encodeSessionDirectoryName(cwd)
         let sessionDirectory = fixtureDirectory
@@ -345,7 +502,35 @@ final class GrokActivityMonitorTests: XCTestCase {
         )
         let url = sessionDirectory.appendingPathComponent("updates.jsonl")
         try writeJSONL(updates, to: url, modifiedAt: modifiedAt)
+        if registerActive {
+            try upsertActiveSession(sessionID: sessionID, cwd: cwd)
+        }
         return url
+    }
+
+    private func upsertActiveSession(
+        sessionID: String,
+        cwd: String,
+        pid: Int = 101
+    ) throws {
+        let url = fixtureDirectory.appendingPathComponent("active_sessions.json")
+        var rows: [[String: Any]] = []
+        if let data = try? Data(contentsOf: url),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            rows = parsed
+        }
+        if rows.contains(where: {
+            ($0["session_id"] as? String) == sessionID && ($0["cwd"] as? String) == cwd
+        }) {
+            return
+        }
+        rows.append([
+            "session_id": sessionID,
+            "pid": pid,
+            "cwd": cwd,
+            "opened_at": "2026-09-05T00:00:00Z"
+        ])
+        try JSONSerialization.data(withJSONObject: rows).write(to: url)
     }
 
     private func writeJSONL(

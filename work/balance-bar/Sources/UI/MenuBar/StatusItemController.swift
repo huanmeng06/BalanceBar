@@ -2249,6 +2249,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var codexIconImage: NSImage?
     private var claudeIconImage: NSImage?
     private var grokIconImage: NSImage?
+    private var grokThinkingIconImage: NSImage?
     private var claudeThinkingSpriteImage: NSImage?
     private var snapshot = Snapshot.placeholder
     private var refreshDate: Date?
@@ -2437,10 +2438,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     func setGrokIconForTesting(_ image: NSImage) {
-        grokIconImage = image
+        setGrokIconsForTesting(idle: image, thinking: grokThinkingIconImage ?? image)
+    }
+
+    func setGrokIconsForTesting(idle: NSImage, thinking: NSImage) {
+        grokIconImage = idle
+        grokThinkingIconImage = thinking
+        guard activeClient == .grok, let source = rotationSourceImage else { return }
         menuBarIconView.setSourceImage(
-            image,
-            prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
+            source,
+            prepareAnimationFrames: isRotationTaskRunning
+                && codexAnimationBackend != .nativeCoreAnimation
         )
     }
 
@@ -2756,12 +2764,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         animationEnabled: Bool
     ) {
         let activeClientChanged = self.activeClient != activeClient
+        let grokRotationSourceChanged =
+            (activeClient == .grok || self.activeClient == .grok)
+            && self.isGrokTaskRunning != grokTaskRunning
         self.activeClient = activeClient
         self.isCodexTaskRunning = codexTaskRunning
         self.isClaudeTaskRunning = claudeTaskRunning
         self.isGrokTaskRunning = grokTaskRunning
         self.animationEnabled = animationEnabled
-        if activeClientChanged {
+        if activeClientChanged || grokRotationSourceChanged {
             stableCodexAnimationFrameBuffer.invalidate()
         }
         updateActivityIcon()
@@ -2909,6 +2920,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             icon.size = NSSize(width: 16, height: 16)
             icon.isTemplate = true
             grokIconImage = icon
+        }
+        if let thinkingURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "png"),
+           let thinking = NSImage(contentsOf: thinkingURL) {
+            thinking.size = NSSize(width: 16, height: 16)
+            thinking.isTemplate = true
+            grokThinkingIconImage = thinking
         }
         menuBarIconView.onSourceImageChanged = { [weak self] image in
             guard let self else { return }
@@ -3262,7 +3279,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .codex:
             return codexIconImage
         case .grok:
-            return grokIconImage
+            return isGrokTaskRunning ? grokThinkingIconImage : grokIconImage
         case .claude:
             return nil
         }
