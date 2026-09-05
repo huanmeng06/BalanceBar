@@ -543,6 +543,15 @@ final class StatusItemControllerTests: XCTestCase {
             controller.menuBarButtonImageForTesting === staticImage,
             "Probe 1 must keep the canonical full static bitmap on the native button"
         )
+        let sourceMask = try XCTUnwrap(controller.nativeCodexSourceIconMaskForTesting)
+        let buttonBounds = try XCTUnwrap(controller.menuBarButtonBoundsForTesting)
+        let cutoutRect = try XCTUnwrap(controller.nativeCodexSourceIconCutoutRectForTesting)
+        XCTAssertEqual(sourceMask.fillRule, .evenOdd)
+        XCTAssertEqual(sourceMask.frame.size.width, buttonBounds.width, accuracy: 0.001)
+        XCTAssertEqual(sourceMask.frame.size.height, buttonBounds.height, accuracy: 0.001)
+        XCTAssertTrue(buttonBounds.contains(cutoutRect))
+        XCTAssertLessThan(cutoutRect.width, buttonBounds.width)
+        XCTAssertLessThan(cutoutRect.height, buttonBounds.height)
 
         let installCount = host.rotationAnimationInstallCount
         let rasterizationCount = host.contentsRasterizationCount
@@ -574,6 +583,19 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(host.isHidden)
         XCTAssertNil(host.rotationAnimationForTesting)
         XCTAssertTrue(controller.menuBarButtonImageForTesting === staticImage)
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconCutoutRectForTesting)
+
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        XCTAssertNotNil(controller.nativeCodexSourceIconMaskForTesting)
+        controller.teardown()
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconCutoutRectForTesting)
     }
 
     @MainActor
@@ -923,6 +945,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
         XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertNotNil(controller.nativeCodexSourceIconMaskForTesting)
 
         controller.setCodexAnimationBackend(.stableBitmap)
         XCTAssertEqual(controller.preferredCodexAnimationBackendForTesting, .stableBitmap)
@@ -930,6 +953,8 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
         XCTAssertNil(host.superview)
         XCTAssertNil(host.rotationAnimationForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconCutoutRectForTesting)
         XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertEqual(controller.stableCodexAnimationFrameCountForTesting, 36)
 
@@ -941,6 +966,7 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(
             controller.nativeCodexAnimationHostForTesting?.rotationAnimationForTesting != nil
         )
+        XCTAssertNotNil(controller.nativeCodexSourceIconMaskForTesting)
         XCTAssertFalse(controller.codexAnimationFallbackActiveForTesting)
     }
 
@@ -997,6 +1023,8 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .stableBitmap)
         XCTAssertTrue(controller.codexAnimationFallbackActiveForTesting)
         XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconMaskForTesting)
+        XCTAssertNil(controller.nativeCodexSourceIconCutoutRectForTesting)
         XCTAssertEqual(fallbackTransitions, [true])
 
         controller.updateActivity(

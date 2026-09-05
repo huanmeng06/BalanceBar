@@ -314,9 +314,41 @@ final class MenuBarNativeTintRegressionTests: XCTestCase {
         let hostSource = String(source[hostStart.lowerBound..<hostEnd.lowerBound])
         XCTAssertTrue(hostSource.contains("let staticImage = cachedStaticMenuBarContentBitmap"))
         XCTAssertTrue(hostSource.contains("button.image = staticImage"))
+        XCTAssertTrue(hostSource.contains("applyNativeCodexSourceIconCutout("))
         XCTAssertFalse(hostSource.contains("cachedMenuBarTextBitmap"))
         XCTAssertFalse(hostSource.contains("button.image = textBitmap"))
         XCTAssertFalse(hostSource.contains("selectedMenuItemTextColor"))
+
+        let maskStart = try XCTUnwrap(
+            source.range(of: "private func applyNativeCodexSourceIconCutout(")
+        )
+        let maskEnd = try XCTUnwrap(
+            source.range(
+                of: "private static func nativeCodexIconRectInLayerCoordinates(",
+                range: maskStart.upperBound..<source.endIndex
+            )
+        )
+        let maskSource = String(source[maskStart.lowerBound..<maskEnd.lowerBound])
+        XCTAssertTrue(maskSource.contains("button.wantsLayer = true"))
+        XCTAssertTrue(maskSource.contains("buttonLayer.bounds"))
+        XCTAssertTrue(maskSource.contains("let path = CGMutablePath()"))
+        XCTAssertTrue(maskSource.contains("path.addRect(maskBounds)"))
+        XCTAssertTrue(maskSource.contains("path.addRect(iconRect)"))
+        XCTAssertTrue(maskSource.contains("mask.fillRule = .evenOdd"))
+        XCTAssertFalse(maskSource.contains("NSScreen"))
+        XCTAssertFalse(maskSource.contains("NSEvent"))
+
+        let detachStart = try XCTUnwrap(
+            source.range(of: "private func detachNativeCodexAnimationHostForStatusItemReplacement()")
+        )
+        let detachEnd = try XCTUnwrap(
+            source.range(
+                of: "private func deactivateClaudeThinkingAnimation()",
+                range: detachStart.upperBound..<source.endIndex
+            )
+        )
+        let detachSource = String(source[detachStart.lowerBound..<detachEnd.lowerBound])
+        XCTAssertTrue(detachSource.contains("clearNativeCodexSourceIconCutout()"))
     }
 
     private func makeHost() -> MenuBarNativeAnimatedIconHostView {

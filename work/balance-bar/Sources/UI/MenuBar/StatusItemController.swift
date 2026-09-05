@@ -2233,6 +2233,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var codexAnimationFallbackActive = false
     private var nativeCodexAnimatedIconHost: MenuBarNativeAnimatedIconHostView?
     private var nativeCodexAnimationIsActive = false
+    private var nativeCodexSourceIconMask: CAShapeLayer?
+    private weak var nativeCodexSourceIconMaskOwnerButton: NSStatusBarButton?
+    private var nativeCodexSourceIconPreviousMask: CALayer?
+    private var nativeCodexSourceIconCutoutRect: CGRect?
     private var claudeThinkingAnimatedIconHost: MenuBarClaudeAnimatedIconHostView?
     private var claudeThinkingAnimationIsActive = false
     /// Test-only seam for exercising the documented efficient-mode fallback;
@@ -2367,6 +2371,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var nativeCodexAnimationHostForTesting: MenuBarNativeAnimatedIconHostView? {
         nativeCodexAnimatedIconHost
+    }
+
+    var nativeCodexSourceIconMaskForTesting: CAShapeLayer? {
+        nativeCodexSourceIconMask
+    }
+
+    var nativeCodexSourceIconCutoutRectForTesting: CGRect? {
+        nativeCodexSourceIconCutoutRect
     }
 
     var claudeThinkingAnimationHostForTesting: MenuBarClaudeAnimatedIconHostView? {
@@ -3609,6 +3621,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func invalidateBitmapContentCache(setPlaceholder: Bool = false) {
+        clearNativeCodexSourceIconCutout()
         cachedMenuBarTextBitmap = nil
         cachedStaticMenuBarContentBitmap = nil
         cachedMenuBarContentVisualSignature = nil
@@ -3791,13 +3804,139 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         // Probe 1 keeps the canonical full bitmap (GPT + text) on the native
         // button. The secondary presentation therefore has a static GPT even
-        // when AppKit does not replicate this custom host layer. A possible
-        // source-side static-plus-rotating ghost is intentional for Probe 1.
+        // when AppKit does not replicate this custom host layer. Probe 2A
+        // masks only this source button's icon region after that boundary.
         if button.image !== staticImage {
             button.image = staticImage
         }
+        guard applyNativeCodexSourceIconCutout(
+            button: button,
+            localIconRect: localIconRect
+        ) else {
+            deactivateNativeCodexAnimation()
+            return false
+        }
         publishNativeCodexAnimationStateIfNeeded(true)
         return true
+    }
+
+    /// Applies the Probe 2A source-only icon hole to the real status button.
+    /// The button keeps the canonical full bitmap; this mask is the bounded
+    /// source-presentation experiment that hides both the static icon and the
+    /// existing child CA host on this button.
+    @discardableResult
+    private func applyNativeCodexSourceIconCutout(
+        button: NSStatusBarButton,
+        localIconRect: NSRect
+    ) -> Bool {
+        guard localIconRect.width > 0, localIconRect.height > 0 else {
+            return false
+        }
+        button.wantsLayer = true
+        guard let buttonLayer = button.layer,
+              let iconRect = Self.nativeCodexIconRectInLayerCoordinates(
+                  button: button,
+                  buttonLayer: buttonLayer,
+                  localIconRect: localIconRect
+              ) else {
+            return false
+        }
+
+        let mask: CAShapeLayer
+        if let existingMask = nativeCodexSourceIconMask,
+           nativeCodexSourceIconMaskOwnerButton === button {
+            mask = existingMask
+        } else {
+            clearNativeCodexSourceIconCutout()
+            let newMask = CAShapeLayer()
+            nativeCodexSourceIconMask = newMask
+            nativeCodexSourceIconMaskOwnerButton = button
+            nativeCodexSourceIconPreviousMask = buttonLayer.mask
+            mask = newMask
+        }
+
+        if let currentMask = buttonLayer.mask,
+           currentMask !== mask,
+           currentMask !== nativeCodexSourceIconPreviousMask {
+            return false
+        }
+
+        let maskBounds = CGRect(origin: .zero, size: buttonLayer.bounds.size)
+        let path = CGMutablePath()
+        path.addRect(maskBounds)
+        path.addRect(iconRect)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.frame = buttonLayer.bounds
+        mask.path = path
+        mask.fillRule = .evenOdd
+        mask.fillColor = NSColor.black.cgColor
+        mask.isGeometryFlipped = buttonLayer.isGeometryFlipped
+        if buttonLayer.mask !== mask {
+            buttonLayer.mask = mask
+        }
+        CATransaction.commit()
+        nativeCodexSourceIconCutoutRect = iconRect
+        return buttonLayer.mask === mask
+    }
+
+    /// Converts the existing button-local AppKit rect into the coordinate
+    /// system used by the button's layer mask. No screen or global coordinates
+    /// participate in this conversion.
+    private static func nativeCodexIconRectInLayerCoordinates(
+        button: NSStatusBarButton,
+        buttonLayer: CALayer,
+        localIconRect: NSRect
+    ) -> CGRect? {
+        let viewBounds = button.bounds
+        let layerBounds = buttonLayer.bounds
+        guard viewBounds.width > 0,
+              viewBounds.height > 0,
+              layerBounds.width > 0,
+              layerBounds.height > 0 else {
+            return nil
+        }
+        let clippedIconRect = localIconRect.intersection(viewBounds)
+        guard !clippedIconRect.isNull,
+              clippedIconRect.width > 0,
+              clippedIconRect.height > 0 else {
+            return nil
+        }
+
+        let xScale = layerBounds.width / viewBounds.width
+        let yScale = layerBounds.height / viewBounds.height
+        let x = (clippedIconRect.minX - viewBounds.minX) * xScale
+        let yInViewCoordinates: CGFloat
+        if button.isFlipped == buttonLayer.isGeometryFlipped {
+            yInViewCoordinates = clippedIconRect.minY - viewBounds.minY
+        } else {
+            yInViewCoordinates = viewBounds.maxY - clippedIconRect.maxY
+        }
+        let rect = CGRect(
+            x: x,
+            y: yInViewCoordinates * yScale,
+            width: clippedIconRect.width * xScale,
+            height: clippedIconRect.height * yScale
+        )
+        let maskBounds = CGRect(origin: .zero, size: layerBounds.size)
+        guard maskBounds.contains(rect) else { return nil }
+        return rect
+    }
+
+    /// Removes only the mask created by Probe 2A and restores any layer mask
+    /// that AppKit had before the probe installed its own identity.
+    private func clearNativeCodexSourceIconCutout() {
+        if let mask = nativeCodexSourceIconMask,
+           let ownerButton = nativeCodexSourceIconMaskOwnerButton,
+           let buttonLayer = ownerButton.layer,
+           buttonLayer.mask === mask {
+            buttonLayer.mask = nativeCodexSourceIconPreviousMask
+        }
+        nativeCodexSourceIconMask = nil
+        nativeCodexSourceIconMaskOwnerButton = nil
+        nativeCodexSourceIconPreviousMask = nil
+        nativeCodexSourceIconCutoutRect = nil
     }
 
     /// Synchronizes the retained Claude sprite host at a bounded visual
@@ -3874,6 +4013,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func deactivateNativeCodexAnimation() {
+        clearNativeCodexSourceIconCutout()
         nativeCodexAnimatedIconHost?.removeRotationAnimation()
         nativeCodexAnimatedIconHost?.isHidden = true
         nativeCodexAnimatedIconHost?.removeFromSuperview()
@@ -3884,6 +4024,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// layer animation stays installed on the retained host, so reattachment
     /// continues at the layer-local compositor phase without a restart.
     private func detachNativeCodexAnimationHostForStatusItemReplacement() {
+        clearNativeCodexSourceIconCutout()
         nativeCodexAnimatedIconHost?.removeFromSuperview()
     }
 
