@@ -220,6 +220,113 @@ final class MenuBarNativeTintRegressionTests: XCTestCase {
         host.removeRotationAnimation()
     }
 
+    @MainActor
+    func testCodexHostRemainsAttachedAndPopulatedAcrossRefreshBoundaries() throws {
+        try XCTSkipUnless(
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+            "Codex animation is disabled by the system reduce-motion setting"
+        )
+        let controller = makeController(codexAnimationBackend: .nativeCoreAnimation)
+        defer { controller.teardown() }
+
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let menuInput = makeMenuInput()
+        let settings = makeSettings()
+        controller.start(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: menuInput,
+            settings: settings
+        )
+
+        let codexIcon = makeTemplateProbeImage()
+        controller.setCodexIconForTesting(codexIcon)
+        controller.updateActivity(
+            activeClient: .codex,
+            codexTaskRunning: true,
+            claudeTaskRunning: false,
+            animationEnabled: true
+        )
+        try assertCodexHostReady(controller)
+
+        let host = try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        let installCount = host.rotationAnimationInstallCount
+        let rasterizationCount = host.contentsRasterizationCount
+
+        controller.update(
+            snapshot: snapshot,
+            refreshDate: snapshot.date,
+            menuInput: menuInput,
+            settings: settings
+        )
+        try assertCodexHostReady(controller)
+
+        controller.updateFontSize(settings.fontSize + 1)
+        try assertCodexHostReady(controller)
+
+        controller.updateWidthAdjustment(1)
+        try assertCodexHostReady(controller)
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        try assertCodexHostReady(controller)
+        controller.menuDidClose(controller.statusMenuForTesting)
+        try assertCodexHostReady(controller)
+
+        XCTAssertEqual(
+            host.rotationAnimationInstallCount,
+            installCount,
+            "refresh boundaries must retain one CA animation"
+        )
+        XCTAssertGreaterThanOrEqual(
+            host.contentsRasterizationCount,
+            rasterizationCount,
+            "a true geometry boundary may rerasterize without detaching the host"
+        )
+    }
+
+    func testCodexHostIsReadyBeforeTextOnlyImageBoundary() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "work/balance-bar/Sources/UI/MenuBar/StatusItemController.swift"
+            ),
+            encoding: .utf8
+        )
+        let hostStart = try XCTUnwrap(
+            source.range(of: "private func synchronizeNativeCodexAnimationHost()")
+        )
+        let hostEnd = try XCTUnwrap(
+            source.range(
+                of: "private func synchronizeClaudeThinkingAnimationHost()",
+                range: hostStart.upperBound..<source.endIndex
+            )
+        )
+        let hostSource = String(source[hostStart.lowerBound..<hostEnd.lowerBound])
+        let hostAttachment = try XCTUnwrap(
+            hostSource.range(of: "button.addSubview(host, positioned: .above, relativeTo: nil)")
+        )
+        let contents = try XCTUnwrap(hostSource.range(of: "host.updateContents("))
+        let visible = try XCTUnwrap(hostSource.range(of: "host.isHidden = false"))
+        let animation = try XCTUnwrap(hostSource.range(of: "host.installRotationAnimation()"))
+        let textBoundary = try XCTUnwrap(hostSource.range(of: "button.image = textBitmap"))
+
+        XCTAssertLessThan(hostAttachment.lowerBound, textBoundary.lowerBound)
+        XCTAssertLessThan(contents.lowerBound, textBoundary.lowerBound)
+        XCTAssertLessThan(visible.lowerBound, textBoundary.lowerBound)
+        XCTAssertLessThan(animation.lowerBound, textBoundary.lowerBound)
+        XCTAssertFalse(hostSource.contains("selectedMenuItemTextColor"))
+    }
+
     private func makeHost() -> MenuBarNativeAnimatedIconHostView {
         let host = MenuBarNativeAnimatedIconHostView(
             frame: NSRect(x: 0, y: 0, width: 16, height: 16)
@@ -279,5 +386,67 @@ final class MenuBarNativeTintRegressionTests: XCTestCase {
         XCTAssertEqual(center.redComponent, expected.redComponent, accuracy: 0.03)
         XCTAssertEqual(center.greenComponent, expected.greenComponent, accuracy: 0.03)
         XCTAssertEqual(center.blueComponent, expected.blueComponent, accuracy: 0.03)
+    }
+
+    private func assertCodexHostReady(
+        _ controller: StatusItemController
+    ) throws {
+        let host = try XCTUnwrap(controller.nativeCodexAnimationHostForTesting)
+        XCTAssertNotNil(host.superview, "the Codex host must remain attached to the status button")
+        XCTAssertFalse(host.isHidden, "the attached Codex host must be visible")
+        XCTAssertNotNil(host.iconLayer.contents, "the attached Codex host must have model contents")
+        XCTAssertNotNil(
+            host.rotationAnimationForTesting,
+            "the attached Codex host must retain its CA animation"
+        )
+    }
+
+    private func makeController(
+        codexAnimationBackend: MenuBarCodexAnimationBackend
+    ) -> StatusItemController {
+        StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            ),
+            codexAnimationBackend: codexAnimationBackend
+        )
+    }
+
+    private func makeMenuInput() -> StatusItemController.MenuInput {
+        StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false
+        )
+    }
+
+    private func makeSettings() -> StatusItemController.MenuBarSettings {
+        StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
     }
 }

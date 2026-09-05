@@ -3735,9 +3735,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Synchronizes the BalanceBar-owned icon host at a bounded visual
-    /// boundary.  The static text bitmap is installed first, then the host's
-    /// local geometry and one-time contents are prepared, and only then is the
-    /// compositor animation installed.
+    /// boundary. The host is attached and populated before the text-only
+    /// bitmap boundary, so secondary presentations can capture the icon.
     @discardableResult
     private func synchronizeNativeCodexAnimationHost() -> Bool {
         precondition(Thread.isMainThread, "Native Codex animation must be synchronized on the main thread")
@@ -3759,12 +3758,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         guard localIconRect.width > 0, localIconRect.height > 0 else {
             return false
-        }
-
-        if button.image !== textBitmap {
-            // One boundary assignment replaces the complete static bitmap
-            // with its text-only variant; the host supplies the icon pixels.
-            button.image = textBitmap
         }
 
         let host = nativeCodexAnimatedIconHost ?? {
@@ -3794,6 +3787,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Existing animation is deliberately retained across geometry,
         // appearance, backing-scale, and status-item reattachment changes.
         host.installRotationAnimation()
+
+        // Install the text-only image only after the retained host has a
+        // visible model layer with contents. Setting the status-button image
+        // is an AppKit visual boundary that can cause a secondary replicant
+        // snapshot; the host must already be part of that presentation.
+        if button.image !== textBitmap {
+            button.image = textBitmap
+        }
         publishNativeCodexAnimationStateIfNeeded(true)
         return true
     }
