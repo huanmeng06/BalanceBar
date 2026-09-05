@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -241,6 +241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
             onMenuBarFontSizePreset: { [weak self] preset in
                 self?.applyMenuBarFontSizePreset(preset)
+            },
+            onMenuBarIconSizePreset: { [weak self] preset in
+                self?.applyMenuBarIconSizePreset(preset)
             },
             onMenuBarIconDisplayModeChanged: { [weak self] mode in
                 self?.handleDashboardMenuBarIconDisplayModeChanged(mode)
@@ -717,6 +720,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             amountOffsetY: CGFloat(menuBarAmountOffsetY),
             widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment),
             fontSize: CGFloat(menuBarFontSize),
+            iconSize: preferences.menuBarIconSize,
             quotaWindowPreference: menuBarQuotaWindowPreference,
             quotaResetDisplayMode: menuBarQuotaResetDisplayMode,
             autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
@@ -1271,6 +1275,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return
             }
             applyMenuBarFontSizePreset(preset)
+        case AppPreferences.menuBarIconSizePresetKey:
+            guard let preset = MenuBarIconSizePreset(segmentIndex: Int(value.rounded())) else {
+                return
+            }
+            applyMenuBarIconSizePreset(preset)
         case AppPreferences.menuBarFontSizeKey:
             // Keep the numeric route for migration-era callers. The current
             // settings page sends the discrete preset key above.
@@ -1299,6 +1308,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         guard preferences.menuBarFontSizePreset != preset else { return }
         preferences.menuBarFontSizePreset = preset
         statusItemController.updateFontSize(CGFloat(preset.primarySize))
+        refreshDashboardMenuBarPage()
+    }
+
+    private func applyMenuBarIconSizePreset(_ preset: MenuBarIconSizePreset) {
+        guard preferences.menuBarIconSizePreset != preset else { return }
+        preferences.menuBarIconSizePreset = preset
+        statusItemController.updateIconSize(preset.pointSize)
         refreshDashboardMenuBarPage()
     }
 

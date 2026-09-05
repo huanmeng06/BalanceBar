@@ -29,6 +29,62 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNotNil(controller.menuBarButtonImageForTesting)
     }
 
+    @MainActor
+    func testIconSizePresetScalesSlotWithDrawingSizeAndLeavesNoEmptyMediumSlot() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+
+        XCTAssertEqual(
+            controller.menuBarIconSizeForTesting,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        let mediumLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+
+        controller.updateIconSize(MenuBarIconSizePreset.small.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        let smallLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        XCTAssertEqual(
+            mediumLength - smallLength,
+            MenuBarIconSizePreset.medium.pointSize - MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.5,
+            "small must shrink the status item instead of leaving an 18 pt empty slot"
+        )
+
+        controller.updateIconSize(MenuBarIconSizePreset.large.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.large.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertLessThan(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            22
+        )
+        let largeLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        XCTAssertEqual(
+            largeLength - mediumLength,
+            MenuBarIconSizePreset.large.pointSize - MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.5
+        )
+    }
+
     func testCodexAnimationCachePrecomposesFiniteFramesAndReusesSteadyStateLookups() {
         let sourceFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
             NSImage(size: NSSize(width: 16, height: 16))
