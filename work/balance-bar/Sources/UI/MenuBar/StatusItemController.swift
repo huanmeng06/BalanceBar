@@ -2403,6 +2403,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var menuBarButtonImageForTesting: NSImage? { statusItem?.button?.image }
 
+    var cachedStaticMenuBarContentBitmapForTesting: NSImage? {
+        cachedStaticMenuBarContentBitmap
+    }
+
+    var cachedMenuBarTextBitmapForTesting: NSImage? {
+        cachedMenuBarTextBitmap
+    }
+
     var menuBarContentIsOffscreenForTesting: Bool {
         guard let button = statusItem?.button else { return false }
         return menuBarContentStack.superview === bitmapRenderContainer
@@ -3735,9 +3743,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Synchronizes the BalanceBar-owned icon host at a bounded visual
-    /// boundary.  The static text bitmap is installed first, then the host's
-    /// local geometry and one-time contents are prepared, and only then is the
-    /// compositor animation installed.
+    /// boundary. The canonical static GPT+text bitmap stays on the native
+    /// button so inactive-display replicants keep a visible icon. The host
+    /// then overlays compositor rotation on the current source presentation.
     @discardableResult
     private func synchronizeNativeCodexAnimationHost() -> Bool {
         precondition(Thread.isMainThread, "Native Codex animation must be synchronized on the main thread")
@@ -3747,7 +3755,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard codexAnimationBackend == .nativeCoreAnimation,
               shouldPrepareCodexAnimationFrames,
               let button = statusItem?.button,
-              let textBitmap = cachedMenuBarTextBitmap,
+              let staticImage = cachedStaticMenuBarContentBitmap,
               let iconDrawRect = cachedMenuBarIconDrawRect,
               let placement = menuBarBitmapImagePlacement,
               let codexIconImage else {
@@ -3761,10 +3769,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return false
         }
 
-        if button.image !== textBitmap {
-            // One boundary assignment replaces the complete static bitmap
-            // with its text-only variant; the host supplies the icon pixels.
-            button.image = textBitmap
+        if button.image !== staticImage {
+            // Replicants snapshot this native image. Keep the complete static
+            // GPT+text bitmap; the CA host is source-local and is not copied
+            // to inactive displays.
+            button.image = staticImage
         }
 
         let host = nativeCodexAnimatedIconHost ?? {
