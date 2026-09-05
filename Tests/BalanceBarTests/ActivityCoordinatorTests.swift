@@ -33,9 +33,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 frontmost: .codex,
                 current: .grok,
                 grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokTrueTurnEvidence: true,
-                claudeTrueTurnEvidence: true
+                claudeProcessRunning: true
             ),
             .codex
         )
@@ -44,8 +42,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 frontmost: .other,
                 current: .codex,
                 grokProcessRunning: true,
-                claudeProcessRunning: false,
-                grokTrueTurnEvidence: true
+                claudeProcessRunning: false
             ),
             .codex
         )
@@ -60,9 +57,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 claudeProcessRunning: true,
                 frontmostTTY: "ttys002",
                 grokTTYs: ["ttys001"],
-                claudeTTYs: ["ttys002"],
-                grokTrueTurnEvidence: true,
-                claudeTrueTurnEvidence: false
+                claudeTTYs: ["ttys002"]
             ),
             .claude
         )
@@ -71,14 +66,13 @@ final class ActivityCoordinatorTests: XCTestCase {
                 current: .grok,
                 frontmostTTY: "/dev/ttys002",
                 grokTTYs: ["ttys001"],
-                claudeTTYs: ["ttys002"],
-                grokTrueTurnEvidence: true
+                claudeTTYs: ["ttys002"]
             ),
             .claude
         )
     }
 
-    func testFrontmostGrokTTYWinsEvenIfClaudeHasTrueTurnEvidence() {
+    func testFrontmostGrokTTYWinsWithoutTrueTurnEvidence() {
         XCTAssertEqual(
             ActivityClientSelection.client(
                 frontmost: .terminal,
@@ -87,29 +81,13 @@ final class ActivityCoordinatorTests: XCTestCase {
                 claudeProcessRunning: true,
                 frontmostTTY: "ttys001",
                 grokTTYs: ["ttys001"],
-                claudeTTYs: ["ttys002"],
-                grokTrueTurnEvidence: false,
-                claudeTrueTurnEvidence: true
+                claudeTTYs: ["ttys002"]
             ),
             .grok
         )
     }
 
-    func testNoTTYClaudeTrueTurnBeatsGrokFileActivity() {
-        XCTAssertEqual(
-            ActivityClientSelection.client(
-                frontmost: .terminal,
-                current: .grok,
-                grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokTrueTurnEvidence: false,
-                claudeTrueTurnEvidence: true
-            ),
-            .claude
-        )
-    }
-
-    func testNoTTYWithoutUniqueTrueTurnKeepsCurrent() {
+    func testNoTTYKeepsCurrentWhenBothCLIsAreAlive() {
         XCTAssertEqual(
             ActivityClientSelection.client(
                 frontmost: .terminal,
@@ -124,9 +102,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 frontmost: .terminal,
                 current: .claude,
                 grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokTrueTurnEvidence: false,
-                claudeTrueTurnEvidence: false
+                claudeProcessRunning: true
             ),
             .claude
         )
@@ -141,23 +117,19 @@ final class ActivityCoordinatorTests: XCTestCase {
                 claudeProcessRunning: true,
                 frontmostTTY: "ttys001",
                 grokTTYs: ["ttys001"],
-                claudeTTYs: ["ttys002"],
-                grokTrueTurnEvidence: true,
-                claudeTrueTurnEvidence: true
+                claudeTTYs: ["ttys002"]
             ),
             .codex
         )
     }
 
-    func testGrokSubagentTrueTurnDoesNotStealFocusedClaudeTTY() {
+    func testGrokSubagentDoesNotStealFocusedClaudeTTY() {
         XCTAssertEqual(
             ActivityClientSelection.preferredTerminalClient(
                 current: .claude,
                 frontmostTTY: "ttys002",
                 grokTTYs: ["ttys001"],
-                claudeTTYs: ["ttys002"],
-                grokTrueTurnEvidence: true,
-                claudeTrueTurnEvidence: false
+                claudeTTYs: ["ttys002"]
             ),
             .claude
         )
@@ -169,9 +141,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 current: .grok,
                 frontmostTTY: "ttys001",
                 grokTTYs: ["ttys001"],
-                claudeTTYs: ["ttys002"],
-                grokTrueTurnEvidence: true,
-                claudeTrueTurnEvidence: false
+                claudeTTYs: ["ttys002"]
             ),
             .grok
         )

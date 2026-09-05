@@ -330,9 +330,7 @@ enum ActivityClientSelection {
         claudeProcessRunning: Bool,
         frontmostTTY: String? = nil,
         grokTTYs: Set<String> = [],
-        claudeTTYs: Set<String> = [],
-        grokTrueTurnEvidence: Bool = false,
-        claudeTrueTurnEvidence: Bool = false
+        claudeTTYs: Set<String> = []
     ) -> AssistantClient {
         switch frontmost {
         case .codex:
@@ -352,9 +350,7 @@ enum ActivityClientSelection {
                     current: current,
                     frontmostTTY: frontmostTTY,
                     grokTTYs: grokTTYs,
-                    claudeTTYs: claudeTTYs,
-                    grokTrueTurnEvidence: grokTrueTurnEvidence,
-                    claudeTrueTurnEvidence: claudeTrueTurnEvidence
+                    claudeTTYs: claudeTTYs
                 )
             }
         }
@@ -376,15 +372,14 @@ enum ActivityClientSelection {
         }
     }
 
-    /// When both CLIs are alive, the focused TTY wins. File mtime and Grok
-    /// `.active` (including subagents) must not pin the icon.
+    /// When both CLIs are alive, a unique focused TTY wins. Otherwise keep
+    /// the current identity. Observation / subagent evidence never selects
+    /// the client; it only rotates while identity is already Grok.
     static func preferredTerminalClient(
         current: AssistantClient,
         frontmostTTY: String? = nil,
         grokTTYs: Set<String> = [],
-        claudeTTYs: Set<String> = [],
-        grokTrueTurnEvidence: Bool = false,
-        claudeTrueTurnEvidence: Bool = false
+        claudeTTYs: Set<String> = []
     ) -> AssistantClient {
         if let tty = TerminalCLIProcessRecord.normalizeTTY(frontmostTTY) {
             let grokMatch = grokTTYs.contains(tty)
@@ -392,9 +387,6 @@ enum ActivityClientSelection {
             if grokMatch != claudeMatch {
                 return grokMatch ? .grok : .claude
             }
-        }
-        if grokTrueTurnEvidence != claudeTrueTurnEvidence {
-            return grokTrueTurnEvidence ? .grok : .claude
         }
         if current == .grok || current == .claude {
             return current
@@ -520,6 +512,7 @@ final class ActivityCoordinator {
         isCheckInFlight = false
         lifecycleGeneration &+= 1
         lastSampledClient = nil
+        TerminalFrontmostTTY.discardLatch()
         let codexWasRunning = codexLifecycle.reset()
         let claudeWasRunning = claudeLifecycle.reset()
         let grokWasRunning = grokLifecycle.reset()
@@ -549,9 +542,10 @@ final class ActivityCoordinator {
         let frontmostKind = Self.frontmostKind(NSWorkspace.shared.frontmostApplication)
         switch frontmostKind {
         case .codex:
+            TerminalFrontmostTTY.discardLatch()
             actions.setActiveClient(.codex)
         case .other:
-            break
+            TerminalFrontmostTTY.discardLatch()
         case .terminal:
             if let client = ActivityClientSelection.immediateTerminalClient(
                 grokProcessRunning: actions.grokProcessAvailable(),
@@ -629,6 +623,9 @@ final class ActivityCoordinator {
                 }
                 let application = NSWorkspace.shared.frontmostApplication
                 let currentFrontmost = Self.frontmostKind(application)
+                if currentFrontmost != .terminal {
+                    TerminalFrontmostTTY.discardLatch()
+                }
                 let grokRunning = grokStatus?.processRunning
                     ?? self.actions.grokProcessAvailable()
                 let claudeRunning = claudeStatus?.processRunning
@@ -647,9 +644,7 @@ final class ActivityCoordinator {
                     claudeProcessRunning: claudeRunning,
                     frontmostTTY: frontmostTTY,
                     grokTTYs: snapshot?.grokTTYs ?? Set(grokStatus?.ttys ?? []),
-                    claudeTTYs: snapshot?.claudeTTYs ?? Set(claudeStatus?.ttys ?? []),
-                    grokTrueTurnEvidence: grokStatus?.trueTurnEvidence == true,
-                    claudeTrueTurnEvidence: claudeStatus?.trueTurnEvidence == true
+                    claudeTTYs: snapshot?.claudeTTYs ?? Set(claudeStatus?.ttys ?? [])
                 )
                 self.actions.setActiveClient(selected)
                 if selected != self.lastSampledClient {
@@ -681,9 +676,10 @@ final class ActivityCoordinator {
         let frontmostKind = Self.frontmostKind(NSWorkspace.shared.frontmostApplication)
         switch frontmostKind {
         case .codex:
+            TerminalFrontmostTTY.discardLatch()
             actions.setActiveClient(.codex)
         case .other:
-            break
+            TerminalFrontmostTTY.discardLatch()
         case .terminal:
             if let client = ActivityClientSelection.immediateTerminalClient(
                 grokProcessRunning: actions.grokProcessAvailable(),
