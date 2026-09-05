@@ -258,8 +258,14 @@ final class TerminalSessionIdentityTests: XCTestCase {
 
     func testAmbiguousWindowTitleDoesNotOverrideLatch() {
         XCTAssertEqual(TerminalFocusHint.client(fromWindowTitle: "grok"), .grok)
+        XCTAssertEqual(TerminalFocusHint.client(fromWindowTitle: "… - grok"), .grok)
         XCTAssertEqual(TerminalFocusHint.client(fromWindowTitle: "Claude Code"), .claude)
+        XCTAssertEqual(TerminalFocusHint.client(fromWindowTitle: "⠐ Claude Code"), .claude)
         XCTAssertNil(TerminalFocusHint.client(fromWindowTitle: "Ghostty"))
+        XCTAssertNil(TerminalFocusHint.client(fromWindowTitle: "group"))
+        XCTAssertNil(TerminalFocusHint.client(fromWindowTitle: "gro"))
+        XCTAssertNil(TerminalFocusHint.client(fromWindowTitle: "cloud"))
+        XCTAssertNil(TerminalFocusHint.client(fromWindowTitle: "cloud code"))
         XCTAssertNil(TerminalFocusHint.client(fromWindowTitle: "grok — claude"))
         XCTAssertNil(TerminalFocusHint.client(fromWindowTitle: nil))
 
@@ -436,23 +442,43 @@ final class TerminalSessionIdentityTests: XCTestCase {
             iterm,
             TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.googlecode.iterm2")
         )
+        XCTAssertTrue(terminal?.contains("tty of selected tab of front window") == true)
+        XCTAssertTrue(terminal?.contains("custom title of selected tab of front window") == true)
+        XCTAssertTrue(terminal?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
+        XCTAssertTrue(iterm?.contains("tty of current session of current window") == true)
+        XCTAssertTrue(iterm?.contains("name of current session of current window") == true)
+        XCTAssertTrue(iterm?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
         XCTAssertTrue(
             ghostty?.contains("tty of focused terminal of selected tab of front window") == true
         )
         XCTAssertTrue(
-            TerminalFrontmostTTY.appleScriptSource(
-                bundleIdentifier: "com.mitchellh.ghostty",
-                query: .pid
-            )?.contains("pid of focused terminal of selected tab of front window") == true
+            ghostty?.contains("pid of focused terminal of selected tab of front window") == true
         )
-        XCTAssertNil(
-            TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.apple.Terminal", query: .pid)
-        )
-        XCTAssertNil(
-            TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.googlecode.iterm2", query: .pid)
-        )
+        XCTAssertTrue(ghostty?.contains("name of selected tab of front window") == true)
+        XCTAssertTrue(ghostty?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
         XCTAssertNil(TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "dev.warp.warp-stable"))
         XCTAssertNil(TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "net.kovidgoyal.kitty"))
+    }
+
+    func testParseSelectedTabSignalSplitsTTYPIDAndTitle() {
+        let grok = TerminalFrontmostTTY.parseSelectedTabSignal("/dev/ttys001\n200\n… - grok")
+        XCTAssertEqual(grok.tty, grokTTY)
+        XCTAssertEqual(grok.pid, 200)
+        XCTAssertEqual(grok.title, "… - grok")
+
+        let titleOnly = TerminalFrontmostTTY.parseSelectedTabSignal("\n\nClaude Code")
+        XCTAssertNil(titleOnly.tty)
+        XCTAssertNil(titleOnly.pid)
+        XCTAssertEqual(titleOnly.title, "Claude Code")
+
+        let empty = TerminalFrontmostTTY.parseSelectedTabSignal("\n\n")
+        XCTAssertNil(empty.tty)
+        XCTAssertNil(empty.pid)
+        XCTAssertNil(empty.title)
+        XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal(nil),
+            TerminalSelectedTabSignal()
+        )
     }
 
     func testGhosttyAppleScriptTTYWinsOverGrowingGrokFDWithoutSurfaceProbes() {
@@ -463,7 +489,6 @@ final class TerminalSessionIdentityTests: XCTestCase {
         var fdCalls = 0
         var winsizeCalls = 0
         var ipcCalls = 0
-        var titleCalls = 0
 
         for sampleIndex in 1...4 {
             grokOffset += 1
@@ -480,8 +505,7 @@ final class TerminalSessionIdentityTests: XCTestCase {
                 },
                 fdCalled: { fdCalls += 1 },
                 winsizeCalled: { winsizeCalls += 1 },
-                ipcCalled: { ipcCalls += 1 },
-                titleCalled: { titleCalls += 1 }
+                ipcCalled: { ipcCalls += 1 }
             )
             XCTAssertEqual(result.tty, grokTTY, "sample \(sampleIndex)")
             XCTAssertFalse(result.loadedSnapshot)
@@ -501,7 +525,6 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertEqual(fdCalls, 0)
         XCTAssertEqual(winsizeCalls, 0)
         XCTAssertEqual(ipcCalls, 0)
-        XCTAssertEqual(titleCalls, 0)
     }
 
     func testPidMapsToUniqueGrokTTYUnderWindowWithoutSurfaceProbes() {
@@ -541,11 +564,14 @@ final class TerminalSessionIdentityTests: XCTestCase {
         )
     }
 
-    func testMissingAppleScriptStillLatchesClaudeWhileGrokStreams() {
+    func testMissingAppleScriptKeepsClaudeLatchWhileGrokStreams() {
         let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
-        var latch = TerminalTTYFocusLatch()
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: claudeTTY)
         var grokOffset: Int64 = 100
         var snapshotLoads = 0
+        var fdCalls = 0
+        var winsizeCalls = 0
+        var ipcCalls = 0
         func sample(claudeOffset: Int64) -> String? {
             grokOffset += 1
             let result = resolveFocusGhostty(
@@ -557,10 +583,13 @@ final class TerminalSessionIdentityTests: XCTestCase {
                 loadSnapshot: {
                     snapshotLoads += 1
                     return snapshot
-                }
+                },
+                fdCalled: { fdCalls += 1 },
+                winsizeCalled: { winsizeCalls += 1 },
+                ipcCalled: { ipcCalls += 1 }
             )
             XCTAssertTrue(result.loadedSnapshot)
-            XCTAssertTrue(result.probedSurface)
+            XCTAssertFalse(result.probedSurface)
             return result.tty
         }
 
@@ -582,6 +611,221 @@ final class TerminalSessionIdentityTests: XCTestCase {
             .claude
         )
         XCTAssertGreaterThanOrEqual(snapshotLoads, 4)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(winsizeCalls, 0)
+        XCTAssertEqual(ipcCalls, 0)
+    }
+
+    func testSelectedTabTitleSelectsGrokWithoutIOOrSurfaceProbes() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: claudeTTY)
+        var snapshotLoads = 0
+        var fdCalls = 0
+        var winsizeCalls = 0
+        var ipcCalls = 0
+        let result = resolveFocusGhostty(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTitle: "… - grok",
+            grokOffset: 9_000,
+            claudeOffset: 50,
+            grokIO: Date(timeIntervalSince1970: 90),
+            loadSnapshot: {
+                snapshotLoads += 1
+                return snapshot
+            },
+            fdCalled: { fdCalls += 1 },
+            winsizeCalled: { winsizeCalls += 1 },
+            ipcCalled: { ipcCalls += 1 }
+        )
+        XCTAssertEqual(result.tty, grokTTY)
+        XCTAssertTrue(result.loadedSnapshot)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(snapshotLoads, 1)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(winsizeCalls, 0)
+        XCTAssertEqual(ipcCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .claude,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
+    }
+
+    func testSelectedTabTitleSelectsClaudeCodeWithoutIOOrSurfaceProbes() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: grokTTY)
+        var snapshotLoads = 0
+        var fdCalls = 0
+        let result = resolveFocusGhostty(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTitle: "Claude Code",
+            grokOffset: 9_000,
+            claudeOffset: 50,
+            grokIO: Date(timeIntervalSince1970: 90),
+            loadSnapshot: {
+                snapshotLoads += 1
+                return snapshot
+            },
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertEqual(result.tty, claudeTTY)
+        XCTAssertTrue(result.loadedSnapshot)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(snapshotLoads, 1)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .claude
+        )
+    }
+
+    func testAmbiguousSelectedTabTitleDoesNotFlipLatch() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        for title in ["Ghostty", "group", "grok — claude", "gro", "cloud", "cloud code"] {
+            var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: claudeTTY)
+            var fdCalls = 0
+            let result = resolveFocusGhostty(
+                snapshot: snapshot,
+                latch: &latch,
+                appleScriptTitle: title,
+                grokOffset: 9_000,
+                claudeOffset: 50,
+                grokIO: Date(timeIntervalSince1970: 90),
+                loadSnapshot: { snapshot },
+                fdCalled: { fdCalls += 1 }
+            )
+            XCTAssertEqual(result.tty, claudeTTY, title)
+            XCTAssertFalse(result.probedSurface, title)
+            XCTAssertEqual(fdCalls, 0, title)
+            XCTAssertEqual(
+                ActivityClientSelection.preferredTerminalClient(
+                    current: .claude,
+                    frontmostTTY: result.tty,
+                    grokTTYs: snapshot.grokTTYs,
+                    claudeTTYs: snapshot.claudeTTYs
+                ),
+                .claude,
+                title
+            )
+        }
+    }
+
+    func testAppleScriptTTYIsPreferredOverSelectedTabTitle() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: grokTTY)
+        var snapshotLoads = 0
+        var fdCalls = 0
+        let result = resolveFocusGhostty(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTTY: claudeTTY,
+            appleScriptTitle: "… - grok",
+            grokOffset: 9_000,
+            claudeOffset: 50,
+            grokIO: Date(timeIntervalSince1970: 90),
+            loadSnapshot: {
+                snapshotLoads += 1
+                return snapshot
+            },
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertEqual(result.tty, claudeTTY)
+        XCTAssertFalse(result.loadedSnapshot)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(snapshotLoads, 0)
+        XCTAssertEqual(fdCalls, 0)
+    }
+
+    func testKittyFocusedTTYStillUsesIPCWhenAppleScriptIsUnavailable() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: claudeTTY)
+        var ipcCalls = 0
+        var fdCalls = 0
+        let result = TerminalFrontmostTTY.resolveFocus(
+            bundleIdentifier: "net.kovidgoyal.kitty",
+            terminalPID: 100,
+            grokTTYs: snapshot.grokTTYs,
+            claudeTTYs: snapshot.claudeTTYs,
+            appleScriptTTY: nil,
+            appleScriptPID: nil,
+            appleScriptTitle: nil,
+            loadSnapshot: { snapshot },
+            ttyIODate: { _ in self.quietIO },
+            ttyFDOffsets: {
+                fdCalls += 1
+                return [self.grokTTY: 9_000, self.claudeTTY: 50]
+            },
+            ttyWinsize: { _ in self.defaultWinsize },
+            ipcTTY: {
+                ipcCalls += 1
+                return self.grokTTY
+            },
+            latch: &latch
+        )
+        XCTAssertEqual(result.tty, grokTTY)
+        XCTAssertTrue(result.loadedSnapshot)
+        XCTAssertTrue(result.probedSurface)
+        XCTAssertEqual(ipcCalls, 1)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .claude,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
+    }
+
+    func testEmptyTTYTitleSwitchesFromClaudeLatchToStreamingGrok() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: claudeTTY)
+        var snapshotLoads = 0
+        var fdCalls = 0
+        var winsizeCalls = 0
+        var ipcCalls = 0
+        let result = resolveFocusGhostty(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTitle: "… - grok",
+            grokOffset: 12_000,
+            claudeOffset: 50,
+            grokIO: Date(timeIntervalSince1970: 90),
+            loadSnapshot: {
+                snapshotLoads += 1
+                return snapshot
+            },
+            fdCalled: { fdCalls += 1 },
+            winsizeCalled: { winsizeCalls += 1 },
+            ipcCalled: { ipcCalls += 1 }
+        )
+        XCTAssertEqual(result.tty, grokTTY)
+        XCTAssertTrue(result.loadedSnapshot)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(snapshotLoads, 1)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(winsizeCalls, 0)
+        XCTAssertEqual(ipcCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .claude,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
     }
 
     private func quietBoth(
@@ -610,6 +854,7 @@ final class TerminalSessionIdentityTests: XCTestCase {
         latch: inout TerminalTTYFocusLatch,
         appleScriptTTY: String? = nil,
         appleScriptPID: Int32? = nil,
+        appleScriptTitle: String? = nil,
         grokOffset: Int64,
         claudeOffset: Int64,
         grokIO: Date? = nil,
@@ -619,8 +864,7 @@ final class TerminalSessionIdentityTests: XCTestCase {
         loadSnapshot: @escaping () -> TerminalCLIProcessSnapshot? = { nil },
         fdCalled: @escaping () -> Void = {},
         winsizeCalled: @escaping () -> Void = {},
-        ipcCalled: @escaping () -> Void = {},
-        titleCalled: @escaping () -> Void = {}
+        ipcCalled: @escaping () -> Void = {}
     ) -> (tty: String?, loadedSnapshot: Bool, probedSurface: Bool) {
         TerminalFrontmostTTY.resolveFocus(
             bundleIdentifier: "com.mitchellh.ghostty",
@@ -629,6 +873,7 @@ final class TerminalSessionIdentityTests: XCTestCase {
             claudeTTYs: snapshot.claudeTTYs,
             appleScriptTTY: appleScriptTTY,
             appleScriptPID: appleScriptPID,
+            appleScriptTitle: appleScriptTitle,
             loadSnapshot: loadSnapshot,
             ttyIODate: { tty in
                 if tty == self.grokTTY { return grokIO ?? self.quietIO }
@@ -647,10 +892,6 @@ final class TerminalSessionIdentityTests: XCTestCase {
             },
             ipcTTY: {
                 ipcCalled()
-                return nil
-            },
-            windowTitle: {
-                titleCalled()
                 return nil
             },
             latch: &latch
