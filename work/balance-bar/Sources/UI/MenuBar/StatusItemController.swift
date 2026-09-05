@@ -2904,7 +2904,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
-        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "svg"),
+        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png"),
            let icon = NSImage(contentsOf: iconURL) {
             icon.size = NSSize(width: 16, height: 16)
             icon.isTemplate = true
