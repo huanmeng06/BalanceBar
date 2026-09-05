@@ -2357,6 +2357,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.isRotating
     }
 
+    var menuBarSourceImageForTesting: NSImage? {
+        menuBarIconView.sourceImageForRendering
+    }
+
     var codexAnimationBackendForTesting: MenuBarCodexAnimationBackend {
         codexAnimationBackend
     }
@@ -3124,6 +3128,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch activeClient {
         case .codex:
             deactivateClaudeThinkingAnimation()
+            ensureCodexSourceImage()
             let shouldAnimate = MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isCodexTaskRunning,
                 preferenceEnabled: animationEnabled,
@@ -3140,13 +3145,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             switch codexAnimationBackend {
             case .nativeCoreAnimation:
                 menuBarIconView.stopRotating()
-                if let codexIconImage,
-                   menuBarIconView.sourceImageForRendering !== codexIconImage {
-                    menuBarIconView.setSourceImage(
-                        codexIconImage,
-                        prepareAnimationFrames: false
-                    )
-                }
                 guard synchronizeNativeCodexAnimationHost() else {
                     activateTemporaryStableBitmapFallback()
                     return
@@ -3198,6 +3196,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 restoreStaticMenuBarBitmap()
             }
         }
+    }
+
+    /// Establishes Codex's semantic source before the task animation policy
+    /// can take an idle early-return path. Static ownership is intentionally
+    /// separate from frame preparation: switching back to idle Codex must not
+    /// eagerly build the synchronized animation frames.
+    private func ensureCodexSourceImage() {
+        guard let codexIconImage,
+              menuBarIconView.sourceImageForRendering !== codexIconImage else {
+            return
+        }
+        menuBarIconView.setSourceImage(
+            codexIconImage,
+            prepareAnimationFrames: false
+        )
     }
 
     private func stopCodexAnimationImplementation() {
