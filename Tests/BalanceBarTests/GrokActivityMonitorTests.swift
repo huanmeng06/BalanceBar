@@ -398,6 +398,182 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertEqual(status.observation, .active)
     }
 
+    func testParentTurnCompletedStillRunningWhenWorkflowIsActive() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 20),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "parent"
+        )
+        try writeWorkflowState(
+            sessionID: "parent",
+            runID: "wf_active",
+            status: "active"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
+    }
+
+    func testCompletedWorkflowAndFinishedChildrenAreIdle() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 1),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "parent"
+        )
+        try writeWorkflowState(
+            sessionID: "parent",
+            runID: "wf_done",
+            status: "complete"
+        )
+        try writeSubagentMeta(
+            parentSessionID: "parent",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "completed"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUnmatchedTaskBackgroundedStaysRunning() throws {
+        try writeSession(updates: [
+            sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 10),
+            sessionUpdate("turn_completed"),
+            taskBackgrounded("bg-1")
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
+    }
+
+    func testMatchedBackgroundTaskDoesNotKeepCompletedTurnRunning() throws {
+        try writeSession(updates: [
+            sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 10),
+            sessionUpdate("turn_completed"),
+            taskBackgrounded("bg-1"),
+            taskCompleted("bg-1")
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testTaskCompletedDoesNotIdleActiveWorkflow() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 20),
+                sessionUpdate("turn_completed"),
+                taskBackgrounded("bg-1"),
+                taskCompleted("bg-1")
+            ],
+            sessionID: "parent"
+        )
+        try writeWorkflowState(
+            sessionID: "parent",
+            runID: "wf_active",
+            status: "active"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
+    func testPausedWorkflowStaysRunning() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "parent"
+        )
+        try writeWorkflowState(
+            sessionID: "parent",
+            runID: "wf_paused",
+            status: "paused"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
+    }
+
+    func testProcessGoneIsIdleEvenWithActiveWorkflowState() throws {
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "parent"
+        )
+        try writeWorkflowState(
+            sessionID: "parent",
+            runID: "wf_active",
+            status: "active"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "parent",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+
+        let status = makeMonitor(
+            processOutput: "101 1 ?? /usr/bin/python python grok.py"
+        ).activityStatus()
+        XCTAssertFalse(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
     func testProcessRunnerFailureAndNonZeroExitUseFalseFallback() {
         let throwingMonitor = GrokActivityMonitor(
             grokDirectory: fixtureDirectory,
@@ -567,6 +743,81 @@ final class GrokActivityMonitorTests: XCTestCase {
                 ]
             ]
         ]
+    }
+
+    private func taskBackgrounded(
+        _ taskID: String,
+        timestamp: TimeInterval? = nil
+    ) -> [String: Any] {
+        [
+            "timestamp": timestamp ?? currentDate.timeIntervalSince1970,
+            "method": "_x.ai/session/update",
+            "params": [
+                "sessionId": "session",
+                "update": [
+                    "sessionUpdate": "task_backgrounded",
+                    "tool_call_id": taskID,
+                    "task_id": taskID,
+                    "command": "sleep 30",
+                    "cwd": "/tmp/fixture",
+                    "output_file": "/tmp/fixture/terminal/\(taskID).log",
+                    "description": "Background command"
+                ]
+            ]
+        ]
+    }
+
+    private func taskCompleted(
+        _ taskID: String,
+        timestamp: TimeInterval? = nil
+    ) -> [String: Any] {
+        [
+            "timestamp": timestamp ?? currentDate.timeIntervalSince1970,
+            "method": "_x.ai/session/update",
+            "params": [
+                "sessionId": "session",
+                "update": [
+                    "sessionUpdate": "task_completed",
+                    "task_snapshot": [
+                        "task_id": taskID,
+                        "command": "sleep 30",
+                        "cwd": "/tmp/fixture"
+                    ]
+                ]
+            ]
+        ]
+    }
+
+    private func writeWorkflowState(
+        sessionID: String,
+        runID: String,
+        status: String,
+        cwd: String = "/tmp/fixture"
+    ) throws {
+        let encoded = GrokActivityMonitor.encodeSessionDirectoryName(cwd)
+        let directory = fixtureDirectory
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(encoded, isDirectory: true)
+            .appendingPathComponent(sessionID, isDirectory: true)
+            .appendingPathComponent("workflows", isDirectory: true)
+            .appendingPathComponent(runID, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let state: [String: Any] = [
+            "version": 4,
+            "state": [
+                "run_id": runID,
+                "revision": 1,
+                "name": "deep-research",
+                "status": status,
+                "foreground": false
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: state).write(
+            to: directory.appendingPathComponent("state.json")
+        )
     }
 
     private enum FixtureError: Error {

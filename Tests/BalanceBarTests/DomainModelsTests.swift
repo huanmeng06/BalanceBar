@@ -11,7 +11,7 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(AssistantClient.grok.appType, "grokbuild")
         XCTAssertEqual(AssistantClient.grok.displayName, "Grok")
         XCTAssertTrue(AssistantClient.codex.usesRotationAnimation)
-        XCTAssertTrue(AssistantClient.grok.usesRotationAnimation)
+        XCTAssertFalse(AssistantClient.grok.usesRotationAnimation)
         XCTAssertFalse(AssistantClient.claude.usesRotationAnimation)
 
         let link = StatusLink(title: "Status", url: "https://status.example")

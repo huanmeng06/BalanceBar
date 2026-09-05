@@ -153,6 +153,7 @@ for required_file in \
     "$source_dir/ClaudeThinking.svg" \
     "$source_dir/Grok.png" \
     "$source_dir/GrokThinking.png" \
+    "$source_dir/GrokThinking.gif" \
     "$launch_agent_source_dir/ChatGPTLaunchAgentMain.swift" \
     "$launch_agent_source_dir/balancebar-chatgpt-launch-agent.plist"
 do
@@ -252,7 +253,7 @@ plutil -lint "$launch_agent_plist" >/dev/null
 bundle_program="$(plutil -extract BundleProgram raw -o - "$launch_agent_plist")"
 [[ "$bundle_program" == "Contents/Library/LaunchAgents/BalanceBarChatGPTLaunchAgent" ]] \
     || die "ChatGPT launch agent plist has an invalid BundleProgram: $bundle_program"
-for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.png GrokThinking.png
+for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.png GrokThinking.png GrokThinking.gif
 do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
 done

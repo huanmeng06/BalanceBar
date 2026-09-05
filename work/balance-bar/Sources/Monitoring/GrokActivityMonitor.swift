@@ -28,8 +28,7 @@ final class GrokActivityMonitor {
         "subagent_spawned"
     ]
     private static let terminalSessionUpdates: Set<String> = [
-        "turn_completed",
-        "task_completed"
+        "turn_completed"
     ]
     private static let noiseSessionUpdates: Set<String> = [
         "session_recap",
@@ -39,7 +38,22 @@ final class GrokActivityMonitor {
         "image_dropped",
         "image_compressed",
         "subagent_finished",
-        "task_backgrounded"
+        "workflow_updated"
+    ]
+    private static let finishedDurableStatuses: Set<String> = [
+        "completed",
+        "complete",
+        "failed",
+        "cancelled",
+        "canceled",
+        "stopped",
+        "finished"
+    ]
+    private static let inProgressDurableStatuses: Set<String> = [
+        "active",
+        "running",
+        "paused",
+        "pausing"
     ]
     private static let finishedSubagentStatuses: Set<String> = [
         "completed",
@@ -47,6 +61,12 @@ final class GrokActivityMonitor {
         "cancelled",
         "canceled",
         "finished"
+    ]
+    private static let durableStillRunningDirectories = [
+        "workflows",
+        "monitors",
+        "loops",
+        "scheduler"
     ]
 
     private struct TranscriptCache {
@@ -284,9 +304,10 @@ final class GrokActivityMonitor {
         for sessionURL: URL,
         now: Date
     ) -> [SessionSignal] {
+        let sessionDirectory = sessionURL.deletingLastPathComponent()
         var signals = [transcriptSignal(sessionURL, now: now)]
-        let subagentsDirectory = sessionURL
-            .deletingLastPathComponent()
+        signals.append(contentsOf: durableStillRunningSignals(in: sessionDirectory))
+        let subagentsDirectory = sessionDirectory
             .appendingPathComponent("subagents", isDirectory: true)
         guard FileManager.default.fileExists(atPath: subagentsDirectory.path) else {
             return signals
@@ -301,6 +322,68 @@ final class GrokActivityMonitor {
             signals.append(subagentSignal(at: child, now: now))
         }
         return signals
+    }
+
+    /// Workflows, monitors, loops, and scheduler state in the considered
+    /// session directory. Identity fields stay empty so this never selects
+    /// the Grok tab; it only keeps task-running after parent `turn_completed`.
+    private func durableStillRunningSignals(in sessionDirectory: URL) -> [SessionSignal] {
+        var signals: [SessionSignal] = []
+        for folderName in Self.durableStillRunningDirectories {
+            let folder = sessionDirectory.appendingPathComponent(folderName, isDirectory: true)
+            guard FileManager.default.fileExists(atPath: folder.path) else { continue }
+            let children = (try? FileManager.default.contentsOfDirectory(
+                at: folder,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )) ?? []
+            for child in children {
+                var isDirectory: ObjCBool = false
+                guard FileManager.default.fileExists(
+                    atPath: child.path,
+                    isDirectory: &isDirectory
+                ), isDirectory.boolValue else {
+                    continue
+                }
+                if durableWorkIsInProgress(at: child) {
+                    signals.append(
+                        SessionSignal(
+                            kind: .inProgress,
+                            lastActivityAt: nil,
+                            lastUserActivityAt: nil,
+                            trueTurnEvidence: false
+                        )
+                    )
+                }
+            }
+        }
+        return signals
+    }
+
+    private func durableWorkIsInProgress(at directory: URL) -> Bool {
+        for fileName in ["state.json", "meta.json"] {
+            let url = directory.appendingPathComponent(fileName)
+            guard let data = try? Data(contentsOf: url),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let status = Self.durableStatus(from: object)?.lowercased() else {
+                continue
+            }
+            if Self.inProgressDurableStatuses.contains(status) {
+                return true
+            }
+            if Self.finishedDurableStatuses.contains(status) {
+                return false
+            }
+        }
+        return false
+    }
+
+    private static func durableStatus(from object: [String: Any]) -> String? {
+        if let state = object["state"] as? [String: Any],
+           let status = state["status"] as? String {
+            return status
+        }
+        return object["status"] as? String
     }
 
     private func subagentSignal(at directory: URL, now: Date) -> SessionSignal {
@@ -416,6 +499,8 @@ final class GrokActivityMonitor {
         var lastActivityAt: Date?
         var lastUserActivityAt: Date?
         var trueTurnEvidence = false
+        var unmatchedBackgroundIDs = Set<String>()
+        var completedBackgroundIDs = Set<String>()
         for line in lines.reversed() {
             guard
                 let data = line.data(using: .utf8),
@@ -427,6 +512,19 @@ final class GrokActivityMonitor {
             let eventDate = Self.eventDate(from: event) ?? fileDate
             if update == "user_message_chunk", lastUserActivityAt == nil {
                 lastUserActivityAt = eventDate
+            }
+            if update == "task_completed" {
+                if let taskID = Self.backgroundTaskID(from: event, update: update) {
+                    completedBackgroundIDs.insert(taskID)
+                }
+                continue
+            }
+            if update == "task_backgrounded" {
+                if let taskID = Self.backgroundTaskID(from: event, update: update),
+                   !completedBackgroundIDs.contains(taskID) {
+                    unmatchedBackgroundIDs.insert(taskID)
+                }
+                continue
             }
             if lastKind == nil {
                 if Self.noiseSessionUpdates.contains(update) {
@@ -441,17 +539,58 @@ final class GrokActivityMonitor {
                     trueTurnEvidence = Self.trueTurnSessionUpdates.contains(update)
                 }
             }
-            if lastKind != nil, lastUserActivityAt != nil {
-                break
-            }
+        }
+        let hasUnmatchedBackground = !unmatchedBackgroundIDs.isEmpty
+        let kind: SessionSignal.Kind
+        if lastKind == .inProgress || hasUnmatchedBackground {
+            kind = .inProgress
+        } else {
+            kind = lastKind ?? .neverStarted
         }
         let signal = SessionSignal(
-            kind: lastKind ?? .neverStarted,
+            kind: kind,
             lastActivityAt: lastActivityAt,
             lastUserActivityAt: lastUserActivityAt,
-            trueTurnEvidence: trueTurnEvidence
+            trueTurnEvidence: lastKind == .inProgress && trueTurnEvidence
         )
         return cache(signal)
+    }
+
+    private static func backgroundTaskID(
+        from event: [String: Any],
+        update: String
+    ) -> String? {
+        let payload = updatePayload(from: event)
+        switch update {
+        case "task_backgrounded":
+            return stringValue(payload["task_id"])
+                ?? stringValue(payload["tool_call_id"])
+        case "task_completed":
+            if let snapshot = payload["task_snapshot"] as? [String: Any] {
+                return stringValue(snapshot["task_id"])
+                    ?? stringValue(snapshot["tool_call_id"])
+            }
+            return stringValue(payload["task_id"])
+                ?? stringValue(payload["tool_call_id"])
+        default:
+            return nil
+        }
+    }
+
+    private static func updatePayload(from event: [String: Any]) -> [String: Any] {
+        if let params = event["params"] as? [String: Any],
+           let update = params["update"] as? [String: Any] {
+            return update
+        }
+        if let update = event["update"] as? [String: Any] {
+            return update
+        }
+        return event
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        guard let value = value as? String, !value.isEmpty else { return nil }
+        return value
     }
 
     private static func sessionUpdate(from object: [String: Any]) -> String? {

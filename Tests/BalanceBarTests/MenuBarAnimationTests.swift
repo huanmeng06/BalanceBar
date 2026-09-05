@@ -510,6 +510,51 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(sprite.isTemplate)
     }
 
+    func testGrokThinkingSpriteUsesBundledMultiFrameStripAndGIFDurations() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let pngURL = repositoryRoot.appendingPathComponent(
+            "work/balance-bar/GrokThinking.png"
+        )
+        let gifURL = repositoryRoot.appendingPathComponent(
+            "work/balance-bar/GrokThinking.gif"
+        )
+
+        let sprite = try XCTUnwrap(
+            GrokThinkingSprite.make(
+                fromPNG: pngURL,
+                outputSize: NSSize(width: 16, height: 16)
+            )
+        )
+        XCTAssertEqual(
+            sprite.size,
+            NSSize(width: 16, height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount))
+        )
+        XCTAssertTrue(sprite.isTemplate)
+        XCTAssertGreaterThan(GrokThinkingAnimationTiming.frameCount, 1)
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 23)
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameDurations[11], 0.48, accuracy: 0.000_001)
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameDurations[22], 0.24, accuracy: 0.000_001)
+        XCTAssertEqual(GrokThinkingAnimationTiming.duration, 2.40, accuracy: 0.000_001)
+        XCTAssertEqual(MenuBarSpriteAnimationTiming.claude.frameCount, 9)
+        XCTAssertEqual(MenuBarSpriteAnimationTiming.claude.duration, 0.81, accuracy: 0.000_001)
+        XCTAssertEqual(MenuBarSpriteAnimationTiming.grok.frameCount, 23)
+        XCTAssertEqual(
+            MenuBarSpriteAnimationTiming.grok.keyTimes[11].doubleValue,
+            0.88 / 2.40,
+            accuracy: 0.000_001
+        )
+
+        let frames = try XCTUnwrap(GrokThinkingSprite.makeFrames(fromGIF: gifURL))
+        XCTAssertEqual(frames.frames.count, 23)
+        XCTAssertEqual(frames.durations.count, 23)
+        XCTAssertEqual(frames.durations[11], 0.48, accuracy: 0.02)
+        XCTAssertEqual(frames.durations[22], 0.24, accuracy: 0.02)
+    }
+
     func testAnimationPolicyHonorsPreferenceAndSystemReduceMotion() {
         XCTAssertTrue(
             MenuBarActivityAnimationPolicy.shouldAnimate(
@@ -799,6 +844,9 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(statusItemSource.contains("MenuBarClaudeAnimatedIconHostView"))
         XCTAssertTrue(statusItemSource.contains("synchronizeClaudeThinkingAnimationHost"))
         XCTAssertTrue(statusItemSource.contains("claudeAnimationStateChanged"))
+        XCTAssertTrue(statusItemSource.contains("synchronizeGrokThinkingAnimationHost"))
+        XCTAssertTrue(statusItemSource.contains("grokAnimationStateChanged"))
+        XCTAssertFalse(statusItemSource.contains("case .codex, .grok:"))
 
         let indexCallbackStart = try XCTUnwrap(
             statusItemSource.range(of: "menuBarIconView.onAnimationFrameIndexChanged = {")

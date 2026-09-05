@@ -264,14 +264,30 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
     }
 }
 
-/// A BalanceBar-owned clipped sprite host for Claude's nine-frame thinking
-/// animation. The status button carries only the static text bitmap while the
-/// sprite layer owns the discrete Core Animation translation.
+/// A BalanceBar-owned clipped sprite host for discrete thinking animations.
+/// Claude keeps its nine-frame 810 ms strip; Grok uses the GIF-derived
+/// 23-frame timing. The status button carries only the static text bitmap
+/// while the sprite layer owns the Core Animation translation.
 final class MenuBarClaudeAnimatedIconHostView: NSView {
-    static let thinkingAnimationKey = "balancebar.claudeThinking"
+    static let thinkingAnimationKey = MenuBarSpriteAnimationTiming.claude.animationKey
     static let thinkingFrameCount = ClaudeThinkingAnimationTiming.frameCount
     static let thinkingFrameDuration = ClaudeThinkingAnimationTiming.frameDuration
     static let thinkingDuration = ClaudeThinkingAnimationTiming.duration
+
+    var timing: MenuBarSpriteAnimationTiming = .claude {
+        didSet {
+            guard oldValue != timing else { return }
+            if spriteLayer.animation(forKey: oldValue.animationKey) != nil {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                spriteLayer.removeAnimation(forKey: oldValue.animationKey)
+                spriteLayer.transform = CATransform3DIdentity
+                CATransaction.commit()
+            }
+            configuredSpriteImage = nil
+            configuredFrameSize = .zero
+        }
+    }
 
     /// The viewport layer is clipped to one icon-sized frame. The sprite
     /// layer is positioned at its lower-left origin so negative Y translations
@@ -292,7 +308,7 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
     override var intrinsicContentSize: NSSize { .zero }
 
     var hasThinkingAnimation: Bool {
-        spriteLayer.animation(forKey: Self.thinkingAnimationKey) != nil
+        spriteLayer.animation(forKey: timing.animationKey) != nil
     }
 
     var spriteRasterizationCount: Int { contentsRasterizationCount }
@@ -302,7 +318,7 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
     }
 
     var thinkingAnimationForTesting: CAKeyframeAnimation? {
-        spriteLayer.animation(forKey: Self.thinkingAnimationKey) as? CAKeyframeAnimation
+        spriteLayer.animation(forKey: timing.animationKey) as? CAKeyframeAnimation
     }
 
     var currentThinkingPhaseForTesting: Double? {
@@ -380,7 +396,7 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
 
         let spriteSize = NSSize(
             width: viewportSize.width,
-            height: viewportSize.height * CGFloat(Self.thinkingFrameCount)
+            height: viewportSize.height * CGFloat(timing.frameCount)
         )
         guard let contents = Self.renderContents(
             spriteImage: spriteImage,
@@ -415,7 +431,7 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
         return true
     }
 
-    /// Installs the fixed nine-frame, 810 ms discrete sprite translation.
+    /// Installs the discrete sprite translation for the current timing.
     /// `phase` is used only when a host is recreated at a visual boundary.
     func installThinkingAnimation(phase: Double = 0) {
         guard !hasThinkingAnimation, spriteLayer.contents != nil else { return }
@@ -423,33 +439,31 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
         let normalizedPhase = phase.truncatingRemainder(dividingBy: 1)
             .wrappedPositiveRemainder
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.y")
-        animation.values = ClaudeThinkingAnimationTiming.translationValues(
-            frameHeight: bounds.height
-        )
-        animation.keyTimes = (0..<Self.thinkingFrameCount).map { index in
-            NSNumber(value: Double(index) / Double(Self.thinkingFrameCount))
-        }
-        animation.duration = Self.thinkingDuration
+        animation.values = timing.translationValues(frameHeight: bounds.height)
+        animation.keyTimes = timing.keyTimes
+        animation.duration = timing.duration
         animation.repeatCount = .infinity
         animation.calculationMode = .discrete
         animation.beginTime = spriteLayer.convertTime(CACurrentMediaTime(), from: nil)
-            - normalizedPhase * Self.thinkingDuration
+            - normalizedPhase * timing.duration
         animation.isRemovedOnCompletion = false
-        spriteLayer.add(animation, forKey: Self.thinkingAnimationKey)
+        spriteLayer.add(animation, forKey: timing.animationKey)
         thinkingAnimationInstallCount += 1
     }
 
     func removeThinkingAnimation() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        spriteLayer.removeAnimation(forKey: timing.animationKey)
         spriteLayer.removeAnimation(forKey: Self.thinkingAnimationKey)
+        spriteLayer.removeAnimation(forKey: MenuBarSpriteAnimationTiming.grok.animationKey)
         spriteLayer.transform = CATransform3DIdentity
         CATransaction.commit()
     }
 
     private func applyRestingModelTransform() {
-        let restingTranslation = ClaudeThinkingAnimationTiming.translationValue(
-            frameIndex: ClaudeThinkingAnimationTiming.restingFrameIndex,
+        let restingTranslation = timing.translationValue(
+            frameIndex: timing.restingFrameIndex,
             frameHeight: bounds.height
         )
         CATransaction.begin()
@@ -490,7 +504,7 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
             x: 0,
             y: 0,
             width: viewportSize.width,
-            height: viewportSize.height * CGFloat(Self.thinkingFrameCount)
+            height: viewportSize.height * CGFloat(timing.frameCount)
         )
         spriteLayer.position = .zero
         spriteLayer.contentsScale = safeScale

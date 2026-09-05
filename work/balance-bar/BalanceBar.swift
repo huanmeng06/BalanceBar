@@ -616,6 +616,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                         spriteImage: spriteImage
                     )
                 },
+                grokAnimationStateChanged: { [weak self] active, iconImage, spriteImage in
+                    self?.dashboardComposition.updateGrokMenuBarPreviewAnimation(
+                        active: active,
+                        iconImage: iconImage,
+                        spriteImage: spriteImage
+                    )
+                },
                 animationFallbackChanged: { [weak self] active in
                     self?.dashboardComposition.updateMenuBarAnimationFallback(active: active)
                 },

@@ -714,7 +714,7 @@ final class DashboardMenuBarPage {
         }
         if let spriteImage {
             lastPreviewSpriteImage = spriteImage
-        } else if kind != .claudeThinking {
+        } else if kind != .claudeThinking, kind != .grokThinking {
             lastPreviewSpriteImage = nil
         }
         guard isBuilt else { return }
@@ -763,9 +763,10 @@ final class DashboardMenuBarPage {
             }
             previewAnimatedIconHost.isHidden = false
             previewAnimatedIconHost.installRotationAnimation()
-        case .claudeThinking:
+        case .claudeThinking, .grokThinking:
             previewAnimatedIconHost.removeRotationAnimation()
             previewAnimatedIconHost.isHidden = true
+            previewClaudeAnimatedIconHost.timing = kind == .grokThinking ? .grok : .claude
             guard let spriteImage = spriteImage ?? lastPreviewSpriteImage else {
                 previewClaudeAnimatedIconHost.removeThinkingAnimation()
                 previewClaudeAnimatedIconHost.isHidden = true
@@ -785,7 +786,7 @@ final class DashboardMenuBarPage {
             let frameSize = NSSize(
                 width: spriteImage.size.width,
                 height: spriteImage.size.height
-                    / CGFloat(MenuBarClaudeAnimatedIconHostView.thinkingFrameCount)
+                    / CGFloat(previewClaudeAnimatedIconHost.timing.frameCount)
             )
             guard previewClaudeAnimatedIconHost.updateContents(
                 spriteImage: spriteImage,
