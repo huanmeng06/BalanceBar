@@ -848,6 +848,169 @@ final class DashboardComponentsTests: XCTestCase {
         )
     }
 
+    func testSettingsMeasurementCachesIgnoreSameRegimeWidthSweepsAndViewportOrigin() throws {
+        let shortRow = DashboardSettingsComponents.makeSettingsRow(
+            "Short title",
+            subtitle: "Short subtitle",
+            control: NSSwitch()
+        )
+        let peerRow = DashboardSettingsComponents.makeSettingsRow("Peer")
+        var rowsStack: NSStackView?
+        let section = DashboardSettingsComponents.makeSettingsSection(
+            "Cache",
+            rows: [shortRow, peerRow],
+            onLayoutCreated: { stack, _, _ in
+                rowsStack = stack
+            }
+        )
+        let page = DashboardSettingsComponents.makeSettingsPage([section])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = page
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+
+        DashboardSettingsLayoutMetrics.reset()
+        for offset in 0..<24 {
+            window.setContentSize(NSSize(width: 640 - CGFloat(offset), height: 520))
+            window.layoutIfNeeded()
+        }
+
+        XCTAssertLessThan(
+            DashboardSettingsLayoutMetrics.textLineMeasurements,
+            8,
+            "same-regime width steps must reuse wrapping ranges instead of rebuilding TextKit"
+        )
+        XCTAssertLessThan(
+            DashboardSettingsLayoutMetrics.preferredHeightMeasurements,
+            8,
+            "short rows already at the height floor must not refit on every width step"
+        )
+        XCTAssertLessThan(
+            DashboardSettingsLayoutMetrics.cardHeightMeasurements,
+            8,
+            "card height aggregation must not run on every live-resize width step"
+        )
+        XCTAssertLessThan(
+            DashboardSettingsLayoutMetrics.controlFittingMeasurements,
+            8,
+            "control fitting size is independent of row width"
+        )
+        XCTAssertEqual(shortRow.frame.height, 62, accuracy: 0.5)
+        XCTAssertEqual(peerRow.frame.height, 62, accuracy: 0.5)
+
+        let scrollView = try XCTUnwrap(findScrollView(in: page))
+        DashboardSettingsLayoutMetrics.reset()
+        scrollView.contentView.bounds.origin = CGPoint(x: 0, y: 40)
+        scrollView.layoutSubtreeIfNeeded()
+        window.layoutIfNeeded()
+        XCTAssertEqual(
+            DashboardSettingsLayoutMetrics.textLineMeasurements,
+            0,
+            "viewport origin changes must not remeasure text"
+        )
+        XCTAssertEqual(
+            DashboardSettingsLayoutMetrics.preferredHeightMeasurements,
+            0,
+            "viewport origin changes must not remeasure row height"
+        )
+        XCTAssertEqual(
+            DashboardSettingsLayoutMetrics.cardHeightMeasurements,
+            0,
+            "viewport origin changes must not recompute card height"
+        )
+
+        let card = try XCTUnwrap(rowsStack?.superview)
+        XCTAssertEqual(card.layerContentsRedrawPolicy, .onSetNeedsDisplay)
+    }
+
+    func testSettingsLayoutRemeasuresWhenWrappingBreakpointOrContentChanges() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .german
+        let longTitle = "Menüleistensymbol während einer Aufgabe animieren und den vollständigen Text anzeigen"
+        let row = DashboardSettingsComponents.makeSettingsRow(
+            longTitle,
+            subtitle: "Kurzbeschreibung die bei schmaler Breite umbrechen muss, damit die Zeilenhöhe wächst.",
+            control: NSSwitch()
+        )
+        let section = DashboardSettingsComponents.makeSettingsSection("Breakpoint", rows: [row])
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 360),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = section
+        defer { window.orderOut(nil) }
+
+        func layout(at width: CGFloat) -> CGFloat {
+            window.setContentSize(NSSize(width: width, height: 360))
+            window.layoutIfNeeded()
+            return row.frame.height
+        }
+
+        let wideHeight = layout(at: 760)
+        DashboardSettingsLayoutMetrics.reset()
+        let narrowHeight = layout(at: 280)
+        XCTAssertGreaterThan(narrowHeight, wideHeight, "crossing a wrapping breakpoint must grow the row")
+        XCTAssertGreaterThan(
+            DashboardSettingsLayoutMetrics.textLineMeasurements,
+            0,
+            "breakpoint crossing must measure text"
+        )
+        XCTAssertGreaterThan(
+            DashboardSettingsLayoutMetrics.preferredHeightMeasurements,
+            0,
+            "breakpoint crossing must recompute row height"
+        )
+        XCTAssertGreaterThan(
+            DashboardSettingsLayoutMetrics.cardHeightMeasurements,
+            0,
+            "breakpoint crossing must recompute card height"
+        )
+
+        let wideAgain = layout(at: 760)
+        XCTAssertEqual(wideAgain, wideHeight, accuracy: 0.5)
+
+        let subtitle = try XCTUnwrap(
+            row.subviews
+                .compactMap { $0 as? NSStackView }
+                .first?
+                .arrangedSubviews
+                .compactMap { $0 as? NSTextField }
+                .last
+        )
+        DashboardSettingsLayoutMetrics.reset()
+        subtitle.stringValue = "Short"
+        subtitle.invalidateIntrinsicContentSize()
+        row.needsLayout = true
+        section.needsLayout = true
+        window.layoutIfNeeded()
+        XCTAssertGreaterThan(
+            DashboardSettingsLayoutMetrics.preferredHeightMeasurements,
+            0,
+            "content changes must invalidate the height cache"
+        )
+        XCTAssertEqual(row.frame.height, 62, accuracy: 0.5)
+    }
+
+    private func findScrollView(in view: NSView) -> NSScrollView? {
+        if let scrollView = view as? NSScrollView {
+            return scrollView
+        }
+        for subview in view.subviews {
+            if let found = findScrollView(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
     func testNavigationRowAppliesSelectedAndInactiveStates() {
         let row = DashboardNavigationRowView()
         row.wantsLayer = true
