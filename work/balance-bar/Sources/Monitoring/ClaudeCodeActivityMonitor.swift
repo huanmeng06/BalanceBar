@@ -6,6 +6,14 @@ struct ClaudeProcessResult {
     let terminationStatus: Int32
 }
 
+struct ClaudeActivityStatus: Equatable {
+    let processRunning: Bool
+    let observation: ActivityMonitorObservation
+    let lastActivityAt: Date?
+    let ttys: [String]
+    let trueTurnEvidence: Bool
+}
+
 final class ClaudeCodeActivityMonitor {
     typealias ProcessRunner = (_ executableURL: URL, _ arguments: [String]) throws -> ClaudeProcessResult
 
@@ -21,13 +29,16 @@ final class ClaudeCodeActivityMonitor {
         let modifiedAt: TimeInterval
         let checkedAt: Date
         let observation: ActivityMonitorObservation
+        let trueTurnEvidence: Bool
     }
 
     private let projectsDirectory: URL
     private let clock: () -> Date
     private let processRunner: ProcessRunner
     private var sessionCache = SessionCache(scannedAt: .distantPast, url: nil, lastActivityAt: nil)
-    private var processCache: (checkedAt: Date, running: Bool) = (.distantPast, false)
+    private var processCache: (checkedAt: Date, running: Bool, ttys: [String]) = (
+        .distantPast, false, []
+    )
     private var transcriptCache: TranscriptCache?
 
     init(
@@ -47,20 +58,33 @@ final class ClaudeCodeActivityMonitor {
         return (status.processRunning, status.observation.legacyIsTaskRunning)
     }
 
-    func activityStatus() -> (
-        processRunning: Bool,
-        observation: ActivityMonitorObservation,
-        lastActivityAt: Date?
-    ) {
-        let processRunning = isClaudeProcessRunning()
-        guard processRunning else { return (false, .hardTerminal, nil) }
-        guard let session = latestMainSession() else {
-            return (true, .ambiguousIdle, nil)
+    func activityStatus() -> ClaudeActivityStatus {
+        let process = claudeProcessState()
+        guard process.running else {
+            return ClaudeActivityStatus(
+                processRunning: false,
+                observation: .hardTerminal,
+                lastActivityAt: nil,
+                ttys: [],
+                trueTurnEvidence: false
+            )
         }
-        return (
-            true,
-            transcriptObservation(session.url, now: clock()),
-            session.lastActivityAt
+        guard let session = latestMainSession() else {
+            return ClaudeActivityStatus(
+                processRunning: true,
+                observation: .ambiguousIdle,
+                lastActivityAt: nil,
+                ttys: process.ttys,
+                trueTurnEvidence: false
+            )
+        }
+        let sample = transcriptObservation(session.url, now: clock())
+        return ClaudeActivityStatus(
+            processRunning: true,
+            observation: sample.observation,
+            lastActivityAt: session.lastActivityAt,
+            ttys: process.ttys,
+            trueTurnEvidence: sample.trueTurnEvidence
         )
     }
 
@@ -87,10 +111,10 @@ final class ClaudeCodeActivityMonitor {
         )
     }
 
-    private func isClaudeProcessRunning() -> Bool {
+    private func claudeProcessState() -> (running: Bool, ttys: [String]) {
         let now = clock()
         if now.timeIntervalSince(processCache.checkedAt) < 1 {
-            return processCache.running
+            return (processCache.running, processCache.ttys)
         }
 
         let executableURL = URL(fileURLWithPath: "/bin/ps")
@@ -99,38 +123,48 @@ final class ClaudeCodeActivityMonitor {
         do {
             result = try processRunner(executableURL, arguments)
         } catch {
-            processCache = (now, false)
-            return false
+            processCache = (now, false, [])
+            return (false, [])
         }
         guard result.terminationStatus == 0 else {
-            processCache = (now, false)
-            return false
+            processCache = (now, false, [])
+            return (false, [])
         }
 
         // A single unrelated process may contain non-UTF-8 bytes in its
         // arguments. Decode lossily so that one malformed row does not hide
         // an otherwise valid `Claude` process from detection.
         let output = String(decoding: result.standardOutput, as: UTF8.self)
-        let running = output.split(separator: "\n").contains { rawLine in
-            let line = rawLine.lowercased()
-            guard !line.contains("balancebar"),
-                  !line.contains("balancebar.app") else { return false }
-            let fields = line.split(
-                maxSplits: 4,
-                omittingEmptySubsequences: true,
-                whereSeparator: { $0 == " " || $0 == "\t" }
-            )
-            guard fields.count >= 4 else { return false }
-            let command = URL(fileURLWithPath: String(fields[3])).lastPathComponent
-            let arguments = fields.count >= 5 ? String(fields[4]) : ""
-            return command == "claude"
-                || arguments.hasPrefix("claude ")
-                || arguments.contains("/claude ")
-                || arguments.contains("/claude-code/")
-                || arguments.contains("@anthropic-ai/claude-code")
+        var ttys: [String] = []
+        var running = false
+        for rawLine in output.split(separator: "\n") {
+            guard Self.lineLooksLikeClaudeCLI(rawLine) else { continue }
+            running = true
+            if let tty = TerminalCLIProcessRecord.parse(rawLine)?.tty {
+                ttys.append(tty)
+            }
         }
-        processCache = (now, running)
-        return running
+        processCache = (now, running, ttys)
+        return (running, ttys)
+    }
+
+    static func lineLooksLikeClaudeCLI<S: StringProtocol>(_ rawLine: S) -> Bool {
+        let line = rawLine.lowercased()
+        guard !line.contains("balancebar"),
+              !line.contains("balancebar.app") else { return false }
+        let fields = line.split(
+            maxSplits: 4,
+            omittingEmptySubsequences: true,
+            whereSeparator: { $0 == " " || $0 == "\t" }
+        )
+        guard fields.count >= 4 else { return false }
+        let command = URL(fileURLWithPath: String(fields[3])).lastPathComponent
+        let arguments = fields.count >= 5 ? String(fields[4]) : ""
+        return command == "claude"
+            || arguments.hasPrefix("claude ")
+            || arguments.contains("/claude ")
+            || arguments.contains("/claude-code/")
+            || arguments.contains("@anthropic-ai/claude-code")
     }
 
     private func latestMainSession() -> (url: URL, lastActivityAt: Date?)? {
@@ -168,8 +202,13 @@ final class ClaudeCodeActivityMonitor {
         return latest.map { ($0.url, $0.date) }
     }
 
-    private func transcriptObservation(_ url: URL, now: Date) -> ActivityMonitorObservation {
-        guard let identity = fileIdentity(atPath: url.path) else { return .ambiguousIdle }
+    private func transcriptObservation(
+        _ url: URL,
+        now: Date
+    ) -> (observation: ActivityMonitorObservation, trueTurnEvidence: Bool) {
+        guard let identity = fileIdentity(atPath: url.path) else {
+            return (.ambiguousIdle, false)
+        }
         let sizeValue = identity.size
         let modifiedValue = identity.modifiedAt
         if let cached = transcriptCache,
@@ -177,17 +216,21 @@ final class ClaudeCodeActivityMonitor {
            cached.size == sizeValue,
            cached.modifiedAt == modifiedValue,
            now.timeIntervalSince(cached.checkedAt) < 0.75 {
-            return cached.observation
+            return (cached.observation, cached.trueTurnEvidence)
         }
-        func cache(_ observation: ActivityMonitorObservation) -> ActivityMonitorObservation {
+        func cache(
+            _ observation: ActivityMonitorObservation,
+            trueTurnEvidence: Bool = false
+        ) -> (ActivityMonitorObservation, Bool) {
             transcriptCache = TranscriptCache(
                 path: url.path,
                 size: sizeValue,
                 modifiedAt: modifiedValue,
                 checkedAt: now,
-                observation: observation
+                observation: observation,
+                trueTurnEvidence: trueTurnEvidence
             )
-            return observation
+            return (observation, trueTurnEvidence)
         }
         guard let handle = try? FileHandle(forReadingFrom: url) else {
             return cache(.ambiguousIdle)
@@ -233,14 +276,14 @@ final class ClaudeCodeActivityMonitor {
                     return cache(.hardTerminal)
                 }
                 if stopReason == "tool_use" {
-                    return cache(.active)
+                    return cache(.active, trueTurnEvidence: true)
                 }
                 if let content = message["content"] as? [[String: Any]],
                    content.contains(where: {
                        let contentType = $0["type"] as? String
                        return contentType == "thinking" || contentType == "tool_use"
                    }) {
-                    return cache(.active)
+                    return cache(.active, trueTurnEvidence: true)
                 }
                 return cache(recentWrite ? .active : .ambiguousIdle)
             }

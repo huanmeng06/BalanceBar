@@ -9,9 +9,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 frontmost: .terminal,
                 current: .codex,
                 grokProcessRunning: true,
-                claudeProcessRunning: false,
-                grokLastActivityAt: nil,
-                claudeLastActivityAt: nil
+                claudeProcessRunning: false
             ),
             .grok
         )
@@ -23,9 +21,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 frontmost: .terminal,
                 current: .codex,
                 grokProcessRunning: false,
-                claudeProcessRunning: true,
-                grokLastActivityAt: nil,
-                claudeLastActivityAt: nil
+                claudeProcessRunning: true
             ),
             .claude
         )
@@ -38,8 +34,8 @@ final class ActivityCoordinatorTests: XCTestCase {
                 current: .grok,
                 grokProcessRunning: true,
                 claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 20),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 10)
+                grokTrueTurnEvidence: true,
+                claudeTrueTurnEvidence: true
             ),
             .codex
         )
@@ -49,93 +45,90 @@ final class ActivityCoordinatorTests: XCTestCase {
                 current: .codex,
                 grokProcessRunning: true,
                 claudeProcessRunning: false,
-                grokLastActivityAt: Date(timeIntervalSince1970: 20),
-                claudeLastActivityAt: nil
+                grokTrueTurnEvidence: true
             ),
             .codex
         )
     }
 
-    func testBothTerminalProcessesPreferLatestActivity() {
-        XCTAssertEqual(
-            ActivityClientSelection.client(
-                frontmost: .terminal,
-                current: .claude,
-                grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 30),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 10)
-            ),
-            .grok
-        )
+    func testFrontmostClaudeTTYWinsEvenIfGrokIsActiveAndCurrentIsGrok() {
         XCTAssertEqual(
             ActivityClientSelection.client(
                 frontmost: .terminal,
                 current: .grok,
                 grokProcessRunning: true,
                 claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 10),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 30)
-            ),
-            .claude
-        )
-    }
-
-    func testBothProcessesPreferCurrentlyActiveClaudeEvenIfGrokFilesAreNewer() {
-        XCTAssertEqual(
-            ActivityClientSelection.client(
-                frontmost: .terminal,
-                current: .grok,
-                grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 50),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 10),
-                grokObservation: .hardTerminal,
-                claudeObservation: .active
+                frontmostTTY: "ttys002",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"],
+                grokTrueTurnEvidence: true,
+                claudeTrueTurnEvidence: false
             ),
             .claude
         )
         XCTAssertEqual(
             ActivityClientSelection.preferredTerminalClient(
                 current: .grok,
-                grokLastActivityAt: Date(timeIntervalSince1970: 50),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 10),
-                grokObservation: .ambiguousIdle,
-                claudeObservation: .active
+                frontmostTTY: "/dev/ttys002",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"],
+                grokTrueTurnEvidence: true
             ),
             .claude
         )
     }
 
-    func testWasGrokThenClaudeBecomesActiveSwitchesIdentity() {
-        XCTAssertEqual(
-            ActivityClientSelection.client(
-                frontmost: .terminal,
-                current: .grok,
-                grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 40),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 41),
-                grokObservation: .hardTerminal,
-                claudeObservation: .active
-            ),
-            .claude
-        )
-    }
-
-    func testActiveGrokIsNotBlindlyReplacedByIdleClaude() {
+    func testFrontmostGrokTTYWinsEvenIfClaudeHasTrueTurnEvidence() {
         XCTAssertEqual(
             ActivityClientSelection.client(
                 frontmost: .terminal,
                 current: .claude,
                 grokProcessRunning: true,
                 claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 10),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 50),
-                grokObservation: .active,
-                claudeObservation: .hardTerminal
+                frontmostTTY: "ttys001",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"],
+                grokTrueTurnEvidence: false,
+                claudeTrueTurnEvidence: true
             ),
             .grok
+        )
+    }
+
+    func testNoTTYClaudeTrueTurnBeatsGrokFileActivity() {
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .grok,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                grokTrueTurnEvidence: false,
+                claudeTrueTurnEvidence: true
+            ),
+            .claude
+        )
+    }
+
+    func testNoTTYWithoutUniqueTrueTurnKeepsCurrent() {
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .grok,
+                grokProcessRunning: true,
+                claudeProcessRunning: true
+            ),
+            .grok
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .claude,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                grokTrueTurnEvidence: false,
+                claudeTrueTurnEvidence: false
+            ),
+            .claude
         )
     }
 
@@ -146,37 +139,70 @@ final class ActivityCoordinatorTests: XCTestCase {
                 current: .codex,
                 grokProcessRunning: true,
                 claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 80),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 90),
-                grokObservation: .active,
-                claudeObservation: .active
+                frontmostTTY: "ttys001",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"],
+                grokTrueTurnEvidence: true,
+                claudeTrueTurnEvidence: true
             ),
             .codex
         )
     }
 
-    func testIndistinguishableBothProcessesKeepCurrentTerminalClient() {
+    func testGrokSubagentTrueTurnDoesNotStealFocusedClaudeTTY() {
         XCTAssertEqual(
-            ActivityClientSelection.client(
-                frontmost: .terminal,
+            ActivityClientSelection.preferredTerminalClient(
+                current: .claude,
+                frontmostTTY: "ttys002",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"],
+                grokTrueTurnEvidence: true,
+                claudeTrueTurnEvidence: false
+            ),
+            .claude
+        )
+    }
+
+    func testGrokIdentityStillFollowsGrokTTYWhileSubagentIsActive() {
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
                 current: .grok,
+                frontmostTTY: "ttys001",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"],
+                grokTrueTurnEvidence: true,
+                claudeTrueTurnEvidence: false
+            ),
+            .grok
+        )
+    }
+
+    func testImmediateTerminalClientWaitsWhenBothExist() {
+        XCTAssertEqual(
+            ActivityClientSelection.immediateTerminalClient(
                 grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokLastActivityAt: nil,
-                claudeLastActivityAt: nil
+                claudeProcessRunning: false
             ),
             .grok
         )
         XCTAssertEqual(
-            ActivityClientSelection.client(
-                frontmost: .terminal,
-                current: .claude,
-                grokProcessRunning: true,
-                claudeProcessRunning: true,
-                grokLastActivityAt: Date(timeIntervalSince1970: 10),
-                claudeLastActivityAt: Date(timeIntervalSince1970: 10)
+            ActivityClientSelection.immediateTerminalClient(
+                grokProcessRunning: false,
+                claudeProcessRunning: true
             ),
             .claude
+        )
+        XCTAssertNil(
+            ActivityClientSelection.immediateTerminalClient(
+                grokProcessRunning: true,
+                claudeProcessRunning: true
+            )
+        )
+        XCTAssertNil(
+            ActivityClientSelection.immediateTerminalClient(
+                grokProcessRunning: false,
+                claudeProcessRunning: false
+            )
         )
     }
 
@@ -186,9 +212,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 frontmost: .terminal,
                 current: .grok,
                 grokProcessRunning: false,
-                claudeProcessRunning: true,
-                grokLastActivityAt: nil,
-                claudeLastActivityAt: Date(timeIntervalSince1970: 10)
+                claudeProcessRunning: true
             ),
             .claude
         )
@@ -197,9 +221,7 @@ final class ActivityCoordinatorTests: XCTestCase {
                 frontmost: .terminal,
                 current: .grok,
                 grokProcessRunning: false,
-                claudeProcessRunning: false,
-                grokLastActivityAt: nil,
-                claudeLastActivityAt: nil
+                claudeProcessRunning: false
             ),
             .codex
         )

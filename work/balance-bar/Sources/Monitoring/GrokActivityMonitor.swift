@@ -10,6 +10,8 @@ struct GrokActivityStatus: Equatable {
     let processRunning: Bool
     let observation: ActivityMonitorObservation
     let lastActivityAt: Date?
+    let ttys: [String]
+    let trueTurnEvidence: Bool
 }
 
 /// Detects the terminal Grok CLI and whether the current turn is still
@@ -61,13 +63,16 @@ final class GrokActivityMonitor {
         let observation: ActivityMonitorObservation
         let lastActivityAt: Date?
         let lastUserActivityAt: Date?
+        let trueTurnEvidence: Bool
     }
 
     private let grokDirectory: URL
     private let clock: () -> Date
     private let processRunner: ProcessRunner
     private var sessionCache = SessionCache(scannedAt: .distantPast, url: nil, lastActivityAt: nil)
-    private var processCache: (checkedAt: Date, running: Bool) = (.distantPast, false)
+    private var processCache: (checkedAt: Date, running: Bool, ttys: [String]) = (
+        .distantPast, false, []
+    )
     private var transcriptCache: TranscriptCache?
 
     init(
@@ -88,26 +93,32 @@ final class GrokActivityMonitor {
     }
 
     func activityStatus() -> GrokActivityStatus {
-        let processRunning = isGrokProcessRunning()
-        guard processRunning else {
+        let process = grokProcessState()
+        guard process.running else {
             return GrokActivityStatus(
                 processRunning: false,
                 observation: .hardTerminal,
-                lastActivityAt: nil
+                lastActivityAt: nil,
+                ttys: [],
+                trueTurnEvidence: false
             )
         }
         guard let session = latestSession() else {
             return GrokActivityStatus(
                 processRunning: true,
                 observation: .ambiguousIdle,
-                lastActivityAt: nil
+                lastActivityAt: nil,
+                ttys: process.ttys,
+                trueTurnEvidence: false
             )
         }
         let combined = combinedTranscriptObservation(sessionURL: session.url, now: clock())
         return GrokActivityStatus(
             processRunning: true,
             observation: combined.observation,
-            lastActivityAt: combined.identityActivityAt
+            lastActivityAt: combined.identityActivityAt,
+            ttys: process.ttys,
+            trueTurnEvidence: combined.trueTurnEvidence
         )
     }
 
@@ -131,10 +142,10 @@ final class GrokActivityMonitor {
         )
     }
 
-    private func isGrokProcessRunning() -> Bool {
+    private func grokProcessState() -> (running: Bool, ttys: [String]) {
         let now = clock()
         if now.timeIntervalSince(processCache.checkedAt) < 1 {
-            return processCache.running
+            return (processCache.running, processCache.ttys)
         }
 
         let executableURL = URL(fileURLWithPath: "/bin/ps")
@@ -143,20 +154,26 @@ final class GrokActivityMonitor {
         do {
             result = try processRunner(executableURL, arguments)
         } catch {
-            processCache = (now, false)
-            return false
+            processCache = (now, false, [])
+            return (false, [])
         }
         guard result.terminationStatus == 0 else {
-            processCache = (now, false)
-            return false
+            processCache = (now, false, [])
+            return (false, [])
         }
 
         let output = String(decoding: result.standardOutput, as: UTF8.self)
-        let running = output.split(separator: "\n").contains { rawLine in
-            Self.lineLooksLikeGrokCLI(rawLine)
+        var ttys: [String] = []
+        var running = false
+        for rawLine in output.split(separator: "\n") {
+            guard Self.lineLooksLikeGrokCLI(rawLine) else { continue }
+            running = true
+            if let tty = TerminalCLIProcessRecord.parse(rawLine)?.tty {
+                ttys.append(tty)
+            }
         }
-        processCache = (now, running)
-        return running
+        processCache = (now, running, ttys)
+        return (running, ttys)
     }
 
     static func lineLooksLikeGrokCLI<S: StringProtocol>(_ rawLine: S) -> Bool {
@@ -269,14 +286,20 @@ final class GrokActivityMonitor {
     private func combinedTranscriptObservation(
         sessionURL: URL,
         now: Date
-    ) -> (observation: ActivityMonitorObservation, identityActivityAt: Date?) {
+    ) -> (
+        observation: ActivityMonitorObservation,
+        identityActivityAt: Date?,
+        trueTurnEvidence: Bool
+    ) {
         let related = relatedTranscriptURLs(for: sessionURL)
         var observation: ActivityMonitorObservation?
         var identityActivityAt: Date?
         var parentEventActivityAt: Date?
+        var trueTurnEvidence = false
 
         for url in related {
             let sample = transcriptObservation(url, now: now)
+            trueTurnEvidence = trueTurnEvidence || sample.trueTurnEvidence
             if observation == nil {
                 observation = sample.observation
                 parentEventActivityAt = sample.lastActivityAt
@@ -288,14 +311,14 @@ final class GrokActivityMonitor {
 
         let resolved = observation ?? .ambiguousIdle
         if let identityActivityAt {
-            return (resolved, identityActivityAt)
+            return (resolved, identityActivityAt, trueTurnEvidence)
         }
         if resolved.isActiveEvidence {
-            // Subagent and other agent writes must not look like the user is
-            // still in Grok when Claude is the CLI actually being used.
-            return (resolved, nil)
+            // Subagent writes keep rotation alive while identity is Grok;
+            // they are not proof that the user is still on the Grok tab.
+            return (resolved, nil, trueTurnEvidence)
         }
-        return (resolved, parentEventActivityAt)
+        return (resolved, parentEventActivityAt, trueTurnEvidence)
     }
 
     private func relatedTranscriptURLs(for sessionURL: URL) -> [URL] {
@@ -381,23 +404,30 @@ final class GrokActivityMonitor {
     ) -> (
         observation: ActivityMonitorObservation,
         lastActivityAt: Date?,
-        lastUserActivityAt: Date?
+        lastUserActivityAt: Date?,
+        trueTurnEvidence: Bool
     ) {
         guard let identity = fileIdentity(atPath: url.path) else {
-            return (.ambiguousIdle, nil, nil)
+            return (.ambiguousIdle, nil, nil, false)
         }
         if let cached = transcriptCache,
            cached.path == url.path,
            cached.size == identity.size,
            cached.modifiedAt == identity.modifiedAt,
            now.timeIntervalSince(cached.checkedAt) < 0.75 {
-            return (cached.observation, cached.lastActivityAt, cached.lastUserActivityAt)
+            return (
+                cached.observation,
+                cached.lastActivityAt,
+                cached.lastUserActivityAt,
+                cached.trueTurnEvidence
+            )
         }
         func cache(
             _ observation: ActivityMonitorObservation,
             lastActivityAt: Date?,
-            lastUserActivityAt: Date?
-        ) -> (ActivityMonitorObservation, Date?, Date?) {
+            lastUserActivityAt: Date?,
+            trueTurnEvidence: Bool
+        ) -> (ActivityMonitorObservation, Date?, Date?, Bool) {
             transcriptCache = TranscriptCache(
                 path: url.path,
                 size: identity.size,
@@ -405,13 +435,19 @@ final class GrokActivityMonitor {
                 checkedAt: now,
                 observation: observation,
                 lastActivityAt: lastActivityAt,
-                lastUserActivityAt: lastUserActivityAt
+                lastUserActivityAt: lastUserActivityAt,
+                trueTurnEvidence: trueTurnEvidence
             )
-            return (observation, lastActivityAt, lastUserActivityAt)
+            return (observation, lastActivityAt, lastUserActivityAt, trueTurnEvidence)
         }
         let fileDate = Date(timeIntervalSince1970: identity.modifiedAt)
         guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return cache(.ambiguousIdle, lastActivityAt: fileDate, lastUserActivityAt: nil)
+            return cache(
+                .ambiguousIdle,
+                lastActivityAt: fileDate,
+                lastUserActivityAt: nil,
+                trueTurnEvidence: false
+            )
         }
         defer { try? handle.close() }
 
@@ -420,10 +456,20 @@ final class GrokActivityMonitor {
         do {
             try handle.seek(toOffset: offset)
         } catch {
-            return cache(.ambiguousIdle, lastActivityAt: fileDate, lastUserActivityAt: nil)
+            return cache(
+                .ambiguousIdle,
+                lastActivityAt: fileDate,
+                lastUserActivityAt: nil,
+                trueTurnEvidence: false
+            )
         }
         guard let text = String(data: handle.readDataToEndOfFile(), encoding: .utf8) else {
-            return cache(.ambiguousIdle, lastActivityAt: fileDate, lastUserActivityAt: nil)
+            return cache(
+                .ambiguousIdle,
+                lastActivityAt: fileDate,
+                lastUserActivityAt: nil,
+                trueTurnEvidence: false
+            )
         }
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
         if offset > 0, !lines.isEmpty {
@@ -434,6 +480,7 @@ final class GrokActivityMonitor {
         var observation: ActivityMonitorObservation?
         var lastActivityAt: Date?
         var lastUserActivityAt: Date?
+        var trueTurnEvidence = false
         for line in lines.reversed() {
             guard
                 let data = line.data(using: .utf8),
@@ -449,6 +496,7 @@ final class GrokActivityMonitor {
             if observation == nil {
                 if Self.activeSessionUpdates.contains(update) {
                     observation = .active
+                    trueTurnEvidence = true
                     lastActivityAt = eventDate
                 } else if Self.terminalSessionUpdates.contains(update) {
                     observation = .hardTerminal
@@ -471,7 +519,8 @@ final class GrokActivityMonitor {
         return cache(
             resolved,
             lastActivityAt: lastActivityAt ?? fileDate,
-            lastUserActivityAt: lastUserActivityAt
+            lastUserActivityAt: lastUserActivityAt,
+            trueTurnEvidence: trueTurnEvidence
         )
     }
 

@@ -65,17 +65,39 @@ final class GrokActivityMonitorTests: XCTestCase {
         )
     }
 
+    func testProcessStatusExposesTTYFromPS() {
+        let status = makeMonitor(
+            processOutput: "202 1 ttys001 grok-macos-aarch64 /Users/dev/.grok/bin/grok"
+        ).activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.ttys, ["ttys001"])
+        XCTAssertFalse(status.trueTurnEvidence)
+    }
+
     func testThoughtAndToolEventsAreActive() throws {
         try writeSession(updates: [
             sessionUpdate("user_message_chunk"),
             sessionUpdate("agent_thought_chunk")
         ])
-        XCTAssertTrue(makeMonitor().status().taskRunning)
+        let thinking = makeMonitor().activityStatus()
+        XCTAssertTrue(thinking.observation.legacyIsTaskRunning)
+        XCTAssertTrue(thinking.trueTurnEvidence)
 
         try writeSession(updates: [
             sessionUpdate("tool_call")
         ], sessionID: "tool")
-        XCTAssertTrue(makeMonitor().status().taskRunning)
+        let tool = makeMonitor().activityStatus()
+        XCTAssertTrue(tool.observation.legacyIsTaskRunning)
+        XCTAssertTrue(tool.trueTurnEvidence)
+    }
+
+    func testRecentWriteWithoutThoughtsIsNotTrueTurnEvidence() throws {
+        try writeSession(updates: [
+            sessionUpdate("user_message_chunk")
+        ])
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
     }
 
     func testTurnCompletedIsHardTerminal() throws {
@@ -89,6 +111,7 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertTrue(status.processRunning)
         XCTAssertEqual(status.observation, .hardTerminal)
         XCTAssertFalse(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
     }
 
     func testParentTurnCompletedStillActiveWhenSubagentTranscriptIsActive() throws {
@@ -121,6 +144,7 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertTrue(status.processRunning)
         XCTAssertEqual(status.observation, .active)
         XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertTrue(status.trueTurnEvidence)
     }
 
     func testParentBackgroundedStillActiveWhenChildSessionFromMetaIsActive() throws {
@@ -157,6 +181,7 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertTrue(status.processRunning)
         XCTAssertEqual(status.observation, .active)
         XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertTrue(status.trueTurnEvidence)
     }
 
     func testTurnCompletedWithoutSubagentDoesNotRotate() throws {
