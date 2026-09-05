@@ -539,6 +539,8 @@ final class StatusItemControllerTests: XCTestCase {
             CGPoint(x: host.bounds.midX, y: host.bounds.midY)
         )
         XCTAssertNotNil(host.rotationAnimationForTesting)
+        XCTAssertEqual(host.occlusionView.superview, host)
+        XCTAssertEqual(host.occlusionView.frame, host.bounds)
         XCTAssertTrue(
             controller.menuBarButtonImageForTesting === staticImage,
             "running CA presentation must keep the canonical static GPT+text bitmap"
@@ -671,6 +673,13 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertTrue(host.superview != nil)
         XCTAssertFalse(host.isHidden)
         XCTAssertNotNil(host.rotationAnimationForTesting)
+        XCTAssertEqual(host.occlusionView.superview, host)
+        XCTAssertEqual(host.occlusionView.frame, host.bounds)
+        XCTAssertNil(
+            host.occlusionView.layer?.animation(
+                forKey: MenuBarNativeAnimatedIconHostView.rotationAnimationKey
+            )
+        )
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
 
         let installCount = host.rotationAnimationInstallCount
