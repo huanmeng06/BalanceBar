@@ -42,6 +42,17 @@ final class ClaudeCodeActivityMonitorTests: XCTestCase {
         XCTAssertFalse(status.trueTurnEvidence)
     }
 
+    func testProcessPresenceDoesNotRequireSessionScan() {
+        let monitor = makeMonitor(
+            processOutput: "101 1 ttys002 /usr/local/bin/claude claude"
+        )
+        let presence = monitor.processPresence()
+        XCTAssertTrue(presence.running)
+        XCTAssertEqual(presence.ttys, ["ttys002"])
+        XCTAssertEqual(monitor.status().processRunning, true)
+        XCTAssertFalse(monitor.status().taskRunning)
+    }
+
     func testProcessAbsenceDoesNotReadProjects() {
         let monitor = makeMonitor(processOutput: "101 1 ?? /usr/bin/python worker.py")
 

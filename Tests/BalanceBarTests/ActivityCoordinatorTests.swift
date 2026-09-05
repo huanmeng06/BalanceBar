@@ -147,6 +147,45 @@ final class ActivityCoordinatorTests: XCTestCase {
         )
     }
 
+    func testProcessCacheTTYSetsClassifyIdentityWithoutSessionScan() {
+        XCTAssertEqual(
+            TerminalFrontmostTTY.uniquelyClassifiedTTY(
+                "/dev/ttys001",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"]
+            ),
+            "ttys001"
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .claude,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                frontmostTTY: "ttys001",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"]
+            ),
+            .grok
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .claude,
+                frontmostTTY: "ttys001",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys002"]
+            ),
+            .grok
+        )
+        XCTAssertNil(
+            TerminalFrontmostTTY.uniquelyClassifiedTTY(
+                "ttys001",
+                grokTTYs: ["ttys001"],
+                claudeTTYs: ["ttys001"]
+            )
+        )
+    }
+
     func testImmediateTerminalClientWaitsWhenBothExist() {
         XCTAssertEqual(
             ActivityClientSelection.immediateTerminalClient(

@@ -36,6 +36,7 @@ final class ClaudeCodeActivityMonitor {
     private let clock: () -> Date
     private let processRunner: ProcessRunner
     private var sessionCache = SessionCache(scannedAt: .distantPast, url: nil, lastActivityAt: nil)
+    private let processCacheLock = NSLock()
     private var processCache: (checkedAt: Date, running: Bool, ttys: [String]) = (
         .distantPast, false, []
     )
@@ -56,6 +57,11 @@ final class ClaudeCodeActivityMonitor {
     func status() -> (processRunning: Bool, taskRunning: Bool) {
         let status = activityStatus()
         return (status.processRunning, status.observation.legacyIsTaskRunning)
+    }
+
+    /// Process presence only. Does not walk `~/.claude/projects`.
+    func processPresence() -> (running: Bool, ttys: [String]) {
+        claudeProcessState()
     }
 
     func activityStatus() -> ClaudeActivityStatus {
@@ -113,9 +119,13 @@ final class ClaudeCodeActivityMonitor {
 
     private func claudeProcessState() -> (running: Bool, ttys: [String]) {
         let now = clock()
+        processCacheLock.lock()
         if now.timeIntervalSince(processCache.checkedAt) < 1 {
-            return (processCache.running, processCache.ttys)
+            let cached = (processCache.running, processCache.ttys)
+            processCacheLock.unlock()
+            return cached
         }
+        processCacheLock.unlock()
 
         let executableURL = URL(fileURLWithPath: "/bin/ps")
         let arguments = ["-axo", "pid=,ppid=,tty=,comm=,args="]
@@ -123,11 +133,11 @@ final class ClaudeCodeActivityMonitor {
         do {
             result = try processRunner(executableURL, arguments)
         } catch {
-            processCache = (now, false, [])
+            storeProcessCache(checkedAt: now, running: false, ttys: [])
             return (false, [])
         }
         guard result.terminationStatus == 0 else {
-            processCache = (now, false, [])
+            storeProcessCache(checkedAt: now, running: false, ttys: [])
             return (false, [])
         }
 
@@ -144,8 +154,14 @@ final class ClaudeCodeActivityMonitor {
                 ttys.append(tty)
             }
         }
-        processCache = (now, running, ttys)
+        storeProcessCache(checkedAt: now, running: running, ttys: ttys)
         return (running, ttys)
+    }
+
+    private func storeProcessCache(checkedAt: Date, running: Bool, ttys: [String]) {
+        processCacheLock.lock()
+        processCache = (checkedAt, running, ttys)
+        processCacheLock.unlock()
     }
 
     static func lineLooksLikeClaudeCLI<S: StringProtocol>(_ rawLine: S) -> Bool {

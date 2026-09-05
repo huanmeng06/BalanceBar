@@ -74,6 +74,17 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertFalse(status.trueTurnEvidence)
     }
 
+    func testProcessPresenceDoesNotRequireSessionScan() {
+        let monitor = makeMonitor(
+            processOutput: "202 1 ttys001 grok-macos-aarch64 /Users/dev/.grok/bin/grok"
+        )
+        let presence = monitor.processPresence()
+        XCTAssertTrue(presence.running)
+        XCTAssertEqual(presence.ttys, ["ttys001"])
+        XCTAssertEqual(monitor.status().processRunning, true)
+        XCTAssertFalse(monitor.status().taskRunning)
+    }
+
     func testThoughtAndToolEventsAreActive() throws {
         try writeSession(updates: [
             sessionUpdate("user_message_chunk"),
