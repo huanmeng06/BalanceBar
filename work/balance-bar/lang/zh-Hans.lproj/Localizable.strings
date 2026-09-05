@@ -333,6 +333,8 @@
 "dashboard.menu.bar.page.layout" = "布局";
 "dashboard.menu.bar.page.menu_bar_font_size" = "菜单栏字号";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "调整菜单栏文字大小";
+"dashboard.menu.bar.page.menu_bar_icon_size" = "菜单栏图标大小";
+"dashboard.menu.bar.page.adjusts_the_menu_bar_icon_size" = "调整菜单栏图标大小";
 "dashboard.menu.bar.page.icon_offset" = "图标上下位置";
 "dashboard.menu.bar.page.amount_offset" = "数值上下位置";
 "dashboard.menu.bar.page.menu_bar_width" = "与其他菜单栏图标的间距";
@@ -340,6 +342,7 @@
 "dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue" = "微调数值的上下位置[[balancebar.break-before-semantic]][[balancebar.semantic]]Y 轴[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
 "dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue" = "调整 BalanceBar 与其他菜单栏图标的间距[[balancebar.break-before-semantic]][[balancebar.semantic]]宽度[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
 "dashboard.menu.bar.page.large_13_10_pt_medium_11_7_9_pt_small_10_4_8_pt" = "大：13/10 pt；中：11.7/9 pt；小：10.4/8 pt";
+"dashboard.menu.bar.page.large_20_pt_medium_18_pt_small_16_pt" = "大：20 pt；中：18 pt；小：16 pt";
 "dashboard.menu.bar.page.large" = "大";
 "dashboard.menu.bar.page.medium" = "中";
 "dashboard.menu.bar.page.small" = "小";

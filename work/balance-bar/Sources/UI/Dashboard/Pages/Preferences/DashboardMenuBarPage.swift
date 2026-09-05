@@ -300,6 +300,7 @@ final class DashboardMenuBarPage {
     static let amountOffsetSummaryIdentifier = "menuBarAmountOffsetSummary"
     static let widthAdjustmentSummaryIdentifier = "menuBarStatusItemWidthAdjustmentSummary"
     static let fontSizePresetIdentifier = AppPreferences.menuBarFontSizePresetKey
+    static let iconSizePresetIdentifier = AppPreferences.menuBarIconSizePresetKey
     static let iconDisplayModeIdentifier = AppPreferences.menuBarIconDisplayModeKey
     static let iconDisplayDelayIdentifier = AppPreferences.menuBarIconDisplayDelayKey
     static let animationModeIdentifier = AppPreferences.menuBarAnimationModeKey
@@ -345,6 +346,7 @@ final class DashboardMenuBarPage {
     // Screenshots are commonly captured at 2x scale, so this is 100 points
     // (about 200 pixels), not the previous 180-point control.
     static let fontSizePresetWidth: CGFloat = 100
+    static let iconSizePresetWidth: CGFloat = fontSizePresetWidth
     /// Extra default lift for the amount text in the Dashboard preview only
     /// (visual, positive = up). The real menu bar layout is unchanged; user
     /// fine-tune offsets stack on top.
@@ -513,6 +515,7 @@ final class DashboardMenuBarPage {
         let showAmount: Bool
         let showReset: Bool
         let fontSizePreset: String
+        let iconSizePreset: String
         let iconOffsetY: Double
         let amountOffsetY: Double
         let quotaWindowPreference: String
@@ -540,6 +543,7 @@ final class DashboardMenuBarPage {
         let showIcon: Bool
         let showAmount: Bool
         let fontSizePreset: String
+        let iconSizePreset: String
         let iconOffsetX: Double
         let iconOffsetY: Double
         let amountOffsetX: Double
@@ -591,6 +595,10 @@ final class DashboardMenuBarPage {
     private var capsuleTrailingConstraint: NSLayoutConstraint?
     private var previewWidthConstraint: NSLayoutConstraint?
     private var textWidthConstraint: NSLayoutConstraint?
+    private var previewIconWidthConstraint: NSLayoutConstraint?
+    private var previewIconHeightConstraint: NSLayoutConstraint?
+    private var previewIconSlotWidthConstraint: NSLayoutConstraint?
+    private var previewIconSlotHeightConstraint: NSLayoutConstraint?
     private var iconOffsetSummaryLabel: NSTextField?
     private var amountOffsetSummaryLabel: NSTextField?
     private var widthAdjustmentSummaryLabel: NSTextField?
@@ -598,6 +606,7 @@ final class DashboardMenuBarPage {
     private weak var amountOffsetSlider: NSSlider?
     private weak var widthAdjustmentSlider: NSSlider?
     private weak var fontSizePresetControl: NSPopUpButton?
+    private weak var iconSizePresetControl: NSPopUpButton?
     private weak var iconDisplayModeControl: NSPopUpButton?
     private weak var iconDisplayDelayControl: NSPopUpButton?
     private weak var animationModeControl: NSPopUpButton?
@@ -625,6 +634,7 @@ final class DashboardMenuBarPage {
     private weak var iconTaskStatusCardHeightConstraint: NSLayoutConstraint?
     private var iconTaskStatusSeparators: [NSView] = []
     private var fontSizePresetTrackingObserver: NSObjectProtocol?
+    private var iconSizePresetTrackingObserver: NSObjectProtocol?
     private var transientWidthAdjustment: Double?
     private var lastRefreshSignature: RefreshSignature?
     private var lastWarningRefreshSignature: WarningRefreshSignature?
@@ -653,11 +663,13 @@ final class DashboardMenuBarPage {
     deinit {
         removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
+        removeIconSizePresetTrackingObserver()
     }
 
     func teardown() {
         removeIconDisplayModeRevealHighlight()
         removeFontSizePresetTrackingObserver()
+        removeIconSizePresetTrackingObserver()
         previewAnimationActive = false
         previewAnimationKind = .none
         animationFallbackActive = false
@@ -890,6 +902,7 @@ final class DashboardMenuBarPage {
             self?.revealIconDisplayModeSetting()
         }
         removeFontSizePresetTrackingObserver()
+        removeIconSizePresetTrackingObserver()
         quotaRowsStack = nil
         quotaCardHeightConstraint = nil
         quotaSeparators = []
@@ -934,8 +947,13 @@ final class DashboardMenuBarPage {
         previewIcon.translatesAutoresizingMaskIntoConstraints = false
         previewIcon.wantsLayer = true
         previewIcon.identifier = NSUserInterfaceItemIdentifier("menuBarPreviewIcon")
-        previewIcon.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
-        previewIcon.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
+        let initialIconSize = input.preferences.menuBarIconSize
+        let previewIconWidth = previewIcon.widthAnchor.constraint(equalToConstant: initialIconSize)
+        let previewIconHeight = previewIcon.heightAnchor.constraint(equalToConstant: initialIconSize)
+        previewIconWidth.isActive = true
+        previewIconHeight.isActive = true
+        previewIconWidthConstraint = previewIconWidth
+        previewIconHeightConstraint = previewIconHeight
         previewPrimary.font = MenuBarLayout.primaryFont
         previewPrimary.textColor = .labelColor
         previewPrimary.identifier = NSUserInterfaceItemIdentifier(Self.previewPrimaryIdentifier)
@@ -952,8 +970,12 @@ final class DashboardMenuBarPage {
         previewTextWidth.isActive = true
         textWidthConstraint = previewTextWidth
         previewIconSlot.translatesAutoresizingMaskIntoConstraints = false
-        previewIconSlot.widthAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
-        previewIconSlot.heightAnchor.constraint(equalToConstant: MenuBarLayout.iconSlotWidth).isActive = true
+        let previewIconSlotWidth = previewIconSlot.widthAnchor.constraint(equalToConstant: initialIconSize)
+        let previewIconSlotHeight = previewIconSlot.heightAnchor.constraint(equalToConstant: initialIconSize)
+        previewIconSlotWidth.isActive = true
+        previewIconSlotHeight.isActive = true
+        previewIconSlotWidthConstraint = previewIconSlotWidth
+        previewIconSlotHeightConstraint = previewIconSlotHeight
         previewIconSlot.addSubview(previewIcon)
         NSLayoutConstraint.activate([
             previewIcon.centerXAnchor.constraint(equalTo: previewIconSlot.centerXAnchor),
@@ -1383,6 +1405,11 @@ final class DashboardMenuBarPage {
             value: fontSizePreset,
             relay: input.relay
         )
+        let iconSizePreset = input.preferences.menuBarIconSizePreset
+        let iconSizeControls = makeIconSizePresetControls(
+            value: iconSizePreset,
+            relay: input.relay
+        )
         iconOffsetSummaryLabel = iconOffsetSummary
         amountOffsetSummaryLabel = amountOffsetSummary
         widthAdjustmentSummaryLabel = widthAdjustmentSummary
@@ -1390,8 +1417,13 @@ final class DashboardMenuBarPage {
         amountOffsetSlider = amountOffsetControls.slider
         widthAdjustmentSlider = widthAdjustmentControls.slider
         fontSizePresetControl = fontSizeControls.control
+        iconSizePresetControl = iconSizeControls.control
         observeFontSizePresetTracking(
             for: fontSizeControls.control,
+            preferences: input.preferences
+        )
+        observeIconSizePresetTracking(
+            for: iconSizeControls.control,
             preferences: input.preferences
         )
         let layoutSection = DashboardSettingsComponents.makeSettingsSection(
@@ -1401,6 +1433,12 @@ final class DashboardMenuBarPage {
                     tr(.keyDashboardMenuBarPageMenuBarFontSize),
                     subtitle: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarFontSize),
                     control: fontSizeControls.view,
+                    minimumHeight: 66
+                ),
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(.keyDashboardMenuBarPageMenuBarIconSize),
+                    subtitle: tr(.keyDashboardMenuBarPageAdjustsTheMenuBarIconSize),
+                    control: iconSizeControls.view,
                     minimumHeight: 66
                 ),
                 DashboardSettingsComponents.makeSettingsRow(
@@ -1483,6 +1521,7 @@ final class DashboardMenuBarPage {
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
             fontSizePreset: preferences.menuBarFontSizePreset.rawValue,
+            iconSizePreset: preferences.menuBarIconSizePreset.rawValue,
             iconOffsetY: preferences.menuBarIconOffsetY,
             amountOffsetY: preferences.menuBarAmountOffsetY,
             quotaWindowPreference: preferences.menuBarQuotaWindowPreference.rawValue,
@@ -1502,6 +1541,7 @@ final class DashboardMenuBarPage {
             showIcon: preferences.showMenuBarIcon,
             showAmount: preferences.showMenuBarAmount,
             fontSizePreset: preferences.menuBarFontSizePreset.rawValue,
+            iconSizePreset: preferences.menuBarIconSizePreset.rawValue,
             iconOffsetX: preferences.menuBarIconOffsetX,
             iconOffsetY: preferences.menuBarIconOffsetY,
             amountOffsetX: preferences.menuBarAmountOffsetX,
@@ -1574,6 +1614,9 @@ final class DashboardMenuBarPage {
         iconSwitch?.isEnabled = preferences.showMenuBarAmount
         amountSwitch?.isEnabled = preferences.showMenuBarIcon
         let fontSizePreset = preferences.menuBarFontSizePreset
+        let iconSizePreset = preferences.menuBarIconSizePreset
+        let iconSize = iconSizePreset.pointSize
+        applyPreviewIconSize(iconSize)
         let fontSize = fontSizePreset.primarySize
         let secondaryFontSize = fontSizePreset.secondarySize
         let primaryFont = MenuBarLayout.primaryFont(
@@ -1607,7 +1650,8 @@ final class DashboardMenuBarPage {
             showIcon: preferences.showMenuBarIcon,
             showAmount: preferences.showMenuBarAmount,
             hasSecondary: hasSecondary,
-            isBalance: presentation.isBalance
+            isBalance: presentation.isBalance,
+            iconSlotWidth: iconSize
         )
         MenuBarLayout.applyTextLayout(
             container: previewText,
@@ -1655,6 +1699,16 @@ final class DashboardMenuBarPage {
             )
         }
         fontSizePresetControl?.isEnabled = preferences.showMenuBarAmount
+        if let iconSizePresetControl {
+            if iconSizePresetControl.indexOfSelectedItem != iconSizePreset.segmentIndex {
+                iconSizePresetControl.selectItem(at: iconSizePreset.segmentIndex)
+            }
+            updateIconSizePresetMenuItemStates(
+                iconSizePresetControl,
+                selectedIndex: iconSizePreset.segmentIndex
+            )
+        }
+        iconSizePresetControl?.isEnabled = preferences.showMenuBarIcon
         updateQuotaVisibility(
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
@@ -1833,7 +1887,8 @@ final class DashboardMenuBarPage {
                     backgroundBounds: singleLineBackgroundBounds,
                     primaryText: presentation.primary,
                     showIcon: preferences.showMenuBarIcon,
-                    isBalance: presentation.isBalance
+                    isBalance: presentation.isBalance,
+                    iconSlotWidth: iconSize
                 )
                 horizontalCorrection = targetX - primaryInk.midX
                 let automaticAmountTranslationY = MenuBarOffsetLayout.yDelta(
@@ -2306,6 +2361,27 @@ final class DashboardMenuBarPage {
         return FontPresetControls(view: control, control: control)
     }
 
+    private func makeIconSizePresetControls(
+        value: MenuBarIconSizePreset,
+        relay: DashboardPreferencePageRelay
+    ) -> FontPresetControls {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.iconSizePresetIdentifier,
+            items: MenuBarIconSizePreset.allCases.map { preset in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.iconSizePresetLabel(preset),
+                    representedObject: preset.rawValue
+                )
+            },
+            selectedIndex: value.segmentIndex,
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.menuBarIconSizePreset(_:))
+        )
+        control.toolTip = tr(.keyDashboardMenuBarPageLarge20PtMedium18PtSmall16Pt)
+        control.widthAnchor.constraint(equalToConstant: Self.iconSizePresetWidth).isActive = true
+        return FontPresetControls(view: control, control: control)
+    }
+
     private func makeQuotaWindowPreferenceControl(
         value: OfficialQuotaWindowPreference,
         relay: DashboardPreferencePageRelay
@@ -2571,11 +2647,75 @@ final class DashboardMenuBarPage {
         }
     }
 
+    private func observeIconSizePresetTracking(
+        for control: NSPopUpButton,
+        preferences: AppPreferences
+    ) {
+        guard let menu = control.menu else { return }
+        iconSizePresetTrackingObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didEndTrackingNotification,
+            object: menu,
+            queue: .main
+        ) { [weak self, weak control, weak preferences] _ in
+            guard let self, let control, let preferences else { return }
+            self.reconcileIconSizePresetControl(control, preferences: preferences)
+        }
+    }
+
+    private func reconcileIconSizePresetControl(
+        _ control: NSPopUpButton,
+        preferences: AppPreferences
+    ) {
+        let preset = preferences.menuBarIconSizePreset
+        control.selectItem(at: preset.segmentIndex)
+        control.synchronizeTitleAndSelectedItem()
+        updateIconSizePresetMenuItemStates(control, selectedIndex: preset.segmentIndex)
+    }
+
+    private func updateIconSizePresetMenuItemStates(
+        _ control: NSPopUpButton,
+        selectedIndex: Int
+    ) {
+        for (index, item) in control.itemArray.enumerated() {
+            item.state = index == selectedIndex ? .on : .off
+        }
+    }
+
+    private func removeIconSizePresetTrackingObserver() {
+        if let iconSizePresetTrackingObserver {
+            NotificationCenter.default.removeObserver(iconSizePresetTrackingObserver)
+            self.iconSizePresetTrackingObserver = nil
+        }
+    }
+
     private static func fontSizePresetLabel(_ preset: MenuBarFontSizePreset) -> String {
         switch preset {
         case .large: return tr(.keyDashboardMenuBarPageLarge)
         case .medium: return tr(.keyDashboardMenuBarPageMedium)
         case .small: return tr(.keyDashboardMenuBarPageSmall)
+        }
+    }
+
+    private static func iconSizePresetLabel(_ preset: MenuBarIconSizePreset) -> String {
+        switch preset {
+        case .large: return tr(.keyDashboardMenuBarPageLarge)
+        case .medium: return tr(.keyDashboardMenuBarPageMedium)
+        case .small: return tr(.keyDashboardMenuBarPageSmall)
+        }
+    }
+
+    private func applyPreviewIconSize(_ iconSize: CGFloat) {
+        if previewIconWidthConstraint?.constant != iconSize {
+            previewIconWidthConstraint?.constant = iconSize
+        }
+        if previewIconHeightConstraint?.constant != iconSize {
+            previewIconHeightConstraint?.constant = iconSize
+        }
+        if previewIconSlotWidthConstraint?.constant != iconSize {
+            previewIconSlotWidthConstraint?.constant = iconSize
+        }
+        if previewIconSlotHeightConstraint?.constant != iconSize {
+            previewIconSlotHeightConstraint?.constant = iconSize
         }
     }
 

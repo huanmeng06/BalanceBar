@@ -4180,6 +4180,141 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertFalse(refreshedFontPresetControl.isEnabled)
     }
 
+    func testMenuBarIconSizePresetControlRefreshesPreviewAndPersists() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let suiteName = "DashboardPreferencePagesTests.MenuBarIconSize.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.menuBarIconSizePreset, .medium)
+        let controller = DashboardMenuBarPage()
+        let relay = DashboardPreferencePageRelay()
+        relay.onMenuBarIconSizePreset = { preset in
+            preferences.menuBarIconSizePreset = preset
+            controller.refresh(
+                snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: nil
+            )
+        }
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: relay
+        ))
+
+        let popupControls = descendants(of: page).compactMap { $0 as? NSPopUpButton }
+        let iconPresetControls = popupControls.filter {
+            $0.identifier?.rawValue == AppPreferences.menuBarIconSizePresetKey
+        }
+        XCTAssertEqual(iconPresetControls.count, 1)
+        let iconPresetControl = try XCTUnwrap(iconPresetControls.first)
+        let iconPresetWidthConstraint = try XCTUnwrap(iconPresetControl.constraints.first {
+            $0.firstAttribute == .width && $0.relation == .equal
+        })
+        XCTAssertEqual(
+            iconPresetWidthConstraint.constant,
+            DashboardMenuBarPage.iconSizePresetWidth,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            iconPresetControl.selectedItem?.representedObject as? String,
+            MenuBarIconSizePreset.medium.rawValue
+        )
+        XCTAssertEqual(iconPresetControl.numberOfItems, MenuBarIconSizePreset.allCases.count)
+        XCTAssertEqual(iconPresetControl.itemTitle(at: 0), "Large")
+        XCTAssertEqual(iconPresetControl.itemTitle(at: 1), "Medium")
+        XCTAssertEqual(iconPresetControl.itemTitle(at: 2), "Small")
+        XCTAssertEqual(iconPresetControl.item(at: MenuBarIconSizePreset.large.segmentIndex)?.state, .off)
+        XCTAssertEqual(iconPresetControl.item(at: MenuBarIconSizePreset.medium.segmentIndex)?.state, .on)
+        XCTAssertEqual(iconPresetControl.item(at: MenuBarIconSizePreset.small.segmentIndex)?.state, .off)
+        XCTAssertEqual(
+            iconPresetControl.action,
+            #selector(DashboardPreferencePageRelay.menuBarIconSizePreset(_:))
+        )
+        XCTAssertTrue(iconPresetControl.toolTip?.contains("20") == true)
+
+        let labels = descendants(of: page).compactMap { $0 as? NSTextField }
+        XCTAssertTrue(labels.contains { $0.stringValue == "Layout" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Menu Bar Icon Size" })
+        XCTAssertTrue(labels.contains { $0.stringValue == "Adjust menu bar icon size" })
+
+        let previewIcon = try XCTUnwrap(
+            descendants(of: page).first {
+                $0.identifier?.rawValue == "menuBarPreviewIcon"
+            }
+        )
+        func previewIconSize() throws -> CGFloat {
+            let width = try XCTUnwrap(previewIcon.constraints.first {
+                $0.firstAttribute == .width && $0.relation == .equal
+            })
+            return width.constant
+        }
+        XCTAssertEqual(try previewIconSize(), MenuBarIconSizePreset.medium.pointSize, accuracy: 0.001)
+
+        for preset in MenuBarIconSizePreset.allCases {
+            iconPresetControl.selectItem(at: preset.segmentIndex)
+            relay.menuBarIconSizePreset(iconPresetControl)
+
+            XCTAssertEqual(preferences.menuBarIconSizePreset, preset)
+            XCTAssertEqual(preferences.menuBarIconSize, preset.pointSize, accuracy: 0.001)
+            XCTAssertEqual(iconPresetControl.indexOfSelectedItem, preset.segmentIndex)
+            XCTAssertEqual(iconPresetControl.title, iconPresetControl.itemTitle(at: preset.segmentIndex))
+            for (index, item) in iconPresetControl.itemArray.enumerated() {
+                XCTAssertEqual(item.state, index == preset.segmentIndex ? .on : .off)
+            }
+            XCTAssertEqual(try previewIconSize(), preset.pointSize, accuracy: 0.001)
+        }
+
+        preferences.menuBarIconSizePreset = .small
+        iconPresetControl.selectItem(at: MenuBarIconSizePreset.medium.segmentIndex)
+        for (index, item) in iconPresetControl.itemArray.enumerated() {
+            item.state = index == MenuBarIconSizePreset.medium.segmentIndex ? .on : .off
+        }
+        NotificationCenter.default.post(
+            name: NSMenu.didEndTrackingNotification,
+            object: iconPresetControl.menu
+        )
+        XCTAssertEqual(iconPresetControl.indexOfSelectedItem, MenuBarIconSizePreset.small.segmentIndex)
+        XCTAssertEqual(iconPresetControl.title, "Small")
+
+        let restoredPreferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(restoredPreferences.menuBarIconSizePreset, .small)
+        let rebuiltController = DashboardMenuBarPage()
+        let rebuiltPage = rebuiltController.make(.init(
+            preferences: restoredPreferences,
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        let rebuiltIconPresetControl = try XCTUnwrap(
+            descendants(of: rebuiltPage)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == AppPreferences.menuBarIconSizePresetKey }
+        )
+        XCTAssertEqual(rebuiltIconPresetControl.indexOfSelectedItem, MenuBarIconSizePreset.small.segmentIndex)
+        XCTAssertEqual(rebuiltIconPresetControl.title, "Small")
+
+        preferences.showMenuBarIcon = false
+        controller.refresh(
+            snapshot: .official("OpenAI", 72, "7-day", "2h", Date(timeIntervalSince1970: 1)),
+            preferences: preferences,
+            menuBarSnapshot: { $0 },
+            iconImage: nil
+        )
+        XCTAssertFalse(iconPresetControl.isEnabled)
+        XCTAssertEqual(preferences.menuBarFontSizePreset, .large)
+    }
+
     func testMenuBarWidthOnlyRefreshUpdatesSummaryWithoutFightingSlider() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

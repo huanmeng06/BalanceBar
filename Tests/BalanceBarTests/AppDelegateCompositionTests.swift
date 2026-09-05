@@ -851,6 +851,34 @@ final class AppDelegateCompositionTests: XCTestCase {
             "font-size updates must not rebuild the status menu"
         )
 
+        XCTAssertEqual(
+            controller.menuBarIconSizeForTesting,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        controller.updateIconSize(MenuBarIconSizePreset.small.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSizeForTesting,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        controller.updateIconSize(MenuBarIconSizePreset.large.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.large.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            menuItemIdentities,
+            "icon-size updates must not rebuild the status menu"
+        )
+
         controller.teardown()
         controller.teardown()
     }

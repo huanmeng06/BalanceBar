@@ -508,6 +508,23 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         XCTAssertEqual(sprite.size, NSSize(width: 16, height: 144))
         XCTAssertTrue(sprite.isTemplate)
+
+        for preset in MenuBarIconSizePreset.allCases {
+            let sized = try XCTUnwrap(
+                ClaudeThinkingSprite.make(
+                    from: sourceURL,
+                    outputSize: NSSize(width: preset.pointSize, height: preset.pointSize)
+                )
+            )
+            XCTAssertEqual(
+                sized.size,
+                NSSize(
+                    width: preset.pointSize,
+                    height: preset.pointSize * CGFloat(ClaudeThinkingAnimationTiming.frameCount)
+                )
+            )
+            XCTAssertTrue(sized.isTemplate)
+        }
     }
 
     func testGrokThinkingSpriteUsesBundledMultiFrameStripAndGIFDurations() throws {
@@ -553,6 +570,23 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(frames.durations.count, 23)
         XCTAssertEqual(frames.durations[11], 0.48, accuracy: 0.02)
         XCTAssertEqual(frames.durations[22], 0.24, accuracy: 0.02)
+
+        for preset in MenuBarIconSizePreset.allCases where preset != .small {
+            let sized = try XCTUnwrap(
+                GrokThinkingSprite.make(
+                    fromGIF: gifURL,
+                    outputSize: NSSize(width: preset.pointSize, height: preset.pointSize)
+                )
+            )
+            XCTAssertEqual(
+                sized.size,
+                NSSize(
+                    width: preset.pointSize,
+                    height: preset.pointSize * CGFloat(GrokThinkingAnimationTiming.frameCount)
+                )
+            )
+            XCTAssertTrue(sized.isTemplate)
+        }
     }
 
     func testGrokThinkingSpritePNGUsesBottomOriginOrderAndTopRightSlash() throws {

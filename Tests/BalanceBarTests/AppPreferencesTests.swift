@@ -498,6 +498,53 @@ final class AppPreferencesTests: XCTestCase {
         )
     }
 
+    func testMenuBarIconSizePresetsDefaultToMediumAndDoNotMigrateToSmall() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(
+            preferences.menuBarIconSizePreset,
+            AppPreferences.menuBarIconSizePresetDefault
+        )
+        XCTAssertEqual(preferences.menuBarIconSizePreset, .medium)
+        XCTAssertEqual(preferences.menuBarIconSize, 18, accuracy: 0.001)
+        XCTAssertEqual(MenuBarIconSizePreset.small.pointSize, 16, accuracy: 0.001)
+        XCTAssertEqual(MenuBarIconSizePreset.medium.pointSize, 18, accuracy: 0.001)
+        XCTAssertEqual(MenuBarIconSizePreset.large.pointSize, 20, accuracy: 0.001)
+        XCTAssertEqual(
+            MenuBarIconSizePreset.medium.pointSize,
+            MenuBarLayout.iconSlotWidth,
+            accuracy: 0.001
+        )
+
+        for preset in MenuBarIconSizePreset.allCases {
+            preferences.menuBarIconSizePreset = preset
+            XCTAssertEqual(preferences.menuBarIconSizePreset, preset)
+            XCTAssertEqual(preferences.menuBarIconSize, preset.pointSize, accuracy: 0.001)
+            XCTAssertEqual(
+                defaults.string(forKey: AppPreferences.menuBarIconSizePresetKey),
+                preset.rawValue
+            )
+        }
+
+        defaults.removeObject(forKey: AppPreferences.menuBarIconSizePresetKey)
+        XCTAssertEqual(preferences.menuBarIconSizePreset, .medium)
+        XCTAssertEqual(preferences.menuBarIconSize, 18, accuracy: 0.001)
+
+        defaults.set("not-a-preset", forKey: AppPreferences.menuBarIconSizePresetKey)
+        XCTAssertEqual(preferences.menuBarIconSizePreset, .medium)
+        XCTAssertNotEqual(preferences.menuBarIconSizePreset, .small)
+
+        XCTAssertEqual(MenuBarIconSizePreset.nearest(to: 16), .small)
+        XCTAssertEqual(MenuBarIconSizePreset.nearest(to: 18), .medium)
+        XCTAssertEqual(MenuBarIconSizePreset.nearest(to: 20), .large)
+        XCTAssertEqual(MenuBarIconSizePreset.nearest(to: .nan), .medium)
+        XCTAssertEqual(MenuBarIconSizePreset(segmentIndex: 0), .large)
+        XCTAssertEqual(MenuBarIconSizePreset(segmentIndex: 1), .medium)
+        XCTAssertEqual(MenuBarIconSizePreset(segmentIndex: 2), .small)
+        XCTAssertNil(MenuBarIconSizePreset(segmentIndex: 3))
+    }
+
     func testOpenCodexDashboardPortOverridePersistsOnlyValidPorts() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -627,6 +674,7 @@ final class AppPreferencesTests: XCTestCase {
             AppPreferences.openCodexDashboardPortOverrideKey: 23456,
             AppPreferences.openCodexDashboardAutomaticDetectionKey: false,
             AppPreferences.menuBarFontSizePresetKey: MenuBarFontSizePreset.medium.rawValue,
+            AppPreferences.menuBarIconSizePresetKey: MenuBarIconSizePreset.large.rawValue,
             AppPreferences.menuBarPrimaryFontSizeKey: 14.2,
             AppPreferences.menuBarSecondaryFontSizeKey: 9.6,
             AppPreferences.menuBarIconDisplayModeKey: MenuBarIconDisplayMode.onlyWhileRunning.rawValue,
@@ -642,6 +690,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.openCodexDashboardPortOverride, 23456)
         XCTAssertFalse(preferences.openCodexDashboardAutomaticDetection)
         XCTAssertEqual(preferences.menuBarFontSizePreset, .medium)
+        XCTAssertEqual(preferences.menuBarIconSizePreset, .large)
         XCTAssertEqual(preferences.menuBarIconDisplayMode, .onlyWhileRunning)
         XCTAssertEqual(preferences.menuBarIconDisplayDelay, .twoMinutes)
         XCTAssertEqual(preferences.menuBarQuotaWindowPreference, .fiveHour)
