@@ -59,7 +59,6 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
     private(set) var contentsRasterizationCount = 0
     private var configuredSourceImage: NSImage?
     private var configuredAppearanceKey: String?
-    private var configuredHighlightState = false
     private var configuredContentsScale: CGFloat = 0
     private var configuredContentsSize: NSSize = .zero
 
@@ -128,9 +127,9 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
     }
 
     /// Renders the template image once for the current appearance and scale,
-    /// then installs the resulting CGImage as layer contents.  Repeated calls
-    /// with the same visual inputs are no-ops and never participate in the
-    /// steady-state animation.
+    /// then installs the resulting CGImage as layer contents. Transient
+    /// status-button highlighting is deliberately excluded from the texture
+    /// cache and rasterization inputs.
     @discardableResult
     func updateContents(
         sourceImage: NSImage,
@@ -138,12 +137,16 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         contentsScale: CGFloat,
         highlighted: Bool = false
     ) -> Bool {
+        // Keep the existing call boundary while the status-item controller is
+        // shared with the adjacent animation work. A button's transient
+        // highlight is AppKit presentation state, not a stable input to this
+        // BalanceBar-owned texture.
+        _ = highlighted
         let safeScale = contentsScale > 0 ? contentsScale : 2
         let appearanceKey = Self.appearanceKey(for: appearance)
         let size = bounds.size
         let needsRasterization = configuredSourceImage !== sourceImage
             || configuredAppearanceKey != appearanceKey
-            || configuredHighlightState != highlighted
             || configuredContentsScale != safeScale
             || configuredContentsSize != size
             || iconLayer.contents == nil
@@ -153,13 +156,11 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
             sourceImage: sourceImage,
             size: size,
             appearance: appearance,
-            scale: safeScale,
-            highlighted: highlighted
+            scale: safeScale
         ) else {
             iconLayer.contents = nil
             configuredSourceImage = nil
             configuredAppearanceKey = nil
-            configuredHighlightState = false
             configuredContentsScale = 0
             configuredContentsSize = .zero
             return false
@@ -172,7 +173,6 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         CATransaction.commit()
         configuredSourceImage = sourceImage
         configuredAppearanceKey = appearanceKey
-        configuredHighlightState = highlighted
         configuredContentsScale = safeScale
         configuredContentsSize = size
         contentsRasterizationCount += 1
@@ -229,8 +229,7 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         sourceImage: NSImage,
         size: NSSize,
         appearance: NSAppearance,
-        scale: CGFloat,
-        highlighted: Bool
+        scale: CGFloat
     ) -> CGImage? {
         guard size.width > 0, size.height > 0 else { return nil }
         let pixelDimensions = MenuBarBitmapImageLayout.pixelDimensions(
@@ -257,9 +256,7 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
         imageView.image = sourceImage
         imageView.imageScaling = .scaleProportionallyDown
         imageView.imageAlignment = .alignCenter
-        imageView.contentTintColor = highlighted
-            ? .selectedMenuItemTextColor
-            : .labelColor
+        imageView.contentTintColor = .labelColor
         imageView.wantsLayer = true
         imageView.layoutSubtreeIfNeeded()
         imageView.cacheDisplay(in: imageView.bounds, to: rep)
