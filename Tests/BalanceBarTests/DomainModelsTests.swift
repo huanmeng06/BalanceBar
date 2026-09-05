@@ -1780,6 +1780,89 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertEqual(native?.subscriptionPrefix, "/codex")
     }
 
+    func testBalanceQueryReadsGrokbuildTOMLAPIKeyWithoutJSONAuth() throws {
+        let grokbuildConfig = """
+        [model."grok-4-fixture"]
+        base_url = "https://tokenshop.example.test"
+        api_key = "grokbuild-sanitized-key"
+        """
+        let settingsObject: [String: Any] = ["config": grokbuildConfig]
+        let settingsText = String(
+            data: try JSONSerialization.data(withJSONObject: settingsObject),
+            encoding: .utf8
+        )
+        let metaObject: [String: Any] = [
+            "usage_script": [
+                "enabled": true,
+                "autoQueryInterval": 30,
+                "timeout": 15,
+                "code": "fetch({ url: \"{{baseUrl}}/v1/usage\", headers: { Authorization: \"Bearer {{apiKey}}\" } })"
+            ]
+        ]
+        let metaText = String(
+            data: try JSONSerialization.data(withJSONObject: metaObject),
+            encoding: .utf8
+        )
+
+        var failure: BalanceQueryFailure?
+        let query = BalanceQuery.make(
+            settingsText: try XCTUnwrap(settingsText),
+            metaText: try XCTUnwrap(metaText),
+            websiteText: nil,
+            appType: "grokbuild",
+            onFailure: { failure = $0 }
+        )
+
+        XCTAssertNil(failure)
+        XCTAssertEqual(query?.apiKey, "grokbuild-sanitized-key")
+        XCTAssertEqual(query?.url, "https://tokenshop.example.test/v1/usage")
+        XCTAssertEqual(query?.websiteURL, URL(string: "https://tokenshop.example.test"))
+    }
+
+    func testBalanceQueryPrefersExperimentalBearerTokenOverTOMLAPIKey() throws {
+        let config = """
+        [experimental]
+        experimental_bearer_token = "tokenshop-sanitized-bearer"
+        api_key = "grokbuild-sanitized-key"
+        base_url = "https://tokenshop.example.test"
+        """
+        let settingsText = String(
+            data: try JSONSerialization.data(withJSONObject: ["config": config]),
+            encoding: .utf8
+        )
+        let metaText = #"{"usage_script":{"enabled":true,"code":"fetch({ url: \"{{baseUrl}}/v1/usage\" })"}}"#
+        let query = BalanceQuery.make(
+            settingsText: try XCTUnwrap(settingsText),
+            metaText: metaText,
+            websiteText: nil,
+            appType: "codex"
+        )
+
+        XCTAssertEqual(query?.apiKey, "tokenshop-sanitized-bearer")
+    }
+
+    func testBalanceQueryIgnoresCommentedTOMLAPIKey() throws {
+        var failure: BalanceQueryFailure?
+        let config = """
+        [model."grok-4-fixture"]
+        base_url = "https://tokenshop.example.test"
+        # api_key = "commented-key"
+        """
+        let settingsText = String(
+            data: try JSONSerialization.data(withJSONObject: ["config": config]),
+            encoding: .utf8
+        )
+        let query = BalanceQuery.make(
+            settingsText: try XCTUnwrap(settingsText),
+            metaText: #"{"usage_script":{"enabled":true,"code":"fetch({ url: \"{{baseUrl}}/v1/usage\" })"}}"#,
+            websiteText: nil,
+            appType: "grokbuild",
+            onFailure: { failure = $0 }
+        )
+        XCTAssertNil(query)
+        XCTAssertEqual(failure, .credentialMissing)
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suiteName = "BalanceBarTests.ProviderBalanceProgress.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
