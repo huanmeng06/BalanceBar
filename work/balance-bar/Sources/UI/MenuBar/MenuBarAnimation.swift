@@ -577,23 +577,13 @@ enum GrokThinkingSprite {
         for index in 0..<frameCount {
             gifRep.setProperty(.currentFrame, withValue: index)
             let duration = gifRep.value(forProperty: .currentFrameDuration) as? TimeInterval ?? 0.08
-            let frame = NSImage(size: gifRep.size, flipped: false) { rect in
-                gifRep.draw(in: rect)
-                return true
-            }
-            frames.append(makeTemplateFrame(frame))
-            durations.append(duration)
-        }
-        return (frames, durations)
-    }
-
-    private static func makeTemplateFrame(_ image: NSImage) -> NSImage {
-        let size = image.size
-        let templated = NSImage(size: size, flipped: false) { rect in
-            guard let representation = NSBitmapImageRep(
+            // Copy pixels now. A lazy NSImage over this shared GIF rep would
+            // replay whichever currentFrame is last when the handler runs.
+            let snapshotSize = gifRep.size
+            guard let snapshotRep = NSBitmapImageRep(
                 bitmapDataPlanes: nil,
-                pixelsWide: max(1, Int(size.width.rounded())),
-                pixelsHigh: max(1, Int(size.height.rounded())),
+                pixelsWide: max(1, Int(snapshotSize.width.rounded())),
+                pixelsHigh: max(1, Int(snapshotSize.height.rounded())),
                 bitsPerSample: 8,
                 samplesPerPixel: 4,
                 hasAlpha: true,
@@ -602,31 +592,64 @@ enum GrokThinkingSprite {
                 bytesPerRow: 0,
                 bitsPerPixel: 0
             ) else {
-                return false
+                return nil
             }
-            representation.size = size
+            snapshotRep.size = snapshotSize
             NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: representation)
-            image.draw(in: rect, from: .zero, operation: .copy, fraction: 1)
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: snapshotRep)
+            gifRep.draw(in: NSRect(origin: .zero, size: snapshotSize))
             NSGraphicsContext.restoreGraphicsState()
-            for y in 0..<representation.pixelsHigh {
-                for x in 0..<representation.pixelsWide {
-                    guard let color = representation.colorAt(x: x, y: y)?
-                        .usingColorSpace(.deviceRGB) else { continue }
-                    let luminance = 0.2126 * color.redComponent
-                        + 0.7152 * color.greenComponent
-                        + 0.0722 * color.blueComponent
-                    let alpha = luminance < 0.04 ? 0 : min(1, luminance)
-                    representation.setColor(
-                        NSColor(deviceRed: 1, green: 1, blue: 1, alpha: alpha),
-                        atX: x,
-                        y: y
-                    )
-                }
-            }
-            representation.draw(in: rect)
-            return true
+            let snapshot = NSImage(size: snapshotSize)
+            snapshot.addRepresentation(snapshotRep)
+            frames.append(makeTemplateFrame(snapshot))
+            durations.append(duration)
         }
+        return (frames, durations)
+    }
+
+    private static func makeTemplateFrame(_ image: NSImage) -> NSImage {
+        let size = image.size
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: max(1, Int(size.width.rounded())),
+            pixelsHigh: max(1, Int(size.height.rounded())),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return image
+        }
+        representation.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: representation)
+        image.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: .zero,
+            operation: .copy,
+            fraction: 1
+        )
+        NSGraphicsContext.restoreGraphicsState()
+        for y in 0..<representation.pixelsHigh {
+            for x in 0..<representation.pixelsWide {
+                guard let color = representation.colorAt(x: x, y: y)?
+                    .usingColorSpace(.deviceRGB) else { continue }
+                let luminance = 0.2126 * color.redComponent
+                    + 0.7152 * color.greenComponent
+                    + 0.0722 * color.blueComponent
+                let alpha = luminance < 0.04 ? 0 : min(1, luminance)
+                representation.setColor(
+                    NSColor(deviceRed: 1, green: 1, blue: 1, alpha: alpha),
+                    atX: x,
+                    y: y
+                )
+            }
+        }
+        let templated = NSImage(size: size)
+        templated.addRepresentation(representation)
         templated.isTemplate = true
         return templated
     }

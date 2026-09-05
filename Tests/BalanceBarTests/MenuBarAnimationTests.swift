@@ -555,6 +555,127 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertEqual(frames.durations[22], 0.24, accuracy: 0.02)
     }
 
+    func testGrokThinkingSpritePNGUsesBottomOriginOrderAndTopRightSlash() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let pngURL = repositoryRoot.appendingPathComponent(
+            "work/balance-bar/GrokThinking.png"
+        )
+        let gifURL = repositoryRoot.appendingPathComponent(
+            "work/balance-bar/GrokThinking.gif"
+        )
+        let frameSize = NSSize(width: 16, height: 16)
+        let frameCount = GrokThinkingAnimationTiming.frameCount
+
+        let pngSprite = try XCTUnwrap(
+            GrokThinkingSprite.make(fromPNG: pngURL, outputSize: frameSize)
+        )
+        let gifSprite = try XCTUnwrap(
+            GrokThinkingSprite.make(fromGIF: gifURL, outputSize: frameSize)
+        )
+        let gifFrames = try XCTUnwrap(GrokThinkingSprite.makeFrames(fromGIF: gifURL))
+        let pngStrip = try XCTUnwrap(
+            pngSprite.representations.compactMap { $0 as? NSBitmapImageRep }.first
+        )
+        XCTAssertEqual(pngStrip.pixelsWide, 32)
+        XCTAssertEqual(pngStrip.pixelsHigh, 32 * frameCount)
+
+        // CALayer translation 0 shows the bottom of the unflipped strip, which
+        // is the last pixel rows of the PNG (bitmap y=0 is the visual top).
+        let pngResting = try spriteFrameFromBottom(
+            of: pngStrip,
+            frameIndex: 0,
+            frameCount: frameCount
+        )
+        let pngRestingInk = quadrantInk(of: pngResting)
+        XCTAssertLessThan(
+            pngRestingInk.topRight - pngRestingInk.topLeft,
+            0.02,
+            "translation 0 must show the closed ring (GIF frame 0), not a slash"
+        )
+
+        for slashIndex in [5, 8, 11] {
+            let pngSlash = try spriteFrameFromBottom(
+                of: pngStrip,
+                frameIndex: slashIndex,
+                frameCount: frameCount
+            )
+            let pngSlashInk = quadrantInk(of: pngSlash)
+            XCTAssertGreaterThan(
+                pngSlashInk.topRight,
+                pngSlashInk.topLeft,
+                "GIF slash frame \(slashIndex) must keep the spike in the top-right"
+            )
+            if slashIndex != 5 {
+                XCTAssertGreaterThan(
+                    pngSlashInk.topRight - pngSlashInk.topLeft,
+                    pngRestingInk.topRight - pngRestingInk.topLeft + 0.03,
+                    "slash frame \(slashIndex) must add more top-right ink than the closed ring"
+                )
+            }
+        }
+
+        let gifStrip = try rasterizeSpriteStrip(gifSprite)
+        for index in [0, 5, 8, 11, frameCount - 1] {
+            let pngFrame = try spriteFrameFromBottom(
+                of: pngStrip,
+                frameIndex: index,
+                frameCount: frameCount
+            )
+            let gifFrame = try spriteFrameFromBottom(
+                of: gifStrip,
+                frameIndex: index,
+                frameCount: frameCount
+            )
+            XCTAssertLessThan(
+                meanAbsAlphaDelta(pngFrame, gifFrame),
+                0.08,
+                "committed PNG frame \(index) must match fromGIF bottom-origin stacking"
+            )
+        }
+
+        let pngLast = try spriteFrameFromBottom(
+            of: pngStrip,
+            frameIndex: frameCount - 1,
+            frameCount: frameCount
+        )
+        let gifResting = try spriteFrameFromBottom(
+            of: gifStrip,
+            frameIndex: 0,
+            frameCount: frameCount
+        )
+        let gifLast = try spriteFrameFromBottom(
+            of: gifStrip,
+            frameIndex: frameCount - 1,
+            frameCount: frameCount
+        )
+        let alignedRestingDelta = meanAbsAlphaDelta(pngResting, gifResting)
+        let reversedRestingDelta = meanAbsAlphaDelta(pngResting, gifLast)
+        XCTAssertLessThan(
+            alignedRestingDelta,
+            reversedRestingDelta,
+            "PNG must not be stacked top-down; that would pair translation 0 with the last GIF frame"
+        )
+        XCTAssertLessThan(meanAbsAlphaDelta(pngLast, gifLast), 0.08)
+
+        let gifFrameZero = try rasterizeImage(gifFrames.frames[0], size: frameSize)
+        let gifFrameEight = try rasterizeImage(gifFrames.frames[8], size: frameSize)
+        XCTAssertLessThan(
+            meanAbsAlphaDelta(pngResting, gifFrameZero),
+            meanAbsAlphaDelta(pngResting, gifFrameEight),
+            "the visible translation-0 frame must be the closed ring, not a mid slash"
+        )
+        let gifEightInk = quadrantInk(of: gifFrameEight)
+        XCTAssertGreaterThan(
+            gifEightInk.topRight,
+            gifEightInk.topLeft,
+            "GIF frame 8 itself must have the / spike in the top-right"
+        )
+    }
+
     func testAnimationPolicyHonorsPreferenceAndSystemReduceMotion() {
         XCTAssertTrue(
             MenuBarActivityAnimationPolicy.shouldAnimate(
@@ -682,6 +803,137 @@ final class MenuBarAnimationTests: XCTestCase {
         let fullTurn = 2 * Double.pi
         let rawDelta = (from - to).truncatingRemainder(dividingBy: fullTurn)
         return rawDelta >= 0 ? rawDelta : rawDelta + fullTurn
+    }
+
+    private func rasterizeSpriteStrip(
+        _ sprite: NSImage,
+        scale: CGFloat = 2
+    ) throws -> NSBitmapImageRep {
+        let size = sprite.size
+        let rep = try makeBitmap(size: size, scale: scale)
+        let imageView = NSImageView(frame: NSRect(origin: .zero, size: size))
+        imageView.image = sprite
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.imageAlignment = .alignCenter
+        imageView.wantsLayer = true
+        imageView.layoutSubtreeIfNeeded()
+        imageView.cacheDisplay(in: imageView.bounds, to: rep)
+        return rep
+    }
+
+    private func spriteFrameFromBottom(
+        of strip: NSBitmapImageRep,
+        frameIndex: Int,
+        frameCount: Int
+    ) throws -> NSBitmapImageRep {
+        XCTAssertGreaterThan(frameCount, 0)
+        XCTAssertEqual(strip.pixelsHigh % frameCount, 0)
+        let framePixels = strip.pixelsHigh / frameCount
+        let frameSize = NSSize(
+            width: strip.size.width,
+            height: strip.size.height / CGFloat(frameCount)
+        )
+        let scale = frameSize.width > 0
+            ? CGFloat(strip.pixelsWide) / frameSize.width
+            : 2
+        let frame = try makeBitmap(size: frameSize, scale: scale)
+        let sourceY = (frameCount - 1 - frameIndex) * framePixels
+        for y in 0..<framePixels {
+            for x in 0..<strip.pixelsWide {
+                if let color = strip.colorAt(x: x, y: sourceY + y) {
+                    frame.setColor(color, atX: x, y: y)
+                }
+            }
+        }
+        return frame
+    }
+
+    private func rasterizeImage(
+        _ image: NSImage,
+        size: NSSize,
+        scale: CGFloat = 2
+    ) throws -> NSBitmapImageRep {
+        let rep = try makeBitmap(size: size, scale: scale)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        NSColor.clear.setFill()
+        NSRect(origin: .zero, size: size).fill()
+        image.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: .zero,
+            operation: .copy,
+            fraction: 1,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
+    }
+
+    private func makeBitmap(size: NSSize, scale: CGFloat) throws -> NSBitmapImageRep {
+        let rep = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: Int((size.width * scale).rounded()),
+                pixelsHigh: Int((size.height * scale).rounded()),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+        )
+        rep.size = size
+        return rep
+    }
+
+    private struct QuadrantInk {
+        let topLeft: CGFloat
+        let topRight: CGFloat
+    }
+
+    private func quadrantInk(of rep: NSBitmapImageRep) -> QuadrantInk {
+        let midX = rep.pixelsWide / 2
+        let midY = rep.pixelsHigh / 2
+        return QuadrantInk(
+            topLeft: meanAlpha(of: rep, x: 0..<midX, y: 0..<midY),
+            topRight: meanAlpha(of: rep, x: midX..<rep.pixelsWide, y: 0..<midY)
+        )
+    }
+
+    private func meanAlpha(
+        of rep: NSBitmapImageRep,
+        x: Range<Int>,
+        y: Range<Int>
+    ) -> CGFloat {
+        var total: CGFloat = 0
+        var count: CGFloat = 0
+        for row in y {
+            for column in x {
+                total += CGFloat(rep.colorAt(x: column, y: row)?.alphaComponent ?? 0)
+                count += 1
+            }
+        }
+        return count == 0 ? 0 : total / count
+    }
+
+    private func meanAbsAlphaDelta(_ left: NSBitmapImageRep, _ right: NSBitmapImageRep) -> CGFloat {
+        XCTAssertEqual(left.pixelsWide, right.pixelsWide)
+        XCTAssertEqual(left.pixelsHigh, right.pixelsHigh)
+        var total: CGFloat = 0
+        var count: CGFloat = 0
+        for y in 0..<left.pixelsHigh {
+            for x in 0..<left.pixelsWide {
+                let leftAlpha = CGFloat(left.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+                let rightAlpha = CGFloat(right.colorAt(x: x, y: y)?.alphaComponent ?? 0)
+                total += abs(leftAlpha - rightAlpha)
+                count += 1
+            }
+        }
+        return count == 0 ? 0 : total / count
     }
 
     private func meanVisibleAlpha(of image: NSImage, size: NSSize) -> CGFloat {
