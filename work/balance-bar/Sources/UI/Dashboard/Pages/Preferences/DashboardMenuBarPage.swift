@@ -1057,22 +1057,29 @@ final class DashboardMenuBarPage {
             target: input.relay,
             action: #selector(DashboardPreferencePageRelay.toggle(_:))
         )
-        let autoSwitchLunaReserve = DashboardSettingsComponents.makeSwitch(
-            identifier: Self.autoSwitchLunaReserveIdentifier,
-            isOn: input.preferences.menuBarAutoSwitchLunaReserve,
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.toggle(_:))
-        )
+        self.autoSwitchLunaReserveSwitch = nil
+        self.lunaReserveResetTimeModeControl = nil
+        let showLunaReserveSettings = LunaReserveUserFacing.isCurrentlyEnabled
+        let autoSwitchLunaReserve = showLunaReserveSettings
+            ? DashboardSettingsComponents.makeSwitch(
+                identifier: Self.autoSwitchLunaReserveIdentifier,
+                isOn: input.preferences.menuBarAutoSwitchLunaReserve,
+                target: input.relay,
+                action: #selector(DashboardPreferencePageRelay.toggle(_:))
+            )
+            : nil
         self.autoSwitchLunaReserveSwitch = autoSwitchLunaReserve
         let quotaWindowPreferenceControl = makeQuotaWindowPreferenceControl(
             value: input.preferences.menuBarQuotaWindowPreference,
             relay: input.relay
         )
         self.quotaWindowPreferenceControl = quotaWindowPreferenceControl
-        let lunaReserveResetTimeModeControl = makeLunaReserveResetTimeModeControl(
-            value: input.preferences.menuBarLunaReserveResetTimeMode,
-            relay: input.relay
-        )
+        let lunaReserveResetTimeModeControl = showLunaReserveSettings
+            ? makeLunaReserveResetTimeModeControl(
+                value: input.preferences.menuBarLunaReserveResetTimeMode,
+                relay: input.relay
+            )
+            : nil
         self.lunaReserveResetTimeModeControl = lunaReserveResetTimeModeControl
         let iconDisplayModeControl = makeIconDisplayModeControl(
             value: input.preferences.menuBarIconDisplayMode,
@@ -1213,30 +1220,41 @@ final class DashboardMenuBarPage {
             control: quotaWindowPreferenceControl
         )
         self.quotaWindowPreferenceRow = quotaWindowPreferenceRow
-        let autoSwitchLunaReserveRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(
-                .keyDashboardMenuBarPageAutoSwitchLunaReserve,
-                arguments: [tr(.keyLunaReserveTitle)]
-            ),
-            subtitle: tr(
-                .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
-                arguments: [tr(.keyLunaReserveTitle)]
-            ),
-            control: autoSwitchLunaReserve
-        )
-        self.autoSwitchLunaReserveRow = autoSwitchLunaReserveRow
-        let lunaReserveResetTimeRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(
-                .keyDashboardMenuBarPageLunaReserveResetTime,
-                arguments: [tr(.keyLunaReserveTitle)]
-            ),
-            subtitle: tr(
-                .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
-                arguments: [tr(.keyLunaReserveTitle)]
-            ),
-            control: lunaReserveResetTimeModeControl
-        )
-        self.lunaReserveResetTimeRow = lunaReserveResetTimeRow
+        self.autoSwitchLunaReserveRow = nil
+        self.lunaReserveResetTimeRow = nil
+        let autoSwitchLunaReserveRow: NSView?
+        let lunaReserveResetTimeRow: NSView?
+        if let autoSwitchLunaReserve, let lunaReserveResetTimeModeControl {
+            let autoSwitchRow = DashboardSettingsComponents.makeSettingsRow(
+                tr(
+                    .keyDashboardMenuBarPageAutoSwitchLunaReserve,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                ),
+                subtitle: tr(
+                    .keyDashboardMenuBarPageAutoSwitchLunaReserveDescription,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                ),
+                control: autoSwitchLunaReserve
+            )
+            let resetTimeRow = DashboardSettingsComponents.makeSettingsRow(
+                tr(
+                    .keyDashboardMenuBarPageLunaReserveResetTime,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                ),
+                subtitle: tr(
+                    .keyDashboardMenuBarPageLunaReserveResetTimeDescription,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                ),
+                control: lunaReserveResetTimeModeControl
+            )
+            self.autoSwitchLunaReserveRow = autoSwitchRow
+            self.lunaReserveResetTimeRow = resetTimeRow
+            autoSwitchLunaReserveRow = autoSwitchRow
+            lunaReserveResetTimeRow = resetTimeRow
+        } else {
+            autoSwitchLunaReserveRow = nil
+            lunaReserveResetTimeRow = nil
+        }
         let amountDisplayRow = DashboardSettingsComponents.makeSettingsRow(
             tr(.keyDashboardMenuBarPageBalanceAmount),
             subtitle: tr(.keyDashboardMenuBarPageShowsAPercentageOrApiBalance),
@@ -1309,7 +1327,7 @@ final class DashboardMenuBarPage {
                 quotaResetDisplayModeRow,
                 autoSwitchLunaReserveRow,
                 lunaReserveResetTimeRow
-            ],
+            ].compactMap { $0 },
             onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
                 self?.quotaRowsStack = rowsStack
                 self?.quotaCardHeightConstraint = cardHeightConstraint
@@ -1317,7 +1335,8 @@ final class DashboardMenuBarPage {
                 self?.updateQuotaVisibility(
                     showAmount: input.preferences.showMenuBarAmount,
                     showReset: input.preferences.showMenuBarReset,
-                    autoSwitchLunaReserve: input.preferences.menuBarAutoSwitchLunaReserve
+                    autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
+                        && input.preferences.menuBarAutoSwitchLunaReserve
                 )
             }
         )
@@ -1720,7 +1739,8 @@ final class DashboardMenuBarPage {
         updateQuotaVisibility(
             showAmount: preferences.showMenuBarAmount,
             showReset: preferences.showMenuBarReset,
-            autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve
+            autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
+                && preferences.menuBarAutoSwitchLunaReserve
         )
         if let quotaWindowPreferenceControl,
            let selectedIndex = OfficialQuotaWindowPreference.allCases.firstIndex(

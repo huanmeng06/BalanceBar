@@ -454,11 +454,15 @@ struct Snapshot {
         }
 
         let windows = officialQuotaWindowsForMenu
+        let displayMode = LunaReserveUserFacing.isCurrentlyEnabled
+            ? lunaReserveDisplayMode
+            : .disabled
+        let hideExhausted = LunaReserveUserFacing.isCurrentlyEnabled && hideExhaustedQuota
         let hasExhaustedQuota = windows.contains {
             $0.kind != .other && $0.remaining <= 0
         }
         let shouldShowLunaReserve: Bool
-        switch lunaReserveDisplayMode {
+        switch displayMode {
         case .disabled:
             shouldShowLunaReserve = false
         case .whenQuotaExhausted:
@@ -473,7 +477,7 @@ struct Snapshot {
             let defaultInsertionIndex = windows.firstIndex(where: { $0.kind == .fiveHour })
                 .map { $0 + 1 }
                 ?? 0
-            switch lunaReserveDisplayMode {
+            switch displayMode {
             case .disabled:
                 return nil
             case .whenQuotaExhausted:
@@ -490,8 +494,8 @@ struct Snapshot {
             }
         }()
         let shouldHideExhaustedQuota = shouldShowLunaReserve
-            && hideExhaustedQuota
-            && lunaReserveDisplayMode != .disabled
+            && hideExhausted
+            && displayMode != .disabled
         let indexedWindows = Array(windows.enumerated())
         let presentedWindows = indexedWindows.compactMap { indexedWindow in
             shouldHideExhaustedQuota && indexedWindow.element.remaining <= 0
@@ -545,7 +549,8 @@ struct Snapshot {
         // plans that expose only one official window work without binding the
         // takeover to the currently selected primary window.
         let originalQuotaIsExhausted = recognized.contains { $0.remaining <= 0 }
-        guard automaticallyUseLunaReserve,
+        guard LunaReserveUserFacing.isCurrentlyEnabled,
+              automaticallyUseLunaReserve,
               originalQuotaIsExhausted,
               let lunaReserve,
               lunaReserve.status == .available,
@@ -655,7 +660,7 @@ struct Snapshot {
             return tr(.keySnapshotValueValue, arguments: [String(describing: title), String(describing: message ?? tr(.keyLocalizationStatusUnknown))])
         }
         let reset = String(describing: officialResetDisplayValue() ?? tr(.keyLocalizationUnknown))
-        guard let lunaReserve else {
+        guard LunaReserveUserFacing.isCurrentlyEnabled, let lunaReserve else {
             return tr(.keySnapshotValueResetValue, arguments: [String(describing: title), reset])
         }
         return tr(

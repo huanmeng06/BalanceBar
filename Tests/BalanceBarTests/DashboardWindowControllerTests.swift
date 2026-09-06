@@ -1844,6 +1844,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
     }
 
     func testOfficialCodexMenuCardRendersIndependentFiveHourAndSevenDayRows() throws {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .english

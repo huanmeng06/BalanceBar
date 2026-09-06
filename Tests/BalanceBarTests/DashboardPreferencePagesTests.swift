@@ -1057,7 +1057,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
         ))
 
         let labels = descendants(of: page).compactMap { $0 as? NSTextField }
-        XCTAssertEqual(labels.first { $0.stringValue == "余额显示" }?.stringValue, "余额显示")
+        XCTAssertNil(labels.first { $0.stringValue == "余额显示" })
         XCTAssertEqual(labels.first { $0.stringValue == "进度条" }?.stringValue, "进度条")
         XCTAssertEqual(labels.first { $0.stringValue == "低余额警示阈值" }?.stringValue, "低余额警示阈值")
         XCTAssertEqual(
@@ -1065,27 +1065,19 @@ final class DashboardPreferencePagesTests: XCTestCase {
             "充值后若余额仍低于此金额，进度条继续显示为红色"
         )
 
-        let balanceDisplaySection = try XCTUnwrap(
-            settingsSection(withTitle: tr(.keyDashboardMenuPageBalanceDisplay), in: page)
-        )
+        XCTAssertNil(settingsSection(withTitle: tr(.keyDashboardMenuPageBalanceDisplay), in: page))
         let progressBarSection = try XCTUnwrap(
             settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar), in: page)
         )
-        let balanceDisplayRows = settingsRows(in: balanceDisplaySection)
         let progressBarRows = settingsRows(in: progressBarSection)
-        XCTAssertEqual(balanceDisplayRows.count, 2)
         XCTAssertEqual(progressBarRows.count, 3)
         let sectionTitles = labels.map(\.stringValue)
-        let balanceDisplayIndex = try XCTUnwrap(
-            sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageBalanceDisplay))
-        )
         let progressBarIndex = try XCTUnwrap(
             sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageProgressBar))
         )
         let menuBehaviorIndex = try XCTUnwrap(
             sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageMenuBehavior))
         )
-        XCTAssertLessThan(balanceDisplayIndex, progressBarIndex)
         XCTAssertLessThan(progressBarIndex, menuBehaviorIndex)
 
         guard let field = descendants(of: page)
@@ -1104,7 +1096,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
             return XCTFail("Expected both balance display and dropdown-menu rows")
         }
         XCTAssertTrue(progressBarRows[2] === thresholdRow)
-        XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
         XCTAssertEqual(
             equalHeightConstraint(in: thresholdRow),
             equalHeightConstraint(in: quickSwitchRow),
@@ -1200,15 +1191,17 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 )
             }
 
-            let balanceDisplaySection = try XCTUnwrap(
-                settingsSection(withTitle: tr(.keyDashboardMenuPageBalanceDisplay, language: language), in: page)
+            XCTAssertNil(
+                settingsSection(
+                    withTitle: tr(.keyDashboardMenuPageBalanceDisplay, language: language),
+                    in: page
+                ),
+                "shipping builds omit the Reserve-only Balance Display section for \(language)"
             )
             let progressBarSection = try XCTUnwrap(
                 settingsSection(withTitle: tr(.keyDashboardMenuPageProgressBar, language: language), in: page)
             )
-            let balanceDisplayRows = settingsRows(in: balanceDisplaySection)
             let progressBarRows = settingsRows(in: progressBarSection)
-            XCTAssertEqual(balanceDisplayRows.count, 2, "Balance Display row count for \(language)")
             XCTAssertEqual(progressBarRows.count, 3, "Progress Bar row count for \(language)")
 
             let expectedRows = [
@@ -1232,16 +1225,12 @@ final class DashboardPreferencePagesTests: XCTestCase {
             }
 
             let sectionTitles = labelStrings
-            let balanceDisplayIndex = try XCTUnwrap(
-                sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageBalanceDisplay, language: language))
-            )
             let progressBarIndex = try XCTUnwrap(
                 sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageProgressBar, language: language))
             )
             let menuBehaviorIndex = try XCTUnwrap(
                 sectionTitles.firstIndex(of: tr(.keyDashboardMenuPageMenuBehavior, language: language))
             )
-            XCTAssertLessThan(balanceDisplayIndex, progressBarIndex, "section order for \(language)")
             XCTAssertLessThan(progressBarIndex, menuBehaviorIndex, "section order for \(language)")
 
             let thresholdField = try XCTUnwrap(
@@ -1275,7 +1264,6 @@ final class DashboardPreferencePagesTests: XCTestCase {
                 progressBarRows.map(ObjectIdentifier.init),
                 [sliderRow, colorRow, thresholdRow].map(ObjectIdentifier.init)
             )
-            XCTAssertFalse(balanceDisplayRows.contains { $0 === thresholdRow })
             XCTAssertEqual(thresholdField.stringValue, "0.10")
             XCTAssertEqual(slider.configuration, preferences.quotaProgressColorConfiguration)
 
@@ -1316,6 +1304,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
     }
 
     func testLunaReserveMenuDisplaySettingsLocalizePersistAndRevealExhaustedQuotaSwitch() throws {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -1490,6 +1480,96 @@ final class DashboardPreferencePagesTests: XCTestCase {
         hideSwitch.state = .off
         relay.toggle(hideSwitch)
         XCTAssertFalse(preferences.menuLunaReserveHideExhaustedQuota)
+    }
+
+    func testShippingBuildsOmitLunaReserveSettingsAndIgnoreStoredKeys() throws {
+        XCTAssertFalse(LunaReserveUserFacing.isEnabled)
+        XCTAssertNil(LunaReserveUserFacing.testOverride)
+
+        let suiteName = "DashboardPreferencePagesTests.LunaReserveHidden.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("always", forKey: AppPreferences.menuLunaReserveDisplayModeKey)
+        defaults.set(true, forKey: AppPreferences.menuLunaReserveHideExhaustedQuotaKey)
+        defaults.set(true, forKey: AppPreferences.menuBarAutoSwitchLunaReserveKey)
+        defaults.set(
+            LunaReserveResetTimeMode.lunaReserve.rawValue,
+            forKey: AppPreferences.menuBarLunaReserveResetTimeModeKey
+        )
+        let preferences = AppPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.menuLunaReserveDisplayMode, .always)
+        XCTAssertTrue(preferences.menuLunaReserveHideExhaustedQuota)
+        XCTAssertTrue(preferences.menuBarAutoSwitchLunaReserve)
+        XCTAssertEqual(preferences.menuBarLunaReserveResetTimeMode, .lunaReserve)
+
+        let menuPage = DashboardMenuPage()
+        let menuView = menuPage.make(.init(
+            preferences: preferences,
+            relay: DashboardPreferencePageRelay(),
+            makeStatusLinksEditor: {
+                StatusLinksEditorHostingView(
+                    links: [],
+                    onChange: { _, _, _ in },
+                    onAdd: { _ in },
+                    onRemove: { _ in },
+                    onReset: {}
+                )
+            },
+            onBalanceDisplayThresholdChanged: { _ in }
+        ))
+        defer { menuPage.teardown() }
+
+        XCTAssertNil(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.lunaReserveDisplayModeIdentifier }
+        )
+        XCTAssertNil(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuPage.lunaReserveHideExhaustedQuotaIdentifier }
+        )
+        XCTAssertNil(
+            settingsSection(withTitle: tr(.keyDashboardMenuPageBalanceDisplay), in: menuView)
+        )
+        XCTAssertFalse(
+            descendants(of: menuView)
+                .compactMap { $0 as? NSTextField }
+                .contains { $0.stringValue.contains("🌙") }
+        )
+
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            72,
+            "7-day",
+            "2h",
+            Date(timeIntervalSince1970: 1)
+        )
+        let menuBarPage = DashboardMenuBarPage()
+        let menuBarView = menuBarPage.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: nil,
+            relay: DashboardPreferencePageRelay()
+        ))
+        XCTAssertNil(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSSwitch }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.autoSwitchLunaReserveIdentifier }
+        )
+        XCTAssertNil(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSPopUpButton }
+                .first { $0.identifier?.rawValue == DashboardMenuBarPage.lunaReserveResetTimeModeIdentifier }
+        )
+        XCTAssertFalse(
+            descendants(of: menuBarView)
+                .compactMap { $0 as? NSTextField }
+                .contains { $0.stringValue.contains("🌙") }
+        )
     }
 
     func testMenuEntryRowsLocalizeSubtitlesAndPreserveControlsAcrossLanguages() {
@@ -2425,6 +2505,8 @@ final class DashboardPreferencePagesTests: XCTestCase {
     }
 
     func testMenuBarQuotaRowsFollowVisibilityDependenciesAndRequestedOrder() throws {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
         AppLanguage.selected = .simplifiedChinese
@@ -2741,17 +2823,15 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
 
             let selectorRow = try XCTUnwrap(popup.superview)
-            let autoSwitchRow = try XCTUnwrap(
+            XCTAssertNil(
                 descendants(of: page)
                     .compactMap { $0 as? NSSwitch }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.autoSwitchLunaReserveIdentifier }
-                    .flatMap(\.superview)
             )
-            let lunaReserveResetTimeRow = try XCTUnwrap(
+            XCTAssertNil(
                 descendants(of: page)
                     .compactMap { $0 as? NSPopUpButton }
                     .first { $0.identifier?.rawValue == DashboardMenuBarPage.lunaReserveResetTimeModeIdentifier }
-                    .flatMap(\.superview)
             )
             let quotaAndResetHeading = try XCTUnwrap(
                 descendants(of: page)
@@ -2762,7 +2842,7 @@ final class DashboardPreferencePagesTests: XCTestCase {
             )
             let quotaAndResetRows = try XCTUnwrap(selectorRow.superview as? NSStackView)
             let quotaRows = quotaAndResetRows.arrangedSubviews.filter { !($0 is NSBox) }
-            XCTAssertEqual(quotaRows.count, 6)
+            XCTAssertEqual(quotaRows.count, 4)
             XCTAssertTrue(
                 zip(
                     quotaRows,
@@ -2785,12 +2865,10 @@ final class DashboardPreferencePagesTests: XCTestCase {
                                 .compactMap { $0 as? NSPopUpButton }
                                 .first { $0.identifier?.rawValue == DashboardMenuBarPage.quotaResetDisplayModeIdentifier }
                                 .flatMap(\.superview)
-                        ),
-                        autoSwitchRow,
-                        lunaReserveResetTimeRow
+                        )
                     ]
                 ).allSatisfy { $0.0 === $0.1 },
-                "quota rows follow usage, reset countdown, priority, reset display, Reserve switch, Reserve reset source order"
+                "quota rows follow usage, reset countdown, priority, reset display without Reserve controls"
             )
             XCTAssertTrue(
                 descendants(of: selectorRow)
