@@ -14,6 +14,135 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testClientSwitchLayoutsOnceAndDefersMenuRebuildUntilOpen() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        let grokSnapshot = Snapshot.balance(
+            "Grok Provider",
+            12.34,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let claudeSnapshot = Snapshot.balance(
+            "Claude Provider",
+            56.78,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        let grokInput = makeMenuInput(activeClient: .grok, showQuickSwitchMenu: false)
+        let claudeInput = makeMenuInput(activeClient: .claude, showQuickSwitchMenu: true)
+        let settings = makeSettings()
+        let grokIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.15,
+            green: 0.15,
+            blue: 0.15
+        )
+        let claudeIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.85,
+            green: 0.45,
+            blue: 0.15
+        )
+        grokIcon.isTemplate = true
+        claudeIcon.isTemplate = true
+
+        controller.start(
+            snapshot: grokSnapshot,
+            refreshDate: grokSnapshot.date,
+            menuInput: grokInput,
+            settings: settings
+        )
+        controller.setGrokIconForTesting(grokIcon)
+        controller.setClaudeAnimationAssetsForTesting(
+            staticImage: claudeIcon,
+            spriteImage: claudeIcon
+        )
+        controller.updateActivity(
+            activeClient: .grok,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            grokTaskRunning: false,
+            animationEnabled: true
+        )
+
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, grokSnapshot.menuBarPrimary)
+        let layoutBefore = controller.layoutStatusItemCallCountForTesting
+        let rebuildBefore = controller.statusMenuRebuildCountForTesting
+        let menuIdentities = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
+        XCTAssertFalse(
+            controller.menuItemsForTesting.contains { $0.submenu != nil },
+            "the grok dropdown should not include quick switch before the deferred rebuild"
+        )
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            grokTaskRunning: false,
+            animationEnabled: true,
+            layout: false
+        )
+        XCTAssertEqual(
+            controller.layoutStatusItemCallCountForTesting,
+            layoutBefore,
+            "icon swap before a cached snapshot render must not layout the status item"
+        )
+        XCTAssertEqual(
+            controller.menuBarPrimaryTextForTesting,
+            grokSnapshot.menuBarPrimary,
+            "digits stay on the previous client until the cached snapshot renders"
+        )
+        XCTAssertTrue(
+            controller.menuBarSourceImageForTesting === claudeIcon,
+            "the Claude icon must still swap when layout is skipped"
+        )
+
+        controller.update(
+            snapshot: claudeSnapshot,
+            refreshDate: claudeSnapshot.date,
+            menuInput: claudeInput,
+            settings: settings,
+            deferMenuRebuild: true
+        )
+        XCTAssertEqual(
+            controller.layoutStatusItemCallCountForTesting,
+            layoutBefore + 1,
+            "one client switch must layout the status item once"
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, claudeSnapshot.menuBarPrimary)
+        XCTAssertNotEqual(controller.menuBarPrimaryTextForTesting, "…")
+        XCTAssertNotEqual(controller.menuBarPrimaryTextForTesting, grokSnapshot.menuBarPrimary)
+        XCTAssertEqual(
+            controller.statusMenuRebuildCountForTesting,
+            rebuildBefore,
+            "clicking a Terminal tab must not rebuild the dropdown"
+        )
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            menuIdentities
+        )
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertEqual(
+            controller.statusMenuRebuildCountForTesting,
+            rebuildBefore + 1,
+            "opening the status menu must apply the deferred rebuild"
+        )
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(
+            controller.menuItemsForTesting.contains { $0.submenu != nil },
+            "the deferred rebuild must present the new client's menu items"
+        )
+
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
     func testStatusItemContentIsAlwaysRenderedFromTheOffscreenBitmapTree() {
         let controller = makeController()
         defer { controller.teardown() }
@@ -1521,17 +1650,22 @@ final class StatusItemControllerTests: XCTestCase {
         )
     }
 
-    private func makeMenuInput() -> StatusItemController.MenuInput {
+    private func makeMenuInput(
+        activeClient: AssistantClient = .codex,
+        showQuickSwitchMenu: Bool = false
+    ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
             openCodexCards: [],
             openCodexState: nil,
             openCodexSwitchInFlight: false,
-            choices: [],
-            quickSwitchSummaries: [:],
-            activeClient: .codex,
+            choices: showQuickSwitchMenu
+                ? [ProviderChoice(id: "provider", name: "Provider", isCurrent: true)]
+                : [],
+            quickSwitchSummaries: showQuickSwitchMenu ? ["provider": "$1.00"] : [:],
+            activeClient: activeClient,
             openAIAccount: nil,
             statusLinks: [],
-            showQuickSwitchMenu: false,
+            showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
             showOpenCodexMenu: false,

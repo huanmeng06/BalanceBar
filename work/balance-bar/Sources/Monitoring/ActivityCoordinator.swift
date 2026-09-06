@@ -320,6 +320,35 @@ enum ActivityFrontmostKind: Equatable {
     case other
 }
 
+/// Selected-tab identity can run faster than activity/transcript polling
+/// when Terminal is frontmost and both CLIs are alive. Tab clicks do not
+/// fire `didActivateApplication`, so identity cannot wait for the 0.25/0.5/1.0
+/// activity timer.
+enum ActivityIdentityPolling {
+    static let dualCLIFrontmostInterval: TimeInterval = 0.1
+
+    static func shouldUseFastIdentity(
+        frontmost: ActivityFrontmostKind,
+        grokProcessRunning: Bool,
+        claudeProcessRunning: Bool
+    ) -> Bool {
+        frontmost == .terminal && grokProcessRunning && claudeProcessRunning
+    }
+
+    static func identityInterval(
+        frontmost: ActivityFrontmostKind,
+        grokProcessRunning: Bool,
+        claudeProcessRunning: Bool,
+        configuredPollInterval: TimeInterval
+    ) -> TimeInterval {
+        shouldUseFastIdentity(
+            frontmost: frontmost,
+            grokProcessRunning: grokProcessRunning,
+            claudeProcessRunning: claudeProcessRunning
+        ) ? dualCLIFrontmostInterval : configuredPollInterval
+    }
+}
+
 enum ActivityClientSelection {
     /// Chooses the menu-bar client from frontmost-app evidence and terminal
     /// process presence. Background Grok/Claude processes never steal Codex.
@@ -452,10 +481,16 @@ final class ActivityCoordinator {
     private let activityQueue: DispatchQueue
     private let actions: ActivityCoordinatorActions
     private var pollTimer: Timer?
+    private var identityTimer: Timer?
     private var workspaceObserver: NSObjectProtocol?
     private var isIdentityInFlight = false
     private var isActivityInFlight = false
     private var isStarted = false
+    private(set) var isFastIdentityPollingEnabled = false
+    private(set) var taskActivityScheduleCountForTests = 0
+    private let ttyCacheLock = NSLock()
+    private var cachedGrokTTYs = Set<String>()
+    private var cachedClaudeTTYs = Set<String>()
     private var lifecycleGeneration: UInt64 = 0
     private var lastSampledClient: AssistantClient?
     private var codexLifecycle = ActivityLifecycleStateMachine()
@@ -507,6 +542,7 @@ final class ActivityCoordinator {
         let wasStarted = isStarted
         pollTimer?.invalidate()
         pollTimer = nil
+        stopFastIdentityTimer()
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
             self.workspaceObserver = nil
@@ -516,6 +552,7 @@ final class ActivityCoordinator {
         isActivityInFlight = false
         lifecycleGeneration &+= 1
         lastSampledClient = nil
+        replaceCachedTTYs(grok: [], claude: [])
         TerminalFrontmostTTY.discardLatch()
         let codexWasRunning = codexLifecycle.reset()
         let claudeWasRunning = claudeLifecycle.reset()
@@ -533,6 +570,49 @@ final class ActivityCoordinator {
         refreshActivity()
     }
 
+    func applyIdentityPollingStateForTests(
+        frontmost: ActivityFrontmostKind,
+        grokRunning: Bool,
+        claudeRunning: Bool
+    ) {
+        updateFastIdentityTimer(
+            frontmost: frontmost,
+            grokRunning: grokRunning,
+            claudeRunning: claudeRunning
+        )
+    }
+
+    func refreshIdentityOnlyForTests() {
+        refreshIdentityOnly()
+    }
+
+    func refreshIdentityForTests(
+        frontmost: ActivityFrontmostKind,
+        allowProcessProbe: Bool
+    ) {
+        refreshIdentity(
+            generation: lifecycleGeneration,
+            frontmostKind: frontmost,
+            application: nil,
+            allowProcessProbe: allowProcessProbe
+        )
+    }
+
+    func applySelectedClientForTests(_ selected: AssistantClient) {
+        applySelectedClient(selected)
+    }
+
+    var cachedGrokTTYsForTests: Set<String> { copyCachedTTYs().grok }
+    var cachedClaudeTTYsForTests: Set<String> { copyCachedTTYs().claude }
+
+    var identityTimerIntervalForTests: TimeInterval? {
+        identityTimer?.timeInterval
+    }
+
+    var pollTimerIntervalForTests: TimeInterval? {
+        pollTimer?.timeInterval
+    }
+
     private func configureTimer(interval: TimeInterval) {
         pollTimer?.invalidate()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
@@ -544,6 +624,13 @@ final class ActivityCoordinator {
 
     private func handleFrontmostApplicationChange() {
         let frontmostKind = Self.frontmostKind(NSWorkspace.shared.frontmostApplication)
+        let grokRunning = actions.grokProcessAvailable()
+        let claudeRunning = actions.claudeProcessAvailable()
+        updateFastIdentityTimer(
+            frontmost: frontmostKind,
+            grokRunning: grokRunning,
+            claudeRunning: claudeRunning
+        )
         switch frontmostKind {
         case .codex:
             TerminalFrontmostTTY.discardLatch()
@@ -552,8 +639,8 @@ final class ActivityCoordinator {
             TerminalFrontmostTTY.discardLatch()
         case .terminal:
             if let client = ActivityClientSelection.immediateTerminalClient(
-                grokProcessRunning: actions.grokProcessAvailable(),
-                claudeProcessRunning: actions.claudeProcessAvailable()
+                grokProcessRunning: grokRunning,
+                claudeProcessRunning: claudeRunning
             ) {
                 actions.setActiveClient(client)
             } else {
@@ -567,6 +654,11 @@ final class ActivityCoordinator {
         applyCachedFrontmostClient()
         let application = NSWorkspace.shared.frontmostApplication
         let frontmostKind = Self.frontmostKind(application)
+        updateFastIdentityTimer(
+            frontmost: frontmostKind,
+            grokRunning: actions.grokProcessAvailable(),
+            claudeRunning: actions.claudeProcessAvailable()
+        )
         let clientBeforeCheck = actions.activeClient()
         let sampledClient = ActivityClientSelection.client(
             frontmost: frontmostKind,
@@ -581,18 +673,15 @@ final class ActivityCoordinator {
             lastSampledClient = sampledClient
         }
         let generation = lifecycleGeneration
-        if !isIdentityInFlight {
-            isIdentityInFlight = true
-            queue.async { [weak self] in
-                self?.refreshIdentity(
-                    generation: generation,
-                    frontmostKind: frontmostKind,
-                    application: application
-                )
-            }
-        }
+        scheduleIdentityRefresh(
+            generation: generation,
+            frontmostKind: frontmostKind,
+            application: application,
+            allowProcessProbe: true
+        )
         if !isActivityInFlight {
             isActivityInFlight = true
+            taskActivityScheduleCountForTests += 1
             activityQueue.async { [weak self] in
                 self?.refreshTaskActivity(
                     generation: generation,
@@ -606,7 +695,8 @@ final class ActivityCoordinator {
     private func refreshIdentity(
         generation: UInt64,
         frontmostKind: ActivityFrontmostKind,
-        application: NSRunningApplication?
+        application: NSRunningApplication?,
+        allowProcessProbe: Bool
     ) {
         var grokPresence: (running: Bool, ttys: [String])?
         var claudePresence: (running: Bool, ttys: [String])?
@@ -615,31 +705,48 @@ final class ActivityCoordinator {
         var claudeTTYs = Set<String>()
 
         if frontmostKind == .terminal {
-            let grok = grokMonitor.processPresence()
-            let claude = claudeMonitor.processPresence()
-            grokPresence = grok
-            claudePresence = claude
-            grokTTYs = Set(grok.ttys)
-            claudeTTYs = Set(claude.ttys)
-            if grok.running && claude.running {
+            let grokRunning: Bool
+            let claudeRunning: Bool
+            if allowProcessProbe {
+                let grok = grokMonitor.processPresence()
+                let claude = claudeMonitor.processPresence()
+                grokPresence = grok
+                claudePresence = claude
+                grokTTYs = Set(grok.ttys)
+                claudeTTYs = Set(claude.ttys)
+                grokRunning = grok.running
+                claudeRunning = claude.running
+                replaceCachedTTYs(grok: grokTTYs, claude: claudeTTYs)
+            } else {
+                let cached = copyCachedTTYs()
+                grokTTYs = cached.grok
+                claudeTTYs = cached.claude
+                grokRunning = true
+                claudeRunning = true
+            }
+            if grokRunning && claudeRunning {
                 let resolved = TerminalFrontmostTTY.resolve(
                     application: application,
                     grokTTYs: grokTTYs,
                     claudeTTYs: claudeTTYs,
-                    loadSnapshot: { TerminalCLIProcessSnapshot.load() }
+                    loadSnapshot: {
+                        guard allowProcessProbe, application != nil else { return nil }
+                        return TerminalCLIProcessSnapshot.load()
+                    }
                 )
                 frontmostTTY = resolved.tty
                 if let snapshot = resolved.snapshot {
                     grokTTYs = snapshot.grokTTYs
                     claudeTTYs = snapshot.claudeTTYs
+                    replaceCachedTTYs(grok: grokTTYs, claude: claudeTTYs)
                 }
             }
         }
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            guard self.isStarted, self.lifecycleGeneration == generation else { return }
             self.isIdentityInFlight = false
+            guard self.isStarted, self.lifecycleGeneration == generation else { return }
             if let grokPresence,
                self.actions.grokProcessAvailable() != grokPresence.running {
                 self.actions.setGrokProcessAvailable(grokPresence.running)
@@ -663,14 +770,147 @@ final class ActivityCoordinator {
                 grokTTYs: grokTTYs,
                 claudeTTYs: claudeTTYs
             )
-            self.actions.setActiveClient(selected)
-            if selected != self.lastSampledClient {
-                self.codexLifecycle.clearPendingTransition()
-                self.claudeLifecycle.clearPendingTransition()
-                self.grokLifecycle.clearPendingTransition()
-                self.lastSampledClient = selected
+            self.applySelectedClient(selected)
+            self.updateFastIdentityTimer(
+                frontmost: currentFrontmost,
+                grokRunning: grokRunning,
+                claudeRunning: claudeRunning
+            )
+        }
+    }
+
+    private func applySelectedClient(_ selected: AssistantClient) {
+        if selected != actions.activeClient() {
+            actions.setActiveClient(selected)
+        }
+        if selected != lastSampledClient {
+            codexLifecycle.clearPendingTransition()
+            claudeLifecycle.clearPendingTransition()
+            grokLifecycle.clearPendingTransition()
+            lastSampledClient = selected
+        }
+    }
+
+    private func copyCachedTTYs() -> (grok: Set<String>, claude: Set<String>) {
+        ttyCacheLock.lock()
+        let grok = cachedGrokTTYs
+        let claude = cachedClaudeTTYs
+        ttyCacheLock.unlock()
+        return (grok, claude)
+    }
+
+    private func replaceCachedTTYs(
+        grok: Set<String>? = nil,
+        claude: Set<String>? = nil
+    ) {
+        ttyCacheLock.lock()
+        if let grok {
+            cachedGrokTTYs = grok
+        }
+        if let claude {
+            cachedClaudeTTYs = claude
+        }
+        ttyCacheLock.unlock()
+    }
+
+    /// Identity only. Never runs session/transcript monitors.
+    private func refreshIdentityOnly() {
+        guard isStarted else { return }
+        let application = NSWorkspace.shared.frontmostApplication
+        let frontmostKind = Self.frontmostKind(application)
+        let grokRunning = actions.grokProcessAvailable()
+        let claudeRunning = actions.claudeProcessAvailable()
+        guard ActivityIdentityPolling.shouldUseFastIdentity(
+            frontmost: frontmostKind,
+            grokProcessRunning: grokRunning,
+            claudeProcessRunning: claudeRunning
+        ) else {
+            updateFastIdentityTimer(
+                frontmost: frontmostKind,
+                grokRunning: grokRunning,
+                claudeRunning: claudeRunning
+            )
+            return
+        }
+        scheduleIdentityRefresh(
+            generation: lifecycleGeneration,
+            frontmostKind: frontmostKind,
+            application: application,
+            allowProcessProbe: false
+        )
+    }
+
+    private func scheduleIdentityRefresh(
+        generation: UInt64,
+        frontmostKind: ActivityFrontmostKind,
+        application: NSRunningApplication?,
+        allowProcessProbe: Bool
+    ) {
+        if !isIdentityInFlight {
+            isIdentityInFlight = true
+            queue.async { [weak self] in
+                self?.refreshIdentity(
+                    generation: generation,
+                    frontmostKind: frontmostKind,
+                    application: application,
+                    allowProcessProbe: allowProcessProbe
+                )
+            }
+        } else {
+            SwitchLog.write(
+                "identity tick skipped; in_flight=true",
+                level: .debug,
+                category: "identity",
+                throttleKey: "identity-skip-inflight",
+                minimumInterval: 1
+            )
+        }
+    }
+
+    private func updateFastIdentityTimer(
+        frontmost: ActivityFrontmostKind,
+        grokRunning: Bool,
+        claudeRunning: Bool
+    ) {
+        let work = { [weak self] in
+            guard let self, self.isStarted else { return }
+            if ActivityIdentityPolling.shouldUseFastIdentity(
+                frontmost: frontmost,
+                grokProcessRunning: grokRunning,
+                claudeProcessRunning: claudeRunning
+            ) {
+                self.startFastIdentityTimerIfNeeded()
+            } else {
+                self.stopFastIdentityTimer()
             }
         }
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
+    }
+
+    private func startFastIdentityTimerIfNeeded() {
+        if identityTimer != nil {
+            isFastIdentityPollingEnabled = true
+            return
+        }
+        let timer = Timer(
+            timeInterval: ActivityIdentityPolling.dualCLIFrontmostInterval,
+            repeats: true
+        ) { [weak self] _ in
+            self?.refreshIdentityOnly()
+        }
+        identityTimer = timer
+        isFastIdentityPollingEnabled = true
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopFastIdentityTimer() {
+        identityTimer?.invalidate()
+        identityTimer = nil
+        isFastIdentityPollingEnabled = false
     }
 
     private func refreshTaskActivity(
@@ -706,13 +946,17 @@ final class ActivityCoordinator {
             guard let self else { return }
             guard self.isStarted, self.lifecycleGeneration == generation else { return }
             self.isActivityInFlight = false
-            if let claudeStatus,
-               self.actions.claudeProcessAvailable() != claudeStatus.processRunning {
-                self.actions.setClaudeProcessAvailable(claudeStatus.processRunning)
+            if let claudeStatus {
+                self.replaceCachedTTYs(claude: Set(claudeStatus.ttys))
+                if self.actions.claudeProcessAvailable() != claudeStatus.processRunning {
+                    self.actions.setClaudeProcessAvailable(claudeStatus.processRunning)
+                }
             }
-            if let grokStatus,
-               self.actions.grokProcessAvailable() != grokStatus.processRunning {
-                self.actions.setGrokProcessAvailable(grokStatus.processRunning)
+            if let grokStatus {
+                self.replaceCachedTTYs(grok: Set(grokStatus.ttys))
+                if self.actions.grokProcessAvailable() != grokStatus.processRunning {
+                    self.actions.setGrokProcessAvailable(grokStatus.processRunning)
+                }
             }
             if let codexObservation {
                 let update = self.codexLifecycle.observeUpdate(codexObservation, at: sampledAt)
@@ -729,6 +973,11 @@ final class ActivityCoordinator {
                 self.actions.observeGrokActivity(update)
                 self.actions.setGrokTaskRunning(update.taskRunning)
             }
+            self.updateFastIdentityTimer(
+                frontmost: Self.frontmostKind(NSWorkspace.shared.frontmostApplication),
+                grokRunning: self.actions.grokProcessAvailable(),
+                claudeRunning: self.actions.claudeProcessAvailable()
+            )
         }
     }
 

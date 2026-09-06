@@ -1,5 +1,5 @@
 import AppKit
-import CoreGraphics
+import ApplicationServices
 import Darwin
 import Foundation
 
@@ -157,7 +157,30 @@ struct TerminalTTYFocusLatch: Equatable {
     var previousWinsizes: [String: TerminalTTYWinsize] = [:]
 }
 
+/// One Apple Event: selected-tab TTY, PID, and title.
+struct TerminalSelectedTabSignal: Equatable {
+    var tty: String?
+    var pid: Int32?
+    var title: String?
+}
+
+enum TerminalAppleScriptStatus: String, Equatable {
+    case skippedExecuting = "skipped_executing"
+    case skippedBackoff = "skipped_backoff"
+    case timeout = "timeout"
+    case failure = "failure"
+    case empty = "empty"
+    case value = "ok"
+}
+
+enum TerminalAppleEventPermission: Equatable {
+    case unknown
+    case allowed
+    case denied
+}
+
 enum TerminalFocusHint {
+    /// Unique grok XOR claude only. Do not match gro, cloud, or cloud code.
     static func client(fromWindowTitle title: String?) -> AssistantClient? {
         guard let title else { return nil }
         let lower = title.lowercased()
@@ -303,76 +326,288 @@ enum TerminalFrontmostTTY {
     private static var compiledAppleScripts: [String: NSAppleScript] = [:]
     private static var appleScriptSkipUntil: Date?
     private static let appleScriptBackoffInterval: TimeInterval = 2
+    private static let appleScriptQueue = DispatchQueue(
+        label: "local.balancebar.terminal-applescript"
+    )
+    static let appleScriptTimeout: TimeInterval = 0.25
+    private static var appleScriptExecuting = false
+    private static var lastAppleScriptStatus: TerminalAppleScriptStatus = .empty
+    private static var lastAppleScriptDuration: TimeInterval = 0
+    private static var lastAppleScriptRaw: String?
+    private static let identityLogLock = NSLock()
+    private static var lastIdentityLogAt = Date.distantPast
+    private static var lastIdentityLogSignature = ""
+    private static var terminalAppleEventPermission: TerminalAppleEventPermission = .unknown
+    private static var didAskTerminalAppleEventPermission = false
+    static let appleEventNotPermittedStatus: OSStatus = -1743
 
-    enum AppleScriptQuery: String {
-        case tty
-        case pid
+    static func usesSelectedTabAppleScript(bundleIdentifier: String?) -> Bool {
+        let bundle = (bundleIdentifier ?? "").lowercased()
+        switch bundle {
+        case "com.apple.terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty":
+            return true
+        default:
+            return bundle.hasSuffix(".ghostty")
+        }
     }
 
-    static func appleScriptSource(bundleIdentifier: String?) -> String? {
-        appleScriptSource(bundleIdentifier: bundleIdentifier, query: .tty)
+    static func permission(fromAppleEventStatus status: OSStatus) -> TerminalAppleEventPermission {
+        switch status {
+        case noErr:
+            return .allowed
+        case appleEventNotPermittedStatus:
+            return .denied
+        default:
+            return .unknown
+        }
+    }
+
+    static func shouldSendAppleEvents(_ permission: TerminalAppleEventPermission) -> Bool {
+        permission == .allowed
     }
 
     static func appleScriptSource(
         bundleIdentifier: String?,
-        query: AppleScriptQuery
+        applicationPath: String? = nil
     ) -> String? {
         let bundle = (bundleIdentifier ?? "").lowercased()
         switch bundle {
         case "com.apple.terminal":
-            guard query == .tty else { return nil }
-            return """
-            tell application id "com.apple.Terminal"
-                if not (exists front window) then return ""
-                return tty of selected tab of front window
-            end tell
-            """
+            return terminalAppleScriptSource(applicationPath: applicationPath)
         case "com.googlecode.iterm2":
-            guard query == .tty else { return nil }
             return """
             tell application id "com.googlecode.iterm2"
                 try
-                    return tty of current session of current window
+                    set tabTTY to ""
+                    set tabPID to ""
+                    set tabTitle to ""
+                    try
+                        set tabTTY to tty of current session of current window as string
+                    end try
+                    try
+                        set tabTitle to name of current session of current window as string
+                    end try
+                    return tabTTY & linefeed & tabPID & linefeed & tabTitle
                 on error
                     return ""
                 end try
             end tell
             """
         case "com.mitchellh.ghostty":
-            return ghosttyAppleScriptSource(query: query)
+            return ghosttyAppleScriptSource(applicationPath: applicationPath)
         default:
             if bundle.hasSuffix(".ghostty") {
-                return ghosttyAppleScriptSource(query: query)
+                return ghosttyAppleScriptSource(applicationPath: applicationPath)
             }
             return nil
         }
     }
 
-    private static func ghosttyAppleScriptSource(query: AppleScriptQuery) -> String {
-        switch query {
-        case .tty:
-            return """
-            tell application id "com.mitchellh.ghostty"
-                if not (exists front window) then return ""
-                try
-                    return tty of focused terminal of selected tab of front window
-                on error
-                    return ""
-                end try
+    /// Official Terminal.app one-shot: `tty` / `custom title` of
+    /// `selected tab of front window`. Never concatenate an empty triple,
+    /// and never `as string` a value that may be missing.
+    private static func terminalAppleScriptSource(applicationPath: String?) -> String {
+        let path = applicationPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let body = terminalSelectedTabBody()
+        let nameTell = """
+        try
+            tell application "Terminal"
+        \(body)
             end tell
-            """
-        case .pid:
-            return """
-            tell application id "com.mitchellh.ghostty"
-                if not (exists front window) then return ""
-                try
-                    return pid of focused terminal of selected tab of front window as string
-                on error
-                    return ""
-                end try
+        on error errMsg number errNum
+            set msg to errMsg as text
+            if (count of msg) > 80 then set msg to text 1 thru 80 of msg
+            return "ERR" & linefeed & (errNum as text) & linefeed & msg
+        end try
+        """
+        guard !path.isEmpty else { return nameTell }
+        let escapedPath = escapeAppleScriptString(path)
+        return """
+        try
+            tell application "\(escapedPath)"
+        \(body)
             end tell
-            """
+        on error errMsg number errNum
+            try
+                tell application "Terminal"
+        \(body)
+                end tell
+            on error errMsg2 number errNum2
+                set msg to errMsg2 as text
+                if (count of msg) > 80 then set msg to text 1 thru 80 of msg
+                return "ERR" & linefeed & (errNum2 as text) & linefeed & msg
+            end try
+        end try
+        """
+    }
+
+    private static func terminalSelectedTabBody() -> String {
+        """
+                if (count of windows) is 0 then
+                    return "ERR" & linefeed & "no_windows" & linefeed & ""
+                end if
+                if not (exists front window) then
+                    return "ERR" & linefeed & "no_front_window" & linefeed & ""
+                end if
+                set tabRef to selected tab of front window
+                set tabTTY to tty of tabRef
+                set tabPID to ""
+                set tabTitle to custom title of tabRef
+                if tabTTY is missing value then set tabTTY to ""
+                if tabTitle is missing value then set tabTitle to ""
+                if tabTitle is "" then
+                    set tabTitle to name of front window
+                    if tabTitle is missing value then set tabTitle to ""
+                end if
+                if tabTTY is "" and tabTitle is "" then
+                    return "ERR" & linefeed & "empty_tab" & linefeed & ""
+                end if
+                return (tabTTY as text) & linefeed & (tabPID as text) & linefeed & (tabTitle as text)
+        """
+    }
+
+    /// Ghostty's dictionary identifiers only compile against a real app
+    /// target. Bundle-id tell is a compile-time -1728 when Launch Services
+    /// cannot see Ghostty, so the cache key includes the absolute path.
+    private static func ghosttyAppleScriptSource(applicationPath: String?) -> String? {
+        let path = applicationPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !path.isEmpty else { return nil }
+        let escapedPath = escapeAppleScriptString(path)
+        let body = ghosttySelectedTabBody()
+        return """
+        try
+            tell application "\(escapedPath)"
+        \(body)
+            end tell
+        on error errMsg number errNum
+            try
+                tell application "Ghostty"
+        \(body)
+                end tell
+            on error errMsg2 number errNum2
+                set msg to errMsg2 as text
+                if (count of msg) > 80 then set msg to text 1 thru 80 of msg
+                return "ERR" & linefeed & (errNum2 as text) & linefeed & msg
+            end try
+        end try
+        """
+    }
+
+    /// Official one-shot: `focused terminal of selected tab of front window`.
+    /// Empty windows is the `macos-applescript` gate. Never concatenate an
+    /// empty triple, and never `as string` a value that may be missing.
+    private static func ghosttySelectedTabBody() -> String {
+        """
+                if (count of windows) is 0 then
+                    return "ERR" & linefeed & "no_windows" & linefeed & "macos-applescript"
+                end if
+                if not (exists front window) then
+                    return "ERR" & linefeed & "no_front_window" & linefeed & ""
+                end if
+                set term to focused terminal of selected tab of front window
+                set tabTTY to tty of term
+                set tabPID to pid of term
+                set tabTitle to name of term
+                if tabTTY is missing value then set tabTTY to ""
+                if tabPID is missing value then set tabPID to ""
+                if tabTitle is missing value then set tabTitle to ""
+                if tabTitle is "" then
+                    set tabTitle to name of front window
+                    if tabTitle is missing value then set tabTitle to ""
+                end if
+                if tabTTY is "" and tabPID is "" and tabTitle is "" then
+                    return "ERR" & linefeed & "empty_term" & linefeed & ""
+                end if
+                return (tabTTY as text) & linefeed & (tabPID as text) & linefeed & (tabTitle as text)
+        """
+    }
+
+    private static func escapeAppleScriptString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private static func isGhosttyBundle(_ bundleIdentifier: String?) -> Bool {
+        let bundle = (bundleIdentifier ?? "").lowercased()
+        return bundle == "com.mitchellh.ghostty" || bundle.hasSuffix(".ghostty")
+    }
+
+    static func appleScriptApplicationPath(
+        bundleIdentifier: String?,
+        application: NSRunningApplication?
+    ) -> String? {
+        if let path = application?.bundleURL?.path,
+           !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return path
         }
+        guard isGhosttyBundle(bundleIdentifier) else { return nil }
+        let running = NSWorkspace.shared.runningApplications.first { candidate in
+            isGhosttyBundle(candidate.bundleIdentifier)
+        }
+        let path = running?.bundleURL?.path.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return path.isEmpty ? nil : path
+    }
+
+    static func parseSelectedTabSignal(_ raw: String?) -> TerminalSelectedTabSignal {
+        guard let raw else { return TerminalSelectedTabSignal() }
+        if isAppleScriptErrorPayload(raw) { return TerminalSelectedTabSignal() }
+        let trimmedRaw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRaw.isEmpty else { return TerminalSelectedTabSignal() }
+        let parts = raw.split(
+            separator: "\n",
+            maxSplits: 2,
+            omittingEmptySubsequences: false
+        )
+        let tty = parts.isEmpty
+            ? nil
+            : TerminalCLIProcessRecord.normalizeTTY(sanitizedAppleScriptField(String(parts[0])))
+        let pid: Int32?
+        if parts.count > 1 {
+            let pidText = sanitizedAppleScriptField(String(parts[1])) ?? ""
+            if let value = Int32(pidText), value > 0 {
+                pid = value
+            } else {
+                pid = nil
+            }
+        } else {
+            pid = nil
+        }
+        let title = parts.count > 2 ? sanitizedAppleScriptField(String(parts[2])) : nil
+        return TerminalSelectedTabSignal(tty: tty, pid: pid, title: title)
+    }
+
+    /// `"\\n\\n"` and other whitespace-only AppleScript results are empty,
+    /// not a successful selected-tab signal.
+    static func isAppleScriptPayloadEmpty(_ raw: String?) -> Bool {
+        guard let raw else { return true }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    static func isAppleScriptErrorPayload(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        return raw.hasPrefix("ERR")
+    }
+
+    static func appleScriptErrorCode(_ raw: String?) -> String? {
+        guard isAppleScriptErrorPayload(raw), let raw else { return nil }
+        let parts = raw.split(
+            separator: "\n",
+            maxSplits: 2,
+            omittingEmptySubsequences: false
+        )
+        guard parts.count >= 2 else { return nil }
+        let code = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return code.isEmpty ? nil : code
+    }
+
+    private static func sanitizedAppleScriptField(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        if trimmed.caseInsensitiveCompare("missing value") == .orderedSame {
+            return nil
+        }
+        return trimmed
     }
 
     static func discardLatch() {
@@ -433,37 +668,41 @@ enum TerminalFrontmostTTY {
     }
 
     static func selectedTTY(application: NSRunningApplication?) -> String? {
-        selectedTabSignal(bundleIdentifier: application?.bundleIdentifier).tty
+        let bundle = application?.bundleIdentifier
+        return selectedTabSignal(
+            bundleIdentifier: bundle,
+            applicationPath: appleScriptApplicationPath(
+                bundleIdentifier: bundle,
+                application: application
+            )
+        ).tty
     }
 
-    static func selectedTabSignal(bundleIdentifier: String?) -> (tty: String?, pid: Int32?) {
-        guard appleScriptSource(bundleIdentifier: bundleIdentifier, query: .tty) != nil else {
-            return (nil, nil)
+    static func selectedTabSignal(
+        bundleIdentifier: String?,
+        applicationPath: String? = nil
+    ) -> TerminalSelectedTabSignal {
+        guard usesSelectedTabAppleScript(bundleIdentifier: bundleIdentifier) else {
+            return TerminalSelectedTabSignal()
         }
-        if let tty = TerminalCLIProcessRecord.normalizeTTY(
-            runCachedAppleScript(bundleIdentifier: bundleIdentifier, query: .tty)
-        ) {
-            return (tty, nil)
-        }
-        guard appleScriptSource(bundleIdentifier: bundleIdentifier, query: .pid) != nil else {
-            return (nil, nil)
-        }
-        guard let raw = runCachedAppleScript(bundleIdentifier: bundleIdentifier, query: .pid) else {
-            return (nil, nil)
-        }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let pid = Int32(trimmed), pid > 0 else {
-            return (nil, nil)
-        }
-        return (nil, pid)
+        return parseSelectedTabSignal(
+            runCachedAppleScript(
+                bundleIdentifier: bundleIdentifier,
+                applicationPath: applicationPath
+            )
+        )
     }
 
+    /// Classify a selected-tab TTY even when that client has several TTYs
+    /// under the same terminal process. Title XOR still requires uniqueness.
     static func uniquelyClassifiedTTY(
         _ rawTTY: String?,
         grokTTYs: Set<String>,
         claudeTTYs: Set<String>
     ) -> String? {
-        guard let tty = TerminalCLIProcessRecord.normalizeTTY(rawTTY) else { return nil }
+        guard let rawTTY,
+              let field = sanitizedAppleScriptField(rawTTY),
+              let tty = TerminalCLIProcessRecord.normalizeTTY(field) else { return nil }
         let grok = grokTTYs.contains(tty)
         let claude = claudeTTYs.contains(tty)
         return grok != claude ? tty : nil
@@ -487,10 +726,21 @@ enum TerminalFrontmostTTY {
         claudeTTYs: Set<String>,
         loadSnapshot: @escaping () -> TerminalCLIProcessSnapshot?
     ) -> (tty: String?, snapshot: TerminalCLIProcessSnapshot?) {
+        let started = Date()
         let bundle = application?.bundleIdentifier
-        let signal = appleScriptSource(bundleIdentifier: bundle) == nil
-            ? (tty: nil, pid: nil as Int32?)
-            : selectedTabSignal(bundleIdentifier: bundle)
+        let signal: TerminalSelectedTabSignal
+        if usesSelectedTabAppleScript(bundleIdentifier: bundle) {
+            signal = selectedTabSignal(
+                bundleIdentifier: bundle,
+                applicationPath: appleScriptApplicationPath(
+                    bundleIdentifier: bundle,
+                    application: application
+                )
+            )
+        } else {
+            recordAppleScriptStatus(.empty, duration: 0)
+            signal = TerminalSelectedTabSignal()
+        }
         var snapshot: TerminalCLIProcessSnapshot?
         var snapshotLoaded = false
         let loadOnce: () -> TerminalCLIProcessSnapshot? = {
@@ -511,6 +761,7 @@ enum TerminalFrontmostTTY {
             claudeTTYs: claudeTTYs,
             appleScriptTTY: signal.tty,
             appleScriptPID: signal.pid,
+            appleScriptTitle: signal.title,
             loadSnapshot: loadOnce,
             ttyIODate: ioDate(forTTY:),
             ttyFDOffsets: {
@@ -527,15 +778,20 @@ enum TerminalFrontmostTTY {
                     snapshot: snap
                 )
             },
-            windowTitle: {
-                guard let application else { return nil }
-                return frontWindowTitle(ownerPID: application.processIdentifier)
-            },
             latch: &latch
         )
         latchLock.lock()
         focusLatch = latch
+        let latchedTTY = focusLatch.tty
         latchLock.unlock()
+        logIdentityTick(
+            signal: signal,
+            focusedTTY: focused.tty,
+            latchTTY: latchedTTY,
+            grokTTYs: grokTTYs.union(snapshot?.grokTTYs ?? []),
+            claudeTTYs: claudeTTYs.union(snapshot?.claudeTTYs ?? []),
+            duration: Date().timeIntervalSince(started)
+        )
         return (focused.tty, snapshot)
     }
 
@@ -546,15 +802,19 @@ enum TerminalFrontmostTTY {
         claudeTTYs: Set<String>,
         appleScriptTTY: String?,
         appleScriptPID: Int32?,
+        appleScriptTitle: String? = nil,
         loadSnapshot: @escaping () -> TerminalCLIProcessSnapshot?,
         ttyIODate: @escaping (String) -> Date?,
         ttyFDOffsets: () -> [String: Int64],
         ttyWinsize: @escaping (String) -> TerminalTTYWinsize?,
         ipcTTY: () -> String?,
-        windowTitle: () -> String?,
         latch: inout TerminalTTYFocusLatch
     ) -> (tty: String?, loadedSnapshot: Bool, probedSurface: Bool) {
-        if let selected = TerminalCLIProcessRecord.normalizeTTY(appleScriptTTY) {
+        if let selected = uniquelyClassifiedTTY(
+            appleScriptTTY,
+            grokTTYs: grokTTYs,
+            claudeTTYs: claudeTTYs
+        ) {
             applySelectedTTY(selected, terminalPID: terminalPID, latch: &latch)
             return (selected, false, false)
         }
@@ -569,6 +829,16 @@ enum TerminalFrontmostTTY {
             return snapshot
         }
 
+        if let selected = TerminalCLIProcessRecord.normalizeTTY(appleScriptTTY),
+           let snap = snapshotValue() {
+            let grok = grokTTYs.union(snap.grokTTYs)
+            let claude = claudeTTYs.union(snap.claudeTTYs)
+            if uniquelyClassifiedTTY(selected, grokTTYs: grok, claudeTTYs: claude) != nil {
+                applySelectedTTY(selected, terminalPID: terminalPID, latch: &latch)
+                return (selected, true, false)
+            }
+        }
+
         if let appleScriptPID, let terminalPID {
             if let snap = snapshotValue(),
                let mapped = snap.uniqueCLITTY(focusedPID: appleScriptPID, terminalPID: terminalPID) {
@@ -581,37 +851,73 @@ enum TerminalFrontmostTTY {
             }
         }
 
+        if let terminalPID,
+           let snap = snapshotValue(),
+           let titleTTY = uniqueTitleTTY(
+            appleScriptTitle,
+            terminalPID: terminalPID,
+            snapshot: snap,
+            grokTTYs: grokTTYs,
+            claudeTTYs: claudeTTYs
+           ) {
+            applySelectedTTY(titleTTY, terminalPID: terminalPID, latch: &latch)
+            return (titleTTY, true, false)
+        }
+
         guard let snap = snapshotValue() else {
-            if latch.terminalPID != terminalPID {
+            if usesSelectedTabAppleScript(bundleIdentifier: bundleIdentifier) {
+                releaseUnconfirmedLatch(terminalPID: terminalPID, latch: &latch)
+            } else if latch.terminalPID != terminalPID {
                 latch = TerminalTTYFocusLatch(terminalPID: terminalPID)
             }
             return (nil, loadedSnapshot, false)
         }
 
-        let offsets = ttyFDOffsets()
-        var winsizes: [String: TerminalTTYWinsize] = [:]
         let belonging = terminalPID.map {
             snap.cliProcesses(underTerminalPID: $0).filter { $0.tty != nil }
         } ?? []
+        if belonging.count == 1, let tty = belonging[0].tty {
+            applySelectedTTY(tty, terminalPID: terminalPID, latch: &latch)
+            return (tty, true, false)
+        }
+
         let candidateTTYs = belonging.compactMap(\.tty)
-        for tty in Set(candidateTTYs) {
-            if let size = ttyWinsize(tty) {
-                winsizes[tty] = size
+        let appleScriptSupported = usesSelectedTabAppleScript(bundleIdentifier: bundleIdentifier)
+        let bundle = (bundleIdentifier ?? "").lowercased()
+        let needsIPC = bundle.contains("kitty") && candidateTTYs.count > 1
+        let allowOneShot = !appleScriptSupported && candidateTTYs.count > 1
+        if appleScriptSupported && !needsIPC {
+            releaseUnconfirmedLatch(terminalPID: terminalPID, latch: &latch)
+            return (nil, true, false)
+        }
+        guard needsIPC || allowOneShot else {
+            return (
+                retainedLatchTTY(candidateTTYs: candidateTTYs, terminalPID: terminalPID, latch: &latch),
+                true,
+                false
+            )
+        }
+
+        let offsets = allowOneShot ? ttyFDOffsets() : [:]
+        var winsizes: [String: TerminalTTYWinsize] = [:]
+        if allowOneShot {
+            for tty in Set(candidateTTYs) {
+                if let size = ttyWinsize(tty) {
+                    winsizes[tty] = size
+                }
             }
         }
-        let needsSurfaceLookup = appleScriptTTY == nil && candidateTTYs.count > 1
-        let ipc = needsSurfaceLookup ? ipcTTY() : nil
-        let title = needsSurfaceLookup ? windowTitle() : nil
+        let ipc = needsIPC ? ipcTTY() : nil
         let tty = resolve(
             bundleIdentifier: bundleIdentifier,
             terminalPID: terminalPID,
             snapshot: snap,
-            appleScriptTTY: appleScriptTTY,
+            appleScriptTTY: nil,
             ttyIODate: ttyIODate,
             ttyFDOffset: { offsets[$0] },
             ttyWinsize: { winsizes[$0] },
             ipcTTY: ipc,
-            windowTitle: title,
+            windowTitle: nil,
             latch: &latch
         )
         return (tty, true, true)
@@ -626,6 +932,53 @@ enum TerminalFrontmostTTY {
             latch = TerminalTTYFocusLatch(terminalPID: terminalPID)
         }
         latch.tty = tty
+    }
+
+    private static func uniqueTitleTTY(
+        _ title: String?,
+        terminalPID: Int32,
+        snapshot: TerminalCLIProcessSnapshot,
+        grokTTYs: Set<String>,
+        claudeTTYs: Set<String>
+    ) -> String? {
+        guard let title = title.flatMap(sanitizedAppleScriptField),
+              let client = TerminalFocusHint.client(fromWindowTitle: title),
+              let titleTTY = TerminalFocusHint.uniqueTTY(
+                for: client,
+                terminalPID: terminalPID,
+                snapshot: snapshot
+              ) else {
+            return nil
+        }
+        let grok = grokTTYs.union(snapshot.grokTTYs)
+        let claude = claudeTTYs.union(snapshot.claudeTTYs)
+        return uniquelyClassifiedTTY(titleTTY, grokTTYs: grok, claudeTTYs: claude)
+    }
+
+    private static func releaseUnconfirmedLatch(
+        terminalPID: Int32?,
+        latch: inout TerminalTTYFocusLatch
+    ) {
+        if latch.terminalPID != terminalPID {
+            latch = TerminalTTYFocusLatch(terminalPID: terminalPID)
+            return
+        }
+        latch.tty = nil
+    }
+
+    private static func retainedLatchTTY(
+        candidateTTYs: [String],
+        terminalPID: Int32?,
+        latch: inout TerminalTTYFocusLatch
+    ) -> String? {
+        if latch.terminalPID != terminalPID {
+            latch = TerminalTTYFocusLatch(terminalPID: terminalPID)
+        }
+        if let latched = latch.tty, candidateTTYs.contains(latched) {
+            return latched
+        }
+        latch.tty = nil
+        return nil
     }
 
     static func ioDate(forTTY tty: String) -> Date? {
@@ -803,34 +1156,6 @@ enum TerminalFrontmostTTY {
         }
     }
 
-    private static func frontWindowTitle(ownerPID: Int32) -> String? {
-        guard let list = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[String: Any]] else {
-            return nil
-        }
-        for window in list {
-            guard intValue(window[kCGWindowOwnerPID as String]) == Int(ownerPID) else {
-                continue
-            }
-            let layer = intValue(window[kCGWindowLayer as String]) ?? 0
-            guard layer == 0 else { continue }
-            if let title = window[kCGWindowName as String] as? String, !title.isEmpty {
-                return title
-            }
-            return nil
-        }
-        return nil
-    }
-
-    private static func intValue(_ value: Any?) -> Int? {
-        if let value = value as? Int { return value }
-        if let value = value as? Int32 { return Int(value) }
-        if let value = value as? NSNumber { return value.intValue }
-        return nil
-    }
-
     private static func environmentValue(forKey key: String, pid: Int32) -> String? {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0
@@ -945,59 +1270,286 @@ enum TerminalFrontmostTTY {
         return (tty, offset)
     }
 
-    private static func runCachedAppleScript(
-        bundleIdentifier: String?,
-        query: AppleScriptQuery
-    ) -> String? {
-        let bundle = (bundleIdentifier ?? "").lowercased()
+    private static func ensureTerminalAppleEventPermission() -> TerminalAppleEventPermission {
         scriptCacheLock.lock()
-        if let skipUntil = appleScriptSkipUntil, Date() < skipUntil {
-            scriptCacheLock.unlock()
-            return nil
-        }
+        let cached = terminalAppleEventPermission
+        let alreadyAsked = didAskTerminalAppleEventPermission
         scriptCacheLock.unlock()
 
-        guard let script = compiledAppleScript(bundleIdentifier: bundle, query: query) else {
+        if cached == .allowed {
+            return .allowed
+        }
+
+        let askUser = cached == .unknown && !alreadyAsked
+        let status = onMainSync {
+            determinePermissionToAutomateTerminal(askUserIfNeeded: askUser)
+        }
+        let permission = permission(fromAppleEventStatus: status)
+        scriptCacheLock.lock()
+        if permission != .unknown {
+            terminalAppleEventPermission = permission
+            if askUser {
+                didAskTerminalAppleEventPermission = true
+            }
+        }
+        scriptCacheLock.unlock()
+        return permission == .unknown ? cached : permission
+    }
+
+    private static func cacheTerminalAppleEventPermission(_ permission: TerminalAppleEventPermission) {
+        scriptCacheLock.lock()
+        terminalAppleEventPermission = permission
+        if permission != .unknown {
+            didAskTerminalAppleEventPermission = true
+        }
+        scriptCacheLock.unlock()
+    }
+
+    private static func determinePermissionToAutomateTerminal(askUserIfNeeded: Bool) -> OSStatus {
+        var address = AEAddressDesc()
+        let bundleID = "com.apple.Terminal"
+        let created = bundleID.withCString { pointer in
+            AECreateDesc(typeApplicationBundleID, pointer, bundleID.utf8.count, &address)
+        }
+        guard created == noErr else { return OSStatus(created) }
+        defer { AEDisposeDesc(&address) }
+        return AEDeterminePermissionToAutomateTarget(
+            &address,
+            typeWildCard,
+            typeWildCard,
+            askUserIfNeeded
+        )
+    }
+
+    private static func onMainSync<T>(_ work: () -> T) -> T {
+        if Thread.isMainThread {
+            return work()
+        }
+        var result: T!
+        DispatchQueue.main.sync {
+            result = work()
+        }
+        return result
+    }
+
+    private static func runCachedAppleScript(
+        bundleIdentifier: String?,
+        applicationPath: String?
+    ) -> String? {
+        let bundle = (bundleIdentifier ?? "").lowercased()
+        let path = applicationPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let started = Date()
+        scriptCacheLock.lock()
+        if appleScriptExecuting {
+            scriptCacheLock.unlock()
+            recordAppleScriptStatus(.skippedExecuting, duration: 0)
             return nil
         }
-        var error: NSDictionary?
-        let result = script.executeAndReturnError(&error)
-        if error != nil {
+        if let skipUntil = appleScriptSkipUntil, Date() < skipUntil {
+            scriptCacheLock.unlock()
+            recordAppleScriptStatus(.skippedBackoff, duration: 0)
+            return nil
+        }
+        appleScriptExecuting = true
+        scriptCacheLock.unlock()
+
+        let finishWithoutScript: (TerminalAppleScriptStatus, String?) -> String? = { status, raw in
+            scriptCacheLock.lock()
+            appleScriptExecuting = false
+            scriptCacheLock.unlock()
+            recordAppleScriptStatus(
+                status,
+                duration: Date().timeIntervalSince(started),
+                raw: raw
+            )
+            return raw
+        }
+
+        if bundle == "com.apple.terminal" {
+            let permission = ensureTerminalAppleEventPermission()
+            if permission == .denied {
+                markAppleScriptFailure()
+                return finishWithoutScript(.failure, "ERR\n-1743\nnot authorized")
+            }
+            if permission != .allowed {
+                markAppleScriptFailure()
+                return finishWithoutScript(.failure, "ERR\npending\nTerminal Apple Events permission pending")
+            }
+        }
+        if isGhosttyBundle(bundle), path.isEmpty {
+            return finishWithoutScript(.failure, "ERR\nno_app_path\n")
+        }
+        guard let source = appleScriptSource(
+            bundleIdentifier: bundle,
+            applicationPath: path.isEmpty ? nil : path
+        ) else {
+            return finishWithoutScript(.failure, nil)
+        }
+
+        let cacheKey = "\(bundle)|\(path)"
+        let compiled = compiledAppleScript(cacheKey: cacheKey, source: source)
+        if let compileError = compiled.errorRaw {
             markAppleScriptFailure()
+            return finishWithoutScript(.failure, compileError)
+        }
+        guard let script = compiled.script else {
+            markAppleScriptFailure()
+            return finishWithoutScript(.failure, nil)
+        }
+
+        let box = AppleScriptRunBox()
+        let finished = DispatchSemaphore(value: 0)
+        appleScriptQueue.async {
+            var error: NSDictionary?
+            let result = script.executeAndReturnError(&error)
+            box.error = error
+            box.stringValue = result.stringValue
+            scriptCacheLock.lock()
+            appleScriptExecuting = false
+            scriptCacheLock.unlock()
+            finished.signal()
+        }
+
+        if finished.wait(timeout: .now() + appleScriptTimeout) == .timedOut {
+            markAppleScriptFailure()
+            recordAppleScriptStatus(.timeout, duration: Date().timeIntervalSince(started))
             return nil
         }
-        let value = result.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (value?.isEmpty == false) ? value : nil
+
+        let duration = Date().timeIntervalSince(started)
+        if let error = box.error {
+            markAppleScriptFailure()
+            let raw = appleScriptErrorPayload(from: error, fallback: box.stringValue)
+            if bundle == "com.apple.terminal", appleScriptErrorCode(raw) == "-1743" {
+                cacheTerminalAppleEventPermission(.denied)
+            }
+            recordAppleScriptStatus(.failure, duration: duration, raw: raw)
+            return raw
+        }
+        let value = box.stringValue
+        if isAppleScriptErrorPayload(value) {
+            let code = appleScriptErrorCode(value) ?? ""
+            if bundle == "com.apple.terminal", code == "-1743" {
+                cacheTerminalAppleEventPermission(.denied)
+            }
+            if Int(code) != nil {
+                markAppleScriptFailure()
+            }
+            recordAppleScriptStatus(.failure, duration: duration, raw: value)
+            return value
+        }
+        if isAppleScriptPayloadEmpty(value) {
+            recordAppleScriptStatus(.empty, duration: duration, raw: value)
+            return value
+        }
+        recordAppleScriptStatus(.value, duration: duration, raw: value)
+        return value
+    }
+
+    static func waitWithTimeout<T>(
+        _ timeout: TimeInterval,
+        execute: @escaping () -> T
+    ) -> T? {
+        let box = TimeoutBox<T>()
+        let finished = DispatchSemaphore(value: 0)
+        appleScriptQueue.async {
+            box.value = execute()
+            finished.signal()
+        }
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            return nil
+        }
+        return box.value
+    }
+
+    static func compactIdentityTitle(_ title: String?, limit: Int = 32) -> String {
+        guard let title else { return "-" }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "-" }
+        var value = trimmed
+        if value.hasPrefix("/") {
+            if let separator = value.range(of: " - ", options: .backwards) {
+                value = String(value[separator.upperBound...])
+            } else {
+                value = (value as NSString).lastPathComponent
+            }
+        }
+        if value.count > limit {
+            return "…" + String(value.suffix(limit - 1))
+        }
+        return value
+    }
+
+    static func compactIdentityRaw(_ raw: String?, limit: Int = 80) -> String {
+        guard let raw else { return "-" }
+        var value = stripHomePaths(raw)
+        if !isAppleScriptErrorPayload(raw), value.hasPrefix("/") {
+            if let separator = value.range(of: " - ", options: .backwards) {
+                value = String(value[separator.upperBound...])
+            } else if let last = value.split(separator: "/").last {
+                value = String(last)
+            }
+        }
+        value = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        if value.isEmpty { return "-" }
+        if value.count > limit {
+            return String(value.prefix(limit - 1)) + "…"
+        }
+        return value
     }
 
     private static func compiledAppleScript(
-        bundleIdentifier: String,
-        query: AppleScriptQuery
-    ) -> NSAppleScript? {
-        let key = bundleIdentifier + "|" + query.rawValue
+        cacheKey: String,
+        source: String
+    ) -> (script: NSAppleScript?, errorRaw: String?) {
         scriptCacheLock.lock()
-        if let cached = compiledAppleScripts[key] {
+        if let cached = compiledAppleScripts[cacheKey] {
             scriptCacheLock.unlock()
-            return cached
+            return (cached, nil)
         }
         scriptCacheLock.unlock()
 
-        guard let source = appleScriptSource(bundleIdentifier: bundleIdentifier, query: query) else {
-            return nil
-        }
         guard let script = NSAppleScript(source: source) else {
-            markAppleScriptFailure()
-            return nil
+            return (nil, "ERR\ncompile\n")
         }
         var error: NSDictionary?
         if !script.compileAndReturnError(&error) {
-            markAppleScriptFailure()
-            return nil
+            return (nil, appleScriptErrorPayload(from: error, fallback: nil))
         }
         scriptCacheLock.lock()
-        compiledAppleScripts[key] = script
+        compiledAppleScripts[cacheKey] = script
         scriptCacheLock.unlock()
-        return script
+        return (script, nil)
+    }
+
+    private static func appleScriptErrorPayload(
+        from error: NSDictionary?,
+        fallback: String?
+    ) -> String {
+        if let fallback, isAppleScriptErrorPayload(fallback) {
+            return fallback
+        }
+        let number = (error?["NSAppleScriptErrorNumber"] as? NSNumber)?.intValue
+            ?? (error?["NSAppleScriptErrorNumber"] as? Int)
+        let message = (error?["NSAppleScriptErrorMessage"] as? String) ?? fallback ?? ""
+        let code = number.map(String.init) ?? "failure"
+        let truncated = truncateAppleScriptError(stripHomePaths(message))
+        return "ERR\n\(code)\n\(truncated)"
+    }
+
+    private static func stripHomePaths(_ value: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        guard !home.isEmpty else { return value }
+        return value.replacingOccurrences(of: home, with: "~")
+    }
+
+    private static func truncateAppleScriptError(_ value: String, limit: Int = 80) -> String {
+        if value.count <= limit { return value }
+        return String(value.prefix(limit - 1)) + "…"
     }
 
     private static func markAppleScriptFailure() {
@@ -1005,4 +1557,93 @@ enum TerminalFrontmostTTY {
         appleScriptSkipUntil = Date().addingTimeInterval(appleScriptBackoffInterval)
         scriptCacheLock.unlock()
     }
+
+    private static func recordAppleScriptStatus(
+        _ status: TerminalAppleScriptStatus,
+        duration: TimeInterval,
+        raw: String? = nil
+    ) {
+        scriptCacheLock.lock()
+        lastAppleScriptStatus = status
+        lastAppleScriptDuration = duration
+        lastAppleScriptRaw = raw
+        scriptCacheLock.unlock()
+    }
+
+    private static func logIdentityTick(
+        signal: TerminalSelectedTabSignal,
+        focusedTTY: String?,
+        latchTTY: String?,
+        grokTTYs: Set<String>,
+        claudeTTYs: Set<String>,
+        duration: TimeInterval
+    ) {
+        scriptCacheLock.lock()
+        let status = lastAppleScriptStatus
+        let appleScriptMS = Int((lastAppleScriptDuration * 1000).rounded())
+        let raw = lastAppleScriptRaw
+        scriptCacheLock.unlock()
+        let classified = classifiedClient(
+            tty: focusedTTY,
+            grokTTYs: grokTTYs,
+            claudeTTYs: claudeTTYs
+        )
+        let compactRaw = compactIdentityRaw(raw)
+        let err = appleScriptErrorCode(raw) ?? "-"
+        let signature = [
+            signal.tty ?? "-",
+            signal.pid.map(String.init) ?? "-",
+            focusedTTY ?? "-",
+            classified,
+            status.rawValue,
+            err,
+            compactRaw
+        ].joined(separator: "|")
+        let important = status == .timeout
+            || status == .failure
+            || status == .skippedExecuting
+            || status == .empty
+            || classified == "-"
+        identityLogLock.lock()
+        let now = Date()
+        let changed = signature != lastIdentityLogSignature
+        let due = now.timeIntervalSince(lastIdentityLogAt) >= 1
+        guard important || changed || due else {
+            identityLogLock.unlock()
+            return
+        }
+        lastIdentityLogSignature = signature
+        lastIdentityLogAt = now
+        identityLogLock.unlock()
+
+        SwitchLog.write(
+            "identity tick; selected_tty=\(signal.tty ?? "-"); pid=\(signal.pid.map(String.init) ?? "-"); title=\(compactIdentityTitle(signal.title)); classified=\(classified); latch=\(latchTTY ?? "-"); applescript=\(status.rawValue); err=\(err); ms=\(appleScriptMS); total_ms=\(Int((duration * 1000).rounded())); raw=\(compactRaw)",
+            level: .debug,
+            category: "identity"
+        )
+    }
+
+    private static func classifiedClient(
+        tty: String?,
+        grokTTYs: Set<String>,
+        claudeTTYs: Set<String>
+    ) -> String {
+        guard let tty = uniquelyClassifiedTTY(
+            tty,
+            grokTTYs: grokTTYs,
+            claudeTTYs: claudeTTYs
+        ) else {
+            return "-"
+        }
+        return grokTTYs.contains(tty) ? "grok" : "claude"
+    }
+}
+
+private final class AppleScriptRunBox {
+    var stringValue: String?
+    var error: NSDictionary?
+}
+
+private final class TimeoutBox<T> {
+    var value: T?
 }
