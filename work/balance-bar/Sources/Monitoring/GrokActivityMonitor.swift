@@ -88,12 +88,16 @@ final class GrokActivityMonitor {
         let lastActivityAt: Date?
         let lastUserActivityAt: Date?
         let trueTurnEvidence: Bool
+        /// Transcript is `.inProgress` only because unmatched `task_backgrounded`
+        /// remained after a terminal last update such as `turn_completed`.
+        let unmatchedBackgroundOnly: Bool
 
         static let neverStarted = SessionSignal(
             kind: .neverStarted,
             lastActivityAt: nil,
             lastUserActivityAt: nil,
-            trueTurnEvidence: false
+            trueTurnEvidence: false,
+            unmatchedBackgroundOnly: false
         )
     }
 
@@ -322,10 +326,19 @@ final class GrokActivityMonitor {
         var identityActivityAt: Date?
         var trueTurnEvidence = false
         var listedIDsByCWD: [String: Set<String>] = [:]
+        var liveOpenedDates: [Date] = []
+        var allOpenedDates: [Date] = []
 
         for row in listed {
             listedIDsByCWD[row.cwd, default: []].insert(row.sessionID)
+            if let openedAt = row.openedAt {
+                allOpenedDates.append(openedAt)
+            }
             let related = relatedSessionSignals(for: row.updatesURL, now: now)
+            let parent = related.first ?? .neverStarted
+            if parent.kind != .neverStarted, let openedAt = row.openedAt {
+                liveOpenedDates.append(openedAt)
+            }
             for signal in related {
                 trueTurnEvidence = trueTurnEvidence || signal.trueTurnEvidence
                 if signal.kind == .inProgress {
@@ -342,7 +355,7 @@ final class GrokActivityMonitor {
         }
 
         if !anyInProgress {
-            let earliestLiveOpenedAt = listed.compactMap(\.openedAt).min()
+            let earliestLiveOpenedAt = liveOpenedDates.min() ?? allOpenedDates.min()
             cwdGroupScan: for (cwd, listedIDs) in listedIDsByCWD {
                 for sibling in siblingSessionDirectories(cwd: cwd, excluding: listedIDs) {
                     let siblingProgress = unlistedSiblingProgress(
@@ -425,6 +438,8 @@ final class GrokActivityMonitor {
 
     /// Unlisted siblings keep running when child work is unfinished, or when
     /// the last in-progress activity is not earlier than live `opened_at`.
+    /// A completed parent whose only leftover is unmatched `task_backgrounded`
+    /// is not live work.
     private func unlistedSiblingProgress(
         sessionDirectory: URL,
         now: Date,
@@ -437,7 +452,7 @@ final class GrokActivityMonitor {
         if unfinishedChild {
             return (true, related.contains { $0.trueTurnEvidence })
         }
-        guard parent.kind == .inProgress else {
+        guard parent.kind == .inProgress, !parent.unmatchedBackgroundOnly else {
             return (false, false)
         }
         guard let earliestLiveOpenedAt else {
@@ -543,7 +558,8 @@ final class GrokActivityMonitor {
                             kind: .inProgress,
                             lastActivityAt: nil,
                             lastUserActivityAt: nil,
-                            trueTurnEvidence: false
+                            trueTurnEvidence: false,
+                            unmatchedBackgroundOnly: false
                         )
                     )
                 }
@@ -589,7 +605,8 @@ final class GrokActivityMonitor {
                 kind: .completed,
                 lastActivityAt: nil,
                 lastUserActivityAt: nil,
-                trueTurnEvidence: false
+                trueTurnEvidence: false,
+                unmatchedBackgroundOnly: false
             )
         }
 
@@ -606,7 +623,8 @@ final class GrokActivityMonitor {
                 kind: .inProgress,
                 lastActivityAt: signal.lastActivityAt,
                 lastUserActivityAt: signal.lastUserActivityAt,
-                trueTurnEvidence: signal.trueTurnEvidence
+                trueTurnEvidence: signal.trueTurnEvidence,
+                unmatchedBackgroundOnly: false
             )
         }
         return signal
@@ -638,7 +656,8 @@ final class GrokActivityMonitor {
             kind: winner.kind,
             lastActivityAt: lastActivity,
             lastUserActivityAt: lastUser,
-            trueTurnEvidence: lhs.trueTurnEvidence || rhs.trueTurnEvidence
+            trueTurnEvidence: lhs.trueTurnEvidence || rhs.trueTurnEvidence,
+            unmatchedBackgroundOnly: winner.kind == .inProgress && winner.unmatchedBackgroundOnly
         )
     }
 
@@ -729,6 +748,7 @@ final class GrokActivityMonitor {
             }
         }
         let hasUnmatchedBackground = !unmatchedBackgroundIDs.isEmpty
+        let unmatchedBackgroundOnly = lastKind == .completed && hasUnmatchedBackground
         let kind: SessionSignal.Kind
         if lastKind == .inProgress || hasUnmatchedBackground {
             kind = .inProgress
@@ -739,7 +759,8 @@ final class GrokActivityMonitor {
             kind: kind,
             lastActivityAt: lastActivityAt,
             lastUserActivityAt: lastUserActivityAt,
-            trueTurnEvidence: lastKind == .inProgress && trueTurnEvidence
+            trueTurnEvidence: lastKind == .inProgress && trueTurnEvidence,
+            unmatchedBackgroundOnly: unmatchedBackgroundOnly
         )
         return cache(signal)
     }

@@ -725,6 +725,203 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertTrue(status.observation.legacyIsTaskRunning)
     }
 
+    func testUnlistedSiblingCompletedTurnWithUnmatchedBackgroundIsHardTerminal() throws {
+        let siblingCompletedAt = currentDate
+        try writeSession(
+            updates: [
+                sessionUpdate(
+                    "user_message_chunk",
+                    timestamp: siblingCompletedAt.timeIntervalSince1970 - 30
+                ),
+                sessionUpdate(
+                    "turn_completed",
+                    timestamp: siblingCompletedAt.timeIntervalSince1970 - 1
+                ),
+                taskBackgrounded(
+                    "bg-dead",
+                    timestamp: siblingCompletedAt.timeIntervalSince1970 - 1
+                )
+            ],
+            sessionID: "sibling-a",
+            modifiedAt: siblingCompletedAt,
+            registerActive: false
+        )
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate.addingTimeInterval(-3_600))
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+        XCTAssertFalse(status.trueTurnEvidence)
+    }
+
+    func testListedNeverStartedStubDoesNotResurrectCompletedUnlistedSibling() throws {
+        let stubOpened = currentDate.addingTimeInterval(-7_200)
+        let siblingCompleted = currentDate.addingTimeInterval(-60)
+        try writeSession(
+            updates: [
+                sessionUpdate(
+                    "user_message_chunk",
+                    timestamp: siblingCompleted.timeIntervalSince1970 - 30
+                ),
+                sessionUpdate(
+                    "turn_completed",
+                    timestamp: siblingCompleted.timeIntervalSince1970
+                ),
+                taskBackgrounded(
+                    "bg-dead",
+                    timestamp: siblingCompleted.timeIntervalSince1970
+                )
+            ],
+            sessionID: "sibling-a",
+            modifiedAt: siblingCompleted,
+            registerActive: false
+        )
+        try writeListedStubSession(sessionID: "listed-stub")
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-stub",
+                "pid": 102,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(stubOpened)
+            ],
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testListedNeverStartedStubDoesNotLowerOpenedAtFloorForStaleSibling() throws {
+        let stubOpened = currentDate.addingTimeInterval(-7_200)
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)
+            ],
+            sessionID: "sibling-a",
+            modifiedAt: staleDate,
+            registerActive: false
+        )
+        try writeListedStubSession(sessionID: "listed-stub")
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-stub",
+                "pid": 102,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(stubOpened)
+            ],
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .hardTerminal)
+        XCTAssertFalse(status.observation.legacyIsTaskRunning)
+    }
+
+    func testUnlistedSiblingThoughtKeepsRunningWhenListedIncludesNeverStartedStub() throws {
+        try writeSession(
+            updates: [sessionUpdate("agent_thought_chunk")],
+            sessionID: "sibling-a",
+            registerActive: false
+        )
+        try writeListedStubSession(sessionID: "listed-stub")
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 5),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-stub",
+                "pid": 102,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate.addingTimeInterval(-7_200))
+            ],
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+        XCTAssertTrue(status.trueTurnEvidence)
+    }
+
+    func testUnlistedSiblingUnmatchedBackgroundStillActiveWhenSubagentUnfinished() throws {
+        try writeSession(
+            updates: [
+                sessionUpdate("user_message_chunk", timestamp: currentDate.timeIntervalSince1970 - 20),
+                sessionUpdate("turn_completed"),
+                taskBackgrounded("bg-dead")
+            ],
+            sessionID: "sibling-a",
+            registerActive: false
+        )
+        try writeSubagentMeta(
+            parentSessionID: "sibling-a",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "running"
+        )
+        try writeSession(
+            updates: [sessionUpdate("turn_completed")],
+            sessionID: "listed-b"
+        )
+        try writeActiveSessions([
+            [
+                "session_id": "listed-b",
+                "pid": 101,
+                "cwd": "/tmp/fixture",
+                "opened_at": iso8601String(currentDate)
+            ]
+        ])
+
+        let status = makeMonitor().activityStatus()
+        XCTAssertTrue(status.processRunning)
+        XCTAssertEqual(status.observation, .active)
+        XCTAssertTrue(status.observation.legacyIsTaskRunning)
+    }
+
     func testUnlistedSameCwdSiblingExplicitCompletionIsHardTerminal() throws {
         try writeSession(
             updates: [
@@ -1200,6 +1397,21 @@ final class GrokActivityMonitorTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: rows)
         try data.write(
             to: fixtureDirectory.appendingPathComponent("active_sessions.json")
+        )
+    }
+
+    private func writeListedStubSession(
+        sessionID: String,
+        cwd: String = "/tmp/fixture"
+    ) throws {
+        let encoded = GrokActivityMonitor.encodeSessionDirectoryName(cwd)
+        let sessionDirectory = fixtureDirectory
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(encoded, isDirectory: true)
+            .appendingPathComponent(sessionID, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: sessionDirectory,
+            withIntermediateDirectories: true
         )
     }
 
