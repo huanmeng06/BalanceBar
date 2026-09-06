@@ -409,7 +409,8 @@ private final class DashboardProviderOverviewPage: DashboardProviderMountedPage 
     }
 
     private func refreshLunaReserve(input: DashboardProviderPageInput) {
-        guard input.currentProviderIsOfficial else {
+        guard LunaReserveUserFacing.isCurrentlyEnabled,
+              input.currentProviderIsOfficial else {
             lunaReserveCard.isHidden = true
             return
         }

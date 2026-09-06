@@ -9,6 +9,11 @@ final class AppPreferencesTests: XCTestCase {
         return (AppPreferences(defaults: defaults, defaultStatusLinks: [StatusLink(title: "Default", url: "https://")]), defaults, suite)
     }
 
+    func testLunaReserveUserFacingStaysDisabledForShippingBuilds() {
+        XCTAssertFalse(LunaReserveUserFacing.isEnabled)
+        XCTAssertEqual(LunaReserveUserFacing.isCurrentlyEnabled, LunaReserveUserFacing.isEnabled)
+    }
+
     func testDefaultsAndRoundTrip() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }

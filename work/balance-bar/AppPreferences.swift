@@ -95,6 +95,20 @@ enum LunaReserveResetTimeMode: String, CaseIterable, Equatable {
     static let defaultValue: Self = .originalQuota
 }
 
+/// Internal gate for the user-facing Luna Reserve surfaces. Shipping builds
+/// keep this false. Restore the feature by flipping `isEnabled`, not via a
+/// user setting, hidden debug switch, or old UserDefaults keys.
+enum LunaReserveUserFacing {
+    static let isEnabled = false
+
+    static var isCurrentlyEnabled: Bool {
+        testOverride ?? isEnabled
+    }
+
+    /// Tests may temporarily restore the previous user-facing behavior.
+    static var testOverride: Bool?
+}
+
 enum MenuBarIconDisplayMode: String, CaseIterable, Equatable {
     case alwaysVisible
     case onlyWhileRunning

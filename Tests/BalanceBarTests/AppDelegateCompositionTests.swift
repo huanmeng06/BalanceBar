@@ -1378,6 +1378,8 @@ final class AppDelegateCompositionTests: XCTestCase {
 
     @MainActor
     func testLiveStatusItemAutoSwitchesWholePrimaryToLunaReserveAndSelectsResetSource() {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let controller = StatusItemController(
             actions: StatusItemController.Actions(
                 manualRefresh: {},
@@ -1496,6 +1498,95 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
         XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "45%")
         XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "7d")
+    }
+
+    @MainActor
+    func testShippingUserFacingGateKeepsMenuBarOnOriginalQuotaDespiteAutoSwitchPreference() {
+        XCTAssertFalse(LunaReserveUserFacing.isEnabled)
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: nil,
+            statusLinks: [],
+            showQuickSwitchMenu: true,
+            showOpenChatGPTMenu: true,
+            showOpenCCSwitchMenu: true,
+            showOpenCodexMenu: true,
+            showStatusMenu: true,
+            lunaReserveDisplayMode: .always
+        )
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 18_000
+        )
+        let exhaustedSevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 0,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 604_800
+        )
+        let exhaustedSnapshot = Snapshot.official(
+            "OpenAI",
+            exhaustedSevenDay.remaining,
+            exhaustedSevenDay.label,
+            exhaustedSevenDay.reset,
+            date,
+            windows: [fiveHour, exhaustedSevenDay],
+            lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h")
+        )
+        controller.start(
+            snapshot: exhaustedSnapshot,
+            refreshDate: nil,
+            menuInput: input,
+            settings: StatusItemController.MenuBarSettings(
+                showIcon: true,
+                showAmount: true,
+                showReset: true,
+                horizontalPadding: 10,
+                keepMenuOpenAfterRefresh: true,
+                quotaWindowPreference: .sevenDay,
+                quotaResetDisplayMode: .remaining,
+                autoSwitchLunaReserve: true,
+                lunaReserveResetTimeMode: .lunaReserve
+            )
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "0%")
+        XCTAssertFalse(controller.menuBarPrimaryTextForTesting.contains("🌙"))
+        XCTAssertEqual(controller.menuBarSecondaryTextForTesting, "7d")
+        let overview = controller.menuItemsForTesting.first?.view
+        XCTAssertFalse(
+            (overview?.subviews.compactMap { $0 as? AccountMarqueeView } ?? []).contains {
+                $0.accountLabel.stringValue.contains("🌙")
+            }
+        )
     }
 
     @MainActor

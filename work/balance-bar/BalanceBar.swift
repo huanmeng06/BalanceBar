@@ -666,8 +666,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             showOpenCCSwitchMenu: showOpenCCSwitchMenu,
             showOpenCodexMenu: showOpenCodexMenu,
             showStatusMenu: showStatusMenu,
-            lunaReserveDisplayMode: preferences.menuLunaReserveDisplayMode,
-            lunaReserveHideExhaustedQuota: preferences.menuLunaReserveHideExhaustedQuota,
+            lunaReserveDisplayMode: LunaReserveUserFacing.isCurrentlyEnabled
+                ? preferences.menuLunaReserveDisplayMode
+                : .disabled,
+            lunaReserveHideExhaustedQuota: LunaReserveUserFacing.isCurrentlyEnabled
+                && preferences.menuLunaReserveHideExhaustedQuota,
             showsAvailableUpdateBadge: showsAvailableUpdateBadge
         )
     }
@@ -723,7 +726,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             iconSize: preferences.menuBarIconSize,
             quotaWindowPreference: menuBarQuotaWindowPreference,
             quotaResetDisplayMode: menuBarQuotaResetDisplayMode,
-            autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
+            autoSwitchLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
+                && preferences.menuBarAutoSwitchLunaReserve,
             lunaReserveResetTimeMode: preferences.menuBarLunaReserveResetTimeMode,
             quotaProgressColorConfiguration: preferences.quotaProgressColorConfiguration
         )
@@ -1735,7 +1739,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
         let resolved = effective.menuBarSnapshot(
             preferredQuotaWindow: menuBarQuotaWindowPreference,
-            automaticallyUseLunaReserve: preferences.menuBarAutoSwitchLunaReserve
+            automaticallyUseLunaReserve: LunaReserveUserFacing.isCurrentlyEnabled
+                && preferences.menuBarAutoSwitchLunaReserve
         )
         guard snapshot.kind == .openCodex else { return resolved }
 

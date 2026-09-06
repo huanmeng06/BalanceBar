@@ -66,41 +66,53 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         balanceDisplayRowsStack = nil
         balanceDisplayCardHeightConstraint = nil
         balanceDisplaySeparators = []
+        lunaReserveDisplayModeControl = nil
+        lunaReserveHideExhaustedQuotaRow = nil
+        lunaReserveHideExhaustedQuotaSwitch = nil
 
-        let lunaReserveDisplayModeControl = makeLunaReserveDisplayModeControl(
-            value: input.preferences.menuLunaReserveDisplayMode,
-            relay: input.relay
-        )
-        self.lunaReserveDisplayModeControl = lunaReserveDisplayModeControl
+        let lunaReserveRows: [NSView]
+        if LunaReserveUserFacing.isCurrentlyEnabled {
+            let lunaReserveDisplayModeControl = makeLunaReserveDisplayModeControl(
+                value: input.preferences.menuLunaReserveDisplayMode,
+                relay: input.relay
+            )
+            self.lunaReserveDisplayModeControl = lunaReserveDisplayModeControl
 
-        let lunaReserveHideExhaustedQuotaSwitch = DashboardSettingsComponents.makeSwitch(
-            identifier: Self.lunaReserveHideExhaustedQuotaIdentifier,
-            isOn: input.preferences.menuLunaReserveHideExhaustedQuota,
-            target: input.relay,
-            action: #selector(DashboardPreferencePageRelay.toggle(_:))
-        )
-        self.lunaReserveHideExhaustedQuotaSwitch = lunaReserveHideExhaustedQuotaSwitch
+            let lunaReserveHideExhaustedQuotaSwitch = DashboardSettingsComponents.makeSwitch(
+                identifier: Self.lunaReserveHideExhaustedQuotaIdentifier,
+                isOn: input.preferences.menuLunaReserveHideExhaustedQuota,
+                target: input.relay,
+                action: #selector(DashboardPreferencePageRelay.toggle(_:))
+            )
+            self.lunaReserveHideExhaustedQuotaSwitch = lunaReserveHideExhaustedQuotaSwitch
 
-        let lunaReserveDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(
-                .keyDashboardMenuPageLunaReserveDisplayMode,
-                arguments: [tr(.keyLunaReserveTitle)]
-            ),
-            subtitle: tr(
-                .keyDashboardMenuPageLunaReserveDisplayModeDescription,
-                arguments: [tr(.keyLunaReserveTitle)]
-            ),
-            control: lunaReserveDisplayModeControl
-        )
-        let lunaReserveHideExhaustedQuotaRow = DashboardSettingsComponents.makeSettingsRow(
-            tr(.keyDashboardMenuPageHideExhaustedQuota),
-            subtitle: tr(
-                .keyDashboardMenuPageHideExhaustedQuotaDescription,
-                arguments: [tr(.keyLunaReserveTitle)]
-            ),
-            control: lunaReserveHideExhaustedQuotaSwitch
-        )
-        self.lunaReserveHideExhaustedQuotaRow = lunaReserveHideExhaustedQuotaRow
+            let lunaReserveDisplayModeRow = DashboardSettingsComponents.makeSettingsRow(
+                tr(
+                    .keyDashboardMenuPageLunaReserveDisplayMode,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                ),
+                subtitle: tr(
+                    .keyDashboardMenuPageLunaReserveDisplayModeDescription,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                ),
+                control: lunaReserveDisplayModeControl
+            )
+            let lunaReserveHideExhaustedQuotaRow = DashboardSettingsComponents.makeSettingsRow(
+                tr(.keyDashboardMenuPageHideExhaustedQuota),
+                subtitle: tr(
+                    .keyDashboardMenuPageHideExhaustedQuotaDescription,
+                    arguments: [tr(.keyLunaReserveTitle)]
+                ),
+                control: lunaReserveHideExhaustedQuotaSwitch
+            )
+            self.lunaReserveHideExhaustedQuotaRow = lunaReserveHideExhaustedQuotaRow
+            lunaReserveRows = [
+                lunaReserveDisplayModeRow,
+                lunaReserveHideExhaustedQuotaRow
+            ]
+        } else {
+            lunaReserveRows = []
+        }
         statusLinksRowsStack = nil
         statusLinksCardHeightConstraint = nil
         statusLinksSeparators = []
@@ -157,21 +169,20 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             colorControls.addArrangedSubview(item); quotaColorButtons[color] = button
         }
         updateQuotaColorButtons()
-        let balanceDisplay = DashboardSettingsComponents.makeSettingsSection(
-            tr(.keyDashboardMenuPageBalanceDisplay),
-            rows: [
-                lunaReserveDisplayModeRow,
-                lunaReserveHideExhaustedQuotaRow
-            ],
-            onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
-                self?.balanceDisplayRowsStack = rowsStack
-                self?.balanceDisplayCardHeightConstraint = cardHeightConstraint
-                self?.balanceDisplaySeparators = separators
-                self?.updateLunaReserveDisplayModeVisibility(
-                    input.preferences.menuLunaReserveDisplayMode
-                )
-            }
-        )
+        let balanceDisplay: NSView? = lunaReserveRows.isEmpty
+            ? nil
+            : DashboardSettingsComponents.makeSettingsSection(
+                tr(.keyDashboardMenuPageBalanceDisplay),
+                rows: lunaReserveRows,
+                onLayoutCreated: { [weak self] rowsStack, cardHeightConstraint, separators in
+                    self?.balanceDisplayRowsStack = rowsStack
+                    self?.balanceDisplayCardHeightConstraint = cardHeightConstraint
+                    self?.balanceDisplaySeparators = separators
+                    self?.updateLunaReserveDisplayModeVisibility(
+                        input.preferences.menuLunaReserveDisplayMode
+                    )
+                }
+            )
 
         let progressBar = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuPageProgressBar),
@@ -314,13 +325,11 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 self?.updateStatusLinksLayout()
             }
         )
-        return DashboardSettingsComponents.makeSettingsPage([
-            balanceDisplay,
-            progressBar,
-            items,
-            quickLinks,
-            statusLinks
-        ])
+        var sections = [progressBar, items, quickLinks, statusLinks]
+        if let balanceDisplay {
+            sections.insert(balanceDisplay, at: 0)
+        }
+        return DashboardSettingsComponents.makeSettingsPage(sections)
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {

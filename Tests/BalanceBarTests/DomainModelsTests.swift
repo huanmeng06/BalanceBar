@@ -2,6 +2,13 @@ import Foundation
 import XCTest
 @testable import BalanceBar
 
+func withLunaReserveUserFacingEnabled(_ body: () throws -> Void) rethrows {
+    let previous = LunaReserveUserFacing.testOverride
+    LunaReserveUserFacing.testOverride = true
+    defer { LunaReserveUserFacing.testOverride = previous }
+    try body()
+}
+
 final class DomainModelsTests: XCTestCase {
     func testAssistantClientAndStatusLinkValueModels() throws {
         XCTAssertEqual(AssistantClient.codex.appType, "codex")
@@ -198,6 +205,8 @@ final class DomainModelsTests: XCTestCase {
     }
 
     func testOfficialSnapshotCarriesLunaReserveThroughCompactPresentation() {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let reserve = LunaReserveQuota(
             status: .available,
             remaining: 45,
@@ -223,6 +232,8 @@ final class DomainModelsTests: XCTestCase {
     }
 
     func testOfficialQuotaMenuPresentationSupportsLunaReserveDisplayModesAndExhaustedHiding() {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
 
@@ -652,6 +663,8 @@ final class DomainModelsTests: XCTestCase {
     }
 
     func testMenuBarAutoSwitchUsesReserveAsWholePrimaryAndKeepsOriginalResetSource() {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let fiveHour = OfficialQuotaWindow(
             kind: .fiveHour,
@@ -760,6 +773,8 @@ final class DomainModelsTests: XCTestCase {
     }
 
     func testMenuBarAutoSwitchRequiresExhaustedOriginalQuotaAndUsableReserve() {
+        LunaReserveUserFacing.testOverride = true
+        defer { LunaReserveUserFacing.testOverride = nil }
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         let fiveHour = OfficialQuotaWindow(
             kind: .fiveHour,
@@ -858,6 +873,58 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertTrue(sevenDayOnly.menuBarUsesLunaReserve)
         XCTAssertEqual(sevenDayOnly.menuBarPrimary, "61% 🌙")
         XCTAssertEqual(sevenDayOnly.selectedOfficialQuotaWindowKind, .sevenDay)
+    }
+
+    func testShippingUserFacingGateHidesMenuReserveAndIgnoresStoredPreferences() {
+        XCTAssertFalse(LunaReserveUserFacing.isEnabled)
+        XCTAssertNil(LunaReserveUserFacing.testOverride)
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 0,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h",
+            durationSeconds: 18_000
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 60,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "6d",
+            durationSeconds: 604_800
+        )
+        let reserve = LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m")
+        let snapshot = Snapshot.official(
+            "OpenAI",
+            sevenDay.remaining,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            lunaReserve: reserve
+        )
+
+        XCTAssertEqual(snapshot.lunaReserve, reserve)
+
+        let always = snapshot.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: true
+        )
+        XCTAssertEqual(always.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(always.lunaReserve)
+        XCTAssertNil(always.lunaReserveInsertionIndex)
+
+        let autoSwitched = snapshot.menuBarSnapshot(
+            preferredQuotaWindow: .fiveHour,
+            automaticallyUseLunaReserve: true
+        )
+        XCTAssertEqual(autoSwitched.menuBarPrimary, "0%")
+        XCTAssertFalse(autoSwitched.menuBarUsesLunaReserve)
+        XCTAssertFalse(autoSwitched.menuBarPrimary.contains("🌙"))
+        XCTAssertFalse(autoSwitched.menuBarToolTip.contains(tr(.keyLunaReserveTitle)))
     }
 
     func testOfficialQuotaResetFormattingUsesEachWindowTimestampAndLocalizedDayBoundary() throws {
