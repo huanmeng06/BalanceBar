@@ -488,6 +488,9 @@ final class ActivityCoordinator {
     private var isStarted = false
     private(set) var isFastIdentityPollingEnabled = false
     private(set) var taskActivityScheduleCountForTests = 0
+    private let ttyCacheLock = NSLock()
+    private var cachedGrokTTYs = Set<String>()
+    private var cachedClaudeTTYs = Set<String>()
     private var lifecycleGeneration: UInt64 = 0
     private var lastSampledClient: AssistantClient?
     private var codexLifecycle = ActivityLifecycleStateMachine()
@@ -549,6 +552,7 @@ final class ActivityCoordinator {
         isActivityInFlight = false
         lifecycleGeneration &+= 1
         lastSampledClient = nil
+        replaceCachedTTYs(grok: [], claude: [])
         TerminalFrontmostTTY.discardLatch()
         let codexWasRunning = codexLifecycle.reset()
         let claudeWasRunning = claudeLifecycle.reset()
@@ -581,6 +585,25 @@ final class ActivityCoordinator {
     func refreshIdentityOnlyForTests() {
         refreshIdentityOnly()
     }
+
+    func refreshIdentityForTests(
+        frontmost: ActivityFrontmostKind,
+        allowProcessProbe: Bool
+    ) {
+        refreshIdentity(
+            generation: lifecycleGeneration,
+            frontmostKind: frontmost,
+            application: nil,
+            allowProcessProbe: allowProcessProbe
+        )
+    }
+
+    func applySelectedClientForTests(_ selected: AssistantClient) {
+        applySelectedClient(selected)
+    }
+
+    var cachedGrokTTYsForTests: Set<String> { copyCachedTTYs().grok }
+    var cachedClaudeTTYsForTests: Set<String> { copyCachedTTYs().claude }
 
     var identityTimerIntervalForTests: TimeInterval? {
         identityTimer?.timeInterval
@@ -653,7 +676,8 @@ final class ActivityCoordinator {
         scheduleIdentityRefresh(
             generation: generation,
             frontmostKind: frontmostKind,
-            application: application
+            application: application,
+            allowProcessProbe: true
         )
         if !isActivityInFlight {
             isActivityInFlight = true
@@ -671,7 +695,8 @@ final class ActivityCoordinator {
     private func refreshIdentity(
         generation: UInt64,
         frontmostKind: ActivityFrontmostKind,
-        application: NSRunningApplication?
+        application: NSRunningApplication?,
+        allowProcessProbe: Bool
     ) {
         var grokPresence: (running: Bool, ttys: [String])?
         var claudePresence: (running: Bool, ttys: [String])?
@@ -680,23 +705,40 @@ final class ActivityCoordinator {
         var claudeTTYs = Set<String>()
 
         if frontmostKind == .terminal {
-            let grok = grokMonitor.processPresence()
-            let claude = claudeMonitor.processPresence()
-            grokPresence = grok
-            claudePresence = claude
-            grokTTYs = Set(grok.ttys)
-            claudeTTYs = Set(claude.ttys)
-            if grok.running && claude.running {
+            let grokRunning: Bool
+            let claudeRunning: Bool
+            if allowProcessProbe {
+                let grok = grokMonitor.processPresence()
+                let claude = claudeMonitor.processPresence()
+                grokPresence = grok
+                claudePresence = claude
+                grokTTYs = Set(grok.ttys)
+                claudeTTYs = Set(claude.ttys)
+                grokRunning = grok.running
+                claudeRunning = claude.running
+                replaceCachedTTYs(grok: grokTTYs, claude: claudeTTYs)
+            } else {
+                let cached = copyCachedTTYs()
+                grokTTYs = cached.grok
+                claudeTTYs = cached.claude
+                grokRunning = true
+                claudeRunning = true
+            }
+            if grokRunning && claudeRunning {
                 let resolved = TerminalFrontmostTTY.resolve(
                     application: application,
                     grokTTYs: grokTTYs,
                     claudeTTYs: claudeTTYs,
-                    loadSnapshot: { TerminalCLIProcessSnapshot.load() }
+                    loadSnapshot: {
+                        guard allowProcessProbe, application != nil else { return nil }
+                        return TerminalCLIProcessSnapshot.load()
+                    }
                 )
                 frontmostTTY = resolved.tty
                 if let snapshot = resolved.snapshot {
                     grokTTYs = snapshot.grokTTYs
                     claudeTTYs = snapshot.claudeTTYs
+                    replaceCachedTTYs(grok: grokTTYs, claude: claudeTTYs)
                 }
             }
         }
@@ -728,19 +770,47 @@ final class ActivityCoordinator {
                 grokTTYs: grokTTYs,
                 claudeTTYs: claudeTTYs
             )
-            self.actions.setActiveClient(selected)
-            if selected != self.lastSampledClient {
-                self.codexLifecycle.clearPendingTransition()
-                self.claudeLifecycle.clearPendingTransition()
-                self.grokLifecycle.clearPendingTransition()
-                self.lastSampledClient = selected
-            }
+            self.applySelectedClient(selected)
             self.updateFastIdentityTimer(
                 frontmost: currentFrontmost,
                 grokRunning: grokRunning,
                 claudeRunning: claudeRunning
             )
         }
+    }
+
+    private func applySelectedClient(_ selected: AssistantClient) {
+        if selected != actions.activeClient() {
+            actions.setActiveClient(selected)
+        }
+        if selected != lastSampledClient {
+            codexLifecycle.clearPendingTransition()
+            claudeLifecycle.clearPendingTransition()
+            grokLifecycle.clearPendingTransition()
+            lastSampledClient = selected
+        }
+    }
+
+    private func copyCachedTTYs() -> (grok: Set<String>, claude: Set<String>) {
+        ttyCacheLock.lock()
+        let grok = cachedGrokTTYs
+        let claude = cachedClaudeTTYs
+        ttyCacheLock.unlock()
+        return (grok, claude)
+    }
+
+    private func replaceCachedTTYs(
+        grok: Set<String>? = nil,
+        claude: Set<String>? = nil
+    ) {
+        ttyCacheLock.lock()
+        if let grok {
+            cachedGrokTTYs = grok
+        }
+        if let claude {
+            cachedClaudeTTYs = claude
+        }
+        ttyCacheLock.unlock()
     }
 
     /// Identity only. Never runs session/transcript monitors.
@@ -765,14 +835,16 @@ final class ActivityCoordinator {
         scheduleIdentityRefresh(
             generation: lifecycleGeneration,
             frontmostKind: frontmostKind,
-            application: application
+            application: application,
+            allowProcessProbe: false
         )
     }
 
     private func scheduleIdentityRefresh(
         generation: UInt64,
         frontmostKind: ActivityFrontmostKind,
-        application: NSRunningApplication?
+        application: NSRunningApplication?,
+        allowProcessProbe: Bool
     ) {
         if !isIdentityInFlight {
             isIdentityInFlight = true
@@ -780,7 +852,8 @@ final class ActivityCoordinator {
                 self?.refreshIdentity(
                     generation: generation,
                     frontmostKind: frontmostKind,
-                    application: application
+                    application: application,
+                    allowProcessProbe: allowProcessProbe
                 )
             }
         } else {
@@ -873,13 +946,17 @@ final class ActivityCoordinator {
             guard let self else { return }
             guard self.isStarted, self.lifecycleGeneration == generation else { return }
             self.isActivityInFlight = false
-            if let claudeStatus,
-               self.actions.claudeProcessAvailable() != claudeStatus.processRunning {
-                self.actions.setClaudeProcessAvailable(claudeStatus.processRunning)
+            if let claudeStatus {
+                self.replaceCachedTTYs(claude: Set(claudeStatus.ttys))
+                if self.actions.claudeProcessAvailable() != claudeStatus.processRunning {
+                    self.actions.setClaudeProcessAvailable(claudeStatus.processRunning)
+                }
             }
-            if let grokStatus,
-               self.actions.grokProcessAvailable() != grokStatus.processRunning {
-                self.actions.setGrokProcessAvailable(grokStatus.processRunning)
+            if let grokStatus {
+                self.replaceCachedTTYs(grok: Set(grokStatus.ttys))
+                if self.actions.grokProcessAvailable() != grokStatus.processRunning {
+                    self.actions.setGrokProcessAvailable(grokStatus.processRunning)
+                }
             }
             if let codexObservation {
                 let update = self.codexLifecycle.observeUpdate(codexObservation, at: sampledAt)

@@ -1676,7 +1676,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
         if dashboardIsVisible {
-            showDashboardSection(dashboardSection)
+            refreshDashboardMenuBarPage()
         }
     }
 

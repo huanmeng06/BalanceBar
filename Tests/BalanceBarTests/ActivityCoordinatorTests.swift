@@ -382,6 +382,76 @@ final class ActivityCoordinatorTests: XCTestCase {
         )
     }
 
+    func testIdentityCompletionDoesNotSetActiveClientWhenUnchanged() {
+        let harness = CoordinatorHarness()
+        harness.activeClient = .grok
+        harness.setActiveClientCallCount = 0
+        harness.coordinator.applySelectedClientForTests(.grok)
+        XCTAssertEqual(harness.setActiveClientCallCount, 0)
+        XCTAssertEqual(harness.activeClient, .grok)
+
+        harness.coordinator.applySelectedClientForTests(.claude)
+        XCTAssertEqual(harness.setActiveClientCallCount, 1)
+        XCTAssertEqual(harness.activeClient, .claude)
+    }
+
+    func testFastIdentityDoesNotProbeProcessesWhenTTYCacheIsWarm() {
+        final class ProbeCounter: @unchecked Sendable {
+            var grok = 0
+            var claude = 0
+        }
+        let counter = ProbeCounter()
+        var now = Date(timeIntervalSince1970: 1_000)
+        let fixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let grok = GrokActivityMonitor(
+            grokDirectory: fixture,
+            clock: { now },
+            processRunner: { _, _ in
+                counter.grok += 1
+                return GrokProcessResult(
+                    standardOutput: Data(
+                        "202 1 ttys001 grok-macos-aarch64 /Users/dev/.grok/bin/grok".utf8
+                    ),
+                    terminationStatus: 0
+                )
+            }
+        )
+        let claude = ClaudeCodeActivityMonitor(
+            projectsDirectory: fixture,
+            clock: { now },
+            processRunner: { _, _ in
+                counter.claude += 1
+                return ClaudeProcessResult(
+                    standardOutput: Data("203 1 ttys002 claude /usr/local/bin/claude".utf8),
+                    terminationStatus: 0
+                )
+            }
+        )
+        let harness = CoordinatorHarness(grokMonitor: grok, claudeMonitor: claude)
+        harness.grokRunning = true
+        harness.claudeRunning = true
+        defer { harness.coordinator.stop() }
+        harness.coordinator.start(interval: 1.0)
+
+        harness.coordinator.refreshIdentityForTests(
+            frontmost: .terminal,
+            allowProcessProbe: true
+        )
+        XCTAssertEqual(counter.grok, 1)
+        XCTAssertEqual(counter.claude, 1)
+        XCTAssertEqual(harness.coordinator.cachedGrokTTYsForTests, ["ttys001"])
+        XCTAssertEqual(harness.coordinator.cachedClaudeTTYsForTests, ["ttys002"])
+
+        now += 2
+        harness.coordinator.refreshIdentityForTests(
+            frontmost: .terminal,
+            allowProcessProbe: false
+        )
+        XCTAssertEqual(counter.grok, 1)
+        XCTAssertEqual(counter.claude, 1)
+    }
+
     func testIdentityOnlyRefreshDoesNotScheduleTaskActivity() {
         let harness = CoordinatorHarness()
         harness.grokRunning = true
@@ -427,17 +497,33 @@ private final class CoordinatorHarness {
     var grokRunning = false
     var claudeRunning = false
     var activeClient: AssistantClient = .codex
+    var setActiveClientCallCount = 0
+    private let grokMonitor: GrokActivityMonitor
+    private let claudeMonitor: ClaudeCodeActivityMonitor
     lazy var coordinator = ActivityCoordinator(
+        claudeMonitor: claudeMonitor,
+        grokMonitor: grokMonitor,
         actions: ActivityCoordinatorActions(
             activeClient: { [unowned self] in self.activeClient },
             claudeProcessAvailable: { [unowned self] in self.claudeRunning },
             grokProcessAvailable: { [unowned self] in self.grokRunning },
             setClaudeProcessAvailable: { [unowned self] in self.claudeRunning = $0 },
             setGrokProcessAvailable: { [unowned self] in self.grokRunning = $0 },
-            setActiveClient: { [unowned self] in self.activeClient = $0 },
+            setActiveClient: { [unowned self] in
+                self.setActiveClientCallCount += 1
+                self.activeClient = $0
+            },
             setCodexTaskRunning: { _ in },
             setClaudeTaskRunning: { _ in },
             setGrokTaskRunning: { _ in }
         )
     )
+
+    init(
+        grokMonitor: GrokActivityMonitor = GrokActivityMonitor(),
+        claudeMonitor: ClaudeCodeActivityMonitor = ClaudeCodeActivityMonitor()
+    ) {
+        self.grokMonitor = grokMonitor
+        self.claudeMonitor = claudeMonitor
+    }
 }

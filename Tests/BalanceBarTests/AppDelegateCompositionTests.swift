@@ -62,6 +62,22 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertFalse(renderPath.contains("refreshDashboardMenuBarPage()"))
     }
 
+    func testSetActiveClientRefreshesMenuBarPreviewWithoutReplacingThePage() throws {
+        let source = try balanceBarSource()
+        let start = try XCTUnwrap(source.range(of: "private func setActiveClient(_ client: AssistantClient)"))
+        let end = try XCTUnwrap(
+            source.range(
+                of: "private func snapshotKindDiagnosticName",
+                range: start.upperBound..<source.endIndex
+            )
+        )
+        let path = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(path.contains("updateStatusItemActivity()"))
+        XCTAssertTrue(path.contains("refreshDashboardMenuBarPage()"))
+        XCTAssertFalse(path.contains("showDashboardSection"))
+        XCTAssertFalse(path.contains("replacePage"))
+    }
+
     func testAnimationToggleRefreshesDashboardVisibilityAfterUpdatingTheRuntimeState() throws {
         let source = try balanceBarSource()
         let toggleStart = try XCTUnwrap(source.range(of: "case \"animateCodexActivity\":"))
