@@ -14,6 +14,135 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testClientSwitchLayoutsOnceAndDefersMenuRebuildUntilOpen() {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        let grokSnapshot = Snapshot.balance(
+            "Grok Provider",
+            12.34,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let claudeSnapshot = Snapshot.balance(
+            "Claude Provider",
+            56.78,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        let grokInput = makeMenuInput(activeClient: .grok, showQuickSwitchMenu: false)
+        let claudeInput = makeMenuInput(activeClient: .claude, showQuickSwitchMenu: true)
+        let settings = makeSettings()
+        let grokIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.15,
+            green: 0.15,
+            blue: 0.15
+        )
+        let claudeIcon = makeSolidImage(
+            size: NSSize(width: 16, height: 16),
+            red: 0.85,
+            green: 0.45,
+            blue: 0.15
+        )
+        grokIcon.isTemplate = true
+        claudeIcon.isTemplate = true
+
+        controller.start(
+            snapshot: grokSnapshot,
+            refreshDate: grokSnapshot.date,
+            menuInput: grokInput,
+            settings: settings
+        )
+        controller.setGrokIconForTesting(grokIcon)
+        controller.setClaudeAnimationAssetsForTesting(
+            staticImage: claudeIcon,
+            spriteImage: claudeIcon
+        )
+        controller.updateActivity(
+            activeClient: .grok,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            grokTaskRunning: false,
+            animationEnabled: true
+        )
+
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, grokSnapshot.menuBarPrimary)
+        let layoutBefore = controller.layoutStatusItemCallCountForTesting
+        let rebuildBefore = controller.statusMenuRebuildCountForTesting
+        let menuIdentities = controller.menuItemsForTesting.map { ObjectIdentifier($0) }
+        XCTAssertFalse(
+            controller.menuItemsForTesting.contains { $0.submenu != nil },
+            "the grok dropdown should not include quick switch before the deferred rebuild"
+        )
+
+        controller.updateActivity(
+            activeClient: .claude,
+            codexTaskRunning: false,
+            claudeTaskRunning: false,
+            grokTaskRunning: false,
+            animationEnabled: true,
+            layout: false
+        )
+        XCTAssertEqual(
+            controller.layoutStatusItemCallCountForTesting,
+            layoutBefore,
+            "icon swap before a cached snapshot render must not layout the status item"
+        )
+        XCTAssertEqual(
+            controller.menuBarPrimaryTextForTesting,
+            grokSnapshot.menuBarPrimary,
+            "digits stay on the previous client until the cached snapshot renders"
+        )
+        XCTAssertTrue(
+            controller.menuBarSourceImageForTesting === claudeIcon,
+            "the Claude icon must still swap when layout is skipped"
+        )
+
+        controller.update(
+            snapshot: claudeSnapshot,
+            refreshDate: claudeSnapshot.date,
+            menuInput: claudeInput,
+            settings: settings,
+            deferMenuRebuild: true
+        )
+        XCTAssertEqual(
+            controller.layoutStatusItemCallCountForTesting,
+            layoutBefore + 1,
+            "one client switch must layout the status item once"
+        )
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, claudeSnapshot.menuBarPrimary)
+        XCTAssertNotEqual(controller.menuBarPrimaryTextForTesting, "…")
+        XCTAssertNotEqual(controller.menuBarPrimaryTextForTesting, grokSnapshot.menuBarPrimary)
+        XCTAssertEqual(
+            controller.statusMenuRebuildCountForTesting,
+            rebuildBefore,
+            "clicking a Terminal tab must not rebuild the dropdown"
+        )
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            menuIdentities
+        )
+        XCTAssertTrue(controller.statusMenuNeedsRebuildForTesting)
+
+        controller.menuWillOpen(controller.statusMenuForTesting)
+        XCTAssertEqual(
+            controller.statusMenuRebuildCountForTesting,
+            rebuildBefore + 1,
+            "opening the status menu must apply the deferred rebuild"
+        )
+        XCTAssertFalse(controller.statusMenuNeedsRebuildForTesting)
+        XCTAssertTrue(
+            controller.menuItemsForTesting.contains { $0.submenu != nil },
+            "the deferred rebuild must present the new client's menu items"
+        )
+
+        controller.menuDidClose(controller.statusMenuForTesting)
+    }
+
+    @MainActor
     func testStatusItemContentIsAlwaysRenderedFromTheOffscreenBitmapTree() {
         let controller = makeController()
         defer { controller.teardown() }
@@ -27,6 +156,251 @@ final class StatusItemControllerTests: XCTestCase {
 
         XCTAssertTrue(controller.menuBarContentIsOffscreenForTesting)
         XCTAssertNotNil(controller.menuBarButtonImageForTesting)
+    }
+
+    @MainActor
+    func testIconSizePresetScalesSlotWithDrawingSizeAndLeavesNoEmptyMediumSlot() throws {
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+
+        XCTAssertEqual(
+            controller.menuBarIconSizeForTesting,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.height ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        let mediumLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+
+        controller.updateIconSize(MenuBarIconSizePreset.small.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        let smallLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        XCTAssertEqual(
+            mediumLength - smallLength,
+            MenuBarIconSizePreset.medium.pointSize - MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.5,
+            "small must shrink the status item instead of leaving an 18 pt empty slot"
+        )
+
+        controller.updateIconSize(MenuBarIconSizePreset.large.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.large.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
+            MenuBarIconSizePreset.large.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertLessThan(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            22
+        )
+        let largeLength = try XCTUnwrap(controller.statusItemLengthForTesting)
+        XCTAssertEqual(
+            largeLength - mediumLength,
+            MenuBarIconSizePreset.large.pointSize - MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.5
+        )
+    }
+
+    @MainActor
+    func testIdleGrokIconLoadsVectorSVGInsteadOfOneXBitmap() throws {
+        let frame16 = try XCTUnwrap(
+            GrokThinkingSprite.bundledDirectoryURL()?
+                .appendingPathComponent(
+                    GrokThinkingSprite.frameFileName(index: GrokThinkingSprite.idleFrameIndex)
+                ),
+            "idle Grok must ship as GrokThinking/frame_016.svg"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: frame16.path))
+        let frame16Markup = try String(contentsOf: frame16, encoding: .utf8)
+        XCTAssertTrue(frame16Markup.contains("m532.29,39.28"))
+        let mediumSize = NSSize(
+            width: MenuBarIconSizePreset.medium.pointSize,
+            height: MenuBarIconSizePreset.medium.pointSize
+        )
+
+        GrokThinkingSprite.resetCachesForTesting()
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(controller.grokIdleIconSizeForTesting),
+            mediumSize
+        )
+        XCTAssertLessThanOrEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize
+        )
+        XCTAssertTrue(
+            controller.grokIdleIsVectorSVGForTesting,
+            "idle Frame 16 must stay _NSSVGImageRep"
+        )
+        let idle = try XCTUnwrap(controller.grokIdleIconImageForTesting)
+        XCTAssertTrue(idle.isTemplate)
+        XCTAssertTrue(
+            idle.representations.compactMap { $0 as? NSBitmapImageRep }.isEmpty,
+            "idle Grok must not bake an 18 px 1x bitmap"
+        )
+    }
+
+    @MainActor
+    func testUpdateIconSizeLoadsGrokThinkingFromSVGAndDoesNotCallFromGIF() throws {
+        XCTAssertNotNil(
+            GrokThinkingSprite.bundledDirectoryURL(),
+            "live Grok thinking must ship as the GrokThinking/ 30-frame SVG directory"
+        )
+        XCTAssertNotNil(
+            GrokThinkingSprite.bundledDirectoryURL()?
+                .appendingPathComponent(GrokThinkingSprite.frameFileName(index: 1)),
+            "live Grok thinking must include frame_001.svg"
+        )
+        XCTAssertNotNil(
+            GrokThinkingSprite.bundledDirectoryURL()?
+                .appendingPathComponent(
+                    GrokThinkingSprite.frameFileName(index: GrokThinkingSprite.idleFrameIndex)
+                ),
+            "idle Grok must ship as GrokThinking/frame_016.svg"
+        )
+
+        GrokThinkingSprite.resetCachesForTesting()
+        ClaudeThinkingSprite.resetCachesForTesting()
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        XCTAssertEqual(GrokThinkingSprite.fromGIFCallCountForTesting, 0)
+        XCTAssertEqual(
+            try XCTUnwrap(controller.grokIdleIconSizeForTesting),
+            NSSize(
+                width: MenuBarIconSizePreset.medium.pointSize,
+                height: MenuBarIconSizePreset.medium.pointSize
+            )
+        )
+        XCTAssertTrue(
+            controller.grokIdleIsVectorSVGForTesting,
+            "idle Frame 16 must stay _NSSVGImageRep"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(controller.grokThinkingSpriteSizeForTesting),
+            NSSize(
+                width: MenuBarIconSizePreset.medium.pointSize,
+                height: MenuBarIconSizePreset.medium.pointSize
+                    * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            )
+        )
+        XCTAssertTrue(
+            controller.grokThinkingSpriteIsVectorSVGForTesting,
+            "live Grok thinking must stay _NSSVGImageRep until the host rasterizes"
+        )
+        XCTAssertNil(
+            controller.grokThinkingSpritePixelWidthForTesting,
+            "live Grok thinking must not pre-bake an NSBitmapImageRep strip"
+        )
+        let mediumHostScale: CGFloat = 2
+        let mediumRaster = try rasterizeGrokThinkingSprite(
+            try XCTUnwrap(controller.grokThinkingSpriteImageForTesting),
+            frameSize: NSSize(
+                width: MenuBarIconSizePreset.medium.pointSize,
+                height: MenuBarIconSizePreset.medium.pointSize
+            ),
+            scale: mediumHostScale
+        )
+        XCTAssertEqual(
+            mediumRaster.width,
+            Int((MenuBarIconSizePreset.medium.pointSize * mediumHostScale).rounded()),
+            "host CGImage width must equal slot × contentsScale"
+        )
+
+        for preset in MenuBarIconSizePreset.allCases {
+            controller.updateIconSize(preset.pointSize)
+            XCTAssertEqual(
+                GrokThinkingSprite.fromGIFCallCountForTesting,
+                0,
+                "updateIconSize(\(preset.rawValue)) must not call make(fromGIF:)"
+            )
+            XCTAssertEqual(
+                try XCTUnwrap(controller.grokIdleIconSizeForTesting),
+                NSSize(width: preset.pointSize, height: preset.pointSize)
+            )
+            XCTAssertTrue(
+                controller.grokIdleIsVectorSVGForTesting,
+                "updateIconSize(\(preset.rawValue)) idle must stay vector Frame 16"
+            )
+            XCTAssertEqual(
+                try XCTUnwrap(controller.grokThinkingSpriteSizeForTesting),
+                NSSize(
+                    width: preset.pointSize,
+                    height: preset.pointSize * CGFloat(GrokThinkingAnimationTiming.frameCount)
+                )
+            )
+            XCTAssertTrue(
+                controller.grokThinkingSpriteIsVectorSVGForTesting,
+                "updateIconSize(\(preset.rawValue)) must keep the live SVG representation"
+            )
+            XCTAssertNil(controller.grokThinkingSpritePixelWidthForTesting)
+            let raster = try rasterizeGrokThinkingSprite(
+                try XCTUnwrap(controller.grokThinkingSpriteImageForTesting),
+                frameSize: NSSize(width: preset.pointSize, height: preset.pointSize),
+                scale: mediumHostScale
+            )
+            XCTAssertEqual(
+                raster.width,
+                Int((preset.pointSize * mediumHostScale).rounded()),
+                "updateIconSize(\(preset.rawValue)) host width must equal slot × contentsScale"
+            )
+        }
+        XCTAssertLessThanOrEqual(
+            GrokThinkingSprite.sourceFrameBuildCountForTesting,
+            1,
+            "Grok SVG frames must be built once, not on every icon-size click"
+        )
+        XCTAssertLessThanOrEqual(
+            ClaudeThinkingSprite.sourceFrameBuildCountForTesting,
+            1,
+            "Claude SVG frames must be built once, not on every icon-size click"
+        )
     }
 
     func testCodexAnimationCachePrecomposesFiniteFramesAndReusesSteadyStateLookups() {
@@ -994,7 +1368,10 @@ final class StatusItemControllerTests: XCTestCase {
         )
         grokIcon.isTemplate = true
         let grokThinkingSprite = makeSolidImage(
-            size: NSSize(width: 16, height: 368),
+            size: NSSize(
+                width: 16,
+                height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            ),
             red: 0.95,
             green: 0.95,
             blue: 0.95
@@ -1148,7 +1525,10 @@ final class StatusItemControllerTests: XCTestCase {
             )
             spark.isTemplate = true
             let sprite = makeSolidImage(
-                size: NSSize(width: 16, height: 368),
+                size: NSSize(
+                    width: 16,
+                    height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+                ),
                 red: 0.95,
                 green: 0.95,
                 blue: 0.95
@@ -1480,6 +1860,39 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNotNil(mask.path, file: file, line: line)
     }
 
+    private func rasterizeGrokThinkingSprite(
+        _ sprite: NSImage,
+        frameSize: NSSize,
+        scale: CGFloat
+    ) throws -> CGImage {
+        let host = MenuBarClaudeAnimatedIconHostView(
+            frame: NSRect(origin: .zero, size: frameSize)
+        )
+        host.timing = .grok
+        host.updateGeometry(
+            frame: NSRect(origin: .zero, size: frameSize),
+            contentsScale: scale
+        )
+        XCTAssertTrue(
+            host.updateContents(
+                spriteImage: sprite,
+                frameSize: frameSize,
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: scale
+            )
+        )
+        let object = try XCTUnwrap(
+            host.spriteLayer.contents,
+            "sprite layer must have rasterized contents"
+        )
+        XCTAssertEqual(
+            CFGetTypeID(object as CFTypeRef),
+            CGImage.typeID,
+            "host contents must be a CGImage"
+        )
+        return unsafeBitCast(object as CFTypeRef, to: CGImage.self)
+    }
+
     private func makeSolidImage(
         size: NSSize,
         red: CGFloat,
@@ -1521,17 +1934,22 @@ final class StatusItemControllerTests: XCTestCase {
         )
     }
 
-    private func makeMenuInput() -> StatusItemController.MenuInput {
+    private func makeMenuInput(
+        activeClient: AssistantClient = .codex,
+        showQuickSwitchMenu: Bool = false
+    ) -> StatusItemController.MenuInput {
         StatusItemController.MenuInput(
             openCodexCards: [],
             openCodexState: nil,
             openCodexSwitchInFlight: false,
-            choices: [],
-            quickSwitchSummaries: [:],
-            activeClient: .codex,
+            choices: showQuickSwitchMenu
+                ? [ProviderChoice(id: "provider", name: "Provider", isCurrent: true)]
+                : [],
+            quickSwitchSummaries: showQuickSwitchMenu ? ["provider": "$1.00"] : [:],
+            activeClient: activeClient,
             openAIAccount: nil,
             statusLinks: [],
-            showQuickSwitchMenu: false,
+            showQuickSwitchMenu: showQuickSwitchMenu,
             showOpenChatGPTMenu: false,
             showOpenCCSwitchMenu: false,
             showOpenCodexMenu: false,

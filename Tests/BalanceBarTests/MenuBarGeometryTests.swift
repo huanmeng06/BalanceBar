@@ -21,6 +21,74 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(geometry.contentHeight, 18)
     }
 
+    func testMenuBarIconSizePresetsScaleSlotAndDrawingTogether() {
+        XCTAssertEqual(MenuBarLayout.iconSlotWidth, 18, accuracy: 0.001)
+        XCTAssertEqual(MenuBarIconSizePreset.small.pointSize, 16, accuracy: 0.001)
+        XCTAssertEqual(MenuBarIconSizePreset.medium.pointSize, 18, accuracy: 0.001)
+        XCTAssertEqual(MenuBarIconSizePreset.large.pointSize, 20, accuracy: 0.001)
+        XCTAssertLessThan(MenuBarIconSizePreset.large.pointSize, 22)
+
+        let primarySize = NSSize(width: 40, height: 13)
+        var widths: [MenuBarIconSizePreset: CGFloat] = [:]
+        for preset in MenuBarIconSizePreset.allCases {
+            let geometry = MenuBarLayout.geometry(
+                primarySize: primarySize,
+                secondarySize: .zero,
+                showIcon: true,
+                showAmount: true,
+                hasSecondary: false,
+                isBalance: true,
+                iconSlotWidth: preset.pointSize
+            )
+            XCTAssertEqual(geometry.iconWidth, preset.pointSize, accuracy: 0.001)
+            XCTAssertGreaterThanOrEqual(geometry.contentHeight, preset.pointSize)
+            XCTAssertLessThanOrEqual(geometry.contentHeight, 22)
+            let pixels = MenuBarBitmapImageLayout.pixelDimensions(
+                for: NSSize(width: preset.pointSize, height: preset.pointSize),
+                scale: 2
+            )
+            XCTAssertEqual(pixels.width, Int(preset.pointSize * 2))
+            XCTAssertEqual(pixels.height, Int(preset.pointSize * 2))
+            widths[preset] = geometry.contentWidth
+        }
+
+        XCTAssertEqual(
+            widths[.medium]! - widths[.small]!,
+            MenuBarIconSizePreset.medium.pointSize - MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001,
+            "small must shrink the slot instead of leaving an 18 pt empty gap"
+        )
+        XCTAssertEqual(
+            widths[.large]! - widths[.medium]!,
+            MenuBarIconSizePreset.large.pointSize - MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+
+        let hiddenIcon = MenuBarLayout.geometry(
+            primarySize: primarySize,
+            secondarySize: .zero,
+            showIcon: false,
+            showAmount: true,
+            hasSecondary: false,
+            isBalance: true,
+            iconSlotWidth: MenuBarIconSizePreset.large.pointSize
+        )
+        XCTAssertEqual(hiddenIcon.iconWidth, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            hiddenIcon.contentWidth,
+            MenuBarLayout.geometry(
+                primarySize: primarySize,
+                secondarySize: .zero,
+                showIcon: false,
+                showAmount: true,
+                hasSecondary: false,
+                isBalance: true,
+                iconSlotWidth: MenuBarIconSizePreset.small.pointSize
+            ).contentWidth,
+            accuracy: 0.001
+        )
+    }
+
     func testSingleLineBalanceExpandsForLargePrimaryFontWithoutClipping() {
         let primary = NSTextField(labelWithString: "USD 123,456.78")
         primary.font = MenuBarLayout.primaryFont(size: 16)

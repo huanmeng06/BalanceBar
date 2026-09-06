@@ -44,7 +44,9 @@ final class AppDelegateCompositionTests: XCTestCase {
         XCTAssertTrue(updatePath.contains("refreshDashboard: Bool = true"))
         XCTAssertTrue(updatePath.contains("if refreshDashboard"))
 
-        let renderStart = try XCTUnwrap(source.range(of: "private func render(_ next: Snapshot)"))
+        let renderStart = try XCTUnwrap(
+            source.range(of: "private func render(_ next: Snapshot, immediately: Bool = false, deferMenuRebuild: Bool = false)")
+        )
         let renderEnd = try XCTUnwrap(
             source.range(
                 of: "private func refreshDate(for snapshot: Snapshot)",
@@ -53,13 +55,59 @@ final class AppDelegateCompositionTests: XCTestCase {
         )
         let renderPath = String(source[renderStart.lowerBound..<renderEnd.lowerBound])
         XCTAssertTrue(
-            renderPath.contains("updateStatusItem(for: next, refreshDashboard: false)")
+            renderPath.contains("updateStatusItem(for: next, refreshDashboard: false, deferMenuRebuild: deferMenuRebuild)")
         )
+        XCTAssertTrue(renderPath.contains("if immediately, Thread.isMainThread"))
         XCTAssertEqual(
             renderPath.components(separatedBy: "updateDashboard(for: next").count - 1,
             1
         )
         XCTAssertFalse(renderPath.contains("refreshDashboardMenuBarPage()"))
+    }
+
+    func testSetActiveClientRefreshesMenuBarPreviewWithoutReplacingThePage() throws {
+        let source = try balanceBarSource()
+        let start = try XCTUnwrap(source.range(of: "private func setActiveClient(_ client: AssistantClient)"))
+        let end = try XCTUnwrap(
+            source.range(
+                of: "private func snapshotKindDiagnosticName",
+                range: start.upperBound..<source.endIndex
+            )
+        )
+        let path = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(path.contains("updateStatusItemActivity(layout: !hasCachedSnapshot)"))
+        XCTAssertTrue(path.contains("refreshStatusItemMenuInput(deferRebuild: true)"))
+        XCTAssertTrue(path.contains("render(cached.snapshot, immediately: true, deferMenuRebuild: true)"))
+        XCTAssertTrue(path.contains("refresh(reason: .clientChanged)"))
+        XCTAssertTrue(path.contains("refreshDashboardMenuBarPage()"))
+        XCTAssertFalse(path.contains("refreshQuickSwitchSummaries(force: true"))
+        XCTAssertFalse(path.contains("showDashboardSection"))
+        XCTAssertFalse(path.contains("replacePage"))
+    }
+
+    func testSetActiveClientSkipsRedundantLayoutWhenCachedSnapshotWillRender() throws {
+        let source = try balanceBarSource()
+        let start = try XCTUnwrap(source.range(of: "private func setActiveClient(_ client: AssistantClient)"))
+        let end = try XCTUnwrap(
+            source.range(
+                of: "private func snapshotKindDiagnosticName",
+                range: start.upperBound..<source.endIndex
+            )
+        )
+        let path = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(path.contains("let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false"))
+        XCTAssertTrue(
+            path.contains("updateStatusItemActivity(layout: !hasCachedSnapshot)"),
+            "a cached snapshot render must skip the extra layout inside updateActivity"
+        )
+        XCTAssertTrue(
+            path.contains("immediately: true"),
+            "cached digits must appear on the same turn, not after a main.async hop"
+        )
+        XCTAssertFalse(
+            path.contains("updateStatusItemActivity()"),
+            "the default layout:true activity update would double-layout a cached switch"
+        )
     }
 
     func testAnimationToggleRefreshesDashboardVisibilityAfterUpdatingTheRuntimeState() throws {
@@ -849,6 +897,34 @@ final class AppDelegateCompositionTests: XCTestCase {
             controller.menuItemsForTesting.map { ObjectIdentifier($0) },
             menuItemIdentities,
             "font-size updates must not rebuild the status menu"
+        )
+
+        XCTAssertEqual(
+            controller.menuBarIconSizeForTesting,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        controller.updateIconSize(MenuBarIconSizePreset.small.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSizeForTesting,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        controller.updateIconSize(MenuBarIconSizePreset.large.pointSize)
+        XCTAssertEqual(
+            controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.large.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.menuItemsForTesting.map { ObjectIdentifier($0) },
+            menuItemIdentities,
+            "icon-size updates must not rebuild the status menu"
         )
 
         controller.teardown()

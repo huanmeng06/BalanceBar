@@ -14,6 +14,7 @@ struct DashboardPreferencePageActions {
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onMenuBarFontSizePreset: (MenuBarFontSizePreset) -> Void
+    let onMenuBarIconSizePreset: (MenuBarIconSizePreset) -> Void
     let onMenuBarIconDisplayModeChanged: (MenuBarIconDisplayMode) -> Void
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
@@ -70,6 +71,7 @@ final class DashboardPreferencePages {
         relay.onOffsetReset = actions.onOffsetReset
         relay.onLanguage = actions.onLanguage
         relay.onMenuBarFontSizePreset = actions.onMenuBarFontSizePreset
+        relay.onMenuBarIconSizePreset = actions.onMenuBarIconSizePreset
         relay.onMenuBarIconDisplayModeChanged = actions.onMenuBarIconDisplayModeChanged
         relay.onMenuBarIconDisplayDelayChanged = actions.onMenuBarIconDisplayDelayChanged
         relay.onMenuBarAnimationModeChanged = actions.onMenuBarAnimationModeChanged

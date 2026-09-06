@@ -14,6 +14,8 @@
 		A10000000000000000000023 /* Claude.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Claude.svg */; };
 		A10000000000000000000024 /* ClaudeThinking.svg in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000015 /* ClaudeThinking.svg */; };
 		A31800000000000000000008 /* Grok.png in Resources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000007 /* Grok.png */; };
+		A3180000000000000000000E /* Grok.svg in Resources */ = {isa = PBXBuildFile; fileRef = A3180000000000000000000D /* Grok.svg */; };
+		A31900000000000000000002 /* GrokThinking in Resources */ = {isa = PBXBuildFile; fileRef = A31900000000000000000001 /* GrokThinking */; };
 		A3180000000000000000000A /* GrokThinking.png in Resources */ = {isa = PBXBuildFile; fileRef = A31800000000000000000009 /* GrokThinking.png */; };
 		A3180000000000000000000C /* GrokThinking.gif in Resources */ = {isa = PBXBuildFile; fileRef = A3180000000000000000000B /* GrokThinking.gif */; };
 		A100000000000000000000E1 /* GitHub.svg in Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000E0 /* GitHub.svg */; };
@@ -98,6 +100,8 @@
 		A100000000000000000000E9 /* UpdateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000EA /* UpdateTests.swift */; };
 		A100000000000000000000F0 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F6 /* Localizable.strings */; };
 		A100000000000000000000F1 /* Localizable.strings in Test Resources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F6 /* Localizable.strings */; };
+		A32000000000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A32000000000000000000010 /* InfoPlist.strings */; };
+		A32000000000000000000002 /* InfoPlist.strings in Test Resources */ = {isa = PBXBuildFile; fileRef = A32000000000000000000010 /* InfoPlist.strings */; };
 		A100000000000000000000F8 /* LocalizationKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000000F7 /* LocalizationKeys.swift */; };
 		A10000000000000000000101 /* ReleaseNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000105 /* ReleaseNotes.swift */; };
 		A10000000000000000000102 /* UpdateNotesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000106 /* UpdateNotesWindowController.swift */; };
@@ -126,6 +130,8 @@
 		A10000000000000000000014 /* Claude.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Claude.svg; sourceTree = "<group>"; };
 		A10000000000000000000015 /* ClaudeThinking.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = ClaudeThinking.svg; sourceTree = "<group>"; };
 		A31800000000000000000007 /* Grok.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Grok.png; sourceTree = "<group>"; };
+		A3180000000000000000000D /* Grok.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = Grok.svg; sourceTree = "<group>"; };
+		A31900000000000000000001 /* GrokThinking */ = {isa = PBXFileReference; lastKnownFileType = folder; path = GrokThinking; sourceTree = "<group>"; };
 		A31800000000000000000009 /* GrokThinking.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = GrokThinking.png; sourceTree = "<group>"; };
 		A3180000000000000000000B /* GrokThinking.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = GrokThinking.gif; sourceTree = "<group>"; };
 		A100000000000000000000E0 /* GitHub.svg */ = {isa = PBXFileReference; lastKnownFileType = "image.svg+xml"; path = GitHub.svg; sourceTree = "<group>"; };
@@ -141,6 +147,18 @@
 		A10000000000000000000108 /* Localizable.strings (pt) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = pt.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A10000000000000000000109 /* Localizable.strings (ru) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A1000000000000000000010A /* Localizable.strings (it) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A32000000000000000000011 /* InfoPlist.strings (en) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000012 /* InfoPlist.strings (zh-Hans) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = zh-Hans.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000013 /* InfoPlist.strings (zh-Hant-TW) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = zh-Hant-TW.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000014 /* InfoPlist.strings (zh-Hant-HK) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = zh-Hant-HK.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000015 /* InfoPlist.strings (ja) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000016 /* InfoPlist.strings (ko) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = ko.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000017 /* InfoPlist.strings (es) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000018 /* InfoPlist.strings (de) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A32000000000000000000019 /* InfoPlist.strings (fr) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A3200000000000000000001A /* InfoPlist.strings (pt) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = pt.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A3200000000000000000001B /* InfoPlist.strings (ru) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A3200000000000000000001C /* InfoPlist.strings (it) */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A100000000000000000000F7 /* LocalizationKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/AppCore/LocalizationKeys.swift"; sourceTree = "<group>"; };
 		A10000000000000000000016 /* BalanceBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BalanceBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000017 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
@@ -304,11 +322,14 @@
 				A10000000000000000000013 /* CodexIcon.svg */,
 				A10000000000000000000014 /* Claude.svg */,
 				A10000000000000000000015 /* ClaudeThinking.svg */,
+				A3180000000000000000000D /* Grok.svg */,
 				A31800000000000000000007 /* Grok.png */,
+				A31900000000000000000001 /* GrokThinking */,
 				A31800000000000000000009 /* GrokThinking.png */,
 				A3180000000000000000000B /* GrokThinking.gif */,
 				A100000000000000000000E0 /* GitHub.svg */,
 				A100000000000000000000F6 /* Localizable.strings */,
+				A32000000000000000000010 /* InfoPlist.strings */,
 			);
 			name = "work/balance-bar";
 			path = "work/balance-bar";
@@ -667,6 +688,26 @@
 			path = lang;
 			sourceTree = "<group>";
 		};
+		A32000000000000000000010 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A32000000000000000000011 /* InfoPlist.strings (en) */,
+				A32000000000000000000012 /* InfoPlist.strings (zh-Hans) */,
+				A32000000000000000000013 /* InfoPlist.strings (zh-Hant-TW) */,
+				A32000000000000000000014 /* InfoPlist.strings (zh-Hant-HK) */,
+				A32000000000000000000015 /* InfoPlist.strings (ja) */,
+				A32000000000000000000016 /* InfoPlist.strings (ko) */,
+				A32000000000000000000017 /* InfoPlist.strings (es) */,
+				A32000000000000000000018 /* InfoPlist.strings (de) */,
+				A32000000000000000000019 /* InfoPlist.strings (fr) */,
+				A3200000000000000000001A /* InfoPlist.strings (pt) */,
+				A3200000000000000000001B /* InfoPlist.strings (ru) */,
+				A3200000000000000000001C /* InfoPlist.strings (it) */,
+			);
+			name = InfoPlist.strings;
+			path = lang;
+			sourceTree = "<group>";
+		};
 /* End PBXVariantGroup section */
 
 /* Begin PBXResourcesBuildPhase section */
@@ -678,11 +719,14 @@
 				A10000000000000000000022 /* CodexIcon.svg in Resources */,
 				A10000000000000000000023 /* Claude.svg in Resources */,
 				A10000000000000000000024 /* ClaudeThinking.svg in Resources */,
+				A3180000000000000000000E /* Grok.svg in Resources */,
 				A31800000000000000000008 /* Grok.png in Resources */,
+				A31900000000000000000002 /* GrokThinking in Resources */,
 				A3180000000000000000000A /* GrokThinking.png in Resources */,
 				A3180000000000000000000C /* GrokThinking.gif in Resources */,
 				A100000000000000000000E1 /* GitHub.svg in Resources */,
 				A100000000000000000000F0 /* Localizable.strings in Resources */,
+				A32000000000000000000001 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -692,6 +736,7 @@
 			files = (
 				A100000000000000000000E2 /* GitHub.svg in Test Resources */,
 				A100000000000000000000F1 /* Localizable.strings in Test Resources */,
+				A32000000000000000000002 /* InfoPlist.strings in Test Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

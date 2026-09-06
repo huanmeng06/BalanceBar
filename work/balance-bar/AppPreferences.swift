@@ -180,6 +180,48 @@ enum MenuBarFontSizePreset: String, CaseIterable, Equatable {
     }
 }
 
+/// Discrete menu-bar client-icon sizes. The values are independent of
+/// `MenuBarFontSizePreset`; the control interaction is the same, but the
+/// point table is not shared with typography.
+enum MenuBarIconSizePreset: String, CaseIterable, Equatable {
+    case large
+    case medium
+    case small
+
+    /// Logical AppKit point size for both the icon slot and the redrawn mark.
+    var pointSize: CGFloat {
+        switch self {
+        case .large: return 20
+        case .medium: return 18
+        case .small: return 16
+        }
+    }
+
+    var segmentIndex: Int {
+        switch self {
+        case .large: return 0
+        case .medium: return 1
+        case .small: return 2
+        }
+    }
+
+    init?(segmentIndex: Int) {
+        switch segmentIndex {
+        case 0: self = .large
+        case 1: self = .medium
+        case 2: self = .small
+        default: return nil
+        }
+    }
+
+    static func nearest(to pointSize: CGFloat) -> Self {
+        guard pointSize.isFinite else { return .medium }
+        return allCases.min {
+            abs($0.pointSize - pointSize) < abs($1.pointSize - pointSize)
+        } ?? .medium
+    }
+}
+
 final class AppPreferences {
     static let quotaProgressEnabledColorsKey = "quotaProgressEnabledColors"
     static let quotaProgressRedUpperBoundKey = "quotaProgressRedUpperBound"
@@ -442,6 +484,11 @@ final class AppPreferences {
     static let menuBarFontSizeStep: Double = 0.1
     static let menuBarFontSizeDefault: Double = menuBarFontSizePresetDefault.primarySize
     static let menuBarSecondaryToPrimaryFontRatio: Double = 10.0 / 13.0
+    /// The persisted menu-bar icon-size preset. Missing or invalid values
+    /// resolve to medium (18 pt). There is no legacy numeric key and no
+    /// migration onto small (16 pt).
+    static let menuBarIconSizePresetKey = "menuBarIconSizePreset"
+    static let menuBarIconSizePresetDefault: MenuBarIconSizePreset = .medium
     /// The width slider is centered on the system-default footprint: negative
     /// values narrow the item and positive values widen it.
     static let menuBarStatusItemWidthAdjustmentRange = -10.0...10.0
@@ -527,6 +574,24 @@ final class AppPreferences {
     var menuBarSecondaryFontSize: Double {
         menuBarFontSizePreset.secondarySize
     }
+
+    /// The selected menu-bar client-icon size. Slot width and drawing size
+    /// both come from this preset.
+    var menuBarIconSizePreset: MenuBarIconSizePreset {
+        get {
+            if let rawValue = defaults.string(forKey: Self.menuBarIconSizePresetKey),
+               let preset = MenuBarIconSizePreset(rawValue: rawValue) {
+                return preset
+            }
+            return Self.menuBarIconSizePresetDefault
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBarIconSizePresetKey)
+        }
+    }
+
+    /// Logical AppKit point size used by the menu-bar icon slot and redraw.
+    var menuBarIconSize: CGFloat { menuBarIconSizePreset.pointSize }
 
     static func secondaryMenuBarFontSize(for primarySize: Double) -> Double {
         let normalizedPrimary = normalizedMenuBarFontSize(

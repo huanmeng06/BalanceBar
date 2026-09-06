@@ -10,6 +10,7 @@ final class DashboardPreferencePageRelay: NSObject {
     var onInterval: ((String, TimeInterval) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
     var onMenuBarFontSizePreset: ((MenuBarFontSizePreset) -> Void)?
+    var onMenuBarIconSizePreset: ((MenuBarIconSizePreset) -> Void)?
     var onMenuBarIconDisplayModeChanged: ((MenuBarIconDisplayMode) -> Void)?
     var onMenuBarIconDisplayDelayChanged: ((MenuBarIconDisplayDelay) -> Void)?
     var onMenuBarAnimationModeChanged: ((MenuBarAnimationMode) -> Void)?
@@ -65,6 +66,12 @@ final class DashboardPreferencePageRelay: NSObject {
         guard let rawValue = sender.selectedItem?.representedObject as? String,
               let preset = MenuBarFontSizePreset(rawValue: rawValue) else { return }
         onMenuBarFontSizePreset?(preset)
+    }
+
+    @objc func menuBarIconSizePreset(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let preset = MenuBarIconSizePreset(rawValue: rawValue) else { return }
+        onMenuBarIconSizePreset?(preset)
     }
 
     @objc func menuBarIconDisplayMode(_ sender: NSPopUpButton) {

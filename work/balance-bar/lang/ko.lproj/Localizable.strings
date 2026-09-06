@@ -333,6 +333,8 @@
 "dashboard.menu.bar.page.layout" = "레이아웃";
 "dashboard.menu.bar.page.menu_bar_font_size" = "메뉴 막대 글꼴 크기";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "메뉴 막대 글자 크기 조정";
+"dashboard.menu.bar.page.menu_bar_icon_size" = "메뉴 막대 아이콘 크기";
+"dashboard.menu.bar.page.adjusts_the_menu_bar_icon_size" = "메뉴 막대 아이콘 크기 조정";
 "dashboard.menu.bar.page.icon_offset" = "아이콘 세로 위치";
 "dashboard.menu.bar.page.amount_offset" = "수치 세로 위치";
 "dashboard.menu.bar.page.menu_bar_width" = "다른 메뉴 막대 아이콘과의 간격";
@@ -340,6 +342,7 @@
 "dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue" = "수치 세로 위치 미세 조정 [[balancebar.break-before-semantic]][[balancebar.semantic]]Y 축[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
 "dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue" = "BalanceBar와 다른 메뉴 막대 아이콘 사이의 간격 조정 [[balancebar.break-before-semantic]][[balancebar.semantic]]너비[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
 "dashboard.menu.bar.page.large_13_10_pt_medium_11_7_9_pt_small_10_4_8_pt" = "큼: 13/10pt; 중간: 11.7/9pt; 작음: 10.4/8pt";
+"dashboard.menu.bar.page.large_20_pt_medium_18_pt_small_16_pt" = "큼: 20pt; 중간: 18pt; 작음: 16pt";
 "dashboard.menu.bar.page.large" = "큼";
 "dashboard.menu.bar.page.medium" = "중간";
 "dashboard.menu.bar.page.small" = "작음";

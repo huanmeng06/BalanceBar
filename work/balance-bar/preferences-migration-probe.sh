@@ -22,8 +22,10 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let balanceDisplayThresholdKey = "balanceDisplayThreshold"' \
         '    static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"' \
         '    static let menuBarIconDisplayDelayKey = "menuBarIconDisplayDelay"' \
+        '    static let menuBarAnimationModeKey = "menuBarAnimationMode"' \
         '    static let menuBarFontSizePresetKey = "menuBarFontSizePreset"' \
         '    static let menuBarFontSizeKey = "menuBarFontSize"' \
+        '    static let menuBarIconSizePresetKey = "menuBarIconSizePreset"' \
         '    static let menuBarPrimaryFontSizeKey = "menuBarPrimaryFontSize"' \
         '    static let menuBarSecondaryFontSizeKey = "menuBarSecondaryFontSize"' \
         '    static let menuBarQuotaWindowPreferenceKey = "menuBarQuotaWindowPreference"' \
@@ -53,6 +55,7 @@ let production: [String: Any] = [
     "menuBarIconDisplayDelay": "thirtySeconds",
     "menuBarFontSizePreset": "medium",
     "menuBarFontSize": NSNumber(value: 14.2),
+    "menuBarIconSizePreset": "small",
     "menuBarPrimaryFontSize": NSNumber(value: 14.2),
     "menuBarSecondaryFontSize": NSNumber(value: 9.6),
     "menuBarQuotaWindowPreference": "fiveHour",
@@ -88,6 +91,7 @@ require((selected["menuBarIconDisplayMode"] as? String) == "onlyWhileRunning", "
 require((selected["menuBarIconDisplayDelay"] as? String) == "thirtySeconds", "menu bar icon display delay migrates")
 require((selected["menuBarFontSizePreset"] as? String) == "medium", "font size preset migrates")
 require((selected["menuBarFontSize"] as? NSNumber)?.doubleValue == 14.2, "shared font size migrates")
+require((selected["menuBarIconSizePreset"] as? String) == "small", "icon size preset migrates")
 require((selected["menuBarPrimaryFontSize"] as? NSNumber)?.doubleValue == 14.2, "primary font size migrates")
 require((selected["menuBarSecondaryFontSize"] as? NSNumber)?.doubleValue == 9.6, "secondary font size migrates")
 require((selected["menuBarQuotaWindowPreference"] as? String) == "fiveHour", "quota window preference migrates")

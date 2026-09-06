@@ -158,7 +158,7 @@ private enum DevelopmentReleaseFixture {
 
 struct PreferencesMigrationPlan {
     static let quotaProgressKeys = ["quotaProgressEnabledColors", "quotaProgressRedUpperBound", "quotaProgressOrangeUpperBound", "quotaProgressYellowUpperBound"]
-    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey]
+    static let keys = [AppPreferences.updateChannelKey, AppPreferences.silentLaunchKey, "appLanguage", "showMenuBarReset", "showMenuBarIcon", "showMenuBarAmount", "animateCodexActivity", "activityPollInterval", "codexUsageRefreshInterval", "postCodexRefreshDuration", "showQuickSwitchMenu", "showOpenChatGPTMenu", "showOpenCCSwitchMenu", AppPreferences.showOpenCodexMenuKey, "showStatusMenu", "statusLinks", "keepMenuOpenAfterRefresh", AppPreferences.balanceDisplayThresholdKey, AppPreferences.menuLunaReserveDisplayModeKey, AppPreferences.menuLunaReserveHideExhaustedQuotaKey, "sortProvidersAlphabetically", "menuBarHorizontalPadding", AppPreferences.menuBarIconDisplayModeKey, AppPreferences.menuBarIconDisplayDelayKey, AppPreferences.menuBarAnimationModeKey, AppPreferences.menuBarQuotaWindowPreferenceKey, AppPreferences.menuBarQuotaResetDisplayModeKey, AppPreferences.menuBarAutoSwitchLunaReserveKey, AppPreferences.menuBarLunaReserveResetTimeModeKey, "openCodexDashboardPortOverride", "openCodexDashboardAutomaticDetection", AppPreferences.menuBarIconOffsetXKey, AppPreferences.menuBarIconOffsetYKey, AppPreferences.menuBarAmountOffsetXKey, AppPreferences.menuBarAmountOffsetYKey, AppPreferences.menuBarStatusItemWidthAdjustmentKey, AppPreferences.menuBarFontSizePresetKey, AppPreferences.menuBarFontSizeKey, AppPreferences.menuBarPrimaryFontSizeKey, AppPreferences.menuBarSecondaryFontSizeKey, AppPreferences.menuBarIconSizePresetKey]
 
     static func selectedValues(target: [String: Any], production: [String: Any], local: [String: Any]) -> [String: Any] {
         var selected: [String: Any] = [:]
@@ -241,6 +241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             onLanguage: { [weak self] language in self?.applyLanguage(language) },
             onMenuBarFontSizePreset: { [weak self] preset in
                 self?.applyMenuBarFontSizePreset(preset)
+            },
+            onMenuBarIconSizePreset: { [weak self] preset in
+                self?.applyMenuBarIconSizePreset(preset)
             },
             onMenuBarIconDisplayModeChanged: { [weak self] mode in
                 self?.handleDashboardMenuBarIconDisplayModeChanged(mode)
@@ -717,6 +720,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             amountOffsetY: CGFloat(menuBarAmountOffsetY),
             widthAdjustment: CGFloat(menuBarStatusItemPhysicalWidthAdjustment),
             fontSize: CGFloat(menuBarFontSize),
+            iconSize: preferences.menuBarIconSize,
             quotaWindowPreference: menuBarQuotaWindowPreference,
             quotaResetDisplayMode: menuBarQuotaResetDisplayMode,
             autoSwitchLunaReserve: preferences.menuBarAutoSwitchLunaReserve,
@@ -725,22 +729,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func updateStatusItemActivity() {
+    private func updateStatusItemActivity(layout: Bool = true) {
         statusItemController.updateActivity(
             activeClient: activeClient,
             codexTaskRunning: isCodexTaskRunning,
             claudeTaskRunning: isClaudeTaskRunning,
             grokTaskRunning: isGrokTaskRunning,
-            animationEnabled: animateCodexActivity
+            animationEnabled: animateCodexActivity,
+            layout: layout
         )
     }
 
-    private func updateStatusItem(for snapshot: Snapshot, refreshDashboard: Bool = true) {
+    private func updateStatusItem(
+        for snapshot: Snapshot,
+        refreshDashboard: Bool = true,
+        deferMenuRebuild: Bool = false
+    ) {
         statusItemController.update(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
             menuInput: makeStatusItemMenuInput(),
-            settings: makeStatusItemSettings()
+            settings: makeStatusItemSettings(),
+            deferMenuRebuild: deferMenuRebuild
         )
         if refreshDashboard {
             refreshDashboardMenuBarPage()
@@ -851,9 +861,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
     }
 
-    private func refreshStatusItemMenuInput() {
+    private func refreshStatusItemMenuInput(deferRebuild: Bool = false) {
         guard let statusItemController else { return }
-        statusItemController.updateMenu(input: makeStatusItemMenuInput())
+        statusItemController.updateMenu(
+            input: makeStatusItemMenuInput(),
+            deferRebuild: deferRebuild
+        )
     }
 
     private func switchProvider(_ providerID: String) {
@@ -1271,6 +1284,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
                 return
             }
             applyMenuBarFontSizePreset(preset)
+        case AppPreferences.menuBarIconSizePresetKey:
+            guard let preset = MenuBarIconSizePreset(segmentIndex: Int(value.rounded())) else {
+                return
+            }
+            applyMenuBarIconSizePreset(preset)
         case AppPreferences.menuBarFontSizeKey:
             // Keep the numeric route for migration-era callers. The current
             // settings page sends the discrete preset key above.
@@ -1299,6 +1317,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         guard preferences.menuBarFontSizePreset != preset else { return }
         preferences.menuBarFontSizePreset = preset
         statusItemController.updateFontSize(CGFloat(preset.primarySize))
+        refreshDashboardMenuBarPage()
+    }
+
+    private func applyMenuBarIconSizePreset(_ preset: MenuBarIconSizePreset) {
+        guard preferences.menuBarIconSizePreset != preset else { return }
+        preferences.menuBarIconSizePreset = preset
+        statusItemController.updateIconSize(preset.pointSize)
         refreshDashboardMenuBarPage()
     }
 
@@ -1660,23 +1685,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         if let anchor = lifecycle.trailingRefreshAnchor {
             establishPostCodexRefreshWindow(from: anchor)
         }
-        updateStatusItemActivity()
-        refreshStatusItemMenuInput()
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
         let currentProvider = ccSwitchRepository.loadCurrent(appType: client.appType)
-        if let cached = clientSnapshots[client],
-           currentProvider?.id == cached.providerID {
+        let cached = clientSnapshots[client]
+        let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false
+        // A following cached render layouts icon+digits together. Skip the
+        // extra layout inside updateActivity so one client switch pays for
+        // layoutStatusItem once. Icon swap still happens.
+        updateStatusItemActivity(layout: !hasCachedSnapshot)
+        refreshStatusItemMenuInput(deferRebuild: true)
+        if hasCachedSnapshot, let cached {
             lastProviderID = cached.providerID
-            render(cached.snapshot)
+            render(cached.snapshot, immediately: true, deferMenuRebuild: true)
         }
         if client != .grok || currentProvider != nil {
             refresh(reason: .clientChanged)
         }
-        providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
+        // Identity-driven tab switches already have per-client snapshots and
+        // startup/cadence quick-switch summaries. Skip the extra force fetch
+        // on the click path; the 60s cadence still refreshes the dropdown.
         if dashboardIsVisible {
-            showDashboardSection(dashboardSection)
+            refreshDashboardMenuBarPage()
         }
     }
 
@@ -1828,14 +1859,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    private func render(_ next: Snapshot) {
-        DispatchQueue.main.async {
+    private func render(_ next: Snapshot, immediately: Bool = false, deferMenuRebuild: Bool = false) {
+        let apply = {
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
-            self.updateStatusItem(for: next, refreshDashboard: false)
+            self.updateStatusItem(for: next, refreshDashboard: false, deferMenuRebuild: deferMenuRebuild)
             let refreshDate = self.refreshDate(for: next)
             self.updateDashboard(for: next, refreshDate: refreshDate)
+        }
+        if immediately, Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
         }
     }
 
