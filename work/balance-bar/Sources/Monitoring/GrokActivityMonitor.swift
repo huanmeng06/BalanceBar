@@ -232,9 +232,12 @@ final class GrokActivityMonitor {
             whereSeparator: { $0 == " " || $0 == "\t" }
         )
         guard fields.count >= 4 else { return false }
-        let commandPath = String(fields[3])
+        // `ps -axo comm=` right-pads the command column; leftover spaces land in args.
+        let commandPath = String(fields[3]).trimmingCharacters(in: .whitespacesAndNewlines)
         let command = URL(fileURLWithPath: commandPath).lastPathComponent
-        let arguments = fields.count >= 5 ? String(fields[4]) : ""
+        let arguments = fields.count >= 5
+            ? String(fields[4]).trimmingCharacters(in: .whitespacesAndNewlines)
+            : ""
         if command == "grok" || command.hasPrefix("grok-macos-") {
             return true
         }

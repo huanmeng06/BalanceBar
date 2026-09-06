@@ -82,6 +82,33 @@ final class TerminalSessionIdentityTests: XCTestCase {
         )
     }
 
+    func testLivePSCommColumnPaddingConfirmedBareAgentJoinsGrokSnapshot() {
+        let livePaddedLine = "38864 200 ttys000  agent            agent"
+        let record = TerminalCLIProcessRecord.parse(livePaddedLine)
+        XCTAssertEqual(record?.pid, 38864)
+        XCTAssertEqual(record?.command, "agent")
+        XCTAssertEqual(record?.arguments, "agent")
+        XCTAssertEqual(record?.tty, "ttys000")
+
+        let snapshot = TerminalCLIProcessSnapshot(
+            psOutput: livePaddedLine,
+            confirmedAgentPIDs: [38864]
+        )
+        XCTAssertEqual(snapshot.grok.map(\.pid), [38864])
+        XCTAssertEqual(snapshot.grokTTYs, ["ttys000"])
+        XCTAssertTrue(snapshot.claude.isEmpty)
+
+        let unconfirmed = TerminalCLIProcessSnapshot(psOutput: livePaddedLine)
+        XCTAssertTrue(unconfirmed.grok.isEmpty)
+        XCTAssertTrue(unconfirmed.claude.isEmpty)
+
+        let detached = TerminalCLIProcessSnapshot(
+            psOutput: "38864 200 ??  agent            agent",
+            confirmedAgentPIDs: [38864]
+        )
+        XCTAssertTrue(detached.grok.isEmpty)
+    }
+
     func testUnconfirmedBareAgentDoesNotJoinGrokSnapshot() {
         let snapshot = TerminalCLIProcessSnapshot(
             psOutput: "38864 200 ttys000 agent agent"
