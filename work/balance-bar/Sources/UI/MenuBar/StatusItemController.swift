@@ -2491,6 +2491,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var menuBarIconSizeForTesting: CGFloat { settings.iconSize }
 
+    var grokIdleIconSizeForTesting: NSSize? { grokIconImage?.size }
+
     // Exposes the actual AppKit point sizes applied to the live menu-bar
     // labels without exposing the labels themselves.
     var menuBarFontPointSizesForTesting: (primary: CGFloat, secondary: CGFloat)? {
@@ -2957,11 +2959,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
-        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png"),
-           let icon = NSImage(contentsOf: iconURL) {
-            icon.size = outputSize
-            icon.isTemplate = true
-            grokIconImage = icon
+        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png") {
+            grokIconImage = GrokIdleIcon.make(
+                fromPNG: iconURL,
+                outputSize: outputSize
+            )
         }
         // Size clicks must stay on the committed PNG strip. GIF decode plus
         // per-pixel `colorAtX:y:` templating pegs a core on the main thread.

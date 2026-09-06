@@ -47,6 +47,16 @@ final class StatusItemControllerTests: XCTestCase {
             accuracy: 0.001
         )
         XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.height ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
             controller.menuBarIconSlotWidthForTesting ?? .nan,
             MenuBarIconSizePreset.medium.pointSize,
             accuracy: 0.001
@@ -56,6 +66,11 @@ final class StatusItemControllerTests: XCTestCase {
         controller.updateIconSize(MenuBarIconSizePreset.small.pointSize)
         XCTAssertEqual(
             controller.menuBarIconSlotWidthForTesting ?? .nan,
+            MenuBarIconSizePreset.small.pointSize,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
             MenuBarIconSizePreset.small.pointSize,
             accuracy: 0.001
         )
@@ -73,6 +88,11 @@ final class StatusItemControllerTests: XCTestCase {
             MenuBarIconSizePreset.large.pointSize,
             accuracy: 0.001
         )
+        XCTAssertEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
+            MenuBarIconSizePreset.large.pointSize,
+            accuracy: 0.001
+        )
         XCTAssertLessThan(
             controller.menuBarIconSlotWidthForTesting ?? .nan,
             22
@@ -82,6 +102,51 @@ final class StatusItemControllerTests: XCTestCase {
             largeLength - mediumLength,
             MenuBarIconSizePreset.large.pointSize - MenuBarIconSizePreset.medium.pointSize,
             accuracy: 0.5
+        )
+    }
+
+    func testIdleGrokIconCropsTransparentPaddingToFillTheMediumSlot() throws {
+        let pngURL = try XCTUnwrap(
+            Bundle.main.url(forResource: "Grok", withExtension: "png")
+        )
+        XCTAssertEqual(MenuBarIconSizePreset.small.pointSize, 16)
+        XCTAssertEqual(MenuBarIconSizePreset.medium.pointSize, 18)
+        XCTAssertEqual(MenuBarIconSizePreset.large.pointSize, 20)
+
+        let raw = try XCTUnwrap(NSImage(contentsOf: pngURL))
+        let rawPixels = try XCTUnwrap(pixelWidth(of: raw))
+        XCTAssertEqual(rawPixels, 1024)
+
+        GrokIdleIcon.resetCachesForTesting()
+        let cropped = try XCTUnwrap(GrokIdleIcon.croppedTemplate(fromPNG: pngURL))
+        let croppedPixels = try XCTUnwrap(pixelWidth(of: cropped))
+        XCTAssertLessThan(
+            CGFloat(croppedPixels) / CGFloat(rawPixels),
+            0.92,
+            "idle Grok must drop transparent padding instead of using the full 1024 canvas"
+        )
+        XCTAssertGreaterThan(
+            CGFloat(croppedPixels) / CGFloat(rawPixels),
+            0.80,
+            "the crop must stay inside the star, not trim into the mark"
+        )
+
+        let mediumSize = NSSize(
+            width: MenuBarIconSizePreset.medium.pointSize,
+            height: MenuBarIconSizePreset.medium.pointSize
+        )
+        let medium = try XCTUnwrap(
+            GrokIdleIcon.make(fromPNG: pngURL, outputSize: mediumSize)
+        )
+        XCTAssertEqual(medium.size, mediumSize)
+        XCTAssertLessThanOrEqual(medium.size.width, MenuBarIconSizePreset.medium.pointSize)
+        XCTAssertTrue(medium.isTemplate)
+        let mediumPixels = try XCTUnwrap(pixelWidth(of: medium))
+        XCTAssertEqual(mediumPixels, croppedPixels)
+        XCTAssertGreaterThan(
+            mediumPixels,
+            Int(MenuBarIconSizePreset.medium.pointSize * 2),
+            "idle Grok must keep the cropped high-res bitmap, not an 18 px 1x redraw"
         )
     }
 
@@ -1587,6 +1652,14 @@ final class StatusItemControllerTests: XCTestCase {
             rect.fill()
             return true
         }
+    }
+
+    private func pixelWidth(of image: NSImage) -> Int? {
+        if let bitmap = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first {
+            return bitmap.pixelsWide
+        }
+        var rect = NSRect(origin: .zero, size: image.size)
+        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)?.width
     }
 
     private func makeController(

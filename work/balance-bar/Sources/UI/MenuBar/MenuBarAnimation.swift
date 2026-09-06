@@ -595,6 +595,146 @@ enum GrokThinkingAnimationTiming {
     }
 }
 
+/// Crops transparent padding from the idle Grok star so the mark fills the
+/// current 16/18/20 pt slot. The slot itself is unchanged; `image.size` never
+/// exceeds that slot. Uses raw bitmap alpha, not `colorAtX:y:`. The cropped
+/// high-res pixels are kept; do not lock an 18 px 1x redraw.
+enum GrokIdleIcon {
+    private static let cacheLock = NSLock()
+    private static var croppedByURL: [URL: NSImage] = [:]
+    private static var sizedByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
+    private static let alphaThreshold: UInt8 = 12
+
+    static func resetCachesForTesting() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        croppedByURL = [:]
+        sizedByCacheKey = [:]
+    }
+
+    static func make(
+        fromPNG pngURL: URL,
+        outputSize: NSSize
+    ) -> NSImage? {
+        let cacheKey = MenuBarSizedImageCacheKey(url: pngURL, outputSize: outputSize)
+        cacheLock.lock()
+        if let cached = sizedByCacheKey[cacheKey] {
+            cacheLock.unlock()
+            return cached
+        }
+        let cachedCrop = croppedByURL[pngURL]
+        cacheLock.unlock()
+
+        guard let cropped = cachedCrop ?? croppedTemplate(fromPNG: pngURL) else {
+            return nil
+        }
+        cacheLock.lock()
+        croppedByURL[pngURL] = cropped
+        cacheLock.unlock()
+
+        let sized = sizedTemplate(from: cropped, outputSize: outputSize)
+        cacheLock.lock()
+        sizedByCacheKey[cacheKey] = sized
+        cacheLock.unlock()
+        return sized
+    }
+
+    static func croppedTemplate(fromPNG pngURL: URL) -> NSImage? {
+        guard let image = NSImage(contentsOf: pngURL) else { return nil }
+        if let cropped = croppedTemplate(from: image) {
+            return cropped
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    static func croppedTemplate(from image: NSImage) -> NSImage? {
+        guard
+            let rep = bitmapRepresentation(of: image),
+            let crop = squareOpaqueCrop(in: rep),
+            let cgImage = rep.cgImage?.cropping(to: crop)
+        else {
+            return nil
+        }
+        let cropped = NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: crop.width, height: crop.height)
+        )
+        cropped.isTemplate = true
+        return cropped
+    }
+
+    /// Keeps the cropped bitmap and only changes the point size. Drawing into
+    /// an `NSImage(size: slot)` block would bake an 18 px 1x image on Retina.
+    private static func sizedTemplate(from image: NSImage, outputSize: NSSize) -> NSImage {
+        var rect = NSRect(origin: .zero, size: image.size)
+        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+            let sized = NSImage(cgImage: cgImage, size: outputSize)
+            sized.isTemplate = true
+            return sized
+        }
+        let sized = NSImage()
+        for representation in image.representations {
+            sized.addRepresentation(representation)
+        }
+        sized.size = outputSize
+        sized.isTemplate = true
+        return sized
+    }
+
+    private static func bitmapRepresentation(of image: NSImage) -> NSBitmapImageRep? {
+        if let existing = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first {
+            return existing
+        }
+        var rect = NSRect(origin: .zero, size: image.size)
+        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+            return NSBitmapImageRep(cgImage: cgImage)
+        }
+        return image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))
+    }
+
+    private static func squareOpaqueCrop(in rep: NSBitmapImageRep) -> CGRect? {
+        guard
+            let data = rep.bitmapData,
+            rep.pixelsWide > 0,
+            rep.pixelsHigh > 0,
+            rep.bitsPerPixel >= 32
+        else {
+            return nil
+        }
+        let bytesPerPixel = max(1, rep.bitsPerPixel / 8)
+        let alphaOffset = rep.bitmapFormat.contains(.alphaFirst) ? 0 : bytesPerPixel - 1
+        var minX = rep.pixelsWide
+        var minY = rep.pixelsHigh
+        var maxX = -1
+        var maxY = -1
+        for y in 0..<rep.pixelsHigh {
+            let row = y * rep.bytesPerRow
+            for x in 0..<rep.pixelsWide {
+                let alpha = data[row + x * bytesPerPixel + alphaOffset]
+                guard alpha > alphaThreshold else { continue }
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        let contentWidth = maxX - minX + 1
+        let contentHeight = maxY - minY + 1
+        let side = min(
+            max(contentWidth, contentHeight),
+            rep.pixelsWide,
+            rep.pixelsHigh
+        )
+        var originX = minX - (side - contentWidth) / 2
+        var originY = minY - (side - contentHeight) / 2
+        originX = max(0, min(originX, rep.pixelsWide - side))
+        originY = max(0, min(originY, rep.pixelsHigh - side))
+        return CGRect(x: originX, y: originY, width: side, height: side)
+    }
+}
+
 /// Loads the committed Grok thinking PNG strip, or rebuilds it from the source
 /// GIF. `fromGIF` is for build/test/one-shot background work; the live
 /// icon-size path must use `fromPNG` so clicks do not run `colorAtX:y:`.
