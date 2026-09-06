@@ -37,6 +37,11 @@ for localization_directory in "${localization_directories[@]}"; do
     [[ "$resource_keys" == "$source_keys" ]] \
         || die "$localization_directory key set differs from LocalizationKey"
 
+    infoplist_file="$resource_root/$localization_directory/InfoPlist.strings"
+    [[ -f "$infoplist_file" ]] || die "source resource is missing: $infoplist_file"
+    grep -Fq '"NSAppleEventsUsageDescription"' "$infoplist_file" \
+        || die "$localization_directory InfoPlist.strings is missing NSAppleEventsUsageDescription"
+
     case "$localization_directory" in
         pt.lproj)
             forbidden_pattern="Tibo's|AbrirAI|Abrir o status da OpenAI|Para cimadates|^Do não mostrar$|Intervalo de verificação de backup|Redefine em %1\$@|Escolha se deseja verificar as versões Estável|evita eventos do sistema perdidos|As alterações de provedor são sincronizadas imediatamente|Hora da redefinição|Após uma recarga, mantém|Segue o CC Switch automaticamente|Seguir o sistema|Seguindo este provedor|Seguindo o provedor atual|Este provedor está em uso|O provedor atual está em uso|Follows CC Switch automatically|Official cota|Too many|Restore Defaults|Quick links|Preview|Font Size|Vertical position|main window|Changes apply|No live data|received yet|OpenCodex switch|database verification|Unrecognized|Contact .*maintainer|Every [0-9]"
@@ -65,6 +70,11 @@ if [[ -n "$bundle_root" ]]; then
         packaged_file="$resources_dir/$localization_directory/Localizable.strings"
         [[ -s "$packaged_file" ]] \
             || die "packaged resource is missing or empty: $packaged_file"
+        packaged_infoplist="$resources_dir/$localization_directory/InfoPlist.strings"
+        [[ -s "$packaged_infoplist" ]] \
+            || die "packaged resource is missing or empty: $packaged_infoplist"
+        grep -Fq '"NSAppleEventsUsageDescription"' "$packaged_infoplist" \
+            || die "packaged $localization_directory InfoPlist.strings is missing NSAppleEventsUsageDescription"
     done
 fi
 

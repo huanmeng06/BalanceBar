@@ -618,6 +618,25 @@ final class TerminalSessionIdentityTests: XCTestCase {
         )
     }
 
+    func testTerminalAutomationPermissionStatus() {
+        XCTAssertEqual(TerminalFrontmostTTY.permission(fromAppleEventStatus: 0), .allowed)
+        XCTAssertEqual(
+            TerminalFrontmostTTY.permission(fromAppleEventStatus: -1743),
+            .denied
+        )
+        XCTAssertEqual(
+            TerminalFrontmostTTY.permission(fromAppleEventStatus: -1744),
+            .unknown
+        )
+        XCTAssertEqual(
+            TerminalFrontmostTTY.permission(fromAppleEventStatus: -600),
+            .unknown
+        )
+        XCTAssertTrue(TerminalFrontmostTTY.shouldSendAppleEvents(.allowed))
+        XCTAssertFalse(TerminalFrontmostTTY.shouldSendAppleEvents(.denied))
+        XCTAssertFalse(TerminalFrontmostTTY.shouldSendAppleEvents(.unknown))
+    }
+
     func testTerminalErrorPayloadDoesNotClassifyAClient() {
         let payload = "ERR\n-1743\nnot authorized"
         XCTAssertEqual(TerminalFrontmostTTY.appleScriptErrorCode(payload), "-1743")
@@ -675,6 +694,37 @@ final class TerminalSessionIdentityTests: XCTestCase {
                 claudeTTYs: snapshot.claudeTTYs
             ),
             .claude
+        )
+    }
+
+    func testDeniedAutomationPermissionDoesNotPinGrok() {
+        XCTAssertFalse(TerminalFrontmostTTY.shouldSendAppleEvents(.denied))
+        let payload = "ERR\n-1743\nnot authorized"
+        let signal = TerminalFrontmostTTY.parseSelectedTabSignal(payload)
+        XCTAssertEqual(signal, TerminalSelectedTabSignal())
+
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: terminalMultiGrokPS)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: "ttys000")
+        var fdCalls = 0
+        let result = resolveFocusTerminal(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTTY: signal.tty,
+            appleScriptTitle: signal.title,
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertNil(result.tty)
+        XCTAssertNil(latch.tty)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
         )
     }
 

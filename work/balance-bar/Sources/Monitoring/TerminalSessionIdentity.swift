@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Darwin
 import Foundation
 
@@ -172,6 +173,12 @@ enum TerminalAppleScriptStatus: String, Equatable {
     case value = "ok"
 }
 
+enum TerminalAppleEventPermission: Equatable {
+    case unknown
+    case allowed
+    case denied
+}
+
 enum TerminalFocusHint {
     /// Unique grok XOR claude only. Do not match gro, cloud, or cloud code.
     static func client(fromWindowTitle title: String?) -> AssistantClient? {
@@ -330,6 +337,9 @@ enum TerminalFrontmostTTY {
     private static let identityLogLock = NSLock()
     private static var lastIdentityLogAt = Date.distantPast
     private static var lastIdentityLogSignature = ""
+    private static var terminalAppleEventPermission: TerminalAppleEventPermission = .unknown
+    private static var didAskTerminalAppleEventPermission = false
+    static let appleEventNotPermittedStatus: OSStatus = -1743
 
     static func usesSelectedTabAppleScript(bundleIdentifier: String?) -> Bool {
         let bundle = (bundleIdentifier ?? "").lowercased()
@@ -339,6 +349,21 @@ enum TerminalFrontmostTTY {
         default:
             return bundle.hasSuffix(".ghostty")
         }
+    }
+
+    static func permission(fromAppleEventStatus status: OSStatus) -> TerminalAppleEventPermission {
+        switch status {
+        case noErr:
+            return .allowed
+        case appleEventNotPermittedStatus:
+            return .denied
+        default:
+            return .unknown
+        }
+    }
+
+    static func shouldSendAppleEvents(_ permission: TerminalAppleEventPermission) -> Bool {
+        permission == .allowed
     }
 
     static func appleScriptSource(
@@ -1245,6 +1270,68 @@ enum TerminalFrontmostTTY {
         return (tty, offset)
     }
 
+    private static func ensureTerminalAppleEventPermission() -> TerminalAppleEventPermission {
+        scriptCacheLock.lock()
+        let cached = terminalAppleEventPermission
+        let alreadyAsked = didAskTerminalAppleEventPermission
+        scriptCacheLock.unlock()
+
+        if cached == .allowed {
+            return .allowed
+        }
+
+        let askUser = cached == .unknown && !alreadyAsked
+        let status = onMainSync {
+            determinePermissionToAutomateTerminal(askUserIfNeeded: askUser)
+        }
+        let permission = permission(fromAppleEventStatus: status)
+        scriptCacheLock.lock()
+        if permission != .unknown {
+            terminalAppleEventPermission = permission
+            if askUser {
+                didAskTerminalAppleEventPermission = true
+            }
+        }
+        scriptCacheLock.unlock()
+        return permission == .unknown ? cached : permission
+    }
+
+    private static func cacheTerminalAppleEventPermission(_ permission: TerminalAppleEventPermission) {
+        scriptCacheLock.lock()
+        terminalAppleEventPermission = permission
+        if permission != .unknown {
+            didAskTerminalAppleEventPermission = true
+        }
+        scriptCacheLock.unlock()
+    }
+
+    private static func determinePermissionToAutomateTerminal(askUserIfNeeded: Bool) -> OSStatus {
+        var address = AEAddressDesc()
+        let bundleID = "com.apple.Terminal"
+        let created = bundleID.withCString { pointer in
+            AECreateDesc(typeApplicationBundleID, pointer, bundleID.utf8.count, &address)
+        }
+        guard created == noErr else { return OSStatus(created) }
+        defer { AEDisposeDesc(&address) }
+        return AEDeterminePermissionToAutomateTarget(
+            &address,
+            typeWildCard,
+            typeWildCard,
+            askUserIfNeeded
+        )
+    }
+
+    private static func onMainSync<T>(_ work: () -> T) -> T {
+        if Thread.isMainThread {
+            return work()
+        }
+        var result: T!
+        DispatchQueue.main.sync {
+            result = work()
+        }
+        return result
+    }
+
     private static func runCachedAppleScript(
         bundleIdentifier: String?,
         applicationPath: String?
@@ -1278,6 +1365,17 @@ enum TerminalFrontmostTTY {
             return raw
         }
 
+        if bundle == "com.apple.terminal" {
+            let permission = ensureTerminalAppleEventPermission()
+            if permission == .denied {
+                markAppleScriptFailure()
+                return finishWithoutScript(.failure, "ERR\n-1743\nnot authorized")
+            }
+            if permission != .allowed {
+                markAppleScriptFailure()
+                return finishWithoutScript(.failure, "ERR\npending\nTerminal Apple Events permission pending")
+            }
+        }
         if isGhosttyBundle(bundle), path.isEmpty {
             return finishWithoutScript(.failure, "ERR\nno_app_path\n")
         }
@@ -1322,12 +1420,18 @@ enum TerminalFrontmostTTY {
         if let error = box.error {
             markAppleScriptFailure()
             let raw = appleScriptErrorPayload(from: error, fallback: box.stringValue)
+            if bundle == "com.apple.terminal", appleScriptErrorCode(raw) == "-1743" {
+                cacheTerminalAppleEventPermission(.denied)
+            }
             recordAppleScriptStatus(.failure, duration: duration, raw: raw)
             return raw
         }
         let value = box.stringValue
         if isAppleScriptErrorPayload(value) {
             let code = appleScriptErrorCode(value) ?? ""
+            if bundle == "com.apple.terminal", code == "-1743" {
+                cacheTerminalAppleEventPermission(.denied)
+            }
             if Int(code) != nil {
                 markAppleScriptFailure()
             }

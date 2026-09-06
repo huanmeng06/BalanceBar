@@ -28,5 +28,7 @@
   <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>BalanceBar reads the selected Terminal tab so the menu bar icon can follow Grok or Claude.</string>
 </dict>
 </plist>
