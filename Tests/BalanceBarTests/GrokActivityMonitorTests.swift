@@ -63,6 +63,165 @@ final class GrokActivityMonitorTests: XCTestCase {
                 "202 1 ttys000 grok-macos-aarch64 /Users/dev/.grok/bin/grok"
             )
         )
+        XCTAssertFalse(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "101 1 ?? UserEventAgent /usr/libexec/UserEventAgent (System)"
+            )
+        )
+        XCTAssertFalse(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "38864 38839 ?? agent agent",
+                confirmedAgentPIDs: [38864]
+            )
+        )
+        XCTAssertFalse(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "38864 38839 ttys000 agent agent"
+            )
+        )
+        XCTAssertTrue(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "38864 38839 ttys000 agent agent",
+                confirmedAgentPIDs: [38864]
+            )
+        )
+        XCTAssertTrue(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "38864 38839 ttys000 /Users/dev/.grok/bin/agent /Users/dev/.grok/bin/agent"
+            )
+        )
+        XCTAssertTrue(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "38864 38839 ttys000 agent /Users/dev/.grok/downloads/grok-macos-aarch64"
+            )
+        )
+    }
+
+    func testConfirmedBareAgentProcessPresenceExposesTTY() throws {
+        try writeActiveSessions([
+            [
+                "session_id": "agent-tui",
+                "pid": 38864,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+        let presence = makeMonitor(
+            processOutput: "38864 38839 ttys000 agent agent"
+        ).processPresence()
+        XCTAssertTrue(presence.running)
+        XCTAssertEqual(presence.ttys, ["ttys000"])
+    }
+
+    func testBareAgentWithoutConfirmedPIDIsNotGrokProcess() throws {
+        try writeActiveSessions([])
+        let presence = makeMonitor(
+            processOutput: "38864 38839 ttys000 agent agent"
+        ).processPresence()
+        XCTAssertFalse(presence.running)
+        XCTAssertEqual(presence.ttys, [])
+    }
+
+    func testGrokBinAgentPathIsGrokProcessWithoutSessionJSON() {
+        let binAgent = makeMonitor(
+            processOutput: "38864 38839 ttys000 /Users/dev/.grok/bin/agent /Users/dev/.grok/bin/agent"
+        ).processPresence()
+        XCTAssertTrue(binAgent.running)
+        XCTAssertEqual(binAgent.ttys, ["ttys000"])
+
+        let macosAgent = makeMonitor(
+            processOutput: "38864 38839 ttys000 agent /Users/dev/.grok/downloads/grok-macos-aarch64"
+        ).processPresence()
+        XCTAssertTrue(macosAgent.running)
+        XCTAssertEqual(macosAgent.ttys, ["ttys000"])
+    }
+
+    func testConfirmedBareAgentKeepsGrokIdentityAfterClosingGrokWindow() throws {
+        try writeActiveSessions([
+            [
+                "session_id": "agent-tui",
+                "pid": 38864,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+        let onlyAgent = makeMonitor(
+            processOutput: "38864 38839 ttys000 agent agent"
+        ).processPresence()
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .codex,
+                grokProcessRunning: onlyAgent.running,
+                claudeProcessRunning: false,
+                frontmostTTY: onlyAgent.ttys.first,
+                grokTTYs: Set(onlyAgent.ttys)
+            ),
+            .grok
+        )
+
+        let both = makeMonitor(
+            processOutput: """
+            38864 38839 ttys000 agent agent
+            40809 40800 ttys001 grok grok
+            """
+        ).processPresence()
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .grok,
+                grokProcessRunning: both.running,
+                claudeProcessRunning: false
+            ),
+            .grok
+        )
+
+        let afterClosingGrok = makeMonitor(
+            processOutput: "38864 38839 ttys000 agent agent"
+        ).processPresence()
+        XCTAssertTrue(afterClosingGrok.running)
+        XCTAssertEqual(afterClosingGrok.ttys, ["ttys000"])
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .grok,
+                grokProcessRunning: afterClosingGrok.running,
+                claudeProcessRunning: false
+            ),
+            .grok
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .codex,
+                current: .grok,
+                grokProcessRunning: afterClosingGrok.running,
+                claudeProcessRunning: false
+            ),
+            .codex
+        )
+    }
+
+    func testSystemAgentAndGrokSubstringsAreNotGrokProcess() {
+        XCTAssertFalse(
+            makeMonitor(
+                processOutput: "101 1 ?? UserEventAgent /usr/libexec/UserEventAgent (System)"
+            ).processPresence().running
+        )
+        XCTAssertFalse(
+            makeMonitor(
+                processOutput: "101 1 ttys000 /bin/echo echo grok"
+            ).processPresence().running
+        )
+        XCTAssertFalse(
+            makeMonitor(
+                processOutput: "101 1 ttys000 /usr/bin/rg rg grok updates.jsonl"
+            ).processPresence().running
+        )
+        XCTAssertFalse(
+            makeMonitor(
+                processOutput: "38864 38839 ?? agent agent"
+            ).processPresence().running
+        )
     }
 
     func testProcessStatusExposesTTYFromPS() {

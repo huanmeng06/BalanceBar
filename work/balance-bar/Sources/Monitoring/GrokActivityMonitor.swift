@@ -123,7 +123,8 @@ final class GrokActivityMonitor {
         return (status.processRunning, status.observation.legacyIsTaskRunning)
     }
 
-    /// Process presence only. Does not walk `~/.grok` sessions.
+    /// Process presence only. Reads `active_sessions.json` pids for bare
+    /// `agent` confirmation and does not walk transcripts.
     func processPresence() -> (running: Bool, ttys: [String]) {
         grokProcessState()
     }
@@ -195,10 +196,14 @@ final class GrokActivityMonitor {
         }
 
         let output = String(decoding: result.standardOutput, as: UTF8.self)
+        let confirmedAgentPIDs = Self.liveAgentPIDs(in: grokDirectory)
         var ttys: [String] = []
         var running = false
         for rawLine in output.split(separator: "\n") {
-            guard Self.lineLooksLikeGrokCLI(rawLine) else { continue }
+            guard Self.lineLooksLikeGrokCLI(
+                rawLine,
+                confirmedAgentPIDs: confirmedAgentPIDs
+            ) else { continue }
             running = true
             if let tty = TerminalCLIProcessRecord.parse(rawLine)?.tty {
                 ttys.append(tty)
@@ -214,7 +219,10 @@ final class GrokActivityMonitor {
         processCacheLock.unlock()
     }
 
-    static func lineLooksLikeGrokCLI<S: StringProtocol>(_ rawLine: S) -> Bool {
+    static func lineLooksLikeGrokCLI<S: StringProtocol>(
+        _ rawLine: S,
+        confirmedAgentPIDs: Set<Int32> = []
+    ) -> Bool {
         let line = rawLine.lowercased()
         guard !line.contains("balancebar"),
               !line.contains("balancebar.app") else { return false }
@@ -224,7 +232,8 @@ final class GrokActivityMonitor {
             whereSeparator: { $0 == " " || $0 == "\t" }
         )
         guard fields.count >= 4 else { return false }
-        let command = URL(fileURLWithPath: String(fields[3])).lastPathComponent
+        let commandPath = String(fields[3])
+        let command = URL(fileURLWithPath: commandPath).lastPathComponent
         let arguments = fields.count >= 5 ? String(fields[4]) : ""
         if command == "grok" || command.hasPrefix("grok-macos-") {
             return true
@@ -235,8 +244,56 @@ final class GrokActivityMonitor {
             || arguments.hasPrefix("grok-macos-") {
             return true
         }
-        return arguments.contains("/.grok/bin/grok")
-            || arguments.contains("/grok-macos-")
+        if arguments.contains("/.grok/bin/grok")
+            || arguments.contains("/grok-macos-") {
+            return true
+        }
+        if commandPath.contains("/.grok/bin/agent")
+            || arguments.contains("/.grok/bin/agent") {
+            return true
+        }
+        if command == "agent" && arguments.contains("grok-macos") {
+            return true
+        }
+        guard command == "agent",
+              arguments == "agent" || arguments.hasPrefix("agent ") else {
+            return false
+        }
+        let tty = TerminalCLIProcessRecord.normalizeTTY(String(fields[2]))
+        guard let tty, tty.hasPrefix("ttys"),
+              let pid = Int32(fields[0]),
+              confirmedAgentPIDs.contains(pid) else {
+            return false
+        }
+        return true
+    }
+
+    static func liveAgentPIDs(in grokDirectory: URL) -> Set<Int32> {
+        let url = grokDirectory.appendingPathComponent("active_sessions.json")
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        return liveAgentPIDs(fromActiveSessionsJSON: data)
+    }
+
+    static func liveAgentPIDs(fromActiveSessionsJSON data: Data) -> Set<Int32> {
+        guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+        var pids: Set<Int32> = []
+        for row in rows {
+            guard let pid = int32PID(row["pid"]), pid > 0 else { continue }
+            pids.insert(pid)
+        }
+        return pids
+    }
+
+    private static func int32PID(_ value: Any?) -> Int32? {
+        if let number = value as? NSNumber {
+            return Int32(exactly: number.int64Value)
+        }
+        if let string = value as? String {
+            return Int32(string)
+        }
+        return nil
     }
 
     private struct ActiveSessionRow {
