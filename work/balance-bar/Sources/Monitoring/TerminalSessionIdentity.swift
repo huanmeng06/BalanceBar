@@ -25,8 +25,10 @@ struct TerminalCLIProcessRecord: Equatable {
             pid: pid,
             ppid: ppid,
             tty: normalizeTTY(String(fields[2])),
-            command: String(fields[3]),
-            arguments: fields.count >= 5 ? String(fields[4]) : ""
+            command: String(fields[3]).trimmingCharacters(in: .whitespacesAndNewlines),
+            arguments: fields.count >= 5
+                ? String(fields[4]).trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
         )
     }
 
@@ -56,7 +58,7 @@ struct TerminalCLIProcessSnapshot: Equatable {
         Set(claude.compactMap(\.tty))
     }
 
-    init(psOutput: String) {
+    init(psOutput: String, confirmedAgentPIDs: Set<Int32> = []) {
         var parentByPID: [Int32: Int32] = [:]
         var grok: [TerminalCLIProcessRecord] = []
         var claude: [TerminalCLIProcessRecord] = []
@@ -64,7 +66,10 @@ struct TerminalCLIProcessSnapshot: Equatable {
             let line = String(rawLine)
             guard let record = TerminalCLIProcessRecord.parse(line) else { continue }
             parentByPID[record.pid] = record.ppid
-            if GrokActivityMonitor.lineLooksLikeGrokCLI(line) {
+            if GrokActivityMonitor.lineLooksLikeGrokCLI(
+                line,
+                confirmedAgentPIDs: confirmedAgentPIDs
+            ) {
                 grok.append(record)
             } else if ClaudeCodeActivityMonitor.lineLooksLikeClaudeCLI(line) {
                 claude.append(record)
@@ -87,8 +92,11 @@ struct TerminalCLIProcessSnapshot: Equatable {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { return nil }
+            let grokDirectory = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".grok", isDirectory: true)
             return TerminalCLIProcessSnapshot(
-                psOutput: String(decoding: data, as: UTF8.self)
+                psOutput: String(decoding: data, as: UTF8.self),
+                confirmedAgentPIDs: GrokActivityMonitor.liveAgentPIDs(in: grokDirectory)
             )
         } catch {
             return nil

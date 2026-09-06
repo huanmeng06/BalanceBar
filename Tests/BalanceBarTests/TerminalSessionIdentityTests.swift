@@ -47,6 +47,92 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertNil(snapshot.uniqueCLITTY(focusedPID: 800, terminalPID: 100))
     }
 
+    func testConfirmedBareAgentJoinsGrokSnapshot() {
+        let agentPS = """
+        100 1 ?? /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal Terminal
+        200 100 ttys000 /bin/zsh zsh
+        38864 200 ttys000 agent agent
+        400 100 ttys002 /bin/zsh zsh
+        500 400 ttys002 /usr/local/bin/claude claude
+        """
+        let snapshot = TerminalCLIProcessSnapshot(
+            psOutput: agentPS,
+            confirmedAgentPIDs: [38864]
+        )
+        XCTAssertEqual(snapshot.grok.map(\.pid), [38864])
+        XCTAssertEqual(snapshot.claude.map(\.pid), [500])
+        XCTAssertEqual(snapshot.grokTTYs, ["ttys000"])
+        XCTAssertEqual(snapshot.claudeTTYs, ["ttys002"])
+        XCTAssertEqual(
+            TerminalFrontmostTTY.uniquelyClassifiedTTY(
+                "ttys000",
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            "ttys000"
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .claude,
+                frontmostTTY: "ttys000",
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
+    }
+
+    func testLivePSCommColumnPaddingConfirmedBareAgentJoinsGrokSnapshot() {
+        let livePaddedLine = "38864 200 ttys000  agent            agent"
+        let record = TerminalCLIProcessRecord.parse(livePaddedLine)
+        XCTAssertEqual(record?.pid, 38864)
+        XCTAssertEqual(record?.command, "agent")
+        XCTAssertEqual(record?.arguments, "agent")
+        XCTAssertEqual(record?.tty, "ttys000")
+
+        let snapshot = TerminalCLIProcessSnapshot(
+            psOutput: livePaddedLine,
+            confirmedAgentPIDs: [38864]
+        )
+        XCTAssertEqual(snapshot.grok.map(\.pid), [38864])
+        XCTAssertEqual(snapshot.grokTTYs, ["ttys000"])
+        XCTAssertTrue(snapshot.claude.isEmpty)
+
+        let unconfirmed = TerminalCLIProcessSnapshot(psOutput: livePaddedLine)
+        XCTAssertTrue(unconfirmed.grok.isEmpty)
+        XCTAssertTrue(unconfirmed.claude.isEmpty)
+
+        let detached = TerminalCLIProcessSnapshot(
+            psOutput: "38864 200 ??  agent            agent",
+            confirmedAgentPIDs: [38864]
+        )
+        XCTAssertTrue(detached.grok.isEmpty)
+    }
+
+    func testUnconfirmedBareAgentDoesNotJoinGrokSnapshot() {
+        let snapshot = TerminalCLIProcessSnapshot(
+            psOutput: "38864 200 ttys000 agent agent"
+        )
+        XCTAssertTrue(snapshot.grok.isEmpty)
+        XCTAssertTrue(snapshot.claude.isEmpty)
+        XCTAssertNil(
+            TerminalFrontmostTTY.uniquelyClassifiedTTY(
+                "ttys000",
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            )
+        )
+    }
+
+    func testGrokBinAgentPathJoinsGrokSnapshotWithoutConfirmedPID() {
+        let snapshot = TerminalCLIProcessSnapshot(
+            psOutput: "38864 200 ttys000 /Users/dev/.grok/bin/agent /Users/dev/.grok/bin/agent"
+        )
+        XCTAssertEqual(snapshot.grok.map(\.pid), [38864])
+        XCTAssertEqual(snapshot.grokTTYs, ["ttys000"])
+        XCTAssertTrue(snapshot.claude.isEmpty)
+    }
+
     func testNormalizeTTYStripsDevPrefixAndIgnoresDetached() {
         XCTAssertEqual(TerminalCLIProcessRecord.normalizeTTY("/dev/ttys002"), "ttys002")
         XCTAssertEqual(TerminalCLIProcessRecord.normalizeTTY("ttys002"), "ttys002")
