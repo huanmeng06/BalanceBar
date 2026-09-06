@@ -1256,7 +1256,7 @@ final class StatusItemControllerTests: XCTestCase {
     func testGrokIdleAndRunningKeepGrokSourceThroughClaudeAndCodexRoundTrips() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            "Grok rotation animation is disabled by the system reduce-motion setting"
+            "Grok sprite animation is disabled by the system reduce-motion setting"
         )
         let controller = makeController(codexAnimationBackend: .stableBitmap)
         defer { controller.teardown() }
@@ -1303,8 +1303,18 @@ final class StatusItemControllerTests: XCTestCase {
             blue: 0.2
         )
         claudeSprite.isTemplate = true
+        let grokSprite = makeSolidImage(
+            size: NSSize(
+                width: 16,
+                height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            ),
+            red: 0.95,
+            green: 0.95,
+            blue: 0.95
+        )
+        grokSprite.isTemplate = true
         controller.setCodexIconForTesting(codexIcon)
-        controller.setGrokIconForTesting(grokIcon)
+        controller.setGrokIconsForTesting(idle: grokIcon, thinking: grokSprite)
         controller.setClaudeAnimationAssetsForTesting(
             staticImage: claudeIcon,
             spriteImage: claudeSprite
@@ -1353,7 +1363,8 @@ final class StatusItemControllerTests: XCTestCase {
             controller.menuBarSourceImageForTesting === grokIcon,
             "running Grok must keep the spark as the semantic source"
         )
-        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertTrue(controller.grokThinkingAnimationIsActiveForTesting)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
         XCTAssertFalse(controller.claudeThinkingAnimationIsActiveForTesting)
         XCTAssertNil(controller.claudeThinkingAnimationHostForTesting?.superview)
@@ -1371,6 +1382,7 @@ final class StatusItemControllerTests: XCTestCase {
             controller.claudeThinkingAnimationHostForTesting?.timing.frameCount,
             9
         )
+        XCTAssertFalse(controller.grokThinkingAnimationIsActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
 
@@ -1385,6 +1397,7 @@ final class StatusItemControllerTests: XCTestCase {
             controller.menuBarSourceImageForTesting === grokIcon,
             "idle Grok must reclaim source ownership after Claude thinking"
         )
+        XCTAssertFalse(controller.grokThinkingAnimationIsActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         XCTAssertFalse(controller.claudeThinkingAnimationIsActiveForTesting)
         XCTAssertNil(controller.claudeThinkingAnimationHostForTesting?.superview)
@@ -1401,10 +1414,10 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testGrokIdleUsesSparkAndRunningUsesRotationBackend() throws {
+    func testGrokIdleUsesSparkAndRunningUsesThinkingSprite() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            "Grok rotation animation is disabled by the system reduce-motion setting"
+            "Grok sprite animation is disabled by the system reduce-motion setting"
         )
 
         for backend in [MenuBarCodexAnimationBackend.stableBitmap, .nativeCoreAnimation] {
@@ -1432,7 +1445,17 @@ final class StatusItemControllerTests: XCTestCase {
                 blue: 0.1
             )
             spark.isTemplate = true
-            controller.setGrokIconForTesting(spark)
+            let sprite = makeSolidImage(
+                size: NSSize(
+                    width: 16,
+                    height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+                ),
+                red: 0.95,
+                green: 0.95,
+                blue: 0.95
+            )
+            sprite.isTemplate = true
+            controller.setGrokIconsForTesting(idle: spark, thinking: sprite)
 
             controller.updateActivity(
                 activeClient: .grok,
@@ -1444,6 +1467,10 @@ final class StatusItemControllerTests: XCTestCase {
             XCTAssertTrue(
                 controller.menuBarSourceImageForTesting === spark,
                 "idle Grok must use the spark, backend=\(backend)"
+            )
+            XCTAssertFalse(
+                controller.grokThinkingAnimationIsActiveForTesting,
+                "idle Grok must not play the thinking sprite, backend=\(backend)"
             )
             XCTAssertFalse(
                 controller.nativeCodexAnimationIsRotatingForTesting,
@@ -1465,36 +1492,41 @@ final class StatusItemControllerTests: XCTestCase {
                 controller.menuBarSourceImageForTesting === spark,
                 "running Grok must keep the spark source, backend=\(backend)"
             )
+            XCTAssertTrue(
+                controller.grokThinkingAnimationIsActiveForTesting,
+                "running Grok must play the thinking sprite, backend=\(backend)"
+            )
+            XCTAssertFalse(
+                controller.nativeCodexAnimationIsRotatingForTesting,
+                "running Grok must not rotate the spark, backend=\(backend)"
+            )
+            XCTAssertFalse(
+                controller.nativeCodexAnimationIsActiveForTesting,
+                "running Grok must not install Codex rotation, backend=\(backend)"
+            )
+            let buttonImage = try XCTUnwrap(controller.menuBarButtonImageForTesting)
+            XCTAssertTrue(
+                buttonImage !== controller.cachedMenuBarTextBitmapForTesting,
+                "Grok must not use a text-only replicant bitmap, backend=\(backend)"
+            )
             switch backend {
             case .stableBitmap:
-                XCTAssertTrue(
-                    controller.nativeCodexAnimationIsRotatingForTesting,
-                    "running Grok in Synchronized/D0 must rotate the spark, backend=\(backend)"
+                XCTAssertNotNil(controller.grokThinkingStableImageForTesting)
+                XCTAssertEqual(
+                    controller.grokThinkingStableFrameCountForTesting,
+                    GrokThinkingAnimationTiming.frameCount
                 )
-                XCTAssertFalse(
-                    controller.nativeCodexAnimationIsActiveForTesting,
-                    "running Grok in Synchronized/D0 must not install the native host"
-                )
-                XCTAssertNotNil(controller.stableCodexAnimationImageForTesting)
+                XCTAssertNil(controller.grokThinkingAnimationHostForTesting?.superview)
             case .nativeCoreAnimation:
-                XCTAssertTrue(
-                    controller.nativeCodexAnimationIsActiveForTesting,
-                    "running Grok in Performance/G must install the native host"
-                )
-                XCTAssertFalse(
-                    controller.nativeCodexAnimationIsRotatingForTesting,
-                    "running Grok in Performance/G must not spin the bitmap rotator"
-                )
-                let buttonImage = try XCTUnwrap(controller.menuBarButtonImageForTesting)
                 XCTAssertTrue(
                     buttonImage === controller.cachedStaticMenuBarContentBitmapForTesting,
                     "Performance/G must keep the complete static Grok+text bitmap"
                 )
-                XCTAssertTrue(
-                    buttonImage !== controller.cachedMenuBarTextBitmapForTesting,
-                    "Performance/G must not replace the native image with the text-only bitmap"
+                XCTAssertNotNil(controller.grokThinkingAnimationHostForTesting?.superview)
+                XCTAssertEqual(
+                    controller.grokThinkingAnimationHostForTesting?.timing.frameCount,
+                    GrokThinkingAnimationTiming.frameCount
                 )
-                XCTAssertNotNil(controller.nativeCodexAnimationHostForTesting?.superview)
             }
 
             controller.updateActivity(
@@ -1509,12 +1541,8 @@ final class StatusItemControllerTests: XCTestCase {
                 "animation toggle must keep the static Grok icon, backend=\(backend)"
             )
             XCTAssertFalse(
-                controller.nativeCodexAnimationIsRotatingForTesting,
-                "animation toggle must stop bitmap rotation, backend=\(backend)"
-            )
-            XCTAssertFalse(
-                controller.nativeCodexAnimationIsActiveForTesting,
-                "animation toggle must remove the native host, backend=\(backend)"
+                controller.grokThinkingAnimationIsActiveForTesting,
+                "animation toggle must stop the thinking sprite, backend=\(backend)"
             )
 
             controller.updateActivity(
@@ -1529,12 +1557,8 @@ final class StatusItemControllerTests: XCTestCase {
                 "completed Grok must restore the spark, backend=\(backend)"
             )
             XCTAssertFalse(
-                controller.nativeCodexAnimationIsRotatingForTesting,
-                "completed Grok must not start bitmap rotation, backend=\(backend)"
-            )
-            XCTAssertFalse(
-                controller.nativeCodexAnimationIsActiveForTesting,
-                "completed Grok must not start native rotation, backend=\(backend)"
+                controller.grokThinkingAnimationIsActiveForTesting,
+                "completed Grok must stop the sprite, backend=\(backend)"
             )
         }
     }
@@ -1543,7 +1567,7 @@ final class StatusItemControllerTests: XCTestCase {
     func testGrokAnimationModeSwitchFollowsMenuBarBackend() throws {
         try XCTSkipUnless(
             !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            "Grok rotation animation is disabled by the system reduce-motion setting"
+            "Grok sprite animation is disabled by the system reduce-motion setting"
         )
         let controller = makeController(codexAnimationBackend: .nativeCoreAnimation)
         defer { controller.teardown() }
@@ -1567,7 +1591,17 @@ final class StatusItemControllerTests: XCTestCase {
             blue: 0.1
         )
         spark.isTemplate = true
-        controller.setGrokIconForTesting(spark)
+        let sprite = makeSolidImage(
+            size: NSSize(
+                width: 16,
+                height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            ),
+            red: 0.95,
+            green: 0.95,
+            blue: 0.95
+        )
+        sprite.isTemplate = true
+        controller.setGrokIconsForTesting(idle: spark, thinking: sprite)
         controller.updateActivity(
             activeClient: .grok,
             codexTaskRunning: false,
@@ -1576,7 +1610,9 @@ final class StatusItemControllerTests: XCTestCase {
             animationEnabled: true
         )
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
-        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertTrue(controller.grokThinkingAnimationIsActiveForTesting)
+        XCTAssertNotNil(controller.grokThinkingAnimationHostForTesting?.superview)
+        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         let buttonImage = try XCTUnwrap(controller.menuBarButtonImageForTesting)
         XCTAssertTrue(buttonImage === controller.cachedStaticMenuBarContentBitmapForTesting)
@@ -1584,17 +1620,24 @@ final class StatusItemControllerTests: XCTestCase {
 
         controller.setCodexAnimationBackend(.stableBitmap)
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .stableBitmap)
-        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
-        XCTAssertTrue(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertTrue(controller.grokThinkingAnimationIsActiveForTesting)
+        XCTAssertNil(controller.grokThinkingAnimationHostForTesting?.superview)
+        XCTAssertNotNil(controller.grokThinkingStableImageForTesting)
         XCTAssertEqual(
-            controller.stableCodexAnimationFrameCountForTesting,
-            RotatingTemplateImageView.frameCount
+            controller.grokThinkingStableFrameCountForTesting,
+            GrokThinkingAnimationTiming.frameCount
         )
+        XCTAssertTrue(
+            controller.menuBarButtonImageForTesting
+                !== controller.cachedMenuBarTextBitmapForTesting
+        )
+        XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
+        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
 
         controller.setCodexAnimationBackend(.nativeCoreAnimation)
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
-        XCTAssertTrue(controller.nativeCodexAnimationIsActiveForTesting)
-        XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
+        XCTAssertTrue(controller.grokThinkingAnimationIsActiveForTesting)
+        XCTAssertNotNil(controller.grokThinkingAnimationHostForTesting?.superview)
         XCTAssertTrue(
             controller.menuBarButtonImageForTesting
                 === controller.cachedStaticMenuBarContentBitmapForTesting

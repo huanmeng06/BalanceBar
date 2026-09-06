@@ -537,7 +537,7 @@ final class MenuBarAnimationTests: XCTestCase {
             "work/balance-bar/GrokIdle.svg"
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: idleURL.path))
-        XCTAssertFalse(
+        XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
                     "work/balance-bar/GrokThinking"
@@ -601,6 +601,35 @@ final class MenuBarAnimationTests: XCTestCase {
             )
             XCTAssertTrue(GrokIdleIcon.isVectorSVGRepresentation(sized))
         }
+    }
+
+    func testGrokThinkingSpriteLoadsVectorSVGPack() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repositoryRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let directoryURL = repositoryRoot.appendingPathComponent(
+            "work/balance-bar/GrokThinking"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directoryURL.path))
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 30)
+        XCTAssertEqual(GrokThinkingAnimationTiming.duration, 2.40, accuracy: 0.000_001)
+
+        GrokThinkingSprite.resetCachesForTesting()
+        let sprite = try XCTUnwrap(
+            GrokThinkingSprite.make(
+                fromDirectory: directoryURL,
+                outputSize: NSSize(width: 16, height: 16)
+            )
+        )
+        XCTAssertEqual(
+            sprite.size,
+            NSSize(width: 16, height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount))
+        )
+        XCTAssertTrue(sprite.isTemplate)
+        XCTAssertTrue(GrokThinkingSprite.isVectorSVGRepresentation(sprite))
+        XCTAssertEqual(GrokThinkingSprite.fromGIFCallCountForTesting, 0)
     }
 
     func testAnimationPolicyHonorsPreferenceAndSystemReduceMotion() {
@@ -892,25 +921,26 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(statusItemSource.contains("MenuBarClaudeAnimatedIconHostView"))
         XCTAssertTrue(statusItemSource.contains("synchronizeClaudeThinkingAnimationHost"))
         XCTAssertTrue(statusItemSource.contains("claudeAnimationStateChanged"))
-        XCTAssertFalse(statusItemSource.contains("synchronizeGrokThinkingAnimationHost"))
-        XCTAssertFalse(statusItemSource.contains("grokAnimationStateChanged"))
-        XCTAssertFalse(statusItemSource.contains("grokThinkingSpriteImage"))
-        XCTAssertFalse(statusItemSource.contains("GrokThinkingSprite"))
-        XCTAssertTrue(statusItemSource.contains("case .codex, .grok:"))
+        XCTAssertTrue(statusItemSource.contains("synchronizeGrokThinkingAnimationHost"))
+        XCTAssertTrue(statusItemSource.contains("installStableGrokThinkingImage"))
+        XCTAssertTrue(statusItemSource.contains("grokAnimationStateChanged"))
+        XCTAssertTrue(statusItemSource.contains("grokThinkingSpriteImage"))
+        XCTAssertTrue(statusItemSource.contains("GrokThinkingSprite"))
+        XCTAssertFalse(statusItemSource.contains("case .codex, .grok:"))
         XCTAssertTrue(statusItemSource.contains("GrokIdleIcon.make"))
-        XCTAssertFalse(animationSource.contains("enum GrokThinkingSprite"))
-        XCTAssertFalse(animationSource.contains("enum GrokThinkingAnimationTiming"))
-        XCTAssertFalse(animationSource.contains("case grokThinking"))
-        XCTAssertFalse(animationSource.contains("static let grok = MenuBarSpriteAnimationTiming"))
+        XCTAssertTrue(animationSource.contains("enum GrokThinkingSprite"))
+        XCTAssertTrue(animationSource.contains("enum GrokThinkingAnimationTiming"))
+        XCTAssertTrue(animationSource.contains("case grokThinking"))
+        XCTAssertTrue(animationSource.contains("static let grok = MenuBarSpriteAnimationTiming"))
         let compositionPreviewSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "work/balance-bar/Sources/UI/Dashboard/DashboardCompositionController.swift"
             ),
             encoding: .utf8
         )
-        XCTAssertFalse(compositionPreviewSource.contains("updateGrokMenuBarPreviewAnimation"))
-        XCTAssertFalse(compositionPreviewSource.contains(".grokThinking"))
-        XCTAssertFalse(
+        XCTAssertTrue(compositionPreviewSource.contains("updateGrokMenuBarPreviewAnimation"))
+        XCTAssertTrue(compositionPreviewSource.contains(".grokThinking"))
+        XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
                     "work/balance-bar/GrokThinking"

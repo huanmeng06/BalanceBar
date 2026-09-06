@@ -159,6 +159,11 @@ for required_file in \
 do
     [[ -f "$required_file" ]] || die "required input is missing: $required_file"
 done
+for frame_index in $(seq 1 30)
+do
+    required_frame="$(printf '%s/GrokThinking/frame_%03d.svg' "$source_dir" "$frame_index")"
+    [[ -f "$required_frame" ]] || die "required input is missing: $required_frame"
+done
 localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj pt.lproj ru.lproj it.lproj)
 for localization_directory in "${localization_directories[@]}"
 do
@@ -260,6 +265,10 @@ for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeT
 do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
 done
+mkdir -p "$resources_dir/GrokThinking"
+cp "$source_dir/GrokThinking"/frame_*.svg "$resources_dir/GrokThinking/"
+[[ "$(ls -1 "$resources_dir/GrokThinking"/frame_*.svg | wc -l | tr -d ' ')" == "30" ]] \
+    || die "GrokThinking SVG directory must contain 30 frames"
 for localization_directory in "${localization_directories[@]}"
 do
     mkdir -p "$resources_dir/$localization_directory"

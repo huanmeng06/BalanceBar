@@ -2016,6 +2016,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let frameImageChanged: (NSImage?) -> Void
         let animationStateChanged: (Bool) -> Void
         let claudeAnimationStateChanged: (Bool, NSImage?, NSImage?) -> Void
+        let grokAnimationStateChanged: (Bool, NSImage?, NSImage?) -> Void
         let animationFallbackChanged: (Bool) -> Void
         let visibilityChanged: (StatusItemVisibility) -> Void
 
@@ -2034,6 +2035,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             frameImageChanged: @escaping (NSImage?) -> Void = { _ in },
             animationStateChanged: @escaping (Bool) -> Void = { _ in },
             claudeAnimationStateChanged: @escaping (Bool, NSImage?, NSImage?) -> Void = { _, _, _ in },
+            grokAnimationStateChanged: @escaping (Bool, NSImage?, NSImage?) -> Void = { _, _, _ in },
             animationFallbackChanged: @escaping (Bool) -> Void = { _ in },
             visibilityChanged: @escaping (StatusItemVisibility) -> Void = { _ in }
         ) {
@@ -2051,6 +2053,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.frameImageChanged = frameImageChanged
             self.animationStateChanged = animationStateChanged
             self.claudeAnimationStateChanged = claudeAnimationStateChanged
+            self.grokAnimationStateChanged = grokAnimationStateChanged
             self.animationFallbackChanged = animationFallbackChanged
             self.visibilityChanged = visibilityChanged
         }
@@ -2246,6 +2249,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var nativeCodexSourceIconPreviousMask: CALayer?
     private var claudeThinkingAnimatedIconHost: MenuBarClaudeAnimatedIconHostView?
     private var claudeThinkingAnimationIsActive = false
+    private var grokThinkingAnimatedIconHost: MenuBarClaudeAnimatedIconHostView?
+    private var grokThinkingAnimationIsActive = false
+    private var grokThinkingStableFrameBuffer = MenuBarStableBitmapAnimationFrameBuffer()
+    private var grokThinkingFrameTimer: Timer?
+    private var grokThinkingFrameIndex = 0
+    private var grokThinkingSourceFrames: [NSImage] = []
     /// Test-only seam for exercising the documented efficient-mode fallback;
     /// no product path enables it.
     private var forceNativeCodexAnimationFailureForTesting = false
@@ -2257,6 +2266,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var codexIconImage: NSImage?
     private var claudeIconImage: NSImage?
     private var grokIconImage: NSImage?
+    private var grokThinkingSpriteImage: NSImage?
     private var claudeThinkingSpriteImage: NSImage?
     private var snapshot = Snapshot.placeholder
     private var refreshDate: Date?
@@ -2398,6 +2408,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         claudeThinkingAnimationIsActive
     }
 
+    var grokThinkingAnimationHostForTesting: MenuBarClaudeAnimatedIconHostView? {
+        grokThinkingAnimatedIconHost
+    }
+
+    var grokThinkingAnimationIsActiveForTesting: Bool {
+        grokThinkingAnimationIsActive
+    }
+
+    var grokThinkingStableImageForTesting: NSImage? {
+        grokThinkingStableFrameBuffer.image
+    }
+
+    var grokThinkingStableFrameCountForTesting: Int {
+        grokThinkingStableFrameBuffer.count
+    }
+
     var preferredCodexAnimationBackendForTesting: MenuBarCodexAnimationBackend {
         preferredCodexAnimationBackend
     }
@@ -2445,12 +2471,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     func setGrokIconForTesting(_ image: NSImage) {
-        grokIconImage = image
+        setGrokIconsForTesting(idle: image, thinking: grokThinkingSpriteImage ?? image)
+    }
+
+    func setGrokIconsForTesting(idle: NSImage, thinking: NSImage) {
+        grokIconImage = idle
+        grokThinkingSpriteImage = thinking
         guard activeClient == .grok else { return }
-        menuBarIconView.setSourceImage(
-            image,
-            prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
-        )
+        menuBarIconView.setSourceImage(idle, prepareAnimationFrames: false)
+    }
+
+    func advanceGrokThinkingFrameForTesting(_ frameIndex: Int) {
+        guard codexAnimationBackend == .stableBitmap else { return }
+        applyStableGrokThinkingFrame(frameIndex)
     }
 
     /// Supplies deterministic Claude assets for controller-level compositor
@@ -2486,6 +2519,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     var grokIdleIsVectorSVGForTesting: Bool {
         guard let image = grokIconImage else { return false }
         return GrokIdleIcon.isVectorSVGRepresentation(image)
+    }
+
+    var grokThinkingSpriteImageForTesting: NSImage? { grokThinkingSpriteImage }
+
+    var grokThinkingSpriteSizeForTesting: NSSize? { grokThinkingSpriteImage?.size }
+
+    var grokThinkingSpriteIsVectorSVGForTesting: Bool {
+        guard let image = grokThinkingSpriteImage else { return false }
+        return GrokThinkingSprite.isVectorSVGRepresentation(image)
+    }
+
+    var grokThinkingSpritePixelWidthForTesting: Int? {
+        grokThinkingSpriteImage?
+            .representations
+            .compactMap { $0 as? NSBitmapImageRep }
+            .map(\.pixelsWide)
+            .max()
     }
 
     // Exposes the actual AppKit point sizes applied to the live menu-bar
@@ -2611,6 +2661,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         setCodexAnimationFallbackActive(false)
         codexAnimationBackend = preferredCodexAnimationBackend
         deactivateClaudeThinkingAnimation()
+        deactivateGrokThinkingAnimation()
         statusItemVisibilityStateMachine.reset()
         menuBarIconDisplayStateMachine.reset()
         publishStatusItemVisibility()
@@ -2882,17 +2933,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
 
-        // The setting belongs to the shared rotation pipeline. If Claude is
-        // currently active, keep its independent animator and image path
-        // untouched; the selected backend applies the next time a rotation
-        // client becomes active.
+        // Codex reads this setting as rotation G/D0. Grok reads the same
+        // setting but plays its thinking sprite on those backends. Claude
+        // keeps an independent animator.
         if activeClient.usesRotationAnimation {
             stopCodexAnimationImplementation()
+        }
+        if activeClient == .grok {
+            deactivateGrokThinkingAnimation()
         }
         preferredCodexAnimationBackend = backend
         codexAnimationBackend = backend
         setCodexAnimationFallbackActive(false)
-        if activeClient.usesRotationAnimation {
+        if activeClient.usesRotationAnimation || activeClient == .grok {
             updateActivityIcon()
         }
     }
@@ -2924,9 +2977,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Reloads idle marks and Claude thinking sprites at the selected point size.
-    /// Grok idle is the relocated Frame 16 SVG; running Grok reuses the Codex
-    /// rotation pipeline instead of a sprite host.
+    /// Reloads idle marks and thinking sprites at the selected point size.
+    /// Grok idle is `GrokIdle.svg`; running Grok uses the 30-frame thinking pack.
     private func loadMenuBarIconAssets(size: CGFloat) {
         let iconSize = MenuBarIconSizePreset.nearest(to: size).pointSize
         let outputSize = NSSize(width: iconSize, height: iconSize)
@@ -2973,6 +3025,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
+        grokThinkingSpriteImage = nil
+        if let thinkingDirectory = GrokThinkingSprite.bundledDirectoryURL() {
+            grokThinkingSpriteImage = GrokThinkingSprite.make(
+                fromDirectory: thinkingDirectory,
+                outputSize: outputSize
+            )
+        }
         switch activeClient {
         case .codex:
             if let codexIconImage {
@@ -2992,7 +3051,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let grokIconImage {
                 menuBarIconView.setSourceImage(
                     grokIconImage,
-                    prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
+                    prepareAnimationFrames: false
                 )
             }
         }
@@ -3251,6 +3310,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // by the next layout boundary, preserving its layer-local phase.
         detachNativeCodexAnimationHostForStatusItemReplacement()
         detachClaudeThinkingAnimationHostForStatusItemReplacement()
+        detachGrokThinkingAnimationHostForStatusItemReplacement()
         removeStatusItemWindowObservation()
         NSStatusBar.system.removeStatusItem(item)
         let replacement = NSStatusBar.system.statusItem(withLength: desiredLength)
@@ -3262,8 +3322,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func updateActivityIcon() {
         switch activeClient {
-        case .codex, .grok:
+        case .codex:
             deactivateClaudeThinkingAnimation()
+            deactivateGrokThinkingAnimation()
             ensureRotationSourceImage()
             let shouldAnimate = MenuBarActivityAnimationPolicy.shouldAnimate(
                 taskRunning: isRotationTaskRunning,
@@ -3306,8 +3367,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
                 menuBarIconView.startRotating()
             }
+        case .grok:
+            stopCodexAnimationImplementation()
+            deactivateClaudeThinkingAnimation()
+            codexAnimationBackend = preferredCodexAnimationBackend
+            setCodexAnimationFallbackActive(false)
+            if let grokIconImage,
+               menuBarIconView.sourceImageForRendering !== grokIconImage {
+                menuBarIconView.setSourceImage(
+                    grokIconImage,
+                    prepareAnimationFrames: false
+                )
+            }
+            if MenuBarActivityAnimationPolicy.shouldAnimate(
+                taskRunning: isGrokTaskRunning,
+                preferenceEnabled: animationEnabled,
+                reduceMotionEnabled: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            ) {
+                switch codexAnimationBackend {
+                case .nativeCoreAnimation:
+                    stopGrokThinkingStableBitmap()
+                    guard synchronizeGrokThinkingAnimationHost() else {
+                        deactivateGrokThinkingAnimation()
+                        restoreStaticMenuBarBitmap()
+                        return
+                    }
+                case .stableBitmap:
+                    deactivateGrokThinkingAnimationHost()
+                    guard installStableGrokThinkingImage(at: grokThinkingFrameIndex) else {
+                        deactivateGrokThinkingAnimation()
+                        restoreStaticMenuBarBitmap()
+                        return
+                    }
+                }
+            } else {
+                deactivateGrokThinkingAnimation()
+                restoreStaticMenuBarBitmap()
+            }
         case .claude:
             stopCodexAnimationImplementation()
+            deactivateGrokThinkingAnimation()
             codexAnimationBackend = preferredCodexAnimationBackend
             setCodexAnimationFallbackActive(false)
             if let claudeIconImage,
@@ -3352,9 +3451,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch activeClient {
         case .codex:
             return isCodexTaskRunning
-        case .grok:
-            return isGrokTaskRunning
-        case .claude:
+        case .grok, .claude:
             return false
         }
     }
@@ -3363,9 +3460,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         switch activeClient {
         case .codex:
             return codexIconImage
-        case .grok:
-            return grokIconImage
-        case .claude:
+        case .grok, .claude:
             return nil
         }
     }
@@ -3778,6 +3873,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarBitmapImagePlacement = nil
         cachedMenuBarIconDrawRect = nil
         stableCodexAnimationFrameBuffer.invalidate()
+        grokThinkingStableFrameBuffer.invalidate()
         if setPlaceholder {
             statusItem?.button?.image = Self.placeholderButtonImage
         }
@@ -3809,6 +3905,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             && !menuBarIconSlot.isHidden
             && !menuBarIconView.isHidden
             && claudeThinkingSpriteImage != nil
+    }
+
+    private var shouldPrepareGrokThinkingAnimation: Bool {
+        activeClient == .grok
+            && isGrokTaskRunning
+            && animationEnabled
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            && !menuBarIconSlot.isHidden
+            && !menuBarIconView.isHidden
+            && grokThinkingSpriteImage != nil
     }
 
     /// Materializes one mutable image representation from the finite source
@@ -4215,6 +4321,281 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         claudeThinkingAnimatedIconHost?.removeFromSuperview()
     }
 
+    /// Performance/G: thinking sprite host on the current screen; native
+    /// `button.image` keeps the complete static Grok+text bitmap so inactive
+    /// replicants still show the spark. Mirrors #312, not Claude's text-only
+    /// bitmap.
+    @discardableResult
+    private func synchronizeGrokThinkingAnimationHost() -> Bool {
+        precondition(
+            Thread.isMainThread,
+            "Grok animation must be synchronized on the main thread"
+        )
+        guard shouldPrepareGrokThinkingAnimation,
+              codexAnimationBackend == .nativeCoreAnimation,
+              let button = statusItem?.button,
+              let staticImage = cachedStaticMenuBarContentBitmap,
+              let iconDrawRect = cachedMenuBarIconDrawRect,
+              let placement = menuBarBitmapImagePlacement,
+              let grokThinkingSpriteImage,
+              let grokIconImage else {
+            return false
+        }
+
+        let localIconRect = placement.buttonLocalRect(
+            forImageCanvasRect: iconDrawRect
+        )
+        guard localIconRect.width > 0, localIconRect.height > 0 else {
+            return false
+        }
+
+        if button.image !== staticImage {
+            button.image = staticImage
+        }
+
+        let host = grokThinkingAnimatedIconHost ?? {
+            let newHost = MenuBarClaudeAnimatedIconHostView(frame: localIconRect)
+            grokThinkingAnimatedIconHost = newHost
+            return newHost
+        }()
+        host.timing = .grok
+        let hostFrame = attachGrokThinkingAnimationHost(
+            host,
+            button: button,
+            localIconRect: localIconRect
+        )
+        if host.superview !== nil, host.superview !== button {
+            guard applyNativeCodexSourceIconCutout(
+                button: button,
+                localIconRect: localIconRect
+            ) else {
+                deactivateGrokThinkingAnimationHost()
+                return false
+            }
+        } else {
+            clearNativeCodexSourceIconCutout()
+        }
+
+        let scale = button.window?.backingScaleFactor ?? 2
+        host.updateGeometry(frame: hostFrame, contentsScale: scale)
+        let frameSize = NSSize(
+            width: grokThinkingSpriteImage.size.width,
+            height: grokThinkingSpriteImage.size.height
+                / CGFloat(host.timing.frameCount)
+        )
+        guard host.updateContents(
+            spriteImage: grokThinkingSpriteImage,
+            frameSize: frameSize,
+            appearance: button.effectiveAppearance,
+            contentsScale: scale,
+            highlighted: button.isHighlighted || button.cell?.isHighlighted == true
+        ) else {
+            host.removeThinkingAnimation()
+            host.isHidden = true
+            host.removeFromSuperview()
+            clearNativeCodexSourceIconCutout()
+            return false
+        }
+        host.isHidden = false
+        host.installThinkingAnimation()
+        publishGrokThinkingAnimationStateIfNeeded(
+            true,
+            iconImage: grokIconImage,
+            spriteImage: grokThinkingSpriteImage
+        )
+        return true
+    }
+
+    @discardableResult
+    private func attachGrokThinkingAnimationHost(
+        _ host: MenuBarClaudeAnimatedIconHostView,
+        button: NSStatusBarButton,
+        localIconRect: NSRect
+    ) -> NSRect {
+        if let container = button.superview {
+            if host.superview !== container {
+                host.removeFromSuperview()
+                container.addSubview(host, positioned: .above, relativeTo: button)
+            }
+            return button.convert(localIconRect, to: container)
+        }
+        if host.superview !== button {
+            host.removeFromSuperview()
+            button.addSubview(host, positioned: .above, relativeTo: nil)
+        }
+        return localIconRect
+    }
+
+    private func deactivateGrokThinkingAnimationHost() {
+        grokThinkingAnimatedIconHost?.removeThinkingAnimation()
+        grokThinkingAnimatedIconHost?.isHidden = true
+        grokThinkingAnimatedIconHost?.removeFromSuperview()
+        clearNativeCodexSourceIconCutout()
+    }
+
+    private func deactivateGrokThinkingAnimation() {
+        stopGrokThinkingStableBitmap()
+        deactivateGrokThinkingAnimationHost()
+        publishGrokThinkingAnimationStateIfNeeded(
+            false,
+            iconImage: grokIconImage,
+            spriteImage: grokThinkingSpriteImage
+        )
+    }
+
+    private func detachGrokThinkingAnimationHostForStatusItemReplacement() {
+        grokThinkingAnimatedIconHost?.removeFromSuperview()
+        clearNativeCodexSourceIconCutout()
+    }
+
+    private func stopGrokThinkingStableBitmap() {
+        grokThinkingFrameTimer?.invalidate()
+        grokThinkingFrameTimer = nil
+        grokThinkingStableFrameBuffer.invalidate()
+        grokThinkingSourceFrames = []
+    }
+
+    private func makeGrokThinkingSourceFrames(from sprite: NSImage) -> [NSImage]? {
+        let frameCount = GrokThinkingAnimationTiming.frameCount
+        guard sprite.size.width > 0,
+              sprite.size.height > 0,
+              frameCount > 0 else {
+            return nil
+        }
+        let frameSize = NSSize(
+            width: sprite.size.width,
+            height: sprite.size.height / CGFloat(frameCount)
+        )
+        guard frameSize.height > 0 else { return nil }
+        var frames: [NSImage] = []
+        frames.reserveCapacity(frameCount)
+        for index in 0..<frameCount {
+            let frame = NSImage(size: frameSize)
+            frame.isTemplate = sprite.isTemplate
+            frame.lockFocusFlipped(true)
+            sprite.draw(
+                in: NSRect(origin: .zero, size: frameSize),
+                from: NSRect(
+                    x: 0,
+                    y: CGFloat(index) * frameSize.height,
+                    width: frameSize.width,
+                    height: frameSize.height
+                ),
+                operation: .copy,
+                fraction: 1,
+                respectFlipped: true,
+                hints: nil
+            )
+            frame.unlockFocus()
+            frames.append(frame)
+        }
+        return frames
+    }
+
+    @discardableResult
+    private func ensureStableGrokThinkingFrameBuffer() -> Bool {
+        precondition(Thread.isMainThread, "Grok bitmap cache must be rebuilt on the main thread")
+        guard shouldPrepareGrokThinkingAnimation,
+              codexAnimationBackend == .stableBitmap,
+              let cachedSignature = cachedMenuBarContentVisualSignature,
+              let textBitmap = cachedMenuBarTextBitmap,
+              let iconDrawRect = cachedMenuBarIconDrawRect,
+              let placement = menuBarBitmapImagePlacement,
+              let button = statusItem?.button,
+              let grokThinkingSpriteImage else {
+            return false
+        }
+        let currentSignature = makeMenuBarBitmapAnimationVisualSignature(
+            button: button,
+            placement: placement,
+            scale: button.window?.backingScaleFactor ?? 2
+        )
+        guard currentSignature.matchesStaticContent(of: cachedSignature) else {
+            return false
+        }
+        if grokThinkingSourceFrames.count != GrokThinkingAnimationTiming.frameCount {
+            grokThinkingSourceFrames = makeGrokThinkingSourceFrames(
+                from: grokThinkingSpriteImage
+            ) ?? []
+        }
+        guard grokThinkingSourceFrames.count == GrokThinkingAnimationTiming.frameCount else {
+            return false
+        }
+        return grokThinkingStableFrameBuffer.rebuildIfNeeded(
+            signature: currentSignature,
+            sourceFrames: grokThinkingSourceFrames
+        ) { frame in
+            Self.makeCompleteMenuBarBitmap(
+                textBitmap: textBitmap,
+                iconImage: frame,
+                iconDrawRect: iconDrawRect,
+                canvasSize: placement.canvasSize
+            )
+        }
+    }
+
+    @discardableResult
+    private func installStableGrokThinkingImage(at frameIndex: Int) -> Bool {
+        precondition(Thread.isMainThread, "Grok bitmap image must be installed on the main thread")
+        guard ensureStableGrokThinkingFrameBuffer(),
+              let button = statusItem?.button,
+              let image = grokThinkingStableFrameBuffer.image,
+              grokThinkingStableFrameBuffer.apply(frameIndex: frameIndex) else {
+            return false
+        }
+        grokThinkingFrameIndex = frameIndex
+        if button.image !== image {
+            button.image = image
+        }
+        button.needsDisplay = true
+        startGrokThinkingFrameTimerIfNeeded()
+        publishGrokThinkingAnimationStateIfNeeded(
+            true,
+            iconImage: grokIconImage,
+            spriteImage: grokThinkingSpriteImage
+        )
+        return true
+    }
+
+    private func applyStableGrokThinkingFrame(_ frameIndex: Int) {
+        precondition(Thread.isMainThread, "Grok bitmap pixels must be copied on the main thread")
+        guard shouldPrepareGrokThinkingAnimation,
+              codexAnimationBackend == .stableBitmap,
+              let button = statusItem?.button,
+              let image = grokThinkingStableFrameBuffer.image,
+              button.image === image,
+              grokThinkingStableFrameBuffer.apply(frameIndex: frameIndex) else {
+            return
+        }
+        grokThinkingFrameIndex = frameIndex
+        button.needsDisplay = true
+    }
+
+    private func startGrokThinkingFrameTimerIfNeeded() {
+        guard grokThinkingFrameTimer == nil else { return }
+        let timer = Timer(
+            timeInterval: GrokThinkingAnimationTiming.frameDuration,
+            repeats: true
+        ) { [weak self] _ in
+            guard let self else { return }
+            let next = (self.grokThinkingFrameIndex + 1)
+                % GrokThinkingAnimationTiming.frameCount
+            self.applyStableGrokThinkingFrame(next)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        grokThinkingFrameTimer = timer
+    }
+
+    private func publishGrokThinkingAnimationStateIfNeeded(
+        _ active: Bool,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        guard grokThinkingAnimationIsActive != active else { return }
+        grokThinkingAnimationIsActive = active
+        actions.grokAnimationStateChanged(active, iconImage, spriteImage)
+    }
+
     private func publishNativeCodexAnimationStateIfNeeded(_ active: Bool) {
         guard nativeCodexAnimationIsActive != active else { return }
         nativeCodexAnimationIsActive = active
@@ -4377,6 +4758,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     deactivateClaudeThinkingAnimation()
                     restoreStaticMenuBarBitmap()
                 }
+            } else if activeClient == .grok {
+                if shouldPrepareGrokThinkingAnimation {
+                    switch codexAnimationBackend {
+                    case .nativeCoreAnimation:
+                        _ = synchronizeGrokThinkingAnimationHost()
+                    case .stableBitmap:
+                        if grokThinkingStableFrameBuffer.image == nil {
+                            _ = installStableGrokThinkingImage(at: grokThinkingFrameIndex)
+                        }
+                    }
+                } else {
+                    deactivateGrokThinkingAnimation()
+                    restoreStaticMenuBarBitmap()
+                }
             }
             return
         }
@@ -4452,8 +4847,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 deactivateClaudeThinkingAnimation()
                 button.image = staticImage
             }
+        } else if activeClient == .grok, shouldPrepareGrokThinkingAnimation {
+            switch codexAnimationBackend {
+            case .nativeCoreAnimation:
+                if !synchronizeGrokThinkingAnimationHost() {
+                    deactivateGrokThinkingAnimation()
+                    button.image = staticImage
+                }
+            case .stableBitmap:
+                if !installStableGrokThinkingImage(at: grokThinkingFrameIndex) {
+                    deactivateGrokThinkingAnimation()
+                    button.image = staticImage
+                }
+            }
         } else {
             deactivateClaudeThinkingAnimation()
+            deactivateGrokThinkingAnimation()
             button.image = staticImage
         }
     }

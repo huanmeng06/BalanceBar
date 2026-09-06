@@ -726,7 +726,7 @@ final class DashboardMenuBarPage {
         }
         if let spriteImage {
             lastPreviewSpriteImage = spriteImage
-        } else if kind != .claudeThinking {
+        } else if kind != .claudeThinking, kind != .grokThinking, kind != .grokThinkingBitmap {
             lastPreviewSpriteImage = nil
         }
         guard isBuilt else { return }
@@ -775,10 +775,10 @@ final class DashboardMenuBarPage {
             }
             previewAnimatedIconHost.isHidden = false
             previewAnimatedIconHost.installRotationAnimation()
-        case .claudeThinking:
+        case .claudeThinking, .grokThinking, .grokThinkingBitmap:
             previewAnimatedIconHost.removeRotationAnimation()
             previewAnimatedIconHost.isHidden = true
-            previewClaudeAnimatedIconHost.timing = .claude
+            previewClaudeAnimatedIconHost.timing = kind == .claudeThinking ? .claude : .grok
             guard let spriteImage = spriteImage ?? lastPreviewSpriteImage else {
                 previewClaudeAnimatedIconHost.removeThinkingAnimation()
                 previewClaudeAnimatedIconHost.isHidden = true

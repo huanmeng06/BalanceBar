@@ -259,6 +259,26 @@ final class DashboardCompositionController {
         )
     }
 
+    func updateGrokMenuBarPreviewAnimation(
+        active: Bool,
+        iconImage: NSImage?,
+        spriteImage: NSImage?
+    ) {
+        let kind: MenuBarCompositorAnimationKind
+        switch state.preferences.menuBarAnimationMode {
+        case .efficient:
+            kind = .grokThinking
+        case .synchronized:
+            kind = .grokThinkingBitmap
+        }
+        updateSpriteMenuBarPreviewAnimation(
+            kind: kind,
+            active: active,
+            iconImage: iconImage,
+            spriteImage: spriteImage
+        )
+    }
+
     private func updateSpriteMenuBarPreviewAnimation(
         kind: MenuBarCompositorAnimationKind,
         active: Bool,
