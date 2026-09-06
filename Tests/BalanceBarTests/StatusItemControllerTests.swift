@@ -153,23 +153,14 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testUpdateIconSizeDoesNotBakeGrokThinkingGIFWhenPNGIsPresent() throws {
-        let thinkingURL = try XCTUnwrap(
-            Bundle.main.url(forResource: "GrokThinking", withExtension: "png"),
-            "the committed GrokThinking.png strip must be in the app bundle"
+    func testUpdateIconSizeLoadsGrokThinkingFromSVGAndDoesNotCallFromGIF() throws {
+        XCTAssertNotNil(
+            Bundle.main.url(forResource: "GrokThinking", withExtension: "svg"),
+            "live Grok thinking must ship as GrokThinking.svg like Claude"
         )
-        let thinkingStrip = try XCTUnwrap(NSImage(contentsOf: thinkingURL))
-        let thinkingPixels = try XCTUnwrap(
-            thinkingStrip.representations.compactMap { $0 as? NSBitmapImageRep }.first
-        )
-        XCTAssertGreaterThanOrEqual(
-            thinkingPixels.pixelsWide,
-            40,
-            "thinking frames must cover large 20 pt @2x"
-        )
-        XCTAssertGreaterThanOrEqual(
-            thinkingPixels.pixelsHigh,
-            40 * GrokThinkingAnimationTiming.frameCount
+        XCTAssertNotNil(
+            Bundle.main.url(forResource: "Grok", withExtension: "svg"),
+            "idle Grok must still ship as Grok.svg"
         )
 
         GrokThinkingSprite.resetCachesForTesting()
@@ -184,6 +175,19 @@ final class StatusItemControllerTests: XCTestCase {
             settings: makeSettings()
         )
         XCTAssertEqual(GrokThinkingSprite.fromGIFCallCountForTesting, 0)
+        XCTAssertEqual(
+            try XCTUnwrap(controller.grokThinkingSpriteSizeForTesting),
+            NSSize(
+                width: MenuBarIconSizePreset.medium.pointSize,
+                height: MenuBarIconSizePreset.medium.pointSize
+                    * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            )
+        )
+        XCTAssertGreaterThanOrEqual(
+            try XCTUnwrap(controller.grokThinkingSpritePixelWidthForTesting),
+            Int(MenuBarIconSizePreset.medium.pointSize * GrokThinkingSprite.retinaContentsScale),
+            "live Grok thinking must composite at contentsScale ≥ 2"
+        )
 
         for preset in MenuBarIconSizePreset.allCases {
             controller.updateIconSize(preset.pointSize)
@@ -192,7 +196,24 @@ final class StatusItemControllerTests: XCTestCase {
                 0,
                 "updateIconSize(\(preset.rawValue)) must not call make(fromGIF:)"
             )
+            XCTAssertEqual(
+                try XCTUnwrap(controller.grokThinkingSpriteSizeForTesting),
+                NSSize(
+                    width: preset.pointSize,
+                    height: preset.pointSize * CGFloat(GrokThinkingAnimationTiming.frameCount)
+                )
+            )
+            XCTAssertGreaterThanOrEqual(
+                try XCTUnwrap(controller.grokThinkingSpritePixelWidthForTesting),
+                Int(preset.pointSize * GrokThinkingSprite.retinaContentsScale),
+                "updateIconSize(\(preset.rawValue)) must keep a ≥2x bitmap rep"
+            )
         }
+        XCTAssertLessThanOrEqual(
+            GrokThinkingSprite.sourceFrameBuildCountForTesting,
+            1,
+            "Grok SVG frames must be built once, not on every icon-size click"
+        )
         XCTAssertLessThanOrEqual(
             ClaudeThinkingSprite.sourceFrameBuildCountForTesting,
             1,

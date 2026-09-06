@@ -530,7 +530,8 @@ enum MenuBarThinkingSprite {
     static func makeSprite(
         from frames: [NSImage],
         outputSize: NSSize = NSSize(width: 16, height: 16),
-        expectedFrameCount: Int? = nil
+        expectedFrameCount: Int? = nil,
+        contentsScale: CGFloat = 1
     ) -> NSImage? {
         let frameCount = expectedFrameCount ?? frames.count
         guard
@@ -546,27 +547,110 @@ enum MenuBarThinkingSprite {
             width: outputSize.width,
             height: outputSize.height * CGFloat(frameCount)
         )
-        let sprite = NSImage(size: spriteSize, flipped: false) { _ in
-            for (index, frame) in frames.enumerated() {
-                let destination = NSRect(
-                    x: 0,
-                    y: outputSize.height * CGFloat(index),
-                    width: outputSize.width,
-                    height: outputSize.height
-                ).insetBy(dx: 0.3, dy: 0.3)
-                frame.draw(
-                    in: destination,
-                    from: .zero,
-                    operation: .sourceOver,
-                    fraction: 1,
-                    respectFlipped: true,
-                    hints: [.interpolation: NSImageInterpolation.high]
-                )
+        // Claude keeps the historical 1x `NSImage(size:){draw}` path. Grok
+        // thinking must pass contentsScale ≥ 2 so Retina is not a blurry
+        // 18 px bitmap stretched to 36 px.
+        if contentsScale > 1 {
+            guard let sprite = makeRetinaSprite(
+                from: frames,
+                outputSize: outputSize,
+                spriteSize: spriteSize,
+                frameCount: frameCount,
+                contentsScale: contentsScale
+            ) else {
+                return nil
             }
+            sprite.isTemplate = true
+            return sprite
+        }
+
+        let sprite = NSImage(size: spriteSize, flipped: false) { _ in
+            drawFrames(
+                frames,
+                outputSize: outputSize,
+                frameCount: frameCount,
+                originAtBottom: true
+            )
             return true
         }
         sprite.isTemplate = true
         return sprite
+    }
+
+    /// `NSBitmapImageRep` contexts are flipped (y=0 is the top). Frame 0 still
+    /// has to land on the visual bottom so CALayer translation 0 shows it.
+    private static func makeRetinaSprite(
+        from frames: [NSImage],
+        outputSize: NSSize,
+        spriteSize: NSSize,
+        frameCount: Int,
+        contentsScale: CGFloat
+    ) -> NSImage? {
+        let scale = max(contentsScale, 2)
+        let pixelsWide = max(1, Int((spriteSize.width * scale).rounded()))
+        let pixelsHigh = max(1, Int((spriteSize.height * scale).rounded()))
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return nil
+        }
+        representation.size = spriteSize
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        guard let context = NSGraphicsContext(bitmapImageRep: representation) else {
+            return nil
+        }
+        NSGraphicsContext.current = context
+        context.imageInterpolation = .high
+        NSColor.clear.setFill()
+        NSRect(origin: .zero, size: spriteSize).fill()
+        drawFrames(
+            frames,
+            outputSize: outputSize,
+            frameCount: frameCount,
+            originAtBottom: false
+        )
+
+        let sprite = NSImage(size: spriteSize)
+        sprite.addRepresentation(representation)
+        return sprite
+    }
+
+    private static func drawFrames(
+        _ frames: [NSImage],
+        outputSize: NSSize,
+        frameCount: Int,
+        originAtBottom: Bool
+    ) {
+        for (index, frame) in frames.enumerated() {
+            let originY = originAtBottom
+                ? outputSize.height * CGFloat(index)
+                : outputSize.height * CGFloat(frameCount - 1 - index)
+            let destination = NSRect(
+                x: 0,
+                y: originY,
+                width: outputSize.width,
+                height: outputSize.height
+            ).insetBy(dx: 0.3, dy: 0.3)
+            frame.draw(
+                in: destination,
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1,
+                respectFlipped: true,
+                hints: [.interpolation: NSImageInterpolation.high]
+            )
+        }
     }
 }
 
@@ -734,13 +818,19 @@ enum GrokIdleIcon {
     }
 }
 
-/// Loads the committed Grok thinking PNG strip, or rebuilds it from the source
-/// GIF. `fromGIF` is for build/test/one-shot background work; the live
-/// icon-size path must use `fromPNG` so clicks do not run `colorAtX:y:`.
+/// Loads the committed Grok thinking SVG sprite, or fixture PNG/GIF strips.
+/// `fromGIF` is for build/test/one-shot background work; the live icon-size
+/// path must use `make(from:)` so clicks do not decode GIF or run
+/// `colorAtX:y:`. SVG frames are composited at contentsScale ≥ 2.
 enum GrokThinkingSprite {
+    static let retinaContentsScale: CGFloat = 2
+
     private static let cacheLock = NSLock()
+    private static var sourceFramesByURL: [URL: [NSImage]] = [:]
+    private static var spritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static var pngSpritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static var fromGIFCallCount = 0
+    private static var sourceFrameBuildCount = 0
 
     static var fromGIFCallCountForTesting: Int {
         cacheLock.lock()
@@ -748,11 +838,114 @@ enum GrokThinkingSprite {
         return fromGIFCallCount
     }
 
+    static var sourceFrameBuildCountForTesting: Int {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return sourceFrameBuildCount
+    }
+
     static func resetCachesForTesting() {
         cacheLock.lock()
         defer { cacheLock.unlock() }
+        sourceFramesByURL = [:]
+        spritesByCacheKey = [:]
         pngSpritesByCacheKey = [:]
         fromGIFCallCount = 0
+        sourceFrameBuildCount = 0
+    }
+
+    static func make(
+        from animatedSVGURL: URL,
+        outputSize: NSSize = NSSize(width: 16, height: 16)
+    ) -> NSImage? {
+        let spriteKey = MenuBarSizedImageCacheKey(
+            url: animatedSVGURL,
+            outputSize: outputSize
+        )
+        cacheLock.lock()
+        if let cachedSprite = spritesByCacheKey[spriteKey] {
+            cacheLock.unlock()
+            return cachedSprite
+        }
+        let cachedFrames = sourceFramesByURL[animatedSVGURL]
+        cacheLock.unlock()
+
+        let frames: [NSImage]
+        if let cachedFrames {
+            frames = cachedFrames
+        } else {
+            guard
+                let svg = try? String(contentsOf: animatedSVGURL, encoding: .utf8),
+                let made = makeFrames(from: svg)
+            else {
+                return nil
+            }
+            cacheLock.lock()
+            if let existing = sourceFramesByURL[animatedSVGURL] {
+                cacheLock.unlock()
+                frames = existing
+            } else {
+                sourceFramesByURL[animatedSVGURL] = made
+                sourceFrameBuildCount += 1
+                cacheLock.unlock()
+                frames = made
+            }
+        }
+
+        guard let sprite = makeSprite(from: frames, outputSize: outputSize) else {
+            return nil
+        }
+        cacheLock.lock()
+        spritesByCacheKey[spriteKey] = sprite
+        cacheLock.unlock()
+        return sprite
+    }
+
+    static func makeSprite(
+        from frames: [NSImage],
+        outputSize: NSSize = NSSize(width: 16, height: 16)
+    ) -> NSImage? {
+        MenuBarThinkingSprite.makeSprite(
+            from: frames,
+            outputSize: outputSize,
+            expectedFrameCount: GrokThinkingAnimationTiming.frameCount,
+            contentsScale: retinaContentsScale
+        )
+    }
+
+    static func makeFrames(from animatedSVG: String) -> [NSImage]? {
+        guard
+            let animationRegex = try? NSRegularExpression(
+                pattern: #"<animateTransform\b[^>]*/>"#
+            ),
+            let viewBoxRegex = try? NSRegularExpression(
+                pattern: #"viewBox="0 0 100 100""#
+            )
+        else {
+            return nil
+        }
+        let fullRange = NSRange(animatedSVG.startIndex..., in: animatedSVG)
+        let staticSVG = animationRegex.stringByReplacingMatches(
+            in: animatedSVG,
+            range: fullRange,
+            withTemplate: ""
+        )
+        return (0..<GrokThinkingAnimationTiming.frameCount).compactMap { index in
+            let range = NSRange(staticSVG.startIndex..., in: staticSVG)
+            let frameSVG = viewBoxRegex.stringByReplacingMatches(
+                in: staticSVG,
+                range: range,
+                withTemplate: #"viewBox="0 \#(index * 100) 100 100""#
+            )
+            guard
+                let data = frameSVG.data(using: .utf8),
+                let image = NSImage(data: data)
+            else {
+                return nil
+            }
+            image.size = NSSize(width: 100, height: 100)
+            return image
+        }
     }
 
     static func make(

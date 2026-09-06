@@ -2493,6 +2493,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var grokIdleIconSizeForTesting: NSSize? { grokIconImage?.size }
 
+    var grokThinkingSpriteSizeForTesting: NSSize? { grokThinkingSpriteImage?.size }
+
+    var grokThinkingSpritePixelWidthForTesting: Int? {
+        grokThinkingSpriteImage?
+            .representations
+            .compactMap { $0 as? NSBitmapImageRep }
+            .map(\.pixelsWide)
+            .max()
+    }
+
     // Exposes the actual AppKit point sizes applied to the live menu-bar
     // labels without exposing the labels themselves.
     var menuBarFontPointSizesForTesting: (primary: CGFloat, secondary: CGFloat)? {
@@ -2933,7 +2943,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Reloads idle marks and thinking sprites at the selected point size.
-    /// Grok thinking uses the committed PNG strip so size clicks never decode
+    /// Grok thinking uses the committed SVG sprite so size clicks never decode
     /// the GIF or run `colorAtX:y:` on the main thread.
     private func loadMenuBarIconAssets(size: CGFloat) {
         let iconSize = MenuBarIconSizePreset.nearest(to: size).pointSize
@@ -2972,12 +2982,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 outputSize: outputSize
             )
         }
-        // Size clicks must stay on the committed PNG strip. GIF decode plus
+        // Size clicks must stay on the committed SVG sprite. GIF decode plus
         // per-pixel `colorAtX:y:` templating pegs a core on the main thread.
         grokThinkingSpriteImage = nil
-        if let thinkingURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "png") {
+        if let thinkingURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "svg") {
             grokThinkingSpriteImage = GrokThinkingSprite.make(
-                fromPNG: thinkingURL,
+                from: thinkingURL,
                 outputSize: outputSize
             )
         }
