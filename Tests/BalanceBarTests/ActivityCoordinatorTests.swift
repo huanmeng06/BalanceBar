@@ -247,6 +247,160 @@ final class ActivityCoordinatorTests: XCTestCase {
         )
     }
 
+    func testDualCLITerminalFrontmostUsesFastIdentityInterval() {
+        XCTAssertEqual(ActivityIdentityPolling.dualCLIFrontmostInterval, 0.1, accuracy: 0.000_1)
+        XCTAssertTrue(
+            ActivityIdentityPolling.shouldUseFastIdentity(
+                frontmost: .terminal,
+                grokProcessRunning: true,
+                claudeProcessRunning: true
+            )
+        )
+        XCTAssertEqual(
+            ActivityIdentityPolling.identityInterval(
+                frontmost: .terminal,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                configuredPollInterval: 1.0
+            ),
+            0.1,
+            accuracy: 0.000_1
+        )
+        XCTAssertEqual(
+            ActivityIdentityPolling.identityInterval(
+                frontmost: .terminal,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                configuredPollInterval: 0.25
+            ),
+            0.1,
+            accuracy: 0.000_1
+        )
+    }
+
+    func testIdentityFollowsConfiguredPollWhenFastPathIsInactive() {
+        XCTAssertFalse(
+            ActivityIdentityPolling.shouldUseFastIdentity(
+                frontmost: .codex,
+                grokProcessRunning: true,
+                claudeProcessRunning: true
+            )
+        )
+        XCTAssertFalse(
+            ActivityIdentityPolling.shouldUseFastIdentity(
+                frontmost: .terminal,
+                grokProcessRunning: true,
+                claudeProcessRunning: false
+            )
+        )
+        XCTAssertFalse(
+            ActivityIdentityPolling.shouldUseFastIdentity(
+                frontmost: .terminal,
+                grokProcessRunning: false,
+                claudeProcessRunning: true
+            )
+        )
+        XCTAssertFalse(
+            ActivityIdentityPolling.shouldUseFastIdentity(
+                frontmost: .other,
+                grokProcessRunning: true,
+                claudeProcessRunning: true
+            )
+        )
+        XCTAssertEqual(
+            ActivityIdentityPolling.identityInterval(
+                frontmost: .codex,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                configuredPollInterval: 1.0
+            ),
+            1.0
+        )
+        XCTAssertEqual(
+            ActivityIdentityPolling.identityInterval(
+                frontmost: .terminal,
+                grokProcessRunning: true,
+                claudeProcessRunning: false,
+                configuredPollInterval: 0.25
+            ),
+            0.25
+        )
+        XCTAssertEqual(
+            ActivityIdentityPolling.identityInterval(
+                frontmost: .other,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                configuredPollInterval: 0.5
+            ),
+            0.5
+        )
+    }
+
+    func testFastIdentityTimerStartsOnlyForDualCLITerminal() {
+        let harness = CoordinatorHarness()
+        harness.grokRunning = true
+        harness.claudeRunning = true
+        defer { harness.coordinator.stop() }
+        harness.coordinator.start(interval: 1.0)
+
+        XCTAssertFalse(harness.coordinator.isFastIdentityPollingEnabled)
+        XCTAssertNil(harness.coordinator.identityTimerIntervalForTests)
+        XCTAssertEqual(
+            harness.coordinator.pollTimerIntervalForTests ?? 0,
+            1.0,
+            accuracy: 0.000_1
+        )
+
+        harness.coordinator.applyIdentityPollingStateForTests(
+            frontmost: .terminal,
+            grokRunning: true,
+            claudeRunning: true
+        )
+        XCTAssertTrue(harness.coordinator.isFastIdentityPollingEnabled)
+        XCTAssertEqual(
+            harness.coordinator.identityTimerIntervalForTests ?? 0,
+            0.1,
+            accuracy: 0.000_1
+        )
+        XCTAssertEqual(
+            harness.coordinator.pollTimerIntervalForTests ?? 0,
+            1.0,
+            accuracy: 0.000_1
+        )
+
+        harness.coordinator.applyIdentityPollingStateForTests(
+            frontmost: .codex,
+            grokRunning: true,
+            claudeRunning: true
+        )
+        XCTAssertFalse(harness.coordinator.isFastIdentityPollingEnabled)
+        XCTAssertNil(harness.coordinator.identityTimerIntervalForTests)
+        XCTAssertEqual(
+            harness.coordinator.pollTimerIntervalForTests ?? 0,
+            1.0,
+            accuracy: 0.000_1
+        )
+    }
+
+    func testIdentityOnlyRefreshDoesNotScheduleTaskActivity() {
+        let harness = CoordinatorHarness()
+        harness.grokRunning = true
+        harness.claudeRunning = true
+        defer { harness.coordinator.stop() }
+        harness.coordinator.start(interval: 1.0)
+        harness.coordinator.applyIdentityPollingStateForTests(
+            frontmost: .terminal,
+            grokRunning: true,
+            claudeRunning: true
+        )
+        let activityBefore = harness.coordinator.taskActivityScheduleCountForTests
+        harness.coordinator.refreshIdentityOnlyForTests()
+        XCTAssertEqual(
+            harness.coordinator.taskActivityScheduleCountForTests,
+            activityBefore
+        )
+    }
+
     func testGrokExitWhileTerminalFrontmostFallsBackToClaudeOrCodex() {
         XCTAssertEqual(
             ActivityClientSelection.client(
@@ -267,4 +421,23 @@ final class ActivityCoordinatorTests: XCTestCase {
             .codex
         )
     }
+}
+
+private final class CoordinatorHarness {
+    var grokRunning = false
+    var claudeRunning = false
+    var activeClient: AssistantClient = .codex
+    lazy var coordinator = ActivityCoordinator(
+        actions: ActivityCoordinatorActions(
+            activeClient: { [unowned self] in self.activeClient },
+            claudeProcessAvailable: { [unowned self] in self.claudeRunning },
+            grokProcessAvailable: { [unowned self] in self.grokRunning },
+            setClaudeProcessAvailable: { [unowned self] in self.claudeRunning = $0 },
+            setGrokProcessAvailable: { [unowned self] in self.grokRunning = $0 },
+            setActiveClient: { [unowned self] in self.activeClient = $0 },
+            setCodexTaskRunning: { _ in },
+            setClaudeTaskRunning: { _ in },
+            setGrokTaskRunning: { _ in }
+        )
+    )
 }
