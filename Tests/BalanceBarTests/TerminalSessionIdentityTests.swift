@@ -461,9 +461,29 @@ final class TerminalSessionIdentityTests: XCTestCase {
             iterm,
             TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.googlecode.iterm2")
         )
-        XCTAssertTrue(terminal?.contains("tty of selected tab of front window") == true)
-        XCTAssertTrue(terminal?.contains("custom title of selected tab of front window") == true)
-        XCTAssertTrue(terminal?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
+        let terminalPath = "/System/Applications/Utilities/Terminal.app"
+        let terminalPathed = TerminalFrontmostTTY.appleScriptSource(
+            bundleIdentifier: "com.apple.Terminal",
+            applicationPath: terminalPath
+        )
+        XCTAssertTrue(terminal?.contains("tell application \"Terminal\"") == true)
+        XCTAssertTrue(terminal?.contains("set tabRef to selected tab of front window") == true)
+        XCTAssertTrue(terminal?.contains("tty of tabRef") == true)
+        XCTAssertTrue(terminal?.contains("custom title of tabRef") == true)
+        XCTAssertTrue(terminal?.contains("name of front window") == true)
+        XCTAssertTrue(terminal?.contains("empty_tab") == true)
+        XCTAssertTrue(terminal?.contains("no_windows") == true)
+        XCTAssertTrue(terminal?.contains("on error errMsg number errNum") == true)
+        XCTAssertTrue(
+            terminal?.contains(
+                "(tabTTY as text) & linefeed & (tabPID as text) & linefeed & (tabTitle as text)"
+            ) == true
+        )
+        XCTAssertFalse(terminal?.contains("as string") == true)
+        XCTAssertFalse(terminal?.contains("return \"\"") == true)
+        XCTAssertFalse(terminal?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
+        XCTAssertTrue(terminalPathed?.contains("tell application \"\(terminalPath)\"") == true)
+        XCTAssertTrue(terminalPathed?.contains("tell application \"Terminal\"") == true)
         XCTAssertTrue(iterm?.contains("tty of current session of current window") == true)
         XCTAssertTrue(iterm?.contains("name of current session of current window") == true)
         XCTAssertTrue(iterm?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
@@ -501,8 +521,14 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertFalse(TerminalFrontmostTTY.usesSelectedTabAppleScript(bundleIdentifier: "dev.warp.warp-stable"))
 
         var compileError: NSDictionary?
+        let terminalScript = NSAppleScript(source: terminalPathed ?? terminal ?? "")
+        XCTAssertTrue(
+            terminalScript?.compileAndReturnError(&compileError) == true,
+            "Terminal AppleScript failed to compile: \(compileError ?? [:])"
+        )
         let ghosttyInstalled = FileManager.default.fileExists(atPath: ghosttyPath)
         if ghosttyInstalled {
+            compileError = nil
             let script = NSAppleScript(source: ghostty ?? "")
             XCTAssertTrue(
                 script?.compileAndReturnError(&compileError) == true,
@@ -590,6 +616,98 @@ final class TerminalSessionIdentityTests: XCTestCase {
             ),
             .grok
         )
+    }
+
+    func testTerminalErrorPayloadDoesNotClassifyAClient() {
+        let payload = "ERR\n-1743\nnot authorized"
+        XCTAssertEqual(TerminalFrontmostTTY.appleScriptErrorCode(payload), "-1743")
+        let signal = TerminalFrontmostTTY.parseSelectedTabSignal(payload)
+        XCTAssertEqual(signal, TerminalSelectedTabSignal())
+
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: terminalMultiGrokPS)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: "ttys000")
+        var fdCalls = 0
+        let result = resolveFocusTerminal(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTTY: signal.tty,
+            appleScriptTitle: signal.title,
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertNil(result.tty)
+        XCTAssertNil(latch.tty)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
+    }
+
+    func testTerminalClaudeCodeStarTitleWithEmptyTTYSelectsUniqueClaudeTTY() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: grokTTY)
+        var fdCalls = 0
+        let result = resolveFocusTerminal(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTitle: "~ — ✻ Claude Code — claude",
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertEqual(result.tty, claudeTTY)
+        XCTAssertTrue(result.loadedSnapshot)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal("/dev/ttys001\n\n… - grok").tty,
+            grokTTY
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .claude
+        )
+    }
+
+    func testTerminalEmptySelectedTabDoesNotPinGrokLatch() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: terminalMultiGrokPS)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: "ttys000")
+        var fdCalls = 0
+        let empty = resolveFocusTerminal(
+            snapshot: snapshot,
+            latch: &latch,
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertNil(empty.tty)
+        XCTAssertNil(latch.tty)
+        XCTAssertFalse(empty.probedSurface)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: empty.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
+        let selected = resolveFocusTerminal(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTTY: "ttys003",
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertEqual(selected.tty, "ttys003")
+        XCTAssertEqual(fdCalls, 0)
     }
 
     func testMissingValueTitleIsNotXOR() {

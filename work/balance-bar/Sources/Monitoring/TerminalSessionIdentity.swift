@@ -348,21 +348,7 @@ enum TerminalFrontmostTTY {
         let bundle = (bundleIdentifier ?? "").lowercased()
         switch bundle {
         case "com.apple.terminal":
-            return """
-            tell application id "com.apple.Terminal"
-                if not (exists front window) then return ""
-                set tabTTY to ""
-                set tabPID to ""
-                set tabTitle to ""
-                try
-                    set tabTTY to tty of selected tab of front window as string
-                end try
-                try
-                    set tabTitle to custom title of selected tab of front window as string
-                end try
-                return tabTTY & linefeed & tabPID & linefeed & tabTitle
-            end tell
-            """
+            return terminalAppleScriptSource(applicationPath: applicationPath)
         case "com.googlecode.iterm2":
             return """
             tell application id "com.googlecode.iterm2"
@@ -390,6 +376,69 @@ enum TerminalFrontmostTTY {
             }
             return nil
         }
+    }
+
+    /// Official Terminal.app one-shot: `tty` / `custom title` of
+    /// `selected tab of front window`. Never concatenate an empty triple,
+    /// and never `as string` a value that may be missing.
+    private static func terminalAppleScriptSource(applicationPath: String?) -> String {
+        let path = applicationPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let body = terminalSelectedTabBody()
+        let nameTell = """
+        try
+            tell application "Terminal"
+        \(body)
+            end tell
+        on error errMsg number errNum
+            set msg to errMsg as text
+            if (count of msg) > 80 then set msg to text 1 thru 80 of msg
+            return "ERR" & linefeed & (errNum as text) & linefeed & msg
+        end try
+        """
+        guard !path.isEmpty else { return nameTell }
+        let escapedPath = escapeAppleScriptString(path)
+        return """
+        try
+            tell application "\(escapedPath)"
+        \(body)
+            end tell
+        on error errMsg number errNum
+            try
+                tell application "Terminal"
+        \(body)
+                end tell
+            on error errMsg2 number errNum2
+                set msg to errMsg2 as text
+                if (count of msg) > 80 then set msg to text 1 thru 80 of msg
+                return "ERR" & linefeed & (errNum2 as text) & linefeed & msg
+            end try
+        end try
+        """
+    }
+
+    private static func terminalSelectedTabBody() -> String {
+        """
+                if (count of windows) is 0 then
+                    return "ERR" & linefeed & "no_windows" & linefeed & ""
+                end if
+                if not (exists front window) then
+                    return "ERR" & linefeed & "no_front_window" & linefeed & ""
+                end if
+                set tabRef to selected tab of front window
+                set tabTTY to tty of tabRef
+                set tabPID to ""
+                set tabTitle to custom title of tabRef
+                if tabTTY is missing value then set tabTTY to ""
+                if tabTitle is missing value then set tabTitle to ""
+                if tabTitle is "" then
+                    set tabTitle to name of front window
+                    if tabTitle is missing value then set tabTitle to ""
+                end if
+                if tabTTY is "" and tabTitle is "" then
+                    return "ERR" & linefeed & "empty_tab" & linefeed & ""
+                end if
+                return (tabTTY as text) & linefeed & (tabPID as text) & linefeed & (tabTitle as text)
+        """
     }
 
     /// Ghostty's dictionary identifiers only compile against a real app
