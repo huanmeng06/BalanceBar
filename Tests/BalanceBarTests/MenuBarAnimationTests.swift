@@ -546,6 +546,27 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(firstFrame.contains("fill:#fff"))
         XCTAssertFalse(firstFrame.contains("<animateTransform"))
 
+        let frame12 = try String(
+            contentsOf: directoryURL.appendingPathComponent(
+                GrokThinkingSprite.frameFileName(index: 12)
+            ),
+            encoding: .utf8
+        )
+        XCTAssertTrue(frame12.contains("viewBox=\"0 0 560 560\""))
+        XCTAssertTrue(frame12.contains("m532.29,39.28"))
+        XCTAssertFalse(frame12.contains(".cls-1"))
+        XCTAssertFalse(frame12.contains("fill:#fff"))
+        XCTAssertFalse(frame12.contains("m0,560V0h560v560H0Z"))
+        XCTAssertEqual(
+            try Data(
+                contentsOf: directoryURL.appendingPathComponent(
+                    GrokThinkingSprite.frameFileName(index: 12)
+                )
+            ).count,
+            1596,
+            "committed frame_012.svg must be the user file, not a rewritten canvas wrap"
+        )
+
         let stackedMarkup = try XCTUnwrap(
             GrokThinkingSprite.makeStackedSVGMarkup(fromDirectory: directoryURL)
         )
@@ -554,6 +575,25 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertFalse(stackedMarkup.contains(".cls-1{fill:#fff;}"))
         XCTAssertTrue(firstFrame.contains("m0,560V0h560v560H0Z"))
         XCTAssertTrue(stackedMarkup.contains("m0,560V0h560v560H0Z"))
+        XCTAssertTrue(stackedMarkup.contains("m532.29,39.28"))
+        // Reverse of the previous bottom-origin stack: frame 001 at y=0,
+        // frame 030 at y=16240, frame 012 at y=11*560.
+        XCTAssertTrue(
+            stackedMarkup.contains(
+                "<g transform=\"translate(0,0)\">"
+            )
+        )
+        XCTAssertTrue(
+            stackedMarkup.contains(
+                "<g transform=\"translate(0,16240)\">"
+            )
+        )
+        XCTAssertTrue(
+            stackedMarkup.contains(
+                "<g transform=\"translate(0,6160)\"><path d=\"m532.29,39.28"
+            ),
+            "reversed Grok stack must place frame 12 at translateY 6160 without knocking out unclassed paths"
+        )
 
         GrokThinkingSprite.resetCachesForTesting()
         let frames = try XCTUnwrap(GrokThinkingSprite.makeFrames(fromDirectory: directoryURL))

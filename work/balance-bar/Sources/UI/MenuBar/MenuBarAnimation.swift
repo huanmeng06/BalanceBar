@@ -950,11 +950,17 @@ enum GrokThinkingSprite {
             else {
                 return nil
             }
-            let translateY = frameHeight * (GrokThinkingAnimationTiming.frameCount - index)
+            // Play 030→001 so the slash sweeps 右上→左下. Frame 001 is at
+            // the top of the strip; translation 0 shows frame 030 at the
+            // bottom. Claude stacking is unchanged.
+            let translateY = frameHeight * (index - 1)
             groups.append("<g transform=\"translate(0,\(translateY))\">\(inner)</g>")
         }
         let width = Int(sourceFrameSize.width.rounded())
         let height = frameHeight * GrokThinkingAnimationTiming.frameCount
+        // Knock out the even-odd white canvas on classed frames only.
+        // Unclassed black paths (including the replacement frame 12) keep
+        // their default fill.
         return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(width) \(height)\"><defs><style>.cls-1{fill:none;}</style></defs>\(groups.joined())</svg>"
     }
 
