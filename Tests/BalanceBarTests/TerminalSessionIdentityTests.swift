@@ -465,10 +465,39 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertTrue(
             ghostty?.contains("pid of focused terminal of selected tab of front window") == true
         )
+        XCTAssertTrue(
+            ghostty?.contains("name of focused terminal of selected tab of front window") == true
+        )
+        XCTAssertTrue(ghostty?.contains("tty of terminal 1 of selected tab of front window") == true)
+        XCTAssertTrue(ghostty?.contains("tty of selected tab of front window") == true)
+        XCTAssertTrue(ghostty?.contains("tty of focused terminal of front window") == true)
+        XCTAssertTrue(ghostty?.contains("tty of focused terminal of current tab of front window") == true)
         XCTAssertTrue(ghostty?.contains("name of selected tab of front window") == true)
+        XCTAssertTrue(ghostty?.contains("title of selected tab of front window") == true)
+        XCTAssertTrue(ghostty?.contains("name of current tab of front window") == true)
+        XCTAssertTrue(ghostty?.contains("name of front window") == true)
+        XCTAssertTrue(ghostty?.contains("name of selected tab of window 1") == true)
+        XCTAssertTrue(ghostty?.contains("name of window 1") == true)
+        XCTAssertTrue(ghostty?.contains("tell application id \"com.mitchellh.ghostty\"") == true)
+        XCTAssertTrue(ghostty?.contains("tell application \"Ghostty\"") == true)
+        XCTAssertTrue(
+            ghostty?.contains("tabTTY is not \"\" or tabPID is not \"\" or tabTitle is not \"\"") == true
+        )
         XCTAssertTrue(ghostty?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
         XCTAssertNil(TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "dev.warp.warp-stable"))
         XCTAssertNil(TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "net.kovidgoyal.kitty"))
+
+        let script = NSAppleScript(source: ghostty ?? "")
+        var compileError: NSDictionary?
+        let ghosttyInstalled = FileManager.default.fileExists(
+            atPath: "/Applications/Ghostty.app"
+        )
+        if ghosttyInstalled {
+            XCTAssertTrue(
+                script?.compileAndReturnError(&compileError) == true,
+                "Ghostty AppleScript failed to compile: \(compileError ?? [:])"
+            )
+        }
     }
 
     func testParseSelectedTabSignalSplitsTTYPIDAndTitle() {
@@ -487,9 +516,19 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertNil(empty.pid)
         XCTAssertNil(empty.title)
         XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal("  \n \n  "),
+            TerminalSelectedTabSignal()
+        )
+        XCTAssertEqual(
             TerminalFrontmostTTY.parseSelectedTabSignal(nil),
             TerminalSelectedTabSignal()
         )
+        XCTAssertTrue(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("\n\n"))
+        XCTAssertTrue(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("  \n \n  "))
+        XCTAssertTrue(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("   "))
+        XCTAssertTrue(TerminalFrontmostTTY.isAppleScriptPayloadEmpty(nil))
+        XCTAssertFalse(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("\n\nClaude Code"))
+        XCTAssertFalse(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("/dev/ttys001\n\n"))
     }
 
     func testGhosttyAppleScriptTTYWinsOverGrowingGrokFDWithoutSurfaceProbes() {
@@ -700,6 +739,44 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertFalse(result.probedSurface)
         XCTAssertEqual(snapshotLoads, 1)
         XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .claude
+        )
+    }
+
+    func testClaudeCodeStarTitleWithEmptyTTYSelectsUniqueClaudeTTY() {
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: grokTTY)
+        var snapshotLoads = 0
+        var fdCalls = 0
+        let result = resolveFocusGhostty(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTitle: "~ — ✻ Claude Code — claude",
+            grokOffset: 9_000,
+            claudeOffset: 50,
+            grokIO: Date(timeIntervalSince1970: 90),
+            loadSnapshot: {
+                snapshotLoads += 1
+                return snapshot
+            },
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertEqual(result.tty, claudeTTY)
+        XCTAssertTrue(result.loadedSnapshot)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(snapshotLoads, 1)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            TerminalFocusHint.client(fromWindowTitle: "~ — ✻ Claude Code — claude"),
+            .claude
+        )
         XCTAssertEqual(
             ActivityClientSelection.preferredTerminalClient(
                 current: .grok,
@@ -980,6 +1057,16 @@ final class TerminalSessionIdentityTests: XCTestCase {
                 String(repeating: "a", count: 40)
             ),
             "…" + String(repeating: "a", count: 31)
+        )
+        XCTAssertEqual(TerminalFrontmostTTY.compactIdentityRaw(nil), "-")
+        XCTAssertEqual(TerminalFrontmostTTY.compactIdentityRaw("\n\n"), "\\n\\n")
+        XCTAssertEqual(
+            TerminalFrontmostTTY.compactIdentityRaw("  \n \n  "),
+            "  \\n \\n  "
+        )
+        XCTAssertEqual(
+            TerminalFrontmostTTY.compactIdentityRaw("~ — ✻ Claude Code — claude"),
+            "~ — ✻ Claude Code — claude"
         )
     }
 

@@ -326,6 +326,7 @@ enum TerminalFrontmostTTY {
     private static var appleScriptExecuting = false
     private static var lastAppleScriptStatus: TerminalAppleScriptStatus = .empty
     private static var lastAppleScriptDuration: TimeInterval = 0
+    private static var lastAppleScriptRaw: String?
     private static let identityLogLock = NSLock()
     private static var lastIdentityLogAt = Date.distantPast
     private static var lastIdentityLogSignature = ""
@@ -369,33 +370,123 @@ enum TerminalFrontmostTTY {
             end tell
             """
         case "com.mitchellh.ghostty":
-            return ghosttyAppleScriptSource()
+            return ghosttyAppleScriptSource(bundleIdentifier: bundle)
         default:
             if bundle.hasSuffix(".ghostty") {
-                return ghosttyAppleScriptSource()
+                return ghosttyAppleScriptSource(bundleIdentifier: bundle)
             }
             return nil
         }
     }
 
-    private static func ghosttyAppleScriptSource() -> String {
+    private static func ghosttyAppleScriptSource(bundleIdentifier: String) -> String {
+        let body = ghosttySelectedTabBody()
+        let escapedBundle = bundleIdentifier
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        // Bundle-id tell can succeed while every property errors; only then
+        // fall through to tell by name. Never return a whitespace-only triple.
+        return """
+        try
+            tell application id "\(escapedBundle)"
+        \(body)
+            end tell
+        end try
+        try
+            tell application "Ghostty"
+        \(body)
+            end tell
+        end try
+        return ""
         """
-        tell application id "com.mitchellh.ghostty"
-            if not (exists front window) then return ""
-            set tabTTY to ""
-            set tabPID to ""
-            set tabTitle to ""
-            try
-                set tabTTY to tty of focused terminal of selected tab of front window as string
-            end try
-            try
-                set tabPID to pid of focused terminal of selected tab of front window as string
-            end try
-            try
-                set tabTitle to name of selected tab of front window as string
-            end try
-            return tabTTY & linefeed & tabPID & linefeed & tabTitle
-        end tell
+    }
+
+    /// Ghostty 1.4: `front window` / `selected tab` / `focused terminal` /
+    /// tty / pid. Visible labels are terminal or window `name` (cocoa
+    /// `title`). Older builds lack those properties and only expose
+    /// `window 1` / `terminal 1`. Return the first non-empty triple.
+    private static func ghosttySelectedTabBody() -> String {
+        """
+                set tabTTY to ""
+                set tabPID to ""
+                set tabTitle to ""
+                try
+                    set tabTTY to tty of focused terminal of selected tab of front window as string
+                end try
+                try
+                    set tabPID to pid of focused terminal of selected tab of front window as string
+                end try
+                try
+                    set tabTitle to name of focused terminal of selected tab of front window as string
+                end try
+                if tabTTY is "" then
+                    try
+                        set tabTTY to tty of terminal 1 of selected tab of front window as string
+                    end try
+                end if
+                if tabPID is "" then
+                    try
+                        set tabPID to pid of terminal 1 of selected tab of front window as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to name of terminal 1 of selected tab of front window as string
+                    end try
+                end if
+                if tabTTY is "" then
+                    try
+                        set tabTTY to tty of selected tab of front window as string
+                    end try
+                end if
+                if tabTTY is "" then
+                    try
+                        set tabTTY to tty of focused terminal of front window as string
+                    end try
+                end if
+                if tabTTY is "" then
+                    try
+                        set tabTTY to tty of focused terminal of current tab of front window as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to name of selected tab of front window as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to title of selected tab of front window as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to name of current tab of front window as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to name of front window as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to name of selected tab of window 1 as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to name of terminal 1 of selected tab of window 1 as string
+                    end try
+                end if
+                if tabTitle is "" then
+                    try
+                        set tabTitle to name of window 1 as string
+                    end try
+                end if
+                if tabTTY is not "" or tabPID is not "" or tabTitle is not "" then
+                    return tabTTY & linefeed & tabPID & linefeed & tabTitle
+                end if
         """
     }
 
@@ -430,6 +521,13 @@ enum TerminalFrontmostTTY {
             title = nil
         }
         return TerminalSelectedTabSignal(tty: tty, pid: pid, title: title)
+    }
+
+    /// `"\\n\\n"` and other whitespace-only AppleScript results are empty,
+    /// not a successful selected-tab signal.
+    static func isAppleScriptPayloadEmpty(_ raw: String?) -> Bool {
+        guard let raw else { return true }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func discardLatch() {
@@ -1089,7 +1187,10 @@ enum TerminalFrontmostTTY {
             scriptCacheLock.lock()
             appleScriptExecuting = false
             scriptCacheLock.unlock()
-            recordAppleScriptStatus(.failure, duration: Date().timeIntervalSince(started))
+            recordAppleScriptStatus(
+                .failure,
+                duration: Date().timeIntervalSince(started)
+            )
             return nil
         }
 
@@ -1115,15 +1216,15 @@ enum TerminalFrontmostTTY {
         let duration = Date().timeIntervalSince(started)
         if box.error != nil {
             markAppleScriptFailure()
-            recordAppleScriptStatus(.failure, duration: duration)
+            recordAppleScriptStatus(.failure, duration: duration, raw: box.stringValue)
             return nil
         }
         let value = box.stringValue
-        if value == nil || value?.isEmpty == true {
-            recordAppleScriptStatus(.empty, duration: duration)
-            return nil
+        if isAppleScriptPayloadEmpty(value) {
+            recordAppleScriptStatus(.empty, duration: duration, raw: value)
+            return value
         }
-        recordAppleScriptStatus(.value, duration: duration)
+        recordAppleScriptStatus(.value, duration: duration, raw: value)
         return value
     }
 
@@ -1157,6 +1258,27 @@ enum TerminalFrontmostTTY {
         }
         if value.count > limit {
             return "…" + String(value.suffix(limit - 1))
+        }
+        return value
+    }
+
+    static func compactIdentityRaw(_ raw: String?, limit: Int = 80) -> String {
+        guard let raw else { return "-" }
+        var value = raw
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        if value.hasPrefix("/") {
+            if let separator = value.range(of: " - ", options: .backwards) {
+                value = String(value[separator.upperBound...])
+            } else if let last = value.split(separator: "/").last {
+                value = String(last)
+            }
+        }
+        if value.isEmpty { return "-" }
+        if value.count > limit {
+            return String(value.prefix(limit - 1)) + "…"
         }
         return value
     }
@@ -1195,11 +1317,13 @@ enum TerminalFrontmostTTY {
 
     private static func recordAppleScriptStatus(
         _ status: TerminalAppleScriptStatus,
-        duration: TimeInterval
+        duration: TimeInterval,
+        raw: String? = nil
     ) {
         scriptCacheLock.lock()
         lastAppleScriptStatus = status
         lastAppleScriptDuration = duration
+        lastAppleScriptRaw = raw
         scriptCacheLock.unlock()
     }
 
@@ -1214,22 +1338,27 @@ enum TerminalFrontmostTTY {
         scriptCacheLock.lock()
         let status = lastAppleScriptStatus
         let appleScriptMS = Int((lastAppleScriptDuration * 1000).rounded())
+        let raw = lastAppleScriptRaw
         scriptCacheLock.unlock()
         let classified = classifiedClient(
             tty: focusedTTY,
             grokTTYs: grokTTYs,
             claudeTTYs: claudeTTYs
         )
+        let compactRaw = compactIdentityRaw(raw)
         let signature = [
             signal.tty ?? "-",
             signal.pid.map(String.init) ?? "-",
             focusedTTY ?? "-",
             classified,
-            status.rawValue
+            status.rawValue,
+            compactRaw
         ].joined(separator: "|")
         let important = status == .timeout
             || status == .failure
             || status == .skippedExecuting
+            || status == .empty
+            || classified == "-"
         identityLogLock.lock()
         let now = Date()
         let changed = signature != lastIdentityLogSignature
@@ -1243,7 +1372,7 @@ enum TerminalFrontmostTTY {
         identityLogLock.unlock()
 
         SwitchLog.write(
-            "identity tick; selected_tty=\(signal.tty ?? "-"); pid=\(signal.pid.map(String.init) ?? "-"); title=\(compactIdentityTitle(signal.title)); classified=\(classified); latch=\(latchTTY ?? "-"); applescript=\(status.rawValue); ms=\(appleScriptMS); total_ms=\(Int((duration * 1000).rounded()))",
+            "identity tick; selected_tty=\(signal.tty ?? "-"); pid=\(signal.pid.map(String.init) ?? "-"); title=\(compactIdentityTitle(signal.title)); classified=\(classified); latch=\(latchTTY ?? "-"); applescript=\(status.rawValue); ms=\(appleScriptMS); total_ms=\(Int((duration * 1000).rounded())); raw=\(compactRaw)",
             level: .debug,
             category: "identity"
         )
