@@ -264,8 +264,15 @@ final class DashboardCompositionController {
         iconImage: NSImage?,
         spriteImage: NSImage?
     ) {
+        let kind: MenuBarCompositorAnimationKind
+        switch state.preferences.menuBarAnimationMode {
+        case .efficient:
+            kind = .grokThinking
+        case .synchronized:
+            kind = .grokThinkingBitmap
+        }
         updateSpriteMenuBarPreviewAnimation(
-            kind: .grokThinking,
+            kind: kind,
             active: active,
             iconImage: iconImage,
             spriteImage: spriteImage

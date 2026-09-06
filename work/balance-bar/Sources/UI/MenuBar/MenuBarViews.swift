@@ -265,9 +265,9 @@ final class MenuBarNativeAnimatedIconHostView: NSView {
 }
 
 /// A BalanceBar-owned clipped sprite host for discrete thinking animations.
-/// Claude keeps its nine-frame 810 ms strip; Grok uses the GIF-derived
-/// 23-frame timing. The status button carries only the static text bitmap
-/// while the sprite layer owns the Core Animation translation.
+/// Claude keeps its nine-frame 810 ms strip; Grok uses the 30-frame SVG
+/// pack. Claude still puts a text-only bitmap on the status button. Grok
+/// Performance keeps the complete static icon+text bitmap for replicants.
 final class MenuBarClaudeAnimatedIconHostView: NSView {
     static let thinkingAnimationKey = MenuBarSpriteAnimationTiming.claude.animationKey
     static let thinkingFrameCount = ClaudeThinkingAnimationTiming.frameCount
@@ -456,7 +456,6 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
         CATransaction.setDisableActions(true)
         spriteLayer.removeAnimation(forKey: timing.animationKey)
         spriteLayer.removeAnimation(forKey: Self.thinkingAnimationKey)
-        spriteLayer.removeAnimation(forKey: MenuBarSpriteAnimationTiming.grok.animationKey)
         spriteLayer.transform = CATransform3DIdentity
         CATransaction.commit()
     }

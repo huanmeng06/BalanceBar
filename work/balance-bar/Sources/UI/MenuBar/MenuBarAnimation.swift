@@ -149,11 +149,12 @@ enum MenuBarCompositorAnimationKind: Equatable {
     case codexRotation
     case claudeThinking
     case grokThinking
+    case grokThinkingBitmap
 
     var isActive: Bool { self != .none }
 }
 
-/// Discrete vertical-sprite timing shared by Claude and Grok compositor hosts.
+/// Discrete vertical-sprite timing used by the Claude and Grok compositor hosts.
 struct MenuBarSpriteAnimationTiming: Equatable {
     let frameCount: Int
     let restingFrameIndex: Int
@@ -654,11 +655,11 @@ enum MenuBarThinkingSprite {
     }
 }
 
-/// Live Grok thinking uses the 30 traced SVG frames. Even 0.08 s × 30 keeps
-/// the old 2.40 s loop; identical mid/end frames supply the visual holds.
 enum GrokThinkingAnimationTiming {
     static let frameCount = 30
-    static let restingFrameIndex = 0
+    /// 0-based strip index of `frame_016`, the Grok spark. Frame 0 is the
+    /// ring and must not be the Performance inactive rest pose.
+    static let restingFrameIndex = 15
     static let frameDuration: TimeInterval = 0.08
     static let frameDurations: [TimeInterval] = Array(
         repeating: frameDuration,
@@ -678,156 +679,20 @@ enum GrokThinkingAnimationTiming {
     }
 }
 
-/// PNG fallback for the idle Grok mark. Runtime idle loading prefers
-/// `GrokThinking/frame_016.svg` and must not redraw that SVG into an
-/// `NSImage(size: slot)` bitmap. This crop path keeps high-res pixels
-/// and never uses `colorAtX:y:`.
-enum GrokIdleIcon {
-    private static let cacheLock = NSLock()
-    private static var croppedByURL: [URL: NSImage] = [:]
-    private static var sizedByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
-    private static let alphaThreshold: UInt8 = 12
-
-    static func resetCachesForTesting() {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        croppedByURL = [:]
-        sizedByCacheKey = [:]
-    }
-
-    static func make(
-        fromPNG pngURL: URL,
-        outputSize: NSSize
-    ) -> NSImage? {
-        let cacheKey = MenuBarSizedImageCacheKey(url: pngURL, outputSize: outputSize)
-        cacheLock.lock()
-        if let cached = sizedByCacheKey[cacheKey] {
-            cacheLock.unlock()
-            return cached
-        }
-        let cachedCrop = croppedByURL[pngURL]
-        cacheLock.unlock()
-
-        guard let cropped = cachedCrop ?? croppedTemplate(fromPNG: pngURL) else {
-            return nil
-        }
-        cacheLock.lock()
-        croppedByURL[pngURL] = cropped
-        cacheLock.unlock()
-
-        let sized = sizedTemplate(from: cropped, outputSize: outputSize)
-        cacheLock.lock()
-        sizedByCacheKey[cacheKey] = sized
-        cacheLock.unlock()
-        return sized
-    }
-
-    static func croppedTemplate(fromPNG pngURL: URL) -> NSImage? {
-        guard let image = NSImage(contentsOf: pngURL) else { return nil }
-        if let cropped = croppedTemplate(from: image) {
-            return cropped
-        }
-        image.isTemplate = true
-        return image
-    }
-
-    static func croppedTemplate(from image: NSImage) -> NSImage? {
-        guard
-            let rep = bitmapRepresentation(of: image),
-            let crop = squareOpaqueCrop(in: rep),
-            let cgImage = rep.cgImage?.cropping(to: crop)
-        else {
-            return nil
-        }
-        let cropped = NSImage(
-            cgImage: cgImage,
-            size: NSSize(width: crop.width, height: crop.height)
-        )
-        cropped.isTemplate = true
-        return cropped
-    }
-
-    /// Keeps the cropped bitmap and only changes the point size. Drawing into
-    /// an `NSImage(size: slot)` block would bake an 18 px 1x image on Retina.
-    private static func sizedTemplate(from image: NSImage, outputSize: NSSize) -> NSImage {
-        var rect = NSRect(origin: .zero, size: image.size)
-        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
-            let sized = NSImage(cgImage: cgImage, size: outputSize)
-            sized.isTemplate = true
-            return sized
-        }
-        let sized = NSImage()
-        for representation in image.representations {
-            sized.addRepresentation(representation)
-        }
-        sized.size = outputSize
-        sized.isTemplate = true
-        return sized
-    }
-
-    private static func bitmapRepresentation(of image: NSImage) -> NSBitmapImageRep? {
-        if let existing = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first {
-            return existing
-        }
-        var rect = NSRect(origin: .zero, size: image.size)
-        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
-            return NSBitmapImageRep(cgImage: cgImage)
-        }
-        return image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))
-    }
-
-    private static func squareOpaqueCrop(in rep: NSBitmapImageRep) -> CGRect? {
-        guard
-            let data = rep.bitmapData,
-            rep.pixelsWide > 0,
-            rep.pixelsHigh > 0,
-            rep.bitsPerPixel >= 32
-        else {
-            return nil
-        }
-        let bytesPerPixel = max(1, rep.bitsPerPixel / 8)
-        let alphaOffset = rep.bitmapFormat.contains(.alphaFirst) ? 0 : bytesPerPixel - 1
-        var minX = rep.pixelsWide
-        var minY = rep.pixelsHigh
-        var maxX = -1
-        var maxY = -1
-        for y in 0..<rep.pixelsHigh {
-            let row = y * rep.bytesPerRow
-            for x in 0..<rep.pixelsWide {
-                let alpha = data[row + x * bytesPerPixel + alphaOffset]
-                guard alpha > alphaThreshold else { continue }
-                minX = min(minX, x)
-                minY = min(minY, y)
-                maxX = max(maxX, x)
-                maxY = max(maxY, y)
-            }
-        }
-        guard maxX >= minX, maxY >= minY else { return nil }
-        let contentWidth = maxX - minX + 1
-        let contentHeight = maxY - minY + 1
-        let side = min(
-            max(contentWidth, contentHeight),
-            rep.pixelsWide,
-            rep.pixelsHigh
-        )
-        var originX = minX - (side - contentWidth) / 2
-        var originY = minY - (side - contentHeight) / 2
-        originX = max(0, min(originX, rep.pixelsWide - side))
-        originY = max(0, min(originY, rep.pixelsHigh - side))
-        return CGRect(x: originX, y: originY, width: side, height: side)
-    }
-}
-
-/// Loads the committed 30-frame Grok thinking SVG directory, or fixture
-/// PNG/GIF strips. `fromGIF` is for build/test/one-shot background work; the
-/// live icon-size path must use `make(fromDirectory:)` so clicks do not
-/// decode GIF or run `colorAtX:y:`. Live thinking stays `_NSSVGImageRep`
-/// until the animation host rasterizes it at the window scale.
 enum GrokThinkingSprite {
     static let retinaContentsScale: CGFloat = 2
     static let resourceDirectoryName = "GrokThinking"
     static let sourceFrameSize = NSSize(width: 560, height: 560)
     static let idleFrameIndex = 16
+    /// Synchronized bitmap playback is file frames 030→001 so the slash
+    /// sweeps 右上→左下. The stacked SVG has frame 001 at the top of a
+    /// flipped extract (`y = 0`), so sequential index 0 reads the last cell.
+    static func synchronizedStripIndex(for sequentialIndex: Int) -> Int {
+        let count = GrokThinkingAnimationTiming.frameCount
+        guard count > 0 else { return 0 }
+        let wrapped = ((sequentialIndex % count) + count) % count
+        return count - 1 - wrapped
+    }
     /// Centered 560-canvas crop: 560 / 1.12 = 500, inset 30. Ring stays
     /// complete; slash tips may clip slightly. Do not rewrite path `d`.
     static let opticalScale: CGFloat = 1.12
@@ -1254,5 +1119,249 @@ enum GrokThinkingSprite {
         templated.addRepresentation(representation)
         templated.isTemplate = true
         return templated
+    }
+}
+
+/// Live idle Grok is the relocated thinking-pack Frame 16 SVG
+/// (`GrokIdle.svg`). Loading keeps `_NSSVGImageRep` and applies the same
+/// 1.12 centered crop; it must not redraw that SVG into an
+/// `NSImage(size: slot)` bitmap. `Grok.png` remains a cropped fallback.
+enum GrokIdleIcon {
+    static let resourceName = "GrokIdle"
+    static let sourceFrameSize = NSSize(width: 560, height: 560)
+    static let opticalScale: CGFloat = 1.12
+
+    static var opticalCropInset: Int {
+        let frame = sourceFrameSize.width
+        let cropSide = frame / opticalScale
+        return Int(((frame - cropSide) / 2).rounded())
+    }
+
+    static var opticalCropSide: Int {
+        Int(sourceFrameSize.width.rounded()) - (opticalCropInset * 2)
+    }
+
+    private static let cacheLock = NSLock()
+    private static var idleSVGDataByURL: [URL: Data] = [:]
+    private static var idleImagesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
+    private static var croppedByURL: [URL: NSImage] = [:]
+    private static var sizedByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
+    private static let alphaThreshold: UInt8 = 12
+
+    static func resetCachesForTesting() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        idleSVGDataByURL = [:]
+        idleImagesByCacheKey = [:]
+        croppedByURL = [:]
+        sizedByCacheKey = [:]
+    }
+
+    static func isVectorSVGRepresentation(_ image: NSImage) -> Bool {
+        let hasBitmap = image.representations.contains { $0 is NSBitmapImageRep }
+        guard !hasBitmap else { return false }
+        return image.representations.contains { representation in
+            String(describing: type(of: representation)).contains("SVG")
+        }
+    }
+
+    static func bundledSVGURL(in bundle: Bundle = .main) -> URL? {
+        bundle.url(forResource: resourceName, withExtension: "svg")
+    }
+
+    static func make(
+        fromSVG svgURL: URL,
+        outputSize: NSSize
+    ) -> NSImage? {
+        let cacheKey = MenuBarSizedImageCacheKey(url: svgURL, outputSize: outputSize)
+        cacheLock.lock()
+        if let cached = idleImagesByCacheKey[cacheKey] {
+            cacheLock.unlock()
+            return cached
+        }
+        let cachedData = idleSVGDataByURL[svgURL]
+        cacheLock.unlock()
+
+        let svgData: Data
+        if let cachedData {
+            svgData = cachedData
+        } else {
+            guard let made = makeIdleSVGMarkup(from: svgURL)?.data(using: .utf8) else {
+                return nil
+            }
+            cacheLock.lock()
+            if let existing = idleSVGDataByURL[svgURL] {
+                cacheLock.unlock()
+                svgData = existing
+            } else {
+                idleSVGDataByURL[svgURL] = made
+                cacheLock.unlock()
+                svgData = made
+            }
+        }
+
+        guard let icon = NSImage(data: svgData) else {
+            return nil
+        }
+        icon.size = outputSize
+        icon.isTemplate = true
+        cacheLock.lock()
+        idleImagesByCacheKey[cacheKey] = icon
+        cacheLock.unlock()
+        return icon
+    }
+
+    static func makeIdleSVGMarkup(from svgURL: URL) -> String? {
+        guard
+            let svg = try? String(contentsOf: svgURL, encoding: .utf8),
+            let inner = innerFrameMarkup(svg)
+        else {
+            return nil
+        }
+        let frame = Int(sourceFrameSize.width.rounded())
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(frame) \(frame)\"><defs><style>.cls-1{fill:none;}</style></defs>\(opticallyScaledInnerSVG(inner))</svg>"
+    }
+
+    static func opticallyScaledInnerSVG(_ inner: String) -> String {
+        let frame = Int(sourceFrameSize.width.rounded())
+        return "<svg overflow=\"hidden\" width=\"\(frame)\" height=\"\(frame)\" viewBox=\"\(opticalCropInset) \(opticalCropInset) \(opticalCropSide) \(opticalCropSide)\">\(inner)</svg>"
+    }
+
+    private static func innerFrameMarkup(_ svg: String) -> String? {
+        guard
+            let open = svg.range(of: "<svg"),
+            let openEnd = svg[open.lowerBound...].range(of: ">"),
+            let close = svg.range(of: "</svg>", options: [.backwards, .caseInsensitive])
+        else {
+            return nil
+        }
+        var inner = String(svg[openEnd.upperBound..<close.lowerBound])
+        if let defsOpen = inner.range(of: "<defs>"),
+           let defsClose = inner.range(of: "</defs>") {
+            inner.removeSubrange(defsOpen.lowerBound..<defsClose.upperBound)
+        }
+        return inner
+    }
+
+    static func make(
+        fromPNG pngURL: URL,
+        outputSize: NSSize
+    ) -> NSImage? {
+        let cacheKey = MenuBarSizedImageCacheKey(url: pngURL, outputSize: outputSize)
+        cacheLock.lock()
+        if let cached = sizedByCacheKey[cacheKey] {
+            cacheLock.unlock()
+            return cached
+        }
+        let cachedCrop = croppedByURL[pngURL]
+        cacheLock.unlock()
+
+        guard let cropped = cachedCrop ?? croppedTemplate(fromPNG: pngURL) else {
+            return nil
+        }
+        cacheLock.lock()
+        croppedByURL[pngURL] = cropped
+        cacheLock.unlock()
+
+        let sized = sizedTemplate(from: cropped, outputSize: outputSize)
+        cacheLock.lock()
+        sizedByCacheKey[cacheKey] = sized
+        cacheLock.unlock()
+        return sized
+    }
+
+    static func croppedTemplate(fromPNG pngURL: URL) -> NSImage? {
+        guard let image = NSImage(contentsOf: pngURL) else { return nil }
+        if let cropped = croppedTemplate(from: image) {
+            return cropped
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    static func croppedTemplate(from image: NSImage) -> NSImage? {
+        guard
+            let rep = bitmapRepresentation(of: image),
+            let crop = squareOpaqueCrop(in: rep),
+            let cgImage = rep.cgImage?.cropping(to: crop)
+        else {
+            return nil
+        }
+        let cropped = NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: crop.width, height: crop.height)
+        )
+        cropped.isTemplate = true
+        return cropped
+    }
+
+    /// Keeps the cropped bitmap and only changes the point size. Drawing into
+    /// an `NSImage(size: slot)` block would bake an 18 px 1x image on Retina.
+    private static func sizedTemplate(from image: NSImage, outputSize: NSSize) -> NSImage {
+        var rect = NSRect(origin: .zero, size: image.size)
+        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+            let sized = NSImage(cgImage: cgImage, size: outputSize)
+            sized.isTemplate = true
+            return sized
+        }
+        let sized = NSImage()
+        for representation in image.representations {
+            sized.addRepresentation(representation)
+        }
+        sized.size = outputSize
+        sized.isTemplate = true
+        return sized
+    }
+
+    private static func bitmapRepresentation(of image: NSImage) -> NSBitmapImageRep? {
+        if let existing = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first {
+            return existing
+        }
+        var rect = NSRect(origin: .zero, size: image.size)
+        if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+            return NSBitmapImageRep(cgImage: cgImage)
+        }
+        return image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))
+    }
+
+    private static func squareOpaqueCrop(in rep: NSBitmapImageRep) -> CGRect? {
+        guard
+            let data = rep.bitmapData,
+            rep.pixelsWide > 0,
+            rep.pixelsHigh > 0,
+            rep.bitsPerPixel >= 32
+        else {
+            return nil
+        }
+        let bytesPerPixel = max(1, rep.bitsPerPixel / 8)
+        let alphaOffset = rep.bitmapFormat.contains(.alphaFirst) ? 0 : bytesPerPixel - 1
+        var minX = rep.pixelsWide
+        var minY = rep.pixelsHigh
+        var maxX = -1
+        var maxY = -1
+        for y in 0..<rep.pixelsHigh {
+            let row = y * rep.bytesPerRow
+            for x in 0..<rep.pixelsWide {
+                let alpha = data[row + x * bytesPerPixel + alphaOffset]
+                guard alpha > alphaThreshold else { continue }
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        let contentWidth = maxX - minX + 1
+        let contentHeight = maxY - minY + 1
+        let side = min(
+            max(contentWidth, contentHeight),
+            rep.pixelsWide,
+            rep.pixelsHigh
+        )
+        var originX = minX - (side - contentWidth) / 2
+        var originY = minY - (side - contentHeight) / 2
+        originX = max(0, min(originX, rep.pixelsWide - side))
+        originY = max(0, min(originY, rep.pixelsHigh - side))
+        return CGRect(x: originX, y: originY, width: side, height: side)
     }
 }
