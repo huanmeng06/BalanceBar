@@ -679,8 +679,9 @@ enum GrokThinkingAnimationTiming {
 }
 
 /// PNG fallback for the idle Grok mark. Runtime idle loading prefers
-/// `Grok.svg` and must not redraw that SVG into an `NSImage(size: slot)`
-/// bitmap. This crop path keeps high-res pixels and never uses `colorAtX:y:`.
+/// `GrokThinking/frame_016.svg` and must not redraw that SVG into an
+/// `NSImage(size: slot)` bitmap. This crop path keeps high-res pixels
+/// and never uses `colorAtX:y:`.
 enum GrokIdleIcon {
     private static let cacheLock = NSLock()
     private static var croppedByURL: [URL: NSImage] = [:]
@@ -826,10 +827,26 @@ enum GrokThinkingSprite {
     static let retinaContentsScale: CGFloat = 2
     static let resourceDirectoryName = "GrokThinking"
     static let sourceFrameSize = NSSize(width: 560, height: 560)
+    static let idleFrameIndex = 16
+    /// Centered 560-canvas crop: 560 / 1.12 = 500, inset 30. Ring stays
+    /// complete; slash tips may clip slightly. Do not rewrite path `d`.
+    static let opticalScale: CGFloat = 1.12
+
+    static var opticalCropInset: Int {
+        let frame = sourceFrameSize.width
+        let cropSide = frame / opticalScale
+        return Int(((frame - cropSide) / 2).rounded())
+    }
+
+    static var opticalCropSide: Int {
+        Int(sourceFrameSize.width.rounded()) - (opticalCropInset * 2)
+    }
 
     private static let cacheLock = NSLock()
     private static var sourceSVGDataByURL: [URL: Data] = [:]
+    private static var idleSVGDataByURL: [URL: Data] = [:]
     private static var spritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
+    private static var idleImagesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static var pngSpritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static var fromGIFCallCount = 0
     private static var sourceFrameBuildCount = 0
@@ -850,7 +867,9 @@ enum GrokThinkingSprite {
         cacheLock.lock()
         defer { cacheLock.unlock() }
         sourceSVGDataByURL = [:]
+        idleSVGDataByURL = [:]
         spritesByCacheKey = [:]
+        idleImagesByCacheKey = [:]
         pngSpritesByCacheKey = [:]
         fromGIFCallCount = 0
         sourceFrameBuildCount = 0
@@ -938,6 +957,71 @@ enum GrokThinkingSprite {
         return sprite
     }
 
+    static func makeIdle(
+        fromDirectory directoryURL: URL,
+        outputSize: NSSize
+    ) -> NSImage? {
+        let cacheKey = MenuBarSizedImageCacheKey(
+            url: directoryURL,
+            outputSize: outputSize
+        )
+        cacheLock.lock()
+        if let cached = idleImagesByCacheKey[cacheKey] {
+            cacheLock.unlock()
+            return cached
+        }
+        let cachedData = idleSVGDataByURL[directoryURL]
+        cacheLock.unlock()
+
+        let svgData: Data
+        if let cachedData {
+            svgData = cachedData
+        } else {
+            guard let made = makeIdleSVGMarkup(fromDirectory: directoryURL)?
+                .data(using: .utf8) else {
+                return nil
+            }
+            cacheLock.lock()
+            if let existing = idleSVGDataByURL[directoryURL] {
+                cacheLock.unlock()
+                svgData = existing
+            } else {
+                idleSVGDataByURL[directoryURL] = made
+                cacheLock.unlock()
+                svgData = made
+            }
+        }
+
+        guard let icon = NSImage(data: svgData) else {
+            return nil
+        }
+        icon.size = outputSize
+        icon.isTemplate = true
+        cacheLock.lock()
+        idleImagesByCacheKey[cacheKey] = icon
+        cacheLock.unlock()
+        return icon
+    }
+
+    static func makeIdleSVGMarkup(fromDirectory directoryURL: URL) -> String? {
+        let url = directoryURL.appendingPathComponent(
+            frameFileName(index: idleFrameIndex)
+        )
+        guard
+            let svg = try? String(contentsOf: url, encoding: .utf8),
+            let inner = innerFrameMarkup(svg)
+        else {
+            return nil
+        }
+        let frame = Int(sourceFrameSize.width.rounded())
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(frame) \(frame)\"><defs><style>.cls-1{fill:none;}</style></defs>\(opticallyScaledInnerSVG(inner))</svg>"
+    }
+
+    static func opticallyScaledInnerSVG(_ inner: String) -> String {
+        let frame = Int(sourceFrameSize.width.rounded())
+        return "<svg overflow=\"hidden\" width=\"\(frame)\" height=\"\(frame)\" viewBox=\"\(opticalCropInset) \(opticalCropInset) \(opticalCropSide) \(opticalCropSide)\">\(inner)</svg>"
+    }
+
     static func makeStackedSVGMarkup(fromDirectory directoryURL: URL) -> String? {
         var groups: [String] = []
         groups.reserveCapacity(GrokThinkingAnimationTiming.frameCount)
@@ -954,7 +1038,9 @@ enum GrokThinkingSprite {
             // the top of the strip; translation 0 shows frame 030 at the
             // bottom. Claude stacking is unchanged.
             let translateY = frameHeight * (index - 1)
-            groups.append("<g transform=\"translate(0,\(translateY))\">\(inner)</g>")
+            groups.append(
+                "<g transform=\"translate(0,\(translateY))\">\(opticallyScaledInnerSVG(inner))</g>"
+            )
         }
         let width = Int(sourceFrameSize.width.rounded())
         let height = frameHeight * GrokThinkingAnimationTiming.frameCount

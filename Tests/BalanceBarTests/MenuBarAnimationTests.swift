@@ -576,6 +576,13 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(firstFrame.contains("m0,560V0h560v560H0Z"))
         XCTAssertTrue(stackedMarkup.contains("m0,560V0h560v560H0Z"))
         XCTAssertTrue(stackedMarkup.contains("m532.29,39.28"))
+        XCTAssertEqual(GrokThinkingSprite.opticalScale, 1.12, accuracy: 0.000_001)
+        XCTAssertEqual(GrokThinkingSprite.opticalCropInset, 30)
+        XCTAssertEqual(GrokThinkingSprite.opticalCropSide, 500)
+        XCTAssertTrue(
+            stackedMarkup.contains("viewBox=\"30 30 500 500\""),
+            "thinking strip must use the same 1.12 centered crop as idle"
+        )
         // Reverse of the previous bottom-origin stack: frame 001 at y=0,
         // frame 030 at y=16240, frame 012 at y=11*560.
         XCTAssertTrue(
@@ -590,9 +597,30 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         XCTAssertTrue(
             stackedMarkup.contains(
-                "<g transform=\"translate(0,6160)\"><path d=\"m532.29,39.28"
+                "<g transform=\"translate(0,6160)\"><svg overflow=\"hidden\" width=\"560\" height=\"560\" viewBox=\"30 30 500 500\"><path d=\"m532.29,39.28"
             ),
             "reversed Grok stack must place frame 12 at translateY 6160 without knocking out unclassed paths"
+        )
+
+        let frame16 = try String(
+            contentsOf: directoryURL.appendingPathComponent(
+                GrokThinkingSprite.frameFileName(index: GrokThinkingSprite.idleFrameIndex)
+            ),
+            encoding: .utf8
+        )
+        XCTAssertEqual(GrokThinkingSprite.idleFrameIndex, 16)
+        XCTAssertTrue(frame16.contains("m532.29,39.28"))
+        XCTAssertTrue(frame16.contains(".cls-1{fill:#fff;}"))
+        let idleMarkup = try XCTUnwrap(
+            GrokThinkingSprite.makeIdleSVGMarkup(fromDirectory: directoryURL)
+        )
+        XCTAssertTrue(idleMarkup.contains("viewBox=\"30 30 500 500\""))
+        XCTAssertTrue(idleMarkup.contains(".cls-1{fill:none;}"))
+        XCTAssertFalse(idleMarkup.contains(".cls-1{fill:#fff;}"))
+        XCTAssertTrue(idleMarkup.contains("m532.29,39.28"))
+        XCTAssertFalse(
+            idleMarkup.contains("Grok.svg"),
+            "live idle must be Frame 16, not the old G spark"
         )
 
         GrokThinkingSprite.resetCachesForTesting()
@@ -621,6 +649,34 @@ final class MenuBarAnimationTests: XCTestCase {
             sprite.representations.compactMap { $0 as? NSBitmapImageRep }.isEmpty,
             "live Grok thinking must not pre-bake an NSBitmapImageRep strip"
         )
+
+        let idle = try XCTUnwrap(
+            GrokThinkingSprite.makeIdle(fromDirectory: directoryURL, outputSize: frameSize)
+        )
+        XCTAssertEqual(idle.size, frameSize)
+        XCTAssertTrue(idle.isTemplate)
+        XCTAssertTrue(
+            GrokThinkingSprite.isVectorSVGRepresentation(idle),
+            "idle Frame 16 must stay _NSSVGImageRep"
+        )
+        XCTAssertTrue(
+            idle.representations.compactMap { $0 as? NSBitmapImageRep }.isEmpty,
+            "idle Frame 16 must not bake an NSBitmapImageRep"
+        )
+        for preset in MenuBarIconSizePreset.allCases {
+            let sizedIdle = try XCTUnwrap(
+                GrokThinkingSprite.makeIdle(
+                    fromDirectory: directoryURL,
+                    outputSize: NSSize(width: preset.pointSize, height: preset.pointSize)
+                )
+            )
+            XCTAssertEqual(
+                sizedIdle.size,
+                NSSize(width: preset.pointSize, height: preset.pointSize)
+            )
+            XCTAssertTrue(GrokThinkingSprite.isVectorSVGRepresentation(sizedIdle))
+            XCTAssertTrue(sizedIdle.isTemplate)
+        }
 
         let hostScale: CGFloat = 2
         let strip = try rasterizeThinkingSpriteThroughHost(
@@ -1341,6 +1397,7 @@ final class MenuBarAnimationTests: XCTestCase {
             statusItemSource[grokThinkingLoadStart.lowerBound..<grokThinkingLoadEnd.lowerBound]
         )
         let collapsedGrokThinkingLoad = String(grokThinkingLoadPath.filter { !$0.isWhitespace })
+        XCTAssertTrue(statusItemSource.contains("GrokThinkingSprite.makeIdle"))
         XCTAssertTrue(collapsedGrokThinkingLoad.contains("bundledDirectoryURL()"))
         XCTAssertTrue(collapsedGrokThinkingLoad.contains("fromDirectory:thinkingDirectory"))
         XCTAssertFalse(

@@ -2493,6 +2493,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var grokIdleIconSizeForTesting: NSSize? { grokIconImage?.size }
 
+    var grokIdleIconImageForTesting: NSImage? { grokIconImage }
+
+    var grokIdleIsVectorSVGForTesting: Bool {
+        guard let image = grokIconImage else { return false }
+        return GrokThinkingSprite.isVectorSVGRepresentation(image)
+    }
+
     var grokThinkingSpriteImageForTesting: NSImage? { grokThinkingSpriteImage }
 
     var grokThinkingSpriteSizeForTesting: NSSize? { grokThinkingSpriteImage?.size }
@@ -2976,18 +2983,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
-        // Idle Grok is the cropped SVG, loaded like Codex/Claude. Do not
-        // redraw it into an `NSImage(size: slot)` bitmap; that bakes 1x.
-        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "svg"),
-           let icon = NSImage(contentsOf: iconURL) {
-            icon.size = outputSize
-            icon.isTemplate = true
-            grokIconImage = icon
-        } else if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png") {
-            grokIconImage = GrokIdleIcon.make(
-                fromPNG: iconURL,
+        // Idle Grok is Frame 16 from the thinking pack, vector-loaded like
+        // Codex/Claude. Do not redraw it into an `NSImage(size: slot)` bitmap.
+        grokIconImage = nil
+        if let thinkingDirectory = GrokThinkingSprite.bundledDirectoryURL() {
+            grokIconImage = GrokThinkingSprite.makeIdle(
+                fromDirectory: thinkingDirectory,
                 outputSize: outputSize
             )
+        }
+        if grokIconImage == nil {
+            if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "svg"),
+               let icon = NSImage(contentsOf: iconURL) {
+                icon.size = outputSize
+                icon.isTemplate = true
+                grokIconImage = icon
+            } else if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png") {
+                grokIconImage = GrokIdleIcon.make(
+                    fromPNG: iconURL,
+                    outputSize: outputSize
+                )
+            }
         }
         // Size clicks must stay on the committed 30-frame SVG directory.
         // GIF decode plus per-pixel `colorAtX:y:` pegs a core on the main thread.

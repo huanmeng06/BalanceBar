@@ -107,33 +107,22 @@ final class StatusItemControllerTests: XCTestCase {
 
     @MainActor
     func testIdleGrokIconLoadsVectorSVGInsteadOfOneXBitmap() throws {
-        let svgURL = try XCTUnwrap(
-            Bundle.main.url(forResource: "Grok", withExtension: "svg"),
-            "idle Grok must ship as Grok.svg like Codex/Claude"
+        let frame16 = try XCTUnwrap(
+            GrokThinkingSprite.bundledDirectoryURL()?
+                .appendingPathComponent(
+                    GrokThinkingSprite.frameFileName(index: GrokThinkingSprite.idleFrameIndex)
+                ),
+            "idle Grok must ship as GrokThinking/frame_016.svg"
         )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: frame16.path))
+        let frame16Markup = try String(contentsOf: frame16, encoding: .utf8)
+        XCTAssertTrue(frame16Markup.contains("m532.29,39.28"))
         let mediumSize = NSSize(
             width: MenuBarIconSizePreset.medium.pointSize,
             height: MenuBarIconSizePreset.medium.pointSize
         )
-        let icon = try XCTUnwrap(NSImage(contentsOf: svgURL))
-        icon.size = mediumSize
-        icon.isTemplate = true
-        XCTAssertEqual(icon.size, mediumSize)
-        XCTAssertTrue(icon.isTemplate)
-        let bitmaps = icon.representations.compactMap { $0 as? NSBitmapImageRep }
-        if let bitmap = bitmaps.first {
-            XCTAssertGreaterThan(
-                bitmap.pixelsWide,
-                Int(MenuBarIconSizePreset.medium.pointSize * 2),
-                "idle Grok must not bake an 18 px 1x bitmap"
-            )
-        } else {
-            XCTAssertFalse(
-                icon.representations.isEmpty,
-                "Grok.svg must load as a vector image representation"
-            )
-        }
 
+        GrokThinkingSprite.resetCachesForTesting()
         let controller = makeController()
         defer { controller.teardown() }
         controller.start(
@@ -150,6 +139,16 @@ final class StatusItemControllerTests: XCTestCase {
             controller.grokIdleIconSizeForTesting?.width ?? .nan,
             MenuBarIconSizePreset.medium.pointSize
         )
+        XCTAssertTrue(
+            controller.grokIdleIsVectorSVGForTesting,
+            "idle Frame 16 must stay _NSSVGImageRep"
+        )
+        let idle = try XCTUnwrap(controller.grokIdleIconImageForTesting)
+        XCTAssertTrue(idle.isTemplate)
+        XCTAssertTrue(
+            idle.representations.compactMap { $0 as? NSBitmapImageRep }.isEmpty,
+            "idle Grok must not bake an 18 px 1x bitmap"
+        )
     }
 
     @MainActor
@@ -164,8 +163,11 @@ final class StatusItemControllerTests: XCTestCase {
             "live Grok thinking must include frame_001.svg"
         )
         XCTAssertNotNil(
-            Bundle.main.url(forResource: "Grok", withExtension: "svg"),
-            "idle Grok must still ship as Grok.svg"
+            GrokThinkingSprite.bundledDirectoryURL()?
+                .appendingPathComponent(
+                    GrokThinkingSprite.frameFileName(index: GrokThinkingSprite.idleFrameIndex)
+                ),
+            "idle Grok must ship as GrokThinking/frame_016.svg"
         )
 
         GrokThinkingSprite.resetCachesForTesting()
@@ -180,6 +182,17 @@ final class StatusItemControllerTests: XCTestCase {
             settings: makeSettings()
         )
         XCTAssertEqual(GrokThinkingSprite.fromGIFCallCountForTesting, 0)
+        XCTAssertEqual(
+            try XCTUnwrap(controller.grokIdleIconSizeForTesting),
+            NSSize(
+                width: MenuBarIconSizePreset.medium.pointSize,
+                height: MenuBarIconSizePreset.medium.pointSize
+            )
+        )
+        XCTAssertTrue(
+            controller.grokIdleIsVectorSVGForTesting,
+            "idle Frame 16 must stay _NSSVGImageRep"
+        )
         XCTAssertEqual(
             try XCTUnwrap(controller.grokThinkingSpriteSizeForTesting),
             NSSize(
@@ -217,6 +230,14 @@ final class StatusItemControllerTests: XCTestCase {
                 GrokThinkingSprite.fromGIFCallCountForTesting,
                 0,
                 "updateIconSize(\(preset.rawValue)) must not call make(fromGIF:)"
+            )
+            XCTAssertEqual(
+                try XCTUnwrap(controller.grokIdleIconSizeForTesting),
+                NSSize(width: preset.pointSize, height: preset.pointSize)
+            )
+            XCTAssertTrue(
+                controller.grokIdleIsVectorSVGForTesting,
+                "updateIconSize(\(preset.rawValue)) idle must stay vector Frame 16"
             )
             XCTAssertEqual(
                 try XCTUnwrap(controller.grokThinkingSpriteSizeForTesting),
