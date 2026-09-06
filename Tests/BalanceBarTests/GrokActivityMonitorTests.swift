@@ -97,6 +97,51 @@ final class GrokActivityMonitorTests: XCTestCase {
         )
     }
 
+    func testLivePSCommColumnPaddingRecognizesConfirmedBareAgent() {
+        let livePaddedLine = "38864 38839 ttys000  agent            agent"
+        XCTAssertTrue(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                livePaddedLine,
+                confirmedAgentPIDs: [38864]
+            )
+        )
+        XCTAssertFalse(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(livePaddedLine)
+        )
+        XCTAssertFalse(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "38864 38839 ??  agent            agent",
+                confirmedAgentPIDs: [38864]
+            )
+        )
+        XCTAssertFalse(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "101 1 ?? UserEventAgent /usr/libexec/UserEventAgent (System)"
+            )
+        )
+        XCTAssertFalse(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "101 1 ttys000 distnoted distnoted agent"
+            )
+        )
+        XCTAssertTrue(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "38864 38839 ttys000 agent agent",
+                confirmedAgentPIDs: [38864]
+            )
+        )
+        XCTAssertTrue(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "202 1 ttys000 grok grok"
+            )
+        )
+        XCTAssertTrue(
+            GrokActivityMonitor.lineLooksLikeGrokCLI(
+                "202 1 ttys000 grok-macos-aarch64 /Users/dev/.grok/bin/grok"
+            )
+        )
+    }
+
     func testConfirmedBareAgentProcessPresenceExposesTTY() throws {
         try writeActiveSessions([
             [
@@ -111,6 +156,31 @@ final class GrokActivityMonitorTests: XCTestCase {
         ).processPresence()
         XCTAssertTrue(presence.running)
         XCTAssertEqual(presence.ttys, ["ttys000"])
+    }
+
+    func testLivePSCommColumnPaddingConfirmedBareAgentProcessPresenceExposesTTY() throws {
+        try writeActiveSessions([
+            [
+                "session_id": "agent-tui",
+                "pid": 38864,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+        let presence = makeMonitor(
+            processOutput: "38864 38839 ttys000  agent            agent"
+        ).processPresence()
+        XCTAssertTrue(presence.running)
+        XCTAssertEqual(presence.ttys, ["ttys000"])
+    }
+
+    func testLivePSCommColumnPaddingBareAgentWithoutConfirmedPIDIsNotGrokProcess() throws {
+        try writeActiveSessions([])
+        let presence = makeMonitor(
+            processOutput: "38864 38839 ttys000  agent            agent"
+        ).processPresence()
+        XCTAssertFalse(presence.running)
+        XCTAssertEqual(presence.ttys, [])
     }
 
     func testBareAgentWithoutConfirmedPIDIsNotGrokProcess() throws {
@@ -201,6 +271,56 @@ final class GrokActivityMonitorTests: XCTestCase {
         )
     }
 
+    func testLivePSCommColumnPaddingKeepsGrokIdentityAfterClosingGrokWindow() throws {
+        try writeActiveSessions([
+            [
+                "session_id": "agent-tui",
+                "pid": 38864,
+                "cwd": "/tmp/fixture",
+                "opened_at": "2026-09-05T00:00:00Z"
+            ]
+        ])
+        let onlyAgent = makeMonitor(
+            processOutput: "38864 38839 ttys000  agent            agent"
+        ).processPresence()
+        XCTAssertTrue(onlyAgent.running)
+        XCTAssertEqual(onlyAgent.ttys, ["ttys000"])
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .codex,
+                grokProcessRunning: onlyAgent.running,
+                claudeProcessRunning: false,
+                frontmostTTY: onlyAgent.ttys.first,
+                grokTTYs: Set(onlyAgent.ttys)
+            ),
+            .grok
+        )
+
+        let afterClosingGrok = makeMonitor(
+            processOutput: "38864 38839 ttys000  agent            agent"
+        ).processPresence()
+        XCTAssertTrue(afterClosingGrok.running)
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .terminal,
+                current: .grok,
+                grokProcessRunning: afterClosingGrok.running,
+                claudeProcessRunning: false
+            ),
+            .grok
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .codex,
+                current: .grok,
+                grokProcessRunning: afterClosingGrok.running,
+                claudeProcessRunning: false
+            ),
+            .codex
+        )
+    }
+
     func testSystemAgentAndGrokSubstringsAreNotGrokProcess() {
         XCTAssertFalse(
             makeMonitor(
@@ -220,6 +340,16 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertFalse(
             makeMonitor(
                 processOutput: "38864 38839 ?? agent agent"
+            ).processPresence().running
+        )
+        XCTAssertFalse(
+            makeMonitor(
+                processOutput: "38864 38839 ??  agent            agent"
+            ).processPresence().running
+        )
+        XCTAssertFalse(
+            makeMonitor(
+                processOutput: "101 1 ttys000 distnoted distnoted agent"
             ).processPresence().running
         )
     }

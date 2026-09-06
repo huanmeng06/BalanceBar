@@ -25,8 +25,10 @@ struct TerminalCLIProcessRecord: Equatable {
             pid: pid,
             ppid: ppid,
             tty: normalizeTTY(String(fields[2])),
-            command: String(fields[3]),
-            arguments: fields.count >= 5 ? String(fields[4]) : ""
+            command: String(fields[3]).trimmingCharacters(in: .whitespacesAndNewlines),
+            arguments: fields.count >= 5
+                ? String(fields[4]).trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
         )
     }
 
