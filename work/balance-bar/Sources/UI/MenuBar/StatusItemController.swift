@@ -2493,7 +2493,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     var grokIdleIconSizeForTesting: NSSize? { grokIconImage?.size }
 
+    var grokThinkingSpriteImageForTesting: NSImage? { grokThinkingSpriteImage }
+
     var grokThinkingSpriteSizeForTesting: NSSize? { grokThinkingSpriteImage?.size }
+
+    var grokThinkingSpriteIsVectorSVGForTesting: Bool {
+        guard let image = grokThinkingSpriteImage else { return false }
+        return GrokThinkingSprite.isVectorSVGRepresentation(image)
+    }
 
     var grokThinkingSpritePixelWidthForTesting: Int? {
         grokThinkingSpriteImage?
@@ -4266,7 +4273,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Synchronizes the retained Grok sprite host. Idle keeps the spark as the
-    /// semantic source; running plays the GIF-derived multi-frame strip.
+    /// semantic source; running plays the 30-frame SVG strip.
     @discardableResult
     private func synchronizeGrokThinkingAnimationHost() -> Bool {
         precondition(

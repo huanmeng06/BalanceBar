@@ -188,10 +188,27 @@ final class StatusItemControllerTests: XCTestCase {
                     * CGFloat(GrokThinkingAnimationTiming.frameCount)
             )
         )
-        XCTAssertGreaterThanOrEqual(
-            try XCTUnwrap(controller.grokThinkingSpritePixelWidthForTesting),
-            Int(MenuBarIconSizePreset.medium.pointSize * GrokThinkingSprite.retinaContentsScale),
-            "live Grok thinking must composite at contentsScale ≥ 2"
+        XCTAssertTrue(
+            controller.grokThinkingSpriteIsVectorSVGForTesting,
+            "live Grok thinking must stay _NSSVGImageRep until the host rasterizes"
+        )
+        XCTAssertNil(
+            controller.grokThinkingSpritePixelWidthForTesting,
+            "live Grok thinking must not pre-bake an NSBitmapImageRep strip"
+        )
+        let mediumHostScale: CGFloat = 2
+        let mediumRaster = try rasterizeGrokThinkingSprite(
+            try XCTUnwrap(controller.grokThinkingSpriteImageForTesting),
+            frameSize: NSSize(
+                width: MenuBarIconSizePreset.medium.pointSize,
+                height: MenuBarIconSizePreset.medium.pointSize
+            ),
+            scale: mediumHostScale
+        )
+        XCTAssertEqual(
+            mediumRaster.width,
+            Int((MenuBarIconSizePreset.medium.pointSize * mediumHostScale).rounded()),
+            "host CGImage width must equal slot × contentsScale"
         )
 
         for preset in MenuBarIconSizePreset.allCases {
@@ -208,10 +225,20 @@ final class StatusItemControllerTests: XCTestCase {
                     height: preset.pointSize * CGFloat(GrokThinkingAnimationTiming.frameCount)
                 )
             )
-            XCTAssertGreaterThanOrEqual(
-                try XCTUnwrap(controller.grokThinkingSpritePixelWidthForTesting),
-                Int(preset.pointSize * GrokThinkingSprite.retinaContentsScale),
-                "updateIconSize(\(preset.rawValue)) must keep a ≥2x bitmap rep"
+            XCTAssertTrue(
+                controller.grokThinkingSpriteIsVectorSVGForTesting,
+                "updateIconSize(\(preset.rawValue)) must keep the live SVG representation"
+            )
+            XCTAssertNil(controller.grokThinkingSpritePixelWidthForTesting)
+            let raster = try rasterizeGrokThinkingSprite(
+                try XCTUnwrap(controller.grokThinkingSpriteImageForTesting),
+                frameSize: NSSize(width: preset.pointSize, height: preset.pointSize),
+                scale: mediumHostScale
+            )
+            XCTAssertEqual(
+                raster.width,
+                Int((preset.pointSize * mediumHostScale).rounded()),
+                "updateIconSize(\(preset.rawValue)) host width must equal slot × contentsScale"
             )
         }
         XCTAssertLessThanOrEqual(
@@ -1681,6 +1708,39 @@ final class StatusItemControllerTests: XCTestCase {
         )
         XCTAssertEqual(mask.fillRule, .evenOdd, file: file, line: line)
         XCTAssertNotNil(mask.path, file: file, line: line)
+    }
+
+    private func rasterizeGrokThinkingSprite(
+        _ sprite: NSImage,
+        frameSize: NSSize,
+        scale: CGFloat
+    ) throws -> CGImage {
+        let host = MenuBarClaudeAnimatedIconHostView(
+            frame: NSRect(origin: .zero, size: frameSize)
+        )
+        host.timing = .grok
+        host.updateGeometry(
+            frame: NSRect(origin: .zero, size: frameSize),
+            contentsScale: scale
+        )
+        XCTAssertTrue(
+            host.updateContents(
+                spriteImage: sprite,
+                frameSize: frameSize,
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: scale
+            )
+        )
+        let object = try XCTUnwrap(
+            host.spriteLayer.contents,
+            "sprite layer must have rasterized contents"
+        )
+        XCTAssertEqual(
+            CFGetTypeID(object as CFTypeRef),
+            CGImage.typeID,
+            "host contents must be a CGImage"
+        )
+        return unsafeBitCast(object as CFTypeRef, to: CGImage.self)
     }
 
     private func makeSolidImage(

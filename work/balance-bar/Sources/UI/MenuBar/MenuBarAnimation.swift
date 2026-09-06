@@ -547,9 +547,9 @@ enum MenuBarThinkingSprite {
             width: outputSize.width,
             height: outputSize.height * CGFloat(frameCount)
         )
-        // Claude keeps the historical 1x `NSImage(size:){draw}` path. Grok
-        // thinking must pass contentsScale ≥ 2 so Retina is not a blurry
-        // 18 px bitmap stretched to 36 px.
+        // Claude keeps the historical 1x `NSImage(size:){draw}` path. Live
+        // Grok thinking no longer uses this baker; it stays `_NSSVGImageRep`
+        // until the animation host rasterizes at `backingScaleFactor`.
         if contentsScale > 1 {
             guard let sprite = makeRetinaSprite(
                 from: frames,
@@ -820,15 +820,15 @@ enum GrokIdleIcon {
 /// Loads the committed 30-frame Grok thinking SVG directory, or fixture
 /// PNG/GIF strips. `fromGIF` is for build/test/one-shot background work; the
 /// live icon-size path must use `make(fromDirectory:)` so clicks do not
-/// decode GIF or run `colorAtX:y:`. SVG frames are composited at
-/// contentsScale ≥ 2.
+/// decode GIF or run `colorAtX:y:`. Live thinking stays `_NSSVGImageRep`
+/// until the animation host rasterizes it at the window scale.
 enum GrokThinkingSprite {
     static let retinaContentsScale: CGFloat = 2
     static let resourceDirectoryName = "GrokThinking"
     static let sourceFrameSize = NSSize(width: 560, height: 560)
 
     private static let cacheLock = NSLock()
-    private static var sourceFramesByURL: [URL: [NSImage]] = [:]
+    private static var sourceSVGDataByURL: [URL: Data] = [:]
     private static var spritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static var pngSpritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static var fromGIFCallCount = 0
@@ -849,11 +849,19 @@ enum GrokThinkingSprite {
     static func resetCachesForTesting() {
         cacheLock.lock()
         defer { cacheLock.unlock() }
-        sourceFramesByURL = [:]
+        sourceSVGDataByURL = [:]
         spritesByCacheKey = [:]
         pngSpritesByCacheKey = [:]
         fromGIFCallCount = 0
         sourceFrameBuildCount = 0
+    }
+
+    static func isVectorSVGRepresentation(_ image: NSImage) -> Bool {
+        let hasBitmap = image.representations.contains { $0 is NSBitmapImageRep }
+        guard !hasBitmap else { return false }
+        return image.representations.contains { representation in
+            String(describing: type(of: representation)).contains("SVG")
+        }
     }
 
     static func bundledDirectoryURL(in bundle: Bundle = .main) -> URL? {
@@ -894,35 +902,60 @@ enum GrokThinkingSprite {
             cacheLock.unlock()
             return cachedSprite
         }
-        let cachedFrames = sourceFramesByURL[directoryURL]
+        let cachedData = sourceSVGDataByURL[directoryURL]
         cacheLock.unlock()
 
-        let frames: [NSImage]
-        if let cachedFrames {
-            frames = cachedFrames
+        let svgData: Data
+        if let cachedData {
+            svgData = cachedData
         } else {
-            guard let made = makeFrames(fromDirectory: directoryURL) else {
+            guard let made = makeStackedSVGData(fromDirectory: directoryURL) else {
                 return nil
             }
             cacheLock.lock()
-            if let existing = sourceFramesByURL[directoryURL] {
+            if let existing = sourceSVGDataByURL[directoryURL] {
                 cacheLock.unlock()
-                frames = existing
+                svgData = existing
             } else {
-                sourceFramesByURL[directoryURL] = made
+                sourceSVGDataByURL[directoryURL] = made
                 sourceFrameBuildCount += 1
                 cacheLock.unlock()
-                frames = made
+                svgData = made
             }
         }
 
-        guard let sprite = makeSprite(from: frames, outputSize: outputSize) else {
+        guard let sprite = NSImage(data: svgData) else {
             return nil
         }
+        sprite.size = NSSize(
+            width: outputSize.width,
+            height: outputSize.height * CGFloat(GrokThinkingAnimationTiming.frameCount)
+        )
+        sprite.isTemplate = true
         cacheLock.lock()
         spritesByCacheKey[spriteKey] = sprite
         cacheLock.unlock()
         return sprite
+    }
+
+    static func makeStackedSVGMarkup(fromDirectory directoryURL: URL) -> String? {
+        var groups: [String] = []
+        groups.reserveCapacity(GrokThinkingAnimationTiming.frameCount)
+        let frameHeight = Int(sourceFrameSize.height.rounded())
+        for index in 1...GrokThinkingAnimationTiming.frameCount {
+            let url = directoryURL.appendingPathComponent(frameFileName(index: index))
+            guard
+                let svg = try? String(contentsOf: url, encoding: .utf8),
+                let inner = innerFrameMarkup(svg)
+            else {
+                return nil
+            }
+            let translateY = frameHeight * (GrokThinkingAnimationTiming.frameCount - index)
+            groups.append("<g transform=\"translate(0,\(translateY))\">\(inner)</g>")
+        }
+        let width = Int(sourceFrameSize.width.rounded())
+        let height = frameHeight * GrokThinkingAnimationTiming.frameCount
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(width) \(height)\"><defs><style>.cls-1{fill:none;}</style></defs>\(groups.joined())</svg>"
     }
 
     static func makeSprite(
@@ -932,8 +965,7 @@ enum GrokThinkingSprite {
         MenuBarThinkingSprite.makeSprite(
             from: frames,
             outputSize: outputSize,
-            expectedFrameCount: GrokThinkingAnimationTiming.frameCount,
-            contentsScale: retinaContentsScale
+            expectedFrameCount: GrokThinkingAnimationTiming.frameCount
         )
     }
 
@@ -963,6 +995,29 @@ enum GrokThinkingSprite {
             return nil
         }
         return frames
+    }
+
+    private static func makeStackedSVGData(fromDirectory directoryURL: URL) -> Data? {
+        guard let markup = makeStackedSVGMarkup(fromDirectory: directoryURL) else {
+            return nil
+        }
+        return markup.data(using: .utf8)
+    }
+
+    private static func innerFrameMarkup(_ svg: String) -> String? {
+        guard
+            let open = svg.range(of: "<svg"),
+            let openEnd = svg[open.lowerBound...].range(of: ">"),
+            let close = svg.range(of: "</svg>", options: [.backwards, .caseInsensitive])
+        else {
+            return nil
+        }
+        var inner = String(svg[openEnd.upperBound..<close.lowerBound])
+        if let defsOpen = inner.range(of: "<defs>"),
+           let defsClose = inner.range(of: "</defs>") {
+            inner.removeSubrange(defsOpen.lowerBound..<defsClose.upperBound)
+        }
+        return inner
     }
 
     static func make(

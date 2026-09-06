@@ -546,10 +546,20 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(firstFrame.contains("fill:#fff"))
         XCTAssertFalse(firstFrame.contains("<animateTransform"))
 
+        let stackedMarkup = try XCTUnwrap(
+            GrokThinkingSprite.makeStackedSVGMarkup(fromDirectory: directoryURL)
+        )
+        XCTAssertTrue(stackedMarkup.contains("viewBox=\"0 0 560 16800\""))
+        XCTAssertTrue(stackedMarkup.contains(".cls-1{fill:none;}"))
+        XCTAssertFalse(stackedMarkup.contains(".cls-1{fill:#fff;}"))
+        XCTAssertTrue(firstFrame.contains("m0,560V0h560v560H0Z"))
+        XCTAssertTrue(stackedMarkup.contains("m0,560V0h560v560H0Z"))
+
         GrokThinkingSprite.resetCachesForTesting()
         let frames = try XCTUnwrap(GrokThinkingSprite.makeFrames(fromDirectory: directoryURL))
         XCTAssertEqual(frames.count, GrokThinkingAnimationTiming.frameCount)
         XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 30)
+        XCTAssertTrue(frames.allSatisfy(GrokThinkingSprite.isVectorSVGRepresentation))
 
         let frameSize = NSSize(width: 16, height: 16)
         let sprite = try XCTUnwrap(
@@ -563,12 +573,24 @@ final class MenuBarAnimationTests: XCTestCase {
             )
         )
         XCTAssertTrue(sprite.isTemplate)
-        let strip = try XCTUnwrap(
-            sprite.representations.compactMap { $0 as? NSBitmapImageRep }.first
+        XCTAssertTrue(
+            GrokThinkingSprite.isVectorSVGRepresentation(sprite),
+            "live Grok thinking must stay _NSSVGImageRep until the host rasterizes"
         )
-        XCTAssertGreaterThanOrEqual(
+        XCTAssertTrue(
+            sprite.representations.compactMap { $0 as? NSBitmapImageRep }.isEmpty,
+            "live Grok thinking must not pre-bake an NSBitmapImageRep strip"
+        )
+
+        let hostScale: CGFloat = 2
+        let strip = try rasterizeThinkingSpriteThroughHost(
+            sprite,
+            frameSize: frameSize,
+            scale: hostScale
+        )
+        XCTAssertEqual(
             strip.pixelsWide,
-            Int(frameSize.width * GrokThinkingSprite.retinaContentsScale)
+            Int((frameSize.width * hostScale).rounded())
         )
         XCTAssertEqual(
             strip.pixelsHigh,
@@ -615,14 +637,18 @@ final class MenuBarAnimationTests: XCTestCase {
                     height: preset.pointSize * CGFloat(GrokThinkingAnimationTiming.frameCount)
                 )
             )
-            let sizedStrip = try XCTUnwrap(
-                sized.representations.compactMap { $0 as? NSBitmapImageRep }.first
-            )
-            XCTAssertGreaterThanOrEqual(
-                sizedStrip.pixelsWide,
-                Int(preset.pointSize * GrokThinkingSprite.retinaContentsScale)
-            )
+            XCTAssertTrue(GrokThinkingSprite.isVectorSVGRepresentation(sized))
             XCTAssertTrue(sized.isTemplate)
+            let raster = try rasterizeThinkingSpriteThroughHost(
+                sized,
+                frameSize: NSSize(width: preset.pointSize, height: preset.pointSize),
+                scale: hostScale
+            )
+            XCTAssertEqual(
+                raster.pixelsWide,
+                Int((preset.pointSize * hostScale).rounded()),
+                "host CGImage width must equal slot × contentsScale"
+            )
         }
         XCTAssertEqual(GrokThinkingSprite.sourceFrameBuildCountForTesting, 1)
         XCTAssertEqual(GrokThinkingSprite.fromGIFCallCountForTesting, 0)
@@ -926,6 +952,45 @@ final class MenuBarAnimationTests: XCTestCase {
         let fullTurn = 2 * Double.pi
         let rawDelta = (from - to).truncatingRemainder(dividingBy: fullTurn)
         return rawDelta >= 0 ? rawDelta : rawDelta + fullTurn
+    }
+
+    private func cgImageFromLayerContents(_ contents: Any?) throws -> CGImage {
+        let object = try XCTUnwrap(contents, "sprite layer must have rasterized contents")
+        XCTAssertEqual(
+            CFGetTypeID(object as CFTypeRef),
+            CGImage.typeID,
+            "sprite layer contents must be a CGImage"
+        )
+        return unsafeBitCast(object as CFTypeRef, to: CGImage.self)
+    }
+
+    private func rasterizeThinkingSpriteThroughHost(
+        _ sprite: NSImage,
+        frameSize: NSSize,
+        scale: CGFloat
+    ) throws -> NSBitmapImageRep {
+        let host = MenuBarClaudeAnimatedIconHostView(
+            frame: NSRect(origin: .zero, size: frameSize)
+        )
+        host.timing = .grok
+        host.updateGeometry(
+            frame: NSRect(origin: .zero, size: frameSize),
+            contentsScale: scale
+        )
+        XCTAssertTrue(
+            host.updateContents(
+                spriteImage: sprite,
+                frameSize: frameSize,
+                appearance: NSAppearance(named: .aqua)!,
+                contentsScale: scale
+            )
+        )
+        let contents = try cgImageFromLayerContents(host.spriteLayer.contents)
+        XCTAssertEqual(
+            contents.width,
+            Int((frameSize.width * scale).rounded())
+        )
+        return try XCTUnwrap(NSBitmapImageRep(cgImage: contents))
     }
 
     private func rasterizeSpriteStrip(
@@ -1249,6 +1314,26 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         XCTAssertFalse(collapsedGrokThinkingLoad.contains("fromPNG"))
         XCTAssertFalse(collapsedGrokThinkingLoad.contains("fromGIF"))
+
+        let grokSpriteStart = try XCTUnwrap(
+            animationSource.range(of: "enum GrokThinkingSprite")
+        )
+        let grokSpritePath = String(animationSource[grokSpriteStart.lowerBound...])
+        let grokMakeStart = try XCTUnwrap(
+            grokSpritePath.range(of: "static func make(\n        fromDirectory")
+        )
+        let grokMakeEnd = try XCTUnwrap(
+            grokSpritePath.range(
+                of: "static func makeStackedSVGMarkup",
+                range: grokMakeStart.upperBound..<grokSpritePath.endIndex
+            )
+        )
+        let grokMakePath = String(grokSpritePath[grokMakeStart.lowerBound..<grokMakeEnd.lowerBound])
+        XCTAssertTrue(grokMakePath.contains("NSImage(data: svgData)"))
+        XCTAssertTrue(grokMakePath.contains("makeStackedSVGData"))
+        XCTAssertFalse(grokMakePath.contains("makeRetinaSprite"))
+        XCTAssertFalse(grokMakePath.contains("makeSprite(from: frames"))
+        XCTAssertFalse(grokMakePath.contains("fromGIF"))
 
         let indexCallbackStart = try XCTUnwrap(
             statusItemSource.range(of: "menuBarIconView.onAnimationFrameIndexChanged = {")
