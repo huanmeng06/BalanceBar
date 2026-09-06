@@ -5177,17 +5177,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeQuickSwitchMenuItem() -> NSMenuItem {
         let parent = NSMenuItem(title: tr(.keyStatusItemControllerQuickSwitch), action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: tr(.keyStatusItemControllerQuickSwitch2))
-        submenu.minimumWidth = 210
         let choiceSummary = menuInput.choices.map {
             "id=\($0.id),name=\($0.name),current=\($0.isCurrent)"
         }.joined(separator: "|")
         let menuChoices = QuickSwitchMenuModel.entries(from: menuInput.choices)
         if menuChoices.isEmpty {
+            submenu.minimumWidth = QuickSwitchTitleLayout.minimumTabLocation
+                + QuickSwitchTitleLayout.menuChromeWidth
             let empty = NSMenuItem(title: tr(.keyStatusItemControllerNoCodexProviderFound), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             submenu.addItem(empty)
         } else {
-            for choice in menuChoices {
+            let font = NSFont.menuFont(ofSize: 0)
+            let summaries = menuChoices.map { menuInput.quickSwitchSummaries[$0.id] ?? "…" }
+            let layout = QuickSwitchTitleLayout.make(
+                names: menuChoices.map(\.name),
+                summaries: summaries,
+                font: font
+            )
+            submenu.minimumWidth = layout.minimumMenuWidth
+            for (index, choice) in menuChoices.enumerated() {
                 let item = NSMenuItem(
                     title: "",
                     action: #selector(switchProvider(_:)),
@@ -5196,7 +5205,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 item.target = self
                 item.representedObject = choice.id
                 item.state = choice.isCurrent ? .on : .off
-                applyQuickSwitchTitle(to: item, providerID: choice.id, providerName: choice.name)
+                applyQuickSwitchTitle(
+                    to: item,
+                    displayedName: QuickSwitchTitleLayout.truncatedName(
+                        choice.name,
+                        fitting: layout.nameColumnWidth,
+                        font: font
+                    ),
+                    summary: summaries[index],
+                    tabLocation: layout.tabLocation
+                )
                 submenu.addItem(item)
             }
         }
@@ -5211,11 +5229,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return parent
     }
 
-    private func applyQuickSwitchTitle(to item: NSMenuItem, providerID: String, providerName: String) {
-        let title = "\(providerName)\t\(menuInput.quickSwitchSummaries[providerID] ?? "…")"
+    private func applyQuickSwitchTitle(
+        to item: NSMenuItem,
+        displayedName: String,
+        summary: String,
+        tabLocation: CGFloat
+    ) {
+        let title = "\(displayedName)\t\(summary)"
         let paragraph = NSMutableParagraphStyle()
-        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: 170)]
-        paragraph.defaultTabInterval = 170
+        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: tabLocation)]
+        paragraph.defaultTabInterval = tabLocation
+        paragraph.lineBreakMode = .byClipping
         item.title = title
         item.attributedTitle = NSAttributedString(
             string: title,
