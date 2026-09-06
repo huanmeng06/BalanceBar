@@ -2077,6 +2077,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         /// single-line third-party amount. The secondary row is derived from
         /// the default 13:10 ratio in the bitmap layout.
         var fontSize: CGFloat
+        /// Logical point size for the client icon slot and redrawn mark.
+        var iconSize: CGFloat
         let quotaResetDisplayMode: OfficialQuotaResetDisplayMode
         let autoSwitchLunaReserve: Bool
         let lunaReserveResetTimeMode: LunaReserveResetTimeMode
@@ -2096,6 +2098,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             amountOffsetY: CGFloat = 0,
             widthAdjustment: CGFloat = 0,
             fontSize: CGFloat = MenuBarLayout.primaryFontPointSize,
+            iconSize: CGFloat = MenuBarLayout.iconSlotWidth,
             quotaWindowPreference: OfficialQuotaWindowPreference = .defaultValue,
             quotaResetDisplayMode: OfficialQuotaResetDisplayMode = .defaultValue,
             autoSwitchLunaReserve: Bool = false,
@@ -2125,6 +2128,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     range: AppPreferences.menuBarFontSizeRange
                 )
             )
+            self.iconSize = MenuBarIconSizePreset.nearest(to: iconSize).pointSize
         }
     }
 
@@ -2485,6 +2489,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // The application still owns and renders this same NSMenu instance.
     var menuItemsForTesting: [NSMenuItem] { statusMenu.items }
 
+    var menuBarIconSlotWidthForTesting: CGFloat? { lastMenuBarGeometry?.iconWidth }
+
+    var menuBarIconImageSizeForTesting: NSSize? { menuBarIconView.image?.size }
+
+    var menuBarIconSizeForTesting: CGFloat { settings.iconSize }
+
+    var grokIdleIconSizeForTesting: NSSize? { grokIconImage?.size }
+
+    var grokIdleIconImageForTesting: NSImage? { grokIconImage }
+
+    var grokIdleIsVectorSVGForTesting: Bool {
+        guard let image = grokIconImage else { return false }
+        return GrokThinkingSprite.isVectorSVGRepresentation(image)
+    }
+
+    var grokThinkingSpriteImageForTesting: NSImage? { grokThinkingSpriteImage }
+
+    var grokThinkingSpriteSizeForTesting: NSSize? { grokThinkingSpriteImage?.size }
+
+    var grokThinkingSpriteIsVectorSVGForTesting: Bool {
+        guard let image = grokThinkingSpriteImage else { return false }
+        return GrokThinkingSprite.isVectorSVGRepresentation(image)
+    }
+
+    var grokThinkingSpritePixelWidthForTesting: Int? {
+        grokThinkingSpriteImage?
+            .representations
+            .compactMap { $0 as? NSBitmapImageRep }
+            .map(\.pixelsWide)
+            .max()
+    }
+
     // Exposes the actual AppKit point sizes applied to the live menu-bar
     // labels without exposing the labels themselves.
     var menuBarFontPointSizesForTesting: (primary: CGFloat, secondary: CGFloat)? {
@@ -2574,6 +2610,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings: MenuBarSettings
     ) {
         lifecycleGeneration += 1
+        self.settings = settings
         if statusItem == nil {
             menuBarIconDisplayStateMachine.reset()
             menuBarIconDisplayStateMachine.setMode(
@@ -2640,10 +2677,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
         let taskIconVisibilityChanged = self.settings.showIcon != settings.showIcon
+        let iconSizeChanged = self.settings.iconSize != settings.iconSize
         self.snapshot = snapshot
         self.refreshDate = refreshDate
         self.menuInput = menuInput
         self.settings = settings
+        if iconSizeChanged {
+            loadMenuBarIconAssets(size: settings.iconSize)
+        }
         if iconDisplayModeChanged {
             menuBarIconDisplayStateMachine.setMode(
                 settings.iconDisplayMode,
@@ -2659,10 +2700,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         applyMenuBarIconDisplayPolicy()
         layoutStatusItem(for: snapshot)
-        if taskIconVisibilityChanged {
+        if taskIconVisibilityChanged || iconSizeChanged {
             // Reconcile the animation after the new content geometry is
             // established so turning off the parent task-icon switch stops
-            // the active backend immediately.
+            // the active backend immediately, and so a size change redraws
+            // idle marks and task sprites at the selected point size.
             updateActivityIcon()
         }
         rebuildOrDeferMenu(forceDefer: deferMenuRebuild)
@@ -2691,6 +2733,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         layoutStatusItem(for: snapshot)
     }
 
+    /// Applies a discrete icon-size change without rebuilding the status menu.
+    /// Slot geometry and SVG/sprite output are both rebuilt at the selected
+    /// point size so the mark is not a stretched 16 pt bitmap.
+    func updateIconSize(_ iconSize: CGFloat) {
+        let snapped = MenuBarIconSizePreset.nearest(to: iconSize).pointSize
+        guard settings.iconSize != snapped else { return }
+        settings.iconSize = snapped
+        loadMenuBarIconAssets(size: snapped)
+        invalidateBitmapContentCache()
+        layoutStatusItem(for: snapshot)
+        updateActivityIcon()
+    }
+
     private func applyPendingWidthAdjustment(_ widthAdjustment: CGFloat) {
         guard let statusItem,
               let button = statusItem.button,
@@ -2708,7 +2763,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 showIcon: settings.showIcon,
                 isBalance: lastMenuBarEffectiveSnapshot.kind == .balance,
                 horizontalPadding: settings.horizontalPadding,
-                widthAdjustment: widthAdjustment
+                widthAdjustment: widthAdjustment,
+                iconSlotWidth: settings.iconSize
             )
         } else {
             requestedLength = MenuBarLayout.statusItemLength(
@@ -2916,6 +2972,89 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    /// Reloads idle marks and thinking sprites at the selected point size.
+    /// Grok thinking uses the committed 30-frame SVG directory so size clicks
+    /// never decode the GIF or run `colorAtX:y:` on the main thread.
+    private func loadMenuBarIconAssets(size: CGFloat) {
+        let iconSize = MenuBarIconSizePreset.nearest(to: size).pointSize
+        let outputSize = NSSize(width: iconSize, height: iconSize)
+        if let iconURL = Bundle.main.url(forResource: "CodexIcon", withExtension: "svg"),
+           let icon = NSImage(contentsOf: iconURL) {
+            icon.size = outputSize
+            icon.isTemplate = true
+            codexIconImage = icon
+        }
+        if let iconURL = Bundle.main.url(forResource: "Claude", withExtension: "svg"),
+           let icon = NSImage(contentsOf: iconURL) {
+            icon.size = outputSize
+            icon.isTemplate = true
+            claudeIconImage = icon
+            if let thinkingURL = Bundle.main.url(
+                forResource: "ClaudeThinking",
+                withExtension: "svg"
+            ) {
+                claudeThinkingSpriteImage = ClaudeThinkingSprite.make(
+                    from: thinkingURL,
+                    outputSize: outputSize
+                )
+            }
+        }
+        // Idle Grok is Frame 16 from the thinking pack, vector-loaded like
+        // Codex/Claude. Do not redraw it into an `NSImage(size: slot)` bitmap.
+        grokIconImage = nil
+        if let thinkingDirectory = GrokThinkingSprite.bundledDirectoryURL() {
+            grokIconImage = GrokThinkingSprite.makeIdle(
+                fromDirectory: thinkingDirectory,
+                outputSize: outputSize
+            )
+        }
+        if grokIconImage == nil {
+            if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "svg"),
+               let icon = NSImage(contentsOf: iconURL) {
+                icon.size = outputSize
+                icon.isTemplate = true
+                grokIconImage = icon
+            } else if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png") {
+                grokIconImage = GrokIdleIcon.make(
+                    fromPNG: iconURL,
+                    outputSize: outputSize
+                )
+            }
+        }
+        // Size clicks must stay on the committed 30-frame SVG directory.
+        // GIF decode plus per-pixel `colorAtX:y:` pegs a core on the main thread.
+        grokThinkingSpriteImage = nil
+        if let thinkingDirectory = GrokThinkingSprite.bundledDirectoryURL() {
+            grokThinkingSpriteImage = GrokThinkingSprite.make(
+                fromDirectory: thinkingDirectory,
+                outputSize: outputSize
+            )
+        }
+        switch activeClient {
+        case .codex:
+            if let codexIconImage {
+                menuBarIconView.setSourceImage(
+                    codexIconImage,
+                    prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
+                )
+            }
+        case .claude:
+            if let claudeIconImage {
+                menuBarIconView.setSourceImage(
+                    claudeIconImage,
+                    prepareAnimationFrames: false
+                )
+            }
+        case .grok:
+            if let grokIconImage {
+                menuBarIconView.setSourceImage(
+                    grokIconImage,
+                    prepareAnimationFrames: false
+                )
+            }
+        }
+    }
+
     private func configureStatusItem() {
         guard let statusItem, let button = statusItem.button else { return }
         statusItemVisibilityStateMachine.reset()
@@ -2927,50 +3066,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.image = Self.placeholderButtonImage
         button.toolTip = "BalanceBar"
 
-        if let iconURL = Bundle.main.url(forResource: "CodexIcon", withExtension: "svg"),
-           let icon = NSImage(contentsOf: iconURL) {
-            icon.size = NSSize(width: 16, height: 16)
-            icon.isTemplate = true
-            codexIconImage = icon
-            menuBarIconView.setSourceImage(
-                icon,
-                prepareAnimationFrames: codexAnimationBackend != .nativeCoreAnimation
-            )
-        }
-        if let iconURL = Bundle.main.url(forResource: "Claude", withExtension: "svg"),
-           let icon = NSImage(contentsOf: iconURL) {
-            icon.size = NSSize(width: 16, height: 16)
-            icon.isTemplate = true
-            claudeIconImage = icon
-            if let thinkingURL = Bundle.main.url(
-                forResource: "ClaudeThinking",
-                withExtension: "svg"
-            ) {
-                claudeThinkingSpriteImage = ClaudeThinkingSprite.make(
-                    from: thinkingURL,
-                    outputSize: icon.size
-                )
-            }
-        }
-        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png"),
-           let icon = NSImage(contentsOf: iconURL) {
-            icon.size = NSSize(width: 16, height: 16)
-            icon.isTemplate = true
-            grokIconImage = icon
-        }
-        if let thinkingURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "png") {
-            grokThinkingSpriteImage = GrokThinkingSprite.make(
-                fromPNG: thinkingURL,
-                outputSize: NSSize(width: 16, height: 16)
-            )
-        }
-        if grokThinkingSpriteImage == nil,
-           let gifURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "gif") {
-            grokThinkingSpriteImage = GrokThinkingSprite.make(
-                fromGIF: gifURL,
-                outputSize: NSSize(width: 16, height: 16)
-            )
-        }
+        loadMenuBarIconAssets(size: settings.iconSize)
         menuBarIconView.onSourceImageChanged = { [weak self] image in
             guard let self else { return }
             self.invalidateBitmapContentCache()
@@ -3464,7 +3560,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showIcon: settings.showIcon,
             showAmount: settings.showAmount,
             hasSecondary: hasSecondary,
-            isBalance: effectiveSnapshot.kind == .balance
+            isBalance: effectiveSnapshot.kind == .balance,
+            iconSlotWidth: settings.iconSize
         )
         MenuBarLayout.applyTextLayout(
             container: menuBarTextStack,
@@ -3488,7 +3585,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 showIcon: settings.showIcon,
                 isBalance: effectiveSnapshot.kind == .balance,
                 horizontalPadding: settings.horizontalPadding,
-                widthAdjustment: settings.widthAdjustment
+                widthAdjustment: settings.widthAdjustment,
+                iconSlotWidth: settings.iconSize
             )
         } else {
             requestedLength = MenuBarLayout.statusItemLength(
@@ -3519,7 +3617,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 showIcon: settings.showIcon,
                 showAmount: settings.showAmount,
                 hasSecondary: false,
-                isBalance: true
+                isBalance: true,
+                iconSlotWidth: settings.iconSize
             )
             iconYOffset = geometry.iconViewYOffset(
                 alignedTo: apiGeometry,
@@ -3663,7 +3762,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     backgroundBounds: backgroundBounds,
                     primaryText: effectiveSnapshot.menuBarPrimary,
                     showIcon: settings.showIcon,
-                    isBalance: effectiveSnapshot.kind == .balance
+                    isBalance: effectiveSnapshot.kind == .balance,
+                    iconSlotWidth: settings.iconSize
                 )
                 horizontalCorrection = targetX - primaryInk.midX
             } else {
@@ -4208,7 +4308,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Synchronizes the retained Grok sprite host. Idle keeps the spark as the
-    /// semantic source; running plays the GIF-derived multi-frame strip.
+    /// semantic source; running plays the 30-frame SVG strip.
     @discardableResult
     private func synchronizeGrokThinkingAnimationHost() -> Bool {
         precondition(

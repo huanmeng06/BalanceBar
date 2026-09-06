@@ -39,8 +39,11 @@ struct MenuBarGeometry {
         secondaryHeight = hasSecondary ? ceil(secondarySize.height) : 0
         textHeight = primaryHeight + (hasSecondary ? textRowSpacing + secondaryHeight : 0)
         contentWidth = iconWidth + gap + textWidth
+        // Include the icon slot so a 20 pt large mark still fits inside the
+        // 22 pt menu bar on the single-line balance path, whose text floor
+        // is 18 pt.
         contentHeight = isBalance && showAmount
-            ? max(singleLineHeight, textHeight)
+            ? max(singleLineHeight, textHeight, iconWidth)
             : ceil(max(iconWidth, textHeight))
     }
 
@@ -263,7 +266,10 @@ enum MenuBarLayout {
         }
     }
 
-    static let iconSlotWidth: CGFloat = 18
+    /// Default (medium) icon slot in logical points. Layout callers pass the
+    /// selected `MenuBarIconSizePreset` so the slot and drawing size stay
+    /// matched; this constant remains the medium/default value.
+    static let iconSlotWidth: CGFloat = MenuBarIconSizePreset.medium.pointSize
     static let iconTextSpacing: CGFloat = 6
     static let textRowSpacing: CGFloat = -2
     static let textWidthSlack: CGFloat = 5
@@ -362,7 +368,8 @@ enum MenuBarLayout {
         showIcon: Bool,
         isBalance: Bool,
         horizontalPadding: CGFloat,
-        widthAdjustment: CGFloat = 0
+        widthAdjustment: CGFloat = 0,
+        iconSlotWidth: CGFloat = iconSlotWidth
     ) -> CGFloat {
         let widestContentWidth = MenuBarFontSizePreset.allCases
             .map { preset -> CGFloat in
@@ -375,7 +382,8 @@ enum MenuBarLayout {
                     showIcon: showIcon,
                     showAmount: true,
                     hasSecondary: false,
-                    isBalance: isBalance
+                    isBalance: isBalance,
+                    iconSlotWidth: iconSlotWidth
                 )
                 return geometry.contentWidth
             }
@@ -393,7 +401,8 @@ enum MenuBarLayout {
         showIcon: Bool,
         showAmount: Bool,
         hasSecondary: Bool,
-        isBalance: Bool
+        isBalance: Bool,
+        iconSlotWidth: CGFloat = iconSlotWidth
     ) -> MenuBarGeometry {
         MenuBarGeometry(
             primarySize: primarySize,
@@ -682,7 +691,8 @@ enum MenuBarLayout {
         backgroundBounds: NSRect,
         primaryText: String,
         showIcon: Bool,
-        isBalance: Bool
+        isBalance: Bool,
+        iconSlotWidth: CGFloat = iconSlotWidth
     ) -> CGFloat {
         let referencePreset = MenuBarFontSizePreset.allCases.max {
             $0.primarySize < $1.primarySize
@@ -696,7 +706,8 @@ enum MenuBarLayout {
             showIcon: showIcon,
             showAmount: true,
             hasSecondary: false,
-            isBalance: isBalance
+            isBalance: isBalance,
+            iconSlotWidth: iconSlotWidth
         )
         let referenceFrames = frames(
             buttonSize: backgroundBounds.size,

@@ -43,6 +43,7 @@ struct DashboardCompositionActions {
     let onOffsetReset: (String) -> Void
     let onLanguage: (AppLanguage) -> Void
     let onMenuBarFontSizePreset: (MenuBarFontSizePreset) -> Void
+    let onMenuBarIconSizePreset: (MenuBarIconSizePreset) -> Void
     let onMenuBarIconDisplayModeChanged: (MenuBarIconDisplayMode) -> Void
     let onMenuBarIconDisplayDelayChanged: (MenuBarIconDisplayDelay) -> Void
     let onMenuBarAnimationModeChanged: (MenuBarAnimationMode) -> Void
@@ -104,6 +105,7 @@ final class DashboardCompositionController {
             onOffsetReset: actions.onOffsetReset,
             onLanguage: actions.onLanguage,
             onMenuBarFontSizePreset: actions.onMenuBarFontSizePreset,
+            onMenuBarIconSizePreset: actions.onMenuBarIconSizePreset,
             onMenuBarIconDisplayModeChanged: actions.onMenuBarIconDisplayModeChanged,
             onMenuBarIconDisplayDelayChanged: actions.onMenuBarIconDisplayDelayChanged,
             onMenuBarAnimationModeChanged: actions.onMenuBarAnimationModeChanged,

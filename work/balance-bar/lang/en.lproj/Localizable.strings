@@ -333,6 +333,8 @@
 "dashboard.menu.bar.page.layout" = "Layout";
 "dashboard.menu.bar.page.menu_bar_font_size" = "Menu Bar Font Size";
 "dashboard.menu.bar.page.adjusts_the_menu_bar_font_size" = "Adjust menu bar text size";
+"dashboard.menu.bar.page.menu_bar_icon_size" = "Menu Bar Icon Size";
+"dashboard.menu.bar.page.adjusts_the_menu_bar_icon_size" = "Adjust menu bar icon size";
 "dashboard.menu.bar.page.icon_offset" = "Icon vertical position";
 "dashboard.menu.bar.page.amount_offset" = "Amount vertical position";
 "dashboard.menu.bar.page.menu_bar_width" = "Spacing from other menu bar icons";
@@ -340,6 +342,7 @@
 "dashboard.menu.bar.page.fine_tune_the_amount_s_vertical_position_yaxisvalue" = "Fine-tune the amount's vertical position [[balancebar.break-before-semantic]][[balancebar.semantic]]Y axis[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
 "dashboard.menu.bar.page.adjusts_the_gap_between_balancebar_and_other_items_widthvalue" = "Adjust the gap between BalanceBar and other menu bar icons [[balancebar.break-before-semantic]][[balancebar.semantic]]Width[[balancebar.atomic]]%1$@[[/balancebar.atomic]][[/balancebar.semantic]]";
 "dashboard.menu.bar.page.large_13_10_pt_medium_11_7_9_pt_small_10_4_8_pt" = "Large: 13/10 pt; medium: 11.7/9 pt; small: 10.4/8 pt";
+"dashboard.menu.bar.page.large_20_pt_medium_18_pt_small_16_pt" = "Large: 20 pt; medium: 18 pt; small: 16 pt";
 "dashboard.menu.bar.page.large" = "Large";
 "dashboard.menu.bar.page.medium" = "Medium";
 "dashboard.menu.bar.page.small" = "Small";
