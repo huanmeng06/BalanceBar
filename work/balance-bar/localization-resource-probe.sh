@@ -73,7 +73,9 @@ if [[ -n "$bundle_root" ]]; then
         packaged_infoplist="$resources_dir/$localization_directory/InfoPlist.strings"
         [[ -s "$packaged_infoplist" ]] \
             || die "packaged resource is missing or empty: $packaged_infoplist"
-        grep -Fq '"NSAppleEventsUsageDescription"' "$packaged_infoplist" \
+        # xcodebuild may compile InfoPlist.strings to UTF-16 or binary plist; ASCII grep misses both.
+        usage_description="$(plutil -extract NSAppleEventsUsageDescription raw -o - "$packaged_infoplist" 2>/dev/null || true)"
+        [[ -n "$usage_description" ]] \
             || die "packaged $localization_directory InfoPlist.strings is missing NSAppleEventsUsageDescription"
     done
 fi
