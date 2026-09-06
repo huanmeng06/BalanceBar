@@ -890,7 +890,11 @@ final class DashboardMenuBarPage {
         previewAnimationActive = input.animationKind != .none
         previewAnimationKind = input.animationKind
         animationFallbackActive = input.animationFallbackActive
-        lastPreviewIconImage = input.animationIconImage ?? input.iconImage
+        lastPreviewIconImage = Self.displayedPreviewIconImage(
+            animationKind: input.animationKind,
+            iconImage: input.iconImage,
+            animationIconImage: input.animationIconImage
+        )
         lastPreviewSpriteImage = input.animationSpriteImage
         previewAnimatedIconHost.removeFromSuperview()
         previewAnimatedIconHost.removeRotationAnimation()
@@ -1664,7 +1668,11 @@ final class DashboardMenuBarPage {
         if textWidthConstraint?.constant != geometry.textWidth {
             textWidthConstraint?.constant = geometry.textWidth
         }
-        let displayedPreviewIcon = animationIconImage ?? iconImage
+        let displayedPreviewIcon = Self.displayedPreviewIconImage(
+            animationKind: animationKind,
+            iconImage: iconImage,
+            animationIconImage: animationIconImage
+        )
         lastPreviewIconImage = displayedPreviewIcon
         if let animationSpriteImage {
             lastPreviewSpriteImage = animationSpriteImage
@@ -1962,9 +1970,20 @@ final class DashboardMenuBarPage {
         }
         updatePreviewAnimation(
             kind: animationKind,
-            iconImage: animationIconImage ?? iconImage,
+            iconImage: displayedPreviewIcon,
             spriteImage: animationSpriteImage
         )
+    }
+
+    /// Idle preview must use the live source icon. A leftover animation cache
+    /// can still hold the previous client's bitmap after Grok/Claude thinking
+    /// stops (Issue #332).
+    private static func displayedPreviewIconImage(
+        animationKind: MenuBarCompositorAnimationKind,
+        iconImage: NSImage?,
+        animationIconImage: NSImage?
+    ) -> NSImage? {
+        animationKind.isActive ? (animationIconImage ?? iconImage) : iconImage
     }
 
     private func updatePreviewWarnings(_ statusItemVisibility: StatusItemVisibility) {

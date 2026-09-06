@@ -206,7 +206,7 @@ final class DashboardCompositionController {
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
-            animationIconImage: menuBarPreviewAnimationIconImage,
+            animationIconImage: idleSafeMenuBarPreviewAnimationIconImage,
             animationKind: menuBarPreviewAnimationKind,
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive
@@ -286,10 +286,10 @@ final class DashboardCompositionController {
         spriteImage: NSImage?
     ) {
         menuBarPreviewAnimationKind = active ? kind : .none
-        if let iconImage {
-            menuBarPreviewAnimationIconImage = iconImage
-        }
         if active {
+            if let iconImage {
+                menuBarPreviewAnimationIconImage = iconImage
+            }
             if let spriteImage {
                 menuBarPreviewAnimationSpriteImage = spriteImage
             }
@@ -300,8 +300,14 @@ final class DashboardCompositionController {
         dashboardPreferencePages.updateMenuBarPreviewAnimation(
             kind: menuBarPreviewAnimationKind,
             iconImage: iconImage ?? menuBarPreviewAnimationIconImage,
-            spriteImage: spriteImage ?? menuBarPreviewAnimationSpriteImage
+            spriteImage: active ? (spriteImage ?? menuBarPreviewAnimationSpriteImage) : nil
         )
+    }
+
+    /// Idle Dashboard rebuilds must not reuse a previous client's thinking
+    /// bitmap as the static preview source (Issue #332).
+    private var idleSafeMenuBarPreviewAnimationIconImage: NSImage? {
+        menuBarPreviewAnimationKind.isActive ? menuBarPreviewAnimationIconImage : nil
     }
 
     func updateMenuBarAnimationFallback(active: Bool) {
@@ -412,7 +418,7 @@ final class DashboardCompositionController {
             menuBarSnapshot: state.menuBarSnapshot,
             statusItemVisibility: state.statusItemVisibility(),
             iconImage: state.iconImage(),
-            animationIconImage: menuBarPreviewAnimationIconImage,
+            animationIconImage: idleSafeMenuBarPreviewAnimationIconImage,
             animationKind: menuBarPreviewAnimationKind,
             animationSpriteImage: menuBarPreviewAnimationSpriteImage,
             animationFallbackActive: menuBarAnimationFallbackActive,

@@ -1034,5 +1034,24 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(pagePreviewPath.contains("previewIcon.image = image"))
         XCTAssertTrue(pagePreviewPath.contains("previewIcon.image !== image"))
         XCTAssertFalse(pagePreviewPath.contains("layoutSubtreeIfNeeded"))
+
+        let spritePreviewStart = try XCTUnwrap(
+            compositionSource.range(of: "private func updateSpriteMenuBarPreviewAnimation")
+        )
+        let spritePreviewEnd = try XCTUnwrap(
+            compositionSource.range(
+                of: "func updateMenuBarAnimationFallback",
+                range: spritePreviewStart.upperBound..<compositionSource.endIndex
+            )
+        )
+        let spritePreviewPath = String(
+            compositionSource[spritePreviewStart.lowerBound..<spritePreviewEnd.lowerBound]
+        )
+        let iconCacheAssign = try XCTUnwrap(
+            spritePreviewPath.range(of: "menuBarPreviewAnimationIconImage = iconImage")
+        )
+        let activeGate = try XCTUnwrap(spritePreviewPath.range(of: "if active {"))
+        XCTAssertGreaterThan(iconCacheAssign.lowerBound, activeGate.lowerBound)
+        XCTAssertTrue(spritePreviewPath.contains("menuBarPreviewAnimationSpriteImage = nil"))
     }
 }
