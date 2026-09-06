@@ -456,7 +456,6 @@ final class MenuBarClaudeAnimatedIconHostView: NSView {
         CATransaction.setDisableActions(true)
         spriteLayer.removeAnimation(forKey: timing.animationKey)
         spriteLayer.removeAnimation(forKey: Self.thinkingAnimationKey)
-        spriteLayer.removeAnimation(forKey: MenuBarSpriteAnimationTiming.grok.animationKey)
         spriteLayer.transform = CATransform3DIdentity
         CATransaction.commit()
     }

@@ -23,9 +23,9 @@ enum AssistantClient: String {
 
     var usesRotationAnimation: Bool {
         switch self {
-        case .codex:
+        case .codex, .grok:
             return true
-        case .claude, .grok:
+        case .claude:
             return false
         }
     }

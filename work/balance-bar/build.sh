@@ -153,17 +153,11 @@ for required_file in \
     "$source_dir/ClaudeThinking.svg" \
     "$source_dir/Grok.svg" \
     "$source_dir/Grok.png" \
-    "$source_dir/GrokThinking.png" \
-    "$source_dir/GrokThinking.gif" \
+    "$source_dir/GrokIdle.svg" \
     "$launch_agent_source_dir/ChatGPTLaunchAgentMain.swift" \
     "$launch_agent_source_dir/balancebar-chatgpt-launch-agent.plist"
 do
     [[ -f "$required_file" ]] || die "required input is missing: $required_file"
-done
-for frame_index in $(seq 1 30)
-do
-    required_frame="$(printf '%s/GrokThinking/frame_%03d.svg' "$source_dir" "$frame_index")"
-    [[ -f "$required_frame" ]] || die "required input is missing: $required_frame"
 done
 localization_directories=(en.lproj zh-Hans.lproj zh-Hant-TW.lproj zh-Hant-HK.lproj ja.lproj ko.lproj es.lproj de.lproj fr.lproj pt.lproj ru.lproj it.lproj)
 for localization_directory in "${localization_directories[@]}"
@@ -262,14 +256,10 @@ plutil -lint "$launch_agent_plist" >/dev/null
 bundle_program="$(plutil -extract BundleProgram raw -o - "$launch_agent_plist")"
 [[ "$bundle_program" == "Contents/Library/LaunchAgents/BalanceBarChatGPTLaunchAgent" ]] \
     || die "ChatGPT launch agent plist has an invalid BundleProgram: $bundle_program"
-for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.svg Grok.png GrokThinking.png GrokThinking.gif
+for resource_file in BalanceBar.icns GitHub.svg CodexIcon.svg Claude.svg ClaudeThinking.svg Grok.svg Grok.png GrokIdle.svg
 do
     cp "$source_dir/$resource_file" "$resources_dir/$resource_file"
 done
-mkdir -p "$resources_dir/GrokThinking"
-cp "$source_dir/GrokThinking"/frame_*.svg "$resources_dir/GrokThinking/"
-[[ "$(ls -1 "$resources_dir/GrokThinking"/frame_*.svg | wc -l | tr -d ' ')" == "30" ]] \
-    || die "GrokThinking SVG directory must contain 30 frames"
 for localization_directory in "${localization_directories[@]}"
 do
     mkdir -p "$resources_dir/$localization_directory"

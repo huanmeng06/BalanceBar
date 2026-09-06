@@ -148,12 +148,11 @@ enum MenuBarCompositorAnimationKind: Equatable {
     case none
     case codexRotation
     case claudeThinking
-    case grokThinking
 
     var isActive: Bool { self != .none }
 }
 
-/// Discrete vertical-sprite timing shared by Claude and Grok compositor hosts.
+/// Discrete vertical-sprite timing used by the Claude compositor host.
 struct MenuBarSpriteAnimationTiming: Equatable {
     let frameCount: Int
     let restingFrameIndex: Int
@@ -199,13 +198,6 @@ struct MenuBarSpriteAnimationTiming: Equatable {
             count: ClaudeThinkingAnimationTiming.frameCount
         ),
         animationKey: "balancebar.claudeThinking"
-    )
-
-    static let grok = MenuBarSpriteAnimationTiming(
-        frameCount: GrokThinkingAnimationTiming.frameCount,
-        restingFrameIndex: GrokThinkingAnimationTiming.restingFrameIndex,
-        frameDurations: GrokThinkingAnimationTiming.frameDurations,
-        animationKey: "balancebar.grokThinking"
     )
 }
 
@@ -654,36 +646,28 @@ enum MenuBarThinkingSprite {
     }
 }
 
-/// Live Grok thinking uses the 30 traced SVG frames. Even 0.08 s × 30 keeps
-/// the old 2.40 s loop; identical mid/end frames supply the visual holds.
-enum GrokThinkingAnimationTiming {
-    static let frameCount = 30
-    static let restingFrameIndex = 0
-    static let frameDuration: TimeInterval = 0.08
-    static let frameDurations: [TimeInterval] = Array(
-        repeating: frameDuration,
-        count: frameCount
-    )
-    static let duration: TimeInterval = frameDurations.reduce(0, +)
-
-    static func translationValue(frameIndex: Int, frameHeight: CGFloat) -> CGFloat {
-        MenuBarSpriteAnimationTiming.grok.translationValue(
-            frameIndex: frameIndex,
-            frameHeight: frameHeight
-        )
-    }
-
-    static func translationValues(frameHeight: CGFloat) -> [NSNumber] {
-        MenuBarSpriteAnimationTiming.grok.translationValues(frameHeight: frameHeight)
-    }
-}
-
-/// PNG fallback for the idle Grok mark. Runtime idle loading prefers
-/// `GrokThinking/frame_016.svg` and must not redraw that SVG into an
-/// `NSImage(size: slot)` bitmap. This crop path keeps high-res pixels
-/// and never uses `colorAtX:y:`.
+/// Live idle Grok is the relocated thinking-pack Frame 16 SVG
+/// (`GrokIdle.svg`). Loading keeps `_NSSVGImageRep` and applies the same
+/// 1.12 centered crop; it must not redraw that SVG into an
+/// `NSImage(size: slot)` bitmap. `Grok.png` remains a cropped fallback.
 enum GrokIdleIcon {
+    static let resourceName = "GrokIdle"
+    static let sourceFrameSize = NSSize(width: 560, height: 560)
+    static let opticalScale: CGFloat = 1.12
+
+    static var opticalCropInset: Int {
+        let frame = sourceFrameSize.width
+        let cropSide = frame / opticalScale
+        return Int(((frame - cropSide) / 2).rounded())
+    }
+
+    static var opticalCropSide: Int {
+        Int(sourceFrameSize.width.rounded()) - (opticalCropInset * 2)
+    }
+
     private static let cacheLock = NSLock()
+    private static var idleSVGDataByURL: [URL: Data] = [:]
+    private static var idleImagesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static var croppedByURL: [URL: NSImage] = [:]
     private static var sizedByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
     private static let alphaThreshold: UInt8 = 12
@@ -691,8 +675,96 @@ enum GrokIdleIcon {
     static func resetCachesForTesting() {
         cacheLock.lock()
         defer { cacheLock.unlock() }
+        idleSVGDataByURL = [:]
+        idleImagesByCacheKey = [:]
         croppedByURL = [:]
         sizedByCacheKey = [:]
+    }
+
+    static func isVectorSVGRepresentation(_ image: NSImage) -> Bool {
+        let hasBitmap = image.representations.contains { $0 is NSBitmapImageRep }
+        guard !hasBitmap else { return false }
+        return image.representations.contains { representation in
+            String(describing: type(of: representation)).contains("SVG")
+        }
+    }
+
+    static func bundledSVGURL(in bundle: Bundle = .main) -> URL? {
+        bundle.url(forResource: resourceName, withExtension: "svg")
+    }
+
+    static func make(
+        fromSVG svgURL: URL,
+        outputSize: NSSize
+    ) -> NSImage? {
+        let cacheKey = MenuBarSizedImageCacheKey(url: svgURL, outputSize: outputSize)
+        cacheLock.lock()
+        if let cached = idleImagesByCacheKey[cacheKey] {
+            cacheLock.unlock()
+            return cached
+        }
+        let cachedData = idleSVGDataByURL[svgURL]
+        cacheLock.unlock()
+
+        let svgData: Data
+        if let cachedData {
+            svgData = cachedData
+        } else {
+            guard let made = makeIdleSVGMarkup(from: svgURL)?.data(using: .utf8) else {
+                return nil
+            }
+            cacheLock.lock()
+            if let existing = idleSVGDataByURL[svgURL] {
+                cacheLock.unlock()
+                svgData = existing
+            } else {
+                idleSVGDataByURL[svgURL] = made
+                cacheLock.unlock()
+                svgData = made
+            }
+        }
+
+        guard let icon = NSImage(data: svgData) else {
+            return nil
+        }
+        icon.size = outputSize
+        icon.isTemplate = true
+        cacheLock.lock()
+        idleImagesByCacheKey[cacheKey] = icon
+        cacheLock.unlock()
+        return icon
+    }
+
+    static func makeIdleSVGMarkup(from svgURL: URL) -> String? {
+        guard
+            let svg = try? String(contentsOf: svgURL, encoding: .utf8),
+            let inner = innerFrameMarkup(svg)
+        else {
+            return nil
+        }
+        let frame = Int(sourceFrameSize.width.rounded())
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(frame) \(frame)\"><defs><style>.cls-1{fill:none;}</style></defs>\(opticallyScaledInnerSVG(inner))</svg>"
+    }
+
+    static func opticallyScaledInnerSVG(_ inner: String) -> String {
+        let frame = Int(sourceFrameSize.width.rounded())
+        return "<svg overflow=\"hidden\" width=\"\(frame)\" height=\"\(frame)\" viewBox=\"\(opticalCropInset) \(opticalCropInset) \(opticalCropSide) \(opticalCropSide)\">\(inner)</svg>"
+    }
+
+    private static func innerFrameMarkup(_ svg: String) -> String? {
+        guard
+            let open = svg.range(of: "<svg"),
+            let openEnd = svg[open.lowerBound...].range(of: ">"),
+            let close = svg.range(of: "</svg>", options: [.backwards, .caseInsensitive])
+        else {
+            return nil
+        }
+        var inner = String(svg[openEnd.upperBound..<close.lowerBound])
+        if let defsOpen = inner.range(of: "<defs>"),
+           let defsClose = inner.range(of: "</defs>") {
+            inner.removeSubrange(defsOpen.lowerBound..<defsClose.upperBound)
+        }
+        return inner
     }
 
     static func make(
@@ -815,444 +887,5 @@ enum GrokIdleIcon {
         originX = max(0, min(originX, rep.pixelsWide - side))
         originY = max(0, min(originY, rep.pixelsHigh - side))
         return CGRect(x: originX, y: originY, width: side, height: side)
-    }
-}
-
-/// Loads the committed 30-frame Grok thinking SVG directory, or fixture
-/// PNG/GIF strips. `fromGIF` is for build/test/one-shot background work; the
-/// live icon-size path must use `make(fromDirectory:)` so clicks do not
-/// decode GIF or run `colorAtX:y:`. Live thinking stays `_NSSVGImageRep`
-/// until the animation host rasterizes it at the window scale.
-enum GrokThinkingSprite {
-    static let retinaContentsScale: CGFloat = 2
-    static let resourceDirectoryName = "GrokThinking"
-    static let sourceFrameSize = NSSize(width: 560, height: 560)
-    static let idleFrameIndex = 16
-    /// Centered 560-canvas crop: 560 / 1.12 = 500, inset 30. Ring stays
-    /// complete; slash tips may clip slightly. Do not rewrite path `d`.
-    static let opticalScale: CGFloat = 1.12
-
-    static var opticalCropInset: Int {
-        let frame = sourceFrameSize.width
-        let cropSide = frame / opticalScale
-        return Int(((frame - cropSide) / 2).rounded())
-    }
-
-    static var opticalCropSide: Int {
-        Int(sourceFrameSize.width.rounded()) - (opticalCropInset * 2)
-    }
-
-    private static let cacheLock = NSLock()
-    private static var sourceSVGDataByURL: [URL: Data] = [:]
-    private static var idleSVGDataByURL: [URL: Data] = [:]
-    private static var spritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
-    private static var idleImagesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
-    private static var pngSpritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
-    private static var fromGIFCallCount = 0
-    private static var sourceFrameBuildCount = 0
-
-    static var fromGIFCallCountForTesting: Int {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        return fromGIFCallCount
-    }
-
-    static var sourceFrameBuildCountForTesting: Int {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        return sourceFrameBuildCount
-    }
-
-    static func resetCachesForTesting() {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        sourceSVGDataByURL = [:]
-        idleSVGDataByURL = [:]
-        spritesByCacheKey = [:]
-        idleImagesByCacheKey = [:]
-        pngSpritesByCacheKey = [:]
-        fromGIFCallCount = 0
-        sourceFrameBuildCount = 0
-    }
-
-    static func isVectorSVGRepresentation(_ image: NSImage) -> Bool {
-        let hasBitmap = image.representations.contains { $0 is NSBitmapImageRep }
-        guard !hasBitmap else { return false }
-        return image.representations.contains { representation in
-            String(describing: type(of: representation)).contains("SVG")
-        }
-    }
-
-    static func bundledDirectoryURL(in bundle: Bundle = .main) -> URL? {
-        let candidates: [URL?] = [
-            bundle.url(forResource: resourceDirectoryName, withExtension: nil),
-            bundle.resourceURL?.appendingPathComponent(
-                resourceDirectoryName,
-                isDirectory: true
-            )
-        ]
-        for candidate in candidates {
-            guard let candidate else { continue }
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(
-                atPath: candidate.path,
-                isDirectory: &isDirectory
-            ), isDirectory.boolValue {
-                return candidate
-            }
-        }
-        return nil
-    }
-
-    static func frameFileName(index: Int) -> String {
-        String(format: "frame_%03d.svg", index)
-    }
-
-    static func make(
-        fromDirectory directoryURL: URL,
-        outputSize: NSSize = NSSize(width: 16, height: 16)
-    ) -> NSImage? {
-        let spriteKey = MenuBarSizedImageCacheKey(
-            url: directoryURL,
-            outputSize: outputSize
-        )
-        cacheLock.lock()
-        if let cachedSprite = spritesByCacheKey[spriteKey] {
-            cacheLock.unlock()
-            return cachedSprite
-        }
-        let cachedData = sourceSVGDataByURL[directoryURL]
-        cacheLock.unlock()
-
-        let svgData: Data
-        if let cachedData {
-            svgData = cachedData
-        } else {
-            guard let made = makeStackedSVGData(fromDirectory: directoryURL) else {
-                return nil
-            }
-            cacheLock.lock()
-            if let existing = sourceSVGDataByURL[directoryURL] {
-                cacheLock.unlock()
-                svgData = existing
-            } else {
-                sourceSVGDataByURL[directoryURL] = made
-                sourceFrameBuildCount += 1
-                cacheLock.unlock()
-                svgData = made
-            }
-        }
-
-        guard let sprite = NSImage(data: svgData) else {
-            return nil
-        }
-        sprite.size = NSSize(
-            width: outputSize.width,
-            height: outputSize.height * CGFloat(GrokThinkingAnimationTiming.frameCount)
-        )
-        sprite.isTemplate = true
-        cacheLock.lock()
-        spritesByCacheKey[spriteKey] = sprite
-        cacheLock.unlock()
-        return sprite
-    }
-
-    static func makeIdle(
-        fromDirectory directoryURL: URL,
-        outputSize: NSSize
-    ) -> NSImage? {
-        let cacheKey = MenuBarSizedImageCacheKey(
-            url: directoryURL,
-            outputSize: outputSize
-        )
-        cacheLock.lock()
-        if let cached = idleImagesByCacheKey[cacheKey] {
-            cacheLock.unlock()
-            return cached
-        }
-        let cachedData = idleSVGDataByURL[directoryURL]
-        cacheLock.unlock()
-
-        let svgData: Data
-        if let cachedData {
-            svgData = cachedData
-        } else {
-            guard let made = makeIdleSVGMarkup(fromDirectory: directoryURL)?
-                .data(using: .utf8) else {
-                return nil
-            }
-            cacheLock.lock()
-            if let existing = idleSVGDataByURL[directoryURL] {
-                cacheLock.unlock()
-                svgData = existing
-            } else {
-                idleSVGDataByURL[directoryURL] = made
-                cacheLock.unlock()
-                svgData = made
-            }
-        }
-
-        guard let icon = NSImage(data: svgData) else {
-            return nil
-        }
-        icon.size = outputSize
-        icon.isTemplate = true
-        cacheLock.lock()
-        idleImagesByCacheKey[cacheKey] = icon
-        cacheLock.unlock()
-        return icon
-    }
-
-    static func makeIdleSVGMarkup(fromDirectory directoryURL: URL) -> String? {
-        let url = directoryURL.appendingPathComponent(
-            frameFileName(index: idleFrameIndex)
-        )
-        guard
-            let svg = try? String(contentsOf: url, encoding: .utf8),
-            let inner = innerFrameMarkup(svg)
-        else {
-            return nil
-        }
-        let frame = Int(sourceFrameSize.width.rounded())
-        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(frame) \(frame)\"><defs><style>.cls-1{fill:none;}</style></defs>\(opticallyScaledInnerSVG(inner))</svg>"
-    }
-
-    static func opticallyScaledInnerSVG(_ inner: String) -> String {
-        let frame = Int(sourceFrameSize.width.rounded())
-        return "<svg overflow=\"hidden\" width=\"\(frame)\" height=\"\(frame)\" viewBox=\"\(opticalCropInset) \(opticalCropInset) \(opticalCropSide) \(opticalCropSide)\">\(inner)</svg>"
-    }
-
-    static func makeStackedSVGMarkup(fromDirectory directoryURL: URL) -> String? {
-        var groups: [String] = []
-        groups.reserveCapacity(GrokThinkingAnimationTiming.frameCount)
-        let frameHeight = Int(sourceFrameSize.height.rounded())
-        for index in 1...GrokThinkingAnimationTiming.frameCount {
-            let url = directoryURL.appendingPathComponent(frameFileName(index: index))
-            guard
-                let svg = try? String(contentsOf: url, encoding: .utf8),
-                let inner = innerFrameMarkup(svg)
-            else {
-                return nil
-            }
-            // Play 030→001 so the slash sweeps 右上→左下. Frame 001 is at
-            // the top of the strip; translation 0 shows frame 030 at the
-            // bottom. Claude stacking is unchanged.
-            let translateY = frameHeight * (index - 1)
-            groups.append(
-                "<g transform=\"translate(0,\(translateY))\">\(opticallyScaledInnerSVG(inner))</g>"
-            )
-        }
-        let width = Int(sourceFrameSize.width.rounded())
-        let height = frameHeight * GrokThinkingAnimationTiming.frameCount
-        // Knock out the even-odd white canvas on classed frames only.
-        // Unclassed black paths (including the replacement frame 12) keep
-        // their default fill.
-        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(width) \(height)\"><defs><style>.cls-1{fill:none;}</style></defs>\(groups.joined())</svg>"
-    }
-
-    static func makeSprite(
-        from frames: [NSImage],
-        outputSize: NSSize = NSSize(width: 16, height: 16)
-    ) -> NSImage? {
-        MenuBarThinkingSprite.makeSprite(
-            from: frames,
-            outputSize: outputSize,
-            expectedFrameCount: GrokThinkingAnimationTiming.frameCount
-        )
-    }
-
-    static func makeFrames(fromDirectory directoryURL: URL) -> [NSImage]? {
-        let frames = (1...GrokThinkingAnimationTiming.frameCount).compactMap { index -> NSImage? in
-            let url = directoryURL.appendingPathComponent(frameFileName(index: index))
-            guard var svg = try? String(contentsOf: url, encoding: .utf8) else {
-                return nil
-            }
-            // Keep the traced path `d` data. Drop the opaque white canvas so
-            // the template mark is the ring/slash, not a solid square.
-            svg = svg.replacingOccurrences(
-                of: ".cls-1{fill:#fff;}",
-                with: ".cls-1{fill:none;}"
-            )
-            guard
-                let data = svg.data(using: .utf8),
-                let image = NSImage(data: data)
-            else {
-                return nil
-            }
-            image.size = sourceFrameSize
-            image.isTemplate = true
-            return image
-        }
-        guard frames.count == GrokThinkingAnimationTiming.frameCount else {
-            return nil
-        }
-        return frames
-    }
-
-    private static func makeStackedSVGData(fromDirectory directoryURL: URL) -> Data? {
-        guard let markup = makeStackedSVGMarkup(fromDirectory: directoryURL) else {
-            return nil
-        }
-        return markup.data(using: .utf8)
-    }
-
-    private static func innerFrameMarkup(_ svg: String) -> String? {
-        guard
-            let open = svg.range(of: "<svg"),
-            let openEnd = svg[open.lowerBound...].range(of: ">"),
-            let close = svg.range(of: "</svg>", options: [.backwards, .caseInsensitive])
-        else {
-            return nil
-        }
-        var inner = String(svg[openEnd.upperBound..<close.lowerBound])
-        if let defsOpen = inner.range(of: "<defs>"),
-           let defsClose = inner.range(of: "</defs>") {
-            inner.removeSubrange(defsOpen.lowerBound..<defsClose.upperBound)
-        }
-        return inner
-    }
-
-    static func make(
-        fromPNG pngURL: URL,
-        outputSize: NSSize = NSSize(width: 16, height: 16)
-    ) -> NSImage? {
-        let cacheKey = MenuBarSizedImageCacheKey(url: pngURL, outputSize: outputSize)
-        cacheLock.lock()
-        if let cached = pngSpritesByCacheKey[cacheKey] {
-            cacheLock.unlock()
-            return cached
-        }
-        cacheLock.unlock()
-
-        guard let image = NSImage(contentsOf: pngURL) else { return nil }
-        let nativeFrameCount: Int
-        if let rep = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
-           rep.pixelsWide > 0,
-           rep.pixelsHigh % rep.pixelsWide == 0 {
-            nativeFrameCount = max(1, rep.pixelsHigh / rep.pixelsWide)
-        } else {
-            nativeFrameCount = 23
-        }
-        image.size = NSSize(
-            width: outputSize.width,
-            height: outputSize.height * CGFloat(nativeFrameCount)
-        )
-        image.isTemplate = true
-        cacheLock.lock()
-        pngSpritesByCacheKey[cacheKey] = image
-        cacheLock.unlock()
-        return image
-    }
-
-    static func make(
-        fromGIF gifURL: URL,
-        outputSize: NSSize = NSSize(width: 16, height: 16)
-    ) -> NSImage? {
-        cacheLock.lock()
-        fromGIFCallCount += 1
-        cacheLock.unlock()
-        guard let frames = makeFrames(fromGIF: gifURL)?.frames else { return nil }
-        return MenuBarThinkingSprite.makeSprite(
-            from: frames,
-            outputSize: outputSize,
-            expectedFrameCount: frames.count
-        )
-    }
-
-    static func makeFrames(
-        fromGIF gifURL: URL
-    ) -> (frames: [NSImage], durations: [TimeInterval])? {
-        guard
-            let data = try? Data(contentsOf: gifURL),
-            let image = NSImage(data: data),
-            let gifRep = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
-            let frameCount = gifRep.value(forProperty: .frameCount) as? Int,
-            frameCount > 1
-        else {
-            return nil
-        }
-
-        var frames: [NSImage] = []
-        var durations: [TimeInterval] = []
-        frames.reserveCapacity(frameCount)
-        durations.reserveCapacity(frameCount)
-        for index in 0..<frameCount {
-            gifRep.setProperty(.currentFrame, withValue: index)
-            let duration = gifRep.value(forProperty: .currentFrameDuration) as? TimeInterval ?? 0.08
-            // Copy pixels now. A lazy NSImage over this shared GIF rep would
-            // replay whichever currentFrame is last when the handler runs.
-            let snapshotSize = gifRep.size
-            guard let snapshotRep = NSBitmapImageRep(
-                bitmapDataPlanes: nil,
-                pixelsWide: max(1, Int(snapshotSize.width.rounded())),
-                pixelsHigh: max(1, Int(snapshotSize.height.rounded())),
-                bitsPerSample: 8,
-                samplesPerPixel: 4,
-                hasAlpha: true,
-                isPlanar: false,
-                colorSpaceName: .deviceRGB,
-                bytesPerRow: 0,
-                bitsPerPixel: 0
-            ) else {
-                return nil
-            }
-            snapshotRep.size = snapshotSize
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: snapshotRep)
-            gifRep.draw(in: NSRect(origin: .zero, size: snapshotSize))
-            NSGraphicsContext.restoreGraphicsState()
-            let snapshot = NSImage(size: snapshotSize)
-            snapshot.addRepresentation(snapshotRep)
-            frames.append(makeTemplateFrame(snapshot))
-            durations.append(duration)
-        }
-        return (frames, durations)
-    }
-
-    private static func makeTemplateFrame(_ image: NSImage) -> NSImage {
-        let size = image.size
-        guard let representation = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: max(1, Int(size.width.rounded())),
-            pixelsHigh: max(1, Int(size.height.rounded())),
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ) else {
-            return image
-        }
-        representation.size = size
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: representation)
-        image.draw(
-            in: NSRect(origin: .zero, size: size),
-            from: .zero,
-            operation: .copy,
-            fraction: 1
-        )
-        NSGraphicsContext.restoreGraphicsState()
-        for y in 0..<representation.pixelsHigh {
-            for x in 0..<representation.pixelsWide {
-                guard let color = representation.colorAt(x: x, y: y)?
-                    .usingColorSpace(.deviceRGB) else { continue }
-                let luminance = 0.2126 * color.redComponent
-                    + 0.7152 * color.greenComponent
-                    + 0.0722 * color.blueComponent
-                let alpha = luminance < 0.04 ? 0 : min(1, luminance)
-                representation.setColor(
-                    NSColor(deviceRed: 1, green: 1, blue: 1, alpha: alpha),
-                    atX: x,
-                    y: y
-                )
-            }
-        }
-        let templated = NSImage(size: size)
-        templated.addRepresentation(representation)
-        templated.isTemplate = true
-        return templated
     }
 }
