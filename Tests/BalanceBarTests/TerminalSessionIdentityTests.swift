@@ -442,7 +442,15 @@ final class TerminalSessionIdentityTests: XCTestCase {
     func testAppleScriptSourceCoversTerminalITermAndGhosttyNotWarp() {
         let terminal = TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.apple.Terminal")
         let iterm = TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.googlecode.iterm2")
-        let ghostty = TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.mitchellh.ghostty")
+        let ghosttyPath = "/Applications/Ghostty.app"
+        let ghostty = TerminalFrontmostTTY.appleScriptSource(
+            bundleIdentifier: "com.mitchellh.ghostty",
+            applicationPath: ghosttyPath
+        )
+        let ghosttyAlt = TerminalFrontmostTTY.appleScriptSource(
+            bundleIdentifier: "com.mitchellh.ghostty",
+            applicationPath: "/tmp/Ghostty.app"
+        )
         XCTAssertNotNil(terminal)
         XCTAssertNotNil(iterm)
         XCTAssertEqual(
@@ -459,40 +467,43 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertTrue(iterm?.contains("tty of current session of current window") == true)
         XCTAssertTrue(iterm?.contains("name of current session of current window") == true)
         XCTAssertTrue(iterm?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
-        XCTAssertTrue(
-            ghostty?.contains("tty of focused terminal of selected tab of front window") == true
-        )
-        XCTAssertTrue(
-            ghostty?.contains("pid of focused terminal of selected tab of front window") == true
-        )
-        XCTAssertTrue(
-            ghostty?.contains("name of focused terminal of selected tab of front window") == true
-        )
-        XCTAssertTrue(ghostty?.contains("tty of terminal 1 of selected tab of front window") == true)
-        XCTAssertTrue(ghostty?.contains("tty of selected tab of front window") == true)
-        XCTAssertTrue(ghostty?.contains("tty of focused terminal of front window") == true)
-        XCTAssertTrue(ghostty?.contains("tty of focused terminal of current tab of front window") == true)
-        XCTAssertTrue(ghostty?.contains("name of selected tab of front window") == true)
-        XCTAssertTrue(ghostty?.contains("title of selected tab of front window") == true)
-        XCTAssertTrue(ghostty?.contains("name of current tab of front window") == true)
-        XCTAssertTrue(ghostty?.contains("name of front window") == true)
-        XCTAssertTrue(ghostty?.contains("name of selected tab of window 1") == true)
-        XCTAssertTrue(ghostty?.contains("name of window 1") == true)
-        XCTAssertTrue(ghostty?.contains("tell application id \"com.mitchellh.ghostty\"") == true)
+        XCTAssertTrue(TerminalFrontmostTTY.usesSelectedTabAppleScript(bundleIdentifier: "com.mitchellh.ghostty"))
+        XCTAssertTrue(TerminalFrontmostTTY.usesSelectedTabAppleScript(bundleIdentifier: "com.apple.Terminal"))
+        XCTAssertNil(TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "com.mitchellh.ghostty"))
+        XCTAssertTrue(ghostty?.contains("tell application \"\(ghosttyPath)\"") == true)
+        XCTAssertTrue(ghosttyAlt?.contains("tell application \"/tmp/Ghostty.app\"") == true)
         XCTAssertTrue(ghostty?.contains("tell application \"Ghostty\"") == true)
         XCTAssertTrue(
-            ghostty?.contains("tabTTY is not \"\" or tabPID is not \"\" or tabTitle is not \"\"") == true
+            ghostty?.contains("set term to focused terminal of selected tab of front window") == true
         )
-        XCTAssertTrue(ghostty?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
+        XCTAssertTrue(ghostty?.contains("tty of term") == true)
+        XCTAssertTrue(ghostty?.contains("pid of term") == true)
+        XCTAssertTrue(ghostty?.contains("name of term") == true)
+        XCTAssertTrue(ghostty?.contains("name of front window") == true)
+        XCTAssertTrue(ghostty?.contains("no_windows") == true)
+        XCTAssertTrue(ghostty?.contains("macos-applescript") == true)
+        XCTAssertTrue(ghostty?.contains("no_front_window") == true)
+        XCTAssertTrue(ghostty?.contains("empty_term") == true)
+        XCTAssertTrue(ghostty?.contains("on error errMsg number errNum") == true)
+        XCTAssertTrue(
+            ghostty?.contains(
+                "(tabTTY as text) & linefeed & (tabPID as text) & linefeed & (tabTitle as text)"
+            ) == true
+        )
+        XCTAssertFalse(ghostty?.contains("terminal 1") == true)
+        XCTAssertFalse(ghostty?.contains("current tab") == true)
+        XCTAssertFalse(ghostty?.contains("as string") == true)
+        XCTAssertFalse(ghostty?.contains("tell application id") == true)
+        XCTAssertFalse(ghostty?.contains("return \"\"") == true)
+        XCTAssertFalse(ghostty?.contains("tabTTY & linefeed & tabPID & linefeed & tabTitle") == true)
         XCTAssertNil(TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "dev.warp.warp-stable"))
         XCTAssertNil(TerminalFrontmostTTY.appleScriptSource(bundleIdentifier: "net.kovidgoyal.kitty"))
+        XCTAssertFalse(TerminalFrontmostTTY.usesSelectedTabAppleScript(bundleIdentifier: "dev.warp.warp-stable"))
 
-        let script = NSAppleScript(source: ghostty ?? "")
         var compileError: NSDictionary?
-        let ghosttyInstalled = FileManager.default.fileExists(
-            atPath: "/Applications/Ghostty.app"
-        )
+        let ghosttyInstalled = FileManager.default.fileExists(atPath: ghosttyPath)
         if ghosttyInstalled {
+            let script = NSAppleScript(source: ghostty ?? "")
             XCTAssertTrue(
                 script?.compileAndReturnError(&compileError) == true,
                 "Ghostty AppleScript failed to compile: \(compileError ?? [:])"
@@ -529,6 +540,101 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertTrue(TerminalFrontmostTTY.isAppleScriptPayloadEmpty(nil))
         XCTAssertFalse(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("\n\nClaude Code"))
         XCTAssertFalse(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("/dev/ttys001\n\n"))
+        XCTAssertFalse(TerminalFrontmostTTY.isAppleScriptPayloadEmpty("ERR\nno_windows\nmacos-applescript"))
+    }
+
+    func testErrorPayloadDoesNotClassifyAClient() {
+        let payload = "ERR\nno_windows\nmacos-applescript"
+        XCTAssertTrue(TerminalFrontmostTTY.isAppleScriptErrorPayload(payload))
+        XCTAssertEqual(TerminalFrontmostTTY.appleScriptErrorCode(payload), "no_windows")
+        XCTAssertEqual(TerminalFrontmostTTY.appleScriptErrorCode("ERR\n-1728\nnot found"), "-1728")
+        XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal(payload),
+            TerminalSelectedTabSignal()
+        )
+        XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal("ERR\nempty_term\n"),
+            TerminalSelectedTabSignal()
+        )
+        XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal("ERR\n-1743\nnot authorized"),
+            TerminalSelectedTabSignal()
+        )
+
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: grokTTY)
+        var fdCalls = 0
+        let signal = TerminalFrontmostTTY.parseSelectedTabSignal(payload)
+        let result = resolveFocusGhostty(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTTY: signal.tty,
+            appleScriptPID: signal.pid,
+            appleScriptTitle: signal.title,
+            grokOffset: 9_000,
+            claudeOffset: 50,
+            grokIO: Date(timeIntervalSince1970: 90),
+            loadSnapshot: { snapshot },
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertNil(result.tty)
+        XCTAssertNil(latch.tty)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
+    }
+
+    func testMissingValueTitleIsNotXOR() {
+        XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal("missing value\nmissing value\nmissing value"),
+            TerminalSelectedTabSignal()
+        )
+        XCTAssertEqual(
+            TerminalFrontmostTTY.parseSelectedTabSignal("\n\nmissing value"),
+            TerminalSelectedTabSignal()
+        )
+        XCTAssertNil(
+            TerminalFrontmostTTY.uniquelyClassifiedTTY(
+                "missing value",
+                grokTTYs: [grokTTY],
+                claudeTTYs: [claudeTTY]
+            )
+        )
+
+        let snapshot = TerminalCLIProcessSnapshot(psOutput: psOutput)
+        var latch = TerminalTTYFocusLatch(terminalPID: 100, tty: grokTTY)
+        var fdCalls = 0
+        let result = resolveFocusGhostty(
+            snapshot: snapshot,
+            latch: &latch,
+            appleScriptTitle: "missing value",
+            grokOffset: 9_000,
+            claudeOffset: 50,
+            grokIO: Date(timeIntervalSince1970: 90),
+            loadSnapshot: { snapshot },
+            fdCalled: { fdCalls += 1 }
+        )
+        XCTAssertNil(result.tty)
+        XCTAssertNil(latch.tty)
+        XCTAssertFalse(result.probedSurface)
+        XCTAssertEqual(fdCalls, 0)
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: result.tty,
+                grokTTYs: snapshot.grokTTYs,
+                claudeTTYs: snapshot.claudeTTYs
+            ),
+            .grok
+        )
     }
 
     func testGhosttyAppleScriptTTYWinsOverGrowingGrokFDWithoutSurfaceProbes() {
@@ -1067,6 +1173,15 @@ final class TerminalSessionIdentityTests: XCTestCase {
         XCTAssertEqual(
             TerminalFrontmostTTY.compactIdentityRaw("~ — ✻ Claude Code — claude"),
             "~ — ✻ Claude Code — claude"
+        )
+        XCTAssertEqual(
+            TerminalFrontmostTTY.compactIdentityRaw("ERR\nno_windows\nmacos-applescript"),
+            "ERR\\nno_windows\\nmacos-applescript"
+        )
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        XCTAssertEqual(
+            TerminalFrontmostTTY.compactIdentityRaw("ERR\n-1728\n\(home)/Ghostty.app"),
+            "ERR\\n-1728\\n~/Ghostty.app"
         )
     }
 
