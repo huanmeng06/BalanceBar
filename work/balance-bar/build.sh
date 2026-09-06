@@ -170,6 +170,8 @@ for localization_directory in "${localization_directories[@]}"
 do
     localization_file="$source_dir/lang/$localization_directory/Localizable.strings"
     [[ -f "$localization_file" ]] || die "required localization resource is missing: $localization_file"
+    infoplist_file="$source_dir/lang/$localization_directory/InfoPlist.strings"
+    [[ -f "$infoplist_file" ]] || die "required InfoPlist.strings is missing: $infoplist_file"
 done
 
 printf 'build-balancebar: building %s variant in %s\n' "$variant" "$build_dir"
@@ -198,6 +200,7 @@ swiftc \
     "${swift_sources[@]}" \
     -o "$executable" \
     -framework AppKit \
+    -framework ApplicationServices \
     -framework Foundation \
     -framework QuartzCore \
     -framework ServiceManagement \
@@ -272,12 +275,16 @@ do
     mkdir -p "$resources_dir/$localization_directory"
     cp "$source_dir/lang/$localization_directory/Localizable.strings" \
         "$resources_dir/$localization_directory/Localizable.strings"
+    cp "$source_dir/lang/$localization_directory/InfoPlist.strings" \
+        "$resources_dir/$localization_directory/InfoPlist.strings"
 done
 
 for localization_directory in "${localization_directories[@]}"
 do
     localization_file="$resources_dir/$localization_directory/Localizable.strings"
     [[ -s "$localization_file" ]] || die "localized app resource is empty: $localization_file"
+    infoplist_file="$resources_dir/$localization_directory/InfoPlist.strings"
+    [[ -s "$infoplist_file" ]] || die "localized InfoPlist.strings is empty: $infoplist_file"
 done
 
 printf 'build-balancebar: ad-hoc signing complete bundle\n'

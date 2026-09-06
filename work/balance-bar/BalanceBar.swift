@@ -729,22 +729,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         )
     }
 
-    private func updateStatusItemActivity() {
+    private func updateStatusItemActivity(layout: Bool = true) {
         statusItemController.updateActivity(
             activeClient: activeClient,
             codexTaskRunning: isCodexTaskRunning,
             claudeTaskRunning: isClaudeTaskRunning,
             grokTaskRunning: isGrokTaskRunning,
-            animationEnabled: animateCodexActivity
+            animationEnabled: animateCodexActivity,
+            layout: layout
         )
     }
 
-    private func updateStatusItem(for snapshot: Snapshot, refreshDashboard: Bool = true) {
+    private func updateStatusItem(
+        for snapshot: Snapshot,
+        refreshDashboard: Bool = true,
+        deferMenuRebuild: Bool = false
+    ) {
         statusItemController.update(
             snapshot: snapshot,
             refreshDate: refreshDate(for: snapshot),
             menuInput: makeStatusItemMenuInput(),
-            settings: makeStatusItemSettings()
+            settings: makeStatusItemSettings(),
+            deferMenuRebuild: deferMenuRebuild
         )
         if refreshDashboard {
             refreshDashboardMenuBarPage()
@@ -855,9 +861,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
     }
 
-    private func refreshStatusItemMenuInput() {
+    private func refreshStatusItemMenuInput(deferRebuild: Bool = false) {
         guard let statusItemController else { return }
-        statusItemController.updateMenu(input: makeStatusItemMenuInput())
+        statusItemController.updateMenu(
+            input: makeStatusItemMenuInput(),
+            deferRebuild: deferRebuild
+        )
     }
 
     private func switchProvider(_ providerID: String) {
@@ -1676,23 +1685,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         if let anchor = lifecycle.trailingRefreshAnchor {
             establishPostCodexRefreshWindow(from: anchor)
         }
-        updateStatusItemActivity()
-        refreshStatusItemMenuInput()
         // Never flash the generic ellipsis during a focus switch. Reuse the
         // last successful snapshot for this client while the live refresh runs.
         // Startup prefetch normally makes this available before the first switch.
         let currentProvider = ccSwitchRepository.loadCurrent(appType: client.appType)
-        if let cached = clientSnapshots[client],
-           currentProvider?.id == cached.providerID {
+        let cached = clientSnapshots[client]
+        let hasCachedSnapshot = cached.map { currentProvider?.id == $0.providerID } ?? false
+        // A following cached render layouts icon+digits together. Skip the
+        // extra layout inside updateActivity so one client switch pays for
+        // layoutStatusItem once. Icon swap still happens.
+        updateStatusItemActivity(layout: !hasCachedSnapshot)
+        refreshStatusItemMenuInput(deferRebuild: true)
+        if hasCachedSnapshot, let cached {
             lastProviderID = cached.providerID
-            render(cached.snapshot)
+            render(cached.snapshot, immediately: true, deferMenuRebuild: true)
         }
         if client != .grok || currentProvider != nil {
             refresh(reason: .clientChanged)
         }
-        providerRefreshCoordinator.refreshQuickSwitchSummaries(force: true, for: activeClient)
+        // Identity-driven tab switches already have per-client snapshots and
+        // startup/cadence quick-switch summaries. Skip the extra force fetch
+        // on the click path; the 60s cadence still refreshes the dropdown.
         if dashboardIsVisible {
-            showDashboardSection(dashboardSection)
+            refreshDashboardMenuBarPage()
         }
     }
 
@@ -1844,14 +1859,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         }
     }
 
-    private func render(_ next: Snapshot) {
-        DispatchQueue.main.async {
+    private func render(_ next: Snapshot, immediately: Bool = false, deferMenuRebuild: Bool = false) {
+        let apply = {
             self.snapshot = next
             self.activeProviderWebsite = next.websiteURL
             if next.kind != .error, next.kind != .placeholder { self.lastSuccessfulRefresh = next.date }
-            self.updateStatusItem(for: next, refreshDashboard: false)
+            self.updateStatusItem(for: next, refreshDashboard: false, deferMenuRebuild: deferMenuRebuild)
             let refreshDate = self.refreshDate(for: next)
             self.updateDashboard(for: next, refreshDate: refreshDate)
+        }
+        if immediately, Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
         }
     }
 

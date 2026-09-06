@@ -2216,6 +2216,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var statusItemReanchorAttempts = 0
     private var isStatusMenuTracking = false
     private var statusMenuNeedsRebuild = false
+    private var suppressLayoutFromSourceImageChange = false
+    private(set) var layoutStatusItemCallCountForTesting = 0
+    private(set) var statusMenuRebuildCountForTesting = 0
+    var statusMenuNeedsRebuildForTesting: Bool { statusMenuNeedsRebuild }
     private let menuBarIconView: RotatingTemplateImageView
     private let menuBarIconSlot = PassthroughView()
     private let menuBarTextStack = MenuBarTextView()
@@ -2667,7 +2671,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         snapshot: Snapshot,
         refreshDate: Date?,
         menuInput: MenuInput,
-        settings: MenuBarSettings
+        settings: MenuBarSettings,
+        deferMenuRebuild: Bool = false
     ) {
         let iconDisplayModeChanged = self.settings.iconDisplayMode != settings.iconDisplayMode
         let iconDisplayDelayChanged = self.settings.iconDisplayDelay != settings.iconDisplayDelay
@@ -2702,7 +2707,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // idle marks and task sprites at the selected point size.
             updateActivityIcon()
         }
-        rebuildOrDeferMenu()
+        rebuildOrDeferMenu(forceDefer: deferMenuRebuild)
         scheduleStatusItemAttachmentCheck(reason: "update", reanchor: false)
     }
 
@@ -2785,13 +2790,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refreshMenuBarContentBitmap()
     }
 
-    func updateMenu(input: MenuInput) {
+    func updateMenu(input: MenuInput, deferRebuild: Bool = false) {
         // The caller may still perform its periodic local-state read so the
         // database-watcher fallback remains intact. Reuse the current menu
         // hierarchy when that read produces the same semantic input.
         guard menuInput != input else { return }
         menuInput = input
-        rebuildOrDeferMenu()
+        rebuildOrDeferMenu(forceDefer: deferRebuild)
     }
 
     private func updateStatusItemVisibility(_ visibility: StatusItemVisibility) {
@@ -2827,7 +2832,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         codexTaskRunning: Bool,
         claudeTaskRunning: Bool,
         grokTaskRunning: Bool = false,
-        animationEnabled: Bool
+        animationEnabled: Bool,
+        layout: Bool = true
     ) {
         let activeClientChanged = self.activeClient != activeClient
         let grokRotationSourceChanged =
@@ -2841,8 +2847,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if activeClientChanged || grokRotationSourceChanged {
             stableCodexAnimationFrameBuffer.invalidate()
         }
+        let previousSuppressLayout = suppressLayoutFromSourceImageChange
+        if !layout {
+            suppressLayoutFromSourceImageChange = true
+        }
         updateActivityIcon()
-        if activeClientChanged {
+        if !layout {
+            suppressLayoutFromSourceImageChange = previousSuppressLayout
+        } else if activeClientChanged {
             // The source-image callback normally performs this layout. Keep a
             // direct refresh for missing optional assets so changing clients
             // can never leave a cache keyed to the previous client.
@@ -2873,6 +2885,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        if statusMenuNeedsRebuild {
+            statusMenuNeedsRebuild = false
+            rebuildStatusMenu()
+        }
         isStatusMenuTracking = true
         refreshNativeCodexIconAppearance()
         refreshClaudeThinkingIconAppearance()
@@ -2920,9 +2936,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func rebuildOrDeferMenu() {
+    private func rebuildOrDeferMenu(forceDefer: Bool = false) {
         guard statusItem != nil else { return }
-        if isStatusMenuTracking {
+        if isStatusMenuTracking || forceDefer {
             statusMenuNeedsRebuild = true
         } else {
             rebuildStatusMenu()
@@ -3054,7 +3070,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menuBarIconView.onSourceImageChanged = { [weak self] image in
             guard let self else { return }
             self.invalidateBitmapContentCache()
-            self.layoutStatusItem(for: self.snapshot)
+            if !self.suppressLayoutFromSourceImageChange {
+                self.layoutStatusItem(for: self.snapshot)
+            }
             self.actions.iconChanged(image)
         }
         menuBarIconView.onAnimationFrameIndexChanged = { [weak self] frameIndex in
@@ -3513,6 +3531,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func layoutStatusItem(for snapshot: Snapshot) {
+        layoutStatusItemCallCountForTesting += 1
         guard let statusItem, let button = statusItem.button else { return }
         applyMenuBarFonts()
         let effectiveSnapshot = menuBarSnapshot(for: snapshot)
@@ -4844,6 +4863,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func rebuildStatusMenu() {
+        statusMenuRebuildCountForTesting += 1
         statusMenu.removeAllItems()
         if snapshot.kind == .openCodex {
             if menuInput.openCodexCards.isEmpty {
