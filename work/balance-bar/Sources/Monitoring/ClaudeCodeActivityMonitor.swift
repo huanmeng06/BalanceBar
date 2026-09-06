@@ -23,6 +23,12 @@ final class ClaudeCodeActivityMonitor {
         let lastActivityAt: Date?
     }
 
+    private enum TranscriptCacheKind {
+        case contentDetermined
+        case recentWriteDependent
+        case readFailure
+    }
+
     private struct TranscriptCache {
         let path: String
         let size: UInt64
@@ -30,6 +36,12 @@ final class ClaudeCodeActivityMonitor {
         let checkedAt: Date
         let observation: ActivityMonitorObservation
         let trueTurnEvidence: Bool
+        let kind: TranscriptCacheKind
+    }
+
+    private struct ProcessCache {
+        var probedAt: Date = .distantPast
+        var trusted: (running: Bool, ttys: [String])?
     }
 
     private let projectsDirectory: URL
@@ -37,10 +49,10 @@ final class ClaudeCodeActivityMonitor {
     private let processRunner: ProcessRunner
     private var sessionCache = SessionCache(scannedAt: .distantPast, url: nil, lastActivityAt: nil)
     private let processCacheLock = NSLock()
-    private var processCache: (checkedAt: Date, running: Bool, ttys: [String]) = (
-        .distantPast, false, []
-    )
+    private var processCache = ProcessCache()
     private var transcriptCache: TranscriptCache?
+    private(set) var sessionScanCount = 0
+    private(set) var transcriptReadCount = 0
 
     init(
         projectsDirectory: URL? = nil,
@@ -120,8 +132,8 @@ final class ClaudeCodeActivityMonitor {
     private func claudeProcessState() -> (running: Bool, ttys: [String]) {
         let now = clock()
         processCacheLock.lock()
-        if now.timeIntervalSince(processCache.checkedAt) < 1 {
-            let cached = (processCache.running, processCache.ttys)
+        if now.timeIntervalSince(processCache.probedAt) < 1 {
+            let cached = processCache.trusted ?? (false, [])
             processCacheLock.unlock()
             return cached
         }
@@ -133,12 +145,10 @@ final class ClaudeCodeActivityMonitor {
         do {
             result = try processRunner(executableURL, arguments)
         } catch {
-            storeProcessCache(checkedAt: now, running: false, ttys: [])
-            return (false, [])
+            return storeUnavailableProcessProbe(at: now)
         }
         guard result.terminationStatus == 0 else {
-            storeProcessCache(checkedAt: now, running: false, ttys: [])
-            return (false, [])
+            return storeUnavailableProcessProbe(at: now)
         }
 
         // A single unrelated process may contain non-UTF-8 bytes in its
@@ -154,14 +164,24 @@ final class ClaudeCodeActivityMonitor {
                 ttys.append(tty)
             }
         }
-        storeProcessCache(checkedAt: now, running: running, ttys: ttys)
+        storeTrustedProcessCache(probedAt: now, running: running, ttys: ttys)
         return (running, ttys)
     }
 
-    private func storeProcessCache(checkedAt: Date, running: Bool, ttys: [String]) {
+    private func storeTrustedProcessCache(probedAt: Date, running: Bool, ttys: [String]) {
         processCacheLock.lock()
-        processCache = (checkedAt, running, ttys)
+        processCache.probedAt = probedAt
+        processCache.trusted = (running, ttys)
         processCacheLock.unlock()
+    }
+
+    /// `ps` throw / non-zero is unavailable, not proof Claude exited.
+    private func storeUnavailableProcessProbe(at now: Date) -> (running: Bool, ttys: [String]) {
+        processCacheLock.lock()
+        processCache.probedAt = now
+        let cached = processCache.trusted ?? (false, [])
+        processCacheLock.unlock()
+        return cached
     }
 
     static func lineLooksLikeClaudeCLI<S: StringProtocol>(_ rawLine: S) -> Bool {
@@ -185,9 +205,24 @@ final class ClaudeCodeActivityMonitor {
 
     private func latestMainSession() -> (url: URL, lastActivityAt: Date?)? {
         let now = clock()
+        if let cachedURL = sessionCache.url {
+            if let identity = fileIdentity(atPath: cachedURL.path) {
+                let modified = Date(timeIntervalSince1970: identity.modifiedAt)
+                if now.timeIntervalSince(modified) < 2 {
+                    return (cachedURL, modified)
+                }
+            } else {
+                return scanLatestMainSession(now: now)
+            }
+        }
         if now.timeIntervalSince(sessionCache.scannedAt) < 2 {
             return sessionCache.url.map { ($0, sessionCache.lastActivityAt) }
         }
+        return scanLatestMainSession(now: now)
+    }
+
+    private func scanLatestMainSession(now: Date) -> (url: URL, lastActivityAt: Date?)? {
+        sessionScanCount += 1
         guard let enumerator = FileManager.default.enumerator(
             at: projectsDirectory,
             includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
@@ -230,13 +265,23 @@ final class ClaudeCodeActivityMonitor {
         if let cached = transcriptCache,
            cached.path == url.path,
            cached.size == sizeValue,
-           cached.modifiedAt == modifiedValue,
-           now.timeIntervalSince(cached.checkedAt) < 0.75 {
-            return (cached.observation, cached.trueTurnEvidence)
+           cached.modifiedAt == modifiedValue {
+            switch cached.kind {
+            case .contentDetermined:
+                return (cached.observation, cached.trueTurnEvidence)
+            case .recentWriteDependent:
+                let recentWrite = now.timeIntervalSince1970 - modifiedValue < 15
+                return (recentWrite ? .active : .ambiguousIdle, false)
+            case .readFailure:
+                if now.timeIntervalSince(cached.checkedAt) < 1 {
+                    return (cached.observation, cached.trueTurnEvidence)
+                }
+            }
         }
         func cache(
             _ observation: ActivityMonitorObservation,
-            trueTurnEvidence: Bool = false
+            trueTurnEvidence: Bool = false,
+            kind: TranscriptCacheKind
         ) -> (ActivityMonitorObservation, Bool) {
             transcriptCache = TranscriptCache(
                 path: url.path,
@@ -244,12 +289,14 @@ final class ClaudeCodeActivityMonitor {
                 modifiedAt: modifiedValue,
                 checkedAt: now,
                 observation: observation,
-                trueTurnEvidence: trueTurnEvidence
+                trueTurnEvidence: trueTurnEvidence,
+                kind: kind
             )
             return (observation, trueTurnEvidence)
         }
+        transcriptReadCount += 1
         guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return cache(.ambiguousIdle)
+            return cache(.ambiguousIdle, kind: .readFailure)
         }
         defer { try? handle.close() }
 
@@ -259,10 +306,10 @@ final class ClaudeCodeActivityMonitor {
         do {
             try handle.seek(toOffset: offset)
         } catch {
-            return cache(.ambiguousIdle)
+            return cache(.ambiguousIdle, kind: .readFailure)
         }
         guard let text = String(data: handle.readDataToEndOfFile(), encoding: .utf8) else {
-            return cache(.ambiguousIdle)
+            return cache(.ambiguousIdle, kind: .readFailure)
         }
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
         if offset > 0, !lines.isEmpty {
@@ -283,25 +330,28 @@ final class ClaudeCodeActivityMonitor {
             // with `interruptedMessageId`. It is terminal for the current turn,
             // even though the Claude process and interactive session remain open.
             if event["interruptedMessageId"] != nil {
-                return cache(.hardTerminal)
+                return cache(.hardTerminal, kind: .contentDetermined)
             }
 
             if type == "assistant", let message = event["message"] as? [String: Any] {
                 let stopReason = message["stop_reason"] as? String
                 if stopReason == "end_turn" || stopReason == "stop_sequence" {
-                    return cache(.hardTerminal)
+                    return cache(.hardTerminal, kind: .contentDetermined)
                 }
                 if stopReason == "tool_use" {
-                    return cache(.active, trueTurnEvidence: true)
+                    return cache(.active, trueTurnEvidence: true, kind: .contentDetermined)
                 }
                 if let content = message["content"] as? [[String: Any]],
                    content.contains(where: {
                        let contentType = $0["type"] as? String
                        return contentType == "thinking" || contentType == "tool_use"
                    }) {
-                    return cache(.active, trueTurnEvidence: true)
+                    return cache(.active, trueTurnEvidence: true, kind: .contentDetermined)
                 }
-                return cache(recentWrite ? .active : .ambiguousIdle)
+                return cache(
+                    recentWrite ? .active : .ambiguousIdle,
+                    kind: .recentWriteDependent
+                )
             }
 
             if type == "user", let message = event["message"] as? [String: Any] {
@@ -310,14 +360,23 @@ final class ClaudeCodeActivityMonitor {
                    content.allSatisfy({ ($0["type"] as? String) == "tool_result" }) {
                     continue
                 }
-                return cache(recentWrite ? .active : .ambiguousIdle)
+                return cache(
+                    recentWrite ? .active : .ambiguousIdle,
+                    kind: .recentWriteDependent
+                )
             }
 
             if type == "progress" || type == "queue-operation" {
-                return cache(recentWrite ? .active : .ambiguousIdle)
+                return cache(
+                    recentWrite ? .active : .ambiguousIdle,
+                    kind: .recentWriteDependent
+                )
             }
         }
-        return cache(recentWrite ? .active : .ambiguousIdle)
+        return cache(
+            recentWrite ? .active : .ambiguousIdle,
+            kind: .recentWriteDependent
+        )
     }
 
     private func fileIdentity(atPath path: String) -> (size: UInt64, modifiedAt: TimeInterval)? {
