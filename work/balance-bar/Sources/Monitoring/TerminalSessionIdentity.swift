@@ -163,6 +163,15 @@ struct TerminalSelectedTabSignal: Equatable {
     var title: String?
 }
 
+enum TerminalAppleScriptStatus: String, Equatable {
+    case skippedExecuting = "skipped_executing"
+    case skippedBackoff = "skipped_backoff"
+    case timeout = "timeout"
+    case failure = "failure"
+    case empty = "empty"
+    case value = "ok"
+}
+
 enum TerminalFocusHint {
     /// Unique grok XOR claude only. Do not match gro, cloud, or cloud code.
     static func client(fromWindowTitle title: String?) -> AssistantClient? {
@@ -310,6 +319,16 @@ enum TerminalFrontmostTTY {
     private static var compiledAppleScripts: [String: NSAppleScript] = [:]
     private static var appleScriptSkipUntil: Date?
     private static let appleScriptBackoffInterval: TimeInterval = 2
+    private static let appleScriptQueue = DispatchQueue(
+        label: "local.balancebar.terminal-applescript"
+    )
+    static let appleScriptTimeout: TimeInterval = 0.25
+    private static var appleScriptExecuting = false
+    private static var lastAppleScriptStatus: TerminalAppleScriptStatus = .empty
+    private static var lastAppleScriptDuration: TimeInterval = 0
+    private static let identityLogLock = NSLock()
+    private static var lastIdentityLogAt = Date.distantPast
+    private static var lastIdentityLogSignature = ""
 
     static func appleScriptSource(bundleIdentifier: String?) -> String? {
         let bundle = (bundleIdentifier ?? "").lowercased()
@@ -481,6 +500,8 @@ enum TerminalFrontmostTTY {
         return parseSelectedTabSignal(runCachedAppleScript(bundleIdentifier: bundleIdentifier))
     }
 
+    /// Classify a selected-tab TTY even when that client has several TTYs
+    /// under the same terminal process. Title XOR still requires uniqueness.
     static func uniquelyClassifiedTTY(
         _ rawTTY: String?,
         grokTTYs: Set<String>,
@@ -510,10 +531,15 @@ enum TerminalFrontmostTTY {
         claudeTTYs: Set<String>,
         loadSnapshot: @escaping () -> TerminalCLIProcessSnapshot?
     ) -> (tty: String?, snapshot: TerminalCLIProcessSnapshot?) {
+        let started = Date()
         let bundle = application?.bundleIdentifier
-        let signal = appleScriptSource(bundleIdentifier: bundle) == nil
-            ? TerminalSelectedTabSignal()
-            : selectedTabSignal(bundleIdentifier: bundle)
+        let signal: TerminalSelectedTabSignal
+        if appleScriptSource(bundleIdentifier: bundle) == nil {
+            recordAppleScriptStatus(.empty, duration: 0)
+            signal = TerminalSelectedTabSignal()
+        } else {
+            signal = selectedTabSignal(bundleIdentifier: bundle)
+        }
         var snapshot: TerminalCLIProcessSnapshot?
         var snapshotLoaded = false
         let loadOnce: () -> TerminalCLIProcessSnapshot? = {
@@ -555,7 +581,16 @@ enum TerminalFrontmostTTY {
         )
         latchLock.lock()
         focusLatch = latch
+        let latchedTTY = focusLatch.tty
         latchLock.unlock()
+        logIdentityTick(
+            signal: signal,
+            focusedTTY: focused.tty,
+            latchTTY: latchedTTY,
+            grokTTYs: grokTTYs.union(snapshot?.grokTTYs ?? []),
+            claudeTTYs: claudeTTYs.union(snapshot?.claudeTTYs ?? []),
+            duration: Date().timeIntervalSince(started)
+        )
         return (focused.tty, snapshot)
     }
 
@@ -629,7 +664,9 @@ enum TerminalFrontmostTTY {
         }
 
         guard let snap = snapshotValue() else {
-            if latch.terminalPID != terminalPID {
+            if appleScriptSource(bundleIdentifier: bundleIdentifier) != nil {
+                releaseUnconfirmedLatch(terminalPID: terminalPID, latch: &latch)
+            } else if latch.terminalPID != terminalPID {
                 latch = TerminalTTYFocusLatch(terminalPID: terminalPID)
             }
             return (nil, loadedSnapshot, false)
@@ -648,6 +685,10 @@ enum TerminalFrontmostTTY {
         let bundle = (bundleIdentifier ?? "").lowercased()
         let needsIPC = bundle.contains("kitty") && candidateTTYs.count > 1
         let allowOneShot = !appleScriptSupported && candidateTTYs.count > 1
+        if appleScriptSupported && !needsIPC {
+            releaseUnconfirmedLatch(terminalPID: terminalPID, latch: &latch)
+            return (nil, true, false)
+        }
         guard needsIPC || allowOneShot else {
             return (
                 retainedLatchTTY(candidateTTYs: candidateTTYs, terminalPID: terminalPID, latch: &latch),
@@ -710,6 +751,17 @@ enum TerminalFrontmostTTY {
         let grok = grokTTYs.union(snapshot.grokTTYs)
         let claude = claudeTTYs.union(snapshot.claudeTTYs)
         return uniquelyClassifiedTTY(titleTTY, grokTTYs: grok, claudeTTYs: claude)
+    }
+
+    private static func releaseUnconfirmedLatch(
+        terminalPID: Int32?,
+        latch: inout TerminalTTYFocusLatch
+    ) {
+        if latch.terminalPID != terminalPID {
+            latch = TerminalTTYFocusLatch(terminalPID: terminalPID)
+            return
+        }
+        latch.tty = nil
     }
 
     private static func retainedLatchTTY(
@@ -1018,24 +1070,95 @@ enum TerminalFrontmostTTY {
 
     private static func runCachedAppleScript(bundleIdentifier: String?) -> String? {
         let bundle = (bundleIdentifier ?? "").lowercased()
+        let started = Date()
         scriptCacheLock.lock()
-        if let skipUntil = appleScriptSkipUntil, Date() < skipUntil {
+        if appleScriptExecuting {
             scriptCacheLock.unlock()
+            recordAppleScriptStatus(.skippedExecuting, duration: 0)
             return nil
         }
+        if let skipUntil = appleScriptSkipUntil, Date() < skipUntil {
+            scriptCacheLock.unlock()
+            recordAppleScriptStatus(.skippedBackoff, duration: 0)
+            return nil
+        }
+        appleScriptExecuting = true
         scriptCacheLock.unlock()
 
         guard let script = compiledAppleScript(bundleIdentifier: bundle) else {
+            scriptCacheLock.lock()
+            appleScriptExecuting = false
+            scriptCacheLock.unlock()
+            recordAppleScriptStatus(.failure, duration: Date().timeIntervalSince(started))
             return nil
         }
-        var error: NSDictionary?
-        let result = script.executeAndReturnError(&error)
-        if error != nil {
+
+        let box = AppleScriptRunBox()
+        let finished = DispatchSemaphore(value: 0)
+        appleScriptQueue.async {
+            var error: NSDictionary?
+            let result = script.executeAndReturnError(&error)
+            box.error = error
+            box.stringValue = result.stringValue
+            scriptCacheLock.lock()
+            appleScriptExecuting = false
+            scriptCacheLock.unlock()
+            finished.signal()
+        }
+
+        if finished.wait(timeout: .now() + appleScriptTimeout) == .timedOut {
             markAppleScriptFailure()
+            recordAppleScriptStatus(.timeout, duration: Date().timeIntervalSince(started))
             return nil
         }
-        let value = result.stringValue
-        return (value?.isEmpty == false) ? value : nil
+
+        let duration = Date().timeIntervalSince(started)
+        if box.error != nil {
+            markAppleScriptFailure()
+            recordAppleScriptStatus(.failure, duration: duration)
+            return nil
+        }
+        let value = box.stringValue
+        if value == nil || value?.isEmpty == true {
+            recordAppleScriptStatus(.empty, duration: duration)
+            return nil
+        }
+        recordAppleScriptStatus(.value, duration: duration)
+        return value
+    }
+
+    static func waitWithTimeout<T>(
+        _ timeout: TimeInterval,
+        execute: @escaping () -> T
+    ) -> T? {
+        let box = TimeoutBox<T>()
+        let finished = DispatchSemaphore(value: 0)
+        appleScriptQueue.async {
+            box.value = execute()
+            finished.signal()
+        }
+        if finished.wait(timeout: .now() + timeout) == .timedOut {
+            return nil
+        }
+        return box.value
+    }
+
+    static func compactIdentityTitle(_ title: String?, limit: Int = 32) -> String {
+        guard let title else { return "-" }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "-" }
+        var value = trimmed
+        if value.hasPrefix("/") {
+            if let separator = value.range(of: " - ", options: .backwards) {
+                value = String(value[separator.upperBound...])
+            } else {
+                value = (value as NSString).lastPathComponent
+            }
+        }
+        if value.count > limit {
+            return "…" + String(value.suffix(limit - 1))
+        }
+        return value
     }
 
     private static func compiledAppleScript(bundleIdentifier: String) -> NSAppleScript? {
@@ -1069,4 +1192,84 @@ enum TerminalFrontmostTTY {
         appleScriptSkipUntil = Date().addingTimeInterval(appleScriptBackoffInterval)
         scriptCacheLock.unlock()
     }
+
+    private static func recordAppleScriptStatus(
+        _ status: TerminalAppleScriptStatus,
+        duration: TimeInterval
+    ) {
+        scriptCacheLock.lock()
+        lastAppleScriptStatus = status
+        lastAppleScriptDuration = duration
+        scriptCacheLock.unlock()
+    }
+
+    private static func logIdentityTick(
+        signal: TerminalSelectedTabSignal,
+        focusedTTY: String?,
+        latchTTY: String?,
+        grokTTYs: Set<String>,
+        claudeTTYs: Set<String>,
+        duration: TimeInterval
+    ) {
+        scriptCacheLock.lock()
+        let status = lastAppleScriptStatus
+        let appleScriptMS = Int((lastAppleScriptDuration * 1000).rounded())
+        scriptCacheLock.unlock()
+        let classified = classifiedClient(
+            tty: focusedTTY,
+            grokTTYs: grokTTYs,
+            claudeTTYs: claudeTTYs
+        )
+        let signature = [
+            signal.tty ?? "-",
+            signal.pid.map(String.init) ?? "-",
+            focusedTTY ?? "-",
+            classified,
+            status.rawValue
+        ].joined(separator: "|")
+        let important = status == .timeout
+            || status == .failure
+            || status == .skippedExecuting
+        identityLogLock.lock()
+        let now = Date()
+        let changed = signature != lastIdentityLogSignature
+        let due = now.timeIntervalSince(lastIdentityLogAt) >= 1
+        guard important || changed || due else {
+            identityLogLock.unlock()
+            return
+        }
+        lastIdentityLogSignature = signature
+        lastIdentityLogAt = now
+        identityLogLock.unlock()
+
+        SwitchLog.write(
+            "identity tick; selected_tty=\(signal.tty ?? "-"); pid=\(signal.pid.map(String.init) ?? "-"); title=\(compactIdentityTitle(signal.title)); classified=\(classified); latch=\(latchTTY ?? "-"); applescript=\(status.rawValue); ms=\(appleScriptMS); total_ms=\(Int((duration * 1000).rounded()))",
+            level: .debug,
+            category: "identity"
+        )
+    }
+
+    private static func classifiedClient(
+        tty: String?,
+        grokTTYs: Set<String>,
+        claudeTTYs: Set<String>
+    ) -> String {
+        guard let tty = uniquelyClassifiedTTY(
+            tty,
+            grokTTYs: grokTTYs,
+            claudeTTYs: claudeTTYs
+        ) else {
+            return "-"
+        }
+        return grokTTYs.contains(tty) ? "grok" : "claude"
+    }
+}
+
+private final class AppleScriptRunBox {
+    var stringValue: String?
+    var error: NSDictionary?
+}
+
+private final class TimeoutBox<T> {
+    var value: T?
 }

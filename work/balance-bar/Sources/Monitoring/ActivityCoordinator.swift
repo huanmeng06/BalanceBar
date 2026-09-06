@@ -590,6 +590,14 @@ final class ActivityCoordinator {
                     application: application
                 )
             }
+        } else {
+            SwitchLog.write(
+                "identity tick skipped; in_flight=true",
+                level: .debug,
+                category: "identity",
+                throttleKey: "identity-skip-inflight",
+                minimumInterval: 1
+            )
         }
         if !isActivityInFlight {
             isActivityInFlight = true
@@ -638,8 +646,8 @@ final class ActivityCoordinator {
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            guard self.isStarted, self.lifecycleGeneration == generation else { return }
             self.isIdentityInFlight = false
+            guard self.isStarted, self.lifecycleGeneration == generation else { return }
             if let grokPresence,
                self.actions.grokProcessAvailable() != grokPresence.running {
                 self.actions.setGrokProcessAvailable(grokPresence.running)

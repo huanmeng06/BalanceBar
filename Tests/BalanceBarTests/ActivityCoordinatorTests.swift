@@ -215,6 +215,38 @@ final class ActivityCoordinatorTests: XCTestCase {
         )
     }
 
+    func testSelectedClaudeTTYWinsWhenSeveralGrokTTYsShareOneTerminalPID() {
+        XCTAssertEqual(
+            TerminalFrontmostTTY.uniquelyClassifiedTTY(
+                "ttys003",
+                grokTTYs: ["ttys000", "ttys001", "ttys002"],
+                claudeTTYs: ["ttys003"]
+            ),
+            "ttys003"
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.preferredTerminalClient(
+                current: .grok,
+                frontmostTTY: "ttys003",
+                grokTTYs: ["ttys000", "ttys001", "ttys002"],
+                claudeTTYs: ["ttys003"]
+            ),
+            .claude
+        )
+        XCTAssertEqual(
+            ActivityClientSelection.client(
+                frontmost: .codex,
+                current: .claude,
+                grokProcessRunning: true,
+                claudeProcessRunning: true,
+                frontmostTTY: "ttys003",
+                grokTTYs: ["ttys000", "ttys001", "ttys002"],
+                claudeTTYs: ["ttys003"]
+            ),
+            .codex
+        )
+    }
+
     func testGrokExitWhileTerminalFrontmostFallsBackToClaudeOrCodex() {
         XCTAssertEqual(
             ActivityClientSelection.client(
