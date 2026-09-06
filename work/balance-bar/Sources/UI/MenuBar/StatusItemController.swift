@@ -2943,8 +2943,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Reloads idle marks and thinking sprites at the selected point size.
-    /// Grok thinking uses the committed SVG sprite so size clicks never decode
-    /// the GIF or run `colorAtX:y:` on the main thread.
+    /// Grok thinking uses the committed 30-frame SVG directory so size clicks
+    /// never decode the GIF or run `colorAtX:y:` on the main thread.
     private func loadMenuBarIconAssets(size: CGFloat) {
         let iconSize = MenuBarIconSizePreset.nearest(to: size).pointSize
         let outputSize = NSSize(width: iconSize, height: iconSize)
@@ -2982,12 +2982,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 outputSize: outputSize
             )
         }
-        // Size clicks must stay on the committed SVG sprite. GIF decode plus
-        // per-pixel `colorAtX:y:` templating pegs a core on the main thread.
+        // Size clicks must stay on the committed 30-frame SVG directory.
+        // GIF decode plus per-pixel `colorAtX:y:` pegs a core on the main thread.
         grokThinkingSpriteImage = nil
-        if let thinkingURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "svg") {
+        if let thinkingDirectory = GrokThinkingSprite.bundledDirectoryURL() {
             grokThinkingSpriteImage = GrokThinkingSprite.make(
-                from: thinkingURL,
+                fromDirectory: thinkingDirectory,
                 outputSize: outputSize
             )
         }

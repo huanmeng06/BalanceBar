@@ -533,21 +533,27 @@ final class MenuBarAnimationTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourceURL = repositoryRoot.appendingPathComponent(
-            "work/balance-bar/GrokThinking.svg"
+        let directoryURL = repositoryRoot.appendingPathComponent(
+            "work/balance-bar/GrokThinking"
         )
-        let svg = try String(contentsOf: sourceURL, encoding: .utf8)
-        XCTAssertTrue(svg.contains("<animateTransform"))
-        XCTAssertTrue(svg.contains("viewBox=\"0 0 100 100\""))
-        XCTAssertTrue(svg.contains("fill=\"white\""))
+        let firstFrame = try String(
+            contentsOf: directoryURL.appendingPathComponent(
+                GrokThinkingSprite.frameFileName(index: 1)
+            ),
+            encoding: .utf8
+        )
+        XCTAssertTrue(firstFrame.contains("viewBox=\"0 0 560 560\""))
+        XCTAssertTrue(firstFrame.contains("fill:#fff"))
+        XCTAssertFalse(firstFrame.contains("<animateTransform"))
 
         GrokThinkingSprite.resetCachesForTesting()
-        let frames = try XCTUnwrap(GrokThinkingSprite.makeFrames(from: svg))
+        let frames = try XCTUnwrap(GrokThinkingSprite.makeFrames(fromDirectory: directoryURL))
         XCTAssertEqual(frames.count, GrokThinkingAnimationTiming.frameCount)
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 30)
 
         let frameSize = NSSize(width: 16, height: 16)
         let sprite = try XCTUnwrap(
-            GrokThinkingSprite.make(from: sourceURL, outputSize: frameSize)
+            GrokThinkingSprite.make(fromDirectory: directoryURL, outputSize: frameSize)
         )
         XCTAssertEqual(
             sprite.size,
@@ -581,7 +587,7 @@ final class MenuBarAnimationTests: XCTestCase {
             "translation 0 must show the closed ring, not a slash"
         )
 
-        for slashIndex in [5, 8, 11] {
+        for slashIndex in [7, 14, 19] {
             let slash = try spriteFrameFromBottom(
                 of: strip,
                 frameIndex: slashIndex,
@@ -598,7 +604,7 @@ final class MenuBarAnimationTests: XCTestCase {
         for preset in MenuBarIconSizePreset.allCases {
             let sized = try XCTUnwrap(
                 GrokThinkingSprite.make(
-                    from: sourceURL,
+                    fromDirectory: directoryURL,
                     outputSize: NSSize(width: preset.pointSize, height: preset.pointSize)
                 )
             )
@@ -643,20 +649,20 @@ final class MenuBarAnimationTests: XCTestCase {
         )
         XCTAssertEqual(
             sprite.size,
-            NSSize(width: 16, height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount))
+            NSSize(width: 16, height: 16 * 23)
         )
         XCTAssertTrue(sprite.isTemplate)
         XCTAssertGreaterThan(GrokThinkingAnimationTiming.frameCount, 1)
-        XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 23)
-        XCTAssertEqual(GrokThinkingAnimationTiming.frameDurations[11], 0.48, accuracy: 0.000_001)
-        XCTAssertEqual(GrokThinkingAnimationTiming.frameDurations[22], 0.24, accuracy: 0.000_001)
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameCount, 30)
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameDurations[11], 0.08, accuracy: 0.000_001)
+        XCTAssertEqual(GrokThinkingAnimationTiming.frameDurations[29], 0.08, accuracy: 0.000_001)
         XCTAssertEqual(GrokThinkingAnimationTiming.duration, 2.40, accuracy: 0.000_001)
         XCTAssertEqual(MenuBarSpriteAnimationTiming.claude.frameCount, 9)
         XCTAssertEqual(MenuBarSpriteAnimationTiming.claude.duration, 0.81, accuracy: 0.000_001)
-        XCTAssertEqual(MenuBarSpriteAnimationTiming.grok.frameCount, 23)
+        XCTAssertEqual(MenuBarSpriteAnimationTiming.grok.frameCount, 30)
         XCTAssertEqual(
             MenuBarSpriteAnimationTiming.grok.keyTimes[11].doubleValue,
-            0.88 / 2.40,
+            11.0 * 0.08 / 2.40,
             accuracy: 0.000_001
         )
 
@@ -677,7 +683,7 @@ final class MenuBarAnimationTests: XCTestCase {
                 sized.size,
                 NSSize(
                     width: preset.pointSize,
-                    height: preset.pointSize * CGFloat(GrokThinkingAnimationTiming.frameCount)
+                    height: preset.pointSize * 23
                 )
             )
             XCTAssertTrue(sized.isTemplate)
@@ -697,7 +703,7 @@ final class MenuBarAnimationTests: XCTestCase {
             "work/balance-bar/GrokThinking.gif"
         )
         let frameSize = NSSize(width: 16, height: 16)
-        let frameCount = GrokThinkingAnimationTiming.frameCount
+        let frameCount = 23
 
         let pngSprite = try XCTUnwrap(
             GrokThinkingSprite.make(fromPNG: pngURL, outputSize: frameSize)
@@ -1230,10 +1236,11 @@ final class MenuBarAnimationTests: XCTestCase {
             statusItemSource[grokThinkingLoadStart.lowerBound..<grokThinkingLoadEnd.lowerBound]
         )
         let collapsedGrokThinkingLoad = String(grokThinkingLoadPath.filter { !$0.isWhitespace })
-        XCTAssertTrue(
+        XCTAssertTrue(collapsedGrokThinkingLoad.contains("bundledDirectoryURL()"))
+        XCTAssertTrue(collapsedGrokThinkingLoad.contains("fromDirectory:thinkingDirectory"))
+        XCTAssertFalse(
             collapsedGrokThinkingLoad.contains("forResource:\"GrokThinking\",withExtension:\"svg\"")
         )
-        XCTAssertTrue(collapsedGrokThinkingLoad.contains("GrokThinkingSprite.make("))
         XCTAssertFalse(
             collapsedGrokThinkingLoad.contains("forResource:\"GrokThinking\",withExtension:\"png\"")
         )

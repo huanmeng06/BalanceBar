@@ -155,8 +155,13 @@ final class StatusItemControllerTests: XCTestCase {
     @MainActor
     func testUpdateIconSizeLoadsGrokThinkingFromSVGAndDoesNotCallFromGIF() throws {
         XCTAssertNotNil(
-            Bundle.main.url(forResource: "GrokThinking", withExtension: "svg"),
-            "live Grok thinking must ship as GrokThinking.svg like Claude"
+            GrokThinkingSprite.bundledDirectoryURL(),
+            "live Grok thinking must ship as the GrokThinking/ 30-frame SVG directory"
+        )
+        XCTAssertNotNil(
+            GrokThinkingSprite.bundledDirectoryURL()?
+                .appendingPathComponent(GrokThinkingSprite.frameFileName(index: 1)),
+            "live Grok thinking must include frame_001.svg"
         )
         XCTAssertNotNil(
             Bundle.main.url(forResource: "Grok", withExtension: "svg"),
@@ -1186,7 +1191,10 @@ final class StatusItemControllerTests: XCTestCase {
         )
         grokIcon.isTemplate = true
         let grokThinkingSprite = makeSolidImage(
-            size: NSSize(width: 16, height: 368),
+            size: NSSize(
+                width: 16,
+                height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            ),
             red: 0.95,
             green: 0.95,
             blue: 0.95
@@ -1340,7 +1348,10 @@ final class StatusItemControllerTests: XCTestCase {
             )
             spark.isTemplate = true
             let sprite = makeSolidImage(
-                size: NSSize(width: 16, height: 368),
+                size: NSSize(
+                    width: 16,
+                    height: 16 * CGFloat(GrokThinkingAnimationTiming.frameCount)
+                ),
                 red: 0.95,
                 green: 0.95,
                 blue: 0.95

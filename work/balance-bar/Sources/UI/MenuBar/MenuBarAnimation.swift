@@ -654,17 +654,16 @@ enum MenuBarThinkingSprite {
     }
 }
 
-/// GIF89a coalesced-frame timing for the bundled Grok thinking sprite.
-/// AppKit reports 23 frames: most 0.08 s, frame 11 ≈ 0.48 s, last ≈ 0.24 s.
+/// Live Grok thinking uses the 30 traced SVG frames. Even 0.08 s × 30 keeps
+/// the old 2.40 s loop; identical mid/end frames supply the visual holds.
 enum GrokThinkingAnimationTiming {
-    static let frameCount = 23
+    static let frameCount = 30
     static let restingFrameIndex = 0
-    static let frameDurations: [TimeInterval] = {
-        var durations = Array(repeating: 0.08, count: frameCount)
-        durations[11] = 0.48
-        durations[22] = 0.24
-        return durations
-    }()
+    static let frameDuration: TimeInterval = 0.08
+    static let frameDurations: [TimeInterval] = Array(
+        repeating: frameDuration,
+        count: frameCount
+    )
     static let duration: TimeInterval = frameDurations.reduce(0, +)
 
     static func translationValue(frameIndex: Int, frameHeight: CGFloat) -> CGFloat {
@@ -818,12 +817,15 @@ enum GrokIdleIcon {
     }
 }
 
-/// Loads the committed Grok thinking SVG sprite, or fixture PNG/GIF strips.
-/// `fromGIF` is for build/test/one-shot background work; the live icon-size
-/// path must use `make(from:)` so clicks do not decode GIF or run
-/// `colorAtX:y:`. SVG frames are composited at contentsScale ≥ 2.
+/// Loads the committed 30-frame Grok thinking SVG directory, or fixture
+/// PNG/GIF strips. `fromGIF` is for build/test/one-shot background work; the
+/// live icon-size path must use `make(fromDirectory:)` so clicks do not
+/// decode GIF or run `colorAtX:y:`. SVG frames are composited at
+/// contentsScale ≥ 2.
 enum GrokThinkingSprite {
     static let retinaContentsScale: CGFloat = 2
+    static let resourceDirectoryName = "GrokThinking"
+    static let sourceFrameSize = NSSize(width: 560, height: 560)
 
     private static let cacheLock = NSLock()
     private static var sourceFramesByURL: [URL: [NSImage]] = [:]
@@ -854,12 +856,37 @@ enum GrokThinkingSprite {
         sourceFrameBuildCount = 0
     }
 
+    static func bundledDirectoryURL(in bundle: Bundle = .main) -> URL? {
+        let candidates: [URL?] = [
+            bundle.url(forResource: resourceDirectoryName, withExtension: nil),
+            bundle.resourceURL?.appendingPathComponent(
+                resourceDirectoryName,
+                isDirectory: true
+            )
+        ]
+        for candidate in candidates {
+            guard let candidate else { continue }
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(
+                atPath: candidate.path,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    static func frameFileName(index: Int) -> String {
+        String(format: "frame_%03d.svg", index)
+    }
+
     static func make(
-        from animatedSVGURL: URL,
+        fromDirectory directoryURL: URL,
         outputSize: NSSize = NSSize(width: 16, height: 16)
     ) -> NSImage? {
         let spriteKey = MenuBarSizedImageCacheKey(
-            url: animatedSVGURL,
+            url: directoryURL,
             outputSize: outputSize
         )
         cacheLock.lock()
@@ -867,25 +894,22 @@ enum GrokThinkingSprite {
             cacheLock.unlock()
             return cachedSprite
         }
-        let cachedFrames = sourceFramesByURL[animatedSVGURL]
+        let cachedFrames = sourceFramesByURL[directoryURL]
         cacheLock.unlock()
 
         let frames: [NSImage]
         if let cachedFrames {
             frames = cachedFrames
         } else {
-            guard
-                let svg = try? String(contentsOf: animatedSVGURL, encoding: .utf8),
-                let made = makeFrames(from: svg)
-            else {
+            guard let made = makeFrames(fromDirectory: directoryURL) else {
                 return nil
             }
             cacheLock.lock()
-            if let existing = sourceFramesByURL[animatedSVGURL] {
+            if let existing = sourceFramesByURL[directoryURL] {
                 cacheLock.unlock()
                 frames = existing
             } else {
-                sourceFramesByURL[animatedSVGURL] = made
+                sourceFramesByURL[directoryURL] = made
                 sourceFrameBuildCount += 1
                 cacheLock.unlock()
                 frames = made
@@ -913,39 +937,32 @@ enum GrokThinkingSprite {
         )
     }
 
-    static func makeFrames(from animatedSVG: String) -> [NSImage]? {
-        guard
-            let animationRegex = try? NSRegularExpression(
-                pattern: #"<animateTransform\b[^>]*/>"#
-            ),
-            let viewBoxRegex = try? NSRegularExpression(
-                pattern: #"viewBox="0 0 100 100""#
-            )
-        else {
-            return nil
-        }
-        let fullRange = NSRange(animatedSVG.startIndex..., in: animatedSVG)
-        let staticSVG = animationRegex.stringByReplacingMatches(
-            in: animatedSVG,
-            range: fullRange,
-            withTemplate: ""
-        )
-        return (0..<GrokThinkingAnimationTiming.frameCount).compactMap { index in
-            let range = NSRange(staticSVG.startIndex..., in: staticSVG)
-            let frameSVG = viewBoxRegex.stringByReplacingMatches(
-                in: staticSVG,
-                range: range,
-                withTemplate: #"viewBox="0 \#(index * 100) 100 100""#
+    static func makeFrames(fromDirectory directoryURL: URL) -> [NSImage]? {
+        let frames = (1...GrokThinkingAnimationTiming.frameCount).compactMap { index -> NSImage? in
+            let url = directoryURL.appendingPathComponent(frameFileName(index: index))
+            guard var svg = try? String(contentsOf: url, encoding: .utf8) else {
+                return nil
+            }
+            // Keep the traced path `d` data. Drop the opaque white canvas so
+            // the template mark is the ring/slash, not a solid square.
+            svg = svg.replacingOccurrences(
+                of: ".cls-1{fill:#fff;}",
+                with: ".cls-1{fill:none;}"
             )
             guard
-                let data = frameSVG.data(using: .utf8),
+                let data = svg.data(using: .utf8),
                 let image = NSImage(data: data)
             else {
                 return nil
             }
-            image.size = NSSize(width: 100, height: 100)
+            image.size = sourceFrameSize
+            image.isTemplate = true
             return image
         }
+        guard frames.count == GrokThinkingAnimationTiming.frameCount else {
+            return nil
+        }
+        return frames
     }
 
     static func make(
@@ -961,9 +978,17 @@ enum GrokThinkingSprite {
         cacheLock.unlock()
 
         guard let image = NSImage(contentsOf: pngURL) else { return nil }
+        let nativeFrameCount: Int
+        if let rep = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
+           rep.pixelsWide > 0,
+           rep.pixelsHigh % rep.pixelsWide == 0 {
+            nativeFrameCount = max(1, rep.pixelsHigh / rep.pixelsWide)
+        } else {
+            nativeFrameCount = 23
+        }
         image.size = NSSize(
             width: outputSize.width,
-            height: outputSize.height * CGFloat(GrokThinkingAnimationTiming.frameCount)
+            height: outputSize.height * CGFloat(nativeFrameCount)
         )
         image.isTemplate = true
         cacheLock.lock()
@@ -983,7 +1008,7 @@ enum GrokThinkingSprite {
         return MenuBarThinkingSprite.makeSprite(
             from: frames,
             outputSize: outputSize,
-            expectedFrameCount: GrokThinkingAnimationTiming.frameCount
+            expectedFrameCount: frames.count
         )
     }
 
