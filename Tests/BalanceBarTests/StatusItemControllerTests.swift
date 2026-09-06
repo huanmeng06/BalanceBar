@@ -85,6 +85,41 @@ final class StatusItemControllerTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testUpdateIconSizeDoesNotBakeGrokThinkingGIFWhenPNGIsPresent() {
+        XCTAssertNotNil(
+            Bundle.main.url(forResource: "GrokThinking", withExtension: "png"),
+            "the committed GrokThinking.png strip must be in the app bundle"
+        )
+
+        GrokThinkingSprite.resetCachesForTesting()
+        ClaudeThinkingSprite.resetCachesForTesting()
+        let controller = makeController()
+        defer { controller.teardown() }
+
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
+        )
+        XCTAssertEqual(GrokThinkingSprite.fromGIFCallCountForTesting, 0)
+
+        for preset in MenuBarIconSizePreset.allCases {
+            controller.updateIconSize(preset.pointSize)
+            XCTAssertEqual(
+                GrokThinkingSprite.fromGIFCallCountForTesting,
+                0,
+                "updateIconSize(\(preset.rawValue)) must not call make(fromGIF:)"
+            )
+        }
+        XCTAssertLessThanOrEqual(
+            ClaudeThinkingSprite.sourceFrameBuildCountForTesting,
+            1,
+            "Claude SVG frames must be built once, not on every icon-size click"
+        )
+    }
+
     func testCodexAnimationCachePrecomposesFiniteFramesAndReusesSteadyStateLookups() {
         let sourceFrames = (0..<RotatingTemplateImageView.frameCount).map { _ in
             NSImage(size: NSSize(width: 16, height: 16))

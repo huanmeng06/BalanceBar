@@ -574,7 +574,7 @@ final class MenuBarAnimationTests: XCTestCase {
         for preset in MenuBarIconSizePreset.allCases where preset != .small {
             let sized = try XCTUnwrap(
                 GrokThinkingSprite.make(
-                    fromGIF: gifURL,
+                    fromPNG: pngURL,
                     outputSize: NSSize(width: preset.pointSize, height: preset.pointSize)
                 )
             )

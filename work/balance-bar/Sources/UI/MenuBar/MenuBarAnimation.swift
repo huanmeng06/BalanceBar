@@ -396,22 +396,87 @@ enum ClaudeThinkingAnimationTiming {
     }
 }
 
+private struct MenuBarSizedImageCacheKey: Hashable {
+    let url: URL
+    let width: CGFloat
+    let height: CGFloat
+
+    init(url: URL, outputSize: NSSize) {
+        self.url = url
+        self.width = outputSize.width
+        self.height = outputSize.height
+    }
+}
+
 /// Builds the Claude thinking sprite once at a visual invalidation boundary.
 /// The returned image contains the same nine discrete SVG view-box frames that
 /// the old animator displayed, stacked from the first frame at the bottom to
 /// the last frame at the top for a Core Animation Y translation.
 enum ClaudeThinkingSprite {
+    private static let cacheLock = NSLock()
+    private static var sourceFramesByURL: [URL: [NSImage]] = [:]
+    private static var spritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
+    private static var sourceFrameBuildCount = 0
+
+    static var sourceFrameBuildCountForTesting: Int {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return sourceFrameBuildCount
+    }
+
+    static func resetCachesForTesting() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        sourceFramesByURL = [:]
+        spritesByCacheKey = [:]
+        sourceFrameBuildCount = 0
+    }
+
     static func make(
         from animatedSVGURL: URL,
         outputSize: NSSize = NSSize(width: 16, height: 16)
     ) -> NSImage? {
-        guard
-            let svg = try? String(contentsOf: animatedSVGURL, encoding: .utf8),
-            let frames = makeFrames(from: svg)
-        else {
+        let spriteKey = MenuBarSizedImageCacheKey(
+            url: animatedSVGURL,
+            outputSize: outputSize
+        )
+        cacheLock.lock()
+        if let cachedSprite = spritesByCacheKey[spriteKey] {
+            cacheLock.unlock()
+            return cachedSprite
+        }
+        let cachedFrames = sourceFramesByURL[animatedSVGURL]
+        cacheLock.unlock()
+
+        let frames: [NSImage]
+        if let cachedFrames {
+            frames = cachedFrames
+        } else {
+            guard
+                let svg = try? String(contentsOf: animatedSVGURL, encoding: .utf8),
+                let made = makeFrames(from: svg)
+            else {
+                return nil
+            }
+            cacheLock.lock()
+            if let existing = sourceFramesByURL[animatedSVGURL] {
+                cacheLock.unlock()
+                frames = existing
+            } else {
+                sourceFramesByURL[animatedSVGURL] = made
+                sourceFrameBuildCount += 1
+                cacheLock.unlock()
+                frames = made
+            }
+        }
+
+        guard let sprite = makeSprite(from: frames, outputSize: outputSize) else {
             return nil
         }
-        return makeSprite(from: frames, outputSize: outputSize)
+        cacheLock.lock()
+        spritesByCacheKey[spriteKey] = sprite
+        cacheLock.unlock()
+        return sprite
     }
 
     static func makeSprite(
@@ -530,18 +595,48 @@ enum GrokThinkingAnimationTiming {
     }
 }
 
-/// Loads the committed Grok thinking sprite, or rebuilds it from the source GIF.
+/// Loads the committed Grok thinking PNG strip, or rebuilds it from the source
+/// GIF. `fromGIF` is for build/test/one-shot background work; the live
+/// icon-size path must use `fromPNG` so clicks do not run `colorAtX:y:`.
 enum GrokThinkingSprite {
+    private static let cacheLock = NSLock()
+    private static var pngSpritesByCacheKey: [MenuBarSizedImageCacheKey: NSImage] = [:]
+    private static var fromGIFCallCount = 0
+
+    static var fromGIFCallCountForTesting: Int {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return fromGIFCallCount
+    }
+
+    static func resetCachesForTesting() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        pngSpritesByCacheKey = [:]
+        fromGIFCallCount = 0
+    }
+
     static func make(
         fromPNG pngURL: URL,
         outputSize: NSSize = NSSize(width: 16, height: 16)
     ) -> NSImage? {
+        let cacheKey = MenuBarSizedImageCacheKey(url: pngURL, outputSize: outputSize)
+        cacheLock.lock()
+        if let cached = pngSpritesByCacheKey[cacheKey] {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
         guard let image = NSImage(contentsOf: pngURL) else { return nil }
         image.size = NSSize(
             width: outputSize.width,
             height: outputSize.height * CGFloat(GrokThinkingAnimationTiming.frameCount)
         )
         image.isTemplate = true
+        cacheLock.lock()
+        pngSpritesByCacheKey[cacheKey] = image
+        cacheLock.unlock()
         return image
     }
 
@@ -549,6 +644,9 @@ enum GrokThinkingSprite {
         fromGIF gifURL: URL,
         outputSize: NSSize = NSSize(width: 16, height: 16)
     ) -> NSImage? {
+        cacheLock.lock()
+        fromGIFCallCount += 1
+        cacheLock.unlock()
         guard let frames = makeFrames(fromGIF: gifURL)?.frames else { return nil }
         return MenuBarThinkingSprite.makeSprite(
             from: frames,

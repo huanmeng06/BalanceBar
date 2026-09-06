@@ -2930,8 +2930,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Reloads SVG, raster, and task-animation assets at the selected point
-    /// size so a size change is a redraw, not a stretched 16 pt bitmap.
+    /// Reloads idle marks and thinking sprites at the selected point size.
+    /// Grok thinking uses the committed PNG strip so size clicks never decode
+    /// the GIF or run `colorAtX:y:` on the main thread.
     private func loadMenuBarIconAssets(size: CGFloat) {
         let iconSize = MenuBarIconSizePreset.nearest(to: size).pointSize
         let outputSize = NSSize(width: iconSize, height: iconSize)
@@ -2962,17 +2963,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             icon.isTemplate = true
             grokIconImage = icon
         }
-        // The committed PNG strip is 32×736 (16 pt at 2x). Rebuild from the
-        // 560 px GIF so 18/20 pt marks are redrawn rather than stretched.
+        // Size clicks must stay on the committed PNG strip. GIF decode plus
+        // per-pixel `colorAtX:y:` templating pegs a core on the main thread.
         grokThinkingSpriteImage = nil
-        if let gifURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "gif") {
-            grokThinkingSpriteImage = GrokThinkingSprite.make(
-                fromGIF: gifURL,
-                outputSize: outputSize
-            )
-        }
-        if grokThinkingSpriteImage == nil,
-           let thinkingURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "png") {
+        if let thinkingURL = Bundle.main.url(forResource: "GrokThinking", withExtension: "png") {
             grokThinkingSpriteImage = GrokThinkingSprite.make(
                 fromPNG: thinkingURL,
                 outputSize: outputSize
