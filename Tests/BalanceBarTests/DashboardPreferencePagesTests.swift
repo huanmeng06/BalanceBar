@@ -4583,6 +4583,121 @@ final class DashboardPreferencePagesTests: XCTestCase {
         XCTAssertNil(host.thinkingAnimationForTesting)
     }
 
+    func testMenuBarPreviewIdleRefreshUsesLiveIconInsteadOfStaleAnimationCache() throws {
+        try withMenuBarPreviewPage { controller, page, snapshot, preferences in
+            let grok = makeDistinctPreviewIcon(size: 16)
+            let codex = makeDistinctPreviewIcon(size: 18)
+
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: codex,
+                statusItemVisibility: .visible,
+                animationIconImage: grok,
+                animationKind: .none
+            )
+
+            let previewIcon = try XCTUnwrap(menuBarPreviewIcon(in: page))
+            XCTAssertTrue(previewIcon.image === codex)
+            XCTAssertFalse(previewIcon.image === grok)
+            XCTAssertTrue(controller.previewClaudeAnimationHostForTesting.isHidden)
+            XCTAssertNil(controller.previewClaudeAnimationHostForTesting.thinkingAnimationForTesting)
+            XCTAssertTrue(controller.previewAnimationHostForTesting.isHidden)
+            XCTAssertNil(controller.previewAnimationHostForTesting.rotationAnimationForTesting)
+        }
+    }
+
+    func testMenuBarPreviewRefreshAfterGrokThinkingShowsLiveIdleIcon() throws {
+        try withMenuBarPreviewPage { controller, page, snapshot, preferences in
+            let grok = makeDistinctPreviewIcon(size: 16)
+            let codex = makeDistinctPreviewIcon(size: 18)
+            let sprite = makeDistinctPreviewIcon(size: 16, height: 144)
+
+            controller.updatePreviewAnimation(
+                kind: .grokThinking,
+                iconImage: grok,
+                spriteImage: sprite
+            )
+            XCTAssertFalse(controller.previewClaudeAnimationHostForTesting.isHidden)
+            XCTAssertNotNil(controller.previewClaudeAnimationHostForTesting.thinkingAnimationForTesting)
+
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: codex,
+                statusItemVisibility: .visible,
+                animationIconImage: grok,
+                animationKind: .none
+            )
+
+            let previewIcon = try XCTUnwrap(menuBarPreviewIcon(in: page))
+            XCTAssertTrue(previewIcon.image === codex)
+            XCTAssertFalse(previewIcon.image === grok)
+            XCTAssertTrue(controller.previewClaudeAnimationHostForTesting.isHidden)
+            XCTAssertNil(controller.previewClaudeAnimationHostForTesting.thinkingAnimationForTesting)
+            XCTAssertTrue(controller.previewAnimationHostForTesting.isHidden)
+        }
+    }
+
+    func testMenuBarPreviewKeepsCodexRotationHostWhileAnimationIsActive() throws {
+        try withMenuBarPreviewPage { controller, page, snapshot, preferences in
+            let grok = makeDistinctPreviewIcon(size: 16)
+            let codex = makeDistinctPreviewIcon(size: 18)
+
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: grok,
+                statusItemVisibility: .visible,
+                animationIconImage: codex,
+                animationKind: .codexRotation
+            )
+
+            let previewIcon = try XCTUnwrap(menuBarPreviewIcon(in: page))
+            XCTAssertNil(previewIcon.image)
+            XCTAssertFalse(controller.previewAnimationHostForTesting.isHidden)
+            XCTAssertNotNil(controller.previewAnimationHostForTesting.rotationAnimationForTesting)
+            XCTAssertTrue(controller.previewClaudeAnimationHostForTesting.isHidden)
+            XCTAssertNil(controller.previewClaudeAnimationHostForTesting.thinkingAnimationForTesting)
+        }
+    }
+
+    func testMenuBarPreviewRefreshAfterClaudeThinkingShowsLiveIdleIcon() throws {
+        try withMenuBarPreviewPage { controller, page, snapshot, preferences in
+            let claude = makeDistinctPreviewIcon(size: 16)
+            let codex = makeDistinctPreviewIcon(size: 18)
+            let sprite = makeDistinctPreviewIcon(size: 16, height: 144)
+
+            controller.updatePreviewAnimation(
+                kind: .claudeThinking,
+                iconImage: claude,
+                spriteImage: sprite
+            )
+            XCTAssertFalse(controller.previewClaudeAnimationHostForTesting.isHidden)
+            XCTAssertNotNil(controller.previewClaudeAnimationHostForTesting.thinkingAnimationForTesting)
+
+            controller.refresh(
+                snapshot: snapshot,
+                preferences: preferences,
+                menuBarSnapshot: { $0 },
+                iconImage: codex,
+                statusItemVisibility: .visible,
+                animationIconImage: claude,
+                animationKind: .none
+            )
+
+            let previewIcon = try XCTUnwrap(menuBarPreviewIcon(in: page))
+            XCTAssertTrue(previewIcon.image === codex)
+            XCTAssertFalse(previewIcon.image === claude)
+            XCTAssertTrue(controller.previewClaudeAnimationHostForTesting.isHidden)
+            XCTAssertNil(controller.previewClaudeAnimationHostForTesting.thinkingAnimationForTesting)
+            XCTAssertTrue(controller.previewAnimationHostForTesting.isHidden)
+        }
+    }
+
     func testMenuBarTypographyAndPositionLabelsLocalizeAcrossSupportedLanguages() {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }
@@ -5453,6 +5568,46 @@ final class DashboardPreferencePagesTests: XCTestCase {
 
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews + view.subviews.flatMap(descendants)
+    }
+
+    private func makeDistinctPreviewIcon(size: CGFloat, height: CGFloat? = nil) -> NSImage {
+        let image = NSImage(size: NSSize(width: size, height: height ?? size))
+        image.isTemplate = true
+        return image
+    }
+
+    private func withMenuBarPreviewPage(
+        _ body: (DashboardMenuBarPage, NSView, Snapshot, AppPreferences) throws -> Void
+    ) rethrows {
+        let suiteName = "DashboardPreferencePagesTests.MenuBarPreviewIdleCache.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = AppPreferences(defaults: defaults)
+        let controller = DashboardMenuBarPage()
+        defer { controller.teardown() }
+        let snapshot = Snapshot.balance(
+            "Provider",
+            80,
+            "USD",
+            nil,
+            Date(timeIntervalSince1970: 1)
+        )
+        let page = controller.make(.init(
+            preferences: preferences,
+            snapshot: snapshot,
+            menuBarSnapshot: { $0 },
+            iconImage: makeDistinctPreviewIcon(size: 16),
+            relay: DashboardPreferencePageRelay(),
+            statusItemVisibility: .visible
+        ))
+        page.frame = NSRect(x: 0, y: 0, width: 720, height: 520)
+        page.layoutSubtreeIfNeeded()
+        try body(controller, page, snapshot, preferences)
+    }
+
+    private func menuBarPreviewIcon(in page: NSView) -> NSImageView? {
+        descendants(of: page).first { $0.identifier?.rawValue == "menuBarPreviewIcon" } as? NSImageView
     }
 
     private func settingsSection(withTitle title: String, in page: NSView) -> NSStackView? {
