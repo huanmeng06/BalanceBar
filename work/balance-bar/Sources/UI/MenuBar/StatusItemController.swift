@@ -4473,11 +4473,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let frame = NSImage(size: frameSize)
             frame.isTemplate = sprite.isTemplate
             frame.lockFocusFlipped(true)
+            let stripIndex = GrokThinkingSprite.synchronizedStripIndex(for: index)
             sprite.draw(
                 in: NSRect(origin: .zero, size: frameSize),
                 from: NSRect(
                     x: 0,
-                    y: CGFloat(index) * frameSize.height,
+                    y: CGFloat(stripIndex) * frameSize.height,
                     width: frameSize.width,
                     height: frameSize.height
                 ),

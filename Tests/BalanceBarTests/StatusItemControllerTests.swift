@@ -1527,6 +1527,10 @@ final class StatusItemControllerTests: XCTestCase {
                     controller.grokThinkingAnimationHostForTesting?.timing.frameCount,
                     GrokThinkingAnimationTiming.frameCount
                 )
+                XCTAssertEqual(
+                    controller.grokThinkingAnimationHostForTesting?.timing.restingFrameIndex,
+                    GrokThinkingAnimationTiming.restingFrameIndex
+                )
             }
 
             controller.updateActivity(
@@ -1612,6 +1616,10 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(controller.effectiveCodexAnimationBackendForTesting, .nativeCoreAnimation)
         XCTAssertTrue(controller.grokThinkingAnimationIsActiveForTesting)
         XCTAssertNotNil(controller.grokThinkingAnimationHostForTesting?.superview)
+        XCTAssertEqual(
+            controller.grokThinkingAnimationHostForTesting?.timing.restingFrameIndex,
+            15
+        )
         XCTAssertFalse(controller.nativeCodexAnimationIsActiveForTesting)
         XCTAssertFalse(controller.nativeCodexAnimationIsRotatingForTesting)
         let buttonImage = try XCTUnwrap(controller.menuBarButtonImageForTesting)

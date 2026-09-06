@@ -657,7 +657,9 @@ enum MenuBarThinkingSprite {
 
 enum GrokThinkingAnimationTiming {
     static let frameCount = 30
-    static let restingFrameIndex = 0
+    /// 0-based strip index of `frame_016`, the Grok spark. Frame 0 is the
+    /// ring and must not be the Performance inactive rest pose.
+    static let restingFrameIndex = 15
     static let frameDuration: TimeInterval = 0.08
     static let frameDurations: [TimeInterval] = Array(
         repeating: frameDuration,
@@ -682,6 +684,15 @@ enum GrokThinkingSprite {
     static let resourceDirectoryName = "GrokThinking"
     static let sourceFrameSize = NSSize(width: 560, height: 560)
     static let idleFrameIndex = 16
+    /// Synchronized bitmap playback is file frames 030→001 so the slash
+    /// sweeps 右上→左下. The stacked SVG has frame 001 at the top of a
+    /// flipped extract (`y = 0`), so sequential index 0 reads the last cell.
+    static func synchronizedStripIndex(for sequentialIndex: Int) -> Int {
+        let count = GrokThinkingAnimationTiming.frameCount
+        guard count > 0 else { return 0 }
+        let wrapped = ((sequentialIndex % count) + count) % count
+        return count - 1 - wrapped
+    }
     /// Centered 560-canvas crop: 560 / 1.12 = 500, inset 30. Ring stays
     /// complete; slash tips may clip slightly. Do not rewrite path `d`.
     static let opticalScale: CGFloat = 1.12

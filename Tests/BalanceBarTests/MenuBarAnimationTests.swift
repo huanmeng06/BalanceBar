@@ -630,6 +630,18 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(sprite.isTemplate)
         XCTAssertTrue(GrokThinkingSprite.isVectorSVGRepresentation(sprite))
         XCTAssertEqual(GrokThinkingSprite.fromGIFCallCountForTesting, 0)
+        XCTAssertEqual(GrokThinkingAnimationTiming.restingFrameIndex, 15)
+        XCTAssertEqual(
+            GrokThinkingAnimationTiming.restingFrameIndex,
+            GrokThinkingSprite.idleFrameIndex - 1
+        )
+        XCTAssertEqual(GrokThinkingSprite.synchronizedStripIndex(for: 0), 29)
+        XCTAssertEqual(GrokThinkingSprite.synchronizedStripIndex(for: 29), 0)
+        XCTAssertEqual(GrokThinkingSprite.synchronizedStripIndex(for: 14), 15)
+        XCTAssertEqual(
+            MenuBarSpriteAnimationTiming.grok.restingFrameIndex,
+            GrokThinkingAnimationTiming.restingFrameIndex
+        )
     }
 
     func testAnimationPolicyHonorsPreferenceAndSystemReduceMotion() {
@@ -923,6 +935,7 @@ final class MenuBarAnimationTests: XCTestCase {
         XCTAssertTrue(statusItemSource.contains("claudeAnimationStateChanged"))
         XCTAssertTrue(statusItemSource.contains("synchronizeGrokThinkingAnimationHost"))
         XCTAssertTrue(statusItemSource.contains("installStableGrokThinkingImage"))
+        XCTAssertTrue(statusItemSource.contains("synchronizedStripIndex"))
         XCTAssertTrue(statusItemSource.contains("grokAnimationStateChanged"))
         XCTAssertTrue(statusItemSource.contains("grokThinkingSpriteImage"))
         XCTAssertTrue(statusItemSource.contains("GrokThinkingSprite"))
