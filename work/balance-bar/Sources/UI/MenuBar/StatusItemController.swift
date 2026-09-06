@@ -2959,7 +2959,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
             }
         }
-        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png") {
+        // Idle Grok is the cropped SVG, loaded like Codex/Claude. Do not
+        // redraw it into an `NSImage(size: slot)` bitmap; that bakes 1x.
+        if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "svg"),
+           let icon = NSImage(contentsOf: iconURL) {
+            icon.size = outputSize
+            icon.isTemplate = true
+            grokIconImage = icon
+        } else if let iconURL = Bundle.main.url(forResource: "Grok", withExtension: "png") {
             grokIconImage = GrokIdleIcon.make(
                 fromPNG: iconURL,
                 outputSize: outputSize

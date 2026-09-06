@@ -595,10 +595,9 @@ enum GrokThinkingAnimationTiming {
     }
 }
 
-/// Crops transparent padding from the idle Grok star so the mark fills the
-/// current 16/18/20 pt slot. The slot itself is unchanged; `image.size` never
-/// exceeds that slot. Uses raw bitmap alpha, not `colorAtX:y:`. The cropped
-/// high-res pixels are kept; do not lock an 18 px 1x redraw.
+/// PNG fallback for the idle Grok mark. Runtime idle loading prefers
+/// `Grok.svg` and must not redraw that SVG into an `NSImage(size: slot)`
+/// bitmap. This crop path keeps high-res pixels and never uses `colorAtX:y:`.
 enum GrokIdleIcon {
     private static let cacheLock = NSLock()
     private static var croppedByURL: [URL: NSImage] = [:]

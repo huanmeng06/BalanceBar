@@ -105,56 +105,71 @@ final class StatusItemControllerTests: XCTestCase {
         )
     }
 
-    func testIdleGrokIconCropsTransparentPaddingToFillTheMediumSlot() throws {
-        let pngURL = try XCTUnwrap(
-            Bundle.main.url(forResource: "Grok", withExtension: "png")
+    @MainActor
+    func testIdleGrokIconLoadsVectorSVGInsteadOfOneXBitmap() throws {
+        let svgURL = try XCTUnwrap(
+            Bundle.main.url(forResource: "Grok", withExtension: "svg"),
+            "idle Grok must ship as Grok.svg like Codex/Claude"
         )
-        XCTAssertEqual(MenuBarIconSizePreset.small.pointSize, 16)
-        XCTAssertEqual(MenuBarIconSizePreset.medium.pointSize, 18)
-        XCTAssertEqual(MenuBarIconSizePreset.large.pointSize, 20)
-
-        let raw = try XCTUnwrap(NSImage(contentsOf: pngURL))
-        let rawPixels = try XCTUnwrap(pixelWidth(of: raw))
-        XCTAssertEqual(rawPixels, 1024)
-
-        GrokIdleIcon.resetCachesForTesting()
-        let cropped = try XCTUnwrap(GrokIdleIcon.croppedTemplate(fromPNG: pngURL))
-        let croppedPixels = try XCTUnwrap(pixelWidth(of: cropped))
-        XCTAssertLessThan(
-            CGFloat(croppedPixels) / CGFloat(rawPixels),
-            0.92,
-            "idle Grok must drop transparent padding instead of using the full 1024 canvas"
-        )
-        XCTAssertGreaterThan(
-            CGFloat(croppedPixels) / CGFloat(rawPixels),
-            0.80,
-            "the crop must stay inside the star, not trim into the mark"
-        )
-
         let mediumSize = NSSize(
             width: MenuBarIconSizePreset.medium.pointSize,
             height: MenuBarIconSizePreset.medium.pointSize
         )
-        let medium = try XCTUnwrap(
-            GrokIdleIcon.make(fromPNG: pngURL, outputSize: mediumSize)
+        let icon = try XCTUnwrap(NSImage(contentsOf: svgURL))
+        icon.size = mediumSize
+        icon.isTemplate = true
+        XCTAssertEqual(icon.size, mediumSize)
+        XCTAssertTrue(icon.isTemplate)
+        let bitmaps = icon.representations.compactMap { $0 as? NSBitmapImageRep }
+        if let bitmap = bitmaps.first {
+            XCTAssertGreaterThan(
+                bitmap.pixelsWide,
+                Int(MenuBarIconSizePreset.medium.pointSize * 2),
+                "idle Grok must not bake an 18 px 1x bitmap"
+            )
+        } else {
+            XCTAssertFalse(
+                icon.representations.isEmpty,
+                "Grok.svg must load as a vector image representation"
+            )
+        }
+
+        let controller = makeController()
+        defer { controller.teardown() }
+        controller.start(
+            snapshot: .placeholder,
+            refreshDate: nil,
+            menuInput: makeMenuInput(),
+            settings: makeSettings()
         )
-        XCTAssertEqual(medium.size, mediumSize)
-        XCTAssertLessThanOrEqual(medium.size.width, MenuBarIconSizePreset.medium.pointSize)
-        XCTAssertTrue(medium.isTemplate)
-        let mediumPixels = try XCTUnwrap(pixelWidth(of: medium))
-        XCTAssertEqual(mediumPixels, croppedPixels)
-        XCTAssertGreaterThan(
-            mediumPixels,
-            Int(MenuBarIconSizePreset.medium.pointSize * 2),
-            "idle Grok must keep the cropped high-res bitmap, not an 18 px 1x redraw"
+        XCTAssertEqual(
+            try XCTUnwrap(controller.grokIdleIconSizeForTesting),
+            mediumSize
+        )
+        XCTAssertLessThanOrEqual(
+            controller.grokIdleIconSizeForTesting?.width ?? .nan,
+            MenuBarIconSizePreset.medium.pointSize
         )
     }
 
     @MainActor
-    func testUpdateIconSizeDoesNotBakeGrokThinkingGIFWhenPNGIsPresent() {
-        XCTAssertNotNil(
+    func testUpdateIconSizeDoesNotBakeGrokThinkingGIFWhenPNGIsPresent() throws {
+        let thinkingURL = try XCTUnwrap(
             Bundle.main.url(forResource: "GrokThinking", withExtension: "png"),
             "the committed GrokThinking.png strip must be in the app bundle"
+        )
+        let thinkingStrip = try XCTUnwrap(NSImage(contentsOf: thinkingURL))
+        let thinkingPixels = try XCTUnwrap(
+            thinkingStrip.representations.compactMap { $0 as? NSBitmapImageRep }.first
+        )
+        XCTAssertGreaterThanOrEqual(
+            thinkingPixels.pixelsWide,
+            40,
+            "thinking frames must cover large 20 pt @2x"
+        )
+        XCTAssertGreaterThanOrEqual(
+            thinkingPixels.pixelsHigh,
+            40 * GrokThinkingAnimationTiming.frameCount
         )
 
         GrokThinkingSprite.resetCachesForTesting()
@@ -1652,14 +1667,6 @@ final class StatusItemControllerTests: XCTestCase {
             rect.fill()
             return true
         }
-    }
-
-    private func pixelWidth(of image: NSImage) -> Int? {
-        if let bitmap = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first {
-            return bitmap.pixelsWide
-        }
-        var rect = NSRect(origin: .zero, size: image.size)
-        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)?.width
     }
 
     private func makeController(

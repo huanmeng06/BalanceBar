@@ -614,8 +614,8 @@ final class MenuBarAnimationTests: XCTestCase {
         let pngStrip = try XCTUnwrap(
             pngSprite.representations.compactMap { $0 as? NSBitmapImageRep }.first
         )
-        XCTAssertEqual(pngStrip.pixelsWide, 32)
-        XCTAssertEqual(pngStrip.pixelsHigh, 32 * frameCount)
+        XCTAssertGreaterThanOrEqual(pngStrip.pixelsWide, 40)
+        XCTAssertEqual(pngStrip.pixelsHigh, pngStrip.pixelsWide * frameCount)
 
         // CALayer translation 0 shows the bottom of the unflipped strip, which
         // is the last pixel rows of the PNG (bitmap y=0 is the visual top).
@@ -663,22 +663,31 @@ final class MenuBarAnimationTests: XCTestCase {
             frameIndex: 8,
             frameCount: frameCount
         )
+        // The committed PNG strip is ≥40 px/frame; fromGIF comparison sprites
+        // are 16 pt @2x. Resample the PNG resting frame to that size.
+        let pngRestingForDelta = try rasterizeImage(
+            NSImage(size: frameSize, flipped: false) { rect in
+                pngResting.draw(in: rect)
+                return true
+            },
+            size: frameSize
+        )
         // Stacking order only: do not require near-pixel identity with live
         // fromGIF baking. CI color-management already exceeded 0.08 (0.0829–
         // 0.0942). The GIF's last frame is also a ring, so pairing against it
         // is not a stable reverse-stack signal. A top-down strip would put
         // GIF 8 near the top, not at fromBottom(8).
         XCTAssertLessThan(
-            meanAbsAlphaDelta(pngResting, gifResting),
-            meanAbsAlphaDelta(pngResting, gifSlash),
+            meanAbsAlphaDelta(pngRestingForDelta, gifResting),
+            meanAbsAlphaDelta(pngRestingForDelta, gifSlash),
             "translation 0 must pair with fromGIF frame 0, not a mid slash"
         )
 
         let gifFrameZero = try rasterizeImage(gifFrames.frames[0], size: frameSize)
         let gifFrameEight = try rasterizeImage(gifFrames.frames[8], size: frameSize)
         XCTAssertLessThan(
-            meanAbsAlphaDelta(pngResting, gifFrameZero),
-            meanAbsAlphaDelta(pngResting, gifFrameEight),
+            meanAbsAlphaDelta(pngRestingForDelta, gifFrameZero),
+            meanAbsAlphaDelta(pngRestingForDelta, gifFrameEight),
             "the visible translation-0 frame must be the closed ring, not a mid slash"
         )
         let gifEightInk = quadrantInk(of: gifFrameEight)
