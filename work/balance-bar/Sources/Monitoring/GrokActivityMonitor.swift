@@ -68,12 +68,52 @@ final class GrokActivityMonitor {
         "loops",
         "scheduler"
     ]
-    private static let childWorkDirectoryNames = durableStillRunningDirectories + ["subagents"]
+    /// Same idea as Codex `activityWindow`: idle scans only recently written work.
+    private static let activityWindow = 10 * 60
+    private static let transcriptTailBytes: UInt64 = 192 * 1024
 
-    private struct TranscriptCache {
+    private struct FileIdentity: Equatable {
         let size: UInt64
         let modifiedAt: TimeInterval
-        let signal: SessionSignal
+        let fileID: UInt64
+    }
+
+    private struct TranscriptCache {
+        let identity: FileIdentity
+        let bytesScanned: UInt64
+        let pendingLine: Data
+        let lastKind: SessionSignal.Kind?
+        let lastActivityAt: Date?
+        let lastUserActivityAt: Date?
+        let lastTrueTurn: Bool
+        let unmatchedBackgroundIDs: Set<String>
+
+        var signal: SessionSignal {
+            let hasUnmatched = !unmatchedBackgroundIDs.isEmpty
+            let kind: SessionSignal.Kind
+            if lastKind == .inProgress || hasUnmatched {
+                kind = .inProgress
+            } else {
+                kind = lastKind ?? .neverStarted
+            }
+            return SessionSignal(
+                kind: kind,
+                lastActivityAt: lastActivityAt,
+                lastUserActivityAt: lastUserActivityAt,
+                trueTurnEvidence: lastKind == .inProgress && lastTrueTurn,
+                unmatchedBackgroundOnly: lastKind == .completed && hasUnmatched
+            )
+        }
+    }
+
+    private struct SiblingResultCache {
+        let sessionDir: FileIdentity?
+        let updates: FileIdentity?
+        let meta: FileIdentity?
+        let childless: Bool
+        let childFiles: [String: FileIdentity]
+        let inProgress: Bool
+        let trueTurnEvidence: Bool
     }
 
     private struct ChildJSONCache {
@@ -117,6 +157,7 @@ final class GrokActivityMonitor {
         .distantPast, false, []
     )
     private var transcriptCaches: [String: TranscriptCache] = [:]
+    private var siblingResultCaches: [String: SiblingResultCache] = [:]
     private var childJSONCaches: [String: ChildJSONCache] = [:]
     private(set) var transcriptReadCount = 0
     private(set) var transcriptParseCount = 0
@@ -441,93 +482,216 @@ final class GrokActivityMonitor {
         }
     }
 
-    /// Unlisted siblings keep running when child work is unfinished, or when
-    /// the last in-progress activity is not earlier than live `opened_at`.
-    /// A completed parent whose only leftover is unmatched `task_backgrounded`
-    /// is not live work.
+    /// Unlisted siblings keep running when recently written child work is
+    /// unfinished, or when a recently written parent transcript is still
+    /// in progress. Cold history is not scanned. A completed parent whose
+    /// only leftover is unmatched `task_backgrounded` is not live work.
     private func unlistedSiblingProgress(
         sessionPath: String,
         now: Date,
         earliestLiveOpenedAt: Date?
     ) -> (inProgress: Bool, trueTurnEvidence: Bool) {
         let updatesPath = Self.joinedPath(sessionPath, "updates.jsonl")
-        // Childless parents whose updates+meta precede live opened_at cannot
-        // keep the group running; skip related child/transcript work.
-        if isStaleChildlessParent(
-            sessionPath: sessionPath,
-            updatesPath: updatesPath,
-            earliestLiveOpenedAt: earliestLiveOpenedAt
-        ) {
-            return (false, false)
+        let metaPath = Self.joinedPath(sessionPath, "meta.json")
+        let sessionDirIdentity = fileIdentity(atPath: sessionPath)
+        let updatesIdentity = fileIdentity(atPath: updatesPath)
+        let metaIdentity = fileIdentity(atPath: metaPath)
+
+        if let cached = siblingResultCaches[sessionPath],
+           cached.sessionDir == sessionDirIdentity,
+           cached.updates == updatesIdentity,
+           cached.meta == metaIdentity {
+            if cached.childless {
+                return (false, false)
+            }
+            if let reused = reusedSiblingResult(cached, now: now) {
+                return reused
+            }
         }
+
+        let parentRecent = [updatesIdentity?.modifiedAt, metaIdentity?.modifiedAt]
+            .compactMap { $0 }
+            .contains { Self.isWithinActivityWindow($0, now: now) }
+
+        var childFiles: [String: FileIdentity] = [:]
+        var collectedChildren = false
+        if !parentRecent {
+            childFiles = childFileIdentities(in: sessionPath)
+            collectedChildren = true
+            let childRecent = childFiles.values.contains {
+                Self.isWithinActivityWindow($0.modifiedAt, now: now)
+            }
+            if !childRecent {
+                storeSiblingResult(
+                    sessionPath: sessionPath,
+                    sessionDir: sessionDirIdentity,
+                    updates: updatesIdentity,
+                    meta: metaIdentity,
+                    childless: childFiles.isEmpty,
+                    childFiles: childFiles,
+                    inProgress: false,
+                    trueTurnEvidence: false
+                )
+                return (false, false)
+            }
+        }
+
         let related = relatedSessionSignals(for: updatesPath, now: now)
         let parent = related.first ?? .neverStarted
         let unfinishedChild = related.dropFirst().contains { $0.kind == .inProgress }
+        if !collectedChildren {
+            childFiles = childFileIdentities(in: sessionPath)
+        }
+        let childless = childFiles.isEmpty
         if unfinishedChild {
-            return (true, related.contains { $0.trueTurnEvidence })
+            let evidence = related.contains { $0.trueTurnEvidence }
+            storeSiblingResult(
+                sessionPath: sessionPath,
+                sessionDir: sessionDirIdentity,
+                updates: updatesIdentity,
+                meta: metaIdentity,
+                childless: childless,
+                childFiles: childFiles,
+                inProgress: true,
+                trueTurnEvidence: evidence
+            )
+            return (true, evidence)
         }
         guard parent.kind == .inProgress, !parent.unmatchedBackgroundOnly else {
-            return (false, false)
-        }
-        guard let earliestLiveOpenedAt else {
+            storeSiblingResult(
+                sessionPath: sessionPath,
+                sessionDir: sessionDirIdentity,
+                updates: updatesIdentity,
+                meta: metaIdentity,
+                childless: childless,
+                childFiles: childFiles,
+                inProgress: false,
+                trueTurnEvidence: false
+            )
             return (false, false)
         }
         let recency = siblingRecencyDate(
             parent: parent,
-            sessionPath: sessionPath,
-            updatesPath: updatesPath
+            updatesIdentity: updatesIdentity,
+            metaIdentity: metaIdentity
         )
-        guard let recency, recency >= earliestLiveOpenedAt else {
+        let inProgress = recency.map { date in
+            Self.isWithinActivityWindow(date.timeIntervalSince1970, now: now)
+                && (earliestLiveOpenedAt.map { date >= $0 } ?? false)
+        } ?? false
+        storeSiblingResult(
+            sessionPath: sessionPath,
+            sessionDir: sessionDirIdentity,
+            updates: updatesIdentity,
+            meta: metaIdentity,
+            childless: childless,
+            childFiles: childFiles,
+            inProgress: inProgress,
+            trueTurnEvidence: inProgress && parent.trueTurnEvidence
+        )
+        guard inProgress else {
             return (false, false)
         }
         return (true, parent.trueTurnEvidence)
     }
 
-    private func isStaleChildlessParent(
-        sessionPath: String,
-        updatesPath: String,
-        earliestLiveOpenedAt: Date?
-    ) -> Bool {
-        guard let earliestLiveOpenedAt,
-              let identity = fileIdentity(atPath: updatesPath) else {
-            return false
-        }
-        guard Date(timeIntervalSince1970: identity.modifiedAt) < earliestLiveOpenedAt else {
-            return false
-        }
-        let metaDate = fileIdentity(atPath: Self.joinedPath(sessionPath, "meta.json"))
-            .map { Date(timeIntervalSince1970: $0.modifiedAt) } ?? .distantPast
-        guard metaDate < earliestLiveOpenedAt else {
-            return false
-        }
-        return !hasChildWorkContainers(sessionPath: sessionPath)
-    }
-
-    private func hasChildWorkContainers(sessionPath: String) -> Bool {
-        for name in Self.childWorkDirectoryNames {
-            if fileIdentity(atPath: Self.joinedPath(sessionPath, name)) != nil {
-                return true
+    private func reusedSiblingResult(
+        _ cached: SiblingResultCache,
+        now: Date
+    ) -> (inProgress: Bool, trueTurnEvidence: Bool)? {
+        var childRecency: TimeInterval = 0
+        for (path, oldIdentity) in cached.childFiles {
+            let newIdentity = fileIdentity(atPath: path)
+            guard newIdentity == oldIdentity else { return nil }
+            if let newIdentity {
+                childRecency = max(childRecency, newIdentity.modifiedAt)
             }
         }
-        return false
+        if cached.inProgress {
+            let recency = [
+                childRecency > 0 ? childRecency : nil,
+                cached.updates?.modifiedAt,
+                cached.meta?.modifiedAt
+            ].compactMap { $0 }.max()
+            if let recency, Self.isWithinActivityWindow(recency, now: now) {
+                return (true, cached.trueTurnEvidence)
+            }
+        }
+        return (false, false)
+    }
+
+    private func storeSiblingResult(
+        sessionPath: String,
+        sessionDir: FileIdentity?,
+        updates: FileIdentity?,
+        meta: FileIdentity?,
+        childless: Bool,
+        childFiles: [String: FileIdentity],
+        inProgress: Bool,
+        trueTurnEvidence: Bool
+    ) {
+        siblingResultCaches[sessionPath] = SiblingResultCache(
+            sessionDir: sessionDir,
+            updates: updates,
+            meta: meta,
+            childless: childless,
+            childFiles: childFiles,
+            inProgress: inProgress,
+            trueTurnEvidence: trueTurnEvidence
+        )
+    }
+
+    private func childFileIdentities(in sessionPath: String) -> [String: FileIdentity] {
+        var identities: [String: FileIdentity] = [:]
+        func addFiles(in directoryPath: String, names: [String]) {
+            for name in names {
+                let path = Self.joinedPath(directoryPath, name)
+                if let identity = fileIdentity(atPath: path) {
+                    identities[path] = identity
+                }
+            }
+        }
+        let subagentsPath = Self.joinedPath(sessionPath, "subagents")
+        if isDirectory(atPath: subagentsPath) {
+            for name in directoryContents(atPath: subagentsPath) {
+                let childPath = Self.joinedPath(subagentsPath, name)
+                guard isDirectory(atPath: childPath) else { continue }
+                addFiles(in: childPath, names: ["meta.json", "updates.jsonl"])
+            }
+        }
+        for folderName in Self.durableStillRunningDirectories {
+            let folderPath = Self.joinedPath(sessionPath, folderName)
+            guard isDirectory(atPath: folderPath) else { continue }
+            for name in directoryContents(atPath: folderPath) {
+                let childPath = Self.joinedPath(folderPath, name)
+                guard isDirectory(atPath: childPath) else { continue }
+                addFiles(in: childPath, names: ["state.json", "meta.json"])
+            }
+        }
+        return identities
     }
 
     private func siblingRecencyDate(
         parent: SessionSignal,
-        sessionPath: String,
-        updatesPath: String
+        updatesIdentity: FileIdentity?,
+        metaIdentity: FileIdentity?
     ) -> Date? {
         var candidates: [Date] = []
         if let lastActivityAt = parent.lastActivityAt {
             candidates.append(lastActivityAt)
         }
-        if let identity = fileIdentity(atPath: updatesPath) {
-            candidates.append(Date(timeIntervalSince1970: identity.modifiedAt))
+        if let updatesIdentity {
+            candidates.append(Date(timeIntervalSince1970: updatesIdentity.modifiedAt))
         }
-        if let identity = fileIdentity(atPath: Self.joinedPath(sessionPath, "meta.json")) {
-            candidates.append(Date(timeIntervalSince1970: identity.modifiedAt))
+        if let metaIdentity {
+            candidates.append(Date(timeIntervalSince1970: metaIdentity.modifiedAt))
         }
         return candidates.max()
+    }
+
+    private static func isWithinActivityWindow(_ timestamp: TimeInterval, now: Date) -> Bool {
+        let age = now.timeIntervalSince1970 - timestamp
+        return age >= 0 && age < TimeInterval(activityWindow)
     }
 
     private static func parseOpenedAt(_ value: Any?) -> Date? {
@@ -689,104 +853,141 @@ final class GrokActivityMonitor {
             transcriptCaches.removeValue(forKey: path)
             return .neverStarted
         }
-        if let cached = transcriptCaches[path],
-           cached.size == identity.size,
-           cached.modifiedAt == identity.modifiedAt {
+        if let cached = transcriptCaches[path], cached.identity == identity {
             return cached.signal
         }
-        func cache(_ signal: SessionSignal) -> SessionSignal {
-            transcriptCaches[path] = TranscriptCache(
-                size: identity.size,
-                modifiedAt: identity.modifiedAt,
-                signal: signal
-            )
-            return signal
+        let cached = transcriptCaches[path]
+        let canContinue = cached.map {
+            $0.identity.fileID == identity.fileID
+                && identity.size > $0.identity.size
+                && identity.modifiedAt >= $0.identity.modifiedAt
+                && $0.bytesScanned <= identity.size
+        } ?? false
+        var lastKind: SessionSignal.Kind?
+        var lastActivityAt: Date?
+        var lastUserActivityAt: Date?
+        var lastTrueTurn = false
+        var unmatchedBackgroundIDs = Set<String>()
+        var pendingLine = Data()
+        let startOffset: UInt64
+        let dropLeadingPartial: Bool
+        if canContinue, let cached {
+            lastKind = cached.lastKind
+            lastActivityAt = cached.lastActivityAt
+            lastUserActivityAt = cached.lastUserActivityAt
+            lastTrueTurn = cached.lastTrueTurn
+            unmatchedBackgroundIDs = cached.unmatchedBackgroundIDs
+            pendingLine = cached.pendingLine
+            startOffset = cached.bytesScanned
+            dropLeadingPartial = false
+        } else {
+            startOffset = identity.size > Self.transcriptTailBytes
+                ? identity.size - Self.transcriptTailBytes
+                : 0
+            dropLeadingPartial = startOffset > 0
         }
-        let fileDate = Date(timeIntervalSince1970: identity.modifiedAt)
-        guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path, isDirectory: false)) else {
+        guard startOffset <= identity.size,
+              identity.size - startOffset <= UInt64(Int.max),
+              let handle = try? FileHandle(
+                forReadingFrom: URL(fileURLWithPath: path, isDirectory: false)
+              ) else {
             return .neverStarted
         }
         defer { try? handle.close() }
-
-        let tailSize: UInt64 = 192 * 1024
-        let offset = identity.size > tailSize ? identity.size - tailSize : 0
         do {
-            try handle.seek(toOffset: offset)
+            try handle.seek(toOffset: startOffset)
         } catch {
             return .neverStarted
         }
         transcriptReadCount += 1
-        guard let data = try? handle.read(upToCount: Int(tailSize)) else {
+        guard let newBytes = try? handle.read(upToCount: Int(identity.size - startOffset)) else {
             return .neverStarted
         }
-        // Split bytes, not grapheme clusters; a tail may begin inside UTF-8.
-        var lines = data.split(separator: 0x0A, omittingEmptySubsequences: false)
-        if offset > 0, !lines.isEmpty {
-            lines.removeFirst()
+        var data = pendingLine
+        data.append(newBytes)
+        var lineStart = data.startIndex
+        if dropLeadingPartial, let newline = data.firstIndex(of: 0x0A) {
+            lineStart = data.index(after: newline)
         }
-
-        var lastKind: SessionSignal.Kind?
-        var lastActivityAt: Date?
-        var lastUserActivityAt: Date?
-        var trueTurnEvidence = false
-        var unmatchedBackgroundIDs = Set<String>()
-        var completedBackgroundIDs = Set<String>()
-        for line in lines.reversed() {
-            guard !line.isEmpty else { continue }
-            transcriptParseCount += 1
-            guard
-                let event = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
-                let update = Self.sessionUpdate(from: event)
-            else {
-                continue
-            }
-            let eventDate = Self.eventDate(from: event) ?? fileDate
-            if update == "user_message_chunk", lastUserActivityAt == nil {
-                lastUserActivityAt = eventDate
-            }
-            if update == "task_completed" {
-                if let taskID = Self.backgroundTaskID(from: event, update: update) {
-                    completedBackgroundIDs.insert(taskID)
-                }
-                continue
-            }
-            if update == "task_backgrounded" {
-                if let taskID = Self.backgroundTaskID(from: event, update: update),
-                   !completedBackgroundIDs.contains(taskID) {
-                    unmatchedBackgroundIDs.insert(taskID)
-                }
-                continue
-            }
-            if lastKind == nil {
-                if Self.noiseSessionUpdates.contains(update) {
-                    continue
-                }
-                lastActivityAt = eventDate
-                if Self.terminalSessionUpdates.contains(update) {
-                    lastKind = .completed
-                    trueTurnEvidence = false
-                } else {
-                    lastKind = .inProgress
-                    trueTurnEvidence = Self.trueTurnSessionUpdates.contains(update)
-                }
+        let fileDate = Date(timeIntervalSince1970: identity.modifiedAt)
+        var index = lineStart
+        while index < data.endIndex {
+            if data[index] == 0x0A {
+                let line = data[lineStart..<index]
+                applyTranscriptLine(
+                    Data(line),
+                    fileDate: fileDate,
+                    lastKind: &lastKind,
+                    lastActivityAt: &lastActivityAt,
+                    lastUserActivityAt: &lastUserActivityAt,
+                    lastTrueTurn: &lastTrueTurn,
+                    unmatchedBackgroundIDs: &unmatchedBackgroundIDs
+                )
+                lineStart = data.index(after: index)
+                index = lineStart
+            } else {
+                index = data.index(after: index)
             }
         }
-        let hasUnmatchedBackground = !unmatchedBackgroundIDs.isEmpty
-        let unmatchedBackgroundOnly = lastKind == .completed && hasUnmatchedBackground
-        let kind: SessionSignal.Kind
-        if lastKind == .inProgress || hasUnmatchedBackground {
-            kind = .inProgress
-        } else {
-            kind = lastKind ?? .neverStarted
-        }
-        let signal = SessionSignal(
-            kind: kind,
+        pendingLine = Data(data[lineStart..<data.endIndex])
+        let entry = TranscriptCache(
+            identity: identity,
+            bytesScanned: identity.size,
+            pendingLine: pendingLine,
+            lastKind: lastKind,
             lastActivityAt: lastActivityAt,
             lastUserActivityAt: lastUserActivityAt,
-            trueTurnEvidence: lastKind == .inProgress && trueTurnEvidence,
-            unmatchedBackgroundOnly: unmatchedBackgroundOnly
+            lastTrueTurn: lastTrueTurn,
+            unmatchedBackgroundIDs: unmatchedBackgroundIDs
         )
-        return cache(signal)
+        transcriptCaches[path] = entry
+        return entry.signal
+    }
+
+    private func applyTranscriptLine(
+        _ line: Data,
+        fileDate: Date,
+        lastKind: inout SessionSignal.Kind?,
+        lastActivityAt: inout Date?,
+        lastUserActivityAt: inout Date?,
+        lastTrueTurn: inout Bool,
+        unmatchedBackgroundIDs: inout Set<String>
+    ) {
+        guard !line.isEmpty else { return }
+        transcriptParseCount += 1
+        guard
+            let event = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+            let update = Self.sessionUpdate(from: event)
+        else {
+            return
+        }
+        let eventDate = Self.eventDate(from: event) ?? fileDate
+        if update == "user_message_chunk" {
+            lastUserActivityAt = eventDate
+        }
+        if update == "task_completed" {
+            if let taskID = Self.backgroundTaskID(from: event, update: update) {
+                unmatchedBackgroundIDs.remove(taskID)
+            }
+            return
+        }
+        if update == "task_backgrounded" {
+            if let taskID = Self.backgroundTaskID(from: event, update: update) {
+                unmatchedBackgroundIDs.insert(taskID)
+            }
+            return
+        }
+        if Self.noiseSessionUpdates.contains(update) {
+            return
+        }
+        lastActivityAt = eventDate
+        if Self.terminalSessionUpdates.contains(update) {
+            lastKind = .completed
+            lastTrueTurn = false
+        } else {
+            lastKind = .inProgress
+            lastTrueTurn = Self.trueTurnSessionUpdates.contains(update)
+        }
     }
 
     private static func backgroundTaskID(
@@ -917,11 +1118,15 @@ final class GrokActivityMonitor {
         return encoded
     }
 
-    private func fileIdentity(atPath path: String) -> (size: UInt64, modifiedAt: TimeInterval)? {
+    private func fileIdentity(atPath path: String) -> FileIdentity? {
         var value = stat()
         guard path.withCString({ Darwin.lstat($0, &value) }) == 0 else { return nil }
         let modifiedAt = TimeInterval(value.st_mtimespec.tv_sec)
             + (TimeInterval(value.st_mtimespec.tv_nsec) / 1_000_000_000)
-        return (UInt64(max(0, value.st_size)), modifiedAt)
+        return FileIdentity(
+            size: UInt64(max(0, value.st_size)),
+            modifiedAt: modifiedAt,
+            fileID: UInt64(value.st_ino)
+        )
     }
 }
