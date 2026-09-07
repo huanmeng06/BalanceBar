@@ -487,6 +487,8 @@
     case keyCodexBankedResetRemainingMinutes = "codex.banked_reset.remaining_minutes"
     case keyCodexBankedResetProbabilityPrefix = "codex.banked_reset.probability_prefix"
     case keyCodexBankedResetProbabilitySource = "codex.banked_reset.probability_source"
+    case keyCodexGPTCreditTitle = "codex.gpt_credit.title"
+    case keyCodexGPTCreditSubtitle = "codex.gpt_credit.subtitle"
 
     var rawKey: String { rawValue }
   }

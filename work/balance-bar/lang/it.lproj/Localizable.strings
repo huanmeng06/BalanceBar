@@ -476,6 +476,8 @@
 "codex.banked_reset.remaining_minutes" = "%1$@ minuti";
 "codex.banked_reset.probability_prefix" = "Probabilità di reset:";
 "codex.banked_reset.probability_source" = "Origine dei dati: willcodexquotareset.com";
+"codex.gpt_credit.title" = "Saldo GPT";
+"codex.gpt_credit.subtitle" = "Saldo attuale";
 "dashboard.menu.page.progress_color_ranges" = "Intervalli colore della barra";
 "dashboard.menu.page.progress_color_ranges_description" = "Trascina le soglie per scegliere il colore di ogni intervallo della percentuale rimanente";
 "dashboard.menu.page.displayed_colors" = "Colori visualizzati";

@@ -2730,6 +2730,234 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testOfficialCodexMenuCardRendersGPTCreditBalanceBetweenQuotaAndBankedReset() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false,
+            bankedResetDisplayMode: .detailed
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let date = Date()
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800
+            )
+        ]
+        let credit = try XCTUnwrap(CodexGPTCreditBalance(amount: 0.4))
+        let bankedReset = try XCTUnwrap(
+            CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "card",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    windowText: tr(.keyCodexBankedResetFullResetWindow),
+                    expiresAt: date.addingTimeInterval(6 * 3_600),
+                    expiresText: "expires",
+                    remainingText: "6h",
+                    remainingIsWarning: true
+                )
+            ])
+        )
+
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                bankedReset: bankedReset,
+                resetProbability: .percent(22),
+                gptCreditBalance: credit
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 1,
+            bankedResetDisplayMode: .detailed,
+            includesGPTCreditBalance: true
+        )
+        XCTAssertEqual(overview.bounds.size, frames.cardSize)
+        let amountField = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.gptCredit.amount"
+            }
+        )
+        XCTAssertEqual(amountField.stringValue, "US$0.40")
+        XCTAssertTrue(amountField.stringValue.hasPrefix("US$"))
+        XCTAssertNotEqual(amountField.stringValue, "0.4")
+        XCTAssertNotEqual(amountField.stringValue, "$0.40")
+        XCTAssertEqual(
+            amountField.font?.pointSize,
+            OpenCodexCardLayout.quotaAmountPointSize
+        )
+        XCTAssertEqual(amountField.alignment, .right)
+        let title = try XCTUnwrap(
+            overview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.identifier?.rawValue == "codex.gptCredit.title"
+            }
+        )
+        XCTAssertEqual(title.accountLabel.stringValue, tr(.keyCodexGPTCreditTitle))
+        let subtitle = try XCTUnwrap(
+            overview.subviews.compactMap { $0 as? AccountMarqueeView }.first {
+                $0.identifier?.rawValue == "codex.gptCredit.subtitle"
+            }
+        )
+        XCTAssertEqual(subtitle.accountLabel.stringValue, tr(.keyCodexGPTCreditSubtitle))
+        XCTAssertFalse(subtitle.accountLabel.stringValue.contains("US$"))
+        XCTAssertFalse(subtitle.accountLabel.stringValue.contains("0.40"))
+        guard let creditRow = frames.gptCreditBalanceRow,
+              let bankedSummary = frames.bankedResetSummaryRow else {
+            XCTFail("expected GPT credit above banked reset")
+            return
+        }
+        XCTAssertEqual(amountField.frame, creditRow.amount)
+        XCTAssertGreaterThan(frames.quotaRows[1].progress.minY, creditRow.amount.minY)
+        XCTAssertGreaterThan(creditRow.amount.minY, bankedSummary.amount.minY)
+        XCTAssertEqual(creditRow.progress, .zero)
+        XCTAssertTrue(
+            allControls(of: overview, as: NSTextField.self)
+                .map(\.stringValue)
+                .contains(tr(.keyCodexBankedResetTitle))
+        )
+
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                bankedReset: bankedReset,
+                resetProbability: .percent(22),
+                gptCreditBalance: credit
+            ),
+            refreshDate: date,
+            menuInput: StatusItemController.MenuInput(
+                openCodexCards: [],
+                openCodexState: nil,
+                openCodexSwitchInFlight: false,
+                choices: [],
+                quickSwitchSummaries: [:],
+                activeClient: .codex,
+                openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+                statusLinks: [],
+                showQuickSwitchMenu: false,
+                showOpenChatGPTMenu: false,
+                showOpenCCSwitchMenu: false,
+                showOpenCodexMenu: false,
+                showStatusMenu: false,
+                bankedResetDisplayMode: .compact
+            ),
+            settings: settings
+        )
+        let compactOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let compactAmount = try XCTUnwrap(
+            allControls(of: compactOverview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.gptCredit.amount"
+            }
+        )
+        XCTAssertEqual(compactAmount.stringValue, "US$0.40")
+        XCTAssertFalse(
+            compactOverview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" }
+        )
+        XCTAssertFalse(
+            compactOverview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" }
+        )
+
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let hiddenOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        XCTAssertFalse(
+            allControls(of: hiddenOverview, as: NSTextField.self).contains {
+                $0.identifier?.rawValue == "codex.gptCredit.amount"
+            }
+        )
+        XCTAssertEqual(
+            hiddenOverview.bounds.height,
+            OpenCodexCardLayout.frames(
+                for: .quota,
+                includesAccount: true,
+                includesSubscription: true,
+                officialQuotaWindows: windows
+            ).cardSize.height,
+            accuracy: 0.001
+        )
+    }
+
     func testOfficialCodexMenuCardDetailedBankedResetClipsTicketsToTwoAndAHalfRows() throws {
         let previousLanguage = AppLanguage.selected
         defer { AppLanguage.selected = previousLanguage }

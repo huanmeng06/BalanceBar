@@ -538,7 +538,8 @@ final class ProviderRefreshCoordinator {
                             windows: response.output.windows,
                             lunaReserve: response.output.lunaReserve,
                             bankedReset: bankedReset,
-                            resetProbability: bankedReset == nil ? .unavailable : probability
+                            resetProbability: bankedReset == nil ? .unavailable : probability,
+                            gptCreditBalance: response.output.gptCreditBalance
                         ),
                         providerID: providerID,
                         client: client

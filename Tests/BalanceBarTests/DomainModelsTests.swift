@@ -332,6 +332,104 @@ final class DomainModelsTests: XCTestCase {
                 hideExhaustedQuota: false
             ).bankedReset
         )
+        XCTAssertNil(
+            balance.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: .always,
+                hideExhaustedQuota: false
+            ).gptCreditBalance
+        )
+    }
+
+    func testGPTCreditBalanceFormatsUSDollarsAndGatesOfficialMenuRow() throws {
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 0.4)?.displayText, "US$0.40")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 0)?.displayText, "US$0.00")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 12)?.displayText, "US$12.00")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 1234.5)?.displayText, "US$1234.50")
+        XCTAssertEqual(CodexGPTCreditBalance(amount: 2745.759713)?.displayText, "US$2745.76")
+        XCTAssertNil(CodexGPTCreditBalance(amount: .nan))
+        XCTAssertNil(CodexGPTCreditBalance(amount: .infinity))
+        let formatted = try XCTUnwrap(CodexGPTCreditBalance(amount: 0.4)?.displayText)
+        XCTAssertTrue(formatted.hasPrefix("US$"))
+        XCTAssertNotEqual(formatted, "0.4")
+        XCTAssertNotEqual(formatted, "0.40")
+        XCTAssertNotEqual(formatted, "$0.40")
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h",
+            durationSeconds: 18_000
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "6d",
+            durationSeconds: 604_800
+        )
+        let credit = try XCTUnwrap(CodexGPTCreditBalance(amount: 0.4))
+        let bankedReset = try XCTUnwrap(
+            CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "card",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    expiresAt: date.addingTimeInterval(3_600),
+                    expiresText: "Expires later"
+                )
+            ])
+        )
+        let official = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            bankedReset: bankedReset,
+            gptCreditBalance: credit
+        )
+        let presented = official.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(presented.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(presented.gptCreditBalance?.displayText, "US$0.40")
+        XCTAssertEqual(presented.bankedReset?.availableCount, 1)
+
+        let zeroCredit = try XCTUnwrap(CodexGPTCreditBalance(amount: 0))
+        let zeroPresented = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            gptCreditBalance: zeroCredit
+        ).officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(zeroPresented.gptCreditBalance?.displayText, "US$0.00")
+        XCTAssertNil(zeroPresented.bankedReset)
+
+        let missing = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay]
+        ).officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertNil(missing.gptCreditBalance)
+        XCTAssertEqual(missing.windows.map(\.kind), [.fiveHour, .sevenDay])
     }
 
     func testBankedResetRemainingUsesWarningThresholdUnderTwentyFourHours() throws {

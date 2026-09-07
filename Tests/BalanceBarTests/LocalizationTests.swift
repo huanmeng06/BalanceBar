@@ -326,6 +326,34 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testGPTCreditBalanceCopyExistsAcrossAllLanguages() {
+        XCTAssertEqual(
+            tr(.keyCodexGPTCreditTitle, language: .simplifiedChinese),
+            "GPT 余额"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexGPTCreditSubtitle, language: .simplifiedChinese),
+            "当前余额"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexGPTCreditTitle, language: .english),
+            "GPT balance"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexGPTCreditSubtitle, language: .english),
+            "Current balance"
+        )
+        for language in allLanguages {
+            let title = tr(.keyCodexGPTCreditTitle, language: language)
+            let subtitle = tr(.keyCodexGPTCreditSubtitle, language: language)
+            XCTAssertFalse(title.isEmpty, "missing GPT credit title for \(language)")
+            XCTAssertFalse(subtitle.isEmpty, "missing GPT credit subtitle for \(language)")
+            XCTAssertFalse(title.hasPrefix("⟦"), "untranslated GPT credit title for \(language)")
+            XCTAssertFalse(subtitle.hasPrefix("⟦"), "untranslated GPT credit subtitle for \(language)")
+            XCTAssertFalse(subtitle.contains("US$"), "subtitle must not repeat the amount for \(language)")
+        }
+    }
+
     func testNewLanguageNamesRemainNativeAndCoreCopyIsLocalized() {
         let cases: [(AppLanguage, String, String)] = [
             (.portuguese, "Sobre o BalanceBar", "Usar o idioma do sistema"),
@@ -840,7 +868,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 487)
+        XCTAssertEqual(expectedKeys.count, 489)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

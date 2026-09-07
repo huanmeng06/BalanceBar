@@ -468,6 +468,117 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertNil(expired.windows.first?.resetAt)
     }
 
+    func testCodexGPTCreditBalanceParsesFiniteDollarsWithoutFailingQuota() throws {
+        let stringBalance = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "credits": ["balance": "0.40"]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(stringBalance.windows.map(\.kind), [.fiveHour, .sevenDay])
+        let parsedString = try XCTUnwrap(stringBalance.gptCreditBalance)
+        XCTAssertEqual(parsedString.amount, 0.4, accuracy: 0.000001)
+        XCTAssertEqual(parsedString.displayText, "US$0.40")
+        XCTAssertTrue(parsedString.displayText.hasPrefix("US$"))
+        XCTAssertNotEqual(parsedString.displayText, "0.4")
+        XCTAssertNotEqual(parsedString.displayText, "$0.40")
+
+        let numericZero = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "credits": ["balance": 0]
+            ]),
+            client: .codex,
+            now: now
+        )
+        let parsedZero = try XCTUnwrap(numericZero.gptCreditBalance)
+        XCTAssertEqual(parsedZero.displayText, "US$0.00")
+        XCTAssertEqual(parsedZero.amount, 0, accuracy: 0.000001)
+
+        let missing = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(),
+            client: .codex,
+            now: now
+        )
+        XCTAssertNil(missing.gptCreditBalance)
+        XCTAssertEqual(missing.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(missing.bankedReset)
+
+        let malformedObject = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "credits": ["balance": ["nested": true]]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertNil(malformedObject.gptCreditBalance)
+        XCTAssertEqual(malformedObject.windows.map(\.kind), [.fiveHour, .sevenDay])
+
+        let malformedArray = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "credits": ["balance": [0.4]]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertNil(malformedArray.gptCreditBalance)
+
+        let nanString = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "credits": ["balance": "NaN"]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertNil(nanString.gptCreditBalance)
+        XCTAssertEqual(nanString.windows.map(\.remaining), [80, 45])
+
+        let withBankedReset = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "credits": ["balance": "0.4"],
+                "rate_limit_reset_credits": [
+                    "available_count": 2,
+                    "credits": [
+                        [
+                            "id": "RateLimitResetCredit_a",
+                            "reset_type": "codex_rate_limits",
+                            "status": "available",
+                            "expires_at": "2023-11-15T22:13:20Z"
+                        ],
+                        [
+                            "id": "RateLimitResetCredit_b",
+                            "reset_type": "codex_rate_limits",
+                            "status": "available",
+                            "expires_at": "2023-11-16T22:13:20Z"
+                        ]
+                    ]
+                ]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(withBankedReset.gptCreditBalance?.displayText, "US$0.40")
+        XCTAssertEqual(withBankedReset.bankedReset?.availableCount, 2)
+        XCTAssertEqual(withBankedReset.windows.map(\.kind), [.fiveHour, .sevenDay])
+    }
+
+    func testClaudeOfficialQuotaIgnoresCodexGPTCreditBalance() throws {
+        let claude = try OfficialQuotaResponseParser.parse(
+            object: [
+                "seven_day": [
+                    "utilization": "12.5",
+                    "resets_at": "2023-11-15T00:13:20Z"
+                ],
+                "credits": ["balance": "0.40"]
+            ],
+            client: .claude,
+            now: now
+        )
+        XCTAssertNil(claude.gptCreditBalance)
+        XCTAssertEqual(claude.remaining, 87.5, accuracy: 0.000001)
+        XCTAssertNil(claude.bankedReset)
+    }
+
     func testCodexBankedResetParsesAvailableUnexpiredCardsInExpiryOrder() throws {
         let earlier = Date(timeIntervalSince1970: 1_700_086_400)
         let later = Date(timeIntervalSince1970: 1_700_172_800)

@@ -1622,6 +1622,100 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertNil(withoutCards.bankedResetTicketViewport)
     }
 
+    func testOfficialQuotaLayoutPlacesGPTCreditBalanceBetweenWindowsAndBankedReset() {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-Hour Quota",
+                daysText: "5 Hours",
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: "7-Day Quota",
+                daysText: "7 Days",
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+        let baseline = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows
+        )
+        let creditOnly = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesGPTCreditBalance: true
+        )
+        XCTAssertEqual(creditOnly.quotaRows.count, 2)
+        XCTAssertNil(creditOnly.lunaReserveRow)
+        XCTAssertNil(creditOnly.bankedResetSummaryRow)
+        guard let creditRow = creditOnly.gptCreditBalanceRow else {
+            XCTFail("expected GPT credit row")
+            return
+        }
+        XCTAssertEqual(creditRow.progress, .zero)
+        XCTAssertEqual(
+            creditRow.amount.height,
+            OpenCodexCardLayout.lunaReserveNoProgressAmountHeight,
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(creditRow.quotaDetail.minY, creditRow.reset.minY)
+        XCTAssertEqual(
+            creditOnly.cardSize.height - baseline.cardSize.height,
+            OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+                + OpenCodexCardLayout.quotaRowGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            creditOnly.quotaRows[1].progress.minY
+                - (creditRow.amount.minY + OpenCodexCardLayout.lunaReserveNoProgressRowHeight),
+            OpenCodexCardLayout.quotaRowGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(creditRow.amount.minY, OpenCodexCardLayout.quotaBottomInset, accuracy: 0.001)
+        XCTAssertGreaterThan(creditOnly.quotaRows[0].progress.minY, creditOnly.quotaRows[1].progress.minY)
+
+        let withBanked = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact,
+            includesGPTCreditBalance: true
+        )
+        guard let stackedCredit = withBanked.gptCreditBalanceRow,
+              let stackedBanked = withBanked.bankedResetSummaryRow else {
+            XCTFail("expected GPT credit above compact banked reset")
+            return
+        }
+        XCTAssertGreaterThan(withBanked.quotaRows[1].progress.minY, stackedCredit.amount.minY)
+        XCTAssertGreaterThan(stackedCredit.amount.minY, stackedBanked.amount.minY)
+        XCTAssertEqual(
+            stackedCredit.amount.minY
+                - (stackedBanked.amount.minY + OpenCodexCardLayout.lunaReserveNoProgressRowHeight),
+            OpenCodexCardLayout.quotaRowGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(baseline.gptCreditBalanceRow, nil)
+        XCTAssertEqual(baseline.cardSize, OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesGPTCreditBalance: false
+        ).cardSize)
+    }
+
     func testOfficialQuotaLayoutClipsDetailedBankedResetTicketsToTwoAndAHalfRows() {
         let windows = [
             OfficialQuotaWindow(

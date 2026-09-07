@@ -5268,6 +5268,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
         let bankedReset = quotaPresentation.bankedReset
+        let gptCreditBalance = quotaPresentation.gptCreditBalance
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
@@ -5284,7 +5285,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex,
             includesBankedReset: snapshot.kind == .official && bankedReset != nil,
             bankedResetCardCount: bankedReset?.cards.count ?? 0,
-            bankedResetDisplayMode: menuInput.bankedResetDisplayMode
+            bankedResetDisplayMode: menuInput.bankedResetDisplayMode,
+            includesGPTCreditBalance: snapshot.kind == .official && gptCreditBalance != nil
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -5312,6 +5314,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         if !layout.quotaRows.isEmpty
             || layout.lunaReserveRow != nil
+            || layout.gptCreditBalanceRow != nil
             || layout.bankedResetSummaryRow != nil {
             for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
                 let progress = QuotaProgressView(percentage: window.remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
@@ -5394,6 +5397,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     frame: overviewMarqueeFrame(row.reset, avoiding: amount)
                 )
                 view.addSubview(reset)
+            }
+            if let gptCreditBalance,
+               let row = layout.gptCreditBalanceRow {
+                let amount = makeOverviewLabel(
+                    gptCreditBalance.displayText,
+                    font: .monospacedDigitSystemFont(
+                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                        weight: .semibold
+                    )
+                )
+                amount.alignment = .right
+                amount.identifier = NSUserInterfaceItemIdentifier("codex.gptCredit.amount")
+                amount.frame = row.amount
+                view.addSubview(amount)
+
+                let title = makeMarqueeOverviewLabel(
+                    tr(.keyCodexGPTCreditTitle),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                        weight: .medium
+                    ),
+                    textColor: .labelColor,
+                    frame: overviewMarqueeFrame(row.quotaDetail, avoiding: amount)
+                )
+                title.identifier = NSUserInterfaceItemIdentifier("codex.gptCredit.title")
+                view.addSubview(title)
+
+                let subtitle = makeMarqueeOverviewLabel(
+                    tr(.keyCodexGPTCreditSubtitle),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                        weight: .regular
+                    ),
+                    textColor: .secondaryLabelColor,
+                    frame: overviewMarqueeFrame(row.reset, avoiding: amount)
+                )
+                subtitle.identifier = NSUserInterfaceItemIdentifier("codex.gptCredit.subtitle")
+                view.addSubview(subtitle)
             }
             if let bankedReset,
                let summaryRow = layout.bankedResetSummaryRow {

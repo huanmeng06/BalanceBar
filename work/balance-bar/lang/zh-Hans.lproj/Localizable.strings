@@ -476,6 +476,8 @@
 "codex.banked_reset.remaining_minutes" = "%1$@ 分钟";
 "codex.banked_reset.probability_prefix" = "重置概率：";
 "codex.banked_reset.probability_source" = "数据来源：willcodexquotareset.com";
+"codex.gpt_credit.title" = "GPT 余额";
+"codex.gpt_credit.subtitle" = "当前余额";
 "dashboard.menu.page.progress_color_ranges" = "进度条颜色区间";
 "dashboard.menu.page.progress_color_ranges_description" = "拖动分界点，调整不同剩余百分比对应的颜色";
 "dashboard.menu.page.displayed_colors" = "显示颜色";

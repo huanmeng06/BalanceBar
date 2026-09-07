@@ -157,6 +157,40 @@ struct CodexBankedReset: Equatable {
     }
 }
 
+/// Prepaid ChatGPT GPT credit dollars from official usage `credits.balance`.
+/// Zero is a real balance; non-finite values never become a row.
+struct CodexGPTCreditBalance: Equatable {
+    let amount: Double
+    let displayText: String
+
+    init?(amount: Double) {
+        guard let displayText = CodexGPTCreditBalanceFormatting.displayText(for: amount) else {
+            return nil
+        }
+        self.amount = amount
+        self.displayText = displayText
+    }
+}
+
+enum CodexGPTCreditBalanceFormatting {
+    /// ChatGPT billing style: fixed `US$` prefix and two decimal places.
+    /// Never reuse third-party `$` / localized currency formatting.
+    static func displayText(for amount: Double) -> String? {
+        guard amount.isFinite else { return nil }
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        formatter.usesGroupingSeparator = false
+        formatter.decimalSeparator = "."
+        guard let number = formatter.string(from: NSNumber(value: amount)) else {
+            return nil
+        }
+        return "US$\(number)"
+    }
+}
+
 struct OfficialQuotaWindow: Equatable {
     enum Kind: Int, Equatable, Hashable {
         case fiveHour
@@ -290,19 +324,24 @@ struct OfficialQuotaMenuPresentation: Equatable {
     /// Community 48-hour reset likelihood for the banked-reset summary
     /// subtitle. Ignored when `bankedReset` is nil.
     let resetProbability: CodexResetProbability
+    /// Prepaid GPT credit dollars for the official Codex overview card.
+    /// Nil when usage omitted `credits.balance` or the amount was unusable.
+    let gptCreditBalance: CodexGPTCreditBalance?
 
     init(
         windows: [OfficialQuotaWindow],
         lunaReserve: LunaReserveQuota?,
         lunaReserveInsertionIndex: Int?,
         bankedReset: CodexBankedReset?,
-        resetProbability: CodexResetProbability = .unavailable
+        resetProbability: CodexResetProbability = .unavailable,
+        gptCreditBalance: CodexGPTCreditBalance? = nil
     ) {
         self.windows = windows
         self.lunaReserve = lunaReserve
         self.lunaReserveInsertionIndex = lunaReserveInsertionIndex
         self.bankedReset = bankedReset
         self.resetProbability = resetProbability
+        self.gptCreditBalance = gptCreditBalance
     }
 }
 
@@ -442,6 +481,7 @@ struct Snapshot {
     let lunaReserve: LunaReserveQuota?
     let bankedReset: CodexBankedReset?
     let resetProbability: CodexResetProbability
+    let gptCreditBalance: CodexGPTCreditBalance?
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -466,6 +506,7 @@ struct Snapshot {
         lunaReserve: LunaReserveQuota? = nil,
         bankedReset: CodexBankedReset? = nil,
         resetProbability: CodexResetProbability = .unavailable,
+        gptCreditBalance: CodexGPTCreditBalance? = nil,
         menuBarUsesLunaReserve: Bool = false
     ) {
         self.kind = kind
@@ -481,6 +522,7 @@ struct Snapshot {
         self.lunaReserve = lunaReserve
         self.bankedReset = bankedReset
         self.resetProbability = resetProbability
+        self.gptCreditBalance = gptCreditBalance
         self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
@@ -505,7 +547,8 @@ struct Snapshot {
         windows: [OfficialQuotaWindow] = [],
         lunaReserve: LunaReserveQuota? = nil,
         bankedReset: CodexBankedReset? = nil,
-        resetProbability: CodexResetProbability = .unavailable
+        resetProbability: CodexResetProbability = .unavailable,
+        gptCreditBalance: CodexGPTCreditBalance? = nil
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -538,7 +581,8 @@ struct Snapshot {
             officialQuotaWindows: resolvedWindows,
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
-            resetProbability: resetProbability
+            resetProbability: resetProbability,
+            gptCreditBalance: gptCreditBalance
         )
     }
 
@@ -627,7 +671,8 @@ struct Snapshot {
                 windows: [],
                 lunaReserve: nil,
                 lunaReserveInsertionIndex: nil,
-                bankedReset: nil
+                bankedReset: nil,
+                gptCreditBalance: nil
             )
         }
 
@@ -694,12 +739,19 @@ struct Snapshot {
             }
             return bankedReset
         }()
+        let presentedGPTCreditBalance: CodexGPTCreditBalance? = {
+            guard let gptCreditBalance, gptCreditBalance.amount.isFinite else {
+                return nil
+            }
+            return gptCreditBalance
+        }()
         return OfficialQuotaMenuPresentation(
             windows: presentedWindows,
             lunaReserve: shouldShowLunaReserve ? lunaReserve : nil,
             lunaReserveInsertionIndex: presentedInsertionIndex,
             bankedReset: presentedBankedReset,
-            resetProbability: presentedBankedReset == nil ? .unavailable : resetProbability
+            resetProbability: presentedBankedReset == nil ? .unavailable : resetProbability,
+            gptCreditBalance: presentedGPTCreditBalance
         )
     }
 
@@ -763,6 +815,7 @@ struct Snapshot {
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
             resetProbability: resetProbability,
+            gptCreditBalance: gptCreditBalance,
             menuBarUsesLunaReserve: false
         )
     }
@@ -788,6 +841,7 @@ struct Snapshot {
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
             resetProbability: resetProbability,
+            gptCreditBalance: gptCreditBalance,
             menuBarUsesLunaReserve: true
         )
     }

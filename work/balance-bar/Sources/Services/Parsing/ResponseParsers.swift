@@ -258,17 +258,22 @@ enum OfficialQuotaResponseParser {
         /// positive available count but no usable `credits[]`. Callers may
         /// then issue one read-only list GET.
         let bankedResetNeedsCreditList: Bool
+        /// Prepaid GPT credit dollars from top-level `credits.balance`.
+        /// Missing or unusable values stay nil and never fail the quota parse.
+        let gptCreditBalance: CodexGPTCreditBalance?
 
         init(
             windows: [OfficialQuotaWindow],
             lunaReserve: LunaReserveQuota? = nil,
             bankedReset: CodexBankedReset? = nil,
-            bankedResetNeedsCreditList: Bool = false
+            bankedResetNeedsCreditList: Bool = false,
+            gptCreditBalance: CodexGPTCreditBalance? = nil
         ) {
             self.windows = windows
             self.lunaReserve = lunaReserve
             self.bankedReset = bankedReset
             self.bankedResetNeedsCreditList = bankedResetNeedsCreditList
+            self.gptCreditBalance = gptCreditBalance
         }
 
         private var representative: OfficialQuotaWindow? {
@@ -345,7 +350,8 @@ enum OfficialQuotaResponseParser {
             windows: windows.sorted(by: Self.windowSort),
             lunaReserve: Self.parseCodexLunaReserve(from: object, now: now),
             bankedReset: bankedResetParse.reset,
-            bankedResetNeedsCreditList: bankedResetParse.needsCreditList
+            bankedResetNeedsCreditList: bankedResetParse.needsCreditList,
+            gptCreditBalance: Self.parseCodexGPTCreditBalance(from: object)
         )
     }
 
@@ -499,6 +505,39 @@ enum OfficialQuotaResponseParser {
             return lhs.kind.sortOrder < rhs.kind.sortOrder
         }
         return (lhs.durationSeconds ?? 0) > (rhs.durationSeconds ?? 0)
+    }
+
+    private static func parseCodexGPTCreditBalance(
+        from object: [String: Any]
+    ) -> CodexGPTCreditBalance? {
+        guard let credits = object["credits"] as? [String: Any] else {
+            return nil
+        }
+        guard let amount = finiteDollarAmount(credits["balance"]) else {
+            return nil
+        }
+        return CodexGPTCreditBalance(amount: amount)
+    }
+
+    /// `credits.balance` may be a JSON string or number. Objects, arrays,
+    /// booleans, NaN, and infinities never become a dollar row.
+    private static func finiteDollarAmount(_ value: Any?) -> Double? {
+        let amount: Double?
+        switch value {
+        case is Bool:
+            return nil
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return nil
+            }
+            amount = number.doubleValue
+        case let string as String:
+            amount = Double(string.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
+        guard let amount, amount.isFinite else { return nil }
+        return amount
     }
 
     private static func parseCodexBankedReset(
