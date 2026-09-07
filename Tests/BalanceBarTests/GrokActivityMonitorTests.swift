@@ -1342,6 +1342,116 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.transcriptReadCount, 4)
     }
 
+    func testStaleChildlessSiblingsSkipRelatedWorkAcrossLaterPolls() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<64 {
+            try writeSession(
+                updates: [sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)],
+                sessionID: "history-\(index)",
+                modifiedAt: staleDate,
+                registerActive: false
+            )
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.relatedSessionSignalsCount, 1)
+        XCTAssertEqual(monitor.transcriptReadCount, 1)
+        XCTAssertEqual(monitor.transcriptParseCount, 1)
+        XCTAssertEqual(monitor.childJSONReadCount, 0)
+        var related = monitor.relatedSessionSignalsCount
+        let reads = monitor.transcriptReadCount
+        let parses = monitor.transcriptParseCount
+        let childReads = monitor.childJSONReadCount
+        for interval in [1.0, 5.0, 60.0] {
+            currentDate.addTimeInterval(interval)
+            XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+            related += 1
+            XCTAssertEqual(monitor.relatedSessionSignalsCount, related)
+            XCTAssertEqual(monitor.transcriptReadCount, reads)
+            XCTAssertEqual(monitor.transcriptParseCount, parses)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+        }
+    }
+
+    func testCompletedSubagentMetaIsReusedWithoutRereadingOnLaterPolls() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<14 {
+            try writeSession(
+                updates: [sessionUpdate("turn_completed", timestamp: staleDate.timeIntervalSince1970)],
+                sessionID: "history-\(index)",
+                modifiedAt: staleDate,
+                registerActive: false
+            )
+            try writeSubagentMeta(
+                parentSessionID: "history-\(index)",
+                subagentID: "child",
+                childCWD: "/tmp/child-work",
+                status: "completed"
+            )
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        let childReads = monitor.childJSONReadCount
+        XCTAssertEqual(childReads, 14)
+        let transcriptReads = monitor.transcriptReadCount
+        for interval in [1.0, 5.0, 60.0] {
+            currentDate.addTimeInterval(interval)
+            XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+            XCTAssertEqual(monitor.transcriptReadCount, transcriptReads)
+        }
+    }
+
+    func testCachedLiveChildAndWorkflowStatusesStillBecomeActive() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        try writeSession(
+            updates: [sessionUpdate("turn_completed", timestamp: staleDate.timeIntervalSince1970)],
+            sessionID: "history-live",
+            modifiedAt: staleDate,
+            registerActive: false
+        )
+        let monitor = makeMonitor()
+        for state in ["active", "running", "paused", "pausing"] {
+            try writeSubagentMeta(
+                parentSessionID: "history-live",
+                subagentID: "child",
+                childCWD: "/tmp/child-work",
+                status: state
+            )
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            let childReads = monitor.childJSONReadCount
+            currentDate.addTimeInterval(1)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+        }
+        try writeSubagentMeta(
+            parentSessionID: "history-live",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "completed"
+        )
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        for state in ["active", "running", "paused", "pausing"] {
+            try writeWorkflowState(sessionID: "history-live", runID: "workflow", status: state)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            let childReads = monitor.childJSONReadCount
+            currentDate.addTimeInterval(1)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+        }
+        try writeWorkflowState(sessionID: "history-live", runID: "workflow", status: "completed")
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+    }
+
     func testEmptyActiveSessionsAndMissingProcessDoNotReadHistoricalTranscripts() throws {
         try writeSession(updates: [sessionUpdate("agent_thought_chunk")], registerActive: false)
         try writeActiveSessions([])

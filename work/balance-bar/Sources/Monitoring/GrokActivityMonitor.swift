@@ -68,11 +68,21 @@ final class GrokActivityMonitor {
         "loops",
         "scheduler"
     ]
+    private static let childWorkDirectoryNames = durableStillRunningDirectories + ["subagents"]
 
     private struct TranscriptCache {
         let size: UInt64
         let modifiedAt: TimeInterval
         let signal: SessionSignal
+    }
+
+    private struct ChildJSONCache {
+        let size: UInt64
+        let modifiedAt: TimeInterval
+        let parsed: Bool
+        let status: String?
+        let childSessionID: String?
+        let childCWD: String?
     }
 
     private struct SessionSignal {
@@ -107,8 +117,11 @@ final class GrokActivityMonitor {
         .distantPast, false, []
     )
     private var transcriptCaches: [String: TranscriptCache] = [:]
+    private var childJSONCaches: [String: ChildJSONCache] = [:]
     private(set) var transcriptReadCount = 0
     private(set) var transcriptParseCount = 0
+    private(set) var relatedSessionSignalsCount = 0
+    private(set) var childJSONReadCount = 0
 
     init(
         grokDirectory: URL? = nil,
@@ -334,7 +347,7 @@ final class GrokActivityMonitor {
             if let openedAt = row.openedAt {
                 allOpenedDates.append(openedAt)
             }
-            let related = relatedSessionSignals(for: row.updatesURL, now: now)
+            let related = relatedSessionSignals(for: row.updatesURL.path, now: now)
             let parent = related.first ?? .neverStarted
             if parent.kind != .neverStarted, let openedAt = row.openedAt {
                 liveOpenedDates.append(openedAt)
@@ -359,7 +372,7 @@ final class GrokActivityMonitor {
             cwdGroupScan: for (cwd, listedIDs) in listedIDsByCWD {
                 for sibling in siblingSessionDirectories(cwd: cwd, excluding: listedIDs) {
                     let siblingProgress = unlistedSiblingProgress(
-                        sessionDirectory: sibling,
+                        sessionPath: sibling,
                         now: now,
                         earliestLiveOpenedAt: earliestLiveOpenedAt
                     )
@@ -412,27 +425,19 @@ final class GrokActivityMonitor {
     }
 
     /// Direct children of one cwd group. Does not walk `~/.grok/sessions`.
-    private func siblingSessionDirectories(cwd: String, excluding listedIDs: Set<String>) -> [URL] {
-        let groupDirectory = grokDirectory
-            .appendingPathComponent("sessions", isDirectory: true)
-            .appendingPathComponent(Self.encodeSessionDirectoryName(cwd), isDirectory: true)
-        guard FileManager.default.fileExists(atPath: groupDirectory.path) else {
+    private func siblingSessionDirectories(cwd: String, excluding listedIDs: Set<String>) -> [String] {
+        let groupPath = Self.joinedPath(
+            Self.joinedPath(grokDirectory.path, "sessions"),
+            Self.encodeSessionDirectoryName(cwd)
+        )
+        guard isDirectory(atPath: groupPath) else {
             return []
         }
-        let children = (try? FileManager.default.contentsOfDirectory(
-            at: groupDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        return children.filter { url in
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(
-                atPath: url.path,
-                isDirectory: &isDirectory
-            ), isDirectory.boolValue else {
-                return false
-            }
-            return !listedIDs.contains(url.lastPathComponent)
+        return directoryContents(atPath: groupPath).compactMap { name in
+            guard !listedIDs.contains(name) else { return nil }
+            let childPath = Self.joinedPath(groupPath, name)
+            guard isDirectory(atPath: childPath) else { return nil }
+            return childPath
         }
     }
 
@@ -441,27 +446,21 @@ final class GrokActivityMonitor {
     /// A completed parent whose only leftover is unmatched `task_backgrounded`
     /// is not live work.
     private func unlistedSiblingProgress(
-        sessionDirectory: URL,
+        sessionPath: String,
         now: Date,
         earliestLiveOpenedAt: Date?
     ) -> (inProgress: Bool, trueTurnEvidence: Bool) {
-        let updatesURL = sessionDirectory.appendingPathComponent("updates.jsonl")
-        // Only reject old parents without child containers. When child state
-        // exists, retain the full signal combination and true-turn evidence.
-        let parentIsStale: Bool
-        if let earliestLiveOpenedAt,
-           let identity = fileIdentity(atPath: updatesURL.path) {
-            let metaDate = fileIdentity(atPath: sessionDirectory.appendingPathComponent("meta.json").path)
-                .map { Date(timeIntervalSince1970: $0.modifiedAt) } ?? .distantPast
-            parentIsStale = Date(timeIntervalSince1970: identity.modifiedAt) < earliestLiveOpenedAt
-                && metaDate < earliestLiveOpenedAt
-                && !(Self.durableStillRunningDirectories + ["subagents"]).contains {
-                    FileManager.default.fileExists(atPath: sessionDirectory.appendingPathComponent($0).path)
-                }
-        } else {
-            parentIsStale = false
+        let updatesPath = Self.joinedPath(sessionPath, "updates.jsonl")
+        // Childless parents whose updates+meta precede live opened_at cannot
+        // keep the group running; skip related child/transcript work.
+        if isStaleChildlessParent(
+            sessionPath: sessionPath,
+            updatesPath: updatesPath,
+            earliestLiveOpenedAt: earliestLiveOpenedAt
+        ) {
+            return (false, false)
         }
-        let related = relatedSessionSignals(for: updatesURL, now: now, skipParent: parentIsStale)
+        let related = relatedSessionSignals(for: updatesPath, now: now)
         let parent = related.first ?? .neverStarted
         let unfinishedChild = related.dropFirst().contains { $0.kind == .inProgress }
         if unfinishedChild {
@@ -475,8 +474,8 @@ final class GrokActivityMonitor {
         }
         let recency = siblingRecencyDate(
             parent: parent,
-            sessionDirectory: sessionDirectory,
-            updatesURL: updatesURL
+            sessionPath: sessionPath,
+            updatesPath: updatesPath
         )
         guard let recency, recency >= earliestLiveOpenedAt else {
             return (false, false)
@@ -484,20 +483,48 @@ final class GrokActivityMonitor {
         return (true, parent.trueTurnEvidence)
     }
 
+    private func isStaleChildlessParent(
+        sessionPath: String,
+        updatesPath: String,
+        earliestLiveOpenedAt: Date?
+    ) -> Bool {
+        guard let earliestLiveOpenedAt,
+              let identity = fileIdentity(atPath: updatesPath) else {
+            return false
+        }
+        guard Date(timeIntervalSince1970: identity.modifiedAt) < earliestLiveOpenedAt else {
+            return false
+        }
+        let metaDate = fileIdentity(atPath: Self.joinedPath(sessionPath, "meta.json"))
+            .map { Date(timeIntervalSince1970: $0.modifiedAt) } ?? .distantPast
+        guard metaDate < earliestLiveOpenedAt else {
+            return false
+        }
+        return !hasChildWorkContainers(sessionPath: sessionPath)
+    }
+
+    private func hasChildWorkContainers(sessionPath: String) -> Bool {
+        for name in Self.childWorkDirectoryNames {
+            if fileIdentity(atPath: Self.joinedPath(sessionPath, name)) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
     private func siblingRecencyDate(
         parent: SessionSignal,
-        sessionDirectory: URL,
-        updatesURL: URL
+        sessionPath: String,
+        updatesPath: String
     ) -> Date? {
         var candidates: [Date] = []
         if let lastActivityAt = parent.lastActivityAt {
             candidates.append(lastActivityAt)
         }
-        if let identity = fileIdentity(atPath: updatesURL.path) {
+        if let identity = fileIdentity(atPath: updatesPath) {
             candidates.append(Date(timeIntervalSince1970: identity.modifiedAt))
         }
-        let metaURL = sessionDirectory.appendingPathComponent("meta.json")
-        if let identity = fileIdentity(atPath: metaURL.path) {
+        if let identity = fileIdentity(atPath: Self.joinedPath(sessionPath, "meta.json")) {
             candidates.append(Date(timeIntervalSince1970: identity.modifiedAt))
         }
         return candidates.max()
@@ -523,26 +550,21 @@ final class GrokActivityMonitor {
     }
 
     private func relatedSessionSignals(
-        for sessionURL: URL,
-        now: Date,
-        skipParent: Bool = false
+        for updatesPath: String,
+        now: Date
     ) -> [SessionSignal] {
-        let sessionDirectory = sessionURL.deletingLastPathComponent()
-        var signals = [skipParent ? .neverStarted : transcriptSignal(sessionURL, now: now)]
-        signals.append(contentsOf: durableStillRunningSignals(in: sessionDirectory))
-        let subagentsDirectory = sessionDirectory
-            .appendingPathComponent("subagents", isDirectory: true)
-        guard FileManager.default.fileExists(atPath: subagentsDirectory.path) else {
+        relatedSessionSignalsCount += 1
+        let sessionPath = Self.parentPath(updatesPath)
+        var signals = [transcriptSignal(updatesPath, now: now)]
+        signals.append(contentsOf: durableStillRunningSignals(in: sessionPath))
+        let subagentsPath = Self.joinedPath(sessionPath, "subagents")
+        guard isDirectory(atPath: subagentsPath) else {
             return signals
         }
-
-        let children = (try? FileManager.default.contentsOfDirectory(
-            at: subagentsDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        for child in children {
-            signals.append(subagentSignal(at: child, now: now))
+        for name in directoryContents(atPath: subagentsPath) {
+            let childPath = Self.joinedPath(subagentsPath, name)
+            guard isDirectory(atPath: childPath) else { continue }
+            signals.append(subagentSignal(at: childPath, now: now))
         }
         return signals
     }
@@ -550,25 +572,15 @@ final class GrokActivityMonitor {
     /// Workflows, monitors, loops, and scheduler state in the considered
     /// session directory. Identity fields stay empty so this never selects
     /// the Grok tab; it only keeps task-running after parent `turn_completed`.
-    private func durableStillRunningSignals(in sessionDirectory: URL) -> [SessionSignal] {
+    private func durableStillRunningSignals(in sessionPath: String) -> [SessionSignal] {
         var signals: [SessionSignal] = []
         for folderName in Self.durableStillRunningDirectories {
-            let folder = sessionDirectory.appendingPathComponent(folderName, isDirectory: true)
-            guard FileManager.default.fileExists(atPath: folder.path) else { continue }
-            let children = (try? FileManager.default.contentsOfDirectory(
-                at: folder,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )) ?? []
-            for child in children {
-                var isDirectory: ObjCBool = false
-                guard FileManager.default.fileExists(
-                    atPath: child.path,
-                    isDirectory: &isDirectory
-                ), isDirectory.boolValue else {
-                    continue
-                }
-                if durableWorkIsInProgress(at: child) {
+            let folderPath = Self.joinedPath(sessionPath, folderName)
+            guard isDirectory(atPath: folderPath) else { continue }
+            for name in directoryContents(atPath: folderPath) {
+                let childPath = Self.joinedPath(folderPath, name)
+                guard isDirectory(atPath: childPath) else { continue }
+                if durableWorkIsInProgress(at: childPath) {
                     signals.append(
                         SessionSignal(
                             kind: .inProgress,
@@ -584,12 +596,11 @@ final class GrokActivityMonitor {
         return signals
     }
 
-    private func durableWorkIsInProgress(at directory: URL) -> Bool {
+    private func durableWorkIsInProgress(at directoryPath: String) -> Bool {
         for fileName in ["state.json", "meta.json"] {
-            let url = directory.appendingPathComponent(fileName)
-            guard let data = try? Data(contentsOf: url),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let status = Self.durableStatus(from: object)?.lowercased() else {
+            guard let cached = cachedChildJSON(atPath: Self.joinedPath(directoryPath, fileName)),
+                  cached.parsed,
+                  let status = cached.status?.lowercased() else {
                 continue
             }
             if Self.inProgressDurableStatuses.contains(status) {
@@ -610,12 +621,10 @@ final class GrokActivityMonitor {
         return object["status"] as? String
     }
 
-    private func subagentSignal(at directory: URL, now: Date) -> SessionSignal {
-        let metaURL = directory.appendingPathComponent("meta.json")
-        let meta = (try? Data(contentsOf: metaURL)).flatMap {
-            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
-        }
-        if let status = (meta?["status"] as? String)?.lowercased(),
+    private func subagentSignal(at directoryPath: String, now: Date) -> SessionSignal {
+        let cachedMeta = cachedChildJSON(atPath: Self.joinedPath(directoryPath, "meta.json"))
+        if let status = cachedMeta?.status?.lowercased(),
+           cachedMeta?.parsed == true,
            Self.finishedSubagentStatuses.contains(status) {
             return SessionSignal(
                 kind: .completed,
@@ -627,14 +636,13 @@ final class GrokActivityMonitor {
         }
 
         var signal = transcriptSignal(
-            directory.appendingPathComponent("updates.jsonl"),
+            Self.joinedPath(directoryPath, "updates.jsonl"),
             now: now
         )
-        if let childURL = childSessionUpdatesURL(from: meta) {
-            let childSignal = transcriptSignal(childURL, now: now)
-            signal = strongerSignal(signal, childSignal)
+        if let childPath = childSessionUpdatesPath(from: cachedMeta) {
+            signal = strongerSignal(signal, transcriptSignal(childPath, now: now))
         }
-        if meta != nil, signal.kind == .neverStarted {
+        if cachedMeta?.parsed == true, signal.kind == .neverStarted {
             return SessionSignal(
                 kind: .inProgress,
                 lastActivityAt: signal.lastActivityAt,
@@ -646,15 +654,14 @@ final class GrokActivityMonitor {
         return signal
     }
 
-    private func childSessionUpdatesURL(from meta: [String: Any]?) -> URL? {
-        guard let meta else { return nil }
-        let sessionID = (meta["child_session_id"] as? String)
-            ?? (meta["subagent_id"] as? String)
-        let cwd = meta["child_cwd"] as? String
+    private func childSessionUpdatesPath(from cachedMeta: ChildJSONCache?) -> String? {
+        guard let cachedMeta, cachedMeta.parsed else { return nil }
+        let sessionID = cachedMeta.childSessionID
+        let cwd = cachedMeta.childCWD
         guard let sessionID, !sessionID.isEmpty, let cwd, !cwd.isEmpty else {
             return nil
         }
-        return sessionUpdatesURL(sessionID: sessionID, cwd: cwd)
+        return sessionUpdatesURL(sessionID: sessionID, cwd: cwd).path
     }
 
     private func strongerSignal(_ lhs: SessionSignal, _ rhs: SessionSignal) -> SessionSignal {
@@ -677,18 +684,18 @@ final class GrokActivityMonitor {
         )
     }
 
-    private func transcriptSignal(_ url: URL, now: Date) -> SessionSignal {
-        guard let identity = fileIdentity(atPath: url.path) else {
-            transcriptCaches.removeValue(forKey: url.path)
+    private func transcriptSignal(_ path: String, now _: Date) -> SessionSignal {
+        guard let identity = fileIdentity(atPath: path) else {
+            transcriptCaches.removeValue(forKey: path)
             return .neverStarted
         }
-        if let cached = transcriptCaches[url.path],
+        if let cached = transcriptCaches[path],
            cached.size == identity.size,
            cached.modifiedAt == identity.modifiedAt {
             return cached.signal
         }
         func cache(_ signal: SessionSignal) -> SessionSignal {
-            transcriptCaches[url.path] = TranscriptCache(
+            transcriptCaches[path] = TranscriptCache(
                 size: identity.size,
                 modifiedAt: identity.modifiedAt,
                 signal: signal
@@ -696,7 +703,7 @@ final class GrokActivityMonitor {
             return signal
         }
         let fileDate = Date(timeIntervalSince1970: identity.modifiedAt)
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
+        guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: path, isDirectory: false)) else {
             return .neverStarted
         }
         defer { try? handle.close() }
@@ -836,6 +843,60 @@ final class GrokActivityMonitor {
             return Date(timeIntervalSince1970: TimeInterval(timestamp))
         }
         return nil
+    }
+
+    private func cachedChildJSON(atPath path: String) -> ChildJSONCache? {
+        guard let identity = fileIdentity(atPath: path) else {
+            childJSONCaches.removeValue(forKey: path)
+            return nil
+        }
+        if let cached = childJSONCaches[path],
+           cached.size == identity.size,
+           cached.modifiedAt == identity.modifiedAt {
+            return cached
+        }
+        childJSONReadCount += 1
+        let object = FileManager.default.contents(atPath: path).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        }
+        let cached = ChildJSONCache(
+            size: identity.size,
+            modifiedAt: identity.modifiedAt,
+            parsed: object != nil,
+            status: object.flatMap(Self.durableStatus(from:)),
+            childSessionID: (object?["child_session_id"] as? String)
+                ?? (object?["subagent_id"] as? String),
+            childCWD: object?["child_cwd"] as? String
+        )
+        childJSONCaches[path] = cached
+        return cached
+    }
+
+    private func directoryContents(atPath path: String) -> [String] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
+        return names.filter { !$0.hasPrefix(".") }
+    }
+
+    private func isDirectory(atPath path: String) -> Bool {
+        var value = stat()
+        guard path.withCString({ Darwin.lstat($0, &value) }) == 0 else { return false }
+        return (value.st_mode & S_IFMT) == S_IFDIR
+    }
+
+    private static func joinedPath(_ directory: String, _ component: String) -> String {
+        if directory.isEmpty { return component }
+        if directory.hasSuffix("/") {
+            return directory + component
+        }
+        return directory + "/" + component
+    }
+
+    private static func parentPath(_ path: String) -> String {
+        guard let slash = path.lastIndex(of: "/") else { return path }
+        if slash == path.startIndex {
+            return "/"
+        }
+        return String(path[..<slash])
     }
 
     static func encodeSessionDirectoryName(_ cwd: String) -> String {
