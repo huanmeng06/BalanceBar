@@ -284,6 +284,25 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertNil(presented.lunaReserveInsertionIndex)
         XCTAssertEqual(presented.bankedReset?.availableCount, 2)
         XCTAssertEqual(presented.bankedReset?.cards.map(\.id), ["earlier", "undated"])
+        XCTAssertEqual(presented.resetProbability, .unavailable)
+
+        let scored = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            bankedReset: bankedReset,
+            resetProbability: .percent(75)
+        )
+        XCTAssertEqual(
+            scored.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: .always,
+                hideExhaustedQuota: false
+            ).resetProbability,
+            .percent(75)
+        )
 
         let emptyOfficial = Snapshot.official(
             "OpenAI",

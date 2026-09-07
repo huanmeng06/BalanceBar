@@ -263,6 +263,20 @@ enum OfficialQuotaWindowResolver {
     }
 }
 
+enum CodexResetProbability: Equatable {
+    case percent(Int)
+    case unavailable
+
+    var displayText: String {
+        switch self {
+        case .percent(let value):
+            return "\(value)%"
+        case .unavailable:
+            return "--%"
+        }
+    }
+}
+
 struct OfficialQuotaMenuPresentation: Equatable {
     let windows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
@@ -273,6 +287,23 @@ struct OfficialQuotaMenuPresentation: Equatable {
     /// Available unexpired Codex banked reset cards. Nil when count is 0
     /// or the official snapshot did not carry a usable list.
     let bankedReset: CodexBankedReset?
+    /// Community 48-hour reset likelihood for the banked-reset summary
+    /// subtitle. Ignored when `bankedReset` is nil.
+    let resetProbability: CodexResetProbability
+
+    init(
+        windows: [OfficialQuotaWindow],
+        lunaReserve: LunaReserveQuota?,
+        lunaReserveInsertionIndex: Int?,
+        bankedReset: CodexBankedReset?,
+        resetProbability: CodexResetProbability = .unavailable
+    ) {
+        self.windows = windows
+        self.lunaReserve = lunaReserve
+        self.lunaReserveInsertionIndex = lunaReserveInsertionIndex
+        self.bankedReset = bankedReset
+        self.resetProbability = resetProbability
+    }
 }
 
 enum OfficialQuotaResetFormatter {
@@ -410,6 +441,7 @@ struct Snapshot {
     let officialQuotaWindows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
     let bankedReset: CodexBankedReset?
+    let resetProbability: CodexResetProbability
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -433,6 +465,7 @@ struct Snapshot {
         selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil,
         lunaReserve: LunaReserveQuota? = nil,
         bankedReset: CodexBankedReset? = nil,
+        resetProbability: CodexResetProbability = .unavailable,
         menuBarUsesLunaReserve: Bool = false
     ) {
         self.kind = kind
@@ -447,6 +480,7 @@ struct Snapshot {
         self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
         self.lunaReserve = lunaReserve
         self.bankedReset = bankedReset
+        self.resetProbability = resetProbability
         self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
@@ -470,7 +504,8 @@ struct Snapshot {
         _ date: Date,
         windows: [OfficialQuotaWindow] = [],
         lunaReserve: LunaReserveQuota? = nil,
-        bankedReset: CodexBankedReset? = nil
+        bankedReset: CodexBankedReset? = nil,
+        resetProbability: CodexResetProbability = .unavailable
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -502,7 +537,8 @@ struct Snapshot {
             balanceProgressPercentage: nil,
             officialQuotaWindows: resolvedWindows,
             lunaReserve: lunaReserve,
-            bankedReset: bankedReset
+            bankedReset: bankedReset,
+            resetProbability: resetProbability
         )
     }
 
@@ -662,7 +698,8 @@ struct Snapshot {
             windows: presentedWindows,
             lunaReserve: shouldShowLunaReserve ? lunaReserve : nil,
             lunaReserveInsertionIndex: presentedInsertionIndex,
-            bankedReset: presentedBankedReset
+            bankedReset: presentedBankedReset,
+            resetProbability: presentedBankedReset == nil ? .unavailable : resetProbability
         )
     }
 
@@ -725,6 +762,7 @@ struct Snapshot {
             selectedOfficialQuotaWindowKind: window.kind,
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
+            resetProbability: resetProbability,
             menuBarUsesLunaReserve: false
         )
     }
@@ -749,6 +787,7 @@ struct Snapshot {
             selectedOfficialQuotaWindowKind: selectedOfficialQuotaWindowKind,
             lunaReserve: lunaReserve,
             bankedReset: bankedReset,
+            resetProbability: resetProbability,
             menuBarUsesLunaReserve: true
         )
     }

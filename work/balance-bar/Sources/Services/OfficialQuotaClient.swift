@@ -282,6 +282,31 @@ final class OfficialQuotaClient {
         task.resume()
     }
 
+    /// Public 48-hour Codex reset likelihood. No credentials. Failure is
+    /// `--%` and never fails the official quota snapshot.
+    func fetchCodexResetForecast(
+        completion: @escaping (CodexResetProbability) -> Void
+    ) {
+        var request = URLRequest(url: CodexResetForecastParser.forecastURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let task = session.dataTask(with: request) { data, response, error in
+            if error != nil {
+                completion(.unavailable)
+                return
+            }
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let data else {
+                completion(.unavailable)
+                return
+            }
+            completion(CodexResetForecastParser.parse(data: data))
+        }
+        task.resume()
+    }
+
     private static func parse(
         data: Data,
         client: AssistantClient,

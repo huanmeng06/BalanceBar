@@ -632,3 +632,41 @@ enum OfficialQuotaResponseParser {
         return nil
     }
 }
+
+enum CodexResetForecastParser {
+    static let websiteURL = URL(string: "https://www.willcodexquotareset.com/")!
+    static let forecastURL = URL(string: "https://www.willcodexquotareset.com/api/forecast")!
+
+    static func parse(data: Data) -> CodexResetProbability {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let forecast = object["forecast"] as? [String: Any] else {
+            return .unavailable
+        }
+        guard let score = Self.score(forecast["score"]),
+              (0...100).contains(score) else {
+            return .unavailable
+        }
+        return .percent(score)
+    }
+
+    private static func score(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return nil
+            }
+            let doubleValue = number.doubleValue
+            guard doubleValue.isFinite else { return nil }
+            return Int(doubleValue.rounded(.towardZero))
+        }
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = Int(trimmed) {
+                return parsed
+            }
+            if let parsed = Double(trimmed), parsed.isFinite {
+                return Int(parsed.rounded(.towardZero))
+            }
+        }
+        return nil
+    }
+}

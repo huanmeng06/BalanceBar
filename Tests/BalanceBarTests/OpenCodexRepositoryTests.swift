@@ -1469,6 +1469,12 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(frames.bankedResetSummaryRow?.icon ?? .zero, .zero)
         XCTAssertEqual(frames.bankedResetSummaryRow?.window ?? .zero, .zero)
         XCTAssertEqual(frames.bankedResetSummaryRow?.chrome ?? .zero, .zero)
+        XCTAssertGreaterThan(frames.bankedResetSummaryRow?.reset.height ?? 0, 0)
+        XCTAssertGreaterThan(frames.bankedResetSummaryRow?.reset.width ?? 0, 100)
+        XCTAssertGreaterThan(
+            frames.bankedResetSummaryRow!.quotaDetail.minY,
+            frames.bankedResetSummaryRow!.reset.minY
+        )
         XCTAssertEqual(
             frames.bankedResetSummaryRow?.badge.size,
             OpenCodexCardLayout.bankedResetBadgeSize

@@ -237,6 +237,45 @@ final class OfficialQuotaClientTests: XCTestCase {
         XCTAssertNil(request.value(forHTTPHeaderField: "ChatGPT-Account-Id"))
     }
 
+    func testCodexResetForecastParsesScoreWithoutCredentials() throws {
+        StubURLProtocol.setHandler { request in
+            XCTAssertEqual(request.url, CodexResetForecastParser.forecastURL)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+            return StubResult(data: Data(#"{"forecast":{"score":75}}"#.utf8))
+        }
+        let client = makeClient(codexToken: nil, claudeToken: nil)
+        let expectation = expectation(description: "forecast completed")
+        var captured: CodexResetProbability?
+        client.fetchCodexResetForecast { probability in
+            captured = probability
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2)
+        XCTAssertEqual(captured, .percent(75))
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.host, "www.willcodexquotareset.com")
+        XCTAssertEqual(request.url?.path, "/api/forecast")
+        XCTAssertEqual(request.timeoutInterval, 8)
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testCodexResetForecastFailureIsUnavailable() throws {
+        StubURLProtocol.setHandler { _ in
+            StubResult(statusCode: 500, data: Data("{}".utf8))
+        }
+        let client = makeClient(codexToken: nil, claudeToken: nil)
+        let expectation = expectation(description: "forecast failed")
+        var captured: CodexResetProbability?
+        client.fetchCodexResetForecast { probability in
+            captured = probability
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2)
+        XCTAssertEqual(captured, .unavailable)
+    }
+
     func testCodexRequestPublishesTheOfficialLunaReserveFields() throws {
         StubURLProtocol.setHandler { _ in
             StubResult(data: Self.codexReserveBody)

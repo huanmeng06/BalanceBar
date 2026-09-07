@@ -429,7 +429,7 @@ final class ProviderRefreshCoordinator {
                     providerID: providerID,
                     payload: .officialWindows(response.output.windows)
                 )
-                let renderOfficial: (CodexBankedReset?) -> Void = { bankedReset in
+                let renderOfficial: (CodexBankedReset?, CodexResetProbability) -> Void = { bankedReset, probability in
                     self.renderForCurrentProvider(
                         .official(
                             providerName,
@@ -439,23 +439,33 @@ final class ProviderRefreshCoordinator {
                             Date(),
                             windows: response.output.windows,
                             lunaReserve: response.output.lunaReserve,
-                            bankedReset: bankedReset
+                            bankedReset: bankedReset,
+                            resetProbability: bankedReset == nil ? .unavailable : probability
                         ),
                         providerID: providerID,
                         client: client
                     )
                 }
+                let finishOfficial: (CodexBankedReset?) -> Void = { bankedReset in
+                    guard client == .codex, bankedReset != nil else {
+                        renderOfficial(bankedReset, .unavailable)
+                        return
+                    }
+                    self.officialQuotaClient.fetchCodexResetForecast { probability in
+                        renderOfficial(bankedReset, probability)
+                    }
+                }
                 if client == .codex && response.output.bankedResetNeedsCreditList {
                     self.officialQuotaClient.fetchRateLimitResetCredits(now: self.now()) { creditsResult in
                         switch creditsResult {
                         case .success(let bankedReset):
-                            renderOfficial(bankedReset)
+                            finishOfficial(bankedReset)
                         case .failure:
-                            renderOfficial(nil)
+                            finishOfficial(nil)
                         }
                     }
                 } else {
-                    renderOfficial(response.output.bankedReset)
+                    finishOfficial(response.output.bankedReset)
                 }
             case .failure(.missingCredentials):
                 self.renderOfficialError(

@@ -369,6 +369,14 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             requestLock.unlock()
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertFalse((request.url?.path ?? "").contains("consume"))
+            if request.url?.path == "/api/forecast" {
+                XCTAssertEqual(request.url?.host, "www.willcodexquotareset.com")
+                XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+                return DelayedBalanceURLProtocol.Reply(
+                    data: Data(#"{"forecast":{"score":75}}"#.utf8),
+                    statusCode: 200
+                )
+            }
             return DelayedBalanceURLProtocol.Reply(
                 data: Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000}}}"#.utf8),
                 statusCode: 200
@@ -412,11 +420,13 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         wait(for: [rendered], timeout: 2)
         XCTAssertEqual(try XCTUnwrap(captured).officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(try XCTUnwrap(captured).bankedReset?.availableCount, 1)
+        XCTAssertEqual(try XCTUnwrap(captured).resetProbability, .percent(75))
         requestLock.lock()
         let paths = requestPaths
         requestLock.unlock()
         XCTAssertEqual(paths.filter { $0.contains("rate-limit-reset-credits") }, [])
         XCTAssertEqual(paths.filter { $0.contains("consume") }, [])
+        XCTAssertTrue(paths.contains("/api/forecast"))
     }
 
     func testOfficialRefreshHidesBankedResetWhenCreditListFailsAndKeepsQuotaWindows() throws {
@@ -496,12 +506,14 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
         XCTAssertNil(snapshot.bankedReset)
+        XCTAssertEqual(snapshot.resetProbability, .unavailable)
         requestLock.lock()
         let paths = requestPaths
         requestLock.unlock()
         XCTAssertTrue(paths.contains { $0.contains("/backend-api/wham/usage") })
         XCTAssertTrue(paths.contains { $0.contains("/backend-api/wham/rate-limit-reset-credits") })
         XCTAssertFalse(paths.contains { $0.contains("consume") })
+        XCTAssertFalse(paths.contains("/api/forecast"))
     }
 
     func testOfficialRefreshDrawsBankedResetDetailsFromReadOnlyCreditList() throws {
@@ -528,6 +540,13 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
             if request.url?.path.contains("rate-limit-reset-credits") == true {
                 return DelayedBalanceURLProtocol.Reply(
                     data: Data(#"{"available_count":1,"credits":[{"id":"RateLimitResetCredit_list","reset_type":"codex_rate_limits","status":"available","expires_at":"2026-10-04T01:32:00Z"}]}"#.utf8),
+                    statusCode: 200
+                )
+            }
+            if request.url?.path == "/api/forecast" {
+                XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+                return DelayedBalanceURLProtocol.Reply(
+                    data: Data(#"{"forecast":{"score":75}}"#.utf8),
                     statusCode: 200
                 )
             }
@@ -576,6 +595,83 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
         XCTAssertEqual(snapshot.bankedReset?.availableCount, 1)
         XCTAssertEqual(snapshot.bankedReset?.cards.first?.resetType, "codex_rate_limits")
+        XCTAssertEqual(snapshot.resetProbability, .percent(75))
+    }
+
+    func testOfficialRefreshKeepsBankedResetWhenForecastFails() throws {
+        try setCurrentProvider("codex-replacement")
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour quota",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let bankedReset = try XCTUnwrap(
+            CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "usage-card",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    expiresAt: Date(timeIntervalSince1970: 1_700_086_400),
+                    expiresText: "Expires later"
+                )
+            ])
+        )
+        DelayedBalanceURLProtocol.setHandler { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            if request.url?.path == "/api/forecast" {
+                return DelayedBalanceURLProtocol.Reply(
+                    data: Data("{}".utf8),
+                    statusCode: 500
+                )
+            }
+            return DelayedBalanceURLProtocol.Reply(
+                data: Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000}}}"#.utf8),
+                statusCode: 200
+            )
+        }
+        let rendered = expectation(description: "official snapshot after forecast failure")
+        var captured: Snapshot?
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: FixedOfficialQuotaParser(
+                    windows: [fiveHour],
+                    bankedReset: bankedReset
+                )
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-forecast-failure"),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] client in
+                    repository?.loadCurrent(appType: client.appType)
+                },
+                isActiveClient: { _ in true },
+                render: { snapshot in
+                    captured = snapshot
+                    rendered.fulfill()
+                },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in },
+                isOpenCodexConfirmed: { _ in false }
+            )
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: true,
+            switched: false
+        )
+        wait(for: [rendered], timeout: 2)
+        let snapshot = try XCTUnwrap(captured)
+        XCTAssertEqual(snapshot.bankedReset?.availableCount, 1)
+        XCTAssertEqual(snapshot.resetProbability, .unavailable)
+        XCTAssertEqual(snapshot.resetProbability.displayText, "--%")
     }
 
     func testQuickSwitchCadenceRetainsSixtySecondIntervalAndResetBehavior() throws {

@@ -721,6 +721,31 @@ final class ResponseParsersTests: XCTestCase {
         )
     }
 
+    func testCodexResetForecastParserReadsScoreAndFallsBack() {
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data(#"{"forecast":{"score":75}}"#.utf8)),
+            .percent(75)
+        )
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data(#"{"forecast":{"score":24.9}}"#.utf8)),
+            .percent(24)
+        )
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data(#"{"forecast":{"score":101}}"#.utf8)),
+            .unavailable
+        )
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data(#"{"forecast":{}}"#.utf8)),
+            .unavailable
+        )
+        XCTAssertEqual(
+            CodexResetForecastParser.parse(data: Data("{invalid".utf8)),
+            .unavailable
+        )
+        XCTAssertEqual(CodexResetProbability.unavailable.displayText, "--%")
+        XCTAssertEqual(CodexResetProbability.percent(75).displayText, "75%")
+    }
+
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {
         XCTAssertThrowsError(
             try OfficialQuotaResponseParser.parse(

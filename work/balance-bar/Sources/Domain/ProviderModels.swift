@@ -909,10 +909,11 @@ enum OpenCodexCardLayout {
         let bankedSummaryY = bottomInset + bankedDetailBlockHeight
         let bankedResetSummaryRow = includesBankedReset
             ? {
-                let titleY = bankedSummaryY
-                    + (lunaReserveNoProgressRowHeight - quotaDetailHeight) / 2
-                let badgeY = bankedSummaryY
-                    + (lunaReserveNoProgressRowHeight - bankedResetBadgeSize.height) / 2
+                let summaryShift = quotaRowHeight - lunaReserveNoProgressRowHeight
+                let titleY = bankedSummaryY + quotaDetailOffset - summaryShift
+                let subtitleY = bankedSummaryY + quotaResetOffset - summaryShift
+                let badgeY = titleY
+                    + (quotaDetailHeight - bankedResetBadgeSize.height) / 2
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: horizontalInset,
@@ -920,7 +921,12 @@ enum OpenCodexCardLayout {
                         width: bankedResetSummaryTitleWidth,
                         height: quotaDetailHeight
                     ),
-                    reset: .zero,
+                    reset: CGRect(
+                        x: horizontalInset,
+                        y: subtitleY,
+                        width: contentWidth,
+                        height: quotaResetHeight
+                    ),
                     amount: .zero,
                     progress: .zero,
                     badge: CGRect(

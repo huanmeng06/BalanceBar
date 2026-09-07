@@ -5435,6 +5435,53 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     view.addSubview(badge)
                 }
 
+                if summaryRow.reset.width > 0 {
+                    let prefixFont = NSFont.systemFont(ofSize: 12, weight: .regular)
+                    let prefix = makeOverviewLabel(
+                        tr(.keyCodexBankedResetProbabilityPrefix),
+                        font: prefixFont
+                    )
+                    prefix.textColor = .secondaryLabelColor
+                    prefix.lineBreakMode = .byClipping
+                    let prefixWidth = ceil(
+                        AccountMarqueeView.textWidth(
+                            of: tr(.keyCodexBankedResetProbabilityPrefix),
+                            font: prefixFont
+                        )
+                    )
+                    prefix.frame = CGRect(
+                        x: summaryRow.reset.minX,
+                        y: summaryRow.reset.minY,
+                        width: prefixWidth,
+                        height: summaryRow.reset.height
+                    )
+                    prefix.identifier = NSUserInterfaceItemIdentifier(
+                        "codex.bankedReset.probabilityPrefix"
+                    )
+                    view.addSubview(prefix)
+
+                    let percentText = quotaPresentation.resetProbability.displayText
+                    let link = HoverLinkTextField(text: percentText)
+                    let linkFont = link.font ?? .systemFont(ofSize: 12, weight: .medium)
+                    let linkWidth = ceil(
+                        AccountMarqueeView.textWidth(of: percentText, font: linkFont)
+                    ) + 2
+                    link.frame = CGRect(
+                        x: prefix.frame.maxX,
+                        y: summaryRow.reset.minY,
+                        width: linkWidth,
+                        height: summaryRow.reset.height
+                    )
+                    link.identifier = NSUserInterfaceItemIdentifier(
+                        "codex.bankedReset.probability"
+                    )
+                    link.onActivate = {
+                        NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
+                    }
+                    view.addSubview(link)
+                    view.track(link)
+                }
+
                 let ticketImage = Self.bankedResetTicketImage()
                 for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
                     if row.chrome.width > 0 {

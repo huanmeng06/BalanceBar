@@ -470,6 +470,7 @@
 "codex.banked_reset.remaining_days" = "%1$@ 天";
 "codex.banked_reset.remaining_days_hours" = "%1$@ 天 %2$@ 小時";
 "codex.banked_reset.remaining_minutes" = "%1$@ 分鐘";
+"codex.banked_reset.probability_prefix" = "重置機率：";
 "dashboard.menu.page.progress_color_ranges" = "進度條顏色區間";
 "dashboard.menu.page.progress_color_ranges_description" = "拖曳分界點，調整不同剩餘百分比對應的顏色";
 "dashboard.menu.page.displayed_colors" = "顯示顏色";

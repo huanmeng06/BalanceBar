@@ -2359,7 +2359,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 date,
                 windows: windows,
                 lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h"),
-                bankedReset: bankedReset
+                bankedReset: bankedReset,
+                resetProbability: .percent(75)
             ),
             refreshDate: date,
             menuInput: input,
@@ -2385,6 +2386,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertTrue(labels.contains("45%"))
         XCTAssertFalse(labels.contains("2%"))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
+        XCTAssertTrue(labels.contains("75%"))
+        XCTAssertFalse(labels.contains("--%"))
         XCTAssertFalse(labels.contains { $0.contains("重...") || $0.hasSuffix("...") })
         let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
             $0.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize
@@ -2482,6 +2486,32 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             frames.bankedResetDetailRows[1].chrome.midY,
             accuracy: 1
         )
+        let probabilityLink = try XCTUnwrap(
+            allControls(of: overview, as: HoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability"
+            }
+        )
+        XCTAssertEqual(probabilityLink.stringValue, "75%")
+        XCTAssertEqual(
+            probabilityLink.identifier?.rawValue,
+            "codex.bankedReset.probability"
+        )
+        XCTAssertEqual(
+            probabilityLink.attributedStringValue.attribute(
+                .foregroundColor,
+                at: 0,
+                effectiveRange: nil
+            ) as? NSColor,
+            NSColor.linkColor
+        )
+        let probabilityPrefix = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probabilityPrefix"
+            }
+        )
+        XCTAssertEqual(probabilityPrefix.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
+        XCTAssertFalse(probabilityPrefix is HoverLinkTextField)
+        XCTAssertEqual(probabilityPrefix.textColor, NSColor.secondaryLabelColor)
         let tickets = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
         }
