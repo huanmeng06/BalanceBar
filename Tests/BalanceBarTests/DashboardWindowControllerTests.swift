@@ -2309,33 +2309,43 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 durationSeconds: 604_800
             )
         ]
-        let earlier = date.addingTimeInterval(86_400)
-        let later = date.addingTimeInterval(2 * 86_400)
+        let earlier = date.addingTimeInterval(6 * 3_600)
+        let later = date.addingTimeInterval((1 * 86_400) + (4 * 3_600))
+        let earlierRemaining = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(until: earlier, now: date)
+        )
+        let laterRemaining = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(until: later, now: date)
+        )
+        XCTAssertTrue(earlierRemaining.isWarning)
+        XCTAssertFalse(laterRemaining.isWarning)
         let bankedReset = try XCTUnwrap(
             CodexBankedReset(cards: [
                 CodexBankedResetCard(
                     id: "earlier",
                     resetType: "codex_rate_limits",
                     titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    windowText: tr(.keyCodexBankedResetFullResetWindow),
                     expiresAt: earlier,
-                    expiresText: tr(
-                        .keyCodexBankedResetExpiresValue,
-                        arguments: [
-                            OfficialQuotaResetFormatter.string(for: earlier, relativeTo: date) ?? ""
-                        ]
-                    )
+                    expiresText: CodexBankedResetFormatting.expiryText(
+                        for: earlier,
+                        relativeTo: date
+                    ),
+                    remainingText: earlierRemaining.text,
+                    remainingIsWarning: earlierRemaining.isWarning
                 ),
                 CodexBankedResetCard(
                     id: "later",
                     resetType: "codex_rate_limits",
                     titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    windowText: tr(.keyCodexBankedResetFullResetWindow),
                     expiresAt: later,
-                    expiresText: tr(
-                        .keyCodexBankedResetExpiresValue,
-                        arguments: [
-                            OfficialQuotaResetFormatter.string(for: later, relativeTo: date) ?? ""
-                        ]
-                    )
+                    expiresText: CodexBankedResetFormatting.expiryText(
+                        for: later,
+                        relativeTo: date
+                    ),
+                    remainingText: laterRemaining.text,
+                    remainingIsWarning: laterRemaining.isWarning
                 )
             ])
         )
@@ -2380,8 +2390,31 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             labels.filter { $0 == tr(.keyCodexBankedResetFullResetTitle) }.count,
             2
         )
+        XCTAssertFalse(labels.contains { $0.contains("完全重置（") || $0.contains("Full reset (weekly") })
+        XCTAssertEqual(
+            labels.filter { $0 == tr(.keyCodexBankedResetFullResetWindow) }.count,
+            2
+        )
         XCTAssertTrue(labels.contains(bankedReset.cards[0].expiresText ?? ""))
         XCTAssertTrue(labels.contains(bankedReset.cards[1].expiresText ?? ""))
+        XCTAssertTrue(labels.contains(earlierRemaining.text))
+        XCTAssertTrue(labels.contains(laterRemaining.text))
+        XCTAssertFalse(labels.contains { $0.contains("GMT") })
+        let remainingFields = allControls(of: overview, as: NSTextField.self).filter {
+            $0.identifier?.rawValue == "codex.bankedReset.remaining"
+        }
+        XCTAssertEqual(remainingFields.map(\.stringValue), [
+            earlierRemaining.text,
+            laterRemaining.text
+        ])
+        XCTAssertEqual(remainingFields[0].textColor, NSColor.systemOrange)
+        XCTAssertEqual(remainingFields[1].textColor, NSColor.labelColor)
+        XCTAssertEqual(
+            overview.subviews.filter {
+                $0.identifier?.rawValue == "codex.bankedReset.ticket"
+            }.count,
+            2
+        )
         XCTAssertFalse(labels.contains { $0.contains("🌙") })
         XCTAssertFalse(labels.contains(tr(.keyLunaReserveTitle)))
         XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "80%")

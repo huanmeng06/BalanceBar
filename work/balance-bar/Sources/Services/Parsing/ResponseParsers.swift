@@ -561,25 +561,31 @@ enum OfficialQuotaResponseParser {
         let apiTitle = ResponseParsingSupport.stringValue(object["title"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let titleText: String
+        let windowText: String?
         if resetType == "codex_rate_limits" {
             titleText = tr(.keyCodexBankedResetFullResetTitle)
+            windowText = tr(.keyCodexBankedResetFullResetWindow)
         } else if let apiTitle, isUserReadableCreditTitle(apiTitle) {
             titleText = apiTitle
+            windowText = nil
         } else {
             titleText = tr(.keyCodexBankedResetTitle)
+            windowText = nil
         }
 
         let rawID = ResponseParsingSupport.stringValue(object["id"])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let expiresText = OfficialQuotaResetFormatter.string(for: expiresAt, relativeTo: now)
-            .map { tr(.keyCodexBankedResetExpiresValue, arguments: [$0]) }
+        let remaining = CodexBankedResetFormatting.remaining(until: expiresAt, now: now)
 
         return CodexBankedResetCard(
             id: rawID?.isEmpty == true ? nil : rawID,
             resetType: resetType,
             titleText: titleText,
+            windowText: windowText,
             expiresAt: expiresAt,
-            expiresText: expiresText
+            expiresText: CodexBankedResetFormatting.expiryText(for: expiresAt, relativeTo: now),
+            remainingText: remaining?.text,
+            remainingIsWarning: remaining?.isWarning ?? false
         )
     }
 

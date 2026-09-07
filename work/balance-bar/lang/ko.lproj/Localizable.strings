@@ -463,8 +463,13 @@
 "luna.reserve.menu_unavailable" = "%1$@를 일시적으로 사용할 수 없음";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "codex.banked_reset.title" = "리셋 카드";
-"codex.banked_reset.full_reset_title" = "전체 리셋(주간 + 5시간)";
+"codex.banked_reset.full_reset_title" = "전체 리셋";
+"codex.banked_reset.full_reset_window" = "주간 + 5시간 한도";
 "codex.banked_reset.expires_value" = "%1$@에 만료";
+"codex.banked_reset.remaining_hours" = "남은 시간 %1$@시간";
+"codex.banked_reset.remaining_days" = "남은 시간 %1$@일";
+"codex.banked_reset.remaining_days_hours" = "남은 시간 %1$@일 %2$@시간";
+"codex.banked_reset.remaining_minutes" = "남은 시간 %1$@분";
 "dashboard.menu.page.progress_color_ranges" = "진행률 막대 색상 범위";
 "dashboard.menu.page.progress_color_ranges_description" = "임계값을 드래그하여 남은 백분율 구간별 색상을 조정합니다";
 "dashboard.menu.page.displayed_colors" = "표시 색상";

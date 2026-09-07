@@ -119,8 +119,31 @@ struct CodexBankedResetCard: Equatable {
     let id: String?
     let resetType: String
     let titleText: String
+    let windowText: String?
     let expiresAt: Date?
     let expiresText: String?
+    let remainingText: String?
+    let remainingIsWarning: Bool
+
+    init(
+        id: String?,
+        resetType: String,
+        titleText: String,
+        windowText: String? = nil,
+        expiresAt: Date?,
+        expiresText: String?,
+        remainingText: String? = nil,
+        remainingIsWarning: Bool = false
+    ) {
+        self.id = id
+        self.resetType = resetType
+        self.titleText = titleText
+        self.windowText = windowText
+        self.expiresAt = expiresAt
+        self.expiresText = expiresText
+        self.remainingText = remainingText
+        self.remainingIsWarning = remainingIsWarning
+    }
 }
 
 struct CodexBankedReset: Equatable {
@@ -264,14 +287,51 @@ enum OfficialQuotaResetFormatter {
         locale: Locale = .autoupdatingCurrent,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String? {
+        localizedString(
+            for: resetAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone,
+            includeDate: nil
+        )
+    }
+
+    /// Banked-reset expiry always includes the local calendar date so a
+    /// compact `10/04 09:32`-style line fits the menu. Same-day quota windows
+    /// keep the shorter `jm` template.
+    static func bankedResetString(
+        for resetAt: Date?,
+        relativeTo now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        localizedString(
+            for: resetAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone,
+            includeDate: true
+        )
+    }
+
+    private static func localizedString(
+        for resetAt: Date?,
+        relativeTo now: Date,
+        calendar: Calendar,
+        locale: Locale,
+        timeZone: TimeZone,
+        includeDate: Bool?
+    ) -> String? {
         guard let resetAt, resetAt > now else { return nil }
 
         var localizedCalendar = calendar
         localizedCalendar.locale = locale
         localizedCalendar.timeZone = timeZone
-        let template = localizedCalendar.isDate(resetAt, inSameDayAs: now)
-            ? "jm"
-            : "Mdjm"
+        let shouldIncludeDate = includeDate ?? !localizedCalendar.isDate(resetAt, inSameDayAs: now)
+        let template = shouldIncludeDate ? "Mdjm" : "jm"
 
         let formatter = DateFormatter()
         formatter.locale = locale
@@ -280,6 +340,60 @@ enum OfficialQuotaResetFormatter {
         formatter.setLocalizedDateFormatFromTemplate(template)
         let text = formatter.string(from: resetAt)
         return text.isEmpty ? nil : text
+    }
+}
+
+enum CodexBankedResetFormatting {
+    static let warningRemainingSeconds: TimeInterval = 86_400
+
+    static func expiryText(
+        for expiresAt: Date?,
+        relativeTo now: Date,
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard let formatted = OfficialQuotaResetFormatter.bankedResetString(
+            for: expiresAt,
+            relativeTo: now,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        ) else {
+            return nil
+        }
+        return tr(.keyCodexBankedResetExpiresValue, arguments: [formatted])
+    }
+
+    static func remaining(
+        until expiresAt: Date?,
+        now: Date
+    ) -> (text: String, isWarning: Bool)? {
+        guard let expiresAt else { return nil }
+        let interval = expiresAt.timeIntervalSince(now)
+        guard interval > 0 else { return nil }
+        let seconds = Int(interval.rounded(.down))
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let isWarning = interval < warningRemainingSeconds
+        let text: String
+        if days > 0, hours > 0 {
+            text = tr(
+                .keyCodexBankedResetRemainingDaysHours,
+                arguments: ["\(days)", "\(hours)"]
+            )
+        } else if days > 0 {
+            text = tr(.keyCodexBankedResetRemainingDays, arguments: ["\(days)"])
+        } else if hours > 0 {
+            text = tr(.keyCodexBankedResetRemainingHours, arguments: ["\(hours)"])
+        } else {
+            text = tr(
+                .keyCodexBankedResetRemainingMinutes,
+                arguments: ["\(max(1, minutes))"]
+            )
+        }
+        return (text, isWarning)
     }
 }
 

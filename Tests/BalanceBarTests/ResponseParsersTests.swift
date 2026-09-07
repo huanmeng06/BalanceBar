@@ -514,11 +514,23 @@ final class ResponseParsersTests: XCTestCase {
             tr(.keyCodexBankedResetFullResetTitle),
             tr(.keyCodexBankedResetFullResetTitle)
         ])
+        XCTAssertEqual(bankedReset.cards.map(\.windowText), [
+            tr(.keyCodexBankedResetFullResetWindow),
+            tr(.keyCodexBankedResetFullResetWindow)
+        ])
         XCTAssertEqual(bankedReset.cards.map(\.expiresAt), [earlier, later])
         XCTAssertEqual(bankedReset.cards.map(\.expiresText), [
             expectedBankedResetExpiresText(earlier),
             expectedBankedResetExpiresText(later)
         ])
+        XCTAssertEqual(
+            bankedReset.cards.map(\.remainingText),
+            [
+                CodexBankedResetFormatting.remaining(until: earlier, now: now)?.text,
+                CodexBankedResetFormatting.remaining(until: later, now: now)?.text
+            ]
+        )
+        XCTAssertEqual(bankedReset.cards.map(\.remainingIsWarning), [false, false])
     }
 
     func testCodexBankedResetHidesMissingZeroOrUnusableCreditsWithoutFailingQuota() throws {
@@ -639,8 +651,15 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertEqual(bankedReset.cards.map(\.id), ["dated", "undated"])
         XCTAssertEqual(bankedReset.cards[0].expiresAt, dated)
         XCTAssertEqual(bankedReset.cards[0].expiresText, expectedBankedResetExpiresText(dated))
+        XCTAssertEqual(
+            bankedReset.cards[0].remainingText,
+            CodexBankedResetFormatting.remaining(until: dated, now: now)?.text
+        )
+        XCTAssertFalse(bankedReset.cards[0].remainingIsWarning)
         XCTAssertNil(bankedReset.cards[1].expiresAt)
         XCTAssertNil(bankedReset.cards[1].expiresText)
+        XCTAssertNil(bankedReset.cards[1].remainingText)
+        XCTAssertFalse(bankedReset.cards[1].remainingIsWarning)
     }
 
     func testClaudeOfficialQuotaIgnoresBankedResetCredits() throws {
@@ -688,7 +707,12 @@ final class ResponseParsersTests: XCTestCase {
         )
         XCTAssertEqual(bankedReset.availableCount, 1)
         XCTAssertEqual(bankedReset.cards[0].titleText, tr(.keyCodexBankedResetFullResetTitle))
+        XCTAssertEqual(bankedReset.cards[0].windowText, tr(.keyCodexBankedResetFullResetWindow))
         XCTAssertEqual(bankedReset.cards[0].expiresAt, expiresAt)
+        XCTAssertEqual(
+            bankedReset.cards[0].remainingText,
+            CodexBankedResetFormatting.remaining(until: expiresAt, now: now)?.text
+        )
         XCTAssertNil(
             OfficialQuotaResponseParser.parseBankedResetCredits(
                 data: Data("{invalid".utf8),
@@ -743,11 +767,6 @@ final class ResponseParsersTests: XCTestCase {
     }
 
     private func expectedBankedResetExpiresText(_ date: Date) -> String {
-        tr(
-            .keyCodexBankedResetExpiresValue,
-            arguments: [
-                OfficialQuotaResetFormatter.string(for: date, relativeTo: now) ?? ""
-            ]
-        )
+        CodexBankedResetFormatting.expiryText(for: date, relativeTo: now) ?? ""
     }
 }

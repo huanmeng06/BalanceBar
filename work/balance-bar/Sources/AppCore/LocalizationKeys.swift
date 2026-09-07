@@ -475,7 +475,12 @@
     case keyLunaReserveSummaryValue = "luna.reserve.summary_value"
     case keyCodexBankedResetTitle = "codex.banked_reset.title"
     case keyCodexBankedResetFullResetTitle = "codex.banked_reset.full_reset_title"
+    case keyCodexBankedResetFullResetWindow = "codex.banked_reset.full_reset_window"
     case keyCodexBankedResetExpiresValue = "codex.banked_reset.expires_value"
+    case keyCodexBankedResetRemainingHours = "codex.banked_reset.remaining_hours"
+    case keyCodexBankedResetRemainingDays = "codex.banked_reset.remaining_days"
+    case keyCodexBankedResetRemainingDaysHours = "codex.banked_reset.remaining_days_hours"
+    case keyCodexBankedResetRemainingMinutes = "codex.banked_reset.remaining_minutes"
 
     var rawKey: String { rawValue }
   }

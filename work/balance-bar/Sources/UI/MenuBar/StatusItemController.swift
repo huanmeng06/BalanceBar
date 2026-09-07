@@ -5414,27 +5414,64 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 view.addSubview(summaryTitle)
 
+                let ticketImage = Self.bankedResetTicketImage()
                 for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
-                    let title = makeMarqueeOverviewLabel(
+                    if row.icon.width > 0, let ticketImage {
+                        let icon = NSImageView(frame: row.icon)
+                        icon.image = ticketImage
+                        icon.imageScaling = .scaleProportionallyUpOrDown
+                        icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
+                        view.addSubview(icon)
+                    }
+
+                    let title = makeOverviewLabel(
                         card.titleText,
                         font: .systemFont(
                             ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                             weight: .medium
-                        ),
-                        textColor: .labelColor,
-                        frame: row.quotaDetail
+                        )
                     )
+                    title.frame = row.quotaDetail
                     view.addSubview(title)
+
+                    if let windowText = card.windowText, !windowText.isEmpty {
+                        let windowLine = makeOverviewLabel(
+                            windowText,
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                weight: .regular
+                            )
+                        )
+                        windowLine.textColor = .secondaryLabelColor
+                        windowLine.frame = row.window
+                        view.addSubview(windowLine)
+                    }
+
+                    if let remainingText = card.remainingText, !remainingText.isEmpty {
+                        let remaining = makeOverviewLabel(
+                            remainingText,
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                weight: .medium
+                            )
+                        )
+                        remaining.alignment = .right
+                        remaining.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
+                        remaining.frame = row.amount
+                        remaining.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
+                        view.addSubview(remaining)
+                    }
+
                     if let expiresText = card.expiresText, !expiresText.isEmpty {
-                        let subtitle = makeMarqueeOverviewLabel(
+                        let subtitle = makeOverviewLabel(
                             expiresText,
                             font: .systemFont(
                                 ofSize: OpenCodexCardLayout.quotaResetPointSize,
                                 weight: .regular
-                            ),
-                            textColor: .secondaryLabelColor,
-                            frame: row.reset
+                            )
                         )
+                        subtitle.textColor = .secondaryLabelColor
+                        subtitle.frame = row.reset
                         view.addSubview(subtitle)
                     }
                 }
@@ -5716,6 +5753,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         view.addSubview(detail)
         item.view = view
         return item
+    }
+
+    private static func bankedResetTicketImage() -> NSImage? {
+        guard let url = Bundle.main.url(forResource: "BankedResetTicket", withExtension: "svg"),
+              let image = NSImage(contentsOf: url) else {
+            return nil
+        }
+        image.size = OpenCodexCardLayout.bankedResetTicketIconSize
+        return image
     }
 
     private func makeOverviewLabel(_ text: String, font: NSFont) -> NSTextField {

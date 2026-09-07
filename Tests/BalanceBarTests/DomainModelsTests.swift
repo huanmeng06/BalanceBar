@@ -315,6 +315,53 @@ final class DomainModelsTests: XCTestCase {
         )
     }
 
+    func testBankedResetRemainingUsesWarningThresholdUnderTwentyFourHours() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let sixHours = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(
+                until: now.addingTimeInterval(6 * 3_600),
+                now: now
+            )
+        )
+        XCTAssertEqual(
+            sixHours.text,
+            tr(.keyCodexBankedResetRemainingHours, arguments: ["6"])
+        )
+        XCTAssertTrue(sixHours.isWarning)
+
+        let oneDayFourHours = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(
+                until: now.addingTimeInterval((1 * 86_400) + (4 * 3_600)),
+                now: now
+            )
+        )
+        XCTAssertEqual(
+            oneDayFourHours.text,
+            tr(.keyCodexBankedResetRemainingDaysHours, arguments: ["1", "4"])
+        )
+        XCTAssertFalse(oneDayFourHours.isWarning)
+
+        let exactlyOneDay = try XCTUnwrap(
+            CodexBankedResetFormatting.remaining(
+                until: now.addingTimeInterval(86_400),
+                now: now
+            )
+        )
+        XCTAssertEqual(
+            exactlyOneDay.text,
+            tr(.keyCodexBankedResetRemainingDays, arguments: ["1"])
+        )
+        XCTAssertFalse(exactlyOneDay.isWarning)
+
+        let expiry = try XCTUnwrap(
+            OfficialQuotaResetFormatter.bankedResetString(
+                for: now.addingTimeInterval(86_400),
+                relativeTo: now
+            )
+        )
+        XCTAssertFalse(expiry.contains("GMT"))
+    }
+
     func testOfficialQuotaMenuPresentationSupportsLunaReserveDisplayModesAndExhaustedHiding() {
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = nil }

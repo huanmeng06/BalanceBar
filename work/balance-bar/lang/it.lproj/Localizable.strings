@@ -463,8 +463,13 @@
 "luna.reserve.menu_unavailable" = "%1$@ è temporaneamente non disponibile";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
 "codex.banked_reset.title" = "Carte di reimpostazione";
-"codex.banked_reset.full_reset_title" = "Reimpostazione completa (settimanale + 5 ore)";
+"codex.banked_reset.full_reset_title" = "Reimpostazione completa";
+"codex.banked_reset.full_reset_window" = "Quota settimanale + 5 ore";
 "codex.banked_reset.expires_value" = "Scade il %1$@";
+"codex.banked_reset.remaining_hours" = "Rimangono %1$@ ore";
+"codex.banked_reset.remaining_days" = "Rimangono %1$@ giorni";
+"codex.banked_reset.remaining_days_hours" = "Rimangono %1$@ g %2$@ h";
+"codex.banked_reset.remaining_minutes" = "Rimangono %1$@ minuti";
 "dashboard.menu.page.progress_color_ranges" = "Intervalli colore della barra";
 "dashboard.menu.page.progress_color_ranges_description" = "Trascina le soglie per scegliere il colore di ogni intervallo della percentuale rimanente";
 "dashboard.menu.page.displayed_colors" = "Colori visualizzati";
