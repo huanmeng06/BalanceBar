@@ -5443,17 +5443,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     )
                     prefix.textColor = .secondaryLabelColor
                     prefix.lineBreakMode = .byClipping
-                    let prefixWidth = ceil(
-                        AccountMarqueeView.textWidth(
-                            of: tr(.keyCodexBankedResetProbabilityPrefix),
-                            font: prefixFont
-                        )
+                    prefix.usesSingleLineMode = true
+                    prefix.sizeToFit()
+                    let prefixWidth = max(
+                        ceil(prefix.frame.width),
+                        ceil(
+                            AccountMarqueeView.textWidth(
+                                of: tr(.keyCodexBankedResetProbabilityPrefix),
+                                font: prefixFont
+                            )
+                        ) + 8
                     )
                     prefix.frame = CGRect(
                         x: summaryRow.reset.minX,
                         y: summaryRow.reset.minY,
                         width: prefixWidth,
-                        height: summaryRow.reset.height
+                        height: max(prefix.frame.height, summaryRow.reset.height)
                     )
                     prefix.identifier = NSUserInterfaceItemIdentifier(
                         "codex.bankedReset.probabilityPrefix"
@@ -5462,15 +5467,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
                     let percentText = quotaPresentation.resetProbability.displayText
                     let link = HoverLinkTextField(text: percentText)
+                    link.lineBreakMode = .byClipping
+                    link.usesSingleLineMode = true
+                    link.sizeToFit()
                     let linkFont = link.font ?? .systemFont(ofSize: 12, weight: .medium)
-                    let linkWidth = ceil(
-                        AccountMarqueeView.textWidth(of: percentText, font: linkFont)
-                    ) + 2
+                    let linkWidth = max(
+                        ceil(link.frame.width) + 4,
+                        ceil(link.attributedStringValue.size().width) + 8,
+                        ceil(AccountMarqueeView.textWidth(of: percentText, font: linkFont)) + 8
+                    )
                     link.frame = CGRect(
                         x: prefix.frame.maxX,
                         y: summaryRow.reset.minY,
                         width: linkWidth,
-                        height: summaryRow.reset.height
+                        height: max(link.frame.height, summaryRow.reset.height)
                     )
                     link.identifier = NSUserInterfaceItemIdentifier(
                         "codex.bankedReset.probability"

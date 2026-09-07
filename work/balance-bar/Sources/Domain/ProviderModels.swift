@@ -656,6 +656,12 @@ enum OpenCodexCardLayout {
     /// the system badge with it.
     static let bankedResetSummaryTitleWidth: CGFloat = 80
     static let bankedResetSummaryTitlePadding: CGFloat = 6
+    /// Title + probability only. Keep this shorter than a quota/Reserve row
+    /// so the subtitle sits close to the first ticket instead of a blank band.
+    static let bankedResetSummaryRowHeight: CGFloat = 38
+    /// Gap between the probability line and the first ticket chrome.
+    static let bankedResetSummaryDetailGap: CGFloat = 6
+    static let bankedResetSummaryTitleSubtitleGap: CGFloat = 2
 
     static func frames(
         for category: OpenCodexCardCategory,
@@ -784,11 +790,12 @@ enum OpenCodexCardLayout {
             : 0
         let reserveGap = includesLunaReserve && windowCount > 0 ? rowGap : 0
         let bankedDetailCount = includesBankedReset ? max(0, bankedResetCardCount) : 0
-        let bankedSummaryHeight = includesBankedReset ? lunaReserveNoProgressRowHeight : 0
+        let bankedSummaryHeight = includesBankedReset ? bankedResetSummaryRowHeight : 0
         let bankedDetailHeight = bankedResetDetailRowHeight
         let bankedDetailBlockHeight = bankedDetailCount > 0
             ? CGFloat(bankedDetailCount) * bankedDetailHeight
-                + CGFloat(bankedDetailCount) * rowGap
+                + CGFloat(max(0, bankedDetailCount - 1)) * rowGap
+                + bankedResetSummaryDetailGap
             : 0
         let bankedBlockHeight = bankedSummaryHeight + bankedDetailBlockHeight
         let bankedLeadingGap = includesBankedReset
@@ -909,9 +916,12 @@ enum OpenCodexCardLayout {
         let bankedSummaryY = bottomInset + bankedDetailBlockHeight
         let bankedResetSummaryRow = includesBankedReset
             ? {
-                let summaryShift = quotaRowHeight - lunaReserveNoProgressRowHeight
-                let titleY = bankedSummaryY + quotaDetailOffset - summaryShift
-                let subtitleY = bankedSummaryY + quotaResetOffset - summaryShift
+                let titleY = bankedSummaryY
+                    + bankedResetSummaryRowHeight
+                    - quotaDetailHeight
+                let subtitleY = titleY
+                    - bankedResetSummaryTitleSubtitleGap
+                    - quotaResetHeight
                 let badgeY = titleY
                     + (quotaDetailHeight - bankedResetBadgeSize.height) / 2
                 return OpenCodexQuotaRowFrames(

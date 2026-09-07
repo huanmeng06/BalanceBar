@@ -2492,9 +2492,18 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             }
         )
         XCTAssertEqual(probabilityLink.stringValue, "75%")
+        XCTAssertTrue(probabilityLink.stringValue.hasSuffix("%"))
         XCTAssertEqual(
             probabilityLink.identifier?.rawValue,
             "codex.bankedReset.probability"
+        )
+        XCTAssertEqual(probabilityLink.lineBreakMode, .byClipping)
+        XCTAssertGreaterThanOrEqual(
+            probabilityLink.frame.width,
+            AccountMarqueeView.textWidth(
+                of: "75%",
+                font: probabilityLink.font ?? .systemFont(ofSize: 12, weight: .medium)
+            ) + 4
         )
         XCTAssertEqual(
             probabilityLink.attributedStringValue.attribute(
@@ -2512,6 +2521,28 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         XCTAssertEqual(probabilityPrefix.stringValue, tr(.keyCodexBankedResetProbabilityPrefix))
         XCTAssertFalse(probabilityPrefix is HoverLinkTextField)
         XCTAssertEqual(probabilityPrefix.textColor, NSColor.secondaryLabelColor)
+        XCTAssertEqual(probabilityPrefix.lineBreakMode, .byClipping)
+        XCTAssertGreaterThanOrEqual(
+            probabilityPrefix.frame.width,
+            AccountMarqueeView.textWidth(
+                of: tr(.keyCodexBankedResetProbabilityPrefix),
+                font: probabilityPrefix.font ?? .systemFont(ofSize: 12, weight: .regular)
+            ) + 4
+        )
+        XCTAssertEqual(
+            probabilityLink.frame.minX,
+            probabilityPrefix.frame.maxX,
+            accuracy: 0.5
+        )
+        let firstChrome = try XCTUnwrap(chromes.first)
+        XCTAssertGreaterThan(
+            probabilityPrefix.frame.minY,
+            firstChrome.frame.maxY
+        )
+        XCTAssertLessThanOrEqual(
+            probabilityPrefix.frame.minY - firstChrome.frame.maxY,
+            OpenCodexCardLayout.bankedResetSummaryDetailGap + 4
+        )
         let tickets = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
         }

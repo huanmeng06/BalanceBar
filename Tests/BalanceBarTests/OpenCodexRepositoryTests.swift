@@ -1528,11 +1528,28 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(
             frames.quotaRows[1].progress.minY - (
                 frames.bankedResetDetailRows[0].chrome.maxY
-                    + OpenCodexCardLayout.quotaRowGap
-                    + OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+                    + OpenCodexCardLayout.bankedResetSummaryDetailGap
+                    + OpenCodexCardLayout.bankedResetSummaryRowHeight
             ),
             OpenCodexCardLayout.quotaRowGap,
             accuracy: 0.001
+        )
+        XCTAssertEqual(
+            frames.bankedResetSummaryRow!.reset.minY
+                - frames.bankedResetDetailRows[0].chrome.maxY,
+            OpenCodexCardLayout.bankedResetSummaryDetailGap
+                + (
+                    OpenCodexCardLayout.bankedResetSummaryRowHeight
+                        - OpenCodexCardLayout.quotaDetailHeight
+                        - OpenCodexCardLayout.bankedResetSummaryTitleSubtitleGap
+                        - OpenCodexCardLayout.quotaResetHeight
+                ),
+            accuracy: 0.001
+        )
+        XCTAssertLessThan(
+            frames.bankedResetSummaryRow!.quotaDetail.minY
+                - frames.bankedResetSummaryRow!.reset.maxY,
+            4
         )
         XCTAssertGreaterThan(
             frames.bankedResetSummaryRow!.quotaDetail.minY,
