@@ -1257,6 +1257,308 @@ final class GrokActivityMonitorTests: XCTestCase {
         XCTAssertEqual(failedMonitor.status().processRunning, false)
     }
 
+    func testUnchangedLargeSiblingTailsAreReusedAcrossSlowPollingRounds() throws {
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        var event = sessionUpdate("turn_completed")
+        event["padding"] = String(repeating: "fixture", count: 1_000)
+        for index in 0..<64 {
+            try writeSession(updates: Array(repeating: event, count: 30),
+                             sessionID: "history-\(index)", registerActive: false)
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        let reads = monitor.transcriptReadCount
+        let parses = monitor.transcriptParseCount
+        XCTAssertEqual(reads, 65)
+        XCTAssertGreaterThan(parses, 64)
+        for interval in [1.0, 5.0, 60.0] {
+            currentDate.addTimeInterval(interval)
+            XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+            XCTAssertEqual(monitor.transcriptReadCount, reads)
+            XCTAssertEqual(monitor.transcriptParseCount, parses)
+        }
+    }
+
+    func testTranscriptCacheInvalidatesForSameSizeMtimeChangeAndAppend() throws {
+        let url = try writeSession(updates: [["type": "tool_call"]])
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        let originalSize = try Data(contentsOf: url).count
+        currentDate.addTimeInterval(1)
+        try writeJSONL([["type": "turn_completed"]], to: url, modifiedAt: currentDate)
+        // Equalize the original file size with JSON whitespace before warming again.
+        let completedData = try Data(contentsOf: url)
+        try writeJSONL([["type": "tool_call"]], to: url, modifiedAt: currentDate)
+        var activeData = try Data(contentsOf: url)
+        activeData.append(Data(repeating: 0x20, count: completedData.count - originalSize))
+        try activeData.write(to: url)
+        try FileManager.default.setAttributes([.modificationDate: currentDate], ofItemAtPath: url.path)
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        let reads = monitor.transcriptReadCount
+        currentDate.addTimeInterval(1)
+        try writeJSONL([["type": "turn_completed"]], to: url, modifiedAt: currentDate)
+        XCTAssertEqual(try Data(contentsOf: url).count, activeData.count)
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, reads + 1)
+        currentDate.addTimeInterval(1)
+        try appendJSONL([["type": "tool_call"]], to: url, modifiedAt: currentDate)
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        XCTAssertEqual(monitor.transcriptReadCount, reads + 2)
+    }
+
+    func testStaleSiblingParentsAreRejectedWithoutReadingAndLiveWorkIsNeverCapped() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<64 {
+            try writeSession(updates: [sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)],
+                             sessionID: "history-\(index)", modifiedAt: staleDate, registerActive: false)
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, 1)
+        XCTAssertEqual(monitor.transcriptParseCount, 1)
+        currentDate.addTimeInterval(2)
+        try writeSession(updates: [sessionUpdate("agent_thought_chunk")],
+                         sessionID: "live", registerActive: false)
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        try writeSession(updates: [sessionUpdate("turn_completed")],
+                         sessionID: "live", registerActive: false)
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        try writeSubagentMeta(parentSessionID: "history-63", subagentID: "child",
+                              childCWD: "/tmp/child-work", status: "running")
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        try writeSubagentMeta(parentSessionID: "history-63", subagentID: "child",
+                              childCWD: "/tmp/child-work", status: "completed")
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        for state in ["active", "running", "paused", "pausing"] {
+            try writeWorkflowState(sessionID: "history-63", runID: "workflow", status: state)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+        }
+        try writeWorkflowState(sessionID: "history-63", runID: "workflow", status: "completed")
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, 4)
+    }
+
+    func testStaleChildlessSiblingsSkipRelatedWorkAcrossLaterPolls() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<64 {
+            try writeSession(
+                updates: [sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)],
+                sessionID: "history-\(index)",
+                modifiedAt: staleDate,
+                registerActive: false
+            )
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.relatedSessionSignalsCount, 1)
+        XCTAssertEqual(monitor.transcriptReadCount, 1)
+        XCTAssertEqual(monitor.transcriptParseCount, 1)
+        XCTAssertEqual(monitor.childJSONReadCount, 0)
+        var related = monitor.relatedSessionSignalsCount
+        let reads = monitor.transcriptReadCount
+        let parses = monitor.transcriptParseCount
+        let childReads = monitor.childJSONReadCount
+        for interval in [1.0, 5.0, 60.0] {
+            currentDate.addTimeInterval(interval)
+            XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+            related += 1
+            XCTAssertEqual(monitor.relatedSessionSignalsCount, related)
+            XCTAssertEqual(monitor.transcriptReadCount, reads)
+            XCTAssertEqual(monitor.transcriptParseCount, parses)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+        }
+    }
+
+    func testCompletedSubagentMetaIsReusedWithoutRereadingOnLaterPolls() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<14 {
+            try writeSession(
+                updates: [sessionUpdate("turn_completed", timestamp: staleDate.timeIntervalSince1970)],
+                sessionID: "history-\(index)",
+                modifiedAt: staleDate,
+                registerActive: false
+            )
+            try writeSubagentMeta(
+                parentSessionID: "history-\(index)",
+                subagentID: "child",
+                childCWD: "/tmp/child-work",
+                status: "completed"
+            )
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        let childReads = monitor.childJSONReadCount
+        XCTAssertEqual(childReads, 14)
+        let transcriptReads = monitor.transcriptReadCount
+        for interval in [1.0, 5.0, 60.0] {
+            currentDate.addTimeInterval(interval)
+            XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+            XCTAssertEqual(monitor.transcriptReadCount, transcriptReads)
+        }
+    }
+
+    func testCachedLiveChildAndWorkflowStatusesStillBecomeActive() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        try writeSession(
+            updates: [sessionUpdate("turn_completed", timestamp: staleDate.timeIntervalSince1970)],
+            sessionID: "history-live",
+            modifiedAt: staleDate,
+            registerActive: false
+        )
+        let monitor = makeMonitor()
+        for state in ["active", "running", "paused", "pausing"] {
+            try writeSubagentMeta(
+                parentSessionID: "history-live",
+                subagentID: "child",
+                childCWD: "/tmp/child-work",
+                status: state
+            )
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            let childReads = monitor.childJSONReadCount
+            currentDate.addTimeInterval(1)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+        }
+        try writeSubagentMeta(
+            parentSessionID: "history-live",
+            subagentID: "child",
+            childCWD: "/tmp/child-work",
+            status: "completed"
+        )
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        for state in ["active", "running", "paused", "pausing"] {
+            try writeWorkflowState(sessionID: "history-live", runID: "workflow", status: state)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            let childReads = monitor.childJSONReadCount
+            currentDate.addTimeInterval(1)
+            XCTAssertEqual(monitor.activityStatus().observation, .active, state)
+            XCTAssertEqual(monitor.childJSONReadCount, childReads)
+        }
+        try writeWorkflowState(sessionID: "history-live", runID: "workflow", status: "completed")
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+    }
+
+    func testEmptyActiveSessionsAndMissingProcessDoNotReadHistoricalTranscripts() throws {
+        try writeSession(updates: [sessionUpdate("agent_thought_chunk")], registerActive: false)
+        try writeActiveSessions([])
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, 0)
+        try upsertActiveSession(sessionID: "session", cwd: "/tmp/fixture")
+        let absent = makeMonitor(processOutput: "")
+        XCTAssertEqual(absent.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(absent.transcriptReadCount, 0)
+    }
+
+    func testColdHistoricalSiblingsSkipRelatedWorkAfterActivityWindow() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<64 {
+            try writeSession(
+                updates: [sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)],
+                sessionID: "history-\(index)",
+                modifiedAt: staleDate,
+                registerActive: false
+            )
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.relatedSessionSignalsCount, 1)
+        XCTAssertEqual(monitor.childJSONReadCount, 0)
+        let related = monitor.relatedSessionSignalsCount
+        let childReads = monitor.childJSONReadCount
+        currentDate.addTimeInterval(10 * 60)
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.relatedSessionSignalsCount, related + 1)
+        XCTAssertEqual(monitor.childJSONReadCount, childReads)
+        currentDate.addTimeInterval(3600)
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.relatedSessionSignalsCount, related + 2)
+        XCTAssertEqual(monitor.childJSONReadCount, childReads)
+    }
+
+    func testLiveSiblingWithCurrentUpdatesMtimeBecomesActiveThenTurnCompletedIsHardTerminal() throws {
+        let staleDate = currentDate.addingTimeInterval(-3_600)
+        try writeSession(updates: [sessionUpdate("turn_completed")])
+        try writeActiveSessions([["session_id": "session", "cwd": "/tmp/fixture",
+                                  "opened_at": currentDate.timeIntervalSince1970]])
+        for index in 0..<64 {
+            try writeSession(
+                updates: [sessionUpdate("agent_thought_chunk", timestamp: staleDate.timeIntervalSince1970)],
+                sessionID: "history-\(index)",
+                modifiedAt: staleDate,
+                registerActive: false
+            )
+        }
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        try writeSession(
+            updates: [sessionUpdate("agent_thought_chunk")],
+            sessionID: "live",
+            modifiedAt: currentDate,
+            registerActive: false
+        )
+        let active = monitor.activityStatus()
+        XCTAssertEqual(active.observation, .active)
+        XCTAssertTrue(active.trueTurnEvidence)
+        try writeSession(
+            updates: [
+                sessionUpdate("agent_thought_chunk", timestamp: currentDate.timeIntervalSince1970 - 1),
+                sessionUpdate("turn_completed")
+            ],
+            sessionID: "live",
+            modifiedAt: currentDate,
+            registerActive: false
+        )
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+    }
+
+    func testAppendOnlyTranscriptGrowthParsesOnlyNewBytes() throws {
+        var event = sessionUpdate("agent_thought_chunk")
+        event["padding"] = String(repeating: "fixture", count: 1_000)
+        let url = try writeSession(updates: Array(repeating: event, count: 30))
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        let reads = monitor.transcriptReadCount
+        let parses = monitor.transcriptParseCount
+        XCTAssertGreaterThan(parses, 1)
+        XCTAssertLessThan(parses, 30)
+        currentDate.addTimeInterval(1)
+        try appendJSONL([sessionUpdate("tool_call")], to: url, modifiedAt: currentDate)
+        XCTAssertEqual(monitor.activityStatus().observation, .active)
+        XCTAssertEqual(monitor.transcriptReadCount, reads + 1)
+        XCTAssertEqual(monitor.transcriptParseCount, parses + 1)
+        currentDate.addTimeInterval(1)
+        try appendJSONL([sessionUpdate("turn_completed")], to: url, modifiedAt: currentDate)
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptReadCount, reads + 2)
+        XCTAssertEqual(monitor.transcriptParseCount, parses + 2)
+    }
+
+    func testByteTailCanStartInsideUnicodeAndStillFindFinalEvent() throws {
+        var largeEvent = sessionUpdate("agent_thought_chunk")
+        largeEvent["padding"] = String(repeating: "\u{1F600}", count: 60_000)
+        try writeSession(updates: [largeEvent, sessionUpdate("turn_completed")])
+        let monitor = makeMonitor()
+        XCTAssertEqual(monitor.activityStatus().observation, .hardTerminal)
+        XCTAssertEqual(monitor.transcriptParseCount, 1)
+    }
+
     private func makeMonitor(
         processOutput: String = "101 1 ?? /Users/dev/.grok/bin/grok grok",
         terminationStatus: Int32 = 0
@@ -1302,7 +1604,8 @@ final class GrokActivityMonitorTests: XCTestCase {
         subagentID: String,
         childCWD: String,
         status: String,
-        cwd: String = "/tmp/fixture"
+        cwd: String = "/tmp/fixture",
+        modifiedAt: Date? = nil
     ) throws {
         let encoded = GrokActivityMonitor.encodeSessionDirectoryName(cwd)
         let directory = fixtureDirectory
@@ -1322,8 +1625,16 @@ final class GrokActivityMonitorTests: XCTestCase {
             "child_cwd": childCWD,
             "status": status
         ]
-        try JSONSerialization.data(withJSONObject: meta).write(
-            to: directory.appendingPathComponent("meta.json")
+        let url = directory.appendingPathComponent("meta.json")
+        try JSONSerialization.data(withJSONObject: meta).write(to: url)
+        let stamp = modifiedAt ?? currentDate
+        try FileManager.default.setAttributes([.modificationDate: stamp], ofItemAtPath: url.path)
+        let sessionDirectory = directory
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        try FileManager.default.setAttributes(
+            [.modificationDate: stamp],
+            ofItemAtPath: sessionDirectory.path
         )
     }
 
@@ -1387,6 +1698,26 @@ final class GrokActivityMonitorTests: XCTestCase {
             return String(decoding: data, as: UTF8.self)
         }
         try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: url)
+        try FileManager.default.setAttributes(
+            [.modificationDate: modifiedAt ?? currentDate],
+            ofItemAtPath: url.path
+        )
+    }
+
+    private func appendJSONL(
+        _ updates: [[String: Any]],
+        to url: URL,
+        modifiedAt: Date? = nil
+    ) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        _ = try handle.seekToEnd()
+        let lines = try updates.map { object -> String in
+            let data = try JSONSerialization.data(withJSONObject: object)
+            return String(decoding: data, as: UTF8.self)
+        }
+        try handle.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
+        try handle.synchronize()
         try FileManager.default.setAttributes(
             [.modificationDate: modifiedAt ?? currentDate],
             ofItemAtPath: url.path
@@ -1481,7 +1812,8 @@ final class GrokActivityMonitorTests: XCTestCase {
         sessionID: String,
         runID: String,
         status: String,
-        cwd: String = "/tmp/fixture"
+        cwd: String = "/tmp/fixture",
+        modifiedAt: Date? = nil
     ) throws {
         let encoded = GrokActivityMonitor.encodeSessionDirectoryName(cwd)
         let directory = fixtureDirectory
@@ -1504,8 +1836,16 @@ final class GrokActivityMonitorTests: XCTestCase {
                 "foreground": false
             ]
         ]
-        try JSONSerialization.data(withJSONObject: state).write(
-            to: directory.appendingPathComponent("state.json")
+        let url = directory.appendingPathComponent("state.json")
+        try JSONSerialization.data(withJSONObject: state).write(to: url)
+        let stamp = modifiedAt ?? currentDate
+        try FileManager.default.setAttributes([.modificationDate: stamp], ofItemAtPath: url.path)
+        let sessionDirectory = directory
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        try FileManager.default.setAttributes(
+            [.modificationDate: stamp],
+            ofItemAtPath: sessionDirectory.path
         )
     }
 
