@@ -66,6 +66,13 @@ enum OfficialQuotaResetDisplayMode: String, CaseIterable, Equatable {
     static let defaultValue: Self = .both
 }
 
+enum CodexBankedResetDisplayMode: String, CaseIterable, Equatable {
+    case compact
+    case detailed
+
+    static let defaultValue: Self = .detailed
+}
+
 enum OfficialQuotaWindowPreference: String, CaseIterable, Equatable {
     case fiveHour
     case sevenDay
@@ -259,6 +266,8 @@ final class AppPreferences {
     static let menuBarLunaReserveResetTimeModeDefault: LunaReserveResetTimeMode = .defaultValue
     static let menuLunaReserveDisplayModeKey = "menuLunaReserveDisplayMode"
     static let menuLunaReserveDisplayModeDefault: LunaReserveDisplayMode = .defaultValue
+    static let menuBankedResetDisplayModeKey = "menuBankedResetDisplayMode"
+    static let menuBankedResetDisplayModeDefault: CodexBankedResetDisplayMode = .defaultValue
     static let menuLunaReserveHideExhaustedQuotaKey = "menuLunaReserveHideExhaustedQuota"
     static let menuLunaReserveHideExhaustedQuotaDefault = false
     static let menuBarIconDisplayModeKey = "menuBarIconDisplayMode"
@@ -370,6 +379,18 @@ final class AppPreferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Self.menuLunaReserveDisplayModeKey)
+        }
+    }
+    var menuBankedResetDisplayMode: CodexBankedResetDisplayMode {
+        get {
+            guard let rawValue = defaults.string(forKey: Self.menuBankedResetDisplayModeKey),
+                  let mode = CodexBankedResetDisplayMode(rawValue: rawValue) else {
+                return Self.menuBankedResetDisplayModeDefault
+            }
+            return mode
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.menuBankedResetDisplayModeKey)
         }
     }
     var menuLunaReserveHideExhaustedQuota: Bool {

@@ -16,6 +16,7 @@ private final class QuotaColorSelectionStack: NSStackView, DashboardSettingsRowC
 final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
     static let lunaReserveDisplayModeIdentifier = AppPreferences.menuLunaReserveDisplayModeKey
     static let lunaReserveHideExhaustedQuotaIdentifier = AppPreferences.menuLunaReserveHideExhaustedQuotaKey
+    static let bankedResetDisplayModeIdentifier = AppPreferences.menuBankedResetDisplayModeKey
 
     struct Input {
         let preferences: AppPreferences
@@ -41,6 +42,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
 
     private weak var balanceDisplayThresholdField: NSTextField?
     private weak var lunaReserveDisplayModeControl: NSPopUpButton?
+    private weak var bankedResetDisplayModeControl: NSPopUpButton?
     private weak var lunaReserveHideExhaustedQuotaRow: NSView?
     private weak var lunaReserveHideExhaustedQuotaSwitch: NSSwitch?
     private weak var balanceDisplayRowsStack: NSStackView?
@@ -69,6 +71,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveDisplayModeControl = nil
         lunaReserveHideExhaustedQuotaRow = nil
         lunaReserveHideExhaustedQuotaSwitch = nil
+        bankedResetDisplayModeControl = nil
 
         let lunaReserveRows: [NSView]
         if LunaReserveUserFacing.isCurrentlyEnabled {
@@ -183,6 +186,22 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                     )
                 }
             )
+
+        let bankedResetDisplayModeControl = makeBankedResetDisplayModeControl(
+            value: input.preferences.menuBankedResetDisplayMode,
+            relay: input.relay
+        )
+        self.bankedResetDisplayModeControl = bankedResetDisplayModeControl
+        let bankedReset = DashboardSettingsComponents.makeSettingsSection(
+            tr(.keyCodexBankedResetTitle),
+            rows: [
+                DashboardSettingsComponents.makeSettingsRow(
+                    tr(.keyDashboardMenuPageBankedResetDisplayMode),
+                    subtitle: tr(.keyDashboardMenuPageBankedResetDisplayModeDescription),
+                    control: bankedResetDisplayModeControl
+                )
+            ]
+        )
 
         let progressBar = DashboardSettingsComponents.makeSettingsSection(
             tr(.keyDashboardMenuPageProgressBar),
@@ -325,7 +344,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
                 self?.updateStatusLinksLayout()
             }
         )
-        var sections = [progressBar, items, quickLinks, statusLinks]
+        var sections = [progressBar, bankedReset, items, quickLinks, statusLinks]
         if let balanceDisplay {
             sections.insert(balanceDisplay, at: 0)
         }
@@ -372,6 +391,15 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             ? .on
             : .off
         updateLunaReserveDisplayModeVisibility(preferences.menuLunaReserveDisplayMode)
+        if let bankedResetDisplayModeControl,
+           let selectedIndex = CodexBankedResetDisplayMode.allCases.firstIndex(
+               of: preferences.menuBankedResetDisplayMode
+           ) {
+            if bankedResetDisplayModeControl.indexOfSelectedItem != selectedIndex {
+                bankedResetDisplayModeControl.selectItem(at: selectedIndex)
+            }
+            bankedResetDisplayModeControl.synchronizeTitleAndSelectedItem()
+        }
     }
 
     func updateStatusVisibility(_ visible: Bool, animated: Bool) {
@@ -407,6 +435,7 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
         lunaReserveDisplayModeControl = nil
         lunaReserveHideExhaustedQuotaRow = nil
         lunaReserveHideExhaustedQuotaSwitch = nil
+        bankedResetDisplayModeControl = nil
         balanceDisplayRowsStack = nil
         balanceDisplayCardHeightConstraint = nil
         balanceDisplaySeparators = []
@@ -513,6 +542,39 @@ final class DashboardMenuPage: NSObject, NSTextFieldDelegate {
             arguments: [tr(.keyLunaReserveTitle)]
         )
         return control
+    }
+
+    private func makeBankedResetDisplayModeControl(
+        value: CodexBankedResetDisplayMode,
+        relay: DashboardPreferencePageRelay
+    ) -> NSPopUpButton {
+        let control = DashboardSettingsComponents.makePopUpButton(
+            identifier: Self.bankedResetDisplayModeIdentifier,
+            items: CodexBankedResetDisplayMode.allCases.map { mode in
+                DashboardSettingsComponents.PopUpItem(
+                    title: Self.bankedResetDisplayModeLabel(mode),
+                    representedObject: mode.rawValue
+                )
+            },
+            selectedIndex: CodexBankedResetDisplayMode.allCases.firstIndex(of: value),
+            target: relay,
+            action: #selector(DashboardPreferencePageRelay.bankedResetDisplayMode(_:))
+        )
+        let minimumWidth: CGFloat = 88
+        control.widthAnchor.constraint(
+            greaterThanOrEqualToConstant: max(minimumWidth, ceil(control.fittingSize.width))
+        ).isActive = true
+        control.toolTip = tr(.keyDashboardMenuPageBankedResetDisplayModeDescription)
+        return control
+    }
+
+    private static func bankedResetDisplayModeLabel(_ mode: CodexBankedResetDisplayMode) -> String {
+        switch mode {
+        case .compact:
+            return tr(.keyDashboardMenuPageBankedResetDisplayModeCompact)
+        case .detailed:
+            return tr(.keyDashboardMenuPageBankedResetDisplayModeDetailed)
+        }
     }
 
     private static func lunaReserveDisplayModeLabel(_ mode: LunaReserveDisplayMode) -> String {

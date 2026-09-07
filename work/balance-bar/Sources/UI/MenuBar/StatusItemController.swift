@@ -2148,6 +2148,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let showStatusMenu: Bool
         let lunaReserveDisplayMode: LunaReserveDisplayMode
         let lunaReserveHideExhaustedQuota: Bool
+        let bankedResetDisplayMode: CodexBankedResetDisplayMode
         let showsAvailableUpdateBadge: Bool
 
         init(
@@ -2166,6 +2167,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             showStatusMenu: Bool,
             lunaReserveDisplayMode: LunaReserveDisplayMode = .defaultValue,
             lunaReserveHideExhaustedQuota: Bool = false,
+            bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue,
             showsAvailableUpdateBadge: Bool = false
         ) {
             self.openCodexCards = openCodexCards
@@ -2183,6 +2185,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self.showStatusMenu = showStatusMenu
             self.lunaReserveDisplayMode = lunaReserveDisplayMode
             self.lunaReserveHideExhaustedQuota = lunaReserveHideExhaustedQuota
+            self.bankedResetDisplayMode = bankedResetDisplayMode
             self.showsAvailableUpdateBadge = showsAvailableUpdateBadge
         }
 
@@ -2206,6 +2209,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 && lhs.showStatusMenu == rhs.showStatusMenu
                 && lhs.lunaReserveDisplayMode == rhs.lunaReserveDisplayMode
                 && lhs.lunaReserveHideExhaustedQuota == rhs.lunaReserveHideExhaustedQuota
+                && lhs.bankedResetDisplayMode == rhs.bankedResetDisplayMode
                 && lhs.showsAvailableUpdateBadge == rhs.showsAvailableUpdateBadge
         }
     }
@@ -5279,7 +5283,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil,
             lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex,
             includesBankedReset: snapshot.kind == .official && bankedReset != nil,
-            bankedResetCardCount: bankedReset?.cards.count ?? 0
+            bankedResetCardCount: bankedReset?.cards.count ?? 0,
+            bankedResetDisplayMode: menuInput.bankedResetDisplayMode
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -5392,47 +5397,73 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             if let bankedReset,
                let summaryRow = layout.bankedResetSummaryRow {
-                let summaryTitle = makeOverviewLabel(
-                    tr(.keyCodexBankedResetTitle),
-                    font: .systemFont(
-                        ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                        weight: .medium
+                let isCompactBankedReset = menuInput.bankedResetDisplayMode == .compact
+                if isCompactBankedReset, summaryRow.amount.width > 0 {
+                    let amount = makeOverviewLabel(
+                        "\(bankedReset.availableCount)",
+                        font: .monospacedDigitSystemFont(
+                            ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                            weight: .semibold
+                        )
                     )
-                )
-                summaryTitle.lineBreakMode = .byClipping
-                summaryTitle.sizeToFit()
-                let titleWidth = max(
-                    summaryTitle.frame.width,
-                    AccountMarqueeView.textWidth(
-                        of: tr(.keyCodexBankedResetTitle),
+                    amount.alignment = .right
+                    amount.frame = summaryRow.amount
+                    amount.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.count")
+                    view.addSubview(amount)
+                    view.addSubview(
+                        makeMarqueeOverviewLabel(
+                            tr(.keyCodexBankedResetTitle),
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                weight: .medium
+                            ),
+                            textColor: .labelColor,
+                            frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoiding: amount)
+                        )
+                    )
+                } else {
+                    let summaryTitle = makeOverviewLabel(
+                        tr(.keyCodexBankedResetTitle),
                         font: .systemFont(
                             ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                             weight: .medium
                         )
                     )
-                ) + OpenCodexCardLayout.bankedResetSummaryTitlePadding
-                summaryTitle.frame = CGRect(
-                    x: summaryRow.quotaDetail.minX,
-                    y: summaryRow.quotaDetail.minY,
-                    width: titleWidth,
-                    height: summaryRow.quotaDetail.height
-                )
-                view.addSubview(summaryTitle)
-
-                if let badgeImage = Self.bankedResetCountBadgeImage(
-                    count: bankedReset.availableCount
-                ) {
-                    let badge = NSImageView(
-                        frame: BankedResetSummaryBadgeLayout.badgeFrame(
-                            adjacentTo: summaryTitle,
-                            image: badgeImage
+                    summaryTitle.lineBreakMode = .byClipping
+                    summaryTitle.sizeToFit()
+                    let titleWidth = max(
+                        summaryTitle.frame.width,
+                        AccountMarqueeView.textWidth(
+                            of: tr(.keyCodexBankedResetTitle),
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                weight: .medium
+                            )
                         )
+                    ) + OpenCodexCardLayout.bankedResetSummaryTitlePadding
+                    summaryTitle.frame = CGRect(
+                        x: summaryRow.quotaDetail.minX,
+                        y: summaryRow.quotaDetail.minY,
+                        width: titleWidth,
+                        height: summaryRow.quotaDetail.height
                     )
-                    badge.image = badgeImage
-                    badge.imageScaling = .scaleProportionallyUpOrDown
-                    badge.contentTintColor = .secondaryLabelColor
-                    badge.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.badge")
-                    view.addSubview(badge)
+                    view.addSubview(summaryTitle)
+
+                    if let badgeImage = Self.bankedResetCountBadgeImage(
+                        count: bankedReset.availableCount
+                    ) {
+                        let badge = NSImageView(
+                            frame: BankedResetSummaryBadgeLayout.badgeFrame(
+                                adjacentTo: summaryTitle,
+                                image: badgeImage
+                            )
+                        )
+                        badge.image = badgeImage
+                        badge.imageScaling = .scaleProportionallyUpOrDown
+                        badge.contentTintColor = .secondaryLabelColor
+                        badge.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.badge")
+                        view.addSubview(badge)
+                    }
                 }
 
                 if summaryRow.reset.width > 0 {
@@ -5493,71 +5524,73 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     view.track(link)
                 }
 
-                let ticketImage = Self.bankedResetTicketImage()
-                for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
-                    if row.chrome.width > 0 {
-                        let chrome = BankedResetChromeView(frame: row.chrome)
-                        chrome.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.chrome")
-                        view.addSubview(chrome)
-                    }
+                if !isCompactBankedReset {
+                    let ticketImage = Self.bankedResetTicketImage()
+                    for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
+                        if row.chrome.width > 0 {
+                            let chrome = BankedResetChromeView(frame: row.chrome)
+                            chrome.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.chrome")
+                            view.addSubview(chrome)
+                        }
 
-                    if row.icon.width > 0, let ticketImage {
-                        let icon = NSImageView(frame: row.icon)
-                        icon.image = ticketImage
-                        icon.imageScaling = .scaleProportionallyUpOrDown
-                        icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
-                        view.addSubview(icon)
-                    }
+                        if row.icon.width > 0, let ticketImage {
+                            let icon = NSImageView(frame: row.icon)
+                            icon.image = ticketImage
+                            icon.imageScaling = .scaleProportionallyUpOrDown
+                            icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
+                            view.addSubview(icon)
+                        }
 
-                    let title = makeOverviewLabel(
-                        card.titleText,
-                        font: .systemFont(
-                            ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                            weight: .medium
-                        )
-                    )
-                    title.frame = row.quotaDetail
-                    view.addSubview(title)
-
-                    if let windowText = card.windowText, !windowText.isEmpty {
-                        let windowLine = makeOverviewLabel(
-                            windowText,
-                            font: .systemFont(
-                                ofSize: OpenCodexCardLayout.quotaResetPointSize,
-                                weight: .regular
-                            )
-                        )
-                        windowLine.textColor = .secondaryLabelColor
-                        windowLine.frame = row.window
-                        view.addSubview(windowLine)
-                    }
-
-                    if let remainingText = card.remainingText, !remainingText.isEmpty {
-                        let remaining = makeOverviewLabel(
-                            remainingText,
+                        let title = makeOverviewLabel(
+                            card.titleText,
                             font: .systemFont(
                                 ofSize: OpenCodexCardLayout.quotaDetailPointSize,
                                 weight: .medium
                             )
                         )
-                        remaining.alignment = .right
-                        remaining.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
-                        remaining.frame = row.amount
-                        remaining.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
-                        view.addSubview(remaining)
-                    }
+                        title.frame = row.quotaDetail
+                        view.addSubview(title)
 
-                    if let expiresText = card.expiresText, !expiresText.isEmpty {
-                        let subtitle = makeOverviewLabel(
-                            expiresText,
-                            font: .systemFont(
-                                ofSize: OpenCodexCardLayout.quotaResetPointSize,
-                                weight: .regular
+                        if let windowText = card.windowText, !windowText.isEmpty {
+                            let windowLine = makeOverviewLabel(
+                                windowText,
+                                font: .systemFont(
+                                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                    weight: .regular
+                                )
                             )
-                        )
-                        subtitle.textColor = .secondaryLabelColor
-                        subtitle.frame = row.reset
-                        view.addSubview(subtitle)
+                            windowLine.textColor = .secondaryLabelColor
+                            windowLine.frame = row.window
+                            view.addSubview(windowLine)
+                        }
+
+                        if let remainingText = card.remainingText, !remainingText.isEmpty {
+                            let remaining = makeOverviewLabel(
+                                remainingText,
+                                font: .systemFont(
+                                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                                    weight: .medium
+                                )
+                            )
+                            remaining.alignment = .right
+                            remaining.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
+                            remaining.frame = row.amount
+                            remaining.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
+                            view.addSubview(remaining)
+                        }
+
+                        if let expiresText = card.expiresText, !expiresText.isEmpty {
+                            let subtitle = makeOverviewLabel(
+                                expiresText,
+                                font: .systemFont(
+                                    ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                    weight: .regular
+                                )
+                            )
+                            subtitle.textColor = .secondaryLabelColor
+                            subtitle.frame = row.reset
+                            view.addSubview(subtitle)
+                        }
                     }
                 }
             }

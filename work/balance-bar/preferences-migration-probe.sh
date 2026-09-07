@@ -34,6 +34,7 @@ trap 'rm -rf "$probe_dir"' EXIT
         '    static let menuBarLunaReserveResetTimeModeKey = "menuBarLunaReserveResetTimeMode"' \
         '    static let menuLunaReserveDisplayModeKey = "menuLunaReserveDisplayMode"' \
         '    static let menuLunaReserveHideExhaustedQuotaKey = "menuLunaReserveHideExhaustedQuota"' \
+        '    static let menuBankedResetDisplayModeKey = "menuBankedResetDisplayMode"' \
         '}'
     awk '
         /^struct PreferencesMigrationPlan \{/ { capture = 1 }

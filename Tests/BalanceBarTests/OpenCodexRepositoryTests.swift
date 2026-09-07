@@ -1587,6 +1587,32 @@ final class OpenCodexRepositoryTests: XCTestCase {
         XCTAssertEqual(withoutCards.cardSize, baseline.cardSize)
         XCTAssertNil(withoutCards.bankedResetSummaryRow)
         XCTAssertTrue(withoutCards.bankedResetDetailRows.isEmpty)
+
+        let compact = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact
+        )
+        XCTAssertTrue(compact.bankedResetDetailRows.isEmpty)
+        guard let compactSummary = compact.bankedResetSummaryRow else {
+            XCTFail("expected compact banked-reset summary row")
+            return
+        }
+        XCTAssertGreaterThan(compactSummary.amount.width, 0)
+        XCTAssertEqual(compactSummary.badge, .zero)
+        XCTAssertEqual(compactSummary.chrome, .zero)
+        XCTAssertGreaterThan(compactSummary.reset.width, 0)
+        XCTAssertLessThan(compact.cardSize.height, frames.cardSize.height)
+        XCTAssertGreaterThan(compact.cardSize.height, baseline.cardSize.height)
+        XCTAssertEqual(
+            compactSummary.amount.height,
+            OpenCodexCardLayout.lunaReserveNoProgressAmountHeight,
+            accuracy: 0.001
+        )
     }
 
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {

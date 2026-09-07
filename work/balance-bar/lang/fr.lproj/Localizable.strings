@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Lorsque cette option est activée, les quotas à 0 %% sont masqués du menu quand 🌙 %1$@ est affiché";
 "dashboard.menu.page.low_balance_display_threshold" = "Seuil d’alerte de solde faible";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Après une recharge, la barre de progression reste rouge tant que le solde est inférieur à cette valeur.";
+"dashboard.menu.page.banked_reset_display_mode" = "Style d'affichage";
+"dashboard.menu.page.banked_reset_display_mode_description" = "Compact affiche le nombre et la probabilité de reset ; détaillé liste chaque carte";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "Compact";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "Détaillé";
 "dashboard.menu.page.dropdown_menu" = "Menu déroulant";
 "dashboard.menu.page.menu_behavior" = "Comportement du menu";
 "dashboard.menu.page.quick_switch" = "Changement rapide";

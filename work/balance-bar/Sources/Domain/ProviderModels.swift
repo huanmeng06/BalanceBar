@@ -674,7 +674,8 @@ enum OpenCodexCardLayout {
         includesLunaReserveProgress: Bool = true,
         lunaReserveInsertionIndex: Int? = nil,
         includesBankedReset: Bool = false,
-        bankedResetCardCount: Int = 0
+        bankedResetCardCount: Int = 0,
+        bankedResetDisplayMode: CodexBankedResetDisplayMode = .defaultValue
     ) -> OpenCodexCardFrames {
         let recognizedWindowCount = officialQuotaWindows.filter { $0.kind != .other }.count
         if category == .quota,
@@ -688,7 +689,8 @@ enum OpenCodexCardLayout {
                 includesLunaReserveProgress: includesLunaReserveProgress,
                 lunaReserveInsertionIndex: lunaReserveInsertionIndex,
                 includesBankedReset: includesBankedReset,
-                bankedResetCardCount: bankedResetCardCount
+                bankedResetCardCount: bankedResetCardCount,
+                bankedResetDisplayMode: bankedResetDisplayMode
             )
         }
 
@@ -777,7 +779,8 @@ enum OpenCodexCardLayout {
         includesLunaReserveProgress: Bool,
         lunaReserveInsertionIndex: Int?,
         includesBankedReset: Bool,
-        bankedResetCardCount: Int
+        bankedResetCardCount: Int,
+        bankedResetDisplayMode: CodexBankedResetDisplayMode
     ) -> OpenCodexCardFrames {
         let windowCount = windows.count
         let rowHeight = quotaRowHeight
@@ -789,8 +792,13 @@ enum OpenCodexCardLayout {
             ? (includesLunaReserveProgress ? rowHeight : lunaReserveNoProgressRowHeight)
             : 0
         let reserveGap = includesLunaReserve && windowCount > 0 ? rowGap : 0
-        let bankedDetailCount = includesBankedReset ? max(0, bankedResetCardCount) : 0
-        let bankedSummaryHeight = includesBankedReset ? bankedResetSummaryRowHeight : 0
+        let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
+        let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
+        let bankedSummaryHeight = includesBankedReset
+            ? (bankedResetDisplayMode == .compact
+                ? lunaReserveNoProgressRowHeight
+                : bankedResetSummaryRowHeight)
+            : 0
         let bankedDetailHeight = bankedResetDetailRowHeight
         let bankedDetailBlockHeight = bankedDetailCount > 0
             ? CGFloat(bankedDetailCount) * bankedDetailHeight
@@ -916,6 +924,30 @@ enum OpenCodexCardLayout {
         let bankedSummaryY = bottomInset + bankedDetailBlockHeight
         let bankedResetSummaryRow = includesBankedReset
             ? {
+                if bankedResetDisplayMode == .compact {
+                    let bankedContentShift = rowHeight - lunaReserveNoProgressRowHeight
+                    return OpenCodexQuotaRowFrames(
+                        quotaDetail: CGRect(
+                            x: horizontalInset,
+                            y: bankedSummaryY + quotaDetailOffset - bankedContentShift,
+                            width: 128,
+                            height: quotaDetailHeight
+                        ),
+                        reset: CGRect(
+                            x: horizontalInset,
+                            y: bankedSummaryY + quotaResetOffset - bankedContentShift,
+                            width: 128,
+                            height: quotaResetHeight
+                        ),
+                        amount: CGRect(
+                            x: amountX,
+                            y: bankedSummaryY + max(0, quotaAmountOffset - bankedContentShift),
+                            width: amountWidth,
+                            height: lunaReserveNoProgressAmountHeight
+                        ),
+                        progress: .zero
+                    )
+                }
                 let titleY = bankedSummaryY
                     + bankedResetSummaryRowHeight
                     - quotaDetailHeight

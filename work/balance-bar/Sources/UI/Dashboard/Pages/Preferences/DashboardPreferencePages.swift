@@ -22,6 +22,7 @@ struct DashboardPreferencePageActions {
     let onMenuBarQuotaResetDisplayModeChanged: (OfficialQuotaResetDisplayMode) -> Void
     let onMenuBarLunaReserveResetTimeModeChanged: (LunaReserveResetTimeMode) -> Void
     let onLunaReserveDisplayModeChanged: (LunaReserveDisplayMode) -> Void
+    let onBankedResetDisplayModeChanged: (CodexBankedResetDisplayMode) -> Void
     let onUpdateChannelChanged: (UpdateChannel) -> Void
     let onOpenCCSwitch: () -> Void
     let onOpenSystemMenuBarSettings: () -> Void
@@ -79,6 +80,7 @@ final class DashboardPreferencePages {
         relay.onMenuBarQuotaResetDisplayModeChanged = actions.onMenuBarQuotaResetDisplayModeChanged
         relay.onMenuBarLunaReserveResetTimeModeChanged = actions.onMenuBarLunaReserveResetTimeModeChanged
         relay.onLunaReserveDisplayModeChanged = actions.onLunaReserveDisplayModeChanged
+        relay.onBankedResetDisplayModeChanged = actions.onBankedResetDisplayModeChanged
         relay.onUpdateChannelChanged = actions.onUpdateChannelChanged
         relay.onOpenCCSwitch = actions.onOpenCCSwitch
         relay.onOpenSystemMenuBarSettings = actions.onOpenSystemMenuBarSettings

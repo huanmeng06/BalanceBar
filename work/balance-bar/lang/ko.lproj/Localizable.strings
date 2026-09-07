@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "켜면 🌙 %1$@가 표시될 때 잔여량이 0%%인 할당량을 메뉴에서 숨깁니다";
 "dashboard.menu.page.low_balance_display_threshold" = "잔액 부족 경고 기준";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "충전 후 잔액이 이 금액보다 적으면 진행 막대를 계속 빨간색으로 표시";
+"dashboard.menu.page.banked_reset_display_mode" = "표시 스타일";
+"dashboard.menu.page.banked_reset_display_mode_description" = "간결은 장수와 리셋 확률만 표시하고, 상세는 각 카드를 나열합니다";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "간결";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "상세";
 "dashboard.menu.page.dropdown_menu" = "드롭다운 메뉴";
 "dashboard.menu.page.menu_behavior" = "메뉴 동작";
 "dashboard.menu.page.quick_switch" = "빠른 전환";

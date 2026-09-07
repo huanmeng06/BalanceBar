@@ -361,6 +361,10 @@
 "dashboard.menu.page.hide_exhausted_quota_description" = "Quando è abilitata, le quote esaurite vengono nascoste dal menu quando viene mostrata 🌙 %1$@";
 "dashboard.menu.page.low_balance_display_threshold" = "Soglia di avviso per saldo basso";
 "dashboard.menu.page.after_a_recharge_keep_the_progress_bar_red_while_the_balance_remains_below_this_amount" = "Dopo una ricarica, la barra di avanzamento rimane rossa finché il saldo resta inferiore a questo importo";
+"dashboard.menu.page.banked_reset_display_mode" = "Stile di visualizzazione";
+"dashboard.menu.page.banked_reset_display_mode_description" = "Compatto mostra il numero e la probabilità di reset; dettagliato elenca ogni carta";
+"dashboard.menu.page.banked_reset_display_mode_compact" = "Compatto";
+"dashboard.menu.page.banked_reset_display_mode_detailed" = "Dettagliato";
 "dashboard.menu.page.dropdown_menu" = "Menu a discesa";
 "dashboard.menu.page.menu_behavior" = "Comportamento del menu";
 "dashboard.menu.page.quick_switch" = "Cambio rapido";

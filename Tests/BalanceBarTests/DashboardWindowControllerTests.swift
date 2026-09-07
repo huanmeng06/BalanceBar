@@ -2610,6 +2610,161 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testOfficialCodexMenuCardCompactBankedResetShowsCountWithoutDetailCards() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false,
+            bankedResetDisplayMode: .compact
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let date = Date()
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800
+            )
+        ]
+        let earlier = date.addingTimeInterval(6 * 3_600)
+        let bankedReset = try XCTUnwrap(
+            CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "earlier",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    windowText: tr(.keyCodexBankedResetFullResetWindow),
+                    expiresAt: earlier,
+                    expiresText: CodexBankedResetFormatting.expiryText(
+                        for: earlier,
+                        relativeTo: date
+                    ),
+                    remainingText: "6h",
+                    remainingIsWarning: true
+                ),
+                CodexBankedResetCard(
+                    id: "later",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    windowText: tr(.keyCodexBankedResetFullResetWindow),
+                    expiresAt: earlier.addingTimeInterval(86_400),
+                    expiresText: CodexBankedResetFormatting.expiryText(
+                        for: earlier.addingTimeInterval(86_400),
+                        relativeTo: date
+                    ),
+                    remainingText: "1d",
+                    remainingIsWarning: false
+                )
+            ])
+        )
+
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                bankedReset: bankedReset,
+                resetProbability: .percent(24)
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2,
+            bankedResetDisplayMode: .compact
+        )
+        XCTAssertEqual(overview.bounds.size, frames.cardSize)
+        XCTAssertTrue(frames.bankedResetDetailRows.isEmpty)
+        let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetProbabilityPrefix)))
+        XCTAssertTrue(labels.contains("24%"))
+        XCTAssertTrue(labels.contains("2"))
+        XCTAssertFalse(labels.contains(tr(.keyCodexBankedResetFullResetTitle)))
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.badge" })
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.ticket" })
+        XCTAssertFalse(overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" })
+        let countField = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.count"
+            }
+        )
+        XCTAssertEqual(countField.stringValue, "2")
+        XCTAssertEqual(
+            countField.font?.pointSize,
+            OpenCodexCardLayout.quotaAmountPointSize
+        )
+        let probabilityLink = try XCTUnwrap(
+            allControls(of: overview, as: HoverLinkTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.probability"
+            }
+        )
+        XCTAssertEqual(probabilityLink.stringValue, "24%")
+        XCTAssertEqual(
+            probabilityLink.hoverHint,
+            tr(.keyCodexBankedResetProbabilitySource)
+        )
+    }
+
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
         for openCodexIsCurrent in [true, false] {
             for showOpenCodexMenu in [true, false] {

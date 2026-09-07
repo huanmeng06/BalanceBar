@@ -136,6 +136,26 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.menuBarQuotaResetDisplayMode, .both)
     }
 
+    func testMenuBankedResetDisplayModeDefaultsPersistsAcrossReloadAndRejectsUnknownValues() {
+        let (preferences, defaults, suite) = makePreferences()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(preferences.menuBankedResetDisplayMode, .detailed)
+        preferences.menuBankedResetDisplayMode = .compact
+        XCTAssertEqual(preferences.menuBankedResetDisplayMode, .compact)
+        XCTAssertEqual(
+            defaults.string(forKey: AppPreferences.menuBankedResetDisplayModeKey),
+            CodexBankedResetDisplayMode.compact.rawValue
+        )
+        XCTAssertEqual(
+            AppPreferences(defaults: defaults).menuBankedResetDisplayMode,
+            .compact
+        )
+
+        defaults.set("unsupported", forKey: AppPreferences.menuBankedResetDisplayModeKey)
+        XCTAssertEqual(preferences.menuBankedResetDisplayMode, .detailed)
+    }
+
     func testMenuBarLunaReserveAutoSwitchPreferencesDefaultPersistAndRejectUnknownMode() {
         let (preferences, defaults, suite) = makePreferences()
         defer { defaults.removePersistentDomain(forName: suite) }
