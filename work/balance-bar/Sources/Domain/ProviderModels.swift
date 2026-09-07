@@ -651,9 +651,11 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     static let bankedResetBadgeSize = CGSize(width: 18, height: 18)
     static let bankedResetBadgeGap: CGFloat = 6
-    /// Geometry fallback for the three-character Chinese summary title. The
-    /// menu host sizes the real title to fit and moves the badge with it.
-    static let bankedResetSummaryTitleWidth: CGFloat = 42
+    /// Generous geometry fallback so the summary title is not clipped to a
+    /// single CJK glyph. The menu host sizes the real title to fit and moves
+    /// the system badge with it.
+    static let bankedResetSummaryTitleWidth: CGFloat = 80
+    static let bankedResetSummaryTitlePadding: CGFloat = 6
 
     static func frames(
         for category: OpenCodexCardCategory,
@@ -965,7 +967,7 @@ enum OpenCodexCardLayout {
                     ),
                     amount: CGRect(
                         x: remainingX,
-                        y: titleY,
+                        y: y + (bankedDetailHeight - quotaDetailHeight) / 2,
                         width: bankedResetRemainingWidth,
                         height: quotaDetailHeight
                     ),

@@ -2383,9 +2383,9 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
         XCTAssertTrue(labels.contains("80%"))
         XCTAssertTrue(labels.contains("45%"))
-        XCTAssertTrue(labels.contains("2"))
         XCTAssertFalse(labels.contains("2%"))
         XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
+        XCTAssertFalse(labels.contains { $0.contains("重...") || $0.hasSuffix("...") })
         let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
             $0.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize
         }
@@ -2395,18 +2395,31 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
                 $0.stringValue == tr(.keyCodexBankedResetTitle)
             }
         )
+        XCTAssertEqual(summaryTitle.stringValue, tr(.keyCodexBankedResetTitle))
+        XCTAssertEqual(summaryTitle.lineBreakMode, .byClipping)
+        XCTAssertGreaterThan(
+            summaryTitle.frame.width,
+            AccountMarqueeView.textWidth(
+                of: tr(.keyCodexBankedResetTitle),
+                font: .systemFont(
+                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                    weight: .medium
+                )
+            )
+        )
         let badge = try XCTUnwrap(
             overview.subviews.first {
                 $0.identifier?.rawValue == "codex.bankedReset.badge"
-            } as? BankedResetCountBadgeView
+            } as? NSImageView
         )
-        XCTAssertEqual(badge.countText, "2")
+        XCTAssertNotNil(badge.image)
         XCTAssertEqual(badge.frame.width, badge.frame.height, accuracy: 0.001)
         XCTAssertEqual(
             badge.frame.minX,
             summaryTitle.frame.maxX + OpenCodexCardLayout.bankedResetBadgeGap,
             accuracy: 0.5
         )
+        XCTAssertGreaterThan(badge.frame.minX, summaryTitle.frame.maxX)
         XCTAssertLessThan(badge.frame.maxX, OpenCodexCardLayout.amountX)
         let chromes = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.chrome"
@@ -2436,8 +2449,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
             earlierRemaining.text,
             laterRemaining.text
         ])
+        XCTAssertFalse(remainingFields.contains { $0.stringValue.contains("剩余") })
+        XCTAssertFalse(remainingFields.contains { $0.stringValue.contains("剩餘") })
+        XCTAssertFalse(remainingFields.contains { $0.stringValue.contains("Remaining") })
         XCTAssertEqual(remainingFields[0].textColor, NSColor.systemOrange)
         XCTAssertEqual(remainingFields[1].textColor, NSColor.labelColor)
+        XCTAssertEqual(
+            remainingFields[0].frame.midY,
+            frames.bankedResetDetailRows[0].chrome.midY,
+            accuracy: 1
+        )
+        XCTAssertEqual(
+            remainingFields[1].frame.midY,
+            frames.bankedResetDetailRows[1].chrome.midY,
+            accuracy: 1
+        )
         let tickets = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.ticket"
         }

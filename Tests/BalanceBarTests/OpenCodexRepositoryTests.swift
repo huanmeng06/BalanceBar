@@ -1542,6 +1542,11 @@ final class OpenCodexRepositoryTests: XCTestCase {
             (firstDetail.reset.minY + firstDetail.quotaDetail.maxY) / 2,
             accuracy: 0.001
         )
+        XCTAssertEqual(
+            firstDetail.amount.midY,
+            firstDetail.chrome.midY,
+            accuracy: 0.001
+        )
         XCTAssertGreaterThan(firstDetail.icon.minY, firstDetail.chrome.minY)
         XCTAssertLessThan(firstDetail.icon.maxY, firstDetail.chrome.maxY)
         XCTAssertEqual(

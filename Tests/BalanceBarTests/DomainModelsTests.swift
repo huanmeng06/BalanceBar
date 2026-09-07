@@ -327,6 +327,9 @@ final class DomainModelsTests: XCTestCase {
             sixHours.text,
             tr(.keyCodexBankedResetRemainingHours, arguments: ["6"])
         )
+        XCTAssertFalse(sixHours.text.contains("剩余"))
+        XCTAssertFalse(sixHours.text.contains("剩餘"))
+        XCTAssertFalse(sixHours.text.contains("Remaining"))
         XCTAssertTrue(sixHours.isWarning)
 
         let oneDayFourHours = try XCTUnwrap(
