@@ -5483,11 +5483,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
                 if !isCompactBankedReset {
                     let ticketImage = Self.bankedResetTicketImage()
+                    let ticketHost: NSView
+                    let ticketScrollView: BankedResetTicketScrollView?
+                    if OpenCodexCardLayout.bankedResetTicketsNeedScroll(
+                        cardCount: bankedReset.cards.count
+                    ), let viewport = layout.bankedResetTicketViewport {
+                        let document = BankedResetTicketDocumentView(
+                            frame: NSRect(
+                                x: 0,
+                                y: 0,
+                                width: viewport.width,
+                                height: OpenCodexCardLayout.bankedResetTicketStackHeight(
+                                    cardCount: bankedReset.cards.count
+                                )
+                            )
+                        )
+                        let scrollView = BankedResetTicketScrollView(frame: viewport)
+                        scrollView.identifier = NSUserInterfaceItemIdentifier(
+                            "codex.bankedReset.ticketScroll"
+                        )
+                        scrollView.documentView = document
+                        view.addSubview(scrollView)
+                        view.trackTicketScroll(scrollView)
+                        ticketHost = document
+                        ticketScrollView = scrollView
+                    } else {
+                        ticketHost = view
+                        ticketScrollView = nil
+                    }
                     for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
                         if row.chrome.width > 0 {
                             let chrome = BankedResetChromeView(frame: row.chrome)
                             chrome.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.chrome")
-                            view.addSubview(chrome)
+                            ticketHost.addSubview(chrome)
                         }
 
                         if row.icon.width > 0, let ticketImage {
@@ -5495,7 +5523,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             icon.image = ticketImage
                             icon.imageScaling = .scaleProportionallyUpOrDown
                             icon.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.ticket")
-                            view.addSubview(icon)
+                            ticketHost.addSubview(icon)
                         }
 
                         let title = makeOverviewLabel(
@@ -5506,7 +5534,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             )
                         )
                         title.frame = row.quotaDetail
-                        view.addSubview(title)
+                        ticketHost.addSubview(title)
 
                         if let windowText = card.windowText, !windowText.isEmpty {
                             let windowLine = makeOverviewLabel(
@@ -5518,7 +5546,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             )
                             windowLine.textColor = .secondaryLabelColor
                             windowLine.frame = row.window
-                            view.addSubview(windowLine)
+                            ticketHost.addSubview(windowLine)
                         }
 
                         if let remainingText = card.remainingText, !remainingText.isEmpty {
@@ -5533,7 +5561,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             remaining.textColor = card.remainingIsWarning ? .systemOrange : .labelColor
                             remaining.frame = row.amount
                             remaining.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.remaining")
-                            view.addSubview(remaining)
+                            ticketHost.addSubview(remaining)
                         }
 
                         if let expiresText = card.expiresText, !expiresText.isEmpty {
@@ -5546,9 +5574,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             )
                             subtitle.textColor = .secondaryLabelColor
                             subtitle.frame = row.reset
-                            view.addSubview(subtitle)
+                            ticketHost.addSubview(subtitle)
                         }
                     }
+                    ticketScrollView?.scrollToTopOfDocument()
                 }
             }
             view.addSubview(provider)

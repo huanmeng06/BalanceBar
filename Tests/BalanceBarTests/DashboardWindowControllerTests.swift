@@ -2730,6 +2730,175 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testOfficialCodexMenuCardDetailedBankedResetClipsTicketsToTwoAndAHalfRows() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .simplifiedChinese
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let date = Date()
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800
+            )
+        ]
+        var cards: [CodexBankedResetCard] = []
+        cards.reserveCapacity(10)
+        for index in 0..<10 {
+            let expiresAt = date.addingTimeInterval(TimeInterval((index + 1) * 86_400))
+            cards.append(
+                CodexBankedResetCard(
+                    id: "card-\(index)",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    windowText: tr(.keyCodexBankedResetFullResetWindow),
+                    expiresAt: expiresAt,
+                    expiresText: CodexBankedResetFormatting.expiryText(
+                        for: expiresAt,
+                        relativeTo: date
+                    ),
+                    remainingText: "\(index + 1)d",
+                    remainingIsWarning: index == 0
+                )
+            )
+        }
+        let bankedReset = try XCTUnwrap(CodexBankedReset(cards: cards))
+
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                bankedReset: bankedReset,
+                resetProbability: .percent(23)
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 10
+        )
+        XCTAssertEqual(overview.bounds.size, frames.cardSize)
+        XCTAssertFalse(
+            overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.chrome" }
+        )
+        let scrollView = try XCTUnwrap(
+            allControls(of: overview, as: BankedResetTicketScrollView.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.ticketScroll"
+            }
+        )
+        XCTAssertEqual(scrollView.frame, try XCTUnwrap(frames.bankedResetTicketViewport))
+        XCTAssertEqual(
+            scrollView.frame.height,
+            OpenCodexCardLayout.bankedResetTicketViewportMaxHeight,
+            accuracy: 0.001
+        )
+        let document = try XCTUnwrap(scrollView.documentView)
+        XCTAssertEqual(
+            document.frame.height,
+            OpenCodexCardLayout.bankedResetTicketStackHeight(cardCount: 10),
+            accuracy: 0.001
+        )
+        let chromes = allControls(of: document, as: BankedResetChromeView.self)
+        XCTAssertEqual(chromes.count, 10)
+        XCTAssertEqual(
+            chromes.map(\.frame),
+            frames.bankedResetDetailRows.map(\.chrome)
+        )
+        XCTAssertEqual(
+            allControls(of: overview, as: NSImageView.self).filter {
+                $0.identifier?.rawValue == "codex.bankedReset.ticket"
+            }.count,
+            10
+        )
+        let remainingFields = allControls(of: overview, as: NSTextField.self).filter {
+            $0.identifier?.rawValue == "codex.bankedReset.remaining"
+        }
+        XCTAssertEqual(remainingFields.count, 10)
+        XCTAssertEqual(remainingFields.map(\.stringValue), cards.map { $0.remainingText ?? "" })
+        let visibleMinY = scrollView.contentView.bounds.minY
+        let visibleMaxY = visibleMinY + scrollView.contentView.bounds.height
+        XCTAssertEqual(
+            visibleMaxY,
+            document.bounds.height,
+            accuracy: 1
+        )
+        XCTAssertGreaterThanOrEqual(chromes[0].frame.minY, visibleMinY - 0.5)
+        XCTAssertLessThanOrEqual(chromes[0].frame.maxY, visibleMaxY + 0.5)
+        XCTAssertGreaterThanOrEqual(chromes[1].frame.minY, visibleMinY - 0.5)
+        XCTAssertLessThan(chromes[2].frame.minY, visibleMinY)
+        XCTAssertGreaterThan(chromes[2].frame.maxY, visibleMinY)
+        XCTAssertLessThan(chromes[9].frame.maxY, visibleMinY)
+        let countField = try XCTUnwrap(
+            allControls(of: overview, as: NSTextField.self).first {
+                $0.identifier?.rawValue == "codex.bankedReset.count"
+            }
+        )
+        XCTAssertEqual(countField.stringValue, "10")
+    }
+
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
         for openCodexIsCurrent in [true, false] {
             for showOpenCodexMenu in [true, false] {

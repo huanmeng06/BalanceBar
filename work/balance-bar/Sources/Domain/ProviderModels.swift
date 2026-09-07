@@ -567,6 +567,10 @@ struct OpenCodexCardFrames: Equatable {
     let lunaReserveRow: OpenCodexQuotaRowFrames?
     let bankedResetSummaryRow: OpenCodexQuotaRowFrames?
     let bankedResetDetailRows: [OpenCodexQuotaRowFrames]
+    /// Host-coordinate clip for the detailed ticket list. Nil when the
+    /// overview has no tickets. 1–2 tickets fill this rect; 3+ clip to
+    /// `bankedResetTicketViewportMaxHeight` and scroll inside it.
+    let bankedResetTicketViewport: CGRect?
 }
 
 struct OpenCodexQuotaRowFrames: Equatable {
@@ -651,6 +655,35 @@ enum OpenCodexCardLayout {
     static let bankedResetChromeCornerRadius: CGFloat = 10
     /// Gap between the probability line and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
+    /// Detailed ticket list shows at most two full rows plus half of a
+    /// third so leftover cards remain obvious. 1–2 cards stay unclipped.
+    static let bankedResetVisibleTicketLimit: CGFloat = 2.5
+
+    static func bankedResetTicketStackHeight(cardCount: Int) -> CGFloat {
+        guard cardCount > 0 else { return 0 }
+        return CGFloat(cardCount) * bankedResetDetailRowHeight
+            + CGFloat(cardCount - 1) * quotaRowGap
+    }
+
+    static var bankedResetTicketViewportMaxHeight: CGFloat {
+        let fullVisibleRows = floor(bankedResetVisibleTicketLimit)
+        let partialRow = bankedResetVisibleTicketLimit - fullVisibleRows
+        return fullVisibleRows * bankedResetDetailRowHeight
+            + fullVisibleRows * quotaRowGap
+            + partialRow * bankedResetDetailRowHeight
+    }
+
+    static func bankedResetVisibleTicketStackHeight(cardCount: Int) -> CGFloat {
+        min(
+            bankedResetTicketStackHeight(cardCount: cardCount),
+            bankedResetTicketViewportMaxHeight
+        )
+    }
+
+    static func bankedResetTicketsNeedScroll(cardCount: Int) -> Bool {
+        bankedResetTicketStackHeight(cardCount: cardCount)
+            > bankedResetTicketViewportMaxHeight + 0.5
+    }
 
     static func frames(
         for category: OpenCodexCardCategory,
@@ -734,7 +767,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
-                bankedResetDetailRows: []
+                bankedResetDetailRows: [],
+                bankedResetTicketViewport: nil
             )
         case .balance:
             let linkWidth: CGFloat = linkPrefixWidth == 62 ? 148 : 136
@@ -754,7 +788,8 @@ enum OpenCodexCardLayout {
                 quotaRows: [],
                 lunaReserveRow: nil,
                 bankedResetSummaryRow: nil,
-                bankedResetDetailRows: []
+                bankedResetDetailRows: [],
+                bankedResetTicketViewport: nil
             )
         }
     }
@@ -787,10 +822,12 @@ enum OpenCodexCardLayout {
             ? lunaReserveNoProgressRowHeight
             : 0
         let bankedDetailHeight = bankedResetDetailRowHeight
+        let bankedVisibleTicketStackHeight = bankedResetVisibleTicketStackHeight(
+            cardCount: bankedDetailCount
+        )
+        let bankedTicketsNeedScroll = bankedResetTicketsNeedScroll(cardCount: bankedDetailCount)
         let bankedDetailBlockHeight = bankedDetailCount > 0
-            ? CGFloat(bankedDetailCount) * bankedDetailHeight
-                + CGFloat(max(0, bankedDetailCount - 1)) * rowGap
-                + bankedResetSummaryDetailGap
+            ? bankedVisibleTicketStackHeight + bankedResetSummaryDetailGap
             : 0
         let bankedBlockHeight = bankedSummaryHeight + bankedDetailBlockHeight
         let bankedLeadingGap = includesBankedReset
@@ -947,7 +984,12 @@ enum OpenCodexCardLayout {
             let lineWidth = max(64, innerRight - textX)
             let lineGap: CGFloat = 2
             return (0..<bankedDetailCount).map { index in
-                let y = bottomInset
+                // Unclipped 1–2 card lists stay in host coordinates so the
+                // existing two-ticket menu still paints at bottomInset.
+                // Clipped lists use document coordinates with y = 0 at the
+                // last ticket; the scroll view sits at `bottomInset`.
+                let originY: CGFloat = bankedTicketsNeedScroll ? 0 : bottomInset
+                let y = originY
                     + CGFloat(bankedDetailCount - 1 - index) * (bankedDetailHeight + rowGap)
                 let expiryY = y + chromeInset
                 let windowY = expiryY + quotaResetHeight + lineGap
@@ -1021,7 +1063,15 @@ enum OpenCodexCardLayout {
             quotaRows: rows,
             lunaReserveRow: lunaReserveRow,
             bankedResetSummaryRow: bankedResetSummaryRow,
-            bankedResetDetailRows: bankedResetDetailRows
+            bankedResetDetailRows: bankedResetDetailRows,
+            bankedResetTicketViewport: bankedDetailCount > 0
+                ? CGRect(
+                    x: 0,
+                    y: bottomInset,
+                    width: cardWidth,
+                    height: bankedVisibleTicketStackHeight
+                )
+                : nil
         )
     }
 

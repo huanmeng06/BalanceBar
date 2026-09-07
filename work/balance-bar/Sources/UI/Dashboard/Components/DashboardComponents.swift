@@ -702,7 +702,9 @@ final class HoverLinkTextField: NSTextField {
 /// the glyph-only hit test and activation boundary but not its own hover owner.
 final class MenuHoverLinkHostView: NSView {
     private weak var link: HoverLinkTextField?
+    private weak var ticketScrollView: BankedResetTicketScrollView?
     private var trackingAreaReference: NSTrackingArea?
+    private var ticketScrollMonitor: Any?
 
     var trackedLink: HoverLinkTextField? { link }
 
@@ -721,6 +723,18 @@ final class MenuHoverLinkHostView: NSView {
         synchronizeHoverState()
     }
 
+    func trackTicketScroll(_ scrollView: BankedResetTicketScrollView) {
+        ticketScrollView = scrollView
+        installTicketScrollMonitor()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        if handleTicketScroll(event) {
+            return
+        }
+        super.scrollWheel(with: event)
+    }
+
     override func updateTrackingAreas() {
         removeTrackingAreaReference()
         super.updateTrackingAreas()
@@ -732,11 +746,13 @@ final class MenuHoverLinkHostView: NSView {
         super.viewDidMoveToWindow()
         refreshTrackingArea()
         synchronizeHoverState()
+        installTicketScrollMonitor()
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil {
             removeTrackingAreaReference()
+            removeTicketScrollMonitor()
             link?.clearHoverState()
         }
         super.viewWillMove(toWindow: newWindow)
@@ -804,7 +820,32 @@ final class MenuHoverLinkHostView: NSView {
 
     private func tearDownWindowTracking() {
         removeTrackingAreaReference()
+        removeTicketScrollMonitor()
         link?.clearHoverState()
+    }
+
+    private func handleTicketScroll(_ event: NSEvent) -> Bool {
+        guard let ticketScrollView else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        guard ticketScrollView.frame.contains(point) else { return false }
+        ticketScrollView.scrollWheel(with: event)
+        return true
+    }
+
+    private func installTicketScrollMonitor() {
+        removeTicketScrollMonitor()
+        guard ticketScrollView != nil, window != nil else { return }
+        ticketScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, self.handleTicketScroll(event) else { return event }
+            return nil
+        }
+    }
+
+    private func removeTicketScrollMonitor() {
+        if let ticketScrollMonitor {
+            NSEvent.removeMonitor(ticketScrollMonitor)
+            self.ticketScrollMonitor = nil
+        }
     }
 }
 

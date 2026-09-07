@@ -1603,6 +1603,144 @@ final class OpenCodexRepositoryTests: XCTestCase {
             OpenCodexCardLayout.lunaReserveNoProgressAmountHeight,
             accuracy: 0.001
         )
+        XCTAssertFalse(OpenCodexCardLayout.bankedResetTicketsNeedScroll(cardCount: 2))
+        guard let twoTicketViewport = frames.bankedResetTicketViewport else {
+            XCTFail("expected unclipped ticket viewport for two cards")
+            return
+        }
+        XCTAssertEqual(
+            twoTicketViewport.height,
+            OpenCodexCardLayout.bankedResetTicketStackHeight(cardCount: 2),
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            twoTicketViewport.minY,
+            OpenCodexCardLayout.quotaBottomInset,
+            accuracy: 0.001
+        )
+        XCTAssertNil(compact.bankedResetTicketViewport)
+        XCTAssertNil(withoutCards.bankedResetTicketViewport)
+    }
+
+    func testOfficialQuotaLayoutClipsDetailedBankedResetTicketsToTwoAndAHalfRows() {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-Hour Quota",
+                daysText: "5 Hours",
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: "7-Day Quota",
+                daysText: "7 Days",
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+        let two = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2
+        )
+        let three = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 3
+        )
+        let ten = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 10
+        )
+
+        XCTAssertEqual(
+            OpenCodexCardLayout.bankedResetTicketViewportMaxHeight,
+            208,
+            accuracy: 0.001
+        )
+        XCTAssertFalse(OpenCodexCardLayout.bankedResetTicketsNeedScroll(cardCount: 1))
+        XCTAssertFalse(OpenCodexCardLayout.bankedResetTicketsNeedScroll(cardCount: 2))
+        XCTAssertTrue(OpenCodexCardLayout.bankedResetTicketsNeedScroll(cardCount: 3))
+        XCTAssertTrue(OpenCodexCardLayout.bankedResetTicketsNeedScroll(cardCount: 10))
+
+        XCTAssertEqual(three.bankedResetDetailRows.count, 3)
+        XCTAssertEqual(ten.bankedResetDetailRows.count, 10)
+        guard let threeViewport = three.bankedResetTicketViewport,
+              let tenViewport = ten.bankedResetTicketViewport else {
+            XCTFail("expected clipped ticket viewports for three and ten cards")
+            return
+        }
+        XCTAssertEqual(
+            threeViewport.height,
+            OpenCodexCardLayout.bankedResetTicketViewportMaxHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            tenViewport.height,
+            OpenCodexCardLayout.bankedResetTicketViewportMaxHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ten.cardSize.height - two.cardSize.height,
+            OpenCodexCardLayout.bankedResetVisibleTicketStackHeight(cardCount: 10)
+                - OpenCodexCardLayout.bankedResetTicketStackHeight(cardCount: 2),
+            accuracy: 0.001
+        )
+        XCTAssertEqual(ten.cardSize.height, three.cardSize.height, accuracy: 0.001)
+        XCTAssertGreaterThan(ten.cardSize.height, two.cardSize.height)
+
+        let firstChrome = ten.bankedResetDetailRows[0].chrome
+        let lastChrome = ten.bankedResetDetailRows[9].chrome
+        XCTAssertEqual(lastChrome.minY, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            firstChrome.maxY,
+            OpenCodexCardLayout.bankedResetTicketStackHeight(cardCount: 10),
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(firstChrome.minY, lastChrome.minY)
+
+        guard let summary = ten.bankedResetSummaryRow else {
+            XCTFail("expected clipped ticket summary")
+            return
+        }
+        let viewport = tenViewport
+        XCTAssertEqual(
+            ten.quotaRows[1].progress.minY - (
+                viewport.maxY
+                    + OpenCodexCardLayout.bankedResetSummaryDetailGap
+                    + OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+            ),
+            OpenCodexCardLayout.quotaRowGap,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            summary.reset.minY - viewport.maxY,
+            OpenCodexCardLayout.bankedResetSummaryDetailGap
+                + OpenCodexCardLayout.quotaResetOffset
+                - (
+                    OpenCodexCardLayout.quotaRowHeight
+                        - OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+                ),
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(summary.quotaDetail.minY, viewport.maxY)
+        XCTAssertLessThan(
+            two.bankedResetDetailRows[0].chrome.maxY,
+            OpenCodexCardLayout.bankedResetTicketStackHeight(cardCount: 10)
+        )
     }
 
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {
