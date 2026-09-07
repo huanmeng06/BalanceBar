@@ -5485,6 +5485,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     link.identifier = NSUserInterfaceItemIdentifier(
                         "codex.bankedReset.probability"
                     )
+                    link.hoverHint = tr(.keyCodexBankedResetProbabilitySource)
                     link.onActivate = {
                         NSWorkspace.shared.open(CodexResetForecastParser.websiteURL)
                     }

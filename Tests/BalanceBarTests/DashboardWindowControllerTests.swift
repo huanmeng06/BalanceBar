@@ -2493,6 +2493,8 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertEqual(probabilityLink.stringValue, "75%")
         XCTAssertTrue(probabilityLink.stringValue.hasSuffix("%"))
+        XCTAssertEqual(probabilityLink.hoverHint, tr(.keyCodexBankedResetProbabilitySource))
+        XCTAssertEqual(probabilityLink.toolTip, tr(.keyCodexBankedResetProbabilitySource))
         XCTAssertEqual(
             probabilityLink.identifier?.rawValue,
             "codex.bankedReset.probability"

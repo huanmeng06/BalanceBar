@@ -24,6 +24,44 @@ enum DashboardTextTooltip {
     }
 }
 
+/// One-line source / hint bubble for menu-hosted hover links. Native
+/// `toolTip` often never appears inside an `NSMenu` tracking loop.
+final class DashboardTextTooltipViewController: NSViewController {
+    private let text: String
+
+    init(text: String) {
+        self.text = text
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        let font = DashboardTextTooltip.font
+        let insetX: CGFloat = 10
+        let insetY: CGFloat = 6
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let width = ceil(textSize.width) + 2
+        let height = max(ceil(font.ascender - font.descender + 2), ceil(textSize.height))
+        let root = NSView(
+            frame: NSRect(
+                x: 0,
+                y: 0,
+                width: width + insetX * 2,
+                height: height + insetY * 2
+            )
+        )
+        let label = NSTextField(labelWithString: text)
+        DashboardTextTooltip.configure(label)
+        label.stringValue = text
+        label.frame = NSRect(x: insetX, y: insetY, width: width, height: height)
+        root.addSubview(label)
+        view = root
+    }
+}
+
 var dashboardUsesDarkAppearance: Bool {
     NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
 }
@@ -297,11 +335,23 @@ final class HoverLinkTextField: NSTextField {
     }
 
     var onActivate: (() -> Void)?
+    /// Shown while the pointer is over the visible glyphs. Native `toolTip`
+    /// is the Dashboard fallback; menu hosts present a popover instead.
+    var hoverHint: String = "" {
+        didSet {
+            toolTip = hoverHint.isEmpty ? nil : hoverHint
+            if hoverHint.isEmpty {
+                dismissHoverHint()
+            }
+        }
+    }
     private(set) var interactionMode: InteractionMode = .normal
     private(set) var visibleTextHitRect = NSRect.zero
+    private(set) var isHoverHintVisible = false
     private var trackingAreaReference: NSTrackingArea?
     private var isHovered = false
     private var isApplyingStyle = false
+    private var hintPopover: NSPopover?
 
     override var stringValue: String {
         didSet {
@@ -478,6 +528,11 @@ final class HoverLinkTextField: NSTextField {
         } else if interactionMode == .normal {
             NSCursor.arrow.set()
         }
+        if hovered {
+            presentHoverHintIfNeeded()
+        } else {
+            dismissHoverHint()
+        }
     }
 
     private func synchronizeHoverStateWithMouseLocation() {
@@ -491,12 +546,47 @@ final class HoverLinkTextField: NSTextField {
 
     private func tearDownInteraction() {
         removeTrackingAreaReference()
+        dismissHoverHint()
         if isHovered {
             isHovered = false
             applyStyle(text: stringValue, underlined: false)
         }
         if interactionMode == .normal {
             NSCursor.arrow.set()
+        }
+    }
+
+    private func presentHoverHintIfNeeded() {
+        guard interactionMode == .menuHosted,
+              !hoverHint.isEmpty,
+              window != nil,
+              hintPopover == nil else {
+            return
+        }
+        let popover = DashboardTextTooltip.makePopover()
+        let controller = DashboardTextTooltipViewController(text: hoverHint)
+        controller.loadViewIfNeeded()
+        popover.contentViewController = controller
+        popover.contentSize = controller.view.frame.size
+        hintPopover = popover
+        toolTip = nil
+        let anchor = visibleTextHitRect.isEmpty ? bounds : visibleTextHitRect
+        popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
+        guard popover.isShown else {
+            hintPopover = nil
+            toolTip = hoverHint
+            isHoverHintVisible = false
+            return
+        }
+        isHoverHintVisible = true
+    }
+
+    private func dismissHoverHint() {
+        hintPopover?.close()
+        hintPopover = nil
+        isHoverHintVisible = false
+        if !hoverHint.isEmpty {
+            toolTip = hoverHint
         }
     }
 

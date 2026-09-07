@@ -482,6 +482,7 @@
     case keyCodexBankedResetRemainingDaysHours = "codex.banked_reset.remaining_days_hours"
     case keyCodexBankedResetRemainingMinutes = "codex.banked_reset.remaining_minutes"
     case keyCodexBankedResetProbabilityPrefix = "codex.banked_reset.probability_prefix"
+    case keyCodexBankedResetProbabilitySource = "codex.banked_reset.probability_source"
 
     var rawKey: String { rawValue }
   }

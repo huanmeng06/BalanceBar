@@ -308,6 +308,22 @@ final class LocalizationTests: XCTestCase {
             tr(.keyCodexBankedResetProbabilityPrefix, language: .english),
             "Reset probability:"
         )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbabilitySource, language: .simplifiedChinese),
+            "数据来源：willcodexquotareset.com"
+        )
+        XCTAssertEqual(
+            tr(.keyCodexBankedResetProbabilitySource, language: .english),
+            "Data source: willcodexquotareset.com"
+        )
+        for (language, colon) in cases {
+            let source = tr(.keyCodexBankedResetProbabilitySource, language: language)
+            XCTAssertTrue(
+                source.contains(colon),
+                "\(language.rawValue) source \(source) should use \(colon)"
+            )
+            XCTAssertTrue(source.contains("willcodexquotareset.com"))
+        }
     }
 
     func testNewLanguageNamesRemainNativeAndCoreCopyIsLocalized() {
@@ -824,7 +840,7 @@ final class LocalizationTests: XCTestCase {
     func testAllTypedKeysExistInEveryBundledLanguage() throws {
         let expectedKeys = Set(LocalizationKey.allCases.map(\.rawKey))
         XCTAssertEqual(expectedKeys.count, LocalizationKey.allCases.count)
-        XCTAssertEqual(expectedKeys.count, 482)
+        XCTAssertEqual(expectedKeys.count, 483)
         let newLanguages: Set<AppLanguage> = [.portuguese, .russian, .italian]
 
         func keySequence(from text: String) -> [String] {

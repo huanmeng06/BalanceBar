@@ -471,6 +471,7 @@
 "codex.banked_reset.remaining_days_hours" = "%1$@ j %2$@ h";
 "codex.banked_reset.remaining_minutes" = "%1$@ minutes";
 "codex.banked_reset.probability_prefix" = "Probabilité de reset :";
+"codex.banked_reset.probability_source" = "Source des données : willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "Plages de couleur de la barre";
 "dashboard.menu.page.progress_color_ranges_description" = "Faites glisser les seuils pour choisir la couleur de chaque plage de pourcentage restant";
 "dashboard.menu.page.displayed_colors" = "Couleurs affichées";

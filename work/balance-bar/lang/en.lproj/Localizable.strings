@@ -471,6 +471,7 @@
 "codex.banked_reset.remaining_days_hours" = "%1$@d %2$@h";
 "codex.banked_reset.remaining_minutes" = "%1$@ minutes";
 "codex.banked_reset.probability_prefix" = "Reset probability:";
+"codex.banked_reset.probability_source" = "Data source: willcodexquotareset.com";
 "dashboard.menu.page.progress_color_ranges" = "Progress bar color ranges";
 "dashboard.menu.page.progress_color_ranges_description" = "Drag the thresholds to choose the color for each remaining-percentage range";
 "dashboard.menu.page.displayed_colors" = "Displayed colors";
