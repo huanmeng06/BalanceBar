@@ -5419,16 +5419,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 )
                 view.addSubview(summaryTitle)
 
-                let badgeSize = OpenCodexCardLayout.bankedResetBadgeSize
                 if let badgeImage = Self.bankedResetCountBadgeImage(
                     count: bankedReset.availableCount
                 ) {
                     let badge = NSImageView(
-                        frame: CGRect(
-                            x: summaryTitle.frame.maxX + OpenCodexCardLayout.bankedResetBadgeGap,
-                            y: summaryTitle.frame.midY - badgeSize.height / 2,
-                            width: badgeSize.width,
-                            height: badgeSize.height
+                        frame: BankedResetSummaryBadgeLayout.badgeFrame(
+                            adjacentTo: summaryTitle,
+                            image: badgeImage
                         )
                     )
                     badge.image = badgeImage

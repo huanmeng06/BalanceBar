@@ -2421,6 +2421,24 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
         XCTAssertGreaterThan(badge.frame.minX, summaryTitle.frame.maxX)
         XCTAssertLessThan(badge.frame.maxX, OpenCodexCardLayout.amountX)
+        let badgeImage = try XCTUnwrap(badge.image)
+        let titleOpticalMidY = BankedResetSummaryBadgeLayout.titleOpticalMidY(for: summaryTitle)
+        XCTAssertEqual(
+            BankedResetSummaryBadgeLayout.badgeOpticalMidY(frame: badge.frame, image: badgeImage),
+            titleOpticalMidY,
+            accuracy: 0.5
+        )
+        if let titleInk = MenuBarLayout.appKitRenderedTextBounds(
+            for: summaryTitle,
+            frameSize: summaryTitle.bounds.size
+        ) {
+            XCTAssertEqual(
+                BankedResetSummaryBadgeLayout.badgeOpticalMidY(frame: badge.frame, image: badgeImage),
+                summaryTitle.frame.minY + titleInk.midY,
+                accuracy: 1
+            )
+            XCTAssertGreaterThan(titleInk.height, 0)
+        }
         let chromes = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.chrome"
         }
