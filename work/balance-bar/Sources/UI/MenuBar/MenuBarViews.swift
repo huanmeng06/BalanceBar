@@ -24,52 +24,6 @@ final class BankedResetChromeView: NSView {
     }
 }
 
-/// Optical vertical alignment for the summary title and SF Symbol count.
-/// The title's 18 pt row frame and the symbol image's padding are not the
-/// visual centers of 「重置卡」 or `N.circle.fill`.
-enum BankedResetSummaryBadgeLayout {
-    static func titleOpticalMidY(for title: NSTextField) -> CGFloat {
-        if let ink = MenuBarLayout.appKitRenderedTextBounds(
-            for: title,
-            frameSize: title.bounds.size
-        ), ink.height > 1 {
-            return title.frame.minY + ink.midY
-        }
-        let font = title.font ?? .systemFont(
-            ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-            weight: .medium
-        )
-        return title.frame.minY + title.baselineOffsetFromBottom + font.capHeight / 2
-    }
-
-    static func badgeOpticalOffsetFromBottom(image: NSImage, in size: CGSize) -> CGFloat {
-        let imageSize = image.size
-        guard imageSize.width > 0, imageSize.height > 0, size.width > 0, size.height > 0 else {
-            return size.height / 2
-        }
-        let scale = min(size.width / imageSize.width, size.height / imageSize.height)
-        let drawnHeight = imageSize.height * scale
-        let drawnOriginY = (size.height - drawnHeight) / 2
-        let alignment = image.alignmentRect
-        let sourceMidY = alignment.height > 0 ? alignment.midY : imageSize.height / 2
-        return drawnOriginY + sourceMidY * scale
-    }
-
-    static func badgeFrame(adjacentTo title: NSTextField, image: NSImage) -> CGRect {
-        let size = OpenCodexCardLayout.bankedResetBadgeSize
-        return CGRect(
-            x: title.frame.maxX + OpenCodexCardLayout.bankedResetBadgeGap,
-            y: titleOpticalMidY(for: title) - badgeOpticalOffsetFromBottom(image: image, in: size),
-            width: size.width,
-            height: size.height
-        )
-    }
-
-    static func badgeOpticalMidY(frame: CGRect, image: NSImage) -> CGFloat {
-        frame.minY + badgeOpticalOffsetFromBottom(image: image, in: frame.size)
-    }
-}
-
 final class MenuBarContentView: NSView {
     override var isFlipped: Bool { true }
 }

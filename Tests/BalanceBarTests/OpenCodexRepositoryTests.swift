@@ -1460,35 +1460,27 @@ final class OpenCodexRepositoryTests: XCTestCase {
 
         XCTAssertEqual(frames.quotaRows.count, 2)
         XCTAssertNil(frames.lunaReserveRow)
-        XCTAssertNotNil(frames.bankedResetSummaryRow)
+        guard let summary = frames.bankedResetSummaryRow else {
+            XCTFail("expected detailed banked-reset summary row")
+            return
+        }
         XCTAssertEqual(frames.bankedResetDetailRows.count, 2)
         XCTAssertGreaterThan(frames.cardSize.height, baseline.cardSize.height)
-        XCTAssertEqual(frames.bankedResetSummaryRow?.progress ?? .zero, .zero)
-        XCTAssertEqual(frames.bankedResetSummaryRow?.amount ?? .zero, .zero)
-        XCTAssertEqual(frames.bankedResetDetailRows.map(\.progress), [.zero, .zero])
-        XCTAssertEqual(frames.bankedResetSummaryRow?.icon ?? .zero, .zero)
-        XCTAssertEqual(frames.bankedResetSummaryRow?.window ?? .zero, .zero)
-        XCTAssertEqual(frames.bankedResetSummaryRow?.chrome ?? .zero, .zero)
-        XCTAssertGreaterThan(frames.bankedResetSummaryRow?.reset.height ?? 0, 0)
-        XCTAssertGreaterThan(frames.bankedResetSummaryRow?.reset.width ?? 0, 100)
-        XCTAssertGreaterThan(
-            frames.bankedResetSummaryRow!.quotaDetail.minY,
-            frames.bankedResetSummaryRow!.reset.minY
-        )
+        XCTAssertEqual(summary.progress, .zero)
+        XCTAssertGreaterThan(summary.amount.width, 0)
         XCTAssertEqual(
-            frames.bankedResetSummaryRow?.badge.size,
-            OpenCodexCardLayout.bankedResetBadgeSize
-        )
-        XCTAssertEqual(
-            frames.bankedResetSummaryRow!.badge.minX,
-            frames.bankedResetSummaryRow!.quotaDetail.maxX
-                + OpenCodexCardLayout.bankedResetBadgeGap,
+            summary.amount.height,
+            OpenCodexCardLayout.lunaReserveNoProgressAmountHeight,
             accuracy: 0.001
         )
-        XCTAssertLessThan(
-            frames.bankedResetSummaryRow!.badge.maxX,
-            OpenCodexCardLayout.amountX
-        )
+        XCTAssertEqual(frames.bankedResetDetailRows.map(\.progress), [.zero, .zero])
+        XCTAssertEqual(summary.icon, .zero)
+        XCTAssertEqual(summary.window, .zero)
+        XCTAssertEqual(summary.chrome, .zero)
+        XCTAssertEqual(summary.badge, .zero)
+        XCTAssertGreaterThan(summary.reset.height, 0)
+        XCTAssertGreaterThan(summary.reset.width, 100)
+        XCTAssertGreaterThan(summary.quotaDetail.minY, summary.reset.minY)
         XCTAssertEqual(
             frames.bankedResetDetailRows.map(\.icon.size),
             [
@@ -1529,30 +1521,28 @@ final class OpenCodexRepositoryTests: XCTestCase {
             frames.quotaRows[1].progress.minY - (
                 frames.bankedResetDetailRows[0].chrome.maxY
                     + OpenCodexCardLayout.bankedResetSummaryDetailGap
-                    + OpenCodexCardLayout.bankedResetSummaryRowHeight
+                    + OpenCodexCardLayout.lunaReserveNoProgressRowHeight
             ),
             OpenCodexCardLayout.quotaRowGap,
             accuracy: 0.001
         )
         XCTAssertEqual(
-            frames.bankedResetSummaryRow!.reset.minY
+            summary.reset.minY
                 - frames.bankedResetDetailRows[0].chrome.maxY,
             OpenCodexCardLayout.bankedResetSummaryDetailGap
-                + (
-                    OpenCodexCardLayout.bankedResetSummaryRowHeight
-                        - OpenCodexCardLayout.quotaDetailHeight
-                        - OpenCodexCardLayout.bankedResetSummaryTitleSubtitleGap
-                        - OpenCodexCardLayout.quotaResetHeight
+                + OpenCodexCardLayout.quotaResetOffset
+                - (
+                    OpenCodexCardLayout.quotaRowHeight
+                        - OpenCodexCardLayout.lunaReserveNoProgressRowHeight
                 ),
             accuracy: 0.001
         )
         XCTAssertLessThan(
-            frames.bankedResetSummaryRow!.quotaDetail.minY
-                - frames.bankedResetSummaryRow!.reset.maxY,
+            summary.quotaDetail.minY - summary.reset.maxY,
             4
         )
         XCTAssertGreaterThan(
-            frames.bankedResetSummaryRow!.quotaDetail.minY,
+            summary.quotaDetail.minY,
             frames.bankedResetDetailRows[0].quotaDetail.minY
         )
         XCTAssertGreaterThan(

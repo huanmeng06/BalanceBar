@@ -2393,56 +2393,21 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         let largeAmounts = allControls(of: overview, as: NSTextField.self).filter {
             $0.font?.pointSize == OpenCodexCardLayout.quotaAmountPointSize
         }
-        XCTAssertFalse(largeAmounts.contains { $0.stringValue == "2" })
-        let summaryTitle = try XCTUnwrap(
+        XCTAssertTrue(largeAmounts.contains { $0.stringValue == "2" })
+        XCTAssertFalse(
+            overview.subviews.contains { $0.identifier?.rawValue == "codex.bankedReset.badge" }
+        )
+        let countField = try XCTUnwrap(
             allControls(of: overview, as: NSTextField.self).first {
-                $0.stringValue == tr(.keyCodexBankedResetTitle)
+                $0.identifier?.rawValue == "codex.bankedReset.count"
             }
         )
-        XCTAssertEqual(summaryTitle.stringValue, tr(.keyCodexBankedResetTitle))
-        XCTAssertEqual(summaryTitle.lineBreakMode, .byClipping)
-        XCTAssertGreaterThan(
-            summaryTitle.frame.width,
-            AccountMarqueeView.textWidth(
-                of: tr(.keyCodexBankedResetTitle),
-                font: .systemFont(
-                    ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                    weight: .medium
-                )
-            )
-        )
-        let badge = try XCTUnwrap(
-            overview.subviews.first {
-                $0.identifier?.rawValue == "codex.bankedReset.badge"
-            } as? NSImageView
-        )
-        XCTAssertNotNil(badge.image)
-        XCTAssertEqual(badge.frame.width, badge.frame.height, accuracy: 0.001)
+        XCTAssertEqual(countField.stringValue, "2")
         XCTAssertEqual(
-            badge.frame.minX,
-            summaryTitle.frame.maxX + OpenCodexCardLayout.bankedResetBadgeGap,
-            accuracy: 0.5
+            countField.font?.pointSize,
+            OpenCodexCardLayout.quotaAmountPointSize
         )
-        XCTAssertGreaterThan(badge.frame.minX, summaryTitle.frame.maxX)
-        XCTAssertLessThan(badge.frame.maxX, OpenCodexCardLayout.amountX)
-        let badgeImage = try XCTUnwrap(badge.image)
-        let titleOpticalMidY = BankedResetSummaryBadgeLayout.titleOpticalMidY(for: summaryTitle)
-        XCTAssertEqual(
-            BankedResetSummaryBadgeLayout.badgeOpticalMidY(frame: badge.frame, image: badgeImage),
-            titleOpticalMidY,
-            accuracy: 0.5
-        )
-        if let titleInk = MenuBarLayout.appKitRenderedTextBounds(
-            for: summaryTitle,
-            frameSize: summaryTitle.bounds.size
-        ) {
-            XCTAssertEqual(
-                BankedResetSummaryBadgeLayout.badgeOpticalMidY(frame: badge.frame, image: badgeImage),
-                summaryTitle.frame.minY + titleInk.midY,
-                accuracy: 1
-            )
-            XCTAssertGreaterThan(titleInk.height, 0)
-        }
+        XCTAssertEqual(countField.alignment, .right)
         let chromes = overview.subviews.filter {
             $0.identifier?.rawValue == "codex.bankedReset.chrome"
         }

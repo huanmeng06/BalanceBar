@@ -649,19 +649,8 @@ enum OpenCodexCardLayout {
     static let bankedResetRemainingWidth: CGFloat = 120
     static let bankedResetChromeInset: CGFloat = 8
     static let bankedResetChromeCornerRadius: CGFloat = 10
-    static let bankedResetBadgeSize = CGSize(width: 18, height: 18)
-    static let bankedResetBadgeGap: CGFloat = 6
-    /// Generous geometry fallback so the summary title is not clipped to a
-    /// single CJK glyph. The menu host sizes the real title to fit and moves
-    /// the system badge with it.
-    static let bankedResetSummaryTitleWidth: CGFloat = 80
-    static let bankedResetSummaryTitlePadding: CGFloat = 6
-    /// Title + probability only. Keep this shorter than a quota/Reserve row
-    /// so the subtitle sits close to the first ticket instead of a blank band.
-    static let bankedResetSummaryRowHeight: CGFloat = 38
     /// Gap between the probability line and the first ticket chrome.
     static let bankedResetSummaryDetailGap: CGFloat = 6
-    static let bankedResetSummaryTitleSubtitleGap: CGFloat = 2
 
     static func frames(
         for category: OpenCodexCardCategory,
@@ -795,9 +784,7 @@ enum OpenCodexCardLayout {
         let bankedResetIsDetailed = includesBankedReset && bankedResetDisplayMode == .detailed
         let bankedDetailCount = bankedResetIsDetailed ? max(0, bankedResetCardCount) : 0
         let bankedSummaryHeight = includesBankedReset
-            ? (bankedResetDisplayMode == .compact
-                ? lunaReserveNoProgressRowHeight
-                : bankedResetSummaryRowHeight)
+            ? lunaReserveNoProgressRowHeight
             : 0
         let bankedDetailHeight = bankedResetDetailRowHeight
         let bankedDetailBlockHeight = bankedDetailCount > 0
@@ -924,59 +911,27 @@ enum OpenCodexCardLayout {
         let bankedSummaryY = bottomInset + bankedDetailBlockHeight
         let bankedResetSummaryRow = includesBankedReset
             ? {
-                if bankedResetDisplayMode == .compact {
-                    let bankedContentShift = rowHeight - lunaReserveNoProgressRowHeight
-                    return OpenCodexQuotaRowFrames(
-                        quotaDetail: CGRect(
-                            x: horizontalInset,
-                            y: bankedSummaryY + quotaDetailOffset - bankedContentShift,
-                            width: 128,
-                            height: quotaDetailHeight
-                        ),
-                        reset: CGRect(
-                            x: horizontalInset,
-                            y: bankedSummaryY + quotaResetOffset - bankedContentShift,
-                            width: 128,
-                            height: quotaResetHeight
-                        ),
-                        amount: CGRect(
-                            x: amountX,
-                            y: bankedSummaryY + max(0, quotaAmountOffset - bankedContentShift),
-                            width: amountWidth,
-                            height: lunaReserveNoProgressAmountHeight
-                        ),
-                        progress: .zero
-                    )
-                }
-                let titleY = bankedSummaryY
-                    + bankedResetSummaryRowHeight
-                    - quotaDetailHeight
-                let subtitleY = titleY
-                    - bankedResetSummaryTitleSubtitleGap
-                    - quotaResetHeight
-                let badgeY = titleY
-                    + (quotaDetailHeight - bankedResetBadgeSize.height) / 2
+                let bankedContentShift = rowHeight - lunaReserveNoProgressRowHeight
                 return OpenCodexQuotaRowFrames(
                     quotaDetail: CGRect(
                         x: horizontalInset,
-                        y: titleY,
-                        width: bankedResetSummaryTitleWidth,
+                        y: bankedSummaryY + quotaDetailOffset - bankedContentShift,
+                        width: 128,
                         height: quotaDetailHeight
                     ),
                     reset: CGRect(
                         x: horizontalInset,
-                        y: subtitleY,
-                        width: contentWidth,
+                        y: bankedSummaryY + quotaResetOffset - bankedContentShift,
+                        width: 128,
                         height: quotaResetHeight
                     ),
-                    amount: .zero,
-                    progress: .zero,
-                    badge: CGRect(
-                        x: horizontalInset + bankedResetSummaryTitleWidth + bankedResetBadgeGap,
-                        y: badgeY,
-                        width: bankedResetBadgeSize.width,
-                        height: bankedResetBadgeSize.height
-                    )
+                    amount: CGRect(
+                        x: amountX,
+                        y: bankedSummaryY + max(0, quotaAmountOffset - bankedContentShift),
+                        width: amountWidth,
+                        height: lunaReserveNoProgressAmountHeight
+                    ),
+                    progress: .zero
                 )
             }()
             : nil

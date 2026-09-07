@@ -5398,7 +5398,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let bankedReset,
                let summaryRow = layout.bankedResetSummaryRow {
                 let isCompactBankedReset = menuInput.bankedResetDisplayMode == .compact
-                if isCompactBankedReset, summaryRow.amount.width > 0 {
+                if summaryRow.amount.width > 0 {
                     let amount = makeOverviewLabel(
                         "\(bankedReset.availableCount)",
                         font: .monospacedDigitSystemFont(
@@ -5421,49 +5421,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                             frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoiding: amount)
                         )
                     )
-                } else {
-                    let summaryTitle = makeOverviewLabel(
-                        tr(.keyCodexBankedResetTitle),
-                        font: .systemFont(
-                            ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                            weight: .medium
-                        )
-                    )
-                    summaryTitle.lineBreakMode = .byClipping
-                    summaryTitle.sizeToFit()
-                    let titleWidth = max(
-                        summaryTitle.frame.width,
-                        AccountMarqueeView.textWidth(
-                            of: tr(.keyCodexBankedResetTitle),
-                            font: .systemFont(
-                                ofSize: OpenCodexCardLayout.quotaDetailPointSize,
-                                weight: .medium
-                            )
-                        )
-                    ) + OpenCodexCardLayout.bankedResetSummaryTitlePadding
-                    summaryTitle.frame = CGRect(
-                        x: summaryRow.quotaDetail.minX,
-                        y: summaryRow.quotaDetail.minY,
-                        width: titleWidth,
-                        height: summaryRow.quotaDetail.height
-                    )
-                    view.addSubview(summaryTitle)
-
-                    if let badgeImage = Self.bankedResetCountBadgeImage(
-                        count: bankedReset.availableCount
-                    ) {
-                        let badge = NSImageView(
-                            frame: BankedResetSummaryBadgeLayout.badgeFrame(
-                                adjacentTo: summaryTitle,
-                                image: badgeImage
-                            )
-                        )
-                        badge.image = badgeImage
-                        badge.imageScaling = .scaleProportionallyUpOrDown
-                        badge.contentTintColor = .secondaryLabelColor
-                        badge.identifier = NSUserInterfaceItemIdentifier("codex.bankedReset.badge")
-                        view.addSubview(badge)
-                    }
                 }
 
                 if summaryRow.reset.width > 0 {
@@ -5880,24 +5837,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         image.size = OpenCodexCardLayout.bankedResetTicketIconSize
         return image
-    }
-
-    private static func bankedResetCountBadgeImage(count: Int) -> NSImage? {
-        let symbolName = (0...50).contains(count)
-            ? "\(count).circle.fill"
-            : "ellipsis.circle.fill"
-        guard let image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: "\(count)"
-        ) else {
-            return nil
-        }
-        image.isTemplate = true
-        let configured = image.withSymbolConfiguration(
-            NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
-        )
-        configured?.isTemplate = true
-        return configured ?? image
     }
 
     private func makeOverviewLabel(_ text: String, font: NSFont) -> NSTextField {
