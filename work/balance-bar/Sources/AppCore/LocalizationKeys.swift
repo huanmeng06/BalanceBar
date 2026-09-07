@@ -473,6 +473,9 @@
     case keyLunaReserveMenuResetValue = "luna.reserve.menu_reset_value"
     case keyLunaReserveMenuUnavailable = "luna.reserve.menu_unavailable"
     case keyLunaReserveSummaryValue = "luna.reserve.summary_value"
+    case keyCodexBankedResetTitle = "codex.banked_reset.title"
+    case keyCodexBankedResetFullResetTitle = "codex.banked_reset.full_reset_title"
+    case keyCodexBankedResetExpiresValue = "codex.banked_reset.expires_value"
 
     var rawKey: String { rawValue }
   }

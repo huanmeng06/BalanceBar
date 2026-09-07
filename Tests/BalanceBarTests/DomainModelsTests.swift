@@ -231,6 +231,90 @@ final class DomainModelsTests: XCTestCase {
         XCTAssertTrue(snapshot.menuBarToolTip.contains(reserve.remainingText))
     }
 
+    func testOfficialQuotaMenuPresentationShowsBankedResetOnlyWhenCardsExist() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour",
+            daysText: "5 hours",
+            reset: "1h",
+            durationSeconds: 18_000
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day",
+            daysText: "7 days",
+            reset: "6d",
+            durationSeconds: 604_800
+        )
+        let earlier = CodexBankedResetCard(
+            id: "earlier",
+            resetType: "codex_rate_limits",
+            titleText: tr(.keyCodexBankedResetFullResetTitle),
+            expiresAt: date.addingTimeInterval(3_600),
+            expiresText: "Expires later"
+        )
+        let undated = CodexBankedResetCard(
+            id: "undated",
+            resetType: "codex_rate_limits",
+            titleText: tr(.keyCodexBankedResetFullResetTitle),
+            expiresAt: nil,
+            expiresText: nil
+        )
+        let bankedReset = try XCTUnwrap(CodexBankedReset(cards: [earlier, undated]))
+
+        let official = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay],
+            lunaReserve: LunaReserveQuota(status: .available, remaining: 45, reset: "1h30m"),
+            bankedReset: bankedReset
+        )
+        let presented = official.officialQuotaMenuPresentation(
+            lunaReserveDisplayMode: .always,
+            hideExhaustedQuota: false
+        )
+        XCTAssertEqual(presented.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(presented.lunaReserve)
+        XCTAssertNil(presented.lunaReserveInsertionIndex)
+        XCTAssertEqual(presented.bankedReset?.availableCount, 2)
+        XCTAssertEqual(presented.bankedReset?.cards.map(\.id), ["earlier", "undated"])
+
+        let emptyOfficial = Snapshot.official(
+            "OpenAI",
+            45,
+            sevenDay.label,
+            sevenDay.reset,
+            date,
+            windows: [fiveHour, sevenDay]
+        )
+        XCTAssertNil(
+            emptyOfficial.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: .always,
+                hideExhaustedQuota: false
+            ).bankedReset
+        )
+
+        let balance = Snapshot.balance(
+            "Custom",
+            12.5,
+            "USD",
+            nil,
+            date
+        )
+        XCTAssertNil(
+            balance.officialQuotaMenuPresentation(
+                lunaReserveDisplayMode: .always,
+                hideExhaustedQuota: false
+            ).bankedReset
+        )
+    }
+
     func testOfficialQuotaMenuPresentationSupportsLunaReserveDisplayModesAndExhaustedHiding() {
         LunaReserveUserFacing.testOverride = true
         defer { LunaReserveUserFacing.testOverride = nil }

@@ -462,6 +462,9 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ временно недоступна";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "Карты сброса";
+"codex.banked_reset.full_reset_title" = "Полный сброс (неделя + 5 часов)";
+"codex.banked_reset.expires_value" = "Истекает %1$@";
 "dashboard.menu.page.progress_color_ranges" = "Цветовые диапазоны индикатора";
 "dashboard.menu.page.progress_color_ranges_description" = "Перетаскивайте пороги, чтобы выбрать цвет для каждого диапазона оставшегося процента";
 "dashboard.menu.page.displayed_colors" = "Отображаемые цвета";

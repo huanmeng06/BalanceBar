@@ -462,6 +462,9 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ no disponible temporalmente";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "Tarjetas de restablecimiento";
+"codex.banked_reset.full_reset_title" = "Restablecimiento completo (semanal + 5 horas)";
+"codex.banked_reset.expires_value" = "Caduca el %1$@";
 "dashboard.menu.page.progress_color_ranges" = "Rangos de color de la barra";
 "dashboard.menu.page.progress_color_ranges_description" = "Arrastra los umbrales para elegir el color de cada porcentaje restante";
 "dashboard.menu.page.displayed_colors" = "Colores mostrados";

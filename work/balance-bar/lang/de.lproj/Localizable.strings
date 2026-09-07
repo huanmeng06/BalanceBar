@@ -462,6 +462,9 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ vorübergehend nicht verfügbar";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "Reset-Karten";
+"codex.banked_reset.full_reset_title" = "Vollständiger Reset (wöchentlich + 5 Stunden)";
+"codex.banked_reset.expires_value" = "Läuft am %1$@ ab";
 "dashboard.menu.page.progress_color_ranges" = "Farbbereiche der Fortschrittsleiste";
 "dashboard.menu.page.progress_color_ranges_description" = "Ziehe die Schwellenwerte, um die Farbe für jeden verbleibenden Prozentbereich festzulegen";
 "dashboard.menu.page.displayed_colors" = "Angezeigte Farben";

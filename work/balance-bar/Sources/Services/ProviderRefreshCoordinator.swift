@@ -429,19 +429,34 @@ final class ProviderRefreshCoordinator {
                     providerID: providerID,
                     payload: .officialWindows(response.output.windows)
                 )
-                self.renderForCurrentProvider(
-                    .official(
-                        providerName,
-                        response.output.remaining,
-                        response.output.label,
-                        response.output.reset,
-                        Date(),
-                        windows: response.output.windows,
-                        lunaReserve: response.output.lunaReserve
-                    ),
-                    providerID: providerID,
-                    client: client
-                )
+                let renderOfficial: (CodexBankedReset?) -> Void = { bankedReset in
+                    self.renderForCurrentProvider(
+                        .official(
+                            providerName,
+                            response.output.remaining,
+                            response.output.label,
+                            response.output.reset,
+                            Date(),
+                            windows: response.output.windows,
+                            lunaReserve: response.output.lunaReserve,
+                            bankedReset: bankedReset
+                        ),
+                        providerID: providerID,
+                        client: client
+                    )
+                }
+                if client == .codex && response.output.bankedResetNeedsCreditList {
+                    self.officialQuotaClient.fetchRateLimitResetCredits(now: self.now()) { creditsResult in
+                        switch creditsResult {
+                        case .success(let bankedReset):
+                            renderOfficial(bankedReset)
+                        case .failure:
+                            renderOfficial(nil)
+                        }
+                    }
+                } else {
+                    renderOfficial(response.output.bankedReset)
+                }
             case .failure(.missingCredentials):
                 self.renderOfficialError(
                     providerID: providerID,

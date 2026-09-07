@@ -1424,6 +1424,80 @@ final class OpenCodexRepositoryTests: XCTestCase {
         )
     }
 
+    func testOfficialQuotaLayoutPlacesBankedResetBlockBelowQuotaRowsWithoutProgress() {
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: "5-Hour Quota",
+                daysText: "5 Hours",
+                reset: "1h0m",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: "7-Day Quota",
+                daysText: "7 Days",
+                reset: "1h30m",
+                durationSeconds: 604_800
+            )
+        ]
+        let baseline = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows
+        )
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2
+        )
+
+        XCTAssertEqual(frames.quotaRows.count, 2)
+        XCTAssertNil(frames.lunaReserveRow)
+        XCTAssertNotNil(frames.bankedResetSummaryRow)
+        XCTAssertEqual(frames.bankedResetDetailRows.count, 2)
+        XCTAssertGreaterThan(frames.cardSize.height, baseline.cardSize.height)
+        XCTAssertEqual(frames.bankedResetSummaryRow?.progress ?? .zero, .zero)
+        XCTAssertEqual(frames.bankedResetDetailRows.map(\.progress), [.zero, .zero])
+        XCTAssertEqual(
+            frames.quotaRows[1].progress.minY - (
+                frames.bankedResetSummaryRow!.amount.minY
+                    + OpenCodexCardLayout.lunaReserveNoProgressRowHeight
+            ),
+            OpenCodexCardLayout.quotaRowGap,
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(
+            frames.bankedResetSummaryRow!.quotaDetail.minY,
+            frames.bankedResetDetailRows[0].quotaDetail.minY
+        )
+        XCTAssertGreaterThan(
+            frames.bankedResetDetailRows[0].quotaDetail.minY,
+            frames.bankedResetDetailRows[1].quotaDetail.minY
+        )
+        XCTAssertEqual(
+            frames.quotaRows[0].progress.minY - frames.quotaRows[1].progress.minY,
+            OpenCodexCardLayout.quotaRowHeight + OpenCodexCardLayout.quotaRowGap,
+            accuracy: 0.001
+        )
+
+        let withoutCards = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows
+        )
+        XCTAssertEqual(withoutCards.cardSize, baseline.cardSize)
+        XCTAssertNil(withoutCards.bankedResetSummaryRow)
+        XCTAssertTrue(withoutCards.bankedResetDetailRows.isEmpty)
+    }
+
     func testOpenCodexCardIdentityDoesNotAddAnOrdinalPrefix() {
         let card = OpenCodexModelCard(
             selector: "openai/gpt-5.6-sol",

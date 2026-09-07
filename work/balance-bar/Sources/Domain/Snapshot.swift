@@ -115,6 +115,25 @@ struct LunaReserveQuota: Equatable {
     }
 }
 
+struct CodexBankedResetCard: Equatable {
+    let id: String?
+    let resetType: String
+    let titleText: String
+    let expiresAt: Date?
+    let expiresText: String?
+}
+
+struct CodexBankedReset: Equatable {
+    let availableCount: Int
+    let cards: [CodexBankedResetCard]
+
+    init?(cards: [CodexBankedResetCard]) {
+        guard !cards.isEmpty else { return nil }
+        self.cards = cards
+        self.availableCount = cards.count
+    }
+}
+
 struct OfficialQuotaWindow: Equatable {
     enum Kind: Int, Equatable, Hashable {
         case fiveHour
@@ -228,6 +247,9 @@ struct OfficialQuotaMenuPresentation: Equatable {
     /// top-to-bottom menu order. The source index is resolved before any
     /// exhausted rows are hidden so a hidden quota can still anchor Reserve.
     let lunaReserveInsertionIndex: Int?
+    /// Available unexpired Codex banked reset cards. Nil when count is 0
+    /// or the official snapshot did not carry a usable list.
+    let bankedReset: CodexBankedReset?
 }
 
 enum OfficialQuotaResetFormatter {
@@ -273,6 +295,7 @@ struct Snapshot {
     let balanceProgressPercentage: Double?
     let officialQuotaWindows: [OfficialQuotaWindow]
     let lunaReserve: LunaReserveQuota?
+    let bankedReset: CodexBankedReset?
     /// The window selected for the compact/menu-bar presentation. The full
     /// quota card keeps all source windows, so this marker prevents the
     /// selected row's exact reset timestamp from being replaced by the
@@ -295,6 +318,7 @@ struct Snapshot {
         officialQuotaWindows: [OfficialQuotaWindow],
         selectedOfficialQuotaWindowKind: OfficialQuotaWindow.Kind? = nil,
         lunaReserve: LunaReserveQuota? = nil,
+        bankedReset: CodexBankedReset? = nil,
         menuBarUsesLunaReserve: Bool = false
     ) {
         self.kind = kind
@@ -308,6 +332,7 @@ struct Snapshot {
         self.officialQuotaWindows = officialQuotaWindows
         self.selectedOfficialQuotaWindowKind = selectedOfficialQuotaWindowKind
         self.lunaReserve = lunaReserve
+        self.bankedReset = bankedReset
         self.menuBarUsesLunaReserve = menuBarUsesLunaReserve
     }
 
@@ -330,7 +355,8 @@ struct Snapshot {
         _ reset: String?,
         _ date: Date,
         windows: [OfficialQuotaWindow] = [],
-        lunaReserve: LunaReserveQuota? = nil
+        lunaReserve: LunaReserveQuota? = nil,
+        bankedReset: CodexBankedReset? = nil
     ) -> Snapshot {
         let fallbackWindows = windows.isEmpty
             ? [OfficialQuotaWindow(
@@ -361,7 +387,8 @@ struct Snapshot {
             websiteURL: nil,
             balanceProgressPercentage: nil,
             officialQuotaWindows: resolvedWindows,
-            lunaReserve: lunaReserve
+            lunaReserve: lunaReserve,
+            bankedReset: bankedReset
         )
     }
 
@@ -449,7 +476,8 @@ struct Snapshot {
             return OfficialQuotaMenuPresentation(
                 windows: [],
                 lunaReserve: nil,
-                lunaReserveInsertionIndex: nil
+                lunaReserveInsertionIndex: nil,
+                bankedReset: nil
             )
         }
 
@@ -508,10 +536,19 @@ struct Snapshot {
                     && (!shouldHideExhaustedQuota || $0.element.remaining > 0)
             }.count
         }
+        let presentedBankedReset: CodexBankedReset? = {
+            guard let bankedReset,
+                  bankedReset.availableCount > 0,
+                  bankedReset.availableCount == bankedReset.cards.count else {
+                return nil
+            }
+            return bankedReset
+        }()
         return OfficialQuotaMenuPresentation(
             windows: presentedWindows,
             lunaReserve: shouldShowLunaReserve ? lunaReserve : nil,
-            lunaReserveInsertionIndex: presentedInsertionIndex
+            lunaReserveInsertionIndex: presentedInsertionIndex,
+            bankedReset: presentedBankedReset
         )
     }
 
@@ -573,6 +610,7 @@ struct Snapshot {
             officialQuotaWindows: officialQuotaWindows,
             selectedOfficialQuotaWindowKind: window.kind,
             lunaReserve: lunaReserve,
+            bankedReset: bankedReset,
             menuBarUsesLunaReserve: false
         )
     }
@@ -596,6 +634,7 @@ struct Snapshot {
             officialQuotaWindows: officialQuotaWindows,
             selectedOfficialQuotaWindowKind: selectedOfficialQuotaWindowKind,
             lunaReserve: lunaReserve,
+            bankedReset: bankedReset,
             menuBarUsesLunaReserve: true
         )
     }

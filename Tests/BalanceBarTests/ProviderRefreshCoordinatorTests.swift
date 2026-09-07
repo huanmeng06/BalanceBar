@@ -332,6 +332,252 @@ final class ProviderRefreshCoordinatorTests: XCTestCase {
         XCTAssertEqual(DelayedBalanceURLProtocol.requestCount, 3)
     }
 
+    func testOfficialRefreshUsesUsageCreditsAndDoesNotCallResetCreditList() throws {
+        try setCurrentProvider("codex-replacement")
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour quota",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day quota",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 7 * 86_400
+        )
+        let bankedReset = try XCTUnwrap(
+            CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "usage-card",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    expiresAt: Date(timeIntervalSince1970: 1_700_086_400),
+                    expiresText: "Expires later"
+                )
+            ])
+        )
+        let requestLock = NSLock()
+        var requestPaths: [String] = []
+        DelayedBalanceURLProtocol.setHandler { request in
+            requestLock.lock()
+            requestPaths.append(request.url?.path ?? "")
+            requestLock.unlock()
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertFalse((request.url?.path ?? "").contains("consume"))
+            return DelayedBalanceURLProtocol.Reply(
+                data: Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000}}}"#.utf8),
+                statusCode: 200
+            )
+        }
+        let rendered = expectation(description: "official snapshot with usage credits")
+        var captured: Snapshot?
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: FixedOfficialQuotaParser(
+                    windows: [fiveHour, sevenDay],
+                    bankedReset: bankedReset
+                )
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-banked-reset-usage"),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] client in
+                    repository?.loadCurrent(appType: client.appType)
+                },
+                isActiveClient: { _ in true },
+                render: { snapshot in
+                    captured = snapshot
+                    rendered.fulfill()
+                },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in },
+                isOpenCodexConfirmed: { _ in false }
+            )
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: true,
+            switched: false
+        )
+        wait(for: [rendered], timeout: 2)
+        XCTAssertEqual(try XCTUnwrap(captured).officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(try XCTUnwrap(captured).bankedReset?.availableCount, 1)
+        requestLock.lock()
+        let paths = requestPaths
+        requestLock.unlock()
+        XCTAssertEqual(paths.filter { $0.contains("rate-limit-reset-credits") }, [])
+        XCTAssertEqual(paths.filter { $0.contains("consume") }, [])
+    }
+
+    func testOfficialRefreshHidesBankedResetWhenCreditListFailsAndKeepsQuotaWindows() throws {
+        try setCurrentProvider("codex-replacement")
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour quota",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day quota",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 7 * 86_400
+        )
+        let requestLock = NSLock()
+        var requestPaths: [String] = []
+        DelayedBalanceURLProtocol.setHandler { request in
+            requestLock.lock()
+            requestPaths.append(request.url?.path ?? "")
+            requestLock.unlock()
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertFalse((request.url?.path ?? "").contains("consume"))
+            if request.url?.path.contains("rate-limit-reset-credits") == true {
+                return DelayedBalanceURLProtocol.Reply(
+                    data: Data(#"{"error":"fixture-list-unavailable"}"#.utf8),
+                    statusCode: 500
+                )
+            }
+            return DelayedBalanceURLProtocol.Reply(
+                data: Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000}}}"#.utf8),
+                statusCode: 200
+            )
+        }
+        let rendered = expectation(description: "official snapshot after list failure")
+        var captured: Snapshot?
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: FixedOfficialQuotaParser(
+                    windows: [fiveHour, sevenDay],
+                    bankedResetNeedsCreditList: true
+                )
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-banked-reset-list-failure"),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] client in
+                    repository?.loadCurrent(appType: client.appType)
+                },
+                isActiveClient: { _ in true },
+                render: { snapshot in
+                    captured = snapshot
+                    rendered.fulfill()
+                },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in },
+                isOpenCodexConfirmed: { _ in false }
+            )
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: true,
+            switched: false
+        )
+        wait(for: [rendered], timeout: 2)
+        let snapshot = try XCTUnwrap(captured)
+        XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(snapshot.officialQuotaWindows.map(\.remaining), [80, 45])
+        XCTAssertNil(snapshot.bankedReset)
+        requestLock.lock()
+        let paths = requestPaths
+        requestLock.unlock()
+        XCTAssertTrue(paths.contains { $0.contains("/backend-api/wham/usage") })
+        XCTAssertTrue(paths.contains { $0.contains("/backend-api/wham/rate-limit-reset-credits") })
+        XCTAssertFalse(paths.contains { $0.contains("consume") })
+    }
+
+    func testOfficialRefreshDrawsBankedResetDetailsFromReadOnlyCreditList() throws {
+        try setCurrentProvider("codex-replacement")
+        let fiveHour = OfficialQuotaWindow(
+            kind: .fiveHour,
+            remaining: 80,
+            label: "5-hour quota",
+            daysText: "5 hours",
+            reset: "5h",
+            durationSeconds: 5 * 3_600
+        )
+        let sevenDay = OfficialQuotaWindow(
+            kind: .sevenDay,
+            remaining: 45,
+            label: "7-day quota",
+            daysText: "7 days",
+            reset: "7d",
+            durationSeconds: 7 * 86_400
+        )
+        DelayedBalanceURLProtocol.setHandler { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertFalse((request.url?.path ?? "").contains("consume"))
+            if request.url?.path.contains("rate-limit-reset-credits") == true {
+                return DelayedBalanceURLProtocol.Reply(
+                    data: Data(#"{"available_count":1,"credits":[{"id":"RateLimitResetCredit_list","reset_type":"codex_rate_limits","status":"available","expires_at":"2026-10-04T01:32:00Z"}]}"#.utf8),
+                    statusCode: 200
+                )
+            }
+            return DelayedBalanceURLProtocol.Reply(
+                data: Data(#"{"rate_limit":{"primary_window":{"used_percent":20,"limit_window_seconds":18000}}}"#.utf8),
+                statusCode: 200
+            )
+        }
+        let rendered = expectation(description: "official snapshot after list success")
+        var captured: Snapshot?
+        let coordinator = ProviderRefreshCoordinator(
+            repository: repository,
+            officialQuotaClient: OfficialQuotaClient(
+                session: session,
+                credentialReader: FixtureCredentialReader(codexToken: "fixture-token"),
+                parser: FixedOfficialQuotaParser(
+                    windows: [fiveHour, sevenDay],
+                    bankedResetNeedsCreditList: true
+                )
+            ),
+            balanceAPIClient: BalanceAPIClient(session: session),
+            queue: DispatchQueue(label: "test.provider-refresh-banked-reset-list-success"),
+            actions: ProviderRefreshActions(
+                currentProvider: { [repository] client in
+                    repository?.loadCurrent(appType: client.appType)
+                },
+                isActiveClient: { _ in true },
+                render: { snapshot in
+                    captured = snapshot
+                    rendered.fulfill()
+                },
+                storeClientSnapshot: { _, _, _ in },
+                quickSwitchSummaryChanged: { _ in },
+                isOpenCodexConfirmed: { _ in false }
+            )
+        )
+        let current = try XCTUnwrap(repository.loadCurrent(appType: "codex"))
+        coordinator.refreshStandardProvider(
+            current: current,
+            client: .codex,
+            forceBalance: true,
+            switched: false
+        )
+        wait(for: [rendered], timeout: 2)
+        let snapshot = try XCTUnwrap(captured)
+        XCTAssertEqual(snapshot.officialQuotaWindows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(snapshot.bankedReset?.availableCount, 1)
+        XCTAssertEqual(snapshot.bankedReset?.cards.first?.resetType, "codex_rate_limits")
+    }
+
     func testQuickSwitchCadenceRetainsSixtySecondIntervalAndResetBehavior() throws {
         let clock = TestClock(date: Date(timeIntervalSince1970: 1_700_000_000))
         let summaryUpdated = DispatchSemaphore(value: 0)
@@ -741,12 +987,28 @@ private struct IncrementingOfficialQuotaParser: OfficialQuotaParsing {
 
 private struct FixedOfficialQuotaParser: OfficialQuotaParsing {
     let windows: [OfficialQuotaWindow]
+    let bankedReset: CodexBankedReset?
+    let bankedResetNeedsCreditList: Bool
+
+    init(
+        windows: [OfficialQuotaWindow],
+        bankedReset: CodexBankedReset? = nil,
+        bankedResetNeedsCreditList: Bool = false
+    ) {
+        self.windows = windows
+        self.bankedReset = bankedReset
+        self.bankedResetNeedsCreditList = bankedResetNeedsCreditList
+    }
 
     func parse(
         data: Data,
         client: AssistantClient
     ) throws -> OfficialQuotaResponseParser.Output {
-        OfficialQuotaResponseParser.Output(windows: windows)
+        OfficialQuotaResponseParser.Output(
+            windows: windows,
+            bankedReset: bankedReset,
+            bankedResetNeedsCreditList: bankedResetNeedsCreditList
+        )
     }
 }
 

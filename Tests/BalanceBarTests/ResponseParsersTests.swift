@@ -468,6 +468,235 @@ final class ResponseParsersTests: XCTestCase {
         XCTAssertNil(expired.windows.first?.resetAt)
     }
 
+    func testCodexBankedResetParsesAvailableUnexpiredCardsInExpiryOrder() throws {
+        let earlier = Date(timeIntervalSince1970: 1_700_086_400)
+        let later = Date(timeIntervalSince1970: 1_700_172_800)
+        let output = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "rate_limit_reset_credits": [
+                    "available_count": 2,
+                    "credits": [
+                        [
+                            "id": "RateLimitResetCredit_later",
+                            "reset_type": "codex_rate_limits",
+                            "status": "available",
+                            "expires_at": "2023-11-16T22:13:20Z",
+                            "title": "One free rate limit reset"
+                        ],
+                        [
+                            "id": "RateLimitResetCredit_earlier",
+                            "reset_type": "codex_rate_limits",
+                            "status": "available",
+                            "expires_at": 1_700_086_400,
+                            "title": "One free rate limit reset"
+                        ]
+                    ]
+                ]
+            ]),
+            client: .codex,
+            now: now
+        )
+
+        XCTAssertEqual(output.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertEqual(output.windows.map(\.remaining), [80, 45])
+        XCTAssertFalse(output.bankedResetNeedsCreditList)
+        let bankedReset = try XCTUnwrap(output.bankedReset)
+        XCTAssertEqual(bankedReset.availableCount, 2)
+        XCTAssertEqual(bankedReset.cards.map(\.id), [
+            "RateLimitResetCredit_earlier",
+            "RateLimitResetCredit_later"
+        ])
+        XCTAssertEqual(bankedReset.cards.map(\.resetType), [
+            "codex_rate_limits",
+            "codex_rate_limits"
+        ])
+        XCTAssertEqual(bankedReset.cards.map(\.titleText), [
+            tr(.keyCodexBankedResetFullResetTitle),
+            tr(.keyCodexBankedResetFullResetTitle)
+        ])
+        XCTAssertEqual(bankedReset.cards.map(\.expiresAt), [earlier, later])
+        XCTAssertEqual(bankedReset.cards.map(\.expiresText), [
+            expectedBankedResetExpiresText(earlier),
+            expectedBankedResetExpiresText(later)
+        ])
+    }
+
+    func testCodexBankedResetHidesMissingZeroOrUnusableCreditsWithoutFailingQuota() throws {
+        let missing = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(),
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(missing.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(missing.bankedReset)
+        XCTAssertFalse(missing.bankedResetNeedsCreditList)
+
+        let zeroCount = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "rate_limit_reset_credits": [
+                    "available_count": 0,
+                    "credits": []
+                ]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(zeroCount.windows.map(\.remaining), [80, 45])
+        XCTAssertNil(zeroCount.bankedReset)
+        XCTAssertFalse(zeroCount.bankedResetNeedsCreditList)
+
+        let malformed = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "rate_limit_reset_credits": "not-an-object",
+                "additional_rate_limits": [[
+                    "limit_name": "gpt-reserve",
+                    "metered_feature": "base_model_inference",
+                    "rate_limit": [
+                        "allowed": true,
+                        "limit_reached": false,
+                        "primary_window": [
+                            "used_percent": 55,
+                            "reset_after_seconds": 5_400
+                        ]
+                    ]
+                ]]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(malformed.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNotNil(malformed.lunaReserve)
+        XCTAssertNil(malformed.bankedReset)
+        XCTAssertFalse(malformed.bankedResetNeedsCreditList)
+
+        let countOnly = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "rate_limit_reset_credits": [
+                    "available_count": 2
+                ]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(countOnly.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(countOnly.bankedReset)
+        XCTAssertTrue(countOnly.bankedResetNeedsCreditList)
+
+        let emptyCredits = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "rate_limit_reset_credits": [
+                    "available_count": 2,
+                    "credits": []
+                ]
+            ]),
+            client: .codex,
+            now: now
+        )
+        XCTAssertEqual(emptyCredits.windows.map(\.kind), [.fiveHour, .sevenDay])
+        XCTAssertNil(emptyCredits.bankedReset)
+        XCTAssertTrue(emptyCredits.bankedResetNeedsCreditList)
+    }
+
+    func testCodexBankedResetKeepsCardsWithoutExpiryLastAndDropsRedeemedOrExpired() throws {
+        let dated = Date(timeIntervalSince1970: 1_700_086_400)
+        let output = try OfficialQuotaResponseParser.parse(
+            object: standardCodexUsage(extra: [
+                "rate_limit_reset_credits": [
+                    "available_count": 4,
+                    "credits": [
+                        [
+                            "id": "undated",
+                            "reset_type": "codex_rate_limits",
+                            "status": "available"
+                        ],
+                        [
+                            "id": "dated",
+                            "reset_type": "codex_rate_limits",
+                            "status": "available",
+                            "expires_at": "2023-11-15T22:13:20Z"
+                        ],
+                        [
+                            "id": "redeemed",
+                            "reset_type": "codex_rate_limits",
+                            "status": "redeemed",
+                            "expires_at": "2023-11-16T22:13:20Z"
+                        ],
+                        [
+                            "id": "expired",
+                            "reset_type": "codex_rate_limits",
+                            "status": "available",
+                            "expires_at": 1_699_999_999
+                        ]
+                    ]
+                ]
+            ]),
+            client: .codex,
+            now: now
+        )
+
+        let bankedReset = try XCTUnwrap(output.bankedReset)
+        XCTAssertEqual(bankedReset.availableCount, 2)
+        XCTAssertEqual(bankedReset.cards.map(\.id), ["dated", "undated"])
+        XCTAssertEqual(bankedReset.cards[0].expiresAt, dated)
+        XCTAssertEqual(bankedReset.cards[0].expiresText, expectedBankedResetExpiresText(dated))
+        XCTAssertNil(bankedReset.cards[1].expiresAt)
+        XCTAssertNil(bankedReset.cards[1].expiresText)
+    }
+
+    func testClaudeOfficialQuotaIgnoresBankedResetCredits() throws {
+        let output = try OfficialQuotaResponseParser.parse(
+            object: [
+                "seven_day": [
+                    "utilization": "12.5",
+                    "resets_at": "2023-11-15T00:13:20Z"
+                ],
+                "rate_limit_reset_credits": [
+                    "available_count": 2,
+                    "credits": [[
+                        "id": "RateLimitResetCredit_claude",
+                        "reset_type": "codex_rate_limits",
+                        "status": "available",
+                        "expires_at": "2023-11-16T22:13:20Z"
+                    ]]
+                ]
+            ],
+            client: .claude,
+            now: now
+        )
+        XCTAssertEqual(output.remaining, 87.5, accuracy: 0.000001)
+        XCTAssertNil(output.bankedReset)
+        XCTAssertFalse(output.bankedResetNeedsCreditList)
+        XCTAssertNil(output.lunaReserve)
+    }
+
+    func testBankedResetCreditListParserAcceptsStandaloneCreditsPayload() throws {
+        let expiresAt = Date(timeIntervalSince1970: 1_700_086_400)
+        let bankedReset = try XCTUnwrap(
+            OfficialQuotaResponseParser.parseBankedResetCredits(
+                object: [
+                    "available_count": 1,
+                    "credits": [[
+                        "id": "RateLimitResetCredit_list",
+                        "reset_type": "codex_rate_limits",
+                        "status": "available",
+                        "expires_at": "2023-11-15T22:13:20Z",
+                        "title": "One free rate limit reset"
+                    ]]
+                ],
+                now: now
+            )
+        )
+        XCTAssertEqual(bankedReset.availableCount, 1)
+        XCTAssertEqual(bankedReset.cards[0].titleText, tr(.keyCodexBankedResetFullResetTitle))
+        XCTAssertEqual(bankedReset.cards[0].expiresAt, expiresAt)
+        XCTAssertNil(
+            OfficialQuotaResponseParser.parseBankedResetCredits(
+                data: Data("{invalid".utf8),
+                now: now
+            )
+        )
+    }
+
     func testOfficialQuotaParserRejectsInvalidAndMissingFixtures() throws {
         XCTAssertThrowsError(
             try OfficialQuotaResponseParser.parse(
@@ -492,5 +721,33 @@ final class ResponseParsersTests: XCTestCase {
 
     private func fixture(_ json: String) -> Data {
         Data(json.utf8)
+    }
+
+    private func standardCodexUsage(extra: [String: Any] = [:]) -> [String: Any] {
+        var object: [String: Any] = [
+            "rate_limit": [
+                "primary_window": [
+                    "used_percent": 20,
+                    "limit_window_seconds": 18_000,
+                    "reset_after_seconds": 3_600
+                ],
+                "secondary_window": [
+                    "used_percent": 55,
+                    "limit_window_seconds": 604_800,
+                    "reset_after_seconds": 5_400
+                ]
+            ]
+        ]
+        extra.forEach { object[$0.key] = $0.value }
+        return object
+    }
+
+    private func expectedBankedResetExpiresText(_ date: Date) -> String {
+        tr(
+            .keyCodexBankedResetExpiresValue,
+            arguments: [
+                OfficialQuotaResetFormatter.string(for: date, relativeTo: now) ?? ""
+            ]
+        )
     }
 }

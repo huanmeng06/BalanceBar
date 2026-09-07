@@ -462,6 +462,9 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ temporarily unavailable";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "Reset cards";
+"codex.banked_reset.full_reset_title" = "Full reset (weekly + 5-hour)";
+"codex.banked_reset.expires_value" = "Expires %1$@";
 "dashboard.menu.page.progress_color_ranges" = "Progress bar color ranges";
 "dashboard.menu.page.progress_color_ranges_description" = "Drag the thresholds to choose the color for each remaining-percentage range";
 "dashboard.menu.page.displayed_colors" = "Displayed colors";

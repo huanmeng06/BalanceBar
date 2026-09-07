@@ -5263,6 +5263,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         let officialQuotaWindows = quotaPresentation.windows
         let lunaReserve = quotaPresentation.lunaReserve
+        let bankedReset = quotaPresentation.bankedReset
         let subscription = menuInput.openAIAccount?.subscription
         let subscriptionTextWidth = subscription.map {
             AccountMarqueeView.textWidth(of: $0.text, font: Self.subscriptionFont)
@@ -5276,7 +5277,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             officialQuotaWindows: officialQuotaWindows,
             includesLunaReserve: snapshot.kind == .official && lunaReserve != nil,
             includesLunaReserveProgress: snapshot.kind == .official && lunaReserve?.remaining != nil,
-            lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex
+            lunaReserveInsertionIndex: quotaPresentation.lunaReserveInsertionIndex,
+            includesBankedReset: snapshot.kind == .official && bankedReset != nil,
+            bankedResetCardCount: bankedReset?.cards.count ?? 0
         )
         let view = MenuHoverLinkHostView(frame: NSRect(origin: .zero, size: layout.cardSize))
         let provider = makeOverviewLabel(snapshot.overviewProvider, font: .systemFont(ofSize: 15, weight: .semibold))
@@ -5302,7 +5305,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             view.addSubview(makeSubscriptionLabel(subscription.text, frame: subscriptionFrame))
         }
 
-        if !layout.quotaRows.isEmpty || layout.lunaReserveRow != nil {
+        if !layout.quotaRows.isEmpty
+            || layout.lunaReserveRow != nil
+            || layout.bankedResetSummaryRow != nil {
             for (window, row) in zip(officialQuotaWindows, layout.quotaRows) {
                 let progress = QuotaProgressView(percentage: window.remaining, colorConfiguration: settings.quotaProgressColorConfiguration)
                 progress.frame = row.progress
@@ -5384,6 +5389,55 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     frame: overviewMarqueeFrame(row.reset, avoiding: amount)
                 )
                 view.addSubview(reset)
+            }
+            if let bankedReset,
+               let summaryRow = layout.bankedResetSummaryRow {
+                let amount = makeOverviewLabel(
+                    "\(bankedReset.availableCount)",
+                    font: .monospacedDigitSystemFont(
+                        ofSize: OpenCodexCardLayout.quotaAmountPointSize,
+                        weight: .semibold
+                    )
+                )
+                amount.alignment = .right
+                amount.frame = summaryRow.amount
+                view.addSubview(amount)
+
+                let summaryTitle = makeMarqueeOverviewLabel(
+                    tr(.keyCodexBankedResetTitle),
+                    font: .systemFont(
+                        ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                        weight: .medium
+                    ),
+                    textColor: .labelColor,
+                    frame: overviewMarqueeFrame(summaryRow.quotaDetail, avoiding: amount)
+                )
+                view.addSubview(summaryTitle)
+
+                for (card, row) in zip(bankedReset.cards, layout.bankedResetDetailRows) {
+                    let title = makeMarqueeOverviewLabel(
+                        card.titleText,
+                        font: .systemFont(
+                            ofSize: OpenCodexCardLayout.quotaDetailPointSize,
+                            weight: .medium
+                        ),
+                        textColor: .labelColor,
+                        frame: row.quotaDetail
+                    )
+                    view.addSubview(title)
+                    if let expiresText = card.expiresText, !expiresText.isEmpty {
+                        let subtitle = makeMarqueeOverviewLabel(
+                            expiresText,
+                            font: .systemFont(
+                                ofSize: OpenCodexCardLayout.quotaResetPointSize,
+                                weight: .regular
+                            ),
+                            textColor: .secondaryLabelColor,
+                            frame: row.reset
+                        )
+                        view.addSubview(subtitle)
+                    }
+                }
             }
             view.addSubview(provider)
         } else {

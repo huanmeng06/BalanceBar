@@ -2245,6 +2245,178 @@ final class DashboardProductionPathRegressionTests: XCTestCase {
         )
     }
 
+    func testOfficialCodexMenuCardRendersBankedResetSummaryAndDetailRowsWithoutReserve() throws {
+        let previousLanguage = AppLanguage.selected
+        defer { AppLanguage.selected = previousLanguage }
+        AppLanguage.selected = .english
+
+        let controller = StatusItemController(
+            actions: StatusItemController.Actions(
+                manualRefresh: {},
+                openDashboard: {},
+                openChatGPT: {},
+                openCCSwitch: {},
+                openOpenCodex: {},
+                quit: {},
+                switchProvider: { _ in },
+                switchOpenCodexPreference: { _ in },
+                openProviderWebsite: {},
+                openStatusLink: { _ in },
+                iconChanged: { _ in }
+            )
+        )
+        defer { controller.teardown() }
+
+        let input = StatusItemController.MenuInput(
+            openCodexCards: [],
+            openCodexState: nil,
+            openCodexSwitchInFlight: false,
+            choices: [],
+            quickSwitchSummaries: [:],
+            activeClient: .codex,
+            openAIAccount: OpenAIAccountPresentation(email: "person@example.com", subscription: .proFiveX),
+            statusLinks: [],
+            showQuickSwitchMenu: false,
+            showOpenChatGPTMenu: false,
+            showOpenCCSwitchMenu: false,
+            showOpenCodexMenu: false,
+            showStatusMenu: false,
+            lunaReserveDisplayMode: .always
+        )
+        let settings = StatusItemController.MenuBarSettings(
+            showIcon: true,
+            showAmount: true,
+            showReset: true,
+            horizontalPadding: 6,
+            keepMenuOpenAfterRefresh: true
+        )
+        let date = Date()
+        let windows = [
+            OfficialQuotaWindow(
+                kind: .fiveHour,
+                remaining: 80,
+                label: tr(.keyResponseParsers5HourQuota),
+                daysText: tr(.keyResponseParsers5Hours),
+                reset: "2d0h",
+                durationSeconds: 18_000
+            ),
+            OfficialQuotaWindow(
+                kind: .sevenDay,
+                remaining: 45,
+                label: tr(.keyResponseParsers7DayQuota2),
+                daysText: tr(.keyResponseParsers7Days4),
+                reset: "7d0h",
+                durationSeconds: 604_800
+            )
+        ]
+        let earlier = date.addingTimeInterval(86_400)
+        let later = date.addingTimeInterval(2 * 86_400)
+        let bankedReset = try XCTUnwrap(
+            CodexBankedReset(cards: [
+                CodexBankedResetCard(
+                    id: "earlier",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    expiresAt: earlier,
+                    expiresText: tr(
+                        .keyCodexBankedResetExpiresValue,
+                        arguments: [
+                            OfficialQuotaResetFormatter.string(for: earlier, relativeTo: date) ?? ""
+                        ]
+                    )
+                ),
+                CodexBankedResetCard(
+                    id: "later",
+                    resetType: "codex_rate_limits",
+                    titleText: tr(.keyCodexBankedResetFullResetTitle),
+                    expiresAt: later,
+                    expiresText: tr(
+                        .keyCodexBankedResetExpiresValue,
+                        arguments: [
+                            OfficialQuotaResetFormatter.string(for: later, relativeTo: date) ?? ""
+                        ]
+                    )
+                )
+            ])
+        )
+
+        controller.start(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows,
+                lunaReserve: LunaReserveQuota(status: .available, remaining: 61, reset: "2h"),
+                bankedReset: bankedReset
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+
+        let overview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let frames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows,
+            includesBankedReset: true,
+            bankedResetCardCount: 2
+        )
+        XCTAssertEqual(overview.bounds.size, frames.cardSize)
+        XCTAssertEqual(
+            overview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [80, 45]
+        )
+        let labels = allControls(of: overview, as: NSTextField.self).map(\.stringValue)
+        XCTAssertTrue(labels.contains("80%"))
+        XCTAssertTrue(labels.contains("45%"))
+        XCTAssertTrue(labels.contains("2"))
+        XCTAssertFalse(labels.contains("2%"))
+        XCTAssertTrue(labels.contains(tr(.keyCodexBankedResetTitle)))
+        XCTAssertEqual(
+            labels.filter { $0 == tr(.keyCodexBankedResetFullResetTitle) }.count,
+            2
+        )
+        XCTAssertTrue(labels.contains(bankedReset.cards[0].expiresText ?? ""))
+        XCTAssertTrue(labels.contains(bankedReset.cards[1].expiresText ?? ""))
+        XCTAssertFalse(labels.contains { $0.contains("🌙") })
+        XCTAssertFalse(labels.contains(tr(.keyLunaReserveTitle)))
+        XCTAssertEqual(controller.menuBarPrimaryTextForTesting, "80%")
+
+        controller.update(
+            snapshot: .official(
+                "OpenAI Official",
+                45,
+                windows[1].label,
+                windows[1].reset,
+                date,
+                windows: windows
+            ),
+            refreshDate: date,
+            menuInput: input,
+            settings: settings
+        )
+        let emptyOverview = try XCTUnwrap(controller.menuItemsForTesting.first?.view)
+        let emptyFrames = OpenCodexCardLayout.frames(
+            for: .quota,
+            includesAccount: true,
+            includesSubscription: true,
+            officialQuotaWindows: windows
+        )
+        XCTAssertEqual(emptyOverview.bounds.size, emptyFrames.cardSize)
+        XCTAssertFalse(
+            allControls(of: emptyOverview, as: NSTextField.self)
+                .contains { $0.stringValue == tr(.keyCodexBankedResetTitle) }
+        )
+        XCTAssertEqual(
+            emptyOverview.subviews.compactMap { $0 as? QuotaProgressView }.map(\.percentage),
+            [80, 45]
+        )
+    }
+
     func testOpenCodexAndCCSwitchMenuItemsAreIndependentAndOpenCodexActivatesOnce() throws {
         for openCodexIsCurrent in [true, false] {
             for showOpenCodexMenu in [true, false] {

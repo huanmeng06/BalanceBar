@@ -462,6 +462,9 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ は一時的に利用できません";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "リセットカード";
+"codex.banked_reset.full_reset_title" = "完全リセット（週間 + 5時間）";
+"codex.banked_reset.expires_value" = "%1$@ に期限切れ";
 "dashboard.menu.page.progress_color_ranges" = "進行状況バーの色範囲";
 "dashboard.menu.page.progress_color_ranges_description" = "しきい値をドラッグして、残りの割合ごとの色を調整します";
 "dashboard.menu.page.displayed_colors" = "表示する色";

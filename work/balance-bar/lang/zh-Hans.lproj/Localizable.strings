@@ -462,6 +462,9 @@
 "luna.reserve.menu_reset_value" = "%1$@";
 "luna.reserve.menu_unavailable" = "%1$@ 暂不可用";
 "luna.reserve.summary_value" = "%1$@ · %2$@ · %3$@ · %4$@";
+"codex.banked_reset.title" = "重置卡";
+"codex.banked_reset.full_reset_title" = "完全重置（每周 + 5 小时）";
+"codex.banked_reset.expires_value" = "将于 %1$@ 到期";
 "dashboard.menu.page.progress_color_ranges" = "进度条颜色区间";
 "dashboard.menu.page.progress_color_ranges_description" = "拖动分界点，调整不同剩余百分比对应的颜色";
 "dashboard.menu.page.displayed_colors" = "显示颜色";
